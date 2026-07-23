@@ -251,6 +251,203 @@ test("open removes only the current file from context and Global when content ch
   assert.equal(session.globalState.updatedAt, now);
 });
 
+test("loadForDecoration keeps Context state when only the Global file is stale", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository);
+  const initial = await provider.open(descriptor());
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "stale-hash", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+  const persistedBeforeLoad = clone(repository.current);
+  repository.saves.length = 0;
+
+  const state = await provider.loadForDecoration(descriptor());
+
+  assert.ok(state);
+  assert.deepEqual(state.contextState.files[fileId]!.modifiedReviewed, [interval(1, 3)]);
+  assert.equal(state.globalState.files[fileId], undefined);
+  assert.equal(repository.saves.length, 0);
+  assert.deepEqual(repository.current, persistedBeforeLoad);
+});
+
+test("loadForDecoration keeps Global state when only the Context file is stale", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository);
+  const initial = await provider.open(descriptor());
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "stale-hash", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+  const persistedBeforeLoad = clone(repository.current);
+  repository.saves.length = 0;
+
+  const state = await provider.loadForDecoration(descriptor());
+
+  assert.ok(state);
+  assert.equal(state.contextState.files[fileId], undefined);
+  assert.deepEqual(state.globalState.files[fileId]!.reviewed, [interval(1, 3)]);
+  assert.equal(repository.saves.length, 0);
+  assert.deepEqual(repository.current, persistedBeforeLoad);
+});
+
+test("loadForDecoration keeps Context state when only the Global revision is stale", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository);
+  const initial = await provider.open(descriptor());
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      currentRevisionId: "stale-revision",
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+  const persistedBeforeLoad = clone(repository.current);
+  repository.saves.length = 0;
+
+  const state = await provider.loadForDecoration(descriptor());
+
+  assert.ok(state);
+  assert.deepEqual(state.contextState.files[fileId]!.modifiedReviewed, [interval(1, 3)]);
+  assert.equal(state.globalState.files[fileId], undefined);
+  assert.equal(repository.saves.length, 0);
+  assert.deepEqual(repository.current, persistedBeforeLoad);
+});
+
+test("loadForDecoration keeps Global state when only the Context revision is stale", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository);
+  const initial = await provider.open(descriptor());
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      workspace: {
+        ...initial.contextState.workspace!,
+        snapshotRevision: "stale-revision"
+      },
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+  const persistedBeforeLoad = clone(repository.current);
+  repository.saves.length = 0;
+
+  const state = await provider.loadForDecoration(descriptor());
+
+  assert.ok(state);
+  assert.equal(state.contextState.files[fileId], undefined);
+  assert.deepEqual(state.globalState.files[fileId]!.reviewed, [interval(1, 3)]);
+  assert.equal(repository.saves.length, 0);
+  assert.deepEqual(repository.current, persistedBeforeLoad);
+});
+
+test("loadForDecoration leaves the persisted snapshot untouched", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository);
+  const initial = await provider.open(descriptor());
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+  const persistedBeforeLoad = clone(repository.current);
+  repository.saves.length = 0;
+
+  await provider.loadForDecoration(descriptor());
+
+  assert.equal(repository.saves.length, 0);
+  assert.deepEqual(repository.current, persistedBeforeLoad);
+});
+
 test("open rejects persisted state owned by a different workspace context", async () => {
   const repository = new FakeRepository();
   const provider = createProvider(repository);

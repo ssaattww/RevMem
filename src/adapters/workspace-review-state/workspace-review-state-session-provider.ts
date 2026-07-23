@@ -51,6 +51,16 @@ export interface WorkspaceNormalEditorReviewStateSession
   readonly committer: ReviewStateTransactionCommitter;
 }
 
+/** Read-only mapped state used to calculate normal-editor decorations. */
+export interface WorkspaceNormalEditorDecorationState {
+  /** Context snapshot with only an uncertain current file omitted in memory. */
+  readonly contextState: ReviewContextState;
+  /** Global snapshot with only an uncertain current file omitted in memory. */
+  readonly globalState: RepositoryGlobalState;
+  /** Current file identity and certainty metadata used by the decoration model. */
+  readonly target: ReviewStateFileTarget;
+}
+
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
 export interface WorkspaceReviewStateRepository
   extends ReviewStateTransactionCommitter {
@@ -107,11 +117,10 @@ const assertLineCount = (lineCount: number): void => {
   }
 };
 
-const validateLoadedCommit = (
+const validateLoadedCommitIdentity = (
   commit: ReviewStateCommit,
   target: ReviewStateRepositoryTarget,
-  workspaceId: string,
-  revisionId: string
+  workspaceId: string
 ): void => {
   if (
     commit.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION ||
@@ -139,8 +148,18 @@ const validateLoadedCommit = (
     throw new Error("Persisted review context is not the expected workspace context.");
   }
 
+};
+
+const validateLoadedCommit = (
+  commit: ReviewStateCommit,
+  target: ReviewStateRepositoryTarget,
+  workspaceId: string,
+  revisionId: string
+): void => {
+  validateLoadedCommitIdentity(commit, target, workspaceId);
+
   if (
-    commit.contextState.workspace.snapshotRevision !== revisionId ||
+    commit.contextState.workspace!.snapshotRevision !== revisionId ||
     commit.globalState.currentRevisionId !== revisionId
   ) {
     throw new Error("Persisted workspace review state is not mapped to the live revision.");
@@ -184,6 +203,12 @@ const createInitialCommit = (
   };
 };
 
+interface WorkspaceReviewStateMapping {
+  readonly repositoryTarget: ReviewStateRepositoryTarget;
+  readonly workspaceId: string;
+  readonly fileTarget: ReviewStateFileTarget;
+}
+
 /**
  * Resolves non-Git workspace identity and returns mapped state for normal-editor commands.
  *
@@ -205,6 +230,37 @@ export class WorkspaceReviewStateSessionProvider {
     this.now = options.now ?? (() => new Date());
   }
 
+  private resolveMapping(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): WorkspaceReviewStateMapping {
+    assertLineCount(descriptor.lineCount);
+    assertNonEmptyString(descriptor.contentHash, "contentHash");
+
+    const identity = this.options.identityService.resolve({
+      workspaceFolderUri: descriptor.workspaceFolderUri,
+      documentUri: descriptor.documentUri,
+      fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
+      relativePath: descriptor.relativePath
+    });
+    const revisionId = `workspace-live:${identity.workspaceId}`;
+
+    return {
+      repositoryTarget: {
+        kind: "workspace",
+        repositoryId: identity.repositoryId,
+        contextId: identity.workspaceContextId
+      },
+      workspaceId: identity.workspaceId,
+      fileTarget: {
+        fileId: identity.fileId,
+        currentPath: identity.relativePath,
+        revisionId,
+        lineCount: descriptor.lineCount,
+        contentHash: descriptor.contentHash
+      }
+    };
+  }
+
   /**
    * Resolves a non-Git workspace session for the current editor descriptor.
    *
@@ -219,58 +275,44 @@ export class WorkspaceReviewStateSessionProvider {
   public async open(
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorReviewStateSession> {
-    assertLineCount(descriptor.lineCount);
-    assertNonEmptyString(descriptor.contentHash, "contentHash");
-
-    const identity = this.options.identityService.resolve({
-      workspaceFolderUri: descriptor.workspaceFolderUri,
-      documentUri: descriptor.documentUri,
-      fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
-      relativePath: descriptor.relativePath
-    });
-    const revisionId = `workspace-live:${identity.workspaceId}`;
-    const target: ReviewStateRepositoryTarget = {
-      kind: "workspace",
-      repositoryId: identity.repositoryId,
-      contextId: identity.workspaceContextId
-    };
+    const mapping = this.resolveMapping(descriptor);
     const occurredAt = this.now().toISOString();
     const displayName = descriptor.workspaceDisplayName.trim().length === 0
       ? "Workspace review"
       : descriptor.workspaceDisplayName;
 
-    let commit = await this.options.repository.load(target);
+    let commit = await this.options.repository.load(mapping.repositoryTarget);
     if (commit === undefined) {
       commit = createInitialCommit(
-        identity.repositoryId,
-        identity.workspaceContextId,
-        identity.workspaceId,
-        revisionId,
+        mapping.repositoryTarget.repositoryId,
+        mapping.repositoryTarget.contextId,
+        mapping.workspaceId,
+        mapping.fileTarget.revisionId,
         displayName,
         occurredAt
       );
-      await this.options.repository.save(target, commit);
+      await this.options.repository.save(mapping.repositoryTarget, commit);
     } else {
       validateLoadedCommit(
         commit,
-        target,
-        identity.workspaceId,
-        revisionId
+        mapping.repositoryTarget,
+        mapping.workspaceId,
+        mapping.fileTarget.revisionId
       );
     }
 
-    const contextFile = commit.contextState.files[identity.fileId];
-    const globalFile = commit.globalState.files[identity.fileId];
+    const contextFile = commit.contextState.files[mapping.fileTarget.fileId];
+    const globalFile = commit.globalState.files[mapping.fileTarget.fileId];
     const contextFileIsStale = contextFile !== undefined && (
       contextFile.contentHash !== descriptor.contentHash ||
-      contextFile.revisionId !== revisionId ||
+      contextFile.revisionId !== mapping.fileTarget.revisionId ||
       contextFile.lineCount !== descriptor.lineCount ||
-      contextFile.currentPath !== identity.relativePath
+      contextFile.currentPath !== mapping.fileTarget.currentPath
     );
     const globalFileIsStale = globalFile !== undefined && (
       globalFile.contentHash !== descriptor.contentHash ||
-      globalFile.revisionId !== revisionId ||
-      globalFile.currentPath !== identity.relativePath
+      globalFile.revisionId !== mapping.fileTarget.revisionId ||
+      globalFile.currentPath !== mapping.fileTarget.currentPath
     );
 
     if (contextFileIsStale || globalFileIsStale) {
@@ -278,29 +320,81 @@ export class WorkspaceReviewStateSessionProvider {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
           ...cloneValue(commit.contextState),
-          files: withoutKey(commit.contextState.files, identity.fileId),
+          files: withoutKey(commit.contextState.files, mapping.fileTarget.fileId),
           updatedAt: occurredAt
         },
         globalState: {
           ...cloneValue(commit.globalState),
-          files: withoutKey(commit.globalState.files, identity.fileId),
+          files: withoutKey(commit.globalState.files, mapping.fileTarget.fileId),
           updatedAt: occurredAt
         }
       };
-      await this.options.repository.save(target, commit);
+      await this.options.repository.save(mapping.repositoryTarget, commit);
     }
 
     return {
       contextState: cloneValue(commit.contextState),
       globalState: cloneValue(commit.globalState),
-      target: {
-        fileId: identity.fileId,
-        currentPath: identity.relativePath,
-        revisionId,
-        lineCount: descriptor.lineCount,
-        contentHash: descriptor.contentHash
-      },
+      target: { ...mapping.fileTarget },
       committer: this.options.repository
+    };
+  }
+
+  /**
+   * Loads decoration state without creating, sanitizing, or saving a workspace snapshot.
+   *
+   * A stale Context file and a stale Global file are omitted independently from the
+   * returned in-memory clones so a certain layer can still render without mutating disk.
+   *
+   * @returns Read-only decoration inputs, or `undefined` when no workspace snapshot exists.
+   * @throws Propagates descriptor, identity, persisted-state validation, or load failures.
+   */
+  public async loadForDecoration(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): Promise<WorkspaceNormalEditorDecorationState | undefined> {
+    const mapping = this.resolveMapping(descriptor);
+    const commit = await this.options.repository.load(mapping.repositoryTarget);
+    if (commit === undefined) {
+      return undefined;
+    }
+
+    validateLoadedCommitIdentity(
+      commit,
+      mapping.repositoryTarget,
+      mapping.workspaceId
+    );
+    const contextFile = commit.contextState.files[mapping.fileTarget.fileId];
+    const globalFile = commit.globalState.files[mapping.fileTarget.fileId];
+    const contextStateIsStale =
+      commit.contextState.workspace!.snapshotRevision !== mapping.fileTarget.revisionId;
+    const globalStateIsStale =
+      commit.globalState.currentRevisionId !== mapping.fileTarget.revisionId;
+    const contextFileIsStale = contextStateIsStale || (contextFile !== undefined && (
+      contextFile.contentHash !== mapping.fileTarget.contentHash ||
+      contextFile.revisionId !== mapping.fileTarget.revisionId ||
+      contextFile.lineCount !== mapping.fileTarget.lineCount ||
+      contextFile.currentPath !== mapping.fileTarget.currentPath
+    ));
+    const globalFileIsStale = globalStateIsStale || (globalFile !== undefined && (
+      globalFile.contentHash !== mapping.fileTarget.contentHash ||
+      globalFile.revisionId !== mapping.fileTarget.revisionId ||
+      globalFile.currentPath !== mapping.fileTarget.currentPath
+    ));
+
+    return {
+      contextState: contextFileIsStale
+        ? {
+            ...cloneValue(commit.contextState),
+            files: withoutKey(commit.contextState.files, mapping.fileTarget.fileId)
+          }
+        : cloneValue(commit.contextState),
+      globalState: globalFileIsStale
+        ? {
+            ...cloneValue(commit.globalState),
+            files: withoutKey(commit.globalState.files, mapping.fileTarget.fileId)
+          }
+        : cloneValue(commit.globalState),
+      target: { ...mapping.fileTarget }
     };
   }
 }

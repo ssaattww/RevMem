@@ -41,7 +41,45 @@ export interface NormalEditorReviewCommandHandlers<Editor> {
   unmarkFileReviewed(editor: Editor): void | Promise<unknown>;
 }
 
+/** Refreshes all currently visible normal-editor decorations after a state change. */
+export interface NormalEditorDecorationRefresher {
+  /** Reloads and applies decorations to every visible editor, clearing any visible diff editor. */
+  refreshVisibleEditors(): void | Promise<void>;
+}
+
 type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
+
+/**
+ * Adds decoration refresh behavior to review command handlers.
+ *
+ * Applied commands refresh every visible editor so split views of the same document
+ * cannot retain stale decorations. Cancelled and no-op commands leave decorations unchanged.
+ */
+export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
+  handlers: NormalEditorReviewCommandHandlers<Editor>,
+  refresher: NormalEditorDecorationRefresher
+): NormalEditorReviewCommandHandlers<Editor> {
+  const refreshAfterApplied = async (
+    operation: () => void | Promise<unknown>
+  ): Promise<unknown> => {
+    const result = await operation();
+    if (result === "applied") {
+      await refresher.refreshVisibleEditors();
+    }
+    return result;
+  };
+
+  return {
+    markSelectionReviewed: (editor) =>
+      refreshAfterApplied(() => handlers.markSelectionReviewed(editor)),
+    unmarkSelectionReviewed: (editor) =>
+      refreshAfterApplied(() => handlers.unmarkSelectionReviewed(editor)),
+    markFileReviewed: (editor) =>
+      refreshAfterApplied(() => handlers.markFileReviewed(editor)),
+    unmarkFileReviewed: (editor) =>
+      refreshAfterApplied(() => handlers.unmarkFileReviewed(editor))
+  };
+}
 
 const invokeForActiveNormalEditor = async <Editor>(
   host: NormalEditorCommandHost<Editor>,

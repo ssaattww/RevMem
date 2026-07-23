@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（進行中）
-- 直近完了タスク: T105 通常エディタの確認・解除コマンド
+- 直近完了タスク: T106 通常エディタの確認済み装飾
 - 現在のタスク: なし
-- 次のタスク: T106 通常エディタの確認済み装飾
-- 実装状態: 通常エディタの選択確認・解除、ファイル全体確認・解除をT101〜T104へ接続し、ファイル全体操作だけmodal確認を表示する。キャンセル非破壊性、commit後のhistory request、内容hash不一致時の安全な未確認化、workspace Extension Host指定をRed/Greenと専用レビューで確認済み
+- 次のタスク: T107 lifecycle・保存・再起動復元試験
+- 実装状態: visible editorだけを対象に、テーマ対応の半透明グレー背景、デフォルト有効のガター、任意Overview Ruler、Context・状態更新日時・Global状態のhoverを描画する。editor切替・設定変更・確認操作後に再描画し、stale非同期結果、diff editor、不確実なレイヤーは確認済み表示しないことをRed/Greenと専用レビューで確認済み
 - ブロッカー: なし
-- Gitブランチ: `task/t105-editor-commands`
-- Pull Request: #9
-- PR方針: T104 merge後の`main`から独立し、T105の先行テスト、細かな実装コミット、失敗時診断artifact、review follow-upをPR上に保持する
+- Gitブランチ: `task/t106-normal-editor-decoration`
+- Pull Request: #10
+- PR方針: T105 merge後の`main`から独立し、T106の先行テスト、細かな実装コミット、失敗時診断artifact、review follow-upをPR上に保持する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -46,6 +46,8 @@
 - T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
 - T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
 - T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
+- T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
+- T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
 
 ## 状態と規模
 
@@ -78,8 +80,8 @@
 | T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
-| T106 | 次 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
-| T107 | 未着手 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
+| T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
+| T107 | 次 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 
 ## P2 編集・Git差分追従
 
@@ -160,4 +162,4 @@
 
 ## 次回開始時の選択
 
-T105は完了した。次回の実装はT106だけを選択し、visible editorの確認済み範囲をテーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverで描画する失敗するテストから開始する。
+T106は完了した。次回の実装はT107だけを選択し、activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Hostの失敗するテストから開始する。
