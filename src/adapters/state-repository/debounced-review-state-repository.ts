@@ -49,9 +49,24 @@ const defaultScheduler: ReviewStateSaveScheduler = {
   }
 };
 
-const targetKey = (
-  target: Pick<ReviewStateRepositoryTarget, "repositoryId" | "contextId">
-): string => `${target.repositoryId}\u0000${target.contextId}`;
+const targetKey = (target: ReviewStateRepositoryTarget): string =>
+  `${target.kind}\u0000${target.repositoryId}\u0000${target.contextId}`;
+
+const transactionTarget = (
+  transaction: Readonly<ReviewStateTransactionLike>
+): ReviewStateRepositoryTarget => {
+  const contextKind = transaction.next.contextState.kind;
+  return {
+    kind:
+      contextKind === "pull-request"
+        ? "pull-request"
+        : contextKind === "workspace"
+          ? "workspace"
+          : "git",
+    repositoryId: transaction.repositoryId,
+    contextId: transaction.contextId
+  };
+};
 
 /**
  * Coalesces background state saves while preserving immediate command commits.
@@ -60,14 +75,17 @@ const targetKey = (
  * one context are coalesced and all callers complete only after the newest snapshot is written.
  * `commit` first flushes pending state for the same context and then delegates immediately, so
  * a confirmation command cannot display success before its atomic transaction is durable.
- * `dispose` is the Extension Host deactivation boundary and flushes every pending save.
+ * `dispose` is the Extension Host deactivation boundary and flushes every pending save while
+ * waiting for load and commit operations accepted before shutdown.
  */
 export class DebouncedReviewStateRepository {
   private readonly debounceMilliseconds: number;
   private readonly scheduler: ReviewStateSaveScheduler;
   private readonly pendingByTarget = new Map<string, PendingSave>();
   private readonly operationByTarget = new Map<string, Promise<unknown>>();
+  private readonly activeOperations = new Set<Promise<unknown>>();
   private disposed = false;
+  private disposePromise: Promise<void> | undefined;
 
   public constructor(
     private readonly options: DebouncedReviewStateRepositoryOptions
@@ -84,21 +102,25 @@ export class DebouncedReviewStateRepository {
     this.scheduler = options.scheduler ?? defaultScheduler;
   }
 
-  /** Loads after any pending save for the same context has reached durable storage. */
-  public async load(
+  /** Loads after any pending save for the same storage route and context is durable. */
+  public load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
     this.assertNotDisposed();
-    const key = targetKey(target);
-    await this.flushPendingTarget(key);
-    return this.enqueue(key, () => this.options.delegate.load(target));
+    const operation = (async (): Promise<ReviewStateCommit | undefined> => {
+      const key = targetKey(target);
+      await this.flushPendingTarget(key);
+      return this.enqueue(key, () => this.options.delegate.load(target));
+    })();
+    return this.trackOperation(operation);
   }
 
   /**
    * Schedules one complete snapshot for delayed persistence.
    *
-   * Repeated calls for the same context reset the timer and retain only the newest snapshot.
-   * Every returned promise resolves or rejects with that eventual write, never at schedule time.
+   * Repeated calls for the same storage kind and context reset the timer and retain only the
+   * newest snapshot. Every returned promise resolves or rejects with that eventual write,
+   * never at schedule time.
    */
   public save(
     target: ReviewStateRepositoryTarget,
@@ -133,16 +155,19 @@ export class DebouncedReviewStateRepository {
   }
 
   /** Flushes pending background state for this context, then commits the command immediately. */
-  public async commit(
+  public commit(
     transaction: Readonly<ReviewStateTransactionLike>
   ): Promise<void> {
     this.assertNotDisposed();
-    const key = targetKey(transaction);
-    await this.flushPendingTarget(key);
-    await this.enqueue(key, () => this.options.delegate.commit(transaction));
+    const operation = (async (): Promise<void> => {
+      const key = targetKey(transactionTarget(transaction));
+      await this.flushPendingTarget(key);
+      await this.enqueue(key, () => this.options.delegate.commit(transaction));
+    })();
+    return this.trackOperation(operation);
   }
 
-  /** Flushes every pending background snapshot and waits for all in-flight operations. */
+  /** Flushes every pending background snapshot and waits for currently queued delegate I/O. */
   public async flush(): Promise<void> {
     const failures: unknown[] = [];
 
@@ -169,15 +194,35 @@ export class DebouncedReviewStateRepository {
     }
   }
 
-  /** Stops new work and flushes pending state for Extension Host deactivation. */
-  public async dispose(): Promise<void> {
-    if (this.disposed) {
-      await this.flush();
-      return;
+  /** Stops new work and waits for all work accepted before Extension Host deactivation. */
+  public dispose(): Promise<void> {
+    if (this.disposePromise !== undefined) {
+      return this.disposePromise;
     }
 
     this.disposed = true;
-    await this.flush();
+    this.disposePromise = this.disposeAndFlush();
+    return this.disposePromise;
+  }
+
+  private async disposeAndFlush(): Promise<void> {
+    const failures: unknown[] = [];
+    const activeResults = await Promise.allSettled([...this.activeOperations]);
+    for (const result of activeResults) {
+      if (result.status === "rejected") {
+        failures.push(result.reason);
+      }
+    }
+
+    try {
+      await this.flush();
+    } catch (error) {
+      failures.push(error);
+    }
+
+    if (failures.length > 0) {
+      throw failures[0];
+    }
   }
 
   private scheduleFlush(key: string): unknown {
@@ -226,6 +271,19 @@ export class DebouncedReviewStateRepository {
         this.operationByTarget.delete(key);
       }
     }
+  }
+
+  private trackOperation<T>(operation: Promise<T>): Promise<T> {
+    this.activeOperations.add(operation);
+    void operation.then(
+      () => {
+        this.activeOperations.delete(operation);
+      },
+      () => {
+        this.activeOperations.delete(operation);
+      }
+    );
+    return operation;
   }
 
   private assertNotDisposed(): void {
