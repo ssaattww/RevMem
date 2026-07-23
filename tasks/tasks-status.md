@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T107 lifecycle・保存・再起動復元試験
+- 直近完了タスク: T108 GitHub Release向けVSIX配布と日本語README
 - 現在のタスク: なし
 - 次のタスク: T201 PR #7とT202 PR #8を最新`main`へ追従・統合した後、T203 diff parserとrevision間interval mapping
-- 実装状態: activationから通常エディタcommand・装飾・atomic repositoryを保存lifecycle adapterで接続し、background snapshotのdebounce、確認・解除transactionの即時保存、保存失敗時の成功表示抑止、deactivation時のpending/受付済み操作待機を実装した。同じworkspaceとuser-dataを使う3回のExtension Host起動で、確認状態と解除状態の装飾が再起動後に復元されることを確認済み。T201とT202は並行PRで実装・検証済みだが最新`main`へ未統合
+- 実装状態: 初回`main`マージ時に固定`0.0.1-pre`のGitHub prereleaseとVSIX assetを作成するworkflow、package metadata、VSIX除外、日本語README、Release契約testを実装した。Red/Green、build、lint、unit・Git・GitHub・Extension Host test、VSIX package/manifest、review follow-up、再reviewを通過し、task commitとdraft PR #12を作成した
 - ブロッカー: T203着手前にPR #7とPR #8の最新`main`追従・統合が必要
-- Gitブランチ: `task/t107-lifecycle-restart`
-- Pull Request: #11
-- PR方針: T106 merge後の`main`から独立し、T107の先行Red、保存lifecycle実装、3段階Extension Host再起動試験、review follow-up Red/Green、失敗時診断artifactをPR上に保持する
+- Gitブランチ: `task/github-release-vsix-readme`
+- Pull Request: #12
+- PR方針: `main`から独立し、T108のリリースworkflow、パッケージ検証、日本語README、専用レビューを1タスク1コミット・draft PRで提出した
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -50,6 +50,11 @@
 - T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
 - T107実装レポート: `reports/issue-1-t107-implementation-20260723201924.md`
 - T107レビューレポート: `reports/issue-1-t107-review-20260723201924.md`
+- T108調査レポート: `reports/issue-1-t108-investigation-20260723225437.md`
+- T108実装レポート: `reports/issue-1-t108-implementation-20260723230550.md`
+- T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
+- T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
+- T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
 
 ## 状態と規模
 
@@ -84,6 +89,7 @@
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
+| T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIXをRelease assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
@@ -164,4 +170,4 @@
 
 ## 次回開始時の選択
 
-T107は完了した。T201 PR #7とT202 PR #8を最新`main`へ追従・統合し、両実装が同じbase上で全試験を通ることを確認する。その後の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T108は完了し、draft PR #12を提出した。次はT201 PR #7とT202 PR #8を最新`main`へ追従・統合し、両実装が同じbase上で全試験を通ることを確認する。その後の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
