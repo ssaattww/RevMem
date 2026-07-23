@@ -1,0 +1,115 @@
+name: Release VSIX prerelease
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-0.0.1-pre
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: 0.0.1-pre
+  RELEASE_TAG: 0.0.1-pre
+  ASSET_NAME: review-range-tracker-0.0.1-pre.vsix
+  ASSET_PATH: artifacts/review-range-tracker-0.0.1-pre.vsix
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify selected ref is the latest remote main commit
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+          remote_main_commit="$(git rev-parse origin/main)"
+          if [[ "$GITHUB_SHA" != "$remote_main_commit" ]]; then
+            echo "Refusing to publish from a ref that is not the latest remote main commit."
+            exit 1
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Temporary Git integration tests
+        run: npm run test:git
+      - name: Mock GitHub integration tests
+        run: npm run test:github
+      - name: VS Code Extension Host tests
+        run: xvfb-run -a npm run test:vscode
+      - name: Package prerelease VSIX
+        run: |
+          mkdir -p artifacts
+          npm run package -- --pre-release --out "$ASSET_PATH"
+      - name: Create or repair fixed prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_json=""
+          if release_json="$(gh release view "$RELEASE_TAG" --json tagName,name,isPrerelease,targetCommitish,assets 2>/dev/null)"; then
+            release_tag="$(jq -r '.tagName' <<<"$release_json")"
+            release_name="$(jq -r '.name' <<<"$release_json")"
+            release_prerelease="$(jq -r '.isPrerelease' <<<"$release_json")"
+            expected_asset_count="$(jq --arg asset "$ASSET_NAME" '[.assets[] | select(.name == $asset)] | length' <<<"$release_json")"
+            asset_count="$(jq '.assets | length' <<<"$release_json")"
+            tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+            target_commit="$(git rev-parse "$(jq -r '.targetCommitish' <<<"$release_json")^{commit}")"
+
+            if [[ "$release_tag" != "$RELEASE_TAG" || "$release_name" != "$RELEASE_VERSION" || "$release_prerelease" != "true" || "$target_commit" != "$tag_commit" ]]; then
+              echo "Release metadata does not match the fixed prerelease contract."
+              exit 1
+            fi
+
+            if [[ "$expected_asset_count" == "1" && "$asset_count" == "1" ]]; then
+              echo "Release already has the expected asset; skipping."
+              exit 0
+            fi
+
+            if [[ "$expected_asset_count" != "0" || "$asset_count" != "0" ]]; then
+              echo "Release asset set does not match the fixed prerelease contract."
+              exit 1
+            fi
+
+            echo "Refusing to attach a VSIX built from the current HEAD; rebuilding from the Release tag."
+            repair_directory="$(mktemp -d)"
+            trap 'git worktree remove --force "$repair_directory"' EXIT
+            git worktree add --detach "$repair_directory" "$tag_commit"
+            (
+              cd "$repair_directory"
+              npm ci
+              npm run package -- --pre-release --out "$GITHUB_WORKSPACE/$ASSET_PATH"
+            )
+            gh release upload "$RELEASE_TAG" "$ASSET_PATH"
+            exit 0
+          fi
+
+          if git rev-parse --verify --quiet "$RELEASE_TAG^{commit}" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "A tag with the fixed release name already points to a different commit."
+              exit 1
+            fi
+          fi
+
+          gh release create "$RELEASE_TAG" "$ASSET_PATH" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_VERSION" \
+            --generate-notes \
+            --prerelease
