@@ -76,6 +76,26 @@
           "group": "reviewRange@4"
         }
       ]
+    },
+    "configuration": {
+      "title": "Review Range",
+      "properties": {
+        "reviewRange.showGlobalReviewed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Global確認済み範囲を通常エディタの装飾へ重ねて表示します。"
+        },
+        "reviewRange.showGutterIcon": {
+          "type": "boolean",
+          "default": true,
+          "description": "確認済み行のガターアイコンを表示します。"
+        },
+        "reviewRange.showOverviewRuler": {
+          "type": "boolean",
+          "default": false,
+          "description": "確認済み範囲をOverview Rulerへ表示します。"
+        }
+      }
     }
   },
   "scripts": {
@@ -87,7 +107,7 @@
     "validate:architecture": "node tools/validate-architecture.mjs",
     "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10",
     "compile:test": "tsc -p tsconfig.test.json",
-    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js test-dist/test/unit/workspace-review-state-session-provider.test.js",
+    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-decoration-controller.test.js test-dist/test/unit/normal-editor-decoration-model.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js test-dist/test/unit/workspace-review-state-session-provider.test.js",
     "test:git": "npm run compile:test && node --test test-dist/test/integration/temporary-git.test.js",
     "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
