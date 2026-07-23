@@ -70,6 +70,7 @@ const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const WINDOWS_DRIVE_PATH_PATTERN = /^\/[A-Za-z]:(?:\/|$)/;
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/;
 const URI_LIKE_RELATIVE_PATH_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
 function requireString(value: unknown, name: string): string {
@@ -147,6 +148,17 @@ function isWindowsFileUri(
   );
 }
 
+function encodeCanonicalPath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) =>
+      WINDOWS_DRIVE_SEGMENT_PATTERN.test(segment)
+        ? `${segment[0]}:`
+        : encodeURIComponent(segment)
+    )
+    .join("/");
+}
+
 function renderCanonicalUri(
   scheme: string,
   authority: string,
@@ -154,14 +166,14 @@ function renderCanonicalUri(
   query: string,
   fragment: string
 ): string {
-  let value = `${scheme}://${authority}${path}`;
+  let value = `${scheme}://${authority}${encodeCanonicalPath(path)}`;
 
   if (query.length > 0) {
-    value += `?${query}`;
+    value += `?${encodeURIComponent(query)}`;
   }
 
   if (fragment.length > 0) {
-    value += `#${fragment}`;
+    value += `#${encodeURIComponent(fragment)}`;
   }
 
   return value;
