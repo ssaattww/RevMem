@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
-import { FileSystemReviewStateRepository } from "./adapters/state-repository/index";
+import {
+  DebouncedReviewStateRepository,
+  FileSystemReviewStateRepository
+} from "./adapters/state-repository/index";
 import { WorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
 import {
   createNormalEditorDecorationModel,
@@ -27,6 +30,26 @@ const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showGutterIcon",
   "reviewRange.showOverviewRuler"
 ] as const;
+
+interface ReviewedIntervalSnapshot {
+  readonly startLine: number;
+  readonly endLineExclusive: number;
+}
+
+interface ReviewRangeExtensionTestApi {
+  refreshVisibleEditorDecorations(): Promise<void>;
+  getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+}
+
+interface ActiveExtensionRuntime {
+  readonly persistence: DebouncedReviewStateRepository;
+  readonly decorationController: NormalEditorDecorationController<
+    vscode.TextEditor,
+    vscode.TextEditorDecorationType
+  >;
+}
+
+let activeRuntime: ActiveExtensionRuntime | undefined;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -89,19 +112,60 @@ const toDecorationOptions = (
   };
 });
 
+const uniqueVisibleIntervals = (
+  documentUri: string,
+  appliedDecorations: ReadonlyMap<
+    vscode.TextEditor,
+    readonly NormalEditorReviewedDecoration[]
+  >
+): readonly ReviewedIntervalSnapshot[] => {
+  const intervals = new Map<string, ReviewedIntervalSnapshot>();
+
+  for (const editor of vscode.window.visibleTextEditors) {
+    if (editor.document.uri.toString() !== documentUri) {
+      continue;
+    }
+    for (const decoration of appliedDecorations.get(editor) ?? []) {
+      const interval = {
+        startLine: decoration.interval.startLine,
+        endLineExclusive: decoration.interval.endLineExclusive
+      };
+      intervals.set(
+        `${interval.startLine}:${interval.endLineExclusive}`,
+        interval
+      );
+    }
+  }
+
+  return [...intervals.values()].sort(
+    (left, right) =>
+      left.startLine - right.startLine ||
+      left.endLineExclusive - right.endLineExclusive
+  );
+};
+
 /** Activates the Review Range Tracker extension. */
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(
+  context: vscode.ExtensionContext
+): ReviewRangeExtensionTestApi | undefined {
   const stableHash = new NodeSha256StableHash();
-  const repository = new FileSystemReviewStateRepository({
+  const atomicRepository = new FileSystemReviewStateRepository({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
     }
   });
+  const repository = new DebouncedReviewStateRepository({
+    delegate: atomicRepository
+  });
   const sessionProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
     repository
   });
+  const appliedDecorations = new Map<
+    vscode.TextEditor,
+    readonly NormalEditorReviewedDecoration[]
+  >();
   const openWorkspaceSession = async (editor: vscode.TextEditor) => {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
     if (workspaceFolder === undefined) {
@@ -190,6 +254,10 @@ export function activate(context: vscode.ExtensionContext): void {
       return vscode.window.createTextEditorDecorationType(options);
     },
     setDecorations: (editor, decorationType, decorations) => {
+      appliedDecorations.set(editor, decorations.map((decoration) => ({
+        ...decoration,
+        interval: { ...decoration.interval }
+      })));
       editor.setDecorations(
         decorationType,
         toDecorationOptions(editor, decorations)
@@ -197,6 +265,11 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     onDidChangeVisibleEditors: (listener) =>
       vscode.window.onDidChangeVisibleTextEditors(() => {
+        for (const editor of appliedDecorations.keys()) {
+          if (!vscode.window.visibleTextEditors.includes(editor)) {
+            appliedDecorations.delete(editor);
+          }
+        }
         invokeDecorationListener(listener);
       }),
     onDidChangeActiveEditor: (listener) =>
@@ -284,10 +357,29 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
   context.subscriptions.push(decorationController, ...registrations);
+  activeRuntime = { persistence: repository, decorationController };
   void decorationController.start().catch(reportDecorationError);
+
+  if (context.extensionMode !== vscode.ExtensionMode.Test) {
+    return undefined;
+  }
+
+  return {
+    refreshVisibleEditorDecorations: () =>
+      decorationController.refreshVisibleEditors(),
+    getVisibleReviewedIntervals: (documentUri) =>
+      uniqueVisibleIntervals(documentUri, appliedDecorations)
+  };
 }
 
-/** Deactivates the Review Range Tracker extension. */
-export function deactivate(): void {
-  // Command registrations and decoration resources use ExtensionContext subscriptions.
+/** Flushes pending state and releases decoration resources during Extension Host teardown. */
+export async function deactivate(): Promise<void> {
+  const runtime = activeRuntime;
+  activeRuntime = undefined;
+  if (runtime === undefined) {
+    return;
+  }
+
+  runtime.decorationController.dispose();
+  await runtime.persistence.dispose();
 }
