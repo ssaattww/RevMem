@@ -140,7 +140,7 @@ T202だけは`npm run test:t202`でも独立実行できる。
 
 ## 最終検証
 
-Actions run `29982435495`で次が成功した。
+最新mainへT202差分だけを再適用したActions run `29983612679`で次が成功した。
 
 - install dependencies
 - build
@@ -149,8 +149,6 @@ Actions run `29982435495`で次が成功した。
 - temporary Git integration tests
 - mock GitHub integration tests
 - VS Code Extension Host tests
-
-最新mainへの再適用後も同じCI一式を再実行する。
 
 失敗時診断workflowは既存実装で要件を満たしていたため、T202ではworkflowを変更していない。
 
