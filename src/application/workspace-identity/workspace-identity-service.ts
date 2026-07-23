@@ -8,11 +8,20 @@ export interface ResourceUri {
   readonly authority?: string;
   /** Absolute URI path using either slash style at the adapter boundary. */
   readonly path: string;
-  /** Optional URI query retained in the canonical resource URI. */
+  /** Optional URI query. Workspace file identity rejects a non-empty value. */
   readonly query?: string;
-  /** Optional URI fragment retained in the canonical resource URI. */
+  /** Optional URI fragment. Workspace file identity rejects a non-empty value. */
   readonly fragment?: string;
 }
+
+/**
+ * Filesystem path semantics supplied by the workspace-side Extension Host.
+ *
+ * The adapter must identify the workspace filesystem, rather than the local
+ * extension process platform. In particular, a remote Windows workspace must
+ * supply `"windows"` even when this service runs outside Windows.
+ */
+export type FileSystemPathSemantics = "windows" | "posix";
 
 /**
  * Stable hashing contract supplied by the runtime adapter.
@@ -28,11 +37,22 @@ export interface StableHash {
  * Inputs required to identify one non-Git workspace file.
  */
 export interface WorkspaceIdentityInput {
-  /** Workspace folder that owns the document. */
+  /**
+   * Workspace folder that owns the document. Its query and fragment must be
+   * empty because this service identifies filesystem workspace files.
+   */
   readonly workspaceFolderUri: ResourceUri;
-  /** URI of the document being identified. */
+  /**
+   * URI of the document being identified. Its query and fragment must be empty
+   * because they are not part of a filesystem file identity.
+   */
   readonly documentUri: ResourceUri;
-  /** Workspace-folder-relative path reported by the workspace adapter. */
+  /**
+   * Filesystem semantics selected by the workspace-side Extension Host.
+   * Applied consistently to both URIs and `relativePath`.
+   */
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+  /** Workspace-folder-relative path reported using the selected semantics. */
   readonly relativePath: string;
 }
 
@@ -60,14 +80,11 @@ interface CanonicalResourceUri {
   readonly scheme: string;
   readonly authority: string;
   readonly path: string;
-  readonly query: string;
-  readonly fragment: string;
-  readonly caseInsensitivePath: boolean;
+  readonly pathSemantics: FileSystemPathSemantics;
   readonly value: string;
 }
 
 const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
-const WINDOWS_DRIVE_PATH_PATTERN = /^\/[A-Za-z]:(?:\/|$)/;
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/;
 const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
@@ -104,9 +121,27 @@ function normalizeAuthority(value: unknown): string {
   return authority;
 }
 
-function normalizeAbsoluteUriPath(value: unknown): string {
-  const source = requireString(value, "URI path").replaceAll("\\", "/");
-  const withLeadingSlash = WINDOWS_RELATIVE_DRIVE_PATTERN.test(source)
+function normalizeFileSystemPathSemantics(
+  value: unknown
+): FileSystemPathSemantics {
+  if (value === "windows" || value === "posix") {
+    return value;
+  }
+
+  throw new TypeError(
+    'fileSystemPathSemantics must be either "windows" or "posix".'
+  );
+}
+
+function normalizeAbsoluteUriPath(
+  value: unknown,
+  pathSemantics: FileSystemPathSemantics
+): string {
+  const source = pathSemantics === "windows"
+    ? requireString(value, "URI path").replaceAll("\\", "/")
+    : requireString(value, "URI path");
+  const withLeadingSlash =
+    pathSemantics === "windows" && WINDOWS_RELATIVE_DRIVE_PATTERN.test(source)
     ? `/${source}`
     : source;
 
@@ -136,17 +171,6 @@ function normalizeAbsoluteUriPath(value: unknown): string {
   return segments.length === 0 ? "/" : `/${segments.join("/")}`;
 }
 
-function isWindowsFileUri(
-  scheme: string,
-  authority: string,
-  normalizedPath: string
-): boolean {
-  return (
-    scheme === "file" &&
-    (authority.length > 0 || WINDOWS_DRIVE_PATH_PATTERN.test(normalizedPath))
-  );
-}
-
 function encodeCanonicalPath(path: string): string {
   return path
     .split("/")
@@ -161,50 +185,51 @@ function encodeCanonicalPath(path: string): string {
 function renderCanonicalUri(
   scheme: string,
   authority: string,
-  path: string,
-  query: string,
-  fragment: string
+  path: string
 ): string {
-  let value = `${scheme}://${authority}${encodeCanonicalPath(path)}`;
-
-  if (query.length > 0) {
-    value += `?${encodeURIComponent(query)}`;
-  }
-
-  if (fragment.length > 0) {
-    value += `#${encodeURIComponent(fragment)}`;
-  }
-
-  return value;
+  return `${scheme}://${authority}${encodeCanonicalPath(path)}`;
 }
 
-function canonicalizeResourceUri(uri: ResourceUri): CanonicalResourceUri {
+function canonicalizeResourceUri(
+  uri: ResourceUri,
+  pathSemantics: FileSystemPathSemantics
+): CanonicalResourceUri {
   const scheme = normalizeScheme(uri.scheme);
   const authority = normalizeAuthority(uri.authority);
-  const normalizedPath = normalizeAbsoluteUriPath(uri.path);
-  const caseInsensitivePath = isWindowsFileUri(scheme, authority, normalizedPath);
-  const path = caseInsensitivePath ? normalizedPath.toLowerCase() : normalizedPath;
+  const normalizedPath = normalizeAbsoluteUriPath(uri.path, pathSemantics);
+  const path = pathSemantics === "windows"
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
   const query = requireString(uri.query ?? "", "URI query");
   const fragment = requireString(uri.fragment ?? "", "URI fragment");
+
+  if (query.length > 0 || fragment.length > 0) {
+    throw new TypeError(
+      "Workspace file URI query or fragment must be empty."
+    );
+  }
 
   return {
     scheme,
     authority,
     path,
-    query,
-    fragment,
-    caseInsensitivePath,
-    value: renderCanonicalUri(scheme, authority, path, query, fragment)
+    pathSemantics,
+    value: renderCanonicalUri(scheme, authority, path)
   };
 }
 
-function normalizeRelativePath(value: unknown, caseInsensitive: boolean): string {
-  const source = requireString(value, "relativePath").replaceAll("\\", "/");
+function normalizeRelativePath(
+  value: unknown,
+  pathSemantics: FileSystemPathSemantics
+): string {
+  const source = pathSemantics === "windows"
+    ? requireString(value, "relativePath").replaceAll("\\", "/")
+    : requireString(value, "relativePath");
 
   if (
     source.length === 0 ||
     source.startsWith("/") ||
-    WINDOWS_RELATIVE_DRIVE_PATTERN.test(source)
+    (pathSemantics === "windows" && WINDOWS_RELATIVE_DRIVE_PATTERN.test(source))
   ) {
     throw new TypeError("relativePath must be a non-empty relative path.");
   }
@@ -233,7 +258,7 @@ function normalizeRelativePath(value: unknown, caseInsensitive: boolean): string
   }
 
   const normalized = segments.join("/");
-  return caseInsensitive ? normalized.toLowerCase() : normalized;
+  return pathSemantics === "windows" ? normalized.toLowerCase() : normalized;
 }
 
 function relativeDocumentPath(
@@ -259,7 +284,7 @@ function relativeDocumentPath(
 
   return normalizeRelativePath(
     document.path.slice(prefix.length),
-    workspaceFolder.caseInsensitivePath
+    workspaceFolder.pathSemantics
   );
 }
 
@@ -277,11 +302,17 @@ export class WorkspaceIdentityService {
    * @throws {Error} If the hash adapter violates the SHA-256 hexadecimal contract.
    */
   public resolve(input: WorkspaceIdentityInput): WorkspaceIdentity {
-    const workspaceFolder = canonicalizeResourceUri(input.workspaceFolderUri);
-    const document = canonicalizeResourceUri(input.documentUri);
+    const pathSemantics = normalizeFileSystemPathSemantics(
+      input.fileSystemPathSemantics
+    );
+    const workspaceFolder = canonicalizeResourceUri(
+      input.workspaceFolderUri,
+      pathSemantics
+    );
+    const document = canonicalizeResourceUri(input.documentUri, pathSemantics);
     const relativePath = normalizeRelativePath(
       input.relativePath,
-      workspaceFolder.caseInsensitivePath
+      pathSemantics
     );
     const derivedRelativePath = relativeDocumentPath(workspaceFolder, document);
 

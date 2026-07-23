@@ -6,7 +6,7 @@
 - 関連設計: `doc/design/vscode-review-range-tracker-design.md` 6.9、7.2、8.4
 - Pull Request: #5
 - ブランチ: `task/t103-workspace-identity`
-- stacked base: `task/t102-review-state-service`
+- base: T102 merge後の`main`へT103固有コミットだけをrebase済み
 
 ## 事前確認
 

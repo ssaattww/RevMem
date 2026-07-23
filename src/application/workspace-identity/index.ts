@@ -1,6 +1,7 @@
 /** Public application API for stable non-Git workspace identity resolution. */
 export {
   WorkspaceIdentityService,
+  type FileSystemPathSemantics,
   type ResourceUri,
   type StableHash,
   type WorkspaceIdentity,

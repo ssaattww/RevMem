@@ -28,7 +28,8 @@ test("workspace identity is deterministic for a POSIX workspace across service i
   const input = {
     workspaceFolderUri: uri("file", "/home/alice/project/"),
     documentUri: uri("file", "/home/alice/project/src/../src/main.ts"),
-    relativePath: "./src/main.ts"
+    relativePath: "./src/main.ts",
+    fileSystemPathSemantics: "posix"
   } as const;
 
   const first = createService().resolve(input);
@@ -50,49 +51,85 @@ test("workspace identity is deterministic for a POSIX workspace across service i
   });
 });
 
-test("URI path and query delimiters cannot produce the same canonical identity", () => {
-  const delimiterInPath = createService().resolve({
-    workspaceFolderUri: uri("file", "/work/root?edition", "", "one"),
-    documentUri: uri("file", "/work/root?edition/file.ts", "", "one"),
-    relativePath: "file.ts"
+test("workspace file URIs reject query and fragment suffixes", () => {
+  const service = createService();
+
+  for (const input of [
+    {
+      workspaceFolderUri: uri("file", "/work/root", "", "view=one"),
+      documentUri: uri("file", "/work/root/file.ts"),
+      relativePath: "file.ts"
+    },
+    {
+      workspaceFolderUri: uri("file", "/work/root", "", "", "section"),
+      documentUri: uri("file", "/work/root/file.ts"),
+      relativePath: "file.ts"
+    },
+    {
+      workspaceFolderUri: uri("file", "/work/root"),
+      documentUri: uri("file", "/work/root/file.ts", "", "view=one"),
+      relativePath: "file.ts"
+    },
+    {
+      workspaceFolderUri: uri("file", "/work/root"),
+      documentUri: uri("file", "/work/root/file.ts", "", "", "section"),
+      relativePath: "file.ts"
+    }
+  ]) {
+    assert.throws(
+      () => service.resolve({ ...input, fileSystemPathSemantics: "posix" }),
+      /query or fragment/
+    );
+  }
+});
+
+test("POSIX semantics preserves backslashes and drive-like roots", () => {
+  const backslash = createService().resolve({
+    workspaceFolderUri: uri("file", "/repo"),
+    documentUri: uri("file", "/repo/a\\b.ts"),
+    relativePath: "a\\b.ts",
+    fileSystemPathSemantics: "posix"
   });
-  const delimiterInQuery = createService().resolve({
-    workspaceFolderUri: uri("file", "/work/root", "", "edition?one"),
-    documentUri: uri("file", "/work/root/file.ts", "", "edition?one"),
-    relativePath: "file.ts"
+  const slash = createService().resolve({
+    workspaceFolderUri: uri("file", "/repo"),
+    documentUri: uri("file", "/repo/a/b.ts"),
+    relativePath: "a/b.ts",
+    fileSystemPathSemantics: "posix"
+  });
+  const upperDriveRoot = createService().resolve({
+    workspaceFolderUri: uri("file", "/C:/Repo"),
+    documentUri: uri("file", "/C:/Repo/file.ts"),
+    relativePath: "file.ts",
+    fileSystemPathSemantics: "posix"
+  });
+  const lowerDriveRoot = createService().resolve({
+    workspaceFolderUri: uri("file", "/c:/repo"),
+    documentUri: uri("file", "/c:/repo/file.ts"),
+    relativePath: "file.ts",
+    fileSystemPathSemantics: "posix"
   });
 
-  assert.equal(
-    delimiterInPath.canonicalWorkspaceUri,
-    "file:///work/root%3Fedition?one"
-  );
-  assert.equal(
-    delimiterInQuery.canonicalWorkspaceUri,
-    "file:///work/root?edition%3Fone"
-  );
+  assert.notEqual(backslash.fileId, slash.fileId);
+  assert.notEqual(backslash.canonicalDocumentUri, slash.canonicalDocumentUri);
+  assert.notEqual(upperDriveRoot.repositoryId, lowerDriveRoot.repositoryId);
   assert.notEqual(
-    delimiterInPath.canonicalWorkspaceUri,
-    delimiterInQuery.canonicalWorkspaceUri
+    upperDriveRoot.canonicalWorkspaceUri,
+    lowerDriveRoot.canonicalWorkspaceUri
   );
-  assert.notEqual(delimiterInPath.repositoryId, delimiterInQuery.repositoryId);
-  assert.notEqual(delimiterInPath.workspaceId, delimiterInQuery.workspaceId);
-  assert.notEqual(
-    delimiterInPath.workspaceContextId,
-    delimiterInQuery.workspaceContextId
-  );
-  assert.notEqual(delimiterInPath.fileId, delimiterInQuery.fileId);
 });
 
 test("Windows file URI variants normalize drive, casing, and separators", () => {
   const first = createService().resolve({
     workspaceFolderUri: uri("FILE", "/C:/Work/RevMem/"),
     documentUri: uri("file", "/c:/work/revmem/SRC\\Index.ts"),
-    relativePath: "SRC\\Index.ts"
+    relativePath: "SRC\\Index.ts",
+    fileSystemPathSemantics: "windows"
   });
   const second = createService().resolve({
     workspaceFolderUri: uri("file", "c:\\work\\revmem"),
     documentUri: uri("file", "C:\\WORK\\REVMEM\\src\\index.ts"),
-    relativePath: "src/index.ts"
+    relativePath: "src/index.ts",
+    fileSystemPathSemantics: "windows"
   });
 
   assert.deepEqual(second, first);
@@ -101,16 +138,60 @@ test("Windows file URI variants normalize drive, casing, and separators", () => 
   assert.equal(first.relativePath, "src/index.ts");
 });
 
+test("remote Windows paths use the explicit Windows semantics", () => {
+  const first = createService().resolve({
+    workspaceFolderUri: uri("vscode-remote", "/C:/Work/RevMem", "ssh-remote+win"),
+    documentUri: uri(
+      "vscode-remote",
+      "/c:/work/revmem/SRC\\Index.ts",
+      "ssh-remote+win"
+    ),
+    relativePath: "SRC\\Index.ts",
+    fileSystemPathSemantics: "windows"
+  });
+  const second = createService().resolve({
+    workspaceFolderUri: uri("VSCODE-REMOTE", "c:\\work\\revmem", "SSH-REMOTE+WIN"),
+    documentUri: uri(
+      "vscode-remote",
+      "C:\\WORK\\REVMEM\\src\\index.ts",
+      "ssh-remote+WIN"
+    ),
+    relativePath: "src/index.ts",
+    fileSystemPathSemantics: "windows"
+  });
+
+  assert.deepEqual(second, first);
+  assert.equal(
+    first.canonicalDocumentUri,
+    "vscode-remote://ssh-remote+win/c:/work/revmem/src/index.ts"
+  );
+});
+
+test("workspace identity rejects unsupported filesystem path semantics", () => {
+  assert.throws(
+    () =>
+      createService().resolve({
+        workspaceFolderUri: uri("file", "/repo"),
+        documentUri: uri("file", "/repo/file.ts"),
+        relativePath: "file.ts",
+        fileSystemPathSemantics: "case-sensitive" as never
+      }),
+    /fileSystemPathSemantics/
+  );
+});
+
 test("POSIX paths remain case-sensitive", () => {
   const upper = createService().resolve({
     workspaceFolderUri: uri("file", "/work/repository"),
     documentUri: uri("file", "/work/repository/src/Worker.ts"),
-    relativePath: "src/Worker.ts"
+    relativePath: "src/Worker.ts",
+    fileSystemPathSemantics: "posix"
   });
   const lower = createService().resolve({
     workspaceFolderUri: uri("file", "/work/repository"),
     documentUri: uri("file", "/work/repository/src/worker.ts"),
-    relativePath: "src/worker.ts"
+    relativePath: "src/worker.ts",
+    fileSystemPathSemantics: "posix"
   });
 
   assert.notEqual(upper.fileId, lower.fileId);
@@ -121,7 +202,8 @@ test("POSIX relative paths allow a colon in a root-level file name", () => {
   const identity = createService().resolve({
     workspaceFolderUri: uri("file", "/work/repository"),
     documentUri: uri("file", "/work/repository/schema:v1.json"),
-    relativePath: "schema:v1.json"
+    relativePath: "schema:v1.json",
+    fileSystemPathSemantics: "posix"
   });
 
   assert.equal(identity.relativePath, "schema:v1.json");
@@ -143,7 +225,8 @@ test("remote URI identity includes normalized scheme and authority", () => {
       "/home/dev/repo/src/Worker.ts",
       "ssh-remote+buildhost"
     ),
-    relativePath: "src/Worker.ts"
+    relativePath: "src/Worker.ts",
+    fileSystemPathSemantics: "posix"
   });
   const sameRemote = createService().resolve({
     workspaceFolderUri: uri(
@@ -156,7 +239,8 @@ test("remote URI identity includes normalized scheme and authority", () => {
       "/home/dev/repo/src/Worker.ts",
       "ssh-remote+BUILDHOST"
     ),
-    relativePath: "src/Worker.ts"
+    relativePath: "src/Worker.ts",
+    fileSystemPathSemantics: "posix"
   });
   const otherRemote = createService().resolve({
     workspaceFolderUri: uri(
@@ -169,7 +253,8 @@ test("remote URI identity includes normalized scheme and authority", () => {
       "/home/dev/repo/src/Worker.ts",
       "ssh-remote+other-host"
     ),
-    relativePath: "src/Worker.ts"
+    relativePath: "src/Worker.ts",
+    fileSystemPathSemantics: "posix"
   });
 
   assert.deepEqual(sameRemote, first);
@@ -186,12 +271,14 @@ test("the same relative path in different workspace roots receives different IDs
   const first = createService().resolve({
     workspaceFolderUri: uri("file", "/work/root-a"),
     documentUri: uri("file", "/work/root-a/src/index.ts"),
-    relativePath: "src/index.ts"
+    relativePath: "src/index.ts",
+    fileSystemPathSemantics: "posix"
   });
   const second = createService().resolve({
     workspaceFolderUri: uri("file", "/work/root-b"),
     documentUri: uri("file", "/work/root-b/src/index.ts"),
-    relativePath: "src/index.ts"
+    relativePath: "src/index.ts",
+    fileSystemPathSemantics: "posix"
   });
 
   assert.notEqual(second.repositoryId, first.repositoryId);
@@ -209,7 +296,8 @@ test("workspace identity rejects documents outside the workspace or mismatched r
       service.resolve({
         workspaceFolderUri,
         documentUri: uri("file", "/work/other/file.ts"),
-        relativePath: "file.ts"
+        relativePath: "file.ts",
+        fileSystemPathSemantics: "posix"
       }),
     /inside the workspace folder/
   );
@@ -218,7 +306,8 @@ test("workspace identity rejects documents outside the workspace or mismatched r
       service.resolve({
         workspaceFolderUri,
         documentUri: uri("file", "/work/root/src/file.ts"),
-        relativePath: "src/other.ts"
+        relativePath: "src/other.ts",
+        fileSystemPathSemantics: "posix"
       }),
     /relativePath does not match/
   );
@@ -227,7 +316,8 @@ test("workspace identity rejects documents outside the workspace or mismatched r
       service.resolve({
         workspaceFolderUri,
         documentUri: uri("vscode-remote", "/work/root/src/file.ts", "ssh-remote+host"),
-        relativePath: "src/file.ts"
+        relativePath: "src/file.ts",
+        fileSystemPathSemantics: "posix"
       }),
     /scheme and authority/
   );
@@ -246,7 +336,13 @@ test("relative paths reject absolute forms, root escape, and empty file paths", 
     ""
   ]) {
     assert.throws(
-      () => service.resolve({ workspaceFolderUri, documentUri, relativePath }),
+      () =>
+        service.resolve({
+          workspaceFolderUri,
+          documentUri,
+          relativePath,
+          fileSystemPathSemantics: "windows"
+        }),
       TypeError
     );
   }
@@ -259,7 +355,8 @@ test("identity resolution does not mutate URI inputs", () => {
   createService().resolve({
     workspaceFolderUri,
     documentUri,
-    relativePath: "src/file.ts"
+    relativePath: "src/file.ts",
+    fileSystemPathSemantics: "posix"
   });
 
   assert.deepEqual(workspaceFolderUri, uri("file", "/work/root/"));
