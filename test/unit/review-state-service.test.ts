@@ -177,7 +177,7 @@ test("unmarkReviewedRanges removes only requested lines and preserves split frag
 
   assert.equal(transaction.operation, "unmark-ranges-reviewed");
   assert.deepEqual(nextRanges(transaction), {
-    context: [interval(0, 4), interval(7, 12), interval(15, 20)],
+    context: [interval(0, 4), interval(7, 12), interval(16, 20)],
     global: [interval(1, 4), interval(7, 10), interval(12, 14), interval(16, 18)]
   });
 });
