@@ -25,9 +25,25 @@ export type NormalEditorReviewCommandResult =
 
 /** Current mapped review state and atomic persistence boundary for one editor. */
 export interface NormalEditorReviewStateSession {
+  /**
+   * Current mapped isolated-context snapshot. Its descriptor and existing target file,
+   * when present, must match `target.revisionId`; command construction does not mutate it.
+   */
   readonly contextState: ReviewStateMutationInput["contextState"];
+  /**
+   * Current mapped repository-wide Global snapshot. Its repository, schema, current
+   * revision, and existing target file must remain consistent with `contextState` and `target`.
+   */
   readonly globalState: ReviewStateMutationInput["globalState"];
+  /**
+   * Current file identity, revision, optional content hash, and line count shared by
+   * both snapshots. The service rejects a session when its line count differs from the editor observed before opening it.
+   */
   readonly target: ReviewStateFileTarget;
+  /**
+   * Single atomic compare-and-replace boundary for the detached transaction. It must
+   * commit both context and Global snapshots or neither, and its rejection (including stale state) prevents history from being requested.
+   */
   readonly committer: ReviewStateTransactionCommitter;
 }
 
@@ -45,7 +61,10 @@ export interface NormalEditorReviewCommandDependencies<Editor> {
   readonly confirmWholeFileOperation: (
     operation: ReviewWholeFileOperation
   ) => Promise<boolean>;
-  /** Requests append-only history handling after persistence succeeds. */
+  /**
+   * Requests append-only history only after the atomic committer fulfills. A rejection
+   * propagates after state persistence has already succeeded, so it represents observable partial success rather than a rollback request.
+   */
   readonly requestHistory: (
     transaction: Readonly<ReviewStateTransaction>
   ) => void | Promise<void>;
