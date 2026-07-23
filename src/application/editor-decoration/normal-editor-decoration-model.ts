@@ -107,14 +107,38 @@ const validGlobalFile = (
   return intervals === undefined ? undefined : { file, intervals };
 };
 
-const intervalIsCovered = (
-  interval: Readonly<LineInterval>,
-  coveringIntervals: readonly LineInterval[]
-): boolean => coveringIntervals.some(
-  (candidate) =>
-    candidate.startLine <= interval.startLine &&
-    candidate.endLineExclusive >= interval.endLineExclusive
-);
+const intersectLineIntervals = (
+  leftIntervals: readonly LineInterval[],
+  rightIntervals: readonly LineInterval[]
+): LineInterval[] => {
+  const left = normalizeLineIntervals(leftIntervals);
+  const right = normalizeLineIntervals(rightIntervals);
+  const intersections: LineInterval[] = [];
+  let leftIndex = 0;
+  let rightIndex = 0;
+
+  while (leftIndex < left.length && rightIndex < right.length) {
+    const leftInterval = left[leftIndex]!;
+    const rightInterval = right[rightIndex]!;
+    const startLine = Math.max(leftInterval.startLine, rightInterval.startLine);
+    const endLineExclusive = Math.min(
+      leftInterval.endLineExclusive,
+      rightInterval.endLineExclusive
+    );
+
+    if (startLine < endLineExclusive) {
+      intersections.push({ startLine, endLineExclusive });
+    }
+
+    if (leftInterval.endLineExclusive <= rightInterval.endLineExclusive) {
+      leftIndex += 1;
+    } else {
+      rightIndex += 1;
+    }
+  }
+
+  return intersections;
+};
 
 /**
  * Builds non-overlapping reviewed decorations for one current normal-editor file.
@@ -128,7 +152,9 @@ export function createNormalEditorDecorationModel(
 ): readonly NormalEditorReviewedDecoration[] {
   const global = validGlobalFile(input);
   const contextFile = input.contextState.files[input.target.fileId];
-  const contextIsCertain =
+  let contextIntervals: LineInterval[] | undefined;
+
+  if (
     input.contextState.repositoryId === input.globalState.repositoryId &&
     contextRevision(input.contextState) === input.target.revisionId &&
     contextFile !== undefined &&
@@ -136,25 +162,45 @@ export function createNormalEditorDecorationModel(
     contextFile.currentPath === input.target.currentPath &&
     contextFile.revisionId === input.target.revisionId &&
     contextFile.lineCount === input.target.lineCount &&
-    hasCertainContentHash(contextFile.contentHash, input.target.contentHash);
-  const contextIntervals = contextIsCertain
-    ? certainIntervals(contextFile.modifiedReviewed, input.target.lineCount)
-    : undefined;
+    hasCertainContentHash(contextFile.contentHash, input.target.contentHash)
+  ) {
+    contextIntervals = certainIntervals(
+      contextFile.modifiedReviewed,
+      input.target.lineCount
+    );
+  }
+
   const visibleGlobalIntervals = input.showGlobalReviewed
     ? global?.intervals ?? []
     : [];
+  const contextGlobalActive = intersectLineIntervals(
+    contextIntervals ?? [],
+    visibleGlobalIntervals
+  );
+  const contextGlobalInactive = subtractLineIntervals(
+    contextIntervals ?? [],
+    contextGlobalActive
+  );
   const decorations: NormalEditorReviewedDecoration[] = [];
 
-  if (contextIntervals !== undefined && contextFile !== undefined) {
-    for (const interval of contextIntervals) {
+  if (contextFile !== undefined && contextIntervals !== undefined) {
+    const label = contextLabel(input.contextState);
+    for (const interval of contextGlobalInactive) {
       decorations.push({
         interval: { ...interval },
         source: "context",
-        contextLabel: contextLabel(input.contextState),
+        contextLabel: label,
         reviewedAt: contextFile.updatedAt,
-        globalActive:
-          input.showGlobalReviewed &&
-          intervalIsCovered(interval, global?.intervals ?? [])
+        globalActive: false
+      });
+    }
+    for (const interval of contextGlobalActive) {
+      decorations.push({
+        interval: { ...interval },
+        source: "context",
+        contextLabel: label,
+        reviewedAt: contextFile.updatedAt,
+        globalActive: true
       });
     }
   }
