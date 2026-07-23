@@ -16,10 +16,68 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npm run lint
-      - run: npm run test:unit
-      - run: npm run test:git
-      - run: npm run test:github
-      - run: xvfb-run -a npm run test:vscode
+      - name: Prepare diagnostic output
+        run: mkdir -p test-output/ci
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee test-output/ci/npm-ci.log
+      - name: Build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee test-output/ci/build.log
+      - name: Lint
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee test-output/ci/lint.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: Temporary Git integration tests
+        run: |
+          set -o pipefail
+          npm run test:git 2>&1 | tee test-output/ci/test-git.log
+      - name: Mock GitHub integration tests
+        run: |
+          set -o pipefail
+          npm run test:github 2>&1 | tee test-output/ci/test-github.log
+      - name: VS Code Extension Host tests
+        run: |
+          set -o pipefail
+          xvfb-run -a npm run test:vscode 2>&1 | tee test-output/ci/test-vscode.log
+      - name: Collect failure context
+        if: failure()
+        run: |
+          {
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+          } > test-output/ci/environment.txt
+          git status --short > test-output/ci/git-status.txt
+          find dist test-dist -maxdepth 5 -type f -print 2>/dev/null | sort > test-output/ci/generated-files.txt || true
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            test-output/
+            dist/
+            test-dist/
+            src/
+            test/
+            tools/
+            type-fixtures/
+            package.json
+            package-lock.json
+            tsconfig.json
+            tsconfig.test.json
+            eslint.config.mjs
+            .github/workflows/ci.yml
+            npm-debug.log*
