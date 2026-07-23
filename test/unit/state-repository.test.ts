@@ -191,11 +191,12 @@ test("routing separates Git and PR state from non-Git workspace state", async ()
     assert.equal(gitRoute.storageKind, "repository");
     assert.equal(pullRequestRoute.storageKind, "repository");
     assert.equal(gitRoute.rootPath, pullRequestRoute.rootPath);
-    assert.match(
-      gitRoute.rootPath,
-      new RegExp(
-        `${path.sep}global${path.sep}repositories${path.sep}[a-f0-9]{64}$`
-      )
+    assert.equal(path.basename(gitRoute.rootPath).length, 64);
+    assert.match(path.basename(gitRoute.rootPath), /^[a-f0-9]{64}$/);
+    assert.equal(path.basename(path.dirname(gitRoute.rootPath)), "repositories");
+    assert.equal(
+      path.basename(path.dirname(path.dirname(gitRoute.rootPath))),
+      "global"
     );
     assert.equal(gitRoute.statePointerPath, path.join(gitRoute.rootPath, "manifest.json"));
     assert.equal(gitRoute.historyDirectory, path.join(gitRoute.rootPath, "history"));
