@@ -6,14 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P0 開発基盤（完了）
-- 直近完了タスク: T003 テスト基盤と共通fixtureの整備
+- 現在のPhase: P1 ローカル行範囲管理（進行中）
+- 直近完了タスク: T101 interval操作と選択範囲変換
 - 現在のタスク: なし
-- 次のタスク: T101 interval操作と選択範囲変換
-- 実装状態: Phase 0実装・検証・レビュー完了、Phase単位PR作成準備
+- 次のタスク: T102 Review State Serviceとtransaction contract
+- 実装状態: T101のテスト先行実装、CI検証、専用レビュー、PR作成が完了
 - ブロッカー: なし
-- Gitブランチ: `phase/1-foundation`
-- PR方針: ユーザー指示によりT001〜T003を1ブランチ・1PRへ積み、taskごとに1commitを作成する。PRはT003完了後に作成する
+- Gitブランチ: `task/t101-line-intervals`
+- Pull Request: #3
+- PR方針: T101を1ブランチ・1PRで提出し、Red/Greenと失敗時診断artifactをPR上に保持する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -26,6 +27,8 @@
 - T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
 - T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
 - T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
+- T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
 
 ## 状態と規模
 
@@ -53,8 +56,8 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T101 | 次 | M | 0始まり半開区間の正規化、長さ、検索、重複・隣接結合、減算・分割と、空選択・複数選択の行範囲変換を純粋ロジックで実装する | T003 | 0行、最終行、逆向き選択、重複、隣接、包含、部分解除の境界テストが通る。AC-04、AC-05を満たす |
-| T102 | 未着手 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
+| T101 | 完了 | M | 0始まり半開区間の正規化、長さ、検索、重複・隣接結合、減算・分割と、空選択・複数選択の行範囲変換を純粋ロジックで実装する | T003 | 0行、最終行、逆向き選択、重複、隣接、包含、部分解除の境界テストが通る。AC-04、AC-05を満たす |
+| T102 | 次 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 未着手 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 未着手 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
 | T105 | 未着手 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
@@ -140,4 +143,4 @@
 
 ## 次回開始時の選択
 
-Phase 0は完了した。次回の実装はT101だけを選択し、開始時にPhase 1を進行中へ変更する。
+T101は完了した。次回の実装はT102だけを選択し、Review State Serviceの失敗する単体テストから開始する。
