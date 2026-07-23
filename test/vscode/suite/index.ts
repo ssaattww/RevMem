@@ -13,6 +13,7 @@ const expectedCommandIds = [
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
   assert.ok(extension, "The Extension Development Host should load this extension.");
+  assert.deepEqual(extension.packageJSON.extensionKind, ["workspace"]);
 
   await extension.activate();
 
