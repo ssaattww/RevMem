@@ -145,7 +145,7 @@ const intersectLineIntervals = (
  *
  * The current context has visual priority. Global contributes only the remaining
  * ranges when enabled. Any revision, path, line-count, or available hash mismatch
- * removes that uncertain layer instead of risking a false reviewed indication.
+ * removes only that uncertain layer instead of risking a false reviewed indication.
  */
 export function createNormalEditorDecorationModel(
   input: NormalEditorDecorationModelInput
@@ -155,7 +155,6 @@ export function createNormalEditorDecorationModel(
   let contextIntervals: LineInterval[] | undefined;
 
   if (
-    input.contextState.repositoryId === input.globalState.repositoryId &&
     contextRevision(input.contextState) === input.target.revisionId &&
     contextFile !== undefined &&
     contextFile.fileId === input.target.fileId &&
