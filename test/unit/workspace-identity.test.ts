@@ -117,6 +117,20 @@ test("POSIX paths remain case-sensitive", () => {
   assert.notEqual(upper.canonicalDocumentUri, lower.canonicalDocumentUri);
 });
 
+test("POSIX relative paths allow a colon in a root-level file name", () => {
+  const identity = createService().resolve({
+    workspaceFolderUri: uri("file", "/work/repository"),
+    documentUri: uri("file", "/work/repository/schema:v1.json"),
+    relativePath: "schema:v1.json"
+  });
+
+  assert.equal(identity.relativePath, "schema:v1.json");
+  assert.equal(
+    identity.canonicalDocumentUri,
+    "file:///work/repository/schema%3Av1.json"
+  );
+});
+
 test("remote URI identity includes normalized scheme and authority", () => {
   const first = createService().resolve({
     workspaceFolderUri: uri(
