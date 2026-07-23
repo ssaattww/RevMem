@@ -7,7 +7,8 @@
       "ES2022"
     ],
     "types": [
-      "node"
+      "node",
+      "vscode"
     ],
     "rootDir": "src",
     "outDir": "dist",
