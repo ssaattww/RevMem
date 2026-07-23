@@ -11,6 +11,7 @@ import { NormalEditorReviewCommandService } from "./application/review-commands/
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
 import {
   NormalEditorDecorationController,
+  createRefreshingNormalEditorReviewCommandHandlers,
   registerNormalEditorReviewCommands,
   type NormalEditorCommandHost,
   type NormalEditorDecorationHost,
@@ -145,7 +146,20 @@ export function activate(context: vscode.ExtensionContext): void {
         return [];
       }
 
-      const session = await openWorkspaceSession(editor);
+      const session = await sessionProvider.loadForDecoration({
+        workspaceFolderUri: toResourceUri(
+          vscode.workspace.getWorkspaceFolder(editor.document.uri)!.uri
+        ),
+        documentUri: toResourceUri(editor.document.uri),
+        fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+        relativePath: vscode.workspace.asRelativePath(editor.document.uri, false),
+        workspaceDisplayName: vscode.workspace.getWorkspaceFolder(editor.document.uri)!.name,
+        lineCount: editor.document.lineCount,
+        contentHash: stableHash.digest(editor.document.getText())
+      });
+      if (session === undefined) {
+        return [];
+      }
       return createNormalEditorDecorationModel({
         contextState: session.contextState,
         globalState: session.globalState,
@@ -257,26 +271,18 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }
   };
-  const refreshAfterApplied = async (
-    editor: vscode.TextEditor,
-    operation: () => Promise<"applied" | "cancelled" | "no-op">
-  ): Promise<void> => {
-    const result = await operation();
-    if (result === "applied") {
-      await decorationController.refreshEditor(editor);
-    }
-  };
-
-  const registrations = registerNormalEditorReviewCommands(host, {
-    markSelectionReviewed: (editor) =>
-      refreshAfterApplied(editor, () => commandService.markSelectionReviewed(editor)),
-    unmarkSelectionReviewed: (editor) =>
-      refreshAfterApplied(editor, () => commandService.unmarkSelectionReviewed(editor)),
-    markFileReviewed: (editor) =>
-      refreshAfterApplied(editor, () => commandService.markFileReviewed(editor)),
-    unmarkFileReviewed: (editor) =>
-      refreshAfterApplied(editor, () => commandService.unmarkFileReviewed(editor))
-  });
+  const registrations = registerNormalEditorReviewCommands(
+    host,
+    createRefreshingNormalEditorReviewCommandHandlers(
+      {
+        markSelectionReviewed: (editor) => commandService.markSelectionReviewed(editor),
+        unmarkSelectionReviewed: (editor) => commandService.unmarkSelectionReviewed(editor),
+        markFileReviewed: (editor) => commandService.markFileReviewed(editor),
+        unmarkFileReviewed: (editor) => commandService.unmarkFileReviewed(editor)
+      },
+      decorationController
+    )
+  );
   context.subscriptions.push(decorationController, ...registrations);
   void decorationController.start().catch(reportDecorationError);
 }

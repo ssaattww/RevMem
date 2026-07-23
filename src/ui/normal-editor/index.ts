@@ -1,8 +1,10 @@
 /** Public UI API for normal-editor review command registration and decoration. */
 export {
   NORMAL_EDITOR_REVIEW_COMMAND_IDS,
+  createRefreshingNormalEditorReviewCommandHandlers,
   registerNormalEditorReviewCommands,
   type CommandDisposable,
+  type NormalEditorDecorationRefresher,
   type NormalEditorCommandHost,
   type NormalEditorReviewCommandHandlers
 } from "./review-command-registration";

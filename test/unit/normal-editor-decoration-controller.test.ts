@@ -6,6 +6,7 @@ import type {
 } from "../../src/application/editor-decoration/index";
 import {
   NormalEditorDecorationController,
+  createRefreshingNormalEditorReviewCommandHandlers,
   type DecorationDisposable,
   type NormalEditorDecorationHost,
   type NormalEditorDecorationSettings
@@ -248,6 +249,46 @@ test("controller refreshes a visible editor immediately after a state update", a
     decorationType: host.decorationTypes[0],
     decorations: [decoration(3, 5)]
   });
+});
+
+test("applied commands refresh every visible split editor for the same document", async () => {
+  const sourceEditor: FakeEditor = { id: "source-editor" };
+  const splitEditor: FakeEditor = { id: "split-editor" };
+  const host = new FakeHost();
+  host.visibleEditors = [sourceEditor, splitEditor];
+  host.models.set(sourceEditor, []);
+  host.models.set(splitEditor, []);
+  const controller = new NormalEditorDecorationController(host);
+  await controller.start();
+
+  host.models.set(sourceEditor, [decoration(1, 2)]);
+  host.models.set(splitEditor, [decoration(1, 2)]);
+  const handlers = createRefreshingNormalEditorReviewCommandHandlers(
+    {
+      markSelectionReviewed: async () => "applied",
+      unmarkSelectionReviewed: async () => "cancelled",
+      markFileReviewed: async () => "no-op",
+      unmarkFileReviewed: async () => "no-op"
+    },
+    controller
+  );
+
+  await handlers.markSelectionReviewed(sourceEditor);
+
+  assert.deepEqual(host.setCalls.slice(-2), [
+    {
+      editor: sourceEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 2)]
+    },
+    {
+      editor: splitEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 2)]
+    }
+  ]);
+  await handlers.unmarkSelectionReviewed(sourceEditor);
+  assert.equal(host.setCalls.length, 4);
 });
 
 test("controller clears uncertain output and reports decoration load errors", async () => {

@@ -107,9 +107,23 @@ export async function run(): Promise<void> {
   const document = await vscode.workspace.openTextDocument(documentUri);
   const editor = await vscode.window.showTextDocument(document);
   editor.selection = new vscode.Selection(0, 0, 0, 0);
+  const splitEditor = await vscode.window.showTextDocument(document, {
+    viewColumn: vscode.ViewColumn.Beside,
+    preview: false
+  });
+  splitEditor.selection = new vscode.Selection(0, 0, 0, 0);
+
+  const visibleCopies = vscode.window.visibleTextEditors.filter(
+    (visibleEditor) => visibleEditor.document.uri.toString() === documentUri.toString()
+  );
+  assert.ok(
+    visibleCopies.length >= 2,
+    "The Extension Host fixture should expose split editors for one document."
+  );
 
   await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
   await new Promise((resolve) => setTimeout(resolve, 20));
 
   assert.equal(vscode.window.visibleTextEditors.includes(editor), true);
+  assert.equal(vscode.window.visibleTextEditors.includes(splitEditor), true);
 }
