@@ -126,7 +126,7 @@ test("markReviewedRanges atomically prepares normalized context and Global updat
     contextState: context,
     globalState: global,
     target: target(),
-    intervals: [interval(7, 10), interval(5, 2), interval(15, 15)],
+    intervals: [interval(5, 10), interval(5, 2), interval(15, 15)],
     occurredAt
   });
 
