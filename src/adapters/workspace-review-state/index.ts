@@ -2,6 +2,7 @@
 export {
   WorkspaceReviewStateSessionProvider,
   type WorkspaceEditorReviewDescriptor,
+  type WorkspaceNormalEditorReviewStateSession,
   type WorkspaceReviewStateRepository,
   type WorkspaceReviewStateSessionProviderOptions
 } from "./workspace-review-state-session-provider";
