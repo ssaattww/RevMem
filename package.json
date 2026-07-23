@@ -16,9 +16,65 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:reviewRange.markSelectionReviewed",
+    "onCommand:reviewRange.unmarkSelectionReviewed",
+    "onCommand:reviewRange.markFileReviewed",
+    "onCommand:reviewRange.unmarkFileReviewed"
   ],
   "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "reviewRange.markSelectionReviewed",
+        "title": "選択範囲を確認済みにする",
+        "category": "Review Range",
+        "enablement": "editorTextFocus && !isInDiffEditor"
+      },
+      {
+        "command": "reviewRange.unmarkSelectionReviewed",
+        "title": "選択範囲の確認済みを解除する",
+        "category": "Review Range",
+        "enablement": "editorTextFocus && !isInDiffEditor"
+      },
+      {
+        "command": "reviewRange.markFileReviewed",
+        "title": "ファイル全体を確認済みにする",
+        "category": "Review Range",
+        "enablement": "editorTextFocus && !isInDiffEditor"
+      },
+      {
+        "command": "reviewRange.unmarkFileReviewed",
+        "title": "ファイル全体の確認済みを解除する",
+        "category": "Review Range",
+        "enablement": "editorTextFocus && !isInDiffEditor"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "reviewRange.markSelectionReviewed",
+          "when": "editorTextFocus && !isInDiffEditor",
+          "group": "reviewRange@1"
+        },
+        {
+          "command": "reviewRange.unmarkSelectionReviewed",
+          "when": "editorTextFocus && !isInDiffEditor",
+          "group": "reviewRange@2"
+        },
+        {
+          "command": "reviewRange.markFileReviewed",
+          "when": "editorTextFocus && !isInDiffEditor",
+          "group": "reviewRange@3"
+        },
+        {
+          "command": "reviewRange.unmarkFileReviewed",
+          "when": "editorTextFocus && !isInDiffEditor",
+          "group": "reviewRange@4"
+        }
+      ]
+    }
+  },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
     "build": "npm run compile",
@@ -28,7 +84,7 @@
     "validate:architecture": "node tools/validate-architecture.mjs",
     "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10",
     "compile:test": "tsc -p tsconfig.test.json",
-    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js",
+    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js test-dist/test/unit/workspace-review-state-session-provider.test.js",
     "test:git": "npm run compile:test && node --test test-dist/test/integration/temporary-git.test.js",
     "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
