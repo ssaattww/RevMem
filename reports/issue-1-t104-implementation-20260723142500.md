@@ -37,17 +37,19 @@
 - stale拒否時にdiskとmemoryを変更せず、`commit`失敗通知を返すテストを追加した
 - 複数window間の排他lockと競合window閉鎖は計画どおりT604の責務として維持した
 
-### Branch/PR test入口
+### Branch/PR test入口とmain追従
 
-- T104作業中にT102が`main`へmergeされ、両branchが`package.json`の同じunit test行を変更したためPR merge commitを作れない状態になった
-- T104テストを既存`core-contracts.test.ts`からimportし、T104 branchの`package.json`を共通祖先と同じ内容へ戻した
-- branch単体ではT104テストが実行され、PR mergeでは`main`側のT102 unit入口とT104 importの両方が適用される構成にした
-- PRはmergeableへ復帰した
+- T104作業中にT102とT103が順次`main`へmergeされた
+- T104テストを既存`core-contracts.test.ts`からimportし、T102/T103が管理する`package.json`のunit入口と競合しない構成にした
+- branch単体ではT104テストが実行され、PR mergeではT102、T103、T104のunit testが同じsuiteで実行される
+- GitHub Git Data APIをコネクタ経由で使用し、最新`main`を第一親、T104の細かなコミット列を第二親とする解決済みmerge commitを作成した
+- `main...task/t104-state-repository`はahead、behind 0となり、PRはmergeableへ復帰した
+- T103のworkspace identity実装、設計追記、package test入口、進捗記録を基底treeから保持した
 
-### 最終Green
+### 最終実装Green
 
-- Actions run `29981865050`
-- checkout対象: PR #6 merge commit `2aee9fadfd2978f34cd5cb05a97ceb1c1889f670`
+- Actions run `29982939677`
+- 対象head: `efdd6c411a0e75ab149e0409dbabf8f57a6a3c8d`
 - Install dependencies: success
 - Build: success
 - Lint: success
