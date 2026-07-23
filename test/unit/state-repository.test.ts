@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -318,9 +318,14 @@ test("repository manifest preserves other contexts while atomically advancing on
     const reloadedRepository = new FileSystemReviewStateRepository({
       storageUris: temporary.storageUris
     });
+    const firstReloaded = await reloadedRepository.load(firstTarget);
     assert.deepEqual(
-      await reloadedRepository.load(firstTarget),
-      createCommit(firstTarget.repositoryId, firstTarget.contextId, 2)
+      firstReloaded?.contextState,
+      createContextState(firstTarget.repositoryId, firstTarget.contextId, 2)
+    );
+    assert.deepEqual(
+      firstReloaded?.globalState,
+      createGlobalState(firstTarget.repositoryId, 6)
     );
     assert.deepEqual(
       await reloadedRepository.load(secondTarget),
@@ -452,13 +457,12 @@ test("schema mismatch is rejected and reported during load", async () => {
 
   try {
     const route = resolveReviewStateStorageRoute(temporary.storageUris, target);
-    await writeFile(
+    await new NodeAtomicTextFileStore().writeTextAtomically(
       route.statePointerPath,
       JSON.stringify({
         ...createCommit(target.repositoryId, target.contextId, 2, "workspace"),
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION + 1
-      }),
-      { encoding: "utf8", flag: "wx" }
+      })
     );
 
     const repository = new FileSystemReviewStateRepository({
