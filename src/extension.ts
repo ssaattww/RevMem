@@ -19,6 +19,8 @@ import {
 
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
+const REVIEWED_BACKGROUND_COLOR = "reviewRange.reviewedBackground";
+const REVIEWED_OVERVIEW_RULER_COLOR = "reviewRange.reviewedOverviewRuler";
 const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showGlobalReviewed",
   "reviewRange.showGutterIcon",
@@ -154,12 +156,8 @@ export function activate(context: vscode.ExtensionContext): void {
     createDecorationType: (settings) => {
       const options: vscode.DecorationRenderOptions = {
         isWholeLine: true,
-        light: {
-          backgroundColor: "rgba(96, 96, 96, 0.12)"
-        },
-        dark: {
-          backgroundColor: "rgba(160, 160, 160, 0.12)"
-        }
+        backgroundColor: new vscode.ThemeColor(REVIEWED_BACKGROUND_COLOR),
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
       };
       if (settings.showGutterIcon) {
         options.gutterIconPath = vscode.Uri.joinPath(
@@ -170,7 +168,9 @@ export function activate(context: vscode.ExtensionContext): void {
         options.gutterIconSize = "contain";
       }
       if (settings.showOverviewRuler) {
-        options.overviewRulerColor = "rgba(128, 128, 128, 0.55)";
+        options.overviewRulerColor = new vscode.ThemeColor(
+          REVIEWED_OVERVIEW_RULER_COLOR
+        );
         options.overviewRulerLane = vscode.OverviewRulerLane.Right;
       }
       return vscode.window.createTextEditorDecorationType(options);
