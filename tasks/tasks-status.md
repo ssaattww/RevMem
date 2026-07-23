@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（進行中）
-- 直近完了タスク: T102 Review State Serviceとtransaction contract
+- 現在のPhase: P1 ローカル行範囲管理・P2 編集・Git差分追従（並行進行中）
+- 直近完了タスク: T201 Range Mapping Engine
 - 現在のタスク: なし
 - 次のタスク: T103 workspace context・file ID・非Git repository ID
-- 実装状態: T102 review follow-up、全検証、専用再レビューが完了
+- 実装状態: T201 review follow-up、全CI工程、専用レビュー、進捗同期が完了
 - ブロッカー: なし
-- Gitブランチ: `task/t102-review-state-service`
-- Pull Request: #4
-- PR方針: T102を1ブランチ・1PRで提出し、Red/Greenと失敗時診断artifactをPR上に保持する
+- Gitブランチ: `task/t201-range-mapping-engine`
+- Pull Request: #7
+- PR方針: T201を1ブランチ・1PRで提出し、初回Red/Greenとreview follow-up Red/Greenの失敗時診断artifactをPR上に保持する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -37,6 +37,8 @@
 - T102初回レビューレポート: `reports/issue-1-t102-review-20260723132249.md`
 - T102 review follow-upレポート: `reports/issue-1-t102-review-followup-20260723133429.md`
 - T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
+- T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
+- T201専用レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
 
 ## 状態と規模
 
@@ -76,7 +78,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T201 | 未着手 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する単体テストが通る |
+| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、全CI工程と専用レビューが通る |
 | T202 | 未着手 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる |
 | T203 | 未着手 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
@@ -151,4 +153,4 @@
 
 ## 次回開始時の選択
 
-T102は完了した。次回の実装はT103だけを選択し、workspace context、file ID、非Git repository IDの失敗する単体テストから開始する。
+T201は依存済みcore範囲として先行完了した。P1の計画順序を維持し、次回の実装はT103だけを選択してworkspace context、file ID、非Git repository IDの失敗する単体テストから開始する。
