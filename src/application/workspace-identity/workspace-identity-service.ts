@@ -69,7 +69,6 @@ interface CanonicalResourceUri {
 const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const WINDOWS_DRIVE_PATH_PATTERN = /^\/[A-Za-z]:(?:\/|$)/;
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/;
-const URI_LIKE_RELATIVE_PATH_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -205,8 +204,7 @@ function normalizeRelativePath(value: unknown, caseInsensitive: boolean): string
   if (
     source.length === 0 ||
     source.startsWith("/") ||
-    WINDOWS_RELATIVE_DRIVE_PATTERN.test(source) ||
-    URI_LIKE_RELATIVE_PATH_PATTERN.test(source)
+    WINDOWS_RELATIVE_DRIVE_PATTERN.test(source)
   ) {
     throw new TypeError("relativePath must be a non-empty relative path.");
   }
