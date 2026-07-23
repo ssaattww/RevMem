@@ -16,6 +16,7 @@ import {
   type ReviewContextState
 } from "../../core/contracts/index";
 import type {
+  ReviewStateFileTarget,
   ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
 
@@ -28,6 +29,15 @@ export interface WorkspaceEditorReviewDescriptor {
   readonly workspaceDisplayName: string;
   readonly lineCount: number;
   readonly contentHash: string;
+}
+
+/** Mutable snapshots returned by this adapter and accepted by the readonly command contract. */
+export interface WorkspaceNormalEditorReviewStateSession
+  extends NormalEditorReviewStateSession {
+  readonly contextState: ReviewContextState;
+  readonly globalState: RepositoryGlobalState;
+  readonly target: ReviewStateFileTarget;
+  readonly committer: ReviewStateTransactionCommitter;
 }
 
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
@@ -167,7 +177,7 @@ export class WorkspaceReviewStateSessionProvider {
 
   public async open(
     descriptor: WorkspaceEditorReviewDescriptor
-  ): Promise<NormalEditorReviewStateSession> {
+  ): Promise<WorkspaceNormalEditorReviewStateSession> {
     assertLineCount(descriptor.lineCount);
     assertNonEmptyString(descriptor.contentHash, "contentHash");
 
