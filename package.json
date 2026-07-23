@@ -1,0 +1,37 @@
+{
+  "name": "review-range-tracker",
+  "displayName": "Review Range Tracker",
+  "description": "Track reviewed line ranges in VS Code workspaces.",
+  "version": "0.0.1",
+  "publisher": "taiga",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ssaattww/RevMem.git"
+  },
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "build": "npm run compile",
+    "lint": "eslint src --max-warnings=0",
+    "package": "npm run compile && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
+    "@types/vscode": "^1.125.0",
+    "@vscode/vsce": "^3.9.2",
+    "eslint": "^10.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0"
+  }
+}
