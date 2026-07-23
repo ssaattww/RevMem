@@ -96,7 +96,29 @@
           "description": "確認済み範囲をOverview Rulerへ表示します。"
         }
       }
-    }
+    },
+    "colors": [
+      {
+        "id": "reviewRange.reviewedBackground",
+        "description": "確認済み行の背景色。",
+        "defaults": {
+          "dark": "#a0a0a01f",
+          "light": "#6060601f",
+          "highContrast": "#a0a0a033",
+          "highContrastLight": "#60606033"
+        }
+      },
+      {
+        "id": "reviewRange.reviewedOverviewRuler",
+        "description": "確認済み範囲のOverview Ruler色。",
+        "defaults": {
+          "dark": "#a0a0a08c",
+          "light": "#6060608c",
+          "highContrast": "#a0a0a0cc",
+          "highContrastLight": "#606060cc"
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
