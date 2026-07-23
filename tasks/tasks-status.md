@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（進行中）
-- 直近完了タスク: T102 Review State Serviceとtransaction contract
+- 直近完了タスク: T103 workspace context・file ID・非Git repository ID
 - 現在のタスク: なし
-- 次のタスク: T103 workspace context・file ID・非Git repository ID
-- 実装状態: T102 review follow-up、全検証、専用再レビューが完了
+- 次のタスク: T104 共通状態repository
+- 実装状態: T102 merge後のmainへT103固有差分をrebaseして衝突解消し、POSIX path identity衝突とURI suffix contractをRed/Greenで修正。全検証とsol high最終再レビューpassまで完了
 - ブロッカー: なし
-- Gitブランチ: `task/t102-review-state-service`
-- Pull Request: #4
-- PR方針: T102を1ブランチ・1PRで提出し、Red/Greenと失敗時診断artifactをPR上に保持する
+- Gitブランチ: `task/t103-workspace-identity`
+- Pull Request: #5
+- PR方針: T102 merge後の`main`へT103固有コミットだけをrebaseし、Red/Greenと失敗時診断artifactをPR上に保持する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -37,6 +37,11 @@
 - T102初回レビューレポート: `reports/issue-1-t102-review-20260723132249.md`
 - T102 review follow-upレポート: `reports/issue-1-t102-review-followup-20260723133429.md`
 - T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
+- T103実装レポート: `reports/issue-1-t103-implementation-20260723135000.md`
+- T103レビューレポート: `reports/issue-1-t103-review-20260723135500.md`
+- T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260723140033.md`
+- T103 review follow-upレポート: `reports/issue-1-t103-review-followup-20260723140931.md`
+- T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
 
 ## 状態と規模
 
@@ -66,8 +71,8 @@
 | --- | --- | --- | --- | --- | --- |
 | T101 | 完了 | M | 0始まり半開区間の正規化、長さ、検索、重複・隣接結合、減算・分割と、空選択・複数選択の行範囲変換を純粋ロジックで実装する | T003 | 0行、最終行、逆向き選択、重複、隣接、包含、部分解除の境界テストが通る。AC-04、AC-05を満たす |
 | T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
-| T103 | 次 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
-| T104 | 未着手 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
+| T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
+| T104 | 次 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
 | T105 | 未着手 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 未着手 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 未着手 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
@@ -151,4 +156,4 @@
 
 ## 次回開始時の選択
 
-T102は完了した。次回の実装はT103だけを選択し、workspace context、file ID、非Git repository IDの失敗する単体テストから開始する。
+T103は完了した。次回の実装はT104だけを選択し、保存先routing、atomic temp-write/flush/replace、書き込み失敗時の非破壊性を示す失敗するテストから開始する。

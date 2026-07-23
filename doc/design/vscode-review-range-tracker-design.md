@@ -324,6 +324,20 @@ Git diffの代わりに、本拡張が保存したスナップショットと現
 
 GitなしのGlobal確認済みは、そのワークスペース内だけで有効とする。
 
+workspace-side Extension Host adapterは、`WorkspaceIdentityInput`へ対象
+workspaceのfilesystem path semanticsを必ず渡す。これは拡張機能プロセスの
+実行OSではなく、workspace実体のfilesystemを表す。したがって、ローカルが
+Windows以外でもremote Windows workspaceには`windows`を指定する。
+
+`windows`ではworkspace URI、document URI、workspace相対パスのすべてで
+backslashをseparatorとして扱い、driveとcaseを正規化する。`posix`では
+backslashはファイル名の文字であり、`/C:/Repo`と`/c:/repo`を区別する。
+同じ指定を3つの入力に一貫して適用する。
+
+このサービスはfilesystem workspace fileだけを識別するため、workspace URIと
+document URIのqueryおよびfragmentは空でなければならない。adapterはsuffixを
+持つresourceを渡さない責務を持ち、サービスも非空値をrejectする。
+
 ## 6.10 Global確認済みへの自動反映
 
 PR、ブランチ、ワークスペースのいずれで確認操作を行った場合も、同じ範囲をGlobal確認済みへ自動反映する。
@@ -551,6 +565,12 @@ https://github.com/owner/repo
 ```
 
 remoteがない場合は、GitリポジトリルートのURIをハッシュ化して使用する。
+
+非Git workspaceのRepository IDは6.9のcanonical workspace URIをハッシュ化して
+生成する。canonicalizationにはExtension Hostが渡したfilesystem path semanticsを
+使用し、remote workspaceでもExtension Host自身の実filesystemに従う。したがって
+remote Windowsは`windows`、POSIX workspaceは`posix`として扱い、Extension Hostを
+実行するローカル環境から推測しない。
 
 forkはremoteが異なるため、原則として別Repository IDとする。
 
