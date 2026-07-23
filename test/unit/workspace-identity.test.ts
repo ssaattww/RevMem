@@ -50,6 +50,39 @@ test("workspace identity is deterministic for a POSIX workspace across service i
   });
 });
 
+test("URI path and query delimiters cannot produce the same canonical identity", () => {
+  const delimiterInPath = createService().resolve({
+    workspaceFolderUri: uri("file", "/work/root?edition", "", "one"),
+    documentUri: uri("file", "/work/root?edition/file.ts", "", "one"),
+    relativePath: "file.ts"
+  });
+  const delimiterInQuery = createService().resolve({
+    workspaceFolderUri: uri("file", "/work/root", "", "edition?one"),
+    documentUri: uri("file", "/work/root/file.ts", "", "edition?one"),
+    relativePath: "file.ts"
+  });
+
+  assert.equal(
+    delimiterInPath.canonicalWorkspaceUri,
+    "file:///work/root%3Fedition?one"
+  );
+  assert.equal(
+    delimiterInQuery.canonicalWorkspaceUri,
+    "file:///work/root?edition%3Fone"
+  );
+  assert.notEqual(
+    delimiterInPath.canonicalWorkspaceUri,
+    delimiterInQuery.canonicalWorkspaceUri
+  );
+  assert.notEqual(delimiterInPath.repositoryId, delimiterInQuery.repositoryId);
+  assert.notEqual(delimiterInPath.workspaceId, delimiterInQuery.workspaceId);
+  assert.notEqual(
+    delimiterInPath.workspaceContextId,
+    delimiterInQuery.workspaceContextId
+  );
+  assert.notEqual(delimiterInPath.fileId, delimiterInQuery.fileId);
+});
+
 test("Windows file URI variants normalize drive, casing, and separators", () => {
   const first = createService().resolve({
     workspaceFolderUri: uri("FILE", "/C:/Work/RevMem/"),
