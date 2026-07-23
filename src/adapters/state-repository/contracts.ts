@@ -4,6 +4,15 @@ import type {
   SchemaVersion
 } from "../../core/contracts/index";
 
+/** Recursive readonly view used to accept Review State Service transactions structurally. */
+export type PersistenceDeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly PersistenceDeepReadonly<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: PersistenceDeepReadonly<T[Key]> }
+      : T;
+
 /** Minimal structural shape accepted from a VS Code Uri without importing vscode. */
 export interface StorageUriLike {
   /** Filesystem path resolved by the workspace-side Extension Host. */
@@ -46,6 +55,26 @@ export interface ReviewStateCommit {
   readonly globalState: RepositoryGlobalState;
 }
 
+/** Expected and next snapshots accepted from Review State Service without importing it. */
+export interface ReviewStateTransactionSnapshotPair {
+  readonly contextState: PersistenceDeepReadonly<ReviewContextState>;
+  readonly globalState: PersistenceDeepReadonly<RepositoryGlobalState>;
+}
+
+/**
+ * Structural subset of the T102 ReviewStateTransaction contract.
+ *
+ * The T102 transaction contains additional operation and file metadata. The
+ * repository only needs repository/context identity and complete expected/next
+ * snapshots, so a T102 transaction is assignable to this contract.
+ */
+export interface ReviewStateTransactionLike {
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly expected: ReviewStateTransactionSnapshotPair;
+  readonly next: ReviewStateTransactionSnapshotPair;
+}
+
 /** Immutable context document selected by a repository manifest. */
 export interface RepositoryStateManifestContextReference {
   readonly contextId: string;
@@ -78,7 +107,7 @@ export interface AtomicTextFileStore {
 }
 
 /** Persistence phase surfaced to the UI/application notification adapter. */
-export type PersistenceOperation = "load" | "save";
+export type PersistenceOperation = "load" | "save" | "commit";
 
 /** Failure information without a direct dependency on VS Code notification APIs. */
 export interface PersistenceFailureNotification {
