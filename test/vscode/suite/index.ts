@@ -15,6 +15,27 @@ const expectedDecorationDefaults = {
   "reviewRange.showOverviewRuler": false
 } as const;
 
+const expectedThemeColors = new Map([
+  [
+    "reviewRange.reviewedBackground",
+    {
+      dark: "#a0a0a01f",
+      light: "#6060601f",
+      highContrast: "#a0a0a033",
+      highContrastLight: "#60606033"
+    }
+  ],
+  [
+    "reviewRange.reviewedOverviewRuler",
+    {
+      dark: "#a0a0a08c",
+      light: "#6060608c",
+      highContrast: "#a0a0a0cc",
+      highContrastLight: "#606060cc"
+    }
+  ]
+]);
+
 /** Runs the Extension Host smoke assertions invoked by VS Code's test runner. */
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
@@ -31,6 +52,23 @@ export async function run(): Promise<void> {
       `${configurationKey} should expose the designed default.`
     );
   }
+
+  const contributedColors = new Map(
+    extension.packageJSON.contributes.colors.map(
+      (color: { readonly id: string; readonly defaults: unknown }) => [
+        color.id,
+        color.defaults
+      ]
+    )
+  );
+  for (const [colorId, expectedDefaults] of expectedThemeColors) {
+    assert.deepEqual(
+      contributedColors.get(colorId),
+      expectedDefaults,
+      `${colorId} should define all theme-kind defaults.`
+    );
+  }
+
   await vscode.workspace.fs.stat(
     vscode.Uri.joinPath(extension.extensionUri, "media", "reviewed-gutter.svg")
   );
