@@ -5,6 +5,7 @@ export {
   markReviewedRanges,
   unmarkFileReviewed,
   unmarkReviewedRanges,
+  type DeepReadonly,
   type ReviewRangeMutationInput,
   type ReviewStateFileTarget,
   type ReviewStateMutationInput,

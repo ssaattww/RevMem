@@ -10,6 +10,13 @@ import {
   subtractLineIntervals
 } from "../intervals/index";
 
+/** Recursively readonly view of a public transaction value. */
+export type DeepReadonly<T> = T extends readonly (infer Item)[]
+  ? readonly DeepReadonly<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+    : T;
+
 /** Review-state operations that update context and Global state together. */
 export type ReviewStateOperation =
   | "mark-ranges-reviewed"
@@ -20,49 +27,49 @@ export type ReviewStateOperation =
 /** Current file metadata required to evaluate a review-state operation. */
 export interface ReviewStateFileTarget {
   /** Stable identity shared by context and Global file state. */
-  fileId: string;
+  readonly fileId: string;
   /** Current repository-relative path. */
-  currentPath: string;
+  readonly currentPath: string;
   /** Revision against which the operation is valid. */
-  revisionId: string;
+  readonly revisionId: string;
   /** Current number of lines in the modified/current file. */
-  lineCount: number;
+  readonly lineCount: number;
   /** Optional current content hash used by later certainty checks. */
-  contentHash?: string;
+  readonly contentHash?: string;
 }
 
 /** Common immutable input for a context and Global state transition. */
 export interface ReviewStateMutationInput {
   /** Current isolated review-context state. */
-  contextState: ReviewContextState;
+  readonly contextState: DeepReadonly<ReviewContextState>;
   /** Current repository-wide Global state. */
-  globalState: RepositoryGlobalState;
+  readonly globalState: DeepReadonly<RepositoryGlobalState>;
   /** Current file metadata to write into both state layers. */
-  target: ReviewStateFileTarget;
+  readonly target: ReviewStateFileTarget;
   /** ISO 8601 timestamp supplied by the caller for deterministic updates. */
-  occurredAt: string;
+  readonly occurredAt: string;
 }
 
 /** Input for a range-scoped review-state transition. */
 export interface ReviewRangeMutationInput extends ReviewStateMutationInput {
   /** Ranges to mark or unmark; reversed, empty, overlapping, and adjacent input is accepted. */
-  intervals: readonly LineInterval[];
+  readonly intervals: readonly DeepReadonly<LineInterval>[];
 }
 
-/** Optimistic concurrency values checked by an atomic persistence adapter. */
+/** Complete observed states checked by an atomic persistence adapter. */
 export interface ReviewStateTransactionExpectation {
-  /** Context timestamp observed before calculating the transaction. */
-  contextUpdatedAt: string;
-  /** Global timestamp observed before calculating the transaction. */
-  globalUpdatedAt: string;
+  /** Complete context-state snapshot observed before calculating the transaction. */
+  readonly contextState: DeepReadonly<ReviewContextState>;
+  /** Complete Global-state snapshot observed before calculating the transaction. */
+  readonly globalState: DeepReadonly<RepositoryGlobalState>;
 }
 
 /** The two next-state documents that must be committed as one unit. */
 export interface ReviewStateTransactionNext {
   /** Complete next context state. */
-  contextState: ReviewContextState;
+  readonly contextState: DeepReadonly<ReviewContextState>;
   /** Complete next Global state. */
-  globalState: RepositoryGlobalState;
+  readonly globalState: DeepReadonly<RepositoryGlobalState>;
 }
 
 /**
@@ -73,17 +80,17 @@ export interface ReviewStateTransactionNext {
  */
 export interface ReviewStateTransaction {
   /** User operation represented by this transition. */
-  operation: ReviewStateOperation;
+  readonly operation: ReviewStateOperation;
   /** Repository affected by both state documents. */
-  repositoryId: string;
+  readonly repositoryId: string;
   /** Review context affected by the context state document. */
-  contextId: string;
+  readonly contextId: string;
   /** File affected by the transition. */
-  fileId: string;
+  readonly fileId: string;
   /** Values against which an atomic adapter detects stale writes. */
-  expected: ReviewStateTransactionExpectation;
+  readonly expected: ReviewStateTransactionExpectation;
   /** Complete normalized states to replace atomically. */
-  next: ReviewStateTransactionNext;
+  readonly next: ReviewStateTransactionNext;
 }
 
 /** Atomic persistence boundary used by T104 and later adapters. */
@@ -91,8 +98,29 @@ export interface ReviewStateTransactionCommitter {
   /**
    * Commits both states or neither. Implementations must reject stale expectations
    * and must never persist only one member of `transaction.next`.
+   *
+   * @param transaction Detached expected and next full-state snapshots to compare
+   * and replace atomically.
+   * @returns A promise fulfilled only after both replacements succeed.
+   * @throws Propagates an atomic-store rejection, including a stale expectation.
    */
-  commit(transaction: ReviewStateTransaction): Promise<void>;
+  commit(transaction: Readonly<ReviewStateTransaction>): Promise<void>;
+}
+
+function cloneValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneValue(item)) as T;
+  }
+
+  if (value !== null && typeof value === "object") {
+    const clone: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      clone[key] = cloneValue(nestedValue);
+    }
+    return clone as T;
+  }
+
+  return value;
 }
 
 function assertNonEmptyString(value: string, name: string): void {
@@ -122,6 +150,9 @@ function validateCommonInput(input: ReviewStateMutationInput): void {
   assertNonEmptyString(input.target.currentPath, "target.currentPath");
   assertNonEmptyString(input.target.revisionId, "target.revisionId");
   assertNonEmptyString(input.occurredAt, "occurredAt");
+  if (input.target.contentHash !== undefined) {
+    assertNonEmptyString(input.target.contentHash, "target.contentHash");
+  }
   assertLineCount(input.target.lineCount);
 
   const contextFile = input.contextState.files[input.target.fileId];
@@ -132,6 +163,48 @@ function validateCommonInput(input: ReviewStateMutationInput): void {
   const globalFile = input.globalState.files[input.target.fileId];
   if (globalFile !== undefined && globalFile.fileId !== input.target.fileId) {
     throw new Error("Global file key and fileId must match.");
+  }
+}
+
+function validateMappedCurrentInput(input: ReviewStateMutationInput): void {
+  validateCommonInput(input);
+
+  const descriptorRevision =
+    input.contextState.kind === "pull-request"
+      ? input.contextState.pullRequest?.headSha
+      : input.contextState.kind === "branch"
+        ? input.contextState.branch?.headRevision
+        : input.contextState.workspace?.snapshotRevision;
+  if (descriptorRevision !== input.target.revisionId) {
+    throw new Error("Context descriptor must be mapped to the target revision.");
+  }
+
+  const contextFile = input.contextState.files[input.target.fileId];
+  if (
+    contextFile !== undefined &&
+    contextFile.revisionId !== input.target.revisionId
+  ) {
+    throw new Error("Context file revision must match the target revision.");
+  }
+
+  if (input.globalState.currentRevisionId !== input.target.revisionId) {
+    throw new Error("Global current revision must match the target revision.");
+  }
+
+  const globalFile = input.globalState.files[input.target.fileId];
+  if (
+    globalFile !== undefined &&
+    globalFile.revisionId !== input.target.revisionId
+  ) {
+    throw new Error("Global file revision must match the target revision.");
+  }
+
+  if (input.target.contentHash !== undefined) {
+    for (const existingHash of [contextFile?.contentHash, globalFile?.contentHash]) {
+      if (existingHash !== undefined && existingHash !== input.target.contentHash) {
+        throw new Error("Existing file content hash must match the target content hash.");
+      }
+    }
   }
 }
 
@@ -168,7 +241,8 @@ function normalizeOriginalReviewedByDiff(
 
 function createContextFileState(
   input: ReviewStateMutationInput,
-  modifiedReviewed: readonly LineInterval[]
+  modifiedReviewed: readonly LineInterval[],
+  originalReviewedByDiff?: Readonly<Record<string, readonly LineInterval[]>>
 ): FileReviewState {
   const previous = input.contextState.files[input.target.fileId];
   const next: FileReviewState = {
@@ -183,13 +257,13 @@ function createContextFileState(
       "modifiedReviewed"
     ),
     originalReviewedByDiff: normalizeOriginalReviewedByDiff(
-      previous?.originalReviewedByDiff
+      originalReviewedByDiff ?? previous?.originalReviewedByDiff
     ),
     lineCount: input.target.lineCount,
     updatedAt: input.occurredAt
   };
 
-  const contentHash = input.target.contentHash ?? previous?.contentHash;
+  const contentHash = input.target.contentHash;
   if (contentHash !== undefined) {
     next.contentHash = contentHash;
   }
@@ -201,7 +275,6 @@ function createGlobalFileState(
   input: ReviewStateMutationInput,
   reviewed: readonly LineInterval[]
 ): GlobalFileReviewState {
-  const previous = input.globalState.files[input.target.fileId];
   const next: GlobalFileReviewState = {
     fileId: input.target.fileId,
     currentPath: input.target.currentPath,
@@ -210,7 +283,7 @@ function createGlobalFileState(
     updatedAt: input.occurredAt
   };
 
-  const contentHash = input.target.contentHash ?? previous?.contentHash;
+  const contentHash = input.target.contentHash;
   if (contentHash !== undefined) {
     next.contentHash = contentHash;
   }
@@ -222,39 +295,53 @@ function createTransaction(
   operation: ReviewStateOperation,
   input: ReviewStateMutationInput,
   modifiedReviewed: readonly LineInterval[],
-  globalReviewed: readonly LineInterval[]
+  globalReviewed: readonly LineInterval[],
+  originalReviewedByDiff?: Readonly<Record<string, readonly LineInterval[]>>
 ): ReviewStateTransaction {
-  validateCommonInput(input);
+  validateMappedCurrentInput(input);
 
-  const contextFile = createContextFileState(input, modifiedReviewed);
-  const globalFile = createGlobalFileState(input, globalReviewed);
+  const expectedContextState = cloneValue(input.contextState);
+  const expectedGlobalState = cloneValue(input.globalState);
+  const nextInput: ReviewStateMutationInput = {
+    ...input,
+    contextState: cloneValue(input.contextState),
+    globalState: cloneValue(input.globalState),
+    target: cloneValue(input.target)
+  };
+
+  const contextFile = createContextFileState(
+    nextInput,
+    modifiedReviewed,
+    originalReviewedByDiff
+  );
+  const globalFile = createGlobalFileState(nextInput, globalReviewed);
 
   return {
     operation,
-    repositoryId: input.contextState.repositoryId,
-    contextId: input.contextState.contextId,
-    fileId: input.target.fileId,
+    repositoryId: nextInput.contextState.repositoryId,
+    contextId: nextInput.contextState.contextId,
+    fileId: nextInput.target.fileId,
     expected: {
-      contextUpdatedAt: input.contextState.updatedAt,
-      globalUpdatedAt: input.globalState.updatedAt
+      contextState: expectedContextState,
+      globalState: expectedGlobalState
     },
     next: {
       contextState: {
-        ...input.contextState,
+        ...nextInput.contextState,
         files: {
-          ...input.contextState.files,
-          [input.target.fileId]: contextFile
+          ...nextInput.contextState.files,
+          [nextInput.target.fileId]: contextFile
         },
-        updatedAt: input.occurredAt
+        updatedAt: nextInput.occurredAt
       },
       globalState: {
-        ...input.globalState,
-        currentRevisionId: input.target.revisionId,
+        ...nextInput.globalState,
+        currentRevisionId: nextInput.target.revisionId,
         files: {
-          ...input.globalState.files,
-          [input.target.fileId]: globalFile
+          ...nextInput.globalState.files,
+          [nextInput.target.fileId]: globalFile
         },
-        updatedAt: input.occurredAt
+        updatedAt: nextInput.occurredAt
       }
     }
   };
@@ -276,11 +363,19 @@ function currentGlobalRanges(input: ReviewStateMutationInput): LineInterval[] {
   );
 }
 
-/** Adds ranges to the current context and Global state in one transaction. */
+/**
+ * Adds ranges to the mapped/current context and Global state in one transaction.
+ *
+ * @param input Immutable operation input; its context descriptor, existing target
+ * files, and Global revision must match `target.revisionId` before this call.
+ * @returns Detached full-state compare-and-replace transaction with normalized ranges.
+ * @throws When common input, range bounds, mapped/current revision, or content-hash
+ * certainty checks fail. The transaction is not committed by this function.
+ */
 export function markReviewedRanges(
   input: ReviewRangeMutationInput
 ): ReviewStateTransaction {
-  validateCommonInput(input);
+  validateMappedCurrentInput(input);
   const additions = normalizeWithinFile(
     input.intervals,
     input.target.lineCount,
@@ -295,11 +390,17 @@ export function markReviewedRanges(
   );
 }
 
-/** Removes ranges from the current context and Global state in one transaction. */
+/**
+ * Removes ranges from the mapped/current context and Global state in one transaction.
+ *
+ * @param input Immutable operation input whose mapped/current state must match the target.
+ * @returns Detached full-state compare-and-replace transaction with split remnants.
+ * @throws When input, revision, hash, or range certainty checks fail.
+ */
 export function unmarkReviewedRanges(
   input: ReviewRangeMutationInput
 ): ReviewStateTransaction {
-  validateCommonInput(input);
+  validateMappedCurrentInput(input);
   const removals = normalizeWithinFile(
     input.intervals,
     input.target.lineCount,
@@ -314,11 +415,17 @@ export function unmarkReviewedRanges(
   );
 }
 
-/** Marks every current line in the file in both state layers. */
+/**
+ * Marks every current line in the mapped/current file in both state layers.
+ *
+ * @param input Immutable operation input whose mapped/current state must match the target.
+ * @returns Detached full-state compare-and-replace transaction.
+ * @throws When input, revision, or content-hash certainty checks fail.
+ */
 export function markFileReviewed(
   input: ReviewStateMutationInput
 ): ReviewStateTransaction {
-  validateCommonInput(input);
+  validateMappedCurrentInput(input);
   const wholeFile =
     input.target.lineCount === 0
       ? []
@@ -327,17 +434,30 @@ export function markFileReviewed(
   return createTransaction("mark-file-reviewed", input, wholeFile, wholeFile);
 }
 
-/** Clears all modified/current reviewed ranges from both state layers. */
+/**
+ * Clears every modified/current and original-side reviewed range for the mapped/current file.
+ *
+ * @param input Immutable operation input whose mapped/current state must match the target.
+ * @returns Detached full-state compare-and-replace transaction with empty file review state.
+ * @throws When input, revision, or content-hash certainty checks fail.
+ */
 export function unmarkFileReviewed(
   input: ReviewStateMutationInput
 ): ReviewStateTransaction {
-  validateCommonInput(input);
-  return createTransaction("unmark-file-reviewed", input, [], []);
+  validateMappedCurrentInput(input);
+  return createTransaction("unmark-file-reviewed", input, [], [], {});
 }
 
-/** Delegates a transaction to the single atomic persistence boundary. */
+/**
+ * Delegates an immutable transaction to the single atomic persistence boundary.
+ *
+ * @param transaction Detached expected and next snapshots; this function does not mutate either.
+ * @param committer Atomic compare-and-replace boundary for both state documents.
+ * @returns A promise fulfilled after the committer accepts the transaction.
+ * @throws Propagates the committer rejection unchanged, including stale snapshots.
+ */
 export async function commitReviewStateTransaction(
-  transaction: ReviewStateTransaction,
+  transaction: Readonly<ReviewStateTransaction>,
   committer: ReviewStateTransactionCommitter
 ): Promise<void> {
   await committer.commit(transaction);

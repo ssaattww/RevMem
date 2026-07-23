@@ -10,7 +10,7 @@
 - 直近完了タスク: T102 Review State Serviceとtransaction contract
 - 現在のタスク: なし
 - 次のタスク: T103 workspace context・file ID・非Git repository ID
-- 実装状態: T102のRed/Green、全検証、専用レビュー、進捗同期が完了
+- 実装状態: T102 review follow-up、全検証、専用再レビューが完了
 - ブロッカー: なし
 - Gitブランチ: `task/t102-review-state-service`
 - Pull Request: #4
@@ -34,6 +34,9 @@
 - T101最終再レビューレポート: `reports/issue-1-t101-review-r3-20260723125125.md`
 - T102実装レポート: `reports/issue-1-t102-implementation-20260723132500.md`
 - T102レビューレポート: `reports/issue-1-t102-review-20260723133000.md`
+- T102初回レビューレポート: `reports/issue-1-t102-review-20260723132249.md`
+- T102 review follow-upレポート: `reports/issue-1-t102-review-followup-20260723133429.md`
+- T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
 
 ## 状態と規模
 
@@ -62,7 +65,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T101 | 完了 | M | 0始まり半開区間の正規化、長さ、検索、重複・隣接結合、減算・分割と、空選択・複数選択の行範囲変換を純粋ロジックで実装する | T003 | 0行、最終行、逆向き選択、重複、隣接、包含、部分解除の境界テストが通る。AC-04、AC-05を満たす |
-| T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
+| T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 次 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 未着手 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
 | T105 | 未着手 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
@@ -88,7 +91,7 @@
 | T300 | 未着手 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
-| T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、original側削除行を`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
+| T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
 | T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |

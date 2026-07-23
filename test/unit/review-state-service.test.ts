@@ -14,6 +14,7 @@ import {
   markReviewedRanges,
   unmarkFileReviewed,
   unmarkReviewedRanges,
+  type DeepReadonly,
   type ReviewStateFileTarget,
   type ReviewStateTransaction,
   type ReviewStateTransactionCommitter
@@ -46,12 +47,12 @@ const fileState = (
   fileId: "file-1",
   currentPath: "src/example.ts",
   previousPaths: [],
-  revisionId: "revision-1",
+  revisionId: "revision-2",
   modifiedReviewed,
   originalReviewedByDiff: {
     "diff-1": [interval(8, 10), interval(6, 8)]
   },
-  contentHash: "hash-1",
+  contentHash: "hash-2",
   lineCount: 20,
   updatedAt: "2026-07-23T04:00:00.000Z",
   ...overrides
@@ -68,7 +69,7 @@ const contextState = (
   displayName: "main",
   branch: {
     refName: "refs/heads/main",
-    headRevision: "revision-1"
+    headRevision: "revision-2"
   },
   files: {
     "file-1": fileState(reviewed)
@@ -84,14 +85,14 @@ const globalState = (
 ): RepositoryGlobalState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   repositoryId: "repository-1",
-  currentRevisionId: "revision-1",
+  currentRevisionId: "revision-2",
   files: {
     "file-1": {
       fileId: "file-1",
       currentPath: "src/example.ts",
-      revisionId: "revision-1",
+      revisionId: "revision-2",
       reviewed,
-      contentHash: "hash-1",
+      contentHash: "hash-2",
       updatedAt: "2026-07-23T04:00:00.000Z"
     }
   },
@@ -111,8 +112,8 @@ const freezeState = <T>(value: T): T => {
 };
 
 const nextRanges = (transaction: ReviewStateTransaction): {
-  context: LineInterval[];
-  global: LineInterval[];
+  context: readonly LineInterval[];
+  global: readonly LineInterval[];
 } => ({
   context: transaction.next.contextState.files["file-1"]!.modifiedReviewed,
   global: transaction.next.globalState.files["file-1"]!.reviewed
@@ -135,8 +136,8 @@ test("markReviewedRanges atomically prepares normalized context and Global updat
   assert.equal(transaction.contextId, "context-1");
   assert.equal(transaction.fileId, "file-1");
   assert.deepEqual(transaction.expected, {
-    contextUpdatedAt: "2026-07-23T04:00:00.000Z",
-    globalUpdatedAt: "2026-07-23T04:00:00.000Z"
+    contextState: context,
+    globalState: global
   });
   assert.deepEqual(nextRanges(transaction), {
     context: [interval(2, 12)],
@@ -204,7 +205,7 @@ test("markFileReviewed marks every existing line and handles an empty file", () 
   assert.deepEqual(nextRanges(empty), { context: [], global: [] });
 });
 
-test("unmarkFileReviewed clears context and Global while retaining original-side evidence", () => {
+test("unmarkFileReviewed clears modified, Global, and original-side reviewed ranges", () => {
   const transaction = unmarkFileReviewed({
     contextState: contextState([interval(0, 20)]),
     globalState: globalState([interval(0, 20)]),
@@ -216,7 +217,7 @@ test("unmarkFileReviewed clears context and Global while retaining original-side
   assert.deepEqual(nextRanges(transaction), { context: [], global: [] });
   assert.deepEqual(
     transaction.next.contextState.files["file-1"]!.originalReviewedByDiff,
-    { "diff-1": [interval(6, 10)] }
+    {}
   );
 });
 
@@ -251,6 +252,202 @@ test("out-of-file ranges fail before a transaction is returned", () => {
         occurredAt
       }),
     RangeError
+  );
+});
+
+test("review-state operations reject each context descriptor when it is not mapped to the target revision", () => {
+  const pullRequest = contextState([], {
+    kind: "pull-request",
+    branch: undefined,
+    pullRequest: {
+      host: "github.com",
+      owner: "owner",
+      repository: "repository",
+      number: 1,
+      state: "open",
+      baseSha: "base-1",
+      headSha: "revision-1"
+    }
+  });
+  const branch = contextState([], {
+    branch: { refName: "refs/heads/main", headRevision: "revision-1" }
+  });
+  const workspace = contextState([], {
+    kind: "workspace",
+    branch: undefined,
+    workspace: { workspaceId: "workspace-1", snapshotRevision: "revision-1" }
+  });
+
+  for (const context of [pullRequest, branch, workspace]) {
+    assert.throws(
+      () =>
+        markFileReviewed({
+          contextState: context,
+          globalState: globalState([], { files: {} }),
+          target: target(),
+          occurredAt
+        }),
+      /mapped to the target revision/
+    );
+  }
+});
+
+test("review-state operations reject context and Global revision mismatches", () => {
+  const cases: readonly [string, ReviewContextState, RepositoryGlobalState][] = [
+    [
+      "context file",
+      contextState([], { files: { "file-1": fileState([], { revisionId: "revision-1" }) } }),
+      globalState([], { files: {} })
+    ],
+    [
+      "Global current revision",
+      contextState([], { files: {} }),
+      globalState([], { currentRevisionId: "revision-1", files: {} })
+    ],
+    [
+      "Global file",
+      contextState([], { files: {} }),
+      globalState([], {
+        files: {
+          "file-1": {
+            ...globalState().files["file-1"]!,
+            fileId: "file-1",
+            currentPath: "src/example.ts",
+            revisionId: "revision-1",
+            reviewed: [],
+            updatedAt: occurredAt
+          }
+        }
+      })
+    ]
+  ];
+
+  for (const [name, context, global] of cases) {
+    assert.throws(
+      () =>
+        markFileReviewed({
+          contextState: context,
+          globalState: global,
+          target: target(),
+          occurredAt
+        }),
+      new RegExp(`${name}.*target revision`, "i")
+    );
+  }
+});
+
+test("review-state operations reject a conflicting content hash and omit an unspecified target hash", () => {
+  assert.throws(
+    () =>
+      markFileReviewed({
+        contextState: contextState([], {
+          files: { "file-1": fileState([], { contentHash: "other-hash" }) }
+        }),
+        globalState: globalState([], { files: {} }),
+        target: target(),
+        occurredAt
+      }),
+    /content hash.*target/i
+  );
+
+  const transaction = markFileReviewed({
+    contextState: contextState(),
+    globalState: globalState(),
+    target: target(20, { contentHash: undefined }),
+    occurredAt
+  });
+
+  assert.equal(
+    transaction.next.contextState.files["file-1"]!.contentHash,
+    undefined
+  );
+  assert.equal(transaction.next.globalState.files["file-1"]!.contentHash, undefined);
+});
+
+test("transactions retain detached full snapshots when callers mutate non-target nested state", () => {
+  const context = contextState([], {
+    files: {
+      "file-1": fileState([]),
+      "file-2": fileState([interval(10, 12)], {
+        fileId: "file-2",
+        currentPath: "src/other.ts",
+        originalReviewedByDiff: { "diff-2": [interval(1, 2)] }
+      })
+    }
+  });
+  const global = globalState([], {
+    files: {
+      "file-1": globalState().files["file-1"]!,
+      "file-2": {
+        ...globalState().files["file-1"]!,
+        fileId: "file-2",
+        currentPath: "src/other.ts",
+        reviewed: [interval(10, 12)]
+      }
+    }
+  });
+  const expectedContext = structuredClone(context);
+  const expectedGlobal = structuredClone(global);
+  const transaction = markReviewedRanges({
+    contextState: context,
+    globalState: global,
+    target: target(),
+    intervals: [interval(3, 4)],
+    occurredAt
+  });
+
+  context.branch!.headRevision = "changed-after-creation";
+  context.files["file-2"]!.modifiedReviewed.push(interval(14, 15));
+  context.files["file-2"]!.originalReviewedByDiff["diff-2"]!.push(interval(2, 3));
+  global.files["file-2"]!.reviewed.push(interval(14, 15));
+
+  assert.deepEqual(transaction.expected, {
+    contextState: expectedContext,
+    globalState: expectedGlobal
+  });
+  assert.deepEqual(
+    transaction.next.contextState.files["file-2"],
+    expectedContext.files["file-2"]
+  );
+  assert.equal(
+    transaction.next.contextState.branch!.headRevision,
+    expectedContext.branch!.headRevision
+  );
+  assert.deepEqual(transaction.next.globalState.files["file-2"], expectedGlobal.files["file-2"]);
+});
+
+test("a full-snapshot compare-and-replace committer rejects a stale same-timestamp transaction", async () => {
+  const context = contextState();
+  const global = globalState();
+  const first = markReviewedRanges({
+    contextState: context,
+    globalState: global,
+    target: target(),
+    intervals: [interval(7, 9)],
+    occurredAt
+  });
+  const second = unmarkReviewedRanges({
+    contextState: context,
+    globalState: global,
+    target: target(),
+    intervals: [interval(2, 3)],
+    occurredAt
+  });
+  let persisted: {
+    contextState: DeepReadonly<ReviewContextState>;
+    globalState: DeepReadonly<RepositoryGlobalState>;
+  } = { contextState: structuredClone(context), globalState: structuredClone(global) };
+  const committer: ReviewStateTransactionCommitter = {
+    commit: async (candidate) => {
+      assert.deepEqual(candidate.expected, persisted, "full expected snapshot must match");
+      persisted = structuredClone(candidate.next);
+    }
+  };
+
+  await commitReviewStateTransaction(first, committer);
+  await assert.rejects(
+    commitReviewStateTransaction(second, committer),
+    /full expected snapshot must match/
   );
 });
 
