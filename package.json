@@ -22,16 +22,23 @@
   "scripts": {
     "compile": "tsc -p tsconfig.json",
     "build": "npm run compile",
-    "lint": "eslint src --max-warnings=0",
+    "lint": "eslint src test --max-warnings=0",
     "package": "npm run compile && vsce package --no-dependencies",
     "typecheck:contracts": "tsc -p type-fixtures/contracts/tsconfig.json",
     "validate:architecture": "node tools/validate-architecture.mjs",
-    "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10"
+    "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10",
+    "compile:test": "tsc -p tsconfig.test.json",
+    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js",
+    "test:git": "npm run compile:test && node --test test-dist/test/integration/temporary-git.test.js",
+    "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js",
+    "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
+    "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:vscode"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
     "@types/vscode": "^1.125.0",
+    "@vscode/test-electron": "^3.0.0",
     "@vscode/vsce": "^3.9.2",
     "eslint": "^10.7.0",
     "typescript": "^6.0.3",

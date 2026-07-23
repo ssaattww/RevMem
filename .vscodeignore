@@ -6,11 +6,16 @@ reports/**
 tasks/**
 AGENTS.md
 src/**
+test/**
+test-dist/**
+test-output/**
+.vscode-test/**
 node_modules/**
 dist/**/*.map
 .gitignore
 eslint.config.mjs
 tsconfig.json
+tsconfig.test.json
 tools/**
 type-fixtures/**
 package-lock.json

@@ -19,3 +19,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run test:git
+      - run: npm run test:github
+      - run: xvfb-run -a npm run test:vscode
