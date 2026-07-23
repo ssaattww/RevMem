@@ -1,0 +1,3 @@
+void import(
+  `../../../src/adapters`
+);

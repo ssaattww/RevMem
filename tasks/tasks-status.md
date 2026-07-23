@@ -7,14 +7,20 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P0 開発基盤
-- 完了したタスク: T001 拡張機能プロジェクトの初期化
-- 次のタスク: T002 レイヤー依存方向と状態モデルcontractの配置
-- 実装状態: T001実装・検証・レビュー完了、task commit準備完了
+- 直近完了タスク: T002 レイヤー依存方向と状態モデルcontractの配置
+- 現在のタスク: T003 テスト基盤と共通fixtureの整備
+- 実装状態: T002完了、T003が次
 - ブロッカー: なし
 - Gitブランチ: `phase/1-foundation`
 - PR方針: ユーザー指示によりT001〜T003を1ブランチ・1PRへ積み、taskごとに1commitを作成する。PRはT003完了後に作成する
-- 実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
-- レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
+- T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
+- T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
+- T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
+- T002初回レビューレポート: `reports/issue-1-t002-review-20260723112423.md`
+- T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
+- T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
+- T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
+- T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
 
 ## 状態と規模
 
@@ -35,8 +41,8 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T001 | 完了 | M | VS Code TypeScript拡張のmanifest、ビルド、lint、CIを初期化する。現在`package.json`とlockfileを除外している`.gitignore`を修正し、再現可能な依存管理にする | なし | clean checkoutでinstall、build、lintが成功し、Extension Development Hostでactivationできる構造になっている |
-| T002 | 次 | M | `core`、`application`、`adapters`、`ui`の依存方向を定義し、設計書8章のinterval、file、context、global、diff、history、schema version型と設定contractを配置する | T001 | coreからVS Code、GitHub、Node filesystemへのimportがないことを静的検査し、全型fixtureがcompileする |
-| T003 | 未着手 | M | 単体テスト、temporary Git repository統合テスト、mock GitHub、VS Code Extension Hostの共通fixtureと実行コマンドを整備する | T001、T002 | 4種類の最小テストが独立実行でき、失敗時にfixtureを後始末し、CIから同じコマンドを実行できる |
+| T002 | 完了 | M | `core`、`application`、`adapters`、`ui`の依存方向を定義し、設計書8章のinterval、file、context、global、diff、history、schema version型と設定contractを配置する | T001 | coreからVS Code、GitHub、Node filesystemへのimportがないことを静的検査し、全型fixtureがcompileする |
+| T003 | 次 | M | 単体テスト、temporary Git repository統合テスト、mock GitHub、VS Code Extension Hostの共通fixtureと実行コマンドを整備する | T001、T002 | 4種類の最小テストが独立実行でき、失敗時にfixtureを後始末し、CIから同じコマンドを実行できる |
 
 ## P1 ローカル行範囲管理
 
@@ -129,4 +135,4 @@
 
 ## 次回開始時の選択
 
-次回はT002だけを選択する。T002完了後に`task-consistency-manager`で実績と残作業を照合し、T003を次へ変更する。
+次はT003だけを実行する。T003完了後に`task-consistency-manager`でPhase 0の終了条件と実績を照合し、Phase単位の1PRを作成する。

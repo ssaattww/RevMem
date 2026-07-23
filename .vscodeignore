@@ -11,4 +11,6 @@ dist/**/*.map
 .gitignore
 eslint.config.mjs
 tsconfig.json
+tools/**
+type-fixtures/**
 package-lock.json

@@ -23,7 +23,10 @@
     "compile": "tsc -p tsconfig.json",
     "build": "npm run compile",
     "lint": "eslint src --max-warnings=0",
-    "package": "npm run compile && vsce package --no-dependencies"
+    "package": "npm run compile && vsce package --no-dependencies",
+    "typecheck:contracts": "tsc -p type-fixtures/contracts/tsconfig.json",
+    "validate:architecture": "node tools/validate-architecture.mjs",
+    "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
