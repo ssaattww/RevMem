@@ -46,7 +46,7 @@ export interface RangeMappingInput {
   readonly beforeText: string;
   /** Reviewed zero-based half-open intervals in the pre-change document. */
   readonly reviewed: readonly LineInterval[];
-  /** Non-overlapping changes whose coordinates all refer to `beforeText`. */
+  /** Non-overlapping, distinct-offset changes that all refer to `beforeText`. */
   readonly changes: readonly DocumentContentChange[];
   /** Explicit mapping settings. */
   readonly options: Readonly<RangeMappingOptions>;
@@ -265,13 +265,50 @@ function canonicalizeForIgnoredChanges(
   return result;
 }
 
-function withoutOneTerminalLineBreak(text: string): string {
-  return text.endsWith("\n") ? text.slice(0, -1) : text;
+function applyOneChange(beforeText: string, change: ValidatedChange): string {
+  return (
+    beforeText.slice(0, change.rangeOffset) +
+    change.text +
+    beforeText.slice(change.rangeOffset + change.rangeLength)
+  );
+}
+
+function differsByOneTerminalLineBreak(
+  beforeText: string,
+  change: ValidatedChange,
+  options: Readonly<RangeMappingOptions>
+): boolean {
+  if (
+    !options.ignoreEolChanges ||
+    change.rangeOffset + change.rangeLength !== beforeText.length
+  ) {
+    return false;
+  }
+
+  const before = canonicalizeForIgnoredChanges(beforeText, options);
+  const after = canonicalizeForIgnoredChanges(
+    applyOneChange(beforeText, change),
+    options
+  );
+  const beforeHasTerminal = before.endsWith("\n");
+  const afterHasTerminal = after.endsWith("\n");
+
+  if (beforeHasTerminal === afterHasTerminal) {
+    return false;
+  }
+
+  const withTerminal = beforeHasTerminal ? before : after;
+  const withoutTerminal = beforeHasTerminal ? after : before;
+
+  return (
+    !withTerminal.endsWith("\n\n") &&
+    withTerminal.slice(0, -1) === withoutTerminal
+  );
 }
 
 function isIgnoredChange(
   change: ValidatedChange,
-  beforeTextLength: number,
+  beforeText: string,
   options: Readonly<RangeMappingOptions>
 ): boolean {
   if (change.removedText === change.text) {
@@ -283,16 +320,9 @@ function isIgnoredChange(
 
   const removed = canonicalizeForIgnoredChanges(change.removedText, options);
   const inserted = canonicalizeForIgnoredChanges(change.text, options);
-  if (removed === inserted) {
-    return true;
-  }
-
-  const touchesDocumentEnd =
-    change.rangeOffset + change.rangeLength === beforeTextLength;
   return (
-    options.ignoreEolChanges &&
-    touchesDocumentEnd &&
-    withoutOneTerminalLineBreak(removed) === withoutOneTerminalLineBreak(inserted)
+    removed === inserted ||
+    differsByOneTerminalLineBreak(beforeText, change, options)
   );
 }
 
@@ -389,7 +419,9 @@ function applyChanges(
  * before a change keep their positions, unchanged lines after it shift by the
  * line-count delta, every overlapping old line is invalidated, and inserted
  * lines remain unreviewed. Ignored whitespace/EOL replacements preserve review
- * state but still contribute to the resulting document line count.
+ * state but still contribute to the resulting document line count. Adding or
+ * removing exactly one terminal line break is EOL-only; adding a further blank
+ * line to a file that already ends in a line break remains a real line change.
  *
  * @param input Original text, reviewed ranges, non-overlapping changes, and settings.
  * @returns Detached normalized reviewed intervals and resulting logical line count.
@@ -419,7 +451,7 @@ export function mapReviewedRangesThroughDocumentChanges(
   const afterText = applyChanges(input.beforeText, changesDescending);
 
   for (const change of changesDescending) {
-    if (!isIgnoredChange(change, input.beforeText.length, input.options)) {
+    if (!isIgnoredChange(change, input.beforeText, input.options)) {
       reviewed = mapOneChange(reviewed, change);
     }
   }
