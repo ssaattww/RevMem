@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（進行中）
-- 直近完了タスク: T106 通常エディタの確認済み装飾
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
+- 直近完了タスク: T107 lifecycle・保存・再起動復元試験
 - 現在のタスク: なし
-- 次のタスク: T107 lifecycle・保存・再起動復元試験
-- 実装状態: visible editorだけを対象に、テーマ対応の半透明グレー背景、デフォルト有効のガター、任意Overview Ruler、Context・状態更新日時・Global状態のhoverを描画する。editor切替・設定変更・確認操作後に再描画し、stale非同期結果、diff editor、不確実なレイヤーは確認済み表示しないことをRed/Greenと専用レビューで確認済み
-- ブロッカー: なし
-- Gitブランチ: `task/t106-normal-editor-decoration`
-- Pull Request: #10
-- PR方針: T105 merge後の`main`から独立し、T106の先行テスト、細かな実装コミット、失敗時診断artifact、review follow-upをPR上に保持する
+- 次のタスク: T201 PR #7とT202 PR #8を最新`main`へ追従・統合した後、T203 diff parserとrevision間interval mapping
+- 実装状態: activationから通常エディタcommand・装飾・atomic repositoryを保存lifecycle adapterで接続し、background snapshotのdebounce、確認・解除transactionの即時保存、保存失敗時の成功表示抑止、deactivation時のpending/受付済み操作待機を実装した。同じworkspaceとuser-dataを使う3回のExtension Host起動で、確認状態と解除状態の装飾が再起動後に復元されることを確認済み。T201とT202は並行PRで実装・検証済みだが最新`main`へ未統合
+- ブロッカー: T203着手前にPR #7とPR #8の最新`main`追従・統合が必要
+- Gitブランチ: `task/t107-lifecycle-restart`
+- Pull Request: #11
+- PR方針: T106 merge後の`main`から独立し、T107の先行Red、保存lifecycle実装、3段階Extension Host再起動試験、review follow-up Red/Green、失敗時診断artifactをPR上に保持する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -48,6 +48,8 @@
 - T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
 - T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
 - T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
+- T107実装レポート: `reports/issue-1-t107-implementation-20260723201924.md`
+- T107レビューレポート: `reports/issue-1-t107-review-20260723201924.md`
 
 ## 状態と規模
 
@@ -81,15 +83,15 @@
 | T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
-| T107 | 次 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
+| T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 
 ## P2 編集・Git差分追従
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T201 | 未着手 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する単体テストが通る |
-| T202 | 未着手 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる |
-| T203 | 未着手 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
+| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する単体テストが通る。PR #7で実装・検証済み、最新`main`へ未統合 |
+| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。PR #8で実装・検証済み、最新`main`へ未統合 |
+| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす。着手前にPR #7とPR #8を最新`main`へ統合する |
 | T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
@@ -162,4 +164,4 @@
 
 ## 次回開始時の選択
 
-T106は完了した。次回の実装はT107だけを選択し、activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Hostの失敗するテストから開始する。
+T107は完了した。T201 PR #7とT202 PR #8を最新`main`へ追従・統合し、両実装が同じbase上で全試験を通ることを確認する。その後の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
