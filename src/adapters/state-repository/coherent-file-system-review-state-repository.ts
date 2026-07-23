@@ -1,32 +1,112 @@
-import type {
-  RepositoryGlobalState,
-  ReviewContextState
+import { isDeepStrictEqual } from "node:util";
+
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState
 } from "../../core/contracts/index";
 import {
   FileSystemReviewStateRepository as AtomicFileSystemReviewStateRepository
 } from "./file-system-review-state-repository";
 import type {
   FileSystemReviewStateRepositoryOptions,
+  PersistenceFailureNotification,
+  PersistenceOperation,
   ReviewStateCommit,
-  ReviewStateRepositoryTarget
+  ReviewStateRepositoryTarget,
+  ReviewStateTransactionLike
 } from "./contracts";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
-const cloneContextState = (state: ReviewContextState): ReviewContextState =>
-  JSON.parse(JSON.stringify(state)) as ReviewContextState;
+const cloneValue = <T>(value: T): T =>
+  JSON.parse(JSON.stringify(value)) as T;
 
-const cloneGlobalState = (state: RepositoryGlobalState): RepositoryGlobalState =>
-  JSON.parse(JSON.stringify(state)) as RepositoryGlobalState;
+const cloneCommit = (commit: ReviewStateCommit): ReviewStateCommit =>
+  cloneValue(commit);
 
-const cloneCommit = (commit: ReviewStateCommit): ReviewStateCommit => ({
-  schemaVersion: commit.schemaVersion,
-  contextState: cloneContextState(commit.contextState),
-  globalState: cloneGlobalState(commit.globalState)
+const transactionPairToCommit = (
+  pair: ReviewStateTransactionLike["expected"]
+): ReviewStateCommit => ({
+  schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+  contextState: cloneValue(pair.contextState) as ReviewContextState,
+  globalState: cloneValue(pair.globalState) as RepositoryGlobalState
 });
+
+const requireMatchingIdentity = (
+  transaction: Readonly<ReviewStateTransactionLike>
+): ReviewStateRepositoryTarget => {
+  const snapshots = [transaction.expected, transaction.next];
+
+  for (const snapshot of snapshots) {
+    if (
+      snapshot.contextState.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION ||
+      snapshot.globalState.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION
+    ) {
+      throw new Error(
+        `Transaction snapshots must use schema version ${REVIEW_RANGE_SCHEMA_VERSION}`
+      );
+    }
+    if (
+      snapshot.contextState.repositoryId !== transaction.repositoryId ||
+      snapshot.globalState.repositoryId !== transaction.repositoryId
+    ) {
+      throw new Error("Transaction repositoryId must match all state snapshots");
+    }
+    if (snapshot.contextState.contextId !== transaction.contextId) {
+      throw new Error("Transaction contextId must match all context snapshots");
+    }
+  }
+
+  if (
+    transaction.expected.contextState.kind !==
+    transaction.next.contextState.kind
+  ) {
+    throw new Error("Transaction cannot change review context kind");
+  }
+
+  const contextKind = transaction.next.contextState.kind;
+  const kind =
+    contextKind === "pull-request"
+      ? "pull-request"
+      : contextKind === "workspace"
+        ? "workspace"
+        : "git";
+
+  return {
+    kind,
+    repositoryId: transaction.repositoryId,
+    contextId: transaction.contextId
+  };
+};
+
+const persistedFilePath = (error: unknown, fallbackPath: string): string => {
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "filePath" in error &&
+    typeof error.filePath === "string"
+  ) {
+    return error.filePath;
+  }
+
+  return fallbackPath;
+};
+
+/** Rejection raised when persisted state no longer equals transaction.expected. */
+export class StaleReviewStateError extends Error {
+  public constructor(
+    public readonly target: ReviewStateRepositoryTarget
+  ) {
+    super(
+      `Persisted review state for ${target.repositoryId}/${target.contextId} no longer matches transaction.expected`
+    );
+    this.name = "StaleReviewStateError";
+  }
+}
 
 /**
  * Public filesystem repository that keeps one repository-wide Global state in
- * memory even when several context states are loaded or saved independently.
+ * memory and commits Review State Service transactions by full-snapshot CAS.
  */
 export class FileSystemReviewStateRepository {
   private readonly atomicRepository: AtomicFileSystemReviewStateRepository;
@@ -38,7 +118,10 @@ export class FileSystemReviewStateRepository {
   public constructor(
     private readonly options: FileSystemReviewStateRepositoryOptions
   ) {
-    this.atomicRepository = new AtomicFileSystemReviewStateRepository(options);
+    this.atomicRepository = new AtomicFileSystemReviewStateRepository({
+      ...options,
+      notifyPersistenceFailure: undefined
+    });
   }
 
   public getCurrent(
@@ -61,21 +144,73 @@ export class FileSystemReviewStateRepository {
   public async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
-    const loaded = await this.atomicRepository.load(target);
-    if (loaded === undefined) {
-      return undefined;
-    }
+    const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
 
-    this.recordRepositoryGlobal(target, loaded.globalState);
-    return this.getCurrent(target);
+    try {
+      const loaded = await this.atomicRepository.load(target);
+      if (loaded === undefined) {
+        return undefined;
+      }
+
+      this.recordRepositoryGlobal(target, loaded.globalState);
+      return this.getCurrent(target);
+    } catch (error) {
+      await this.notifyFailure("load", target, route.statePointerPath, error);
+      throw error;
+    }
   }
 
   public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
   ): Promise<void> {
-    await this.atomicRepository.save(target, commit);
-    this.recordRepositoryGlobal(target, commit.globalState);
+    const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
+
+    try {
+      await this.atomicRepository.save(target, commit);
+      this.recordRepositoryGlobal(target, commit.globalState);
+    } catch (error) {
+      await this.notifyFailure("save", target, route.statePointerPath, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Compares persisted complete context/Global snapshots and advances both only
+   * when transaction.expected is still current.
+   *
+   * Cross-window serialization is added by T604; this method provides the T104
+   * single-writer compare-and-replace boundary and never updates memory on failure.
+   */
+  public async commit(
+    transaction: Readonly<ReviewStateTransactionLike>
+  ): Promise<void> {
+    const target = requireMatchingIdentity(transaction);
+    const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
+
+    try {
+      const reader = new AtomicFileSystemReviewStateRepository({
+        ...this.options,
+        notifyPersistenceFailure: undefined
+      });
+      const current = await reader.load(target);
+      const expected = transactionPairToCommit(transaction.expected);
+
+      if (
+        current === undefined ||
+        !isDeepStrictEqual(current.contextState, expected.contextState) ||
+        !isDeepStrictEqual(current.globalState, expected.globalState)
+      ) {
+        throw new StaleReviewStateError(target);
+      }
+
+      const next = transactionPairToCommit(transaction.next);
+      await this.atomicRepository.save(target, next);
+      this.recordRepositoryGlobal(target, next.globalState);
+    } catch (error) {
+      await this.notifyFailure("commit", target, route.statePointerPath, error);
+      throw error;
+    }
   }
 
   private recordRepositoryGlobal(
@@ -85,7 +220,27 @@ export class FileSystemReviewStateRepository {
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
     this.currentGlobalByStorageRoot.set(
       route.rootPath,
-      cloneGlobalState(globalState)
+      cloneValue(globalState)
     );
+  }
+
+  private async notifyFailure(
+    operation: PersistenceOperation,
+    target: ReviewStateRepositoryTarget,
+    fallbackPath: string,
+    error: unknown
+  ): Promise<void> {
+    const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
+    const notification: PersistenceFailureNotification = {
+      operation,
+      target: { ...target },
+      route: { ...route },
+      filePath: persistedFilePath(error, fallbackPath),
+      error
+    };
+
+    await Promise.resolve(
+      this.options.notifyPersistenceFailure?.(notification)
+    ).catch(() => undefined);
   }
 }
