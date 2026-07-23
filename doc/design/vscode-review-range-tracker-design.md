@@ -1104,6 +1104,10 @@ flowchart TB
 - 履歴生成
 - 永続化要求
 
+範囲操作は、context descriptorの現在revision、context file、Globalのcurrent revision、既存Global fileがtarget revisionへmapped/currentである場合だけ受け付ける。これらのrevisionが不一致の場合、またはtarget content hashと既存file hashが両方存在して不一致の場合は、旧範囲を新revisionへ再ラベルせずrejectする。target content hashが未指定の場合は、旧hashをnext stateへ継承せず省略する。
+
+永続化要求は入力時点のcontext/Global完全snapshotをexpectedとして比較し、contextとGlobalの完全next stateを一つのatomic compare-and-replaceで置換する。ファイル全体の解除はmodified/current、Global、original側の確認済み状態をすべて空にする。original側を確認済みにする操作の入力contract拡張はT303の責務であり、T102では追加しない。
+
 ## 12.4 Range Mapping Engine
 
 責務:
@@ -1637,4 +1641,3 @@ GitHub Checks、GitHub App、専用サーバー等によるチーム共有を検
 - [Git diff documentation](https://git-scm.com/docs/git-diff)
 - [Git diff format](https://git-scm.com/docs/diff-format)
 - [GitHub REST API endpoints for pull requests](https://docs.github.com/en/rest/pulls)
-
