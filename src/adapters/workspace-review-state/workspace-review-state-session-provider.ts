@@ -22,28 +22,50 @@ import type {
 
 /** Document and workspace information collected by the VS Code UI adapter. */
 export interface WorkspaceEditorReviewDescriptor {
+  /** URI of the workspace folder used to derive the stable non-Git workspace identity. */
   readonly workspaceFolderUri: ResourceUri;
+  /** URI of the active document used with the folder and relative path to derive the stable file identity. */
   readonly documentUri: ResourceUri;
+  /** Path rules used by identity resolution to normalize the workspace and document URIs. */
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
+  /** Workspace-relative path that must identify the document beneath `workspaceFolderUri`. */
   readonly relativePath: string;
+  /** Display label persisted for an initial workspace context; blank values use the provider default. */
   readonly workspaceDisplayName: string;
+  /** Current document line count; it must be a non-negative safe integer and becomes the returned target line count. */
   readonly lineCount: number;
+  /** Current document content hash; it must be non-empty and mismatch removes only this file's stale reviewed state. */
   readonly contentHash: string;
 }
 
 /** Mutable snapshots returned by this adapter and accepted by the readonly command contract. */
 export interface WorkspaceNormalEditorReviewStateSession
   extends NormalEditorReviewStateSession {
+  /** Mutable clone of the mapped workspace context state returned for command transaction construction. */
   readonly contextState: ReviewContextState;
+  /** Mutable clone of the mapped repository-wide Global state returned for command transaction construction. */
   readonly globalState: RepositoryGlobalState;
+  /** Current workspace file identity, live workspace revision, line count, and content hash aligned with both snapshots. */
   readonly target: ReviewStateFileTarget;
+  /** Atomic compare-and-replace committer that persists complete context and Global transaction snapshots together. */
   readonly committer: ReviewStateTransactionCommitter;
 }
 
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
 export interface WorkspaceReviewStateRepository
   extends ReviewStateTransactionCommitter {
+  /**
+   * Loads the complete persisted snapshot selected by the workspace target.
+   *
+   * @returns The current commit, or `undefined` when the workspace has not been initialized.
+   * @throws Propagates persistence, parse, and validation failures without producing a session.
+   */
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
+  /**
+   * Persists an initial or sanitized complete workspace snapshot before it is returned to commands.
+   *
+   * @throws Propagates persistence failure; the provider does not return a session after the failed save.
+   */
   save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
@@ -52,8 +74,11 @@ export interface WorkspaceReviewStateRepository
 
 /** Constructor dependencies for workspace fallback review-state sessions. */
 export interface WorkspaceReviewStateSessionProviderOptions {
+  /** Resolves stable workspace, context, repository, and file identities from UI descriptor values. */
   readonly identityService: WorkspaceIdentityService;
+  /** Loads, initializes, sanitizes, and atomically commits workspace review state. */
   readonly repository: WorkspaceReviewStateRepository;
+  /** Optional clock for initial and sanitization timestamps; wall-clock time is used when omitted. */
   readonly now?: () => Date;
 }
 
@@ -162,19 +187,35 @@ const createInitialCommit = (
 /**
  * Resolves non-Git workspace identity and returns mapped state for normal-editor commands.
  *
- * Until edit-event mapping is connected by T107, a content-hash mismatch invalidates only
+ * Until edit-event mapping is connected by T201, a content-hash mismatch invalidates only
  * the current file before a new command is evaluated. This preserves certainty without
  * relabeling stale reviewed ranges onto changed content.
  */
 export class WorkspaceReviewStateSessionProvider {
   private readonly now: () => Date;
 
+  /**
+   * Creates a workspace-session provider without resolving identity or accessing persistence.
+   *
+   * @param options UI identity, persistence, and optional clock dependencies used by `open`.
+   */
   public constructor(
     private readonly options: WorkspaceReviewStateSessionProviderOptions
   ) {
     this.now = options.now ?? (() => new Date());
   }
 
+  /**
+   * Resolves a non-Git workspace session for the current editor descriptor.
+   *
+   * It validates line count and content hash, derives a stable workspace/file identity,
+   * loads or initializes the workspace snapshot, and removes only the current file when
+   * revision, hash, path, or line-count certainty no longer matches. Returned state is cloned
+   * and the repository remains the atomic CAS committer for later command transactions.
+   *
+   * @returns Mapped mutable snapshots and target metadata aligned to the current descriptor.
+   * @throws Propagates descriptor validation, identity resolution, persisted-state validation, load, or save failure without returning a session.
+   */
   public async open(
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorReviewStateSession> {
