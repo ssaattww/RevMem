@@ -14,6 +14,7 @@ function assertLineBoundary(value: number, name: string): void {
  *
  * @param interval Interval whose endpoints may be reversed.
  * @returns A normalized interval, or `undefined` when both endpoints are equal.
+ * @throws {RangeError} If either endpoint is not a non-negative safe integer.
  */
 export function normalizeLineInterval(interval: LineInterval): LineInterval | undefined {
   assertLineBoundary(interval.startLine, "startLine");
@@ -39,6 +40,7 @@ export function normalizeLineInterval(interval: LineInterval): LineInterval | un
  *
  * @param interval Interval to measure.
  * @returns The interval length after endpoint normalization.
+ * @throws {RangeError} If either interval endpoint is not a non-negative safe integer.
  */
 export function lineIntervalLength(interval: LineInterval): number {
   const normalized = normalizeLineInterval(interval);
@@ -52,6 +54,7 @@ export function lineIntervalLength(interval: LineInterval): number {
  *
  * @param intervals Intervals in any order.
  * @returns New normalized intervals ordered by `startLine`.
+ * @throws {RangeError} If any interval endpoint is not a non-negative safe integer.
  */
 export function normalizeLineIntervals(
   intervals: readonly LineInterval[]
@@ -87,9 +90,12 @@ export function normalizeLineIntervals(
 /**
  * Finds the normalized interval that contains one zero-based line using binary search.
  *
- * @param intervals Sorted, non-overlapping normalized intervals.
+ * @param intervals Sorted, non-overlapping normalized intervals. Callers must
+ * provide this normalized form; this binary-search operation does not validate
+ * or normalize the array.
  * @param line Zero-based line number to find.
  * @returns The containing interval, or `undefined` when the line is not reviewed.
+ * @throws {RangeError} If `line` is not a non-negative safe integer.
  */
 export function findLineIntervalContainingLine(
   intervals: readonly LineInterval[],
@@ -126,6 +132,8 @@ export function findLineIntervalContainingLine(
  * @param intervals Reviewed intervals to subtract from.
  * @param intervalsToSubtract Intervals that must become unreviewed.
  * @returns Normalized remaining intervals, including split fragments.
+ * @throws {RangeError} If any source or removal interval endpoint is not a
+ * non-negative safe integer.
  */
 export function subtractLineIntervals(
   intervals: readonly LineInterval[],

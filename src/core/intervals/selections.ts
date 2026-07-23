@@ -83,6 +83,11 @@ function selectionToLineInterval(selection: TextSelection): LineInterval {
  * @param selections Editor selections to convert.
  * @param lineCount Current document line count.
  * @returns Sorted, non-overlapping half-open line intervals.
+ * @throws {RangeError} If `lineCount`, a selection line, or a selection
+ * character is not a non-negative safe integer; if a selection line is outside
+ * the document; or if a non-empty selection targets a zero-line document.
+ * @remarks This function cannot inspect document text. Callers are responsible
+ * for ensuring each selection character is within the content length of its line.
  */
 export function selectionsToLineIntervals(
   selections: readonly TextSelection[],

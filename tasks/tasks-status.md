@@ -10,7 +10,7 @@
 - 直近完了タスク: T101 interval操作と選択範囲変換
 - 現在のタスク: なし
 - 次のタスク: T102 Review State Serviceとtransaction contract
-- 実装状態: T101のテスト先行実装、CI検証、専用レビュー、PR作成が完了
+- 実装状態: T101のP2 finding対応、全検証、専用再レビューが完了
 - ブロッカー: なし
 - Gitブランチ: `task/t101-line-intervals`
 - Pull Request: #3
@@ -29,6 +29,9 @@
 - T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
 - T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
 - T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
+- T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
+- T101 review follow-upレポート: `reports/issue-1-t101-review-followup-20260723124645.md`
+- T101最終再レビューレポート: `reports/issue-1-t101-review-r3-20260723125125.md`
 
 ## 状態と規模
 
@@ -42,7 +45,7 @@
 | M | 2〜3日程度 |
 | L | 4〜5日程度。超過見込みなら再分解する |
 
-各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、Markdown変更時はMarkdown lint、全タスクで専用レビューと進捗同期を通過してから完了とする。環境・scaffold-onlyタスクは適用可否を明示し、test harnessを担当する後続タスクと重複させない。
+各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。
 
 ## P0 開発基盤
 
