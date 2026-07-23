@@ -1,6 +1,9 @@
-bin/
-obj/
-**/bin/
-**/obj/
-package.json
-package-lock.json
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+test-dist/
+test-output/
+.nyc_output/
+coverage/
+npm-debug.log*
