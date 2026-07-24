@@ -122,16 +122,10 @@ export class DocumentReviewStateSessionProvider {
   public async open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    const preloadedExternalSource = descriptor.workspace === undefined
-      ? undefined
-      : await this.externalReader.loadForDecoration(
-          this.externalDescriptor(descriptor)
-        );
     const targetSession = await this.baseProvider.open(descriptor);
     const sources = await this.loadLowerOwnerSources(
       targetSession.owner,
-      descriptor,
-      preloadedExternalSource
+      descriptor
     );
     return this.reconcileCertainSources(targetSession, sources);
   }
@@ -145,17 +139,15 @@ export class DocumentReviewStateSessionProvider {
 
   private async loadLowerOwnerSources(
     targetOwner: DocumentReviewOwner,
-    descriptor: DocumentEditorReviewDescriptor,
-    preloadedExternalSource?: DocumentNormalEditorDecorationState
+    descriptor: DocumentEditorReviewDescriptor
   ): Promise<readonly (DocumentNormalEditorDecorationState | undefined)[]> {
     if (targetOwner === "external-file") {
       return [];
     }
 
-    const externalSource = preloadedExternalSource ??
-      await this.externalReader.loadForDecoration(
-        this.externalDescriptor(descriptor)
-      );
+    const externalSource = await this.externalReader.loadForDecoration(
+      this.externalDescriptor(descriptor)
+    );
     if (targetOwner === "workspace") {
       return [externalSource];
     }
