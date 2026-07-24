@@ -26,10 +26,17 @@ test("every default glob excludes root and nested generated directories with a r
   assert.deepEqual(policy.evaluate(candidate("src/binocular/index.ts")), { excluded: false, normalizedPath: "src/binocular/index.ts" });
 });
 
-test("repository-relative paths are normalized without changing Git case semantics", () => {
+test("repository-relative Git paths normalize slash segments without changing case", () => {
   const policy = new ReviewFileExclusionPolicy({ userGlobs: ["src/**/*.generated.ts"] });
-  assert.deepEqual(policy.evaluate(candidate(".\\src\\models\\item.generated.ts")), { excluded: true, normalizedPath: "src/models/item.generated.ts", reason: { kind: "user-glob", pattern: "src/**/*.generated.ts" } });
+  assert.deepEqual(policy.evaluate(candidate("./src//models/item.generated.ts")), { excluded: true, normalizedPath: "src/models/item.generated.ts", reason: { kind: "user-glob", pattern: "src/**/*.generated.ts" } });
   assert.deepEqual(policy.evaluate(candidate("Src/models/item.generated.ts")), { excluded: false, normalizedPath: "Src/models/item.generated.ts" });
+});
+
+test("Git paths preserve POSIX backslashes instead of treating them as separators", () => {
+  const policy = new ReviewFileExclusionPolicy({ userGlobs: ["a/b.ts"] });
+  assert.deepEqual(policy.evaluate(candidate("a\\b.ts")), { excluded: false, normalizedPath: "a\\b.ts" });
+  assert.deepEqual(policy.evaluate(candidate("a/b.ts")), { excluded: true, normalizedPath: "a/b.ts", reason: { kind: "user-glob", pattern: "a/b.ts" } });
+  assert.deepEqual(policy.evaluate(candidate("src\\dist\\file.ts")), { excluded: false, normalizedPath: "src\\dist\\file.ts" });
 });
 
 test("binary exclusion has deterministic priority over path globs", () => {
@@ -61,6 +68,17 @@ test("policy rejects non-repository paths and unsupported negated globs", () => 
   assert.throws(() => new ReviewFileExclusionPolicy({ userGlobs: ["!**/*.ts"] }), /negated glob/i);
   const policy = new ReviewFileExclusionPolicy();
   for (const path of ["../outside.ts", "/absolute.ts", "C:/absolute.ts", "src/\u0000bad.ts"]) assert.throws(() => policy.evaluate(candidate(path)), /repository-relative path/i);
+});
+
+test("glob configuration rejects excessive pattern count and length", () => {
+  const tooMany = Array.from({ length: 257 }, (_, index) => `generated-${index}.ts`);
+  assert.throws(() => new ReviewFileExclusionPolicy({ userGlobs: tooMany }), /too many exclusion globs/i);
+  assert.throws(() => new ReviewFileExclusionPolicy({ userGlobs: ["a".repeat(1025)] }), /exclusion glob is too long/i);
+});
+
+test("brace expansion rejects configurations above the compiled expression limit", () => {
+  const exponential = `${"{a,b}".repeat(11)}.ts`;
+  assert.throws(() => new ReviewFileExclusionPolicy({ userGlobs: [exponential] }), /expansion limit/i);
 });
 
 test("the first matching glob provides a deterministic exclusion reason", () => {
