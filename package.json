@@ -12,9 +12,7 @@
   "engines": {
     "vscode": "^1.125.0"
   },
-  "categories": [
-    "Other"
-  ],
+  "categories": ["Other"],
   "activationEvents": [
     "onStartupFinished",
     "onCommand:reviewRange.markSelectionReviewed",
@@ -23,127 +21,35 @@
     "onCommand:reviewRange.unmarkFileReviewed"
   ],
   "main": "./dist/extension.js",
-  "extensionKind": [
-    "workspace"
-  ],
+  "extensionKind": ["workspace"],
   "contributes": {
     "commands": [
-      {
-        "command": "reviewRange.markSelectionReviewed",
-        "title": "選択範囲を確認済みにする",
-        "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
-      },
-      {
-        "command": "reviewRange.unmarkSelectionReviewed",
-        "title": "選択範囲の確認済みを解除する",
-        "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
-      },
-      {
-        "command": "reviewRange.markFileReviewed",
-        "title": "ファイル全体を確認済みにする",
-        "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
-      },
-      {
-        "command": "reviewRange.unmarkFileReviewed",
-        "title": "ファイル全体の確認済みを解除する",
-        "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
-      }
+      {"command":"reviewRange.markSelectionReviewed","title":"選択範囲を確認済みにする","category":"Review Range","enablement":"editorTextFocus && !isInDiffEditor"},
+      {"command":"reviewRange.unmarkSelectionReviewed","title":"選択範囲の確認済みを解除する","category":"Review Range","enablement":"editorTextFocus && !isInDiffEditor"},
+      {"command":"reviewRange.markFileReviewed","title":"ファイル全体を確認済みにする","category":"Review Range","enablement":"editorTextFocus && !isInDiffEditor"},
+      {"command":"reviewRange.unmarkFileReviewed","title":"ファイル全体の確認済みを解除する","category":"Review Range","enablement":"editorTextFocus && !isInDiffEditor"}
     ],
-    "menus": {
-      "editor/context": [
-        {
-          "command": "reviewRange.markSelectionReviewed",
-          "when": "editorTextFocus && !isInDiffEditor",
-          "group": "reviewRange@1"
-        },
-        {
-          "command": "reviewRange.unmarkSelectionReviewed",
-          "when": "editorTextFocus && !isInDiffEditor",
-          "group": "reviewRange@2"
-        },
-        {
-          "command": "reviewRange.markFileReviewed",
-          "when": "editorTextFocus && !isInDiffEditor",
-          "group": "reviewRange@3"
-        },
-        {
-          "command": "reviewRange.unmarkFileReviewed",
-          "when": "editorTextFocus && !isInDiffEditor",
-          "group": "reviewRange@4"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "Review Range",
-      "properties": {
-        "reviewRange.showGlobalReviewed": {
-          "type": "boolean",
-          "default": true,
-          "description": "Global確認済み範囲を通常エディタの装飾へ重ねて表示します。"
-        },
-        "reviewRange.showGutterIcon": {
-          "type": "boolean",
-          "default": true,
-          "description": "確認済み行のガターアイコンを表示します。"
-        },
-        "reviewRange.showOverviewRuler": {
-          "type": "boolean",
-          "default": false,
-          "description": "確認済み範囲をOverview Rulerへ表示します。"
-        }
-      }
-    },
+    "menus": {"editor/context": [
+      {"command":"reviewRange.markSelectionReviewed","when":"editorTextFocus && !isInDiffEditor","group":"reviewRange@1"},
+      {"command":"reviewRange.unmarkSelectionReviewed","when":"editorTextFocus && !isInDiffEditor","group":"reviewRange@2"},
+      {"command":"reviewRange.markFileReviewed","when":"editorTextFocus && !isInDiffEditor","group":"reviewRange@3"},
+      {"command":"reviewRange.unmarkFileReviewed","when":"editorTextFocus && !isInDiffEditor","group":"reviewRange@4"}
+    ]},
+    "configuration": {"title":"Review Range","properties": {
+      "reviewRange.showGlobalReviewed":{"type":"boolean","default":true,"description":"Global確認済み範囲を通常エディタの装飾へ重ねて表示します。"},
+      "reviewRange.showGutterIcon":{"type":"boolean","default":true,"description":"確認済み行のガターアイコンを表示します。"},
+      "reviewRange.showOverviewRuler":{"type":"boolean","default":false,"description":"確認済み範囲をOverview Rulerへ表示します。"},
+      "reviewRange.exclude":{"type":"array","items":{"type":"string"},"default":["**/.git/**","**/node_modules/**","**/bin/**","**/obj/**","**/dist/**","**/build/**"],"description":"PR進捗とGlobal理解率の集計対象から除外するファイルglobです。"}
+    }},
     "colors": [
-      {
-        "id": "reviewRange.reviewedBackground",
-        "description": "確認済み行の背景色。",
-        "defaults": {
-          "dark": "#a0a0a01f",
-          "light": "#6060601f",
-          "highContrast": "#a0a0a033",
-          "highContrastLight": "#60606033"
-        }
-      },
-      {
-        "id": "reviewRange.reviewedOverviewRuler",
-        "description": "確認済み範囲のOverview Ruler色。",
-        "defaults": {
-          "dark": "#a0a0a08c",
-          "light": "#6060608c",
-          "highContrast": "#a0a0a0cc",
-          "highContrastLight": "#606060cc"
-        }
-      }
+      {"id":"reviewRange.reviewedBackground","description":"確認済み行の背景色。","defaults":{"dark":"#a0a0a01f","light":"#6060601f","highContrast":"#a0a0a033","highContrastLight":"#60606033"}},
+      {"id":"reviewRange.reviewedOverviewRuler","description":"確認済み範囲のOverview Ruler色。","defaults":{"dark":"#a0a0a08c","light":"#6060608c","highContrast":"#a0a0a0cc","highContrastLight":"#606060cc"}}
     ]
   },
   "scripts": {
-    "compile": "tsc -p tsconfig.json",
-    "build": "npm run compile",
-    "lint": "eslint src test --max-warnings=0",
-    "package": "npm run compile && vsce package --no-dependencies",
-    "typecheck:contracts": "tsc -p type-fixtures/contracts/tsconfig.json",
-    "validate:architecture": "node tools/validate-architecture.mjs",
-    "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10",
-    "compile:test": "tsc -p tsconfig.test.json",
-    "test:unit": "npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/debounced-review-state-repository.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-decoration-controller.test.js test-dist/test/unit/normal-editor-decoration-global-isolation.test.js test-dist/test/unit/normal-editor-decoration-model.test.js test-dist/test/unit/normal-editor-decoration-overlap.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/range-mapping-engine.test.js test-dist/test/unit/range-mapping-engine-review.test.js test-dist/test/unit/release-vsix-contract.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js test-dist/test/unit/workspace-review-state-session-provider.test.js",
-    "test:git": "npm run compile:test && node --test test-dist/test/integration/temporary-git.test.js test-dist/test/unit/local-git-adapter.test.js test-dist/test/unit/git-remote-normalization.test.js test-dist/test/integration/local-git-adapter.integration.test.js",
-    "test:t202": "npm run compile:test && node --test test-dist/test/unit/local-git-adapter.test.js test-dist/test/unit/git-remote-normalization.test.js test-dist/test/integration/local-git-adapter.integration.test.js",
-    "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js",
-    "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
-    "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:vscode"
+    "compile":"tsc -p tsconfig.json","build":"npm run compile","lint":"eslint src test --max-warnings=0","package":"npm run compile && vsce package --no-dependencies","typecheck:contracts":"tsc -p type-fixtures/contracts/tsconfig.json","validate:architecture":"node tools/validate-architecture.mjs","validate:architecture:negative":"node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 10","compile:test":"tsc -p tsconfig.test.json",
+    "test:unit":"npm run compile:test && node --test test-dist/test/unit/core-contracts.test.js test-dist/test/unit/debounced-review-state-repository.test.js test-dist/test/unit/line-intervals.test.js test-dist/test/unit/normal-editor-decoration-controller.test.js test-dist/test/unit/normal-editor-decoration-global-isolation.test.js test-dist/test/unit/normal-editor-decoration-model.test.js test-dist/test/unit/normal-editor-decoration-overlap.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/normal-editor-review-command-service.test.js test-dist/test/unit/range-mapping-engine.test.js test-dist/test/unit/range-mapping-engine-review.test.js test-dist/test/unit/release-vsix-contract.test.js test-dist/test/unit/review-file-exclusion-policy.test.js test-dist/test/unit/review-state-service.test.js test-dist/test/unit/workspace-identity.test.js test-dist/test/unit/workspace-review-state-session-provider.test.js",
+    "test:git":"npm run compile:test && node --test test-dist/test/integration/temporary-git.test.js test-dist/test/unit/local-git-adapter.test.js test-dist/test/unit/git-remote-normalization.test.js test-dist/test/integration/local-git-adapter.integration.test.js","test:t202":"npm run compile:test && node --test test-dist/test/unit/local-git-adapter.test.js test-dist/test/unit/git-remote-normalization.test.js test-dist/test/integration/local-git-adapter.integration.test.js","test:t300":"npm run compile:test && node --test test-dist/test/unit/review-file-exclusion-policy.test.js","test:github":"npm run compile:test && node --test test-dist/test/integration/mock-github.test.js","test:vscode":"npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js","test":"npm run test:unit && npm run test:git && npm run test:github && npm run test:vscode"
   },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.1",
-    "@types/vscode": "^1.125.0",
-    "@vscode/test-electron": "^3.0.0",
-    "@vscode/vsce": "^3.9.2",
-    "eslint": "^10.7.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.65.0"
-  }
+  "devDependencies":{"@eslint/js":"^10.0.1","@types/node":"^26.1.1","@types/vscode":"^1.125.0","@vscode/test-electron":"^3.0.0","@vscode/vsce":"^3.9.2","eslint":"^10.7.0","typescript":"^6.0.3","typescript-eslint":"^8.65.0"}
 }
