@@ -8,8 +8,11 @@ VS Code の通常テキストエディタで、確認済みにした行範囲を
 - ファイル全体を確認済みにする、または全解除する操作があります。どちらも実行前に確認ダイアログを表示します。
 - 確認済み行をテーマ対応のグレー背景で表示します。ガターアイコンと Overview Ruler の表示は設定で切り替えられます。
 - hover で現在の context、確認日時、Global 状態を確認できます。
-- 状態は workspace ごとの VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
-- 安全のため、ファイル内容が変わった場合は、以前の確認済み範囲を新しい内容へ自動で引き継ぎません。
+- Git working tree 内のファイルは、workspace 内外を問わず branch または detached HEAD の context として扱います。
+- Git 管理外のファイルは、workspace 内なら workspace context、workspace 外なら external-file context として保存します。
+- UNC 共有上のファイルも、VS Code から開ける場合は server authority を含む URI で識別します。
+- 状態は owner に応じた VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
+- 安全のため、ファイル内容または Git revision が変わった場合は、以前の確認済み範囲を新しい内容へ無条件に引き継ぎません。
 
 ## インストール方法
 
@@ -28,18 +31,21 @@ code --install-extension review-range-tracker-0.0.1-pre.vsix
 
 ## 使い方
 
-1. 単一の folder を開き、その配下のファイルを通常エディタで開きます。
+1. ローカル、Remote、または UNC 上の通常ファイルをエディタで開きます。workspace folder を開いていない場合や、その外側のファイルでも利用できます。
 2. 対象行を選択するか、対象行にカーソルを置きます。
 3. 右クリックメニューまたはコマンドパレットで、`Review Range: 選択範囲を確認済みにする` または `Review Range: 選択範囲の確認済みを解除する` を実行します。
 4. ファイル全体を対象にするには、`Review Range: ファイル全体を確認済みにする` または `Review Range: ファイル全体の確認済みを解除する` を実行し、確認ダイアログを承認します。
 
+Git working tree 内では、ファイルの親ディレクトリから repository root を検出します。Git 管理下かどうかを先に判定し、workspace membership は非 Git 時の保存先選択にだけ使用します。
+
 ## 現在の制限
 
-- diff editor は対象外です。コマンドは実行されず、装飾も表示しません。
-- workspace folder 外のファイルと untitled editor は対象外です。単一 folder workspace での利用を推奨します。
-- 現時点では Git repository 内のファイルも workspace context として扱います。branch、commit、Git diff、GitHub PR は認識しません。
+- diff editor と untitled editor は対象外です。
+- GitHub PR context は未接続です。Git 管理下では現在 branch または detached HEAD context を使用します。
+- Git HEAD が変わった場合の revision 間 mapping は未実装です。旧 revision の状態を新しい HEAD へ無条件に再ラベルしません。
 - 編集による行位置の追従、rename・move への追従は未実装です。内容が変わったファイルの保存済み範囲は無効化します。
 - 複数 root workspace、確認履歴の保存・閲覧は未対応です。
+- UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。
 
 ## 設定
 
