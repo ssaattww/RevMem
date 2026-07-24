@@ -55,6 +55,8 @@ Git executableを利用できない場合は、基準設計7.1.3に従いsnapsho
 
 Git executable不在と`not-repository`以外の実行失敗は、非Gitと誤認しない。権限、timeout、破損repositoryなどの失敗はユーザーへ通知し、別ownerへ新規保存しない。
 
+`git rev-parse --verify HEAD^{commit}`については、workspace-side Extension HostがGit processのlocaleをCへ固定した上で、exit code 128かつ既知のunborn診断`fatal: Needed a single revision`だけをmissing HEADとして受理する。破損HEAD、object database異常、権限エラーなど、同じexit code 128でも別診断の場合は`GitCommandFailedError`として伝播する。
+
 ## 4. Git管理ファイル
 
 Git管理判定は`git ls-files`への登録有無ではなく、documentがGit working tree root配下にあるかで行う。したがってuntracked fileもそのrepositoryに所属する。
@@ -202,19 +204,46 @@ workspace ownerへ移行するとき:
 
 ### 7.3 確実性条件
 
-次をすべて満たす場合だけ範囲をコピーする。
+次をすべて満たす場合だけ範囲をコピーまたは再調整する。
 
 - 現在のcontent hashが一致
 - 現在のline countが一致
-- 移行元の該当file stateが現在documentに対して確実
+- 移行元の該当file stateが移行元revisionに対して確実
+- 移行先の該当file stateが現在の移行先revisionに対して確実
 
-不一致または曖昧な場合はコピーしない。snapshot diff mappingが実装された後は、確実にmappingできた範囲だけを移行できる。
+不一致または曖昧な場合は範囲を変更しない。snapshot diff mappingが実装された後は、確実にmappingできた範囲だけを移行できる。
 
-### 7.4 書き込み順
+### 7.4 復旧時reconciliation
 
-1. 新owner stateを初期化
-2. 新ownerへ完全snapshot transactionをcommit
-3. commit成功後、新ownerをactive ownerとして返す
+Git unavailableなどで一時的に下位ownerへfallbackした後、上位ownerが復旧した場合は、移行先に既存file stateがあっても下位ownerを確認する。
+
+上位contextは下位ownerごとに、最後に確実に確認したsource snapshotを`ownerReconciliation` metadataとして保持する。snapshotはsource owner、repository/context/file ID、content hash、line count、確認済みinterval、source作成・更新日時を含む。
+
+共通baselineがある場合:
+
+```text
+追加差分 = 現在source - 前回source snapshot
+解除差分 = 前回source snapshot - 現在source
+移行先next = (現在移行先 - 解除差分) + 追加差分
+```
+
+追加差分と解除差分は、contextとGlobalの完全snapshotを置換する1回のatomic transactionへまとめる。これによりfallback側の追加を失わず、fallback側で解除した範囲も反映し、移行先で既に解除した範囲を古いsource snapshotの単純unionで復活させない。
+
+baselineがない初回reconciliationでは次の保守規則を使う。
+
+- 移行先に対象file stateがない: 現在sourceを初期移行し、baselineを記録する
+- sourceと移行先のintervalが一致: intervalを変えずbaselineだけを記録する
+- source contextが移行先fileの最終更新後に新規作成された: sourceの追加分だけを移行し、baselineを記録する
+- 上記以外のlegacy・曖昧状態: intervalを変更せず現在sourceをbaselineとして記録し、次回以降の確実な差分だけを扱う
+
+共通baselineがない状態でfallback側に行われた解除は、安全に由来を判定できないため上位ownerへ推測反映しない。baseline確立後の解除だけを差分として反映する。
+
+### 7.5 書き込み順
+
+1. 新owner stateを初期化または読み込む
+2. 確実なsource deltaと次baselineを計算する
+3. 新ownerへ完全snapshot transactionを1回commitする
+4. commit成功後、新ownerをactive ownerとして返す
 
 旧owner stateは履歴・復旧のため残してよいが、ルーターは高いownerが利用可能な間は参照表示と書き込みに使用しない。
 
@@ -245,8 +274,9 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - filesystem-backedでないURI: 操作対象外として通知
 - canonical URI不正: 保存しない
 - Git inspectionの予期しない失敗: 保存ownerを推測せず通知
+- HEAD確認の未知のexit 128: unborn扱いせず`GitCommandFailedError`を通知
 - persistence失敗: 成功表示しない
-- migration commit失敗: 新ownerの確認済み反映を返さず、旧ownerを保持
+- migration/reconciliation commit失敗: 新ownerの確認済み反映を返さず、旧ownerを保持
 - revision mapping未完了: 旧revisionを現在revisionへ再ラベルせず拒否
 
 ## 10. テスト条件
@@ -260,7 +290,12 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - 異なるUNC serverは異なるIDになる
 - external-file状態をworkspaceへ移行できる
 - workspace/external状態をGit ownerへ移行できる
-- content hash不一致では移行しない
+- 既存Git stateがある復旧時もfallback側の追加範囲を取り込める
+- baseline確立後のfallback解除を反映し、移行先で解除済みの範囲を復活させない
+- baseline不在の曖昧な解除を推測反映しない
+- content hashまたはline count不一致では移行しない
+- 既知のunborn HEAD診断だけをmissing HEADとして扱う
+- HEAD確認の未知のexit 128を`GitCommandFailedError`として伝播する
 - decoration readは未保存resourceを初期化しない
 - workspaceなしウィンドウで再起動復元できる
 - 既存workspace、Git、PR保存routeを壊さない
