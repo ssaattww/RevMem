@@ -4,17 +4,17 @@
 
 ## 現在位置
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
-- GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T202 Local Git Adapter
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1、Issue #13規範的追補 `doc/design/issue-13-document-context-routing.md`
+- GitHub Issue: #1、#13
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、Issue #13横断対応（完了）
+- 直近完了タスク: Issue #13 document ownership routing
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T202 Local Git Adapterを最新`main`へ統合し、Windows固定path fixtureをhost-native化した。`test:t202` 16/16、`test:git` 17/17、unit 122/122、GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功した
+- 実装状態: T202 Local Git Adapterを利用し、Git ownershipをworkspace membershipより先に解決するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、external persistenceを実装した。head `5da9b1e`に紐づくActions run `30092391779`で全CI工程が成功した
 - ブロッカー: なし
-- Gitブランチ: `task/t202-local-git-adapter`
-- Pull Request: #8
-- PR方針: 最新`main`をmergeしてT202固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
+- Gitブランチ: `issue/13-document-context-routing`
+- Pull Request: #15
+- PR方針: Issue #13の設計追補、テスト先行実装、独立レビュー、CI証跡を1本のdraft PRへ集約し、マージはユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -65,6 +65,8 @@
 - T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
 - T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
 - T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
+- Issue #13実装レポート: `reports/issue-13-implementation-20260724.md`
+- Issue #13レビューレポート: `reports/issue-13-review-20260724.md`
 
 ## 状態と規模
 
@@ -79,6 +81,12 @@
 | L | 4〜5日程度。超過見込みなら再分解する |
 
 各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。
+
+## 横断Issue
+
+| Issue | 状態 | 変更範囲 | 検証・終了条件 |
+| --- | --- | --- | --- |
+| #13 | 完了 | Git ownershipをworkspace membershipより優先するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、global persistence、README・設計追補 | TDD、失敗診断artifact、独立レビューを実施し、head SHAに紐づくCI全工程が成功してdraft PR #15を作成済み |
 
 ## P0 開発基盤
 
@@ -99,7 +107,7 @@
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
-| T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIXをRelease assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
+| T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIX assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
@@ -180,4 +188,4 @@
 
 ## 次回開始時の選択
 
-T201とT202は最新`main`への追従、統合検証、最終再レビューを完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+Issue #13の横断対応とT201・T202の統合を完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
