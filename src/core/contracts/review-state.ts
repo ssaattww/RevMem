@@ -71,7 +71,7 @@ export interface FileReviewState {
   schemaVersion: SchemaVersion;
   /** Stable file identity that survives an unambiguous rename. */
   fileId: string;
-  /** Current repository-relative path for the file. */
+  /** Current repository-relative path, or canonical URI for an external file. */
   currentPath: string;
   /** Former repository-relative paths retained for rename tracking. */
   previousPaths: string[];
@@ -90,9 +90,13 @@ export interface FileReviewState {
 }
 
 /**
- * The unit that isolates review state for a pull request, branch, or workspace.
+ * The unit that isolates review state for a pull request, branch, workspace, or external file.
  */
-export type ReviewContextKind = "pull-request" | "branch" | "workspace";
+export type ReviewContextKind =
+  | "pull-request"
+  | "branch"
+  | "workspace"
+  | "external-file";
 
 /**
  * Pull-request metadata that identifies a pull-request review context.
@@ -141,7 +145,17 @@ export interface WorkspaceReviewContext {
 }
 
 /**
- * Persisted review state for a single pull-request, branch, or workspace context.
+ * Canonical resource and snapshot metadata for one non-Git file outside every workspace.
+ */
+export interface ExternalFileReviewContext {
+  /** Canonical URI including a UNC or remote authority when present. */
+  canonicalUri: string;
+  /** Snapshot revision used to compare the standalone file content. */
+  snapshotRevision: string;
+}
+
+/**
+ * Persisted review state for a single pull-request, branch, workspace, or external-file context.
  */
 export interface ReviewContextState {
   /** Persisted-document version used by migration readers. */
@@ -150,7 +164,7 @@ export interface ReviewContextState {
   contextId: string;
   /** Determines which optional context descriptor is applicable. */
   kind: ReviewContextKind;
-  /** Stable identity of the repository that owns this context. */
+  /** Stable identity of the repository or standalone resource that owns this context. */
   repositoryId: string;
   /** User-facing name for context selection and display. */
   displayName: string;
@@ -160,6 +174,8 @@ export interface ReviewContextState {
   branch?: BranchReviewContext;
   /** Workspace descriptor when `kind` is `"workspace"`. */
   workspace?: WorkspaceReviewContext;
+  /** Canonical external resource when `kind` is `"external-file"`. */
+  externalFile?: ExternalFileReviewContext;
   /** File state keyed by stable file ID. */
   files: Record<string, FileReviewState>;
   /** ISO 8601 timestamp at which the context was first persisted. */
@@ -174,7 +190,7 @@ export interface ReviewContextState {
 export interface GlobalFileReviewState {
   /** Stable file identity shared with context-specific state. */
   fileId: string;
-  /** Current repository-relative path for the file. */
+  /** Current repository-relative path, or canonical URI for an external file. */
   currentPath: string;
   /** Revision against which the Global ranges are valid. */
   revisionId: string;
@@ -187,12 +203,12 @@ export interface GlobalFileReviewState {
 }
 
 /**
- * Persisted repository-wide Global layer; it contains only currently valid ranges.
+ * Persisted owner-wide Global layer; it contains only currently valid ranges.
  */
 export interface RepositoryGlobalState {
   /** Persisted-document version used by migration readers. */
   schemaVersion: SchemaVersion;
-  /** Stable identity of the repository that owns the Global layer. */
+  /** Stable identity of the repository or standalone resource that owns the Global layer. */
   repositoryId: string;
   /** Revision at which the Global layer was last validated. */
   currentRevisionId: string;

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
+  type ReviewContextKind,
   type ReviewContextState
 } from "../../core/contracts/index";
 import {
@@ -31,6 +32,44 @@ const transactionPairToCommit = (
   contextState: cloneValue(pair.contextState) as ReviewContextState,
   globalState: cloneValue(pair.globalState) as RepositoryGlobalState
 });
+
+const expectedContextKind = (
+  target: ReviewStateRepositoryTarget
+): ReviewContextKind => {
+  switch (target.kind) {
+    case "git":
+      return "branch";
+    case "pull-request":
+      return "pull-request";
+    case "workspace":
+      return "workspace";
+    case "external-file":
+      return "external-file";
+  }
+};
+
+const requireTargetContextKind = (
+  target: ReviewStateRepositoryTarget,
+  contextKind: ReviewContextKind
+): void => {
+  const expected = expectedContextKind(target);
+  if (contextKind === expected) {
+    return;
+  }
+
+  const label =
+    target.kind === "git"
+      ? "Git"
+      : target.kind === "pull-request"
+        ? "Pull-request"
+        : target.kind === "workspace"
+          ? "Workspace"
+          : "External-file";
+  const article = expected === "external-file" ? "an" : "a";
+  throw new Error(
+    `${label} persistence requires ${article} ${expected} review context`
+  );
+};
 
 const requireMatchingIdentity = (
   transaction: Readonly<ReviewStateTransactionLike>
@@ -70,13 +109,16 @@ const requireMatchingIdentity = (
       ? "pull-request"
       : contextKind === "workspace"
         ? "workspace"
-        : "git";
-
-  return {
+        : contextKind === "external-file"
+          ? "external-file"
+          : "git";
+  const target: ReviewStateRepositoryTarget = {
     kind,
     repositoryId: transaction.repositoryId,
     contextId: transaction.contextId
   };
+  requireTargetContextKind(target, contextKind);
+  return target;
 };
 
 const persistedFilePath = (error: unknown, fallbackPath: string): string => {
@@ -113,7 +155,7 @@ export class StaleReviewStateError extends Error {
 }
 
 /**
- * Public filesystem repository that keeps one repository-wide Global state in
+ * Public filesystem repository that keeps one owner-wide Global state in
  * memory and commits Review State Service transactions by full-snapshot CAS.
  * Inputs are cloned before persistence and `getCurrent`/`load` return clones, so
  * callers cannot alias mutable repository memory. Same-instance saves and commits
@@ -146,7 +188,7 @@ export class FileSystemReviewStateRepository {
    * Returns the current in-memory complete snapshot for a target without reading disk.
    *
    * @returns A deep clone of the current state, or `undefined` when this instance has not loaded or saved the target successfully.
-   * @throws Throws when the target cannot be routed from the configured storage URIs.
+   * @throws Throws when the target cannot be routed from the configured storage URIs or its context kind does not match the target kind.
    */
   public getCurrent(
     target: ReviewStateRepositoryTarget
@@ -155,6 +197,7 @@ export class FileSystemReviewStateRepository {
     if (current === undefined) {
       return undefined;
     }
+    requireTargetContextKind(target, current.contextState.kind);
 
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
     const repositoryGlobal = this.currentGlobalByStorageRoot.get(route.rootPath);
@@ -181,6 +224,7 @@ export class FileSystemReviewStateRepository {
       if (loaded === undefined) {
         return undefined;
       }
+      requireTargetContextKind(target, loaded.contextState.kind);
 
       this.recordRepositoryGlobal(target, loaded.globalState);
       return this.getCurrent(target);
@@ -192,7 +236,7 @@ export class FileSystemReviewStateRepository {
 
   /**
    * Validates and persists a complete snapshot, then updates this instance's memory only after persistence succeeds.
-   * The complete repository write is serialized with commits sharing the storage root.
+   * The complete owner write is serialized with commits sharing the storage root.
    *
    * @param commit Caller-owned snapshot copied before write; later caller mutation cannot alias repository memory.
    * @throws Rejects on invalid identity/schema or persistence failure, preserving the previous persisted and in-memory state; notifier failures are ignored.
@@ -205,6 +249,7 @@ export class FileSystemReviewStateRepository {
 
     await this.serializeWrite(route.rootPath, async () => {
       try {
+        requireTargetContextKind(target, commit.contextState.kind);
         await this.atomicRepository.save(target, commit);
         this.recordRepositoryGlobal(target, commit.globalState);
       } catch (error) {
@@ -249,6 +294,7 @@ export class FileSystemReviewStateRepository {
         }
 
         const next = transactionPairToCommit(transaction.next);
+        requireTargetContextKind(target, next.contextState.kind);
         await this.atomicRepository.save(target, next);
         this.recordRepositoryGlobal(target, next.globalState);
       } catch (error) {

@@ -2,6 +2,14 @@ import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import {
+  DocumentReviewStateSessionProvider,
+  type DocumentEditorReviewDescriptor
+} from "./adapters/document-review-state/index";
+import {
+  LocalGitAdapter,
+  NodeGitCommandExecutor
+} from "./adapters/local-git/index";
+import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository
 } from "./adapters/state-repository/index";
@@ -30,6 +38,7 @@ const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showGutterIcon",
   "reviewRange.showOverviewRuler"
 ] as const;
+const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
 interface ReviewedIntervalSnapshot {
   readonly startLine: number;
@@ -158,33 +167,47 @@ export function activate(
   const repository = new DebouncedReviewStateRepository({
     delegate: atomicRepository
   });
-  const sessionProvider = new WorkspaceReviewStateSessionProvider({
+  const workspaceSessionProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
     repository
+  });
+  const documentSessionProvider = new DocumentReviewStateSessionProvider({
+    gitInspector: new LocalGitAdapter(new NodeGitCommandExecutor()),
+    repository,
+    workspaceProvider: workspaceSessionProvider,
+    stableHash
   });
   const appliedDecorations = new Map<
     vscode.TextEditor,
     readonly NormalEditorReviewedDecoration[]
   >();
-  const openWorkspaceSession = async (editor: vscode.TextEditor) => {
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-    if (workspaceFolder === undefined) {
-      throw new Error("ワークスペース内の通常ファイルを開いてください。");
+  const toDocumentDescriptor = (
+    editor: vscode.TextEditor
+  ): DocumentEditorReviewDescriptor => {
+    const documentUri = editor.document.uri;
+    if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
+      throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
     }
-    if (context.storageUri === undefined) {
-      throw new Error("ワークスペース用の保存先を取得できません。");
-    }
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+    const workspace = workspaceFolder === undefined
+      ? undefined
+      : {
+          workspaceFolderUri: toResourceUri(workspaceFolder.uri),
+          relativePath: vscode.workspace.asRelativePath(documentUri, false),
+          displayName: workspaceFolder.name
+        };
 
-    return sessionProvider.open({
-      workspaceFolderUri: toResourceUri(workspaceFolder.uri),
-      documentUri: toResourceUri(editor.document.uri),
+    return {
+      documentUri: toResourceUri(documentUri),
+      documentFsPath: documentUri.fsPath,
       fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
-      relativePath: vscode.workspace.asRelativePath(editor.document.uri, false),
-      workspaceDisplayName: workspaceFolder.name,
+      ...(workspace === undefined ? {} : { workspace }),
       lineCount: editor.document.lineCount,
       contentHash: stableHash.digest(editor.document.getText())
-    });
+    };
   };
+  const openDocumentSession = (editor: vscode.TextEditor) =>
+    documentSessionProvider.open(toDocumentDescriptor(editor));
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
@@ -203,24 +226,12 @@ export function activate(
     isDiffEditor: (editor) => isVisibleDiffEditor(editor),
     getSettings: () => readDecorationSettings(),
     loadDecorations: async (editor, showGlobalReviewed) => {
-      if (
-        vscode.workspace.getWorkspaceFolder(editor.document.uri) === undefined ||
-        context.storageUri === undefined
-      ) {
+      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
         return [];
       }
-
-      const session = await sessionProvider.loadForDecoration({
-        workspaceFolderUri: toResourceUri(
-          vscode.workspace.getWorkspaceFolder(editor.document.uri)!.uri
-        ),
-        documentUri: toResourceUri(editor.document.uri),
-        fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
-        relativePath: vscode.workspace.asRelativePath(editor.document.uri, false),
-        workspaceDisplayName: vscode.workspace.getWorkspaceFolder(editor.document.uri)!.name,
-        lineCount: editor.document.lineCount,
-        contentHash: stableHash.digest(editor.document.getText())
-      });
+      const session = await documentSessionProvider.loadForDecoration(
+        toDocumentDescriptor(editor)
+      );
       if (session === undefined) {
         return [];
       }
@@ -302,7 +313,7 @@ export function activate(
           character: selection.active.character
         }
       })),
-    openSession: (editor) => openWorkspaceSession(editor),
+    openSession: (editor) => openDocumentSession(editor),
     confirmWholeFileOperation: async (operation) => {
       if (operation === "mark-file-reviewed") {
         const result = await vscode.window.showWarningMessage(
@@ -335,7 +346,7 @@ export function activate(
       vscode.commands.registerCommand(commandId, handler),
     showNormalEditorRequired: async () => {
       await vscode.window.showWarningMessage(
-        "通常エディタでワークスペース内のファイルを開いてください。"
+        "通常エディタでローカルまたはRemoteのファイルを開いてください。"
       );
     },
     showCommandError: async (error) => {

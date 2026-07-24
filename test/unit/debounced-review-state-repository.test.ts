@@ -53,8 +53,8 @@ const createTransaction = (
   expected: ReviewStateCommit,
   next: ReviewStateCommit
 ): ReviewStateTransactionLike => ({
-  repositoryId,
-  contextId,
+  repositoryId: expected.contextState.repositoryId,
+  contextId: expected.contextState.contextId,
   expected: {
     contextState: expected.contextState,
     globalState: expected.globalState
@@ -64,6 +64,38 @@ const createTransaction = (
     globalState: next.globalState
   }
 });
+
+const createExternalCommit = (revision: number): ReviewStateCommit => {
+  const occurredAt = `2026-07-23T11:00:0${revision}.000Z`;
+  const externalRepositoryId = "external-file-repository:t107";
+  const externalContextId = "external-file-context:default";
+  const revisionId = "external-live:t107";
+
+  return {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextId: externalContextId,
+      kind: "external-file",
+      repositoryId: externalRepositoryId,
+      displayName: "file:///outside/example.ts",
+      externalFile: {
+        canonicalUri: "file:///outside/example.ts",
+        snapshotRevision: revisionId
+      },
+      files: {},
+      createdAt: occurredAt,
+      updatedAt: occurredAt
+    },
+    globalState: {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      repositoryId: externalRepositoryId,
+      currentRevisionId: revisionId,
+      files: {},
+      updatedAt: occurredAt
+    }
+  };
+};
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -222,6 +254,35 @@ test("a confirmation transaction flushes pending background state and commits wi
 
   assert.equal(scheduler.pendingCount, 0);
   assert.deepEqual(delegate.events, [
+    `save:${initial.contextState.updatedAt}`,
+    `commit:${confirmed.contextState.updatedAt}`
+  ]);
+});
+
+test("external-file confirmation flushes the external pending state before commit", async () => {
+  const scheduler = new ManualScheduler();
+  const delegate = new RecordingRepository();
+  const repository = new DebouncedReviewStateRepository({
+    delegate,
+    debounceMilliseconds: 1000,
+    scheduler
+  });
+  const externalTarget: ReviewStateRepositoryTarget = {
+    kind: "external-file",
+    repositoryId: "external-file-repository:t107",
+    contextId: "external-file-context:default"
+  };
+  const initial = createExternalCommit(1);
+  const confirmed = createExternalCommit(2);
+
+  const pendingSave = repository.save(externalTarget, initial);
+  await repository.commit(createTransaction(initial, confirmed));
+  const eventsBeforeTimer = [...delegate.events];
+  scheduler.runAll();
+  await pendingSave;
+
+  assert.equal(scheduler.pendingCount, 0);
+  assert.deepEqual(eventsBeforeTimer, [
     `save:${initial.contextState.updatedAt}`,
     `commit:${confirmed.contextState.updatedAt}`
   ]);

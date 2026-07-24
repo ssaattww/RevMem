@@ -33,7 +33,8 @@ const requirePositiveSafeInteger = (
  *
  * The executor never enables a shell and never joins arguments into a command
  * string. Non-zero Git exits are returned as data so the adapter can distinguish
- * normal states such as detached HEAD and a missing object.
+ * normal states such as detached HEAD and a missing object. Git output is forced
+ * to the C locale because the adapter classifies stable diagnostic text.
  */
 export class NodeGitCommandExecutor implements GitCommandExecutor {
   /** Configured Git executable name or path. */
@@ -75,6 +76,11 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
         {
           cwd: invocation.cwd,
           encoding: "utf8",
+          env: {
+            ...process.env,
+            LANG: "C",
+            LC_ALL: "C"
+          },
           maxBuffer: this.maxBufferBytes,
           shell: false,
           timeout: this.timeoutMs,

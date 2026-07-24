@@ -5,6 +5,7 @@ export type {
   DiffHunk,
   DiffLine,
   DiffLineKind,
+  ExternalFileReviewContext,
   FileReviewState,
   GlobalFileReviewState,
   InternalReviewState,
