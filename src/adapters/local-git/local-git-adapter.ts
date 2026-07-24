@@ -74,7 +74,7 @@ const rootRepositoryId = (rootPath: string): string => {
   return `git-root:${digest}`;
 };
 
-const isMissingValueExit = (result: GitCommandResult): boolean =>
+const isMissingObjectExit = (result: GitCommandResult): boolean =>
   result.exitCode === 1 || result.exitCode === 128;
 
 const isNotRepositoryResult = (result: GitCommandResult): boolean =>
@@ -82,6 +82,10 @@ const isNotRepositoryResult = (result: GitCommandResult): boolean =>
   /(?:^|\n)fatal:\s+not a git repository\b/iu.test(
     `${result.stdout}\n${result.stderr}`
   );
+
+const isUnbornHeadResult = (result: GitCommandResult): boolean =>
+  result.exitCode === 128 &&
+  /^fatal:\s+Needed a single revision\s*$/u.test(result.stderr.trim());
 
 /**
  * Reads stable repository identity and revision metadata through local Git only.
@@ -200,7 +204,7 @@ export class LocalGitAdapter {
     if (result.exitCode === 0) {
       return true;
     }
-    if (isMissingValueExit(result)) {
+    if (isMissingObjectExit(result)) {
       return false;
     }
 
@@ -291,7 +295,7 @@ export class LocalGitAdapter {
     };
     const result = await this.commandExecutor.execute(invocation);
 
-    if (isMissingValueExit(result)) {
+    if (isUnbornHeadResult(result)) {
       return undefined;
     }
 
