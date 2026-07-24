@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
+import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository
@@ -10,8 +11,13 @@ import {
   createNormalEditorDecorationModel,
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
+import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "./application/review-commands/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
+import {
+  DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
+  type ReviewFileExclusionDecision
+} from "./core/file-exclusion/index";
 import {
   NormalEditorDecorationController,
   createRefreshingNormalEditorReviewCommandHandlers,
@@ -36,9 +42,16 @@ interface ReviewedIntervalSnapshot {
   readonly endLineExclusive: number;
 }
 
+interface FileExclusionPolicySnapshot {
+  readonly revision: number;
+  readonly userGlobs: readonly string[];
+}
+
 interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
+  evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
 }
 
 interface ActiveExtensionRuntime {
@@ -47,6 +60,7 @@ interface ActiveExtensionRuntime {
     vscode.TextEditor,
     vscode.TextEditorDecorationType
   >;
+  readonly fileExclusionConfigurationController: ReviewFileExclusionConfigurationController;
 }
 
 let activeRuntime: ActiveExtensionRuntime | undefined;
@@ -120,26 +134,18 @@ const uniqueVisibleIntervals = (
   >
 ): readonly ReviewedIntervalSnapshot[] => {
   const intervals = new Map<string, ReviewedIntervalSnapshot>();
-
   for (const editor of vscode.window.visibleTextEditors) {
-    if (editor.document.uri.toString() !== documentUri) {
-      continue;
-    }
+    if (editor.document.uri.toString() !== documentUri) continue;
     for (const decoration of appliedDecorations.get(editor) ?? []) {
       const interval = {
         startLine: decoration.interval.startLine,
         endLineExclusive: decoration.interval.endLineExclusive
       };
-      intervals.set(
-        `${interval.startLine}:${interval.endLineExclusive}`,
-        interval
-      );
+      intervals.set(`${interval.startLine}:${interval.endLineExclusive}`, interval);
     }
   }
-
   return [...intervals.values()].sort(
-    (left, right) =>
-      left.startLine - right.startLine ||
+    (left, right) => left.startLine - right.startLine ||
       left.endLineExclusive - right.endLineExclusive
   );
 };
@@ -149,15 +155,39 @@ export function activate(
   context: vscode.ExtensionContext
 ): ReviewRangeExtensionTestApi | undefined {
   const stableHash = new NodeSha256StableHash();
+  const fileExclusionPolicyService = new ReviewFileExclusionPolicyService();
+  const fileExclusionConfigurationController =
+    new ReviewFileExclusionConfigurationController({
+      service: fileExclusionPolicyService,
+      host: {
+        readExcludeGlobs: () => [
+          ...vscode.workspace.getConfiguration("reviewRange").get<readonly string[]>(
+            "exclude",
+            DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
+          )
+        ],
+        onDidChangeConfiguration: (listener) =>
+          vscode.workspace.onDidChangeConfiguration((event) => {
+            listener({
+              affectsExcludeConfiguration: event.affectsConfiguration("reviewRange.exclude")
+            });
+          }),
+        showConfigurationError: (error) => {
+          void vscode.window.showErrorMessage(
+            `除外設定を適用できませんでした: ${errorMessage(error)}`
+          );
+        }
+      }
+    });
+  fileExclusionConfigurationController.start();
+
   const atomicRepository = new FileSystemReviewStateRepository({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
     }
   });
-  const repository = new DebouncedReviewStateRepository({
-    delegate: atomicRepository
-  });
+  const repository = new DebouncedReviewStateRepository({ delegate: atomicRepository });
   const sessionProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
     repository
@@ -174,7 +204,6 @@ export function activate(
     if (context.storageUri === undefined) {
       throw new Error("ワークスペース用の保存先を取得できません。");
     }
-
     return sessionProvider.open({
       workspaceFolderUri: toResourceUri(workspaceFolder.uri),
       documentUri: toResourceUri(editor.document.uri),
@@ -203,27 +232,18 @@ export function activate(
     isDiffEditor: (editor) => isVisibleDiffEditor(editor),
     getSettings: () => readDecorationSettings(),
     loadDecorations: async (editor, showGlobalReviewed) => {
-      if (
-        vscode.workspace.getWorkspaceFolder(editor.document.uri) === undefined ||
-        context.storageUri === undefined
-      ) {
-        return [];
-      }
-
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+      if (workspaceFolder === undefined || context.storageUri === undefined) return [];
       const session = await sessionProvider.loadForDecoration({
-        workspaceFolderUri: toResourceUri(
-          vscode.workspace.getWorkspaceFolder(editor.document.uri)!.uri
-        ),
+        workspaceFolderUri: toResourceUri(workspaceFolder.uri),
         documentUri: toResourceUri(editor.document.uri),
         fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
         relativePath: vscode.workspace.asRelativePath(editor.document.uri, false),
-        workspaceDisplayName: vscode.workspace.getWorkspaceFolder(editor.document.uri)!.name,
+        workspaceDisplayName: workspaceFolder.name,
         lineCount: editor.document.lineCount,
         contentHash: stableHash.digest(editor.document.getText())
       });
-      if (session === undefined) {
-        return [];
-      }
+      if (session === undefined) return [];
       return createNormalEditorDecorationModel({
         contextState: session.contextState,
         globalState: session.globalState,
@@ -246,9 +266,7 @@ export function activate(
         options.gutterIconSize = "contain";
       }
       if (settings.showOverviewRuler) {
-        options.overviewRulerColor = new vscode.ThemeColor(
-          REVIEWED_OVERVIEW_RULER_COLOR
-        );
+        options.overviewRulerColor = new vscode.ThemeColor(REVIEWED_OVERVIEW_RULER_COLOR);
         options.overviewRulerLane = vscode.OverviewRulerLane.Right;
       }
       return vscode.window.createTextEditorDecorationType(options);
@@ -258,31 +276,20 @@ export function activate(
         ...decoration,
         interval: { ...decoration.interval }
       })));
-      editor.setDecorations(
-        decorationType,
-        toDecorationOptions(editor, decorations)
-      );
+      editor.setDecorations(decorationType, toDecorationOptions(editor, decorations));
     },
     onDidChangeVisibleEditors: (listener) =>
       vscode.window.onDidChangeVisibleTextEditors(() => {
         for (const editor of appliedDecorations.keys()) {
-          if (!vscode.window.visibleTextEditors.includes(editor)) {
-            appliedDecorations.delete(editor);
-          }
+          if (!vscode.window.visibleTextEditors.includes(editor)) appliedDecorations.delete(editor);
         }
         invokeDecorationListener(listener);
       }),
     onDidChangeActiveEditor: (listener) =>
-      vscode.window.onDidChangeActiveTextEditor(() => {
-        invokeDecorationListener(listener);
-      }),
+      vscode.window.onDidChangeActiveTextEditor(() => invokeDecorationListener(listener)),
     onDidChangeSettings: (listener) =>
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          DECORATION_CONFIGURATION_KEYS.some((key) =>
-            event.affectsConfiguration(key)
-          )
-        ) {
+        if (DECORATION_CONFIGURATION_KEYS.some((key) => event.affectsConfiguration(key))) {
           invokeDecorationListener(listener);
         }
       }),
@@ -291,48 +298,35 @@ export function activate(
   const decorationController = new NormalEditorDecorationController(decorationHost);
   const commandService = new NormalEditorReviewCommandService<vscode.TextEditor>({
     getLineCount: (editor) => editor.document.lineCount,
-    getSelections: (editor) =>
-      editor.selections.map((selection) => ({
-        anchor: {
-          line: selection.anchor.line,
-          character: selection.anchor.character
-        },
-        active: {
-          line: selection.active.line,
-          character: selection.active.character
-        }
-      })),
+    getSelections: (editor) => editor.selections.map((selection) => ({
+      anchor: { line: selection.anchor.line, character: selection.anchor.character },
+      active: { line: selection.active.line, character: selection.active.character }
+    })),
     openSession: (editor) => openWorkspaceSession(editor),
     confirmWholeFileOperation: async (operation) => {
       if (operation === "mark-file-reviewed") {
         const result = await vscode.window.showWarningMessage(
-          "このファイルの全行を確認済みにします。",
+          "このファイルの全行を確認済みにします.",
           { modal: true },
           MARK_FILE_CONFIRMATION
         );
         return result === MARK_FILE_CONFIRMATION;
       }
-
       const result = await vscode.window.showWarningMessage(
         "このファイルのすべての確認済み状態を解除します。",
-        {
-          modal: true,
-          detail: "Global確認済み状態も解除されます。"
-        },
+        { modal: true, detail: "Global確認済み状態も解除されます。" },
         UNMARK_FILE_CONFIRMATION
       );
       return result === UNMARK_FILE_CONFIRMATION;
     },
     requestHistory: () => {
-      // T206 connects the append-only history store. The request boundary is already
-      // ordered after the atomic state commit by NormalEditorReviewCommandService.
+      // T206 connects the append-only history store after the atomic state commit.
     }
   });
   const host: NormalEditorCommandHost<vscode.TextEditor> = {
     getActiveEditor: () => vscode.window.activeTextEditor,
     isDiffEditor: () => isActiveDiffEditor(),
-    registerCommand: (commandId, handler) =>
-      vscode.commands.registerCommand(commandId, handler),
+    registerCommand: (commandId, handler) => vscode.commands.registerCommand(commandId, handler),
     showNormalEditorRequired: async () => {
       await vscode.window.showWarningMessage(
         "通常エディタでワークスペース内のファイルを開いてください。"
@@ -356,30 +350,38 @@ export function activate(
       decorationController
     )
   );
-  context.subscriptions.push(decorationController, ...registrations);
-  activeRuntime = { persistence: repository, decorationController };
+  context.subscriptions.push(
+    fileExclusionConfigurationController,
+    decorationController,
+    ...registrations
+  );
+  activeRuntime = {
+    persistence: repository,
+    decorationController,
+    fileExclusionConfigurationController
+  };
   void decorationController.start().catch(reportDecorationError);
 
-  if (context.extensionMode !== vscode.ExtensionMode.Test) {
-    return undefined;
-  }
-
+  if (context.extensionMode !== vscode.ExtensionMode.Test) return undefined;
   return {
-    refreshVisibleEditorDecorations: () =>
-      decorationController.refreshVisibleEditors(),
+    refreshVisibleEditorDecorations: () => decorationController.refreshVisibleEditors(),
     getVisibleReviewedIntervals: (documentUri) =>
-      uniqueVisibleIntervals(documentUri, appliedDecorations)
+      uniqueVisibleIntervals(documentUri, appliedDecorations),
+    getFileExclusionPolicySnapshot: () => ({
+      revision: fileExclusionPolicyService.getRevision(),
+      userGlobs: fileExclusionPolicyService.getUserGlobs()
+    }),
+    evaluateFileExclusion: (path, isBinary = false) =>
+      fileExclusionPolicyService.evaluate({ path, isBinary })
   };
 }
 
-/** Flushes pending state and releases decoration resources during Extension Host teardown. */
+/** Flushes pending state and releases runtime resources during Extension Host teardown. */
 export async function deactivate(): Promise<void> {
   const runtime = activeRuntime;
   activeRuntime = undefined;
-  if (runtime === undefined) {
-    return;
-  }
-
+  if (runtime === undefined) return;
+  runtime.fileExclusionConfigurationController.dispose();
   runtime.decorationController.dispose();
   await runtime.persistence.dispose();
 }
