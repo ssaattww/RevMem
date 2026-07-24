@@ -34,12 +34,9 @@ const createExternalCommit = (second: number): ReviewStateCommit => {
       kind: "external-file",
       repositoryId,
       displayName: "file://server/share/example.ts",
-      workspace: {
-        workspaceId: "external-file-owner:test",
-        snapshotRevision: revisionId
-      },
       externalFile: {
-        canonicalUri: "file://server/share/example.ts"
+        canonicalUri: "file://server/share/example.ts",
+        snapshotRevision: revisionId
       },
       files: {},
       createdAt: occurredAt,
