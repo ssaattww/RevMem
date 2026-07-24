@@ -19,3 +19,5 @@ tsconfig.test.json
 tools/**
 type-fixtures/**
 package-lock.json
+artifacts/**
+*.vsix
