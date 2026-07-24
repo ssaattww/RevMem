@@ -40,6 +40,7 @@ UNC resourceは、VS Codeから開ける場合にserver authorityを含むcanoni
 
 - `ReviewContextKind`とrepository targetへ`external-file`を追加した。
 - canonical URIからrepository/context/file IDをdomain-separated SHA-256で生成する。
+- `ExternalFileReviewContext`へcanonical URIとsnapshot revisionを保持し、workspace descriptorを流用しない。
 - Windows path、drive、case、separatorを正規化する。
 - UNC authorityをcanonical URIへ保持する。
 - `globalStorageUri/external-files/<repository-id-hash>`へ保存する。
@@ -57,7 +58,7 @@ UNC resourceは、VS Codeから開ける場合にserver authorityを含むcanoni
 
 - external-fileをGit repositoryとは別のglobal subtreeへルーティングした。
 - lifecycle debounce keyへ`external-file`を含め、pending external saveをconfirmation commit前にflushする。
-- target kindとcontext kindの整合性を保存層で検証する。
+- target kindとcontext kindの整合性を公開repository層でsave・load・commit時に検証する。
 - context/Globalの完全snapshot CASをexternal-fileにも適用した。
 
 ### Extension接続と文書
@@ -74,12 +75,13 @@ CIは既存workflowの失敗時診断artifact収集を使用した。workflowに
 
 - run `30090082687`: 初期実装後のlint failure。診断artifact `ci-failure-diagnostics-30090082687-1`を確認した。
 - run `30090730806`: external descriptor整理後のcompile failure。診断artifact `ci-failure-diagnostics-30090730806-1`を確認した。
-- run `30092181736`: unit 139件中138件成功、error message契約1件失敗。診断artifact `ci-failure-diagnostics-30092181736-1`を確認した。
+- run `30091334042`: external descriptor変更後の既存unit fixture failure。診断artifact `ci-failure-diagnostics-30091334042-1`を確認した。
+- run `30093664051`: dedicated external snapshot descriptor導入後の既存fixture compile failure。診断artifact `ci-failure-diagnostics-30093664051-1`を確認した。
 
-### 最終Green
+### コード最終Green
 
-- head: `5da9b1efa6a24d5398634cdabd831578a9455a62`
-- workflow run: `30092391779`
+- head: `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`
+- workflow run: `30093939815`
 - Install dependencies: success
 - Build: success
 - Lint: success
@@ -100,7 +102,7 @@ CIは既存workflowの失敗時診断artifact収集を使用した。workflowに
 - externalからworkspace、workspaceからGitへ確実な範囲を移行する。
 - content hash不一致時は移行しない。
 - external-fileのpending saveをconfirmation commit前にflushする。
-- external-file contextをGit targetへ保存できない。
+- external-file targetへ異なるcontext kindを保存できない。
 
 ## Scope外・後続
 
