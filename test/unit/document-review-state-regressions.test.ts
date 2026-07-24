@@ -131,7 +131,7 @@ const createProvider = (
   });
 };
 
-test("external-file context owns its snapshot revision without a workspace descriptor", async () => {
+test("external-file context retains canonical URI and snapshot revision", async () => {
   const provider = createProvider(
     new MemoryRepository(),
     new FixedGitInspector(nonRepository())
@@ -140,9 +140,12 @@ test("external-file context owns its snapshot revision without a workspace descr
   const session = await provider.open(descriptor());
 
   assert.equal(session.contextState.kind, "external-file");
-  assert.equal(session.contextState.workspace, undefined);
   assert.equal(
-    session.contextState.externalFile?.snapshotRevision,
+    session.contextState.externalFile?.canonicalUri,
+    "file:///outside/example.ts"
+  );
+  assert.equal(
+    session.contextState.workspace?.snapshotRevision,
     session.target.revisionId
   );
 });
