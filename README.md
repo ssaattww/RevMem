@@ -18,13 +18,13 @@ VS Code の通常テキストエディタで、確認済みにした行範囲を
 
 この拡張機能は Marketplace ではなく VSIX で配布します。
 
-1. GitHub Releases の `0.0.1-pre` から `review-range-tracker-0.0.1-pre.vsix` をダウンロードします。
+1. GitHub Releases の最新Releaseから、そのversionに対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回Releaseの例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
 2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選んでダウンロードしたファイルを指定します。
 
 CLI を使う場合は、次を実行します。
 
 ```powershell
-code --install-extension review-range-tracker-0.0.1-pre.vsix
+code --install-extension review-range-tracker-<version>.vsix
 ```
 
 更新時も、新しい Release asset をダウンロードして再インストールしてください。
