@@ -22,6 +22,9 @@ const repositoryIdHash = (repositoryId: string): string =>
  * Resolves the common persistence root without importing VS Code APIs.
  * Git and pull-request state share globalStorageUri by repository identity;
  * non-Git workspace state stays inside storageUri.
+ *
+ * @returns Absolute paths for the target's state pointer and future persistence subdirectories.
+ * @throws Throws when target IDs are empty or the required configured storage URI is unavailable.
  */
 export const resolveReviewStateStorageRoute = (
   storageUris: ReviewStateStorageUris,

@@ -27,7 +27,7 @@ const createContextState = (
   repositoryId: string,
   contextId: string,
   reviewedEndLineExclusive = 3,
-  kind: "branch" | "workspace" = "branch"
+  kind: "branch" | "pull-request" | "workspace" = "branch"
 ): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   contextId,
@@ -41,6 +41,18 @@ const createContextState = (
           snapshotRevision: "snapshot-1"
         }
       }
+    : kind === "pull-request"
+      ? {
+          pullRequest: {
+            host: "github.com",
+            owner: "example",
+            repository: "review-range",
+            number: 42,
+            state: "open",
+            baseSha: "base123",
+            headSha: "abc123"
+          }
+        }
     : {
         branch: {
           refName: "refs/heads/main",
@@ -97,7 +109,7 @@ const createCommit = (
   repositoryId: string,
   contextId: string,
   reviewedEndLineExclusive = 3,
-  kind: "branch" | "workspace" = "branch"
+  kind: "branch" | "pull-request" | "workspace" = "branch"
 ): ReviewStateCommit => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   contextState: createContextState(
@@ -483,6 +495,9 @@ test("schema mismatch is rejected and reported during load", async () => {
   }
 });
 
+/// <summary>
+/// Verifies that saving rejects a repository ID mismatch before it writes a manifest.
+/// </summary>
 test("save validates manifest, context, Global, target identity before any write", async () => {
   const temporary = await createTemporaryStorage();
   const target = repositoryTarget();
@@ -499,6 +514,131 @@ test("save validates manifest, context, Global, target identity before any write
       /repositoryId/
     );
     await assert.rejects(() => readFile(route.statePointerPath, "utf8"));
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+/// <summary>
+/// Verifies that concurrent saves for distinct contexts on one repository instance retain both manifest references.
+/// </summary>
+test("concurrent saves retain both context references in the repository manifest", async () => {
+  const temporary = await createTemporaryStorage();
+  const firstTarget = repositoryTarget(undefined, "branch:main");
+  const secondTarget = repositoryTarget(undefined, "branch:feature");
+
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris
+    });
+    const firstCommit = createCommit(firstTarget.repositoryId, firstTarget.contextId, 2);
+    const secondCommit = createCommit(
+      secondTarget.repositoryId,
+      secondTarget.contextId,
+      7
+    );
+
+    await Promise.all([
+      repository.save(firstTarget, firstCommit),
+      repository.save(secondTarget, secondCommit)
+    ]);
+
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, firstTarget);
+    const manifest = JSON.parse(
+      await readFile(route.statePointerPath, "utf8")
+    ) as RepositoryStateManifest;
+    assert.deepEqual(
+      manifest.contexts.map((context) => context.contextId).sort(),
+      [firstTarget.contextId, secondTarget.contextId].sort()
+    );
+
+    const reloaded = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris
+    });
+    assert.deepEqual(
+      (await reloaded.load(firstTarget))?.contextState,
+      firstCommit.contextState
+    );
+    assert.deepEqual(
+      (await reloaded.load(secondTarget))?.contextState,
+      secondCommit.contextState
+    );
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+/// <summary>
+/// Verifies that each target kind accepts only its matching review context kind.
+/// </summary>
+test("save accepts the exact target and context kind mapping", async () => {
+  const temporary = await createTemporaryStorage();
+  const cases: ReadonlyArray<{
+    target: ReviewStateRepositoryTarget;
+    contextKind: "branch" | "pull-request" | "workspace";
+  }> = [
+    { target: repositoryTarget(), contextKind: "branch" },
+    {
+      target: {
+        ...repositoryTarget(undefined, "pr:42"),
+        kind: "pull-request"
+      },
+      contextKind: "pull-request"
+    },
+    { target: workspaceTarget(), contextKind: "workspace" }
+  ];
+
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris
+    });
+
+    for (const { target, contextKind } of cases) {
+      await repository.save(
+        target,
+        createCommit(target.repositoryId, target.contextId, 3, contextKind)
+      );
+    }
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+/// <summary>
+/// Verifies that each target kind rejects a different review context kind before any write.
+/// </summary>
+test("save rejects non-matching target and context kinds", async () => {
+  const temporary = await createTemporaryStorage();
+  const cases: ReadonlyArray<{
+    target: ReviewStateRepositoryTarget;
+    contextKind: "branch" | "pull-request" | "workspace";
+  }> = [
+    { target: repositoryTarget(), contextKind: "pull-request" },
+    {
+      target: {
+        ...repositoryTarget(undefined, "pr:42"),
+        kind: "pull-request"
+      },
+      contextKind: "branch"
+    },
+    { target: workspaceTarget(), contextKind: "branch" }
+  ];
+
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris
+    });
+
+    for (const { target, contextKind } of cases) {
+      await assert.rejects(
+        () =>
+          repository.save(
+            target,
+            createCommit(target.repositoryId, target.contextId, 3, contextKind)
+          ),
+        /requires|cannot store/i
+      );
+    }
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
