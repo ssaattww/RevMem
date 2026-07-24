@@ -11,14 +11,13 @@ import {
 
 class FakeDisposable implements ReviewFileExclusionConfigurationDisposable {
   public disposed = false;
-  public dispose(): void {
-    this.disposed = true;
-  }
+  public dispose(): void { this.disposed = true; }
 }
 
 class FakeConfigurationHost implements ReviewFileExclusionConfigurationHost {
   public excludeGlobs: readonly string[] = [];
   public readCount = 0;
+  public readonly errors: unknown[] = [];
   public readonly subscription = new FakeDisposable();
   private listener: ((event: Readonly<ReviewFileExclusionConfigurationChangeEvent>) => void) | undefined;
 
@@ -32,6 +31,10 @@ class FakeConfigurationHost implements ReviewFileExclusionConfigurationHost {
   ): ReviewFileExclusionConfigurationDisposable {
     this.listener = listener;
     return this.subscription;
+  }
+
+  public showConfigurationError(error: unknown): void {
+    this.errors.push(error);
   }
 
   public fire(affectsExcludeConfiguration: boolean): void {
@@ -81,6 +84,21 @@ test("controller updates only for relevant effective configuration changes", () 
   assert.equal(host.readCount, 3);
   assert.equal(service.evaluate(candidate("src/app.min.js")).excluded, true);
   assert.deepEqual(events, [1, 2]);
+});
+
+test("controller retains the last valid policy and reports invalid settings", () => {
+  const service = new ReviewFileExclusionPolicyService();
+  const host = new FakeConfigurationHost();
+  host.excludeGlobs = ["**/*.generated.ts"];
+  const controller = new ReviewFileExclusionConfigurationController({ service, host });
+  controller.start();
+
+  host.excludeGlobs = ["a".repeat(1025)];
+  host.fire(true);
+
+  assert.equal(host.errors.length, 1);
+  assert.deepEqual(service.getUserGlobs(), ["**/*.generated.ts"]);
+  assert.equal(service.evaluate(candidate("src/model.generated.ts")).excluded, true);
 });
 
 test("controller disposes its configuration subscription during deactivation", () => {
