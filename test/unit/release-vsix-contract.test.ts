@@ -5,16 +5,19 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-const readProjectFile = (path: string): string => readFileSync(resolve(process.cwd(), path), "utf8");
+const normalizeEol = (content: string): string => content.replace(/\r\n/g, "\n");
+const readProjectFile = (path: string): string =>
+  normalizeEol(readFileSync(resolve(process.cwd(), path), "utf8"));
 
 const extractResolver = (workflow: string): string => {
-  const stepStart = workflow.indexOf("      - name: Resolve package version\n");
+  const normalizedWorkflow = normalizeEol(workflow);
+  const stepStart = normalizedWorkflow.indexOf("      - name: Resolve package version\n");
   assert.notEqual(stepStart, -1);
-  const scriptStart = workflow.indexOf("        run: |\n", stepStart);
-  const nextStep = workflow.indexOf("\n      - name:", scriptStart);
+  const scriptStart = normalizedWorkflow.indexOf("        run: |\n", stepStart);
+  const nextStep = normalizedWorkflow.indexOf("\n      - name:", scriptStart);
   assert.notEqual(scriptStart, -1);
   assert.notEqual(nextStep, -1);
-  return workflow
+  return normalizedWorkflow
     .slice(scriptStart + "        run: |\n".length, nextStep)
     .replace(/^ {10}/gm, "");
 };
