@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
+import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository
@@ -10,8 +11,13 @@ import {
   createNormalEditorDecorationModel,
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
+import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "./application/review-commands/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
+import {
+  DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
+  type ReviewFileExclusionDecision
+} from "./core/file-exclusion/index";
 import {
   NormalEditorDecorationController,
   createRefreshingNormalEditorReviewCommandHandlers,
@@ -36,9 +42,16 @@ interface ReviewedIntervalSnapshot {
   readonly endLineExclusive: number;
 }
 
+interface FileExclusionPolicySnapshot {
+  readonly revision: number;
+  readonly userGlobs: readonly string[];
+}
+
 interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
+  evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
 }
 
 interface ActiveExtensionRuntime {
@@ -47,6 +60,7 @@ interface ActiveExtensionRuntime {
     vscode.TextEditor,
     vscode.TextEditorDecorationType
   >;
+  readonly fileExclusionConfigurationController: ReviewFileExclusionConfigurationController;
 }
 
 let activeRuntime: ActiveExtensionRuntime | undefined;
@@ -149,6 +163,34 @@ export function activate(
   context: vscode.ExtensionContext
 ): ReviewRangeExtensionTestApi | undefined {
   const stableHash = new NodeSha256StableHash();
+  const fileExclusionPolicyService = new ReviewFileExclusionPolicyService();
+  const fileExclusionConfigurationController =
+    new ReviewFileExclusionConfigurationController({
+      service: fileExclusionPolicyService,
+      host: {
+        readExcludeGlobs: () => [
+          ...vscode.workspace.getConfiguration("reviewRange").get<readonly string[]>(
+            "exclude",
+            DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
+          )
+        ],
+        onDidChangeConfiguration: (listener) =>
+          vscode.workspace.onDidChangeConfiguration((event) => {
+            listener({
+              affectsExcludeConfiguration: event.affectsConfiguration(
+                "reviewRange.exclude"
+              )
+            });
+          }),
+        showConfigurationError: (error) => {
+          void vscode.window.showErrorMessage(
+            `除外設定を適用できませんでした: ${errorMessage(error)}`
+          );
+        }
+      }
+    });
+  fileExclusionConfigurationController.start();
+
   const atomicRepository = new FileSystemReviewStateRepository({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
@@ -356,8 +398,16 @@ export function activate(
       decorationController
     )
   );
-  context.subscriptions.push(decorationController, ...registrations);
-  activeRuntime = { persistence: repository, decorationController };
+  context.subscriptions.push(
+    fileExclusionConfigurationController,
+    decorationController,
+    ...registrations
+  );
+  activeRuntime = {
+    persistence: repository,
+    decorationController,
+    fileExclusionConfigurationController
+  };
   void decorationController.start().catch(reportDecorationError);
 
   if (context.extensionMode !== vscode.ExtensionMode.Test) {
@@ -368,11 +418,17 @@ export function activate(
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),
     getVisibleReviewedIntervals: (documentUri) =>
-      uniqueVisibleIntervals(documentUri, appliedDecorations)
+      uniqueVisibleIntervals(documentUri, appliedDecorations),
+    getFileExclusionPolicySnapshot: () => ({
+      revision: fileExclusionPolicyService.getRevision(),
+      userGlobs: fileExclusionPolicyService.getUserGlobs()
+    }),
+    evaluateFileExclusion: (path, isBinary = false) =>
+      fileExclusionPolicyService.evaluate({ path, isBinary })
   };
 }
 
-/** Flushes pending state and releases decoration resources during Extension Host teardown. */
+/** Flushes pending state and releases runtime resources during Extension Host teardown. */
 export async function deactivate(): Promise<void> {
   const runtime = activeRuntime;
   activeRuntime = undefined;
@@ -380,6 +436,7 @@ export async function deactivate(): Promise<void> {
     return;
   }
 
+  runtime.fileExclusionConfigurationController.dispose();
   runtime.decorationController.dispose();
   await runtime.persistence.dispose();
 }

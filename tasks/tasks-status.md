@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T203 diff parserとrevision間interval mapping
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
+- 直近完了タスク: T300 共通除外policy
 - 現在のタスク: なし
 - 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T203初回7件と再レビュー4件の計11 findingをTerra/highでテスト先行修正し、Sol/high第3レビューは指摘なし。T203 focused 15/15、build、lint、contract typecheck、architecture、diff checkはpass。全unit 143/144の1件はorigin/main由来release contract failureとしてheld
-- ブロッカー: なし
-- Gitブランチ: `task/t203-diff-interval-mapping`
-- Pull Request: #16
-- PR方針: T203固有差分、最新main merge、review finding対応、最終検証証跡をPR #16へ反映する
+- 実装状態: T203は最終再レビューまで完了済み。T300はR5/R6指摘をTDDで修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した
+- ブロッカー: なし。Issue #21のWindows CRLF release assertionとMarkdown lint未整備はT300外のheld risk
+- Gitブランチ: `task/t300-exclusion-policy`
+- Pull Request: #17
+- PR方針: current main統合を含むT300 R5 follow-upのpolicy、runtime設定adapter、test、reports、進捗同期だけをPR #17へ反映する。マージはユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -77,12 +77,21 @@
 - T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
 - T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
 - T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
+- T300実装レポート: `reports/issue-1-t300-implementation-20260724205000.md`
+- T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
+- T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
+- T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
 - T203実装レポート: `reports/issue-1-t203-implementation-20260724204000.md`
 - T203初回レビューレポート: `reports/issue-1-t203-review-20260724212419.md`
 - T203 review follow-upレポート: `reports/issue-1-t203-review-followup-20260724213540.md`
 - T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
 - T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
 - T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
+- T300 R5レビューレポート: `reports/issue-1-t300-review-r5-20260725074608.md`
+- T300 R5 review follow-upレポート: `reports/issue-1-t300-review-followup-r5-20260725080046.md`
+- T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
+- T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
+- T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
 
 ## 状態と規模
 
@@ -137,7 +146,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T300 | 未着手 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
+| T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
@@ -200,4 +209,4 @@
 
 ## 次回開始時の選択
 
-T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。T300はR5/R6 findingを回帰テストから修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。

@@ -28,7 +28,7 @@
 | P0 | 完了 | 開発基盤 | T001〜T003 | なし | 拡張機能をビルドでき、単体・統合・Extension Hostテストの最小経路がローカルとCIで動く |
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常エディタで確認・解除・装飾・再起動復元が動き、T104の最終レビュー修正を含む状態でT105〜T107の回帰がなく、main更新ごとのVSIX prereleaseとして配布・導入でき、AC-01〜AC-06とAC-23のローカル部分を満たす |
 | P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | 編集、commit、branch、renameに追従し、変更箇所だけが未確認になる。AC-07〜AC-10とAC-12を満たす |
-| P3 | 未着手 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両側を操作でき、追加・削除行だけを使う進捗と除外を含むファイル一覧が表示される。AC-14〜AC-17を満たす |
+| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両側を操作でき、追加・削除行だけを使う進捗と除外を含むファイル一覧が表示される。AC-14〜AC-17を満たす |
 | P4 | 未着手 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得フォールバック、オフラインキャッシュ、複数PR管理が動く。AC-11とAC-21を満たす |
 | P5 | 未着手 | Global確認済みと理解率 | T501〜T506 | P2、P4 | Global状態の同期、表示優先順位、非空行集計、除外設定が動く。AC-18〜AC-20を満たす |
 | P6 | 未着手 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | Gitなし、履歴改変、移行、排他、障害、性能の試験を通し、AC-13、AC-22〜AC-24を含む24件すべてを満たす |
@@ -75,7 +75,8 @@
 
 - T201 Range Mapping Engineは最新`main`上で統合・検証済み
 - T202 Local Git Adapterは最新`main`上で統合・検証済み
-- 次の実装対象はT203 diff parserとrevision間interval mapping
+- T203 diff parserとrevision間interval mappingは最新`main`上で統合・検証・最終再レビュー済み
+- 次の実装対象はT204 rename・directory move・deleteのfile state適用
 
 ### 終了チェックポイント
 
@@ -91,6 +92,13 @@
 ### 目的
 
 ローカルbase/head比較を使い、GitHub接続前でもPR相当のdiff操作と進捗計算を完成させる。
+
+### 現在の進捗
+
+- T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
+- R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
+- R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
+- T203とT300の完了によりT301とT302は着手可能である。全体の次タスクはP2のT204とする
 
 ### 終了チェックポイント
 
