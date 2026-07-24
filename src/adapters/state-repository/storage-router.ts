@@ -20,7 +20,7 @@ const repositoryIdHash = (repositoryId: string): string =>
 
 /**
  * Resolves the common persistence root without importing VS Code APIs.
- * Git and pull-request state share globalStorageUri by repository identity;
+ * Git, pull-request, and external-file state use globalStorageUri;
  * non-Git workspace state stays inside storageUri.
  */
 export const resolveReviewStateStorageRoute = (
@@ -53,9 +53,12 @@ export const resolveReviewStateStorageRoute = (
     storageUris.globalStorageUri.fsPath,
     "globalStorageUri.fsPath"
   );
+  const collection = target.kind === "external-file"
+    ? "external-files"
+    : "repositories";
   const rootPath = path.join(
     path.resolve(globalStoragePath),
-    "repositories",
+    collection,
     repositoryIdHash(repositoryId)
   );
 
