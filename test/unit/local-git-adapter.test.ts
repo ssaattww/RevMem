@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import path from "node:path";
 
 import {
   GitExecutableNotFoundError,
@@ -9,6 +10,11 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
+
+const repositoryRoot = path.resolve("workspace", "repository");
+const repositorySource = path.join(repositoryRoot, "src");
+const otherRepositoryRoot = path.resolve("workspace", "other");
+const otherRepositorySource = path.join(otherRepositoryRoot, "src");
 
 const success = (stdout = ""): GitCommandResult => ({
   exitCode: 0,
@@ -87,8 +93,8 @@ const queueRepositoryInspection = (
     readonly head?: string;
   } = {}
 ): void => {
-  const startPath = options.startPath ?? "/workspace/repository/src";
-  const rootPath = options.rootPath ?? "/workspace/repository";
+  const startPath = options.startPath ?? repositorySource;
+  const rootPath = options.rootPath ?? repositoryRoot;
   const symbolicRef = options.symbolicRef ?? "refs/heads/main";
   const head = options.head ?? "0123456789abcdef0123456789abcdef01234567";
 
@@ -129,7 +135,7 @@ test("repository inspection uses argument arrays and returns normalized Git iden
   });
 
   const inspection = await new LocalGitAdapter(executor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
 
   assert.equal(inspection.kind, "repository");
@@ -139,7 +145,7 @@ test("repository inspection uses argument arrays and returns normalized Git iden
 
   assert.deepEqual(inspection.repository, {
     gitVersion: "2.55.0",
-    rootPath: "/workspace/repository",
+    rootPath: repositoryRoot,
     repositoryId: "github.com/owner/repository",
     remote: {
       name: "origin",
@@ -199,10 +205,10 @@ test("fork remotes remain distinct repository identities", async () => {
   });
 
   const upstream = await new LocalGitAdapter(upstreamExecutor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
   const fork = await new LocalGitAdapter(forkExecutor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
 
   assert.equal(upstream.kind, "repository");
@@ -223,18 +229,18 @@ test("a repository without remotes receives a stable root-derived identity", asy
   queueRepositoryInspection(firstExecutor);
   queueRepositoryInspection(secondExecutor);
   queueRepositoryInspection(otherRootExecutor, {
-    startPath: "/workspace/other/src",
-    rootPath: "/workspace/other"
+    startPath: otherRepositorySource,
+    rootPath: otherRepositoryRoot
   });
 
   const first = await new LocalGitAdapter(firstExecutor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
   const afterRestart = await new LocalGitAdapter(secondExecutor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
   const otherRoot = await new LocalGitAdapter(otherRootExecutor).inspectRepository(
-    "/workspace/other/src"
+    otherRepositorySource
   );
 
   assert.equal(first.kind, "repository");
@@ -262,7 +268,7 @@ test("detached HEAD is distinguished while retaining the exact HEAD object", asy
   });
 
   const inspection = await new LocalGitAdapter(executor).inspectRepository(
-    "/workspace/repository/src"
+    repositorySource
   );
 
   assert.equal(inspection.kind, "repository");

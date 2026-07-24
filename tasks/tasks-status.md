@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（進行中）
-- 直近完了タスク: T103 workspace context・file ID・非Git repository ID
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
+- 直近完了タスク: T202 Local Git Adapter
 - 現在のタスク: なし
-- 次のタスク: T104 共通状態repository
-- 実装状態: T102 merge後のmainへT103固有差分をrebaseして衝突解消し、POSIX path identity衝突とURI suffix contractをRed/Greenで修正。全検証とsol high最終再レビューpassまで完了
+- 次のタスク: T203 diff parserとrevision間interval mapping
+- 実装状態: T202 Local Git Adapterを最新`main`へ統合し、Windows固定path fixtureをhost-native化した。`test:t202` 16/16、`test:git` 17/17、unit 122/122、GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功した
 - ブロッカー: なし
-- Gitブランチ: `task/t103-workspace-identity`
-- Pull Request: #5
-- PR方針: T102 merge後の`main`へT103固有コミットだけをrebaseし、Red/Greenと失敗時診断artifactをPR上に保持する
+- Gitブランチ: `task/t202-local-git-adapter`
+- Pull Request: #8
+- PR方針: 最新`main`をmergeしてT202固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -42,6 +42,29 @@
 - T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260723140033.md`
 - T103 review follow-upレポート: `reports/issue-1-t103-review-followup-20260723140931.md`
 - T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
+- T104実装レポート: `reports/issue-1-t104-implementation-20260723142500.md`
+- T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
+- T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
+- T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
+- T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
+- T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
+- T107実装レポート: `reports/issue-1-t107-implementation-20260723201924.md`
+- T107レビューレポート: `reports/issue-1-t107-review-20260723201924.md`
+- T108調査レポート: `reports/issue-1-t108-investigation-20260723225437.md`
+- T108実装レポート: `reports/issue-1-t108-implementation-20260723230550.md`
+- T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
+- T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
+- T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
+- T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
+- T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
+- T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
+- T201 review follow-upレポート: `reports/issue-1-t201-review-followup-20260724194226.md`
+- T201最終再レビューレポート: `reports/issue-1-t201-review-r3-20260724194817.md`
+- T202実装レポート: `reports/issue-1-t202-implementation-20260723143500.md`
+- T202初回レビューレポート: `reports/issue-1-t202-review-20260723144000.md`
+- T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
+- T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
+- T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
 
 ## 状態と規模
 
@@ -72,18 +95,19 @@
 | T101 | 完了 | M | 0始まり半開区間の正規化、長さ、検索、重複・隣接結合、減算・分割と、空選択・複数選択の行範囲変換を純粋ロジックで実装する | T003 | 0行、最終行、逆向き選択、重複、隣接、包含、部分解除の境界テストが通る。AC-04、AC-05を満たす |
 | T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
-| T104 | 次 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
-| T105 | 未着手 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
-| T106 | 未着手 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
-| T107 | 未着手 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
+| T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
+| T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
+| T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
+| T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
+| T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIXをRelease assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T201 | 未着手 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する単体テストが通る |
-| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる |
-| T203 | 未着手 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
+| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
+| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
+| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
@@ -156,4 +180,4 @@
 
 ## 次回開始時の選択
 
-T103は完了した。次回の実装はT104だけを選択し、保存先routing、atomic temp-write/flush/replace、書き込み失敗時の非破壊性を示す失敗するテストから開始する。
+T201とT202は最新`main`への追従、統合検証、最終再レビューを完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
