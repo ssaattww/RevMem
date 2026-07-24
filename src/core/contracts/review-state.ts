@@ -135,23 +135,21 @@ export interface BranchReviewContext {
 }
 
 /**
- * Snapshot metadata that identifies a non-Git workspace review context.
+ * Snapshot metadata that identifies a non-Git workspace or standalone-file context.
  */
 export interface WorkspaceReviewContext {
-  /** Stable identity for the non-Git workspace. */
+  /** Stable identity for the snapshot owner. */
   workspaceId: string;
-  /** Snapshot revision used to compare workspace content. */
+  /** Snapshot revision used to compare current content. */
   snapshotRevision: string;
 }
 
 /**
- * Canonical resource and snapshot metadata for one non-Git file outside every workspace.
+ * Canonical resource metadata for one non-Git file outside every workspace.
  */
 export interface ExternalFileReviewContext {
   /** Canonical URI including a UNC or remote authority when present. */
   canonicalUri: string;
-  /** Snapshot revision used to compare the standalone file content. */
-  snapshotRevision: string;
 }
 
 /**
@@ -172,9 +170,9 @@ export interface ReviewContextState {
   pullRequest?: PullRequestReviewContext;
   /** Branch descriptor when `kind` is `"branch"`. */
   branch?: BranchReviewContext;
-  /** Workspace descriptor when `kind` is `"workspace"`. */
+  /** Snapshot descriptor when `kind` is `"workspace"` or `"external-file"`. */
   workspace?: WorkspaceReviewContext;
-  /** External resource descriptor when `kind` is `"external-file"`. */
+  /** Canonical external resource when `kind` is `"external-file"`. */
   externalFile?: ExternalFileReviewContext;
   /** File state keyed by stable file ID. */
   files: Record<string, FileReviewState>;
@@ -261,7 +259,7 @@ export interface DiffHunk {
   newStart: number;
   /** Number of modified-side lines covered by the hunk. */
   newCount: number;
-  /** Parsed lines used to identify reviewable changed lines. */
+  /** Parsed lines in source order within the hunk. */
   lines: DiffLine[];
 }
 
