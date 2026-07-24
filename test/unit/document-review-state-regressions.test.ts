@@ -11,9 +11,7 @@ import {
   type DocumentGitInspector,
   type DocumentReviewStateRepository
 } from "../../src/adapters/document-review-state/index";
-import type {
-  LocalGitRepositoryInspection
-} from "../../src/adapters/local-git/index";
+import type { LocalGitRepositoryInspection } from "../../src/adapters/local-git/index";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
@@ -23,13 +21,9 @@ import {
   type ReviewStateSaveScheduler,
   type ReviewStateTransactionLike
 } from "../../src/adapters/state-repository/index";
-import {
-  WorkspaceReviewStateSessionProvider
-} from "../../src/adapters/workspace-review-state/index";
+import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
-import {
-  REVIEW_RANGE_SCHEMA_VERSION
-} from "../../src/core/contracts/index";
+import { REVIEW_RANGE_SCHEMA_VERSION } from "../../src/core/contracts/index";
 import { markReviewedRanges } from "../../src/core/review-state/index";
 
 const occurredAt = "2026-07-24T12:45:00.000Z";
@@ -96,10 +90,7 @@ const windowsRepository = (): LocalGitRepositoryInspection => ({
     gitVersion: "2.55.0",
     rootPath: "C:\\Repo",
     repositoryId: "github.com/example/project",
-    branch: {
-      kind: "branch",
-      fullRef: "refs/heads/main"
-    },
+    branch: { kind: "branch", fullRef: "refs/heads/main" },
     head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   }
 });
@@ -138,12 +129,10 @@ const createProvider = (
 };
 
 test("external-file context retains canonical URI and snapshot revision", async () => {
-  const provider = createProvider(
+  const session = await createProvider(
     new MemoryRepository(),
     new FixedGitInspector(nonRepository())
-  );
-
-  const session = await provider.open(descriptor());
+  ).open(descriptor());
 
   assert.equal(session.contextState.kind, "external-file");
   assert.equal(
@@ -208,11 +197,10 @@ test("external-file reviewed ranges survive repository and provider restart", as
 
   try {
     const firstRepository = new FileSystemReviewStateRepository({ storageUris });
-    const firstProvider = createProvider(
+    const first = await createProvider(
       firstRepository,
       new FixedGitInspector(nonRepository())
-    );
-    const first = await firstProvider.open(descriptor());
+    ).open(descriptor());
     await first.committer.commit(markReviewedRanges({
       contextState: first.contextState,
       globalState: first.globalState,
@@ -221,12 +209,10 @@ test("external-file reviewed ranges survive repository and provider restart", as
       occurredAt
     }));
 
-    const secondRepository = new FileSystemReviewStateRepository({ storageUris });
-    const secondProvider = createProvider(
-      secondRepository,
+    const restored = await createProvider(
+      new FileSystemReviewStateRepository({ storageUris }),
       new FixedGitInspector(nonRepository())
-    );
-    const restored = await secondProvider.open(descriptor());
+    ).open(descriptor());
 
     assert.deepEqual(
       restored.contextState.files[restored.target.fileId]?.modifiedReviewed,
@@ -259,9 +245,7 @@ class RecordingPersistenceDelegate implements ReviewStatePersistenceDelegate {
     return undefined;
   }
 
-  public async save(
-    target: ReviewStateRepositoryTarget
-  ): Promise<void> {
+  public async save(target: ReviewStateRepositoryTarget): Promise<void> {
     this.calls.push(`save:${target.kind}`);
   }
 
@@ -355,7 +339,7 @@ test("external-file storage rejects a mismatched branch context before writing",
 
     await assert.rejects(
       repository.save(externalTarget(), mismatched),
-      /external-file persistence requires an external-file review context/
+      /external-file persistence requires an external-file review context/i
     );
   } finally {
     await rm(root, { recursive: true, force: true });
