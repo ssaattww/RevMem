@@ -70,7 +70,9 @@ const requireMatchingIdentity = (
       ? "pull-request"
       : contextKind === "workspace"
         ? "workspace"
-        : "git";
+        : contextKind === "external-file"
+          ? "external-file"
+          : "git";
 
   return {
     kind,
