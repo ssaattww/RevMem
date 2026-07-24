@@ -2,11 +2,13 @@ import type { ReviewFileExclusionPolicyService } from "../../application/file-ex
 
 /** Minimal disposable returned by the VS Code configuration event adapter. */
 export interface ReviewFileExclusionConfigurationDisposable {
+  /** Stops the associated configuration subscription. Disposal is idempotent. */
   dispose(): void;
 }
 
 /** Platform-neutral projection of one VS Code configuration change. */
 export interface ReviewFileExclusionConfigurationChangeEvent {
+  /** Whether this VS Code event changes the effective `reviewRange.exclude` setting. */
   readonly affectsExcludeConfiguration: boolean;
 }
 
@@ -24,7 +26,9 @@ export interface ReviewFileExclusionConfigurationHost {
 
 /** Constructor options for the VS Code exclusion configuration controller. */
 export interface ReviewFileExclusionConfigurationControllerOptions {
+  /** Application service receiving valid effective exclusion snapshots. */
   readonly service: ReviewFileExclusionPolicyService;
+  /** VS Code boundary that reads and observes `reviewRange.exclude`. */
   readonly host: ReviewFileExclusionConfigurationHost;
 }
 

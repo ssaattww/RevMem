@@ -24,6 +24,8 @@ const expectedExcludeGlobs = [
   "**/build/**"
 ] as const;
 
+const expectedDecisionBearingExcludeGlobs = expectedExcludeGlobs.slice(1);
+
 const expectedThemeColors = new Map([
   [
     "reviewRange.reviewedBackground",
@@ -172,7 +174,7 @@ const assertExclusionConfigurationLifecycle = async (
 ): Promise<void> => {
   const configuration = vscode.workspace.getConfiguration("reviewRange");
   const initial = extensionApi.getFileExclusionPolicySnapshot();
-  assert.deepEqual(initial.userGlobs, expectedExcludeGlobs);
+  assert.deepEqual(initial.userGlobs, expectedDecisionBearingExcludeGlobs);
   assert.equal(extensionApi.evaluateFileExclusion("dist/index.js").excluded, true);
 
   const configuredGlobs = [...expectedExcludeGlobs, "**/*.generated.ts"];
@@ -231,7 +233,7 @@ const assertExclusionConfigurationLifecycle = async (
   );
   assert.deepEqual(
     extensionApi.getFileExclusionPolicySnapshot().userGlobs,
-    expectedExcludeGlobs
+    expectedDecisionBearingExcludeGlobs
   );
 };
 

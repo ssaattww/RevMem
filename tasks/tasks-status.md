@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T300 共通除外policy review follow-up
+- 直近完了タスク: T300 共通除外policy
 - 現在のタスク: なし
-- 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T300のR2指摘4件に対応した。VS Code設定runtime接続、POSIX Git pathのbackslash保持、glob件数・長さ・brace展開・RegExp数上限、最新main `938904da6e63c7111dc8add56cb3a53acd9e9904`への積み直しを完了した。回帰Red run `30093514144`と`30093714252`で診断artifactを生成し、コード整理後head `04c02622e320f57301a84b430e09b6a6d5f71b1b`のrun `30094763392`で全工程が成功した
-- ブロッカー: なし
+- 次のタスク: T204 rename・directory move・deleteのfile state適用
+- 実装状態: T203は最終再レビューまで完了済み。T300はR5/R6指摘をTDDで修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した
+- ブロッカー: なし。Issue #21のWindows CRLF release assertionとMarkdown lint未整備はT300外のheld risk
 - Gitブランチ: `task/t300-exclusion-policy`
 - Pull Request: #17
-- PR方針: T104-2を含む最新mainをbaseとし、T300のpolicy、runtime設定adapter、test、reports、進捗同期だけを提出する。マージはユーザーが行う
+- PR方針: current main統合を含むT300 R5 follow-upのpolicy、runtime設定adapter、test、reports、進捗同期だけをPR #17へ反映する。マージはユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -81,6 +81,17 @@
 - T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
 - T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
 - T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
+- T203実装レポート: `reports/issue-1-t203-implementation-20260724204000.md`
+- T203初回レビューレポート: `reports/issue-1-t203-review-20260724212419.md`
+- T203 review follow-upレポート: `reports/issue-1-t203-review-followup-20260724213540.md`
+- T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
+- T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
+- T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
+- T300 R5レビューレポート: `reports/issue-1-t300-review-r5-20260725074608.md`
+- T300 R5 review follow-upレポート: `reports/issue-1-t300-review-followup-r5-20260725080046.md`
+- T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
+- T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
+- T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
 
 ## 状態と規模
 
@@ -125,8 +136,8 @@
 | --- | --- | --- | --- | --- | --- |
 | T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
-| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
-| T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
+| T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
+| T204 | 次 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
@@ -135,7 +146,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、POSIX Git pathを保持し、設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
+| T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
@@ -198,4 +209,4 @@
 
 ## 次回開始時の選択
 
-T300は最新mainへの積み直し、R2指摘修正、TDD、Extension Host回帰、専用再レビュー、進捗同期を完了した。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。T300はR5/R6 findingを回帰テストから修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。

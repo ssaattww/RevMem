@@ -8,6 +8,11 @@ export const DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS = Object.freeze([
   "**/build/**"
 ] as const);
 
+/** Repository-relative globs that remain excluded even when the effective setting is empty. */
+const ALWAYS_REVIEW_FILE_EXCLUDE_GLOBS = Object.freeze([
+  "**/.git/**"
+] as const);
+
 /** Maximum raw user glob entries accepted from one configuration snapshot. */
 export const MAX_REVIEW_FILE_EXCLUDE_GLOBS = 256;
 /** Maximum UTF-16 code-unit length of one exclusion glob. */
@@ -26,28 +31,56 @@ export interface ReviewFileExclusionCandidate {
 
 /** Stable reason retained for progress views and later Global aggregation reporting. */
 export type ReviewFileExclusionReason =
+  /** The candidate is binary regardless of its path. */
   | { readonly kind: "binary" }
-  | { readonly kind: "default-glob"; readonly pattern: string }
-  | { readonly kind: "user-glob"; readonly pattern: string };
+  /** A manifest-known exclusion glob decided the result. */
+  | {
+    readonly kind: "default-glob";
+    /** Replay-safe canonical glob text; literal backslashes are represented by two backslashes. */
+    readonly pattern: string;
+  }
+  /** An exclusion glob added outside the manifest defaults decided the result. */
+  | {
+    readonly kind: "user-glob";
+    /** Replay-safe canonical glob text; literal backslashes are represented by two backslashes. */
+    readonly pattern: string;
+  };
 
 /** Result of evaluating one repository file against the shared exclusion policy. */
 export type ReviewFileExclusionDecision =
+  /** The candidate remains included after path and binary checks. */
   | { readonly excluded: false; readonly normalizedPath: string }
+  /** The candidate is excluded and carries the stable decisive reason. */
   | { readonly excluded: true; readonly normalizedPath: string; readonly reason: ReviewFileExclusionReason };
 
-/** Constructor options for a shared review-file exclusion policy snapshot. */
+/** Constructor options for a shared review-file exclusion policy snapshot. Omitted entries use manifest defaults. */
 export interface ReviewFileExclusionPolicyOptions {
-  /** User-configured exclusion globs. Blank and duplicate patterns are removed. */
+  /**
+   * Raw setting entries or a canonical snapshot. Omission uses manifest defaults, while an explicit
+   * empty array retains only binary and `.git` exclusion. Blank and duplicate patterns are removed.
+   */
   readonly userGlobs?: readonly string[];
 }
 
+/** One normalized glob and its compiled regular expressions. */
 interface CompiledGlob {
+  /** Normalized glob text retained for decisions and snapshots. */
   readonly pattern: string;
+  /** Expanded regular expressions that implement the glob. */
   readonly expressions: readonly RegExp[];
 }
 
+/** One compiled effective glob together with its externally stable reason kind. */
+interface EffectiveCompiledGlob extends CompiledGlob {
+  /** Reason kind reported when this glob matches. */
+  readonly reasonKind: "default-glob" | "user-glob";
+}
+
+/** Shared counter used to enforce the expanded-expression ceiling. */
 interface ExpansionBudget {
+  /** Number of expressions compiled so far. */
   count: number;
+  /** Maximum number of expressions permitted for this compile operation. */
   readonly limit: number;
 }
 
@@ -89,7 +122,20 @@ const normalizeGlob = (pattern: string): string | undefined => {
     throw new RangeError(`Exclusion glob is too long; maximum is ${MAX_REVIEW_FILE_EXCLUDE_GLOB_LENGTH}.`);
   }
 
-  let normalized = pattern.trim().replaceAll("\\", "/");
+  let normalized = "";
+  const trimmed = pattern.trim();
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed[index] !== "\\") {
+      normalized += trimmed[index];
+      continue;
+    }
+    if (trimmed[index + 1] === "\\") {
+      normalized += "\\";
+      index += 1;
+      continue;
+    }
+    normalized += "/";
+  }
   if (normalized.length === 0) return undefined;
   if (normalized.startsWith("!")) {
     throw new RangeError("Negated glob patterns are not supported by the exclusion policy.");
@@ -228,9 +274,8 @@ const compileExpandedGlob = (expandedPattern: string): RegExp => {
 
 const compileGlobList = (
   patterns: readonly string[],
-  expressionLimit: number
+  budget: ExpansionBudget
 ): readonly CompiledGlob[] => {
-  const budget: ExpansionBudget = { count: 0, limit: expressionLimit };
   return patterns.map((pattern) => ({
     pattern,
     expressions: expandBraces(pattern, budget).map(compileExpandedGlob)
@@ -253,36 +298,62 @@ const normalizeGlobList = (patterns: readonly string[]): readonly string[] => {
   return normalized;
 };
 
-const firstMatchingGlob = (path: string, globs: readonly CompiledGlob[]): CompiledGlob | undefined =>
+/** Escapes each literal backslash so a normalized glob can be safely replayed as raw input. */
+const toCanonicalGlob = (normalizedGlob: string): string => normalizedGlob.replaceAll("\\", "\\\\");
+
+const firstMatchingGlob = <T extends CompiledGlob>(
+  path: string,
+  globs: readonly T[]
+): T | undefined =>
   globs.find(({ expressions }) => expressions.some((expression) => expression.test(path)));
+
+const defaultGlobSet = new Set<string>(DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS);
+const alwaysGlobSet = new Set<string>(ALWAYS_REVIEW_FILE_EXCLUDE_GLOBS);
 
 /** Evaluates Git and GitHub changed files using one immutable policy snapshot. */
 export class ReviewFileExclusionPolicy {
-  private readonly defaultGlobs: readonly CompiledGlob[];
-  private readonly userGlobs: readonly CompiledGlob[];
+  private readonly alwaysGlobs: readonly CompiledGlob[];
+  private readonly effectiveGlobs: readonly EffectiveCompiledGlob[];
 
   public constructor(options: ReviewFileExclusionPolicyOptions = {}) {
-    this.defaultGlobs = compileGlobList(DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS, DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS.length);
-    const normalizedUserGlobs = normalizeGlobList(options.userGlobs ?? []);
-    this.userGlobs = compileGlobList(normalizedUserGlobs, MAX_REVIEW_FILE_EXCLUDE_EXPRESSIONS);
+    this.alwaysGlobs = compileGlobList(
+      ALWAYS_REVIEW_FILE_EXCLUDE_GLOBS,
+      { count: 0, limit: ALWAYS_REVIEW_FILE_EXCLUDE_GLOBS.length }
+    );
+    const inputGlobs = options.userGlobs ?? DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS;
+    const normalizedEffectiveGlobs = normalizeGlobList(inputGlobs)
+      .filter((glob) => !alwaysGlobSet.has(glob));
+    const budget: ExpansionBudget = { count: 0, limit: MAX_REVIEW_FILE_EXCLUDE_EXPRESSIONS };
+    this.effectiveGlobs = compileGlobList(normalizedEffectiveGlobs, budget).map((glob) => ({
+      ...glob,
+      reasonKind: defaultGlobSet.has(glob.pattern) ? "default-glob" : "user-glob"
+    }));
   }
 
-  /** Returns a detached normalized snapshot of the configured user globs. */
+  /** Returns a detached replay-safe canonical snapshot of decision-bearing effective exclusion globs. */
   public getUserGlobs(): readonly string[] {
-    return this.userGlobs.map(({ pattern }) => pattern);
+    return this.effectiveGlobs.map(({ pattern }) => toCanonicalGlob(pattern));
   }
 
   /** Determines whether one changed file is excluded and retains the decisive reason. */
   public evaluate(candidate: Readonly<ReviewFileExclusionCandidate>): ReviewFileExclusionDecision {
     const normalizedPath = normalizeRepositoryRelativePath(candidate.path);
     if (candidate.isBinary) return { excluded: true, normalizedPath, reason: { kind: "binary" } };
-    const defaultGlob = firstMatchingGlob(normalizedPath, this.defaultGlobs);
-    if (defaultGlob !== undefined) {
-      return { excluded: true, normalizedPath, reason: { kind: "default-glob", pattern: defaultGlob.pattern } };
+    const alwaysGlob = firstMatchingGlob(normalizedPath, this.alwaysGlobs);
+    if (alwaysGlob !== undefined) {
+      return {
+        excluded: true,
+        normalizedPath,
+        reason: { kind: "default-glob", pattern: toCanonicalGlob(alwaysGlob.pattern) }
+      };
     }
-    const userGlob = firstMatchingGlob(normalizedPath, this.userGlobs);
-    if (userGlob !== undefined) {
-      return { excluded: true, normalizedPath, reason: { kind: "user-glob", pattern: userGlob.pattern } };
+    const effectiveGlob = firstMatchingGlob(normalizedPath, this.effectiveGlobs);
+    if (effectiveGlob !== undefined) {
+      return {
+        excluded: true,
+        normalizedPath,
+        reason: { kind: effectiveGlob.reasonKind, pattern: toCanonicalGlob(effectiveGlob.pattern) }
+      };
     }
     return { excluded: false, normalizedPath };
   }

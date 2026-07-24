@@ -9,11 +9,13 @@ import {
   type ReviewFileExclusionConfigurationHost
 } from "../../src/adapters/file-exclusion/index";
 
+/** Records whether the configuration event subscription has been disposed. */
 class FakeDisposable implements ReviewFileExclusionConfigurationDisposable {
   public disposed = false;
   public dispose(): void { this.disposed = true; }
 }
 
+/** Provides mutable effective settings and a controllable configuration event for controller tests. */
 class FakeConfigurationHost implements ReviewFileExclusionConfigurationHost {
   public excludeGlobs: readonly string[] = [];
   public readCount = 0;
@@ -58,6 +60,22 @@ test("controller initializes the shared policy from the active VS Code configura
   assert.deepEqual(service.getUserGlobs(), ["**/*.generated.ts"]);
   assert.equal(service.evaluate(candidate("src/model.generated.ts")).excluded, true);
   assert.deepEqual(events, [1]);
+});
+
+test("controller applies an empty effective setting without reintroducing manifest defaults", () => {
+  const service = new ReviewFileExclusionPolicyService();
+  const host = new FakeConfigurationHost();
+  const controller = new ReviewFileExclusionConfigurationController({ service, host });
+
+  controller.start();
+
+  assert.deepEqual(service.evaluate(candidate(".git/config")), {
+    excluded: true,
+    normalizedPath: ".git/config",
+    reason: { kind: "default-glob", pattern: "**/.git/**" }
+  });
+  assert.equal(service.evaluate(candidate("dist/index.js")).excluded, false);
+  assert.equal(service.evaluate(candidate("node_modules/pkg/index.js")).excluded, false);
 });
 
 test("controller updates only for relevant effective configuration changes", () => {

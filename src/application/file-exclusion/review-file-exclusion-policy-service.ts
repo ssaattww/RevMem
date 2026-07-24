@@ -4,19 +4,30 @@ import {
   type ReviewFileExclusionDecision
 } from "../../core/file-exclusion/index";
 
+/** Constructor options for the shared policy service. Omitted entries use manifest defaults. */
 export interface ReviewFileExclusionPolicyServiceOptions {
+  /**
+   * Raw setting entries or a replay-safe canonical snapshot. Omission uses manifest defaults,
+   * while an explicit empty array retains only binary and `.git` exclusion.
+   */
   readonly userGlobs?: readonly string[];
 }
 
+/** Immutable notification emitted when the normalized effective policy changes. */
 export interface ReviewFileExclusionPolicyChangeEvent {
+  /** Monotonic revision assigned to this new policy snapshot. */
   readonly revision: number;
+  /** Detached replay-safe canonical decision-bearing entries for this revision. */
   readonly userGlobs: readonly string[];
 }
 
+/** Releases one exclusion-policy change subscription. */
 export interface ReviewFileExclusionPolicyChangeDisposable {
+  /** Stops future notifications for the associated listener. */
   dispose(): void;
 }
 
+/** Receives a detached event after a normalized effective policy change. */
 export type ReviewFileExclusionPolicyChangeListener = (
   event: Readonly<ReviewFileExclusionPolicyChangeEvent>
 ) => void;
@@ -39,7 +50,7 @@ export class ReviewFileExclusionPolicyService {
     return this.policy.evaluate(candidate);
   }
 
-  /** Returns a detached normalized snapshot of the current user globs. */
+  /** Returns a detached replay-safe canonical snapshot of the current decision-bearing effective setting. */
   public getUserGlobs(): readonly string[] {
     return [...this.policy.getUserGlobs()];
   }
@@ -49,7 +60,7 @@ export class ReviewFileExclusionPolicyService {
     return this.revision;
   }
 
-  /** Replaces user globs and notifies subscribers only when normalized semantics changed. */
+  /** Replaces raw or canonical entries and notifies only when the decision-bearing canonical snapshot changed. */
   public updateUserGlobs(userGlobs: readonly string[]): boolean {
     const nextPolicy = new ReviewFileExclusionPolicy({ userGlobs });
     const currentGlobs = this.policy.getUserGlobs();
