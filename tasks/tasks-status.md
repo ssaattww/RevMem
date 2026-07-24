@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T202 Local Git Adapter
+- 現在のPhase: P2 編集・Git差分追従（進行中）
+- 直近完了タスク: T109 SSC互換の継続的VSIX prerelease
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T202 Local Git Adapterを最新`main`へ統合し、Windows固定path fixtureをhost-native化した。`test:t202` 16/16、`test:git` 17/17、unit 122/122、GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功した
+- 実装状態: T109はSSCのtrigger、event別version解決、main push時のnotes・PR取得・pre-release作成を移植し、NuGet処理だけをNode/npm/vsceとVSIX Release assetへ置換した。最新`0.0.1-pre`の次を`0.0.2-pre`、以後を1ずつincrementするresolver、dynamic VSIX package、全test、SSC忠実性reviewを通過し、task commitとdraft PR #18を提出済み
 - ブロッカー: なし
-- Gitブランチ: `task/t202-local-git-adapter`
-- Pull Request: #8
-- PR方針: 最新`main`をmergeしてT202固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
+- Gitブランチ: `fix/ssc-release-versioning`
+- Pull Request: #18
+- PR方針: T109をdraft PR #18として提出済み。SSCとの差分はNuGetからVSIXへの置換に限定する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -55,6 +55,10 @@
 - T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
 - T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
 - T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
+- T109調査レポート: `reports/issue-1-t109-investigation-20260724201518.md`
+- T109実装レポート: `reports/issue-1-t109-implementation-20260724202210.md`
+- T109要件変更follow-upレポート: `reports/issue-1-t109-requirement-followup-20260724203235.md`
+- T109レビューレポート: `reports/issue-1-t109-review-20260724202930.md`
 - T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
 - T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
 - T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
@@ -100,6 +104,7 @@
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 | T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIXをRelease assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
+| T109 | 完了 | S | SSCのRelease workflowを基準に、`release: published`、`push: main`、version指定の`workflow_dispatch`、main更新ごとの動的pre-release version解決を移植し、NuGet配布部分だけをVSIXのGitHub Release assetへ置換する | T108 | 既存最新`0.0.1-pre`の次を`0.0.2-pre`とし、過去の未配布commitは補填せず、以後の各main pushでpatchを1ずつ進めたpre-releaseと同版VSIXを作成する。契約test、package検証、専用review、進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
@@ -180,4 +185,4 @@
 
 ## 次回開始時の選択
 
-T201とT202は最新`main`への追従、統合検証、最終再レビューを完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T109はSSC互換の継続的VSIX prereleaseを修正・検証・レビューし、draft PR #18として提出済み。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
