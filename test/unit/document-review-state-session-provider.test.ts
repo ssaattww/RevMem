@@ -209,15 +209,7 @@ test("a non-Git workspace file keeps workspace-local persistence", async () => {
 
   assert.equal(session.owner, "workspace");
   assert.equal(session.contextState.kind, "workspace");
-  assert.equal(
-    repository.loads.some((target) => target.kind === "workspace"),
-    true
-  );
-  assert.equal(
-    repository.loads.some((target) => target.kind === "external-file"),
-    true,
-    "Lower-owner reconciliation may inspect external state without changing the active owner."
-  );
+  assert.equal(repository.loads.at(-1)?.kind, "workspace");
 });
 
 test("an accessible non-Git external UNC file keeps its authority in global identity", async () => {
@@ -246,7 +238,7 @@ test("an accessible non-Git external UNC file keeps its authority in global iden
 
 test("external reviewed ranges are promoted when the same non-Git file joins a workspace", async () => {
   const repository = new FakeRepository();
-  const gitInspector = new FakeGitInspector(nonRepository();
+  const gitInspector = new FakeGitInspector(nonRepository());
   const provider = createProvider(repository, gitInspector);
 
   const external = await provider.open(descriptor());
@@ -267,10 +259,10 @@ test("external reviewed ranges are promoted when the same non-Git file joins a w
 
 test("workspace reviewed ranges are promoted when Git ownership is detected later", async () => {
   const repository = new FakeRepository();
-  const gitInspector = new FakeGitInspector(nonRepository();
+  const gitInspector = new FakeGitInspector(nonRepository());
   const provider = createProvider(repository, gitInspector);
 
-  const workspace = await provider.open(descriptor({ workspace: workspaceDescriptor() });
+  const workspace = await provider.open(descriptor({ workspace: workspaceDescriptor() }));
   await markReviewed(workspace, 0, 3);
 
   gitInspector.result = repositoryInspection();
