@@ -230,6 +230,9 @@ export class DocumentReviewStateSessionProvider {
     targetSession: DocumentNormalEditorReviewStateSession,
     source: DocumentNormalEditorDecorationState
   ): Promise<DocumentNormalEditorReviewStateSession> {
+    if (source.owner === "git") {
+      return targetSession;
+    }
     if (
       source.target.contentHash !== targetSession.target.contentHash ||
       source.target.lineCount !== targetSession.target.lineCount
