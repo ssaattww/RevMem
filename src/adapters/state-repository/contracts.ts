@@ -21,14 +21,18 @@ export interface StorageUriLike {
 
 /** ExtensionContext storage locations used by the persistence adapter. */
 export interface ReviewStateStorageUris {
-  /** Shared extension storage used for Git repositories and pull requests. */
+  /** Shared extension storage used for Git repositories, pull requests, and external files. */
   readonly globalStorageUri: StorageUriLike;
   /** Workspace-local extension storage used when no Git repository exists. */
   readonly storageUri?: StorageUriLike;
 }
 
 /** Logical owner of one context/global state transaction. */
-export type ReviewStateRepositoryTargetKind = "git" | "pull-request" | "workspace";
+export type ReviewStateRepositoryTargetKind =
+  | "git"
+  | "pull-request"
+  | "workspace"
+  | "external-file";
 
 /** Identity needed to route and load one review context. */
 export interface ReviewStateRepositoryTarget {
@@ -90,7 +94,7 @@ export interface RepositoryStateManifestGlobalReference {
   readonly updatedAt: string;
 }
 
-/** Atomic commit pointer for all Git/PR context and Global state documents. */
+/** Atomic commit pointer for all Git/PR/external context and Global state documents. */
 export interface RepositoryStateManifest {
   readonly schemaVersion: SchemaVersion;
   readonly storageKind: "repository";
