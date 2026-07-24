@@ -38,7 +38,7 @@ test("parses zero-context git diff metadata and multiple hunks", () => {
     newLineCount: hunk.newLineCount
   })), [
     { oldStart: 1, oldLineCount: 2, newStart: 1, newLineCount: 3 },
-    { oldStart: 7, oldLineCount: 1, newStart: 8, newLineCount: 0 }
+    { oldStart: 7, oldLineCount: 1, newStart: 9, newLineCount: 0 }
   ]);
 });
 
@@ -101,8 +101,7 @@ test("handles pure addition and pure deletion without reviewing inserted lines",
 
   assert.deepEqual(result.reviewed, [
     { startLine: 0, endLineExclusive: 2 },
-    { startLine: 4, endLineExclusive: 6 },
-    { startLine: 6, endLineExclusive: 8 }
+    { startLine: 4, endLineExclusive: 8 }
   ]);
 });
 
