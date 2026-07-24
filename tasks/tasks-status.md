@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T104-2 T104マージ後レビュー修正の復旧
+- 直近完了タスク: T203 diff parserとrevision間interval mapping
 - 現在のタスク: なし
-- 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T104の最終レビュー修正を最新mainへ復旧した。T104 focused 20/20、T105〜T107関連unit 39/39、3段階Extension Host再起動、build、lint、contract typecheck、architecture検証が成功し、Sol/high最終再レビューは指摘なし。全unit 128/129の1件はT104-2から未変更のorigin/main由来release contract failureとしてheld
+- 次のタスク: T204 rename・directory move・deleteのfile state適用
+- 実装状態: T203初回7件と再レビュー4件の計11 findingをTerra/highでテスト先行修正し、Sol/high第3レビューは指摘なし。T203 focused 15/15、build、lint、contract typecheck、architecture、diff checkはpass。全unit 143/144の1件はorigin/main由来release contract failureとしてheld
 - ブロッカー: なし
-- Gitブランチ: `fix/t104-post-merge-review-followup`
-- Pull Request: #19
-- PR方針: T104の漏れた最終レビュー修正、証跡、T105〜T107回帰検証をdraft PR #19として提出済み
+- Gitブランチ: `task/t203-diff-interval-mapping`
+- Pull Request: #16
+- PR方針: T203固有差分、最新main merge、review finding対応、最終検証証跡をPR #16へ反映する
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -77,6 +77,12 @@
 - T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
 - T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
 - T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
+- T203実装レポート: `reports/issue-1-t203-implementation-20260724204000.md`
+- T203初回レビューレポート: `reports/issue-1-t203-review-20260724212419.md`
+- T203 review follow-upレポート: `reports/issue-1-t203-review-followup-20260724213540.md`
+- T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
+- T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
+- T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
 
 ## 状態と規模
 
@@ -121,8 +127,8 @@
 | --- | --- | --- | --- | --- | --- |
 | T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
-| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
-| T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
+| T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
+| T204 | 次 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
@@ -194,4 +200,4 @@
 
 ## 次回開始時の選択
 
-T104-2は最新mainへの復旧、T105〜T107回帰検証、専用再レビューを完了した。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
