@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T108 GitHub Release向けVSIX配布と日本語README
+- 直近完了タスク: T201 Range Mapping Engine
 - 現在のタスク: なし
-- 次のタスク: T201 PR #7とT202 PR #8を最新`main`へ追従・統合した後、T203 diff parserとrevision間interval mapping
-- 実装状態: 初回`main`マージ時に固定`0.0.1-pre`のGitHub prereleaseとVSIX assetを作成するworkflow、package metadata、VSIX除外、日本語README、Release契約testを実装した。Red/Green、build、lint、unit・Git・GitHub・Extension Host test、VSIX package/manifest、review follow-up、再reviewを通過し、task commitとdraft PR #12を作成した
-- ブロッカー: T203着手前にPR #7とPR #8の最新`main`追従・統合が必要
-- Gitブランチ: `task/github-release-vsix-readme`
-- Pull Request: #12
-- PR方針: `main`から独立し、T108のリリースworkflow、パッケージ検証、日本語README、専用レビューを1タスク1コミット・draft PRで提出した
+- 次のタスク: T202 PR #8を最新`main`へ追従・統合した後、T203 diff parserとrevision間interval mapping
+- 実装状態: T201 Range Mapping Engineを最新`main`へ統合し、main側13件とT201側2件のunit test入口を保持した。focused 18/18、unit 122/122、Git・GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功し、独立再レビューの競合findingを解消した
+- ブロッカー: T203着手前にPR #8の最新`main`追従・統合が必要
+- Gitブランチ: `task/t201-range-mapping-engine`
+- Pull Request: #7
+- PR方針: 最新`main`をmergeしてT201固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -55,6 +55,11 @@
 - T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
 - T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
 - T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
+- T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
+- T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
+- T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
+- T201 review follow-upレポート: `reports/issue-1-t201-review-followup-20260724194226.md`
+- T201最終再レビューレポート: `reports/issue-1-t201-review-r3-20260724194817.md`
 
 ## 状態と規模
 
@@ -95,9 +100,9 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する単体テストが通る。PR #7で実装・検証済み、最新`main`へ未統合 |
+| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。PR #8で実装・検証済み、最新`main`へ未統合 |
-| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす。着手前にPR #7とPR #8を最新`main`へ統合する |
+| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす。着手前にPR #8を最新`main`へ統合する |
 | T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
@@ -170,4 +175,4 @@
 
 ## 次回開始時の選択
 
-T108は完了し、draft PR #12を提出した。次はT201 PR #7とT202 PR #8を最新`main`へ追従・統合し、両実装が同じbase上で全試験を通ることを確認する。その後の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T201は最新`main`への追従、統合検証、最終再レビュー後にPR #7をsquash mergeする。次はT202 PR #8だけを最新`main`へ追従・統合し、その後の新規実装はT203だけを選択してdiff parserとrevision間interval mappingの失敗するテストから開始する。

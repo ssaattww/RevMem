@@ -72,9 +72,9 @@
 
 ### 現在の進捗
 
-- T201 Range Mapping EngineはPR #7で実装・検証済み
+- T201 Range Mapping Engineは最新`main`上で統合・検証済み
 - T202 Local Git AdapterはPR #8で実装・検証済み
-- PR #7とPR #8は最新`main`へ未統合であり、T203着手前に追従・統合と同一base上の全試験が必要
+- PR #8は最新`main`へ未統合であり、T203着手前に追従・統合と同一base上の全試験が必要
 
 ### 終了チェックポイント
 
