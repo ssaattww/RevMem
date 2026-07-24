@@ -56,7 +56,7 @@ export interface DocumentEditorReviewDescriptor {
 }
 
 /** Persistence boundary shared by Git, workspace, and external-file sessions. */
-export interface DocumentReviewStateRepository extends WorkspaceReviewStateRepository {}
+export type DocumentReviewStateRepository = WorkspaceReviewStateRepository;
 
 /** Active owner selected for one document. */
 export type DocumentReviewOwner = "git" | "workspace" | "external-file";
