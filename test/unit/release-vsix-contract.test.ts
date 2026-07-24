@@ -84,17 +84,8 @@ test("release workflow uploads to existing release/manual targets and skips dupl
   assert.doesNotMatch(workflow, /RELEASE_VERSION|RELEASE_TAG|ASSET_NAME|ASSET_PATH|concurrency:|remote_main_commit|git worktree|Release metadata does not match/);
 });
 
-test("workflow resolver extraction is identical for LF and CRLF", () => {
-  const lfWorkflow = [
-    "jobs:",
-    "  release:",
-    "    steps:",
-    "      - name: Resolve package version",
-    "        run: |",
-    "          echo resolver",
-    "      - name: Package extension",
-    "        run: npm run package"
-  ].join("\n");
+test("workflow resolver extraction is identical for the real workflow in LF and CRLF", () => {
+  const lfWorkflow = readProjectFile(".github/workflows/release-vsix.yml");
   const crlfWorkflow = lfWorkflow.replaceAll("\n", "\r\n");
 
   assert.equal(extractResolver(crlfWorkflow), extractResolver(lfWorkflow));
