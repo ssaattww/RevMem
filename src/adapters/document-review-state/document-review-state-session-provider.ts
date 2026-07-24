@@ -100,6 +100,9 @@ const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
 const WINDOWS_DRIVE_PATH_PATTERN = /^[A-Za-z]:(?:\/|$)/u;
 const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/u;
 
+const pathApiFor = (semantics: FileSystemPathSemantics): typeof path.posix =>
+  semantics === "windows" ? path.win32 : path.posix;
+
 const cloneValue = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
@@ -194,7 +197,9 @@ const contextRevision = (state: ReviewContextState): string | undefined =>
     ? state.pullRequest?.headSha
     : state.kind === "branch"
       ? state.branch?.headRevision
-      : state.workspace?.snapshotRevision;
+      : state.kind === "workspace"
+        ? state.workspace?.snapshotRevision
+        : state.externalFile?.snapshotRevision;
 
 /** Routes normal-editor state by Git ownership before considering workspace membership. */
 export class DocumentReviewStateSessionProvider {
@@ -211,11 +216,10 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
     this.validateDescriptor(descriptor);
-    const pathApi = descriptor.fileSystemPathSemantics === "windows"
-      ? path.win32
-      : path.posix;
     const inspection = await this.options.gitInspector.inspectRepository(
-      pathApi.dirname(descriptor.documentFsPath)
+      pathApiFor(descriptor.fileSystemPathSemantics).dirname(
+        descriptor.documentFsPath
+      )
     );
 
     if (inspection.kind === "repository") {
@@ -253,11 +257,10 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     this.validateDescriptor(descriptor);
-    const pathApi = descriptor.fileSystemPathSemantics === "windows"
-      ? path.win32
-      : path.posix;
     const inspection = await this.options.gitInspector.inspectRepository(
-      pathApi.dirname(descriptor.documentFsPath)
+      pathApiFor(descriptor.fileSystemPathSemantics).dirname(
+        descriptor.documentFsPath
+      )
     );
 
     if (inspection.kind === "repository") {
@@ -334,9 +337,7 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     repository: LocalGitRepository
   ): OwnedMapping {
-    const pathApi = descriptor.fileSystemPathSemantics === "windows"
-      ? path.win32
-      : path.posix;
+    const pathApi = pathApiFor(descriptor.fileSystemPathSemantics);
     const relativePath = pathApi.relative(
       pathApi.resolve(repository.rootPath),
       pathApi.resolve(descriptor.documentFsPath)
@@ -351,7 +352,6 @@ export class DocumentReviewStateSessionProvider {
     }
 
     const normalizedRelativePath = relativePath.split(pathApi.sep).join("/");
-
     const currentPath = descriptor.fileSystemPathSemantics === "windows"
       ? normalizedRelativePath.toLowerCase()
       : normalizedRelativePath;
@@ -403,17 +403,17 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private resolveExternalMapping(
-    descriptor : DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor
   ): OwnedMapping {
     const canonicalUri = canonicalDocumentUri(
       descriptor.documentUri,
       descriptor.fileSystemPathSemantics
     );
     const repositoryId = this.createId("external-file-repository", canonicalUri);
-    const workspaceId = this.createId("external-file-owner", canonicalUri);
+    const ownerId = this.createId("external-file-owner", canonicalUri);
     const contextId = this.createId("external-file-context", canonicalUri);
     const fileId = this.createId("external-file", canonicalUri);
-    const revisionId = `external-live:${workspaceId}`;
+    const revisionId = `external-live:${ownerId}`;
     const timestamp = this.now().toISOString();
 
     return {
@@ -429,11 +429,10 @@ export class DocumentReviewStateSessionProvider {
         kind: "external-file",
         repositoryId,
         displayName: canonicalUri,
-        workspace: {
-          workspaceId,
+        externalFile: {
+          canonicalUri,
           snapshotRevision: revisionId
         },
-        externalFile: { canonicalUri },
         files: {},
         createdAt: timestamp,
         updatedAt: timestamp
@@ -448,7 +447,7 @@ export class DocumentReviewStateSessionProvider {
     };
   }
 
-  private initialCommit(mapping : OwnedMapping): ReviewStateCommit {
+  private initialCommit(mapping: OwnedMapping): ReviewStateCommit {
     return {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
       contextState: cloneValue(mapping.contextState),
@@ -497,7 +496,7 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private async openOwned(
-    mapping : OwnedMapping
+    mapping: OwnedMapping
   ): Promise<DocumentNormalEditorReviewStateSession> {
     let commit = await this.options.repository.load(mapping.repositoryTarget);
     if (commit === undefined) {
@@ -557,7 +556,7 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private async loadOwnedForDecoration(
-    mapping : OwnedMapping
+    mapping: OwnedMapping
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     const commit = await this.options.repository.load(mapping.repositoryTarget);
     if (commit === undefined) {
@@ -567,7 +566,7 @@ export class DocumentReviewStateSessionProvider {
 
     const contextFile = commit.contextState.files[mapping.target.fileId];
     const globalFile = commit.globalState.files[mapping.target.fileId];
-    const contextStale = 
+    const contextStale =
       contextRevision(commit.contextState) !== mapping.target.revisionId ||
       (contextFile !== undefined && (
         contextFile.contentHash !== mapping.target.contentHash ||
@@ -575,7 +574,7 @@ export class DocumentReviewStateSessionProvider {
         contextFile.lineCount !== mapping.target.lineCount ||
         contextFile.currentPath !== mapping.target.currentPath
       ));
-    const globalStale = 
+    const globalStale =
       commit.globalState.currentRevisionId !== mapping.target.revisionId ||
       (globalFile !== undefined && (
         globalFile.contentHash !== mapping.target.contentHash ||
@@ -603,7 +602,7 @@ export class DocumentReviewStateSessionProvider {
 
   private async loadWorkspaceSource(
     descriptor: DocumentEditorReviewDescriptor
- ): Promise<DocumentNormalEditorDecorationState | undefined> {
+  ): Promise<DocumentNormalEditorDecorationState | undefined> {
     if (descriptor.workspace === undefined) {
       return undefined;
     }
@@ -614,15 +613,15 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private loadExternalSource(
-    descriptor : DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     return this.loadOwnedForDecoration(this.resolveExternalMapping(descriptor));
   }
 
   private async promoteFirstCertainSource(
-    targetSession : DocumentNormalEditorReviewStateSession,
-    sources : readonly (DocumentNormalEditorDecorationState | undefined)[]
- ): Promise<DocumentNormalEditorReviewStateSession> {
+    targetSession: DocumentNormalEditorReviewStateSession,
+    sources: readonly (DocumentNormalEditorDecorationState | undefined)[]
+  ): Promise<DocumentNormalEditorReviewStateSession> {
     if (
       targetSession.contextState.files[targetSession.target.fileId] !== undefined ||
       targetSession.globalState.files[targetSession.target.fileId] !== undefined
