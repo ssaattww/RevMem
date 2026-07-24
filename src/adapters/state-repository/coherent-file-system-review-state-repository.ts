@@ -65,8 +65,9 @@ const requireTargetContextKind = (
         : target.kind === "workspace"
           ? "Workspace"
           : "External-file";
+  const article = expected === "external-file" ? "an" : "a";
   throw new Error(
-    `${label} persistence requires a ${expected} review context`
+    `${label} persistence requires ${article} ${expected} review context`
   );
 };
 
