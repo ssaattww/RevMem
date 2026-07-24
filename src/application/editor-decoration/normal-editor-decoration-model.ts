@@ -40,7 +40,9 @@ const contextRevision = (contextState: Readonly<ReviewContextState>): string | u
     ? contextState.pullRequest?.headSha
     : contextState.kind === "branch"
       ? contextState.branch?.headRevision
-      : contextState.workspace?.snapshotRevision;
+      : contextState.kind === "workspace"
+        ? contextState.workspace?.snapshotRevision
+        : contextState.externalFile?.snapshotRevision;
 
 const contextLabel = (contextState: Readonly<ReviewContextState>): string => {
   if (contextState.kind === "pull-request" && contextState.pullRequest !== undefined) {
