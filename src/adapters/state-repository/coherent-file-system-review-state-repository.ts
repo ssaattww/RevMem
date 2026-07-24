@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
+  type ReviewContextKind,
   type ReviewContextState
 } from "../../core/contracts/index";
 import {
@@ -31,6 +32,43 @@ const transactionPairToCommit = (
   contextState: cloneValue(pair.contextState) as ReviewContextState,
   globalState: cloneValue(pair.globalState) as RepositoryGlobalState
 });
+
+const expectedContextKind = (
+  target: ReviewStateRepositoryTarget
+): ReviewContextKind => {
+  switch (target.kind) {
+    case "git":
+      return "branch";
+    case "pull-request":
+      return "pull-request";
+    case "workspace":
+      return "workspace";
+    case "external-file":
+      return "external-file";
+  }
+};
+
+const requireTargetContextKind = (
+  target: ReviewStateRepositoryTarget,
+  contextKind: ReviewContextKind
+): void => {
+  const expected = expectedContextKind(target);
+  if (contextKind === expected) {
+    return;
+  }
+
+  const label =
+    target.kind === "git"
+      ? "Git"
+      : target.kind === "pull-request"
+        ? "Pull-request"
+        : target.kind === "workspace"
+          ? "Workspace"
+          : "External-file";
+  throw new Error(
+    `${label} persistence requires a ${expected} review context`
+  );
+};
 
 const requireMatchingIdentity = (
   transaction: Readonly<ReviewStateTransactionLike>
@@ -73,12 +111,13 @@ const requireMatchingIdentity = (
         : contextKind === "external-file"
           ? "external-file"
           : "git";
-
-  return {
+  const target: ReviewStateRepositoryTarget = {
     kind,
     repositoryId: transaction.repositoryId,
     contextId: transaction.contextId
   };
+  requireTargetContextKind(target, contextKind);
+  return target;
 };
 
 const persistedFilePath = (error: unknown, fallbackPath: string): string => {
@@ -133,6 +172,7 @@ export class FileSystemReviewStateRepository {
     if (current === undefined) {
       return undefined;
     }
+    requireTargetContextKind(target, current.contextState.kind);
 
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
     const repositoryGlobal = this.currentGlobalByStorageRoot.get(route.rootPath);
@@ -153,6 +193,7 @@ export class FileSystemReviewStateRepository {
       if (loaded === undefined) {
         return undefined;
       }
+      requireTargetContextKind(target, loaded.contextState.kind);
 
       this.recordRepositoryGlobal(target, loaded.globalState);
       return this.getCurrent(target);
@@ -169,6 +210,7 @@ export class FileSystemReviewStateRepository {
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
 
     try {
+      requireTargetContextKind(target, commit.contextState.kind);
       await this.atomicRepository.save(target, commit);
       this.recordRepositoryGlobal(target, commit.globalState);
     } catch (error) {
@@ -207,6 +249,7 @@ export class FileSystemReviewStateRepository {
       }
 
       const next = transactionPairToCommit(transaction.next);
+      requireTargetContextKind(target, next.contextState.kind);
       await this.atomicRepository.save(target, next);
       this.recordRepositoryGlobal(target, next.globalState);
     } catch (error) {
