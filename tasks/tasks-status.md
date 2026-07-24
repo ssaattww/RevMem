@@ -10,7 +10,7 @@
 - 直近完了タスク: Issue #13 document ownership routing
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T202 Local Git Adapterを利用し、Git ownershipをworkspace membershipより先に解決するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、external persistenceを実装した。head `5da9b1e`に紐づくActions run `30092391779`で全CI工程が成功した
+- 実装状態: T202 Local Git Adapterを利用し、Git ownershipをworkspace membershipより先に解決するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、external persistenceを実装した。T109 Release改善とT104-2永続化レビュー修正を含む最新mainへ統合し、最終headに紐づくCIで検証する
 - ブロッカー: なし
 - Gitブランチ: `issue/13-document-context-routing`
 - Pull Request: #15
@@ -39,11 +39,19 @@
 - T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
 - T103実装レポート: `reports/issue-1-t103-implementation-20260723135000.md`
 - T103レビューレポート: `reports/issue-1-t103-review-20260723135500.md`
-- T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260723140033.md`
+- T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260724140033.md`
 - T103 review follow-upレポート: `reports/issue-1-t103-review-followup-20260723140931.md`
 - T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
 - T104実装レポート: `reports/issue-1-t104-implementation-20260723142500.md`
 - T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
+- T104独立再レビューレポート: `reports/issue-1-t104-review-r2-20260723144001.md`
+- T104 review follow-upレポート: `reports/issue-1-t104-review-followup-20260723144622.md`
+- T104再レビューレポート: `reports/issue-1-t104-review-r3-20260723145327.md`
+- T104追加review follow-upレポート: `reports/issue-1-t104-review-followup-r2-20260723145703.md`
+- T104最終再レビューレポート: `reports/issue-1-t104-review-r4-20260723150344.md`
+- T104-2復旧実装レポート: `reports/issue-1-t104-2-implementation-20260724205127.md`
+- T104-2初回レビューレポート: `reports/issue-1-t104-2-review-20260724210309.md`
+- T104-2最終再レビューレポート: `reports/issue-1-t104-2-review-r2-20260724211200.md`
 - T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
 - T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
 - T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
@@ -55,6 +63,10 @@
 - T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
 - T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
 - T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
+- T109調査レポート: `reports/issue-1-t109-investigation-20260724201518.md`
+- T109実装レポート: `reports/issue-1-t109-implementation-20260724202210.md`
+- T109要件変更follow-upレポート: `reports/issue-1-t109-requirement-followup-20260724203235.md`
+- T109レビューレポート: `reports/issue-1-t109-review-20260724202930.md`
 - T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
 - T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
 - T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
@@ -104,10 +116,12 @@
 | T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
+| T104-2 | 完了 | M | T104のsquash merge後に旧worktreeへ残った最終レビュー修正を最新mainへ復旧し、同一instanceのsave/commit直列化、complete snapshot CAS、target/context identity、公開API documentationと恒久回帰testを反映する | T104、T105 | T104 focused test、T105の通常エディタ操作、T106の装飾、T107の保存・再起動復元が通り、全unit testにT104-2起因の新規失敗がない。origin/main由来のrelease contract既知失敗はheldとして明示し、build、lint、contract typecheck、architecture検証、専用レビューが通る |
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 | T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIX assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
+| T109 | 完了 | S | SSCのRelease workflowを基準に、`release: published`、`push: main`、version指定の`workflow_dispatch`、main更新ごとの動的pre-release version解決を移植し、NuGet配布部分だけをVSIXのGitHub Release assetへ置換する | T108 | 既存最新`0.0.1-pre`の次を`0.0.2-pre`とし、過去の未配布commitは補填せず、以後の各main pushでpatchを1ずつ進めたpre-releaseと同版VSIXを作成する。契約test、package検証、専用review、進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
@@ -188,4 +202,4 @@
 
 ## 次回開始時の選択
 
-Issue #13の横断対応とT201・T202の統合を完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+Issue #13の横断対応、T104-2、T109、T201、T202を統合済みである。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
