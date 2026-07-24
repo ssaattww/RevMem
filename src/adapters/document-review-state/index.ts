@@ -1,5 +1,5 @@
 /** Public document ownership and review-state routing API. */
-export { DocumentReviewStateSessionProvider } from "./reconciled-document-review-state-session-provider";
+export { DocumentReviewStateSessionProvider } from "./persisted-document-review-state-session-provider";
 
 export type {
   DocumentEditorReviewDescriptor,
