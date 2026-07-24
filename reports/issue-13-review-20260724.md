@@ -4,7 +4,7 @@
 
 - Pull Request: #15
 - Branch: `issue/13-document-context-routing`
-- 最終確認head: `5da9b1efa6a24d5398634cdabd831578a9455a62`
+- コード最終確認head: `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`
 - 対象: 設計追補、document ownership router、external-file persistence、Extension接続、回帰test、README
 
 ## レビュー観点
@@ -32,15 +32,19 @@
 
 ### owner/context persistence整合性
 
-保存targetとcontext kindの組み合わせを明示的に検証し、external-file contextがGit targetへ混入しないことを固定した。
+保存targetとcontext kindの組み合わせを公開repository層のsave・load・commitで検証し、external-file contextがGit targetへ混入しないことを固定した。
 
 ### Windows path identity
 
-Windows pathのdrive、case、separator variationを同一repository-relative pathとfile IDへ正規化する回帰testを確認した。実行場所は`extensionKind: ["workspace"]`によりworkspace-side Extension Hostであり、T202のhost-native Git path contractと整合する。
+Windows pathのdrive、case、separator variationを同一repository-relative pathとfile IDへ正規化する回帰testを追加した。path処理はdescriptorが示すfilesystem semanticsに従い、実行側OSから推測しない。
 
 ### external descriptor
 
-external-fileはcanonical URIとsnapshot revisionの両方を保持する。snapshot revisionは既存snapshot descriptorを再利用し、canonical locatorは`externalFile` descriptorへ分離する。
+external-fileはworkspace snapshot descriptorを流用せず、専用`ExternalFileReviewContext`へcanonical URIとsnapshot revisionを保持する。Review State Serviceと通常エディタ装飾も同descriptorからrevisionを検証する。
+
+### Git非repository分類
+
+Local Git inspectionは、`git rev-parse`の任意の失敗を非Git扱いせず、C localeの明示的な`not a git repository`診断だけを`not-repository`へ分類する。権限・timeout・破損repositoryはエラーとして伝播する。
 
 ### README不整合
 
@@ -54,7 +58,7 @@ external-fileはcanonical URIとsnapshot revisionの両方を保持する。snap
 
 ## 検証
 
-GitHub Actions run `30092391779`で、head `5da9b1efa6a24d5398634cdabd831578a9455a62`に紐づく次の工程がすべて成功した。
+GitHub Actions run `30093939815`で、head `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`に紐づく次の工程がすべて成功した。
 
 - Install dependencies
 - Build
@@ -64,4 +68,4 @@ GitHub Actions run `30092391779`で、head `5da9b1efa6a24d5398634cdabd831578a945
 - Mock GitHub integration tests
 - VS Code Extension Host tests
 
-同repositoryの別branchまたは他作業者の最新runではなく、上記head SHAに紐づくrunだけを最終判定に使用した。
+同repositoryの別branchまたは他作業者の最新runではなく、上記head SHAに紐づくrunだけをコード最終判定に使用した。文書同期後のPR最終headについても、そのhead SHAに紐づくCIを別途確認する。
