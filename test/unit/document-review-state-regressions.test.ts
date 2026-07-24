@@ -15,15 +15,21 @@ import type {
   LocalGitRepositoryInspection
 } from "../../src/adapters/local-git/index";
 import {
+  DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
   type ReviewStateCommit,
+  type ReviewStatePersistenceDelegate,
   type ReviewStateRepositoryTarget,
+  type ReviewStateSaveScheduler,
   type ReviewStateTransactionLike
 } from "../../src/adapters/state-repository/index";
 import {
   WorkspaceReviewStateSessionProvider
 } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION
+} from "../../src/core/contracts/index";
 import { markReviewedRanges } from "../../src/core/review-state/index";
 
 const occurredAt = "2026-07-24T12:45:00.000Z";
@@ -144,8 +150,9 @@ test("external-file context retains canonical URI and snapshot revision", async 
     session.contextState.externalFile?.canonicalUri,
     "file:///outside/example.ts"
   );
+  assert.equal(session.contextState.workspace, undefined);
   assert.equal(
-    session.contextState.workspace?.snapshotRevision,
+    session.contextState.externalFile?.snapshotRevision,
     session.target.revisionId
   );
 });
@@ -228,6 +235,127 @@ test("external-file reviewed ranges survive repository and provider restart", as
     assert.deepEqual(
       restored.globalState.files[restored.target.fileId]?.reviewed,
       [{ startLine: 1, endLineExclusive: 4 }]
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+class ManualScheduler implements ReviewStateSaveScheduler {
+  public callback: (() => void) | undefined;
+
+  public schedule(callback: () => void): unknown {
+    this.callback = callback;
+    return callback;
+  }
+
+  public cancel(): void {}
+}
+
+class RecordingPersistenceDelegate implements ReviewStatePersistenceDelegate {
+  public readonly calls: string[] = [];
+
+  public async load(): Promise<ReviewStateCommit | undefined> {
+    return undefined;
+  }
+
+  public async save(
+    target: ReviewStateRepositoryTarget
+  ): Promise<void> {
+    this.calls.push(`save:${target.kind}`);
+  }
+
+  public async commit(): Promise<void> {
+    this.calls.push("commit");
+  }
+}
+
+const externalTarget = (): ReviewStateRepositoryTarget => ({
+  kind: "external-file",
+  repositoryId: "external-file-repository:test",
+  contextId: "external-file-context:test"
+});
+
+const externalCommit = (): ReviewStateCommit => ({
+  schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+  contextState: {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId: "external-file-context:test",
+    kind: "external-file",
+    repositoryId: "external-file-repository:test",
+    displayName: "file:///outside/example.ts",
+    externalFile: {
+      canonicalUri: "file:///outside/example.ts",
+      snapshotRevision: "external-live:test"
+    },
+    files: {},
+    createdAt: occurredAt,
+    updatedAt: occurredAt
+  },
+  globalState: {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    repositoryId: "external-file-repository:test",
+    currentRevisionId: "external-live:test",
+    files: {},
+    updatedAt: occurredAt
+  }
+});
+
+test("external-file command commits flush pending external background state first", async () => {
+  const delegate = new RecordingPersistenceDelegate();
+  const scheduler = new ManualScheduler();
+  const repository = new DebouncedReviewStateRepository({
+    delegate,
+    scheduler,
+    debounceMilliseconds: 10
+  });
+  const target = externalTarget();
+  const commit = externalCommit();
+  const pendingSave = repository.save(target, commit);
+  const transaction: ReviewStateTransactionLike = {
+    repositoryId: target.repositoryId,
+    contextId: target.contextId,
+    expected: {
+      contextState: clone(commit.contextState),
+      globalState: clone(commit.globalState)
+    },
+    next: {
+      contextState: clone(commit.contextState),
+      globalState: clone(commit.globalState)
+    }
+  };
+
+  await repository.commit(transaction);
+  await pendingSave;
+
+  assert.deepEqual(delegate.calls, ["save:external-file", "commit"]);
+  assert.equal(scheduler.callback === undefined, false);
+});
+
+test("external-file storage rejects a mismatched branch context before writing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-external-kind-"));
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: {
+        globalStorageUri: { fsPath: path.join(root, "global") }
+      }
+    });
+    const commit = externalCommit();
+    const mismatched: ReviewStateCommit = {
+      ...clone(commit),
+      contextState: {
+        ...clone(commit.contextState),
+        kind: "branch",
+        branch: {
+          refName: "refs/heads/main",
+          headRevision: "external-live:test"
+        }
+      }
+    };
+
+    await assert.rejects(
+      repository.save(externalTarget(), mismatched),
+      /external-file persistence requires an external-file review context/
     );
   } finally {
     await rm(root, { recursive: true, force: true });
