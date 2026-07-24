@@ -5,6 +5,7 @@
 - Pull Request: #15
 - Branch: `issue/13-document-context-routing`
 - コード最終確認head: `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`
+- PR最終head: `c16ef9ee9c355b490d751577f6f80406aab8859f`
 - 対象: 設計追補、document ownership router、external-file persistence、Extension接続、回帰test、README
 
 ## レビュー観点
@@ -58,7 +59,7 @@ Local Git inspectionは、`git rev-parse`の任意の失敗を非Git扱いせず
 
 ## 検証
 
-GitHub Actions run `30093939815`で、head `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`に紐づく次の工程がすべて成功した。
+コードhead `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`に紐づくGitHub Actions run `30093939815`で、次の工程がすべて成功した。
 
 - Install dependencies
 - Build
@@ -68,4 +69,6 @@ GitHub Actions run `30093939815`で、head `ee95f6bdeaec5d51dbe3e340ed340ca97642
 - Mock GitHub integration tests
 - VS Code Extension Host tests
 
-同repositoryの別branchまたは他作業者の最新runではなく、上記head SHAに紐づくrunだけをコード最終判定に使用した。文書同期後のPR最終headについても、そのhead SHAに紐づくCIを別途確認する。
+文書・進捗同期後のPR最終head `c16ef9ee9c355b490d751577f6f80406aab8859f`に紐づくrun `30094394959`でも、同じ全工程が成功した。
+
+同repositoryの別branchまたは他作業者の最新runではなく、各head SHAに紐づくrunだけを最終判定に使用した。
