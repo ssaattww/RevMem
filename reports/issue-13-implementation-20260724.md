@@ -90,6 +90,18 @@ CIは既存workflowの失敗時診断artifact収集を使用した。workflowに
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
+### PR最終Green
+
+- head: `3f3937b90f365260cfbfc453c64d893f87e824fe`
+- workflow run: `30094560717`
+- Install dependencies: success
+- Build: success
+- Lint: success
+- Unit tests: success
+- Temporary Git integration tests: success
+- Mock GitHub integration tests: success
+- VS Code Extension Host tests: success
+
 ## 主な回帰テスト
 
 - workspace外Git fileがbranch contextになる。
