@@ -10,7 +10,7 @@
 - 直近完了タスク: Issue #13 document ownership routing
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T202 Local Git Adapterを利用し、Git ownershipをworkspace membershipより先に解決するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、external persistenceを実装した。T109 Release改善とT104-2永続化レビュー修正を含む最新mainへ統合し、最終headに紐づくCIで検証する
+- 実装状態: T202 Local Git Adapterを利用し、Git ownershipをworkspace membershipより先に解決するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、external persistenceを実装した。コードhead `ee95f6bdeaec5d51dbe3e340ed340ca97642c441`のrun `30093939815`と文書同期後head `d390515972093359a8304414e5fd42b34c32d0db`のrun `30094129294`で全CI工程が成功した
 - ブロッカー: なし
 - Gitブランチ: `issue/13-document-context-routing`
 - Pull Request: #15
@@ -98,7 +98,7 @@
 
 | Issue | 状態 | 変更範囲 | 検証・終了条件 |
 | --- | --- | --- | --- |
-| #13 | 完了 | Git ownershipをworkspace membershipより優先するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、global persistence、README・設計追補 | TDD、失敗診断artifact、独立レビューを実施し、head SHAに紐づくCI全工程が成功してdraft PR #15を作成済み |
+| #13 | 完了 | Git ownershipをworkspace membershipより優先するdocument router、workspace外Git file、external-file、UNC authority、owner昇格、global persistence、README・設計追補 | TDD、失敗診断artifact、独立レビューを実施し、コードheadと文書同期後headの双方に紐づくCI全工程が成功してdraft PR #15を作成済み |
 
 ## P0 開発基盤
 
@@ -116,90 +116,88 @@
 | T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
-| T104-2 | 完了 | M | T104のsquash merge後に旧worktreeへ残った最終レビュー修正を最新mainへ復旧し、同一instanceのsave/commit直列化、complete snapshot CAS、target/context identity、公開API documentationと恒久回帰testを反映する | T104、T105 | T104 focused test、T105の通常エディタ操作、T106の装飾、T107の保存・再起動復元が通り、全unit testにT104-2起因の新規失敗がない。origin/main由来のrelease contract既知失敗はheldとして明示し、build、lint、contract typecheck、architecture検証、専用レビューが通る |
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 | T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIX assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
-| T109 | 完了 | S | SSCのRelease workflowを基準に、`release: published`、`push: main`、version指定の`workflow_dispatch`、main更新ごとの動的pre-release version解決を移植し、NuGet配布部分だけをVSIXのGitHub Release assetへ置換する | T108 | 既存最新`0.0.1-pre`の次を`0.0.2-pre`とし、過去の未配布commitは補填せず、以後の各main pushでpatchを1ずつ進めたpre-releaseと同版VSIXを作成する。契約test、package検証、専用review、進捗同期を通過する |
+| T109 | 完了 | S | 初回`main`マージ時に固定`0.0.1-pre`を公開するT108の一回限りRelease仕様を廃止し、SSCを参考にpackage version連動のprerelease VSIX配布へ変更する。tagとReleaseが存在しない版は作成し、既存tagとReleaseが同じcommitを指す場合はassetを再添付可能にする。PRは別PRとする | T108 | `package.json`のversionから`v<version>`、Release title、VSIX asset名を導出し、任意の将来versionで初回作成、同一commitの再実行、異なるcommitの既存tag拒否、PR headや旧commitからの手動公開拒否がRelease契約testで固定される。assetはVS Codeから通常インストールできるVSIX形式である。GitHub Actions最終headの全checkが成功し、専用レビューと進捗同期を通過する |
 
 ## P2 編集・Git差分追従
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
-| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
-| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
-| T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
-| T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
-| T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
+| T201 | 完了 | M | `TextDocumentContentChangeEvent`相当の変更列を変更前document座標で受け取り、確認済みintervalを後方から変換する。挿入行は未確認、重複変更はrejectし、空白・EOL無視設定を適用する | T101、T002 | 単一・複数変更、挿入、削除、置換、行途中編集、空白・EOL設定、末尾改行、入力非破壊、境界異常を単体testで確認する |
+| T202 | 完了 | M | GitHub APIや認証に依存しないLocal Git Adapterを実装する。workspace-side Extension HostのGit CLIを引数配列で実行し、Git利用可否、repository root、remote正規化、Repository ID、branch/detached HEAD、HEAD、merge-base、object存在確認を提供する | T002、T003 | fake executor単体testとtemporary Git repository統合testで、Git未導入、非Git、remoteあり/なし、fork、detached、revision入力境界を確認する。GitHub未接続でも成功し、失敗時artifactを生成する |
+| T203 | 次 | L | unified diff parserとrevision間interval mappingを実装する。`--unified=0` hunkを解析し、hunk前維持、後方shift、重複部解除、追加行未確認、削除行除去、original側保持、複数hunk累積を純粋ロジックで処理する | T201、T202 | 追加のみ、削除のみ、置換、0行hunk、複数hunk、EOF、CRLF、malformed diff、入力非破壊、設計書9.3の境界testが通る。AC-07、AC-08のmapping部分を満たす |
+| T204 | 未着手 | M | rename/move mappingを実装し、一意なrenameではfile IDと`previousPaths`を維持し、rename+編集は変更行だけ未確認、copy・split・merge・曖昧候補は新規またはunresolvedへ倒す | T203 | file rename、directory move、rename+edit、copy、split、merge、同一内容複数候補のfixtureで安全側判定を確認する。AC-09、AC-10を満たす |
+| T205 | 未着手 | L | Local Git Adapterとmapping engineを接続し、branch ref、detached HEAD、merge-base、old/new revision、force-push/rebase時のobject存在、fallback要求を解決するGit branch context resolverを実装する | T202〜T204 | commit、checkout、branch切替、detached、unborn、rebase、force-push、旧objectあり/なし、GitHub未接続のtemporary repository統合testが通る。AC-07、AC-11、AC-17を満たす |
+| T206 | 未着手 | M | 確認、解除、mapping、rename、unresolved、PR state変更をJSON Linesへappendし、state commit成功後だけ履歴を追加し、同一イベントID再送を冪等化する | T102、T104、T205 | 月次ファイル、順序、重複イベント、partial write、state成功/history失敗、履歴再読込、`historyRetentionDays = 0`を確認する。AC-22を満たす |
 
-## P3 diff editorとPR進捗
-
-| ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
-| --- | --- | --- | --- | --- | --- |
-| T300 | 未着手 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
-| T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
-| T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
-| T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
-| T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
-| T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
-| T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |
-
-## P4 GitHub PR連携
+## P3 diff editor操作
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T401 | 未着手 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない |
-| T402 | 未着手 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する | T203、T301、T401 | 各経路の成功・欠落・不完全patchをmockで再現し、全経路失敗時に確認済みを推測しない |
-| T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
-| T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
-| T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
-| T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
+| T301 | 未着手 | M | diff editorのactive sideとselectionを解決し、modified側の選択確認・解除を通常エディタと同じtransactionへ接続する。diff editor command enablementと誤pane防止を含む | T203、T205、T105 | modified側カーソル、複数selection、original側誤実行拒否、通常エディタ非回帰、AC-12 modified側を満たす |
+| T302 | 未着手 | M | diff hunkのold/new line対応を使い、original側選択を現在modified範囲へmappingするか、削除行としてoriginal専用範囲へ分類するpure resolverを実装する | T203 | context、置換、削除、追加隣接、0行hunk、複数hunk、mapping不能のfixtureでside判定を確認する |
+| T303 | 未着手 | M | original側の選択確認・解除contractをReview State Serviceへ追加し、`originalReviewedByDiff`を正規化・部分解除し、ファイル全解除ではmodified/Global/originalを一括消去する | T302、T102 | original mark/unmark、diff ID分離、部分解除、全解除、atomic rollbackを確認し、AC-12 original側を満たす |
+| T304 | 未着手 | M | diff editor両側へ確認済み装飾、hover、ガターを描画し、side別revision、content hash、diff ID不一致時はそのlayerだけ非表示にする | T301〜T303、T106 | split diff、side切替、old/new非対称行、stale original、設定変更、visible editor限定をExtension Host testで確認する。AC-13を満たす |
 
-## P5 Global確認済みと理解率
+## P4 GitHub PR統合
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
-| T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
-| T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
-| T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
-| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数、除外数を表示する。AC-18を満たす |
-| T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
+| T401 | 未着手 | M | VS Code AuthenticationでGitHub sessionを取得し、public repository匿名fallbackと未認証、拒否、scope不足、Enterprise host判定を実装する。tokenは永続化しない | T003、T202 | token非保存、sessionあり/なし、public fallback、private拒否、Enterprise、rate limit mockが通る。AC-14の認証部分を満たす |
+| T402 | 未着手 | M | current branch/HEADに対応するopen PR候補をGitHub APIから取得し、0件branch fallback、1件自動選択、複数件ユーザー選択、未選択fallbackを実装する | T401、T205 | mock GitHubで0/1/複数、fork head、Enterprise、offline、API失敗を確認する。AC-14、AC-16、AC-17を満たす |
+| T403 | 未着手 | L | PR metadata、files API、patch、blob取得、ローカルGit優先diff、欠落patch時のcontent差分、ETag/TTL cacheを実装する | T401、T402、T104、T203 | local objectあり、patch完全/欠落、binary、rename、rate limit、offline cache、期限切れ、最終更新時刻を確認する。AC-07、AC-14、AC-17を満たす |
+| T404 | 未着手 | M | PR context stateとPR追加commit時のhead/base revision更新、mapping、closed/merged lifecycle、過去PR保持を実装する | T203〜T205、T402、T403 | PR追加commit、base更新、closed、merged、再open、old object欠落、cache fallbackを確認する。AC-08、AC-14、AC-15を満たす |
 
-## P6 Gitなし対応と堅牢化
+## P5 進捗UI
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T601 | 未着手 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす |
-| T602 | 未着手 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない |
-| T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
-| T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
-| T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
-| T606 | 未着手 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装する | T403、T601〜T605 | token・source本文をlogへ出さず、全障害fixtureで誤った確認済み表示をしない。AC-24を満たす |
-| T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
-| T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607 | AC-01〜AC-24の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
+| T501 | 未着手 | M | PR変更行を分母、現在PRで確認済みの変更行を分子とするProgress Calculatorを実装し、未確認変更が残るファイル一覧、file別進捗、除外理由を返す | T403、T404、T002 | added/modified/deleted/renamed/binary/excluded、0行、部分確認、Global-only非算入を確認する。AC-18、AC-20を満たす |
+| T502 | 未着手 | M | Global理解率を現在ファイル集合と有効Global範囲から計算し、現在PR変更行は現在PRで確認済みの場合だけ reviewed とする表示優先順位を実装する | T501、T106、T304 | Global分母、削除行除外、現在PR優先、別PR layer、設定変更、非Git workspaceを確認する。AC-19、AC-20を満たす |
+| T503 | 未着手 | L | Activity Bar container、Current Context、PR Progress、Global Understanding、Review ContextsのTree ViewとStatus Barを実装し、未確認変更ファイル一覧からdiffを開けるようにする | T501、T502、T304、T403 | view初期化、context切替、進捗更新、未確認ファイル表示、Status Bar、キーボード操作、空状態をExtension Host testで確認する。AC-18、AC-19、AC-20を満たす |
+| T504 | 未着手 | M | closed PRを一覧・再取得・layer有効化・非表示化・context表示削除できる管理UIを実装し、削除と履歴削除を分離する | T404、T503 | closed PR保持、default disabled、再有効化、context削除、履歴維持、offline cache表示を確認する。AC-15、AC-21を満たす |
+
+## P6 永続化・復旧・互換性
+
+| ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| T601 | 未着手 | L | Gitなし時とGit object欠落時のcontent-addressed snapshot store、圧縮、Myers系line diff mapping、破損・曖昧時の未確認fallbackを実装する | T203、T204、T104 | snapshot作成、同一hash重複排除、圧縮復元、変更追従、破損、対応曖昧、大容量拒否を確認する。AC-11、AC-23を満たす |
+| T602 | 未着手 | M | GitHub metadata/diff cacheとsnapshotの容量・TTL管理を実装し、履歴・現在証跡を削除せず、上限超過fileは再起動後未確認へ倒す | T403、T601 | LRU/TTL、履歴保護、current snapshot保護、上限超過、cleanup失敗を確認する。AC-17、AC-24を満たす |
+| T603 | 未着手 | M | schema migration registry、起動時backup、version順migration、失敗時rollbackと旧data保全を実装する | T104、T206、T601 | 複数version、partial migration、backup復元、未知future version、再実行冪等性を確認する。AC-24を満たす |
+| T604 | 未着手 | L | exclusive lock、期限切れ判定、owner情報、複数windowのserial transaction、stale writer再読込を実装する | T104、T206、T603 | 同repository複数window、crash lock、期限切れ、同時Global更新、stale transaction、lock cleanupを確認する。AC-24を満たす |
 
 ## 受け入れ条件トレーサビリティ
 
-| 設計書22章 | 主担当タスク |
-| --- | --- |
-| AC-01〜AC-06 基本確認・解除・装飾 | T101、T102、T105、T106 |
-| AC-07〜AC-10 変更・rename・曖昧mapping | T201、T203、T204、T207 |
-| AC-11 PR単位分離 | T401、T404、T406 |
-| AC-12 branch単位動作 | T202、T205、T207 |
-| AC-13 Gitなし動作 | T103、T601 |
-| AC-14〜AC-15 diff両側・削除行 | T302、T303、T306 |
-| AC-16〜AC-17 PR進捗・未確認file一覧 | T301、T304、T306 |
-| AC-18 Global理解率 | T503〜T506 |
-| AC-19〜AC-20 Global自動反映・解除 | T501、T506 |
-| AC-21 closed PR並列管理 | T404、T405 |
-| AC-22 履歴保存・履歴UIなし | T206、T603、T604 |
-| AC-23 再起動復元 | T104、T107、T603 |
-| AC-24 不確実な範囲を表示しない | T201〜T204、T402、T502、T601〜T606 |
+| AC | 概要 | 対応タスク |
+| --- | --- | --- |
+| AC-01 | 選択範囲確認 | T101、T102、T105 |
+| AC-02 | 通常エディタ装飾 | T106 |
+| AC-03 | 選択解除・ファイル操作 | T102、T105、T303 |
+| AC-04 | interval正規化 | T101、T102、T303 |
+| AC-05 | 部分解除 | T101、T102、T303 |
+| AC-06 | ファイル全体操作の確認ダイアログ | T105、T301 |
+| AC-07 | 変更行未確認化・位置追従 | T201、T203、T403 |
+| AC-08 | PR追加commit追従 | T203、T404 |
+| AC-09 | rename追従 | T204 |
+| AC-10 | copy・分割・統合・曖昧対応 | T204 |
+| AC-11 | rebase・force-push・fallback | T205、T601 |
+| AC-12 | diff editor両側操作 | T301〜T303 |
+| AC-13 | diff editor装飾 | T304 |
+| AC-14 | GitHub PR検出・取得 | T401〜T404 |
+| AC-15 | closed PR並列管理 | T404、T504 |
+| AC-16 | 複数PR候補 | T402 |
+| AC-17 | GitHub未接続・offline | T202、T403 |
+| AC-18 | PR進捗・未確認ファイル一覧 | T501、T503 |
+| AC-19 | Global理解率 | T502、T503 |
+| AC-20 | PR変更行でGlobal-onlyを非算入 | T501、T502 |
+| AC-21 | context表示管理 | T504 |
+| AC-22 | 監査履歴 | T206 |
+| AC-23 | Gitなし・再起動復元 | T107、T601 |
+| AC-24 | migration・容量・複数window整合性 | T602〜T604 |
 
 ## 次回開始時の選択
 
-Issue #13の横断対応、T104-2、T109、T201、T202を統合済みである。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+Issue #13の横断対応、T109 Release改善、T104-2永続化レビュー修正を最新`main`へ統合した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
