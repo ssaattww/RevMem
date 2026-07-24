@@ -135,21 +135,23 @@ export interface BranchReviewContext {
 }
 
 /**
- * Snapshot metadata that identifies a non-Git workspace or standalone-file context.
+ * Snapshot metadata that identifies a non-Git workspace review context.
  */
 export interface WorkspaceReviewContext {
-  /** Stable identity for the snapshot owner. */
+  /** Stable identity for the non-Git workspace. */
   workspaceId: string;
-  /** Snapshot revision used to compare current content. */
+  /** Snapshot revision used to compare workspace content. */
   snapshotRevision: string;
 }
 
 /**
- * Canonical resource metadata for one non-Git file outside every workspace.
+ * Canonical resource and snapshot metadata for one non-Git file outside every workspace.
  */
 export interface ExternalFileReviewContext {
   /** Canonical URI including a UNC or remote authority when present. */
   canonicalUri: string;
+  /** Snapshot revision used to compare the standalone file content. */
+  snapshotRevision: string;
 }
 
 /**
@@ -170,7 +172,7 @@ export interface ReviewContextState {
   pullRequest?: PullRequestReviewContext;
   /** Branch descriptor when `kind` is `"branch"`. */
   branch?: BranchReviewContext;
-  /** Snapshot descriptor when `kind` is `"workspace"` or `"external-file"`. */
+  /** Workspace descriptor when `kind` is `"workspace"`. */
   workspace?: WorkspaceReviewContext;
   /** Canonical external resource when `kind` is `"external-file"`. */
   externalFile?: ExternalFileReviewContext;
