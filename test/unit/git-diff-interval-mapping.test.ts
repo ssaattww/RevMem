@@ -101,7 +101,8 @@ test("handles pure addition and pure deletion without reviewing inserted lines",
 
   assert.deepEqual(result.reviewed, [
     { startLine: 0, endLineExclusive: 2 },
-    { startLine: 4, endLineExclusive: 6 }
+    { startLine: 4, endLineExclusive: 6 },
+    { startLine: 6, endLineExclusive: 8 }
   ]);
 });
 
