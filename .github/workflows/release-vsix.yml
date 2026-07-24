@@ -1,115 +1,241 @@
-name: Release VSIX prerelease
+name: Publish VSIX Package
 
 on:
+  release:
+    types:
+      - published
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: release-0.0.1-pre
-  cancel-in-progress: false
-
-env:
-  RELEASE_VERSION: 0.0.1-pre
-  RELEASE_TAG: 0.0.1-pre
-  ASSET_NAME: review-range-tracker-0.0.1-pre.vsix
-  ASSET_PATH: artifacts/review-range-tracker-0.0.1-pre.vsix
+    inputs:
+      package_version:
+        description: "Package version override (optional)"
+        required: false
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Verify selected ref is the latest remote main commit
-        run: |
-          set -euo pipefail
-          git fetch origin main:refs/remotes/origin/main
-          remote_main_commit="$(git rev-parse origin/main)"
-          if [[ "$GITHUB_SHA" != "$remote_main_commit" ]]; then
-            echo "Refusing to publish from a ref that is not the latest remote main commit."
-            exit 1
-          fi
-      - uses: actions/setup-node@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Build
-        run: npm run build
-      - name: Lint
-        run: npm run lint
-      - name: Unit tests
-        run: npm run test:unit
-      - name: Temporary Git integration tests
-        run: npm run test:git
-      - name: Mock GitHub integration tests
-        run: npm run test:github
-      - name: VS Code Extension Host tests
-        run: xvfb-run -a npm run test:vscode
-      - name: Package prerelease VSIX
+
+      - name: Resolve VSIX package
+        id: package
+        shell: bash
         run: |
+          package_json="package.json"
+
+          if [[ ! -f "$package_json" ]]; then
+            echo "VSIX package manifest not found: $package_json"
+            exit 1
+          fi
+
+          echo "version_seed_manifest=$package_json" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          package_json="${{ steps.package.outputs.version_seed_manifest }}"
+          manual_version="${{ github.event.inputs.package_version }}"
+          event_name="${{ github.event_name }}"
+          ref_name="${{ github.ref_name }}"
+          release_tag="${{ github.event.release.tag_name }}"
+          release_is_prerelease="${{ github.event.release.prerelease }}"
+
+          version_prefix=$(node -p "require('./' + process.argv[1]).version.replace(/[-+].*$/, '')" "$package_json" || true)
+          if [[ -z "$version_prefix" ]]; then
+            version_prefix="0.1.0"
+          fi
+
+          if [[ -n "$manual_version" ]]; then
+            package_version="$manual_version"
+          elif [[ "$event_name" == "release" ]]; then
+            base_version="${release_tag#v}"
+            if [[ "$release_is_prerelease" == "true" ]]; then
+              if [[ "$base_version" == *-* ]]; then
+                package_version="$base_version"
+              else
+                package_version="${base_version}-pre"
+              fi
+            else
+              if [[ "$base_version" == *-* ]]; then
+                echo "Release is not pre-release, but tag contains pre-release suffix: $release_tag"
+                exit 1
+              fi
+              package_version="$base_version"
+            fi
+          elif [[ "$event_name" == "push" && "$ref_name" == "main" ]]; then
+            latest_stable_tag=$(git tag --sort=-v:refname | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+            if [[ -n "$latest_stable_tag" ]]; then
+              base_version="${latest_stable_tag#v}"
+              commits_since_base=$(git rev-list --count "${latest_stable_tag}..HEAD")
+            else
+              latest_prerelease_tag=$(git tag --sort=-v:refname | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+-pre$' | head -n 1)
+              if [[ -n "$latest_prerelease_tag" ]]; then
+                base_version="${latest_prerelease_tag#v}"
+                base_version="${base_version%-pre}"
+                commits_since_base=1
+              else
+                base_version="$version_prefix"
+                commits_since_base=$(git rev-list --count HEAD)
+              fi
+            fi
+
+            if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid base version format: $base_version"
+              exit 1
+            fi
+
+            IFS='.' read -r major minor patch <<< "$base_version"
+            if [[ "$commits_since_base" -lt 1 ]]; then
+              commits_since_base=1
+            fi
+
+            next_patch=$((patch + commits_since_base))
+            package_version="${major}.${minor}.${next_patch}-pre"
+          else
+            package_version="${version_prefix}-ci.${GITHUB_RUN_NUMBER}"
+          fi
+
+          if [[ -z "$package_version" ]]; then
+            echo "Failed to resolve package version."
+            exit 1
+          fi
+
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        shell: bash
+        run: npm ci
+
+      - name: Build
+        shell: bash
+        run: npm run build
+
+      - name: Lint
+        shell: bash
+        run: npm run lint
+
+      - name: Unit tests
+        shell: bash
+        run: npm run test:unit
+
+      - name: Temporary Git integration tests
+        shell: bash
+        run: npm run test:git
+
+      - name: Mock GitHub integration tests
+        shell: bash
+        run: npm run test:github
+
+      - name: VS Code Extension Host tests
+        shell: bash
+        run: xvfb-run -a npm run test:vscode
+
+      - name: Pack
+        id: vsix
+        shell: bash
+        run: |
+          package_version="${{ steps.version.outputs.package_version }}"
+          asset_name="review-range-tracker-${package_version}.vsix"
+          asset_path="./artifacts/${asset_name}"
+          package_args=("$package_version" "--no-git-tag-version" "--no-update-package-json" "--out" "$asset_path")
+
+          if [[ "$package_version" == *-* ]]; then
+            package_args+=("--pre-release")
+          fi
+
           mkdir -p artifacts
-          npm run package -- --pre-release --out "$ASSET_PATH"
-      - name: Create or repair fixed prerelease
+          npm run package -- "${package_args[@]}"
+
+          {
+            echo "asset_name=$asset_name"
+            echo "asset_path=$asset_path"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload VSIX to existing GitHub Release
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          set -euo pipefail
+          repo="${{ github.repository }}"
+          asset_name="${{ steps.vsix.outputs.asset_name }}"
+          asset_path="${{ steps.vsix.outputs.asset_path }}"
 
-          release_json=""
-          if release_json="$(gh release view "$RELEASE_TAG" --json tagName,name,isPrerelease,targetCommitish,assets 2>/dev/null)"; then
-            release_tag="$(jq -r '.tagName' <<<"$release_json")"
-            release_name="$(jq -r '.name' <<<"$release_json")"
-            release_prerelease="$(jq -r '.isPrerelease' <<<"$release_json")"
-            expected_asset_count="$(jq --arg asset "$ASSET_NAME" '[.assets[] | select(.name == $asset)] | length' <<<"$release_json")"
-            asset_count="$(jq '.assets | length' <<<"$release_json")"
-            tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
-            target_commit="$(git rev-parse "$(jq -r '.targetCommitish' <<<"$release_json")^{commit}")"
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            release_tag="${{ github.event.release.tag_name }}"
+          else
+            release_tag="${{ steps.version.outputs.package_version }}"
+          fi
 
-            if [[ "$release_tag" != "$RELEASE_TAG" || "$release_name" != "$RELEASE_VERSION" || "$release_prerelease" != "true" || "$target_commit" != "$tag_commit" ]]; then
-              echo "Release metadata does not match the fixed prerelease contract."
-              exit 1
-            fi
+          if ! gh release view "$release_tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "GitHub Release does not exist: $release_tag"
+            exit 1
+          fi
 
-            if [[ "$expected_asset_count" == "1" && "$asset_count" == "1" ]]; then
-              echo "Release already has the expected asset; skipping."
-              exit 0
-            fi
-
-            if [[ "$expected_asset_count" != "0" || "$asset_count" != "0" ]]; then
-              echo "Release asset set does not match the fixed prerelease contract."
-              exit 1
-            fi
-
-            echo "Refusing to attach a VSIX built from the current HEAD; rebuilding from the Release tag."
-            repair_directory="$(mktemp -d)"
-            trap 'git worktree remove --force "$repair_directory"' EXIT
-            git worktree add --detach "$repair_directory" "$tag_commit"
-            (
-              cd "$repair_directory"
-              npm ci
-              npm run package -- --pre-release --out "$GITHUB_WORKSPACE/$ASSET_PATH"
-            )
-            gh release upload "$RELEASE_TAG" "$ASSET_PATH"
+          assets_json=$(gh release view "$release_tag" --repo "$repo" --json assets)
+          existing_asset_count=$(jq --arg asset "$asset_name" '[.assets[] | select(.name == $asset)] | length' <<< "$assets_json")
+          if [[ "$existing_asset_count" -gt 0 ]]; then
+            echo "GitHub Release asset already exists: $asset_name"
             exit 0
           fi
 
-          if git rev-parse --verify --quiet "$RELEASE_TAG^{commit}" >/dev/null; then
-            tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
-            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
-              echo "A tag with the fixed release name already points to a different commit."
-              exit 1
-            fi
+          gh release upload "$release_tag" "$asset_path" --repo "$repo"
+
+      - name: Verify gh CLI
+        if: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+        run: gh --version
+
+      - name: Create GitHub Pre-release
+        if: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          repo="${{ github.repository }}"
+          sha="${{ github.sha }}"
+          tag="${{ steps.version.outputs.package_version }}"
+          asset_path="${{ steps.vsix.outputs.asset_path }}"
+
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "GitHub pre-release already exists: $tag"
+            exit 0
           fi
 
-          gh release create "$RELEASE_TAG" "$ASSET_PATH" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_VERSION" \
-            --generate-notes \
+          notes_file=$(mktemp)
+          {
+            echo "Automated pre-release from main push."
+            echo
+            pr_numbers=$(gh api -H "Accept: application/vnd.github+json" "/repos/${repo}/commits/${sha}/pulls" --jq '.[].number' 2>/dev/null || true)
+            if [[ -n "${pr_numbers}" ]]; then
+              echo "Related pull requests:"
+              while IFS= read -r pr; do
+                [[ -z "${pr}" ]] && continue
+                echo "- #${pr}"
+              done <<< "${pr_numbers}"
+            else
+              echo "Related pull request: not found."
+            fi
+          } > "$notes_file"
+
+          gh release create "$tag" "$asset_path" \
+            --repo "$repo" \
+            --target "$sha" \
+            --title "$tag" \
+            --notes-file "$notes_file" \
             --prerelease
