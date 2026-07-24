@@ -138,18 +138,20 @@ export interface BranchReviewContext {
  * Snapshot metadata that identifies a non-Git workspace review context.
  */
 export interface WorkspaceReviewContext {
-  /** Stable identity for the non-Git workspace or external-file snapshot owner. */
+  /** Stable identity for the non-Git workspace. */
   workspaceId: string;
-  /** Snapshot revision used to compare workspace or external-file content. */
+  /** Snapshot revision used to compare workspace content. */
   snapshotRevision: string;
 }
 
 /**
- * Canonical resource metadata for one non-Git file outside every workspace.
+ * Canonical resource and snapshot metadata for one non-Git file outside every workspace.
  */
 export interface ExternalFileReviewContext {
   /** Canonical URI including a UNC or remote authority when present. */
   canonicalUri: string;
+  /** Snapshot revision used to compare the standalone file content. */
+  snapshotRevision: string;
 }
 
 /**
@@ -170,9 +172,9 @@ export interface ReviewContextState {
   pullRequest?: PullRequestReviewContext;
   /** Branch descriptor when `kind` is `"branch"`. */
   branch?: BranchReviewContext;
-  /** Snapshot descriptor when `kind` is `"workspace"` or `"external-file"`. */
+  /** Workspace descriptor when `kind` is `"workspace"`. */
   workspace?: WorkspaceReviewContext;
-  /** Canonical external resource when `kind` is `"external-file"`. */
+  /** External resource descriptor when `kind` is `"external-file"`. */
   externalFile?: ExternalFileReviewContext;
   /** File state keyed by stable file ID. */
   files: Record<string, FileReviewState>;
@@ -201,7 +203,7 @@ export interface GlobalFileReviewState {
 }
 
 /**
- * Current reviewed state for one file in the repository-wide Global layer.
+ * Persisted owner-wide Global layer; it contains only currently valid ranges.
  */
 export interface RepositoryGlobalState {
   /** Persisted-document version used by migration readers. */
@@ -259,7 +261,7 @@ export interface DiffHunk {
   newStart: number;
   /** Number of modified-side lines covered by the hunk. */
   newCount: number;
-  /** Parsed lines in source order within the hunk. */
+  /** Parsed lines used to identify reviewable changed lines. */
   lines: DiffLine[];
 }
 
