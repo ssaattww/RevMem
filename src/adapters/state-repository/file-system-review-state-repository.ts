@@ -136,14 +136,12 @@ const validateReviewStateCommit = (
       `contextState.contextId ${contextId} does not match target contextId ${target.contextId}`
     );
   }
-  if (target.kind === "workspace" && contextKind !== "workspace") {
-    throw new Error("Workspace persistence requires a workspace review context");
-  }
-  if (target.kind !== "workspace" && contextKind === "workspace") {
-    throw new Error("Git/PR persistence cannot store a workspace review context");
-  }
-  if (target.kind === "pull-request" && contextKind !== "pull-request") {
-    throw new Error("Pull-request persistence requires a pull-request review context");
+  const expectedContextKind =
+    target.kind === "git" ? "branch" : target.kind;
+  if (contextKind !== expectedContextKind) {
+    throw new Error(
+      `${target.kind} persistence requires a ${expectedContextKind} review context`
+    );
   }
 
   return value as unknown as ReviewStateCommit;
@@ -227,6 +225,11 @@ export class FileSystemReviewStateRepository {
   private readonly createCommitId;
   private readonly currentByTarget = new Map<string, ReviewStateCommit>();
 
+  /**
+   * Creates a low-level repository using the supplied storage dependencies without performing I/O.
+   *
+   * @param options Storage locations, optional atomic file store, failure notifier, clock, and commit-ID source.
+   */
   public constructor(
     private readonly options: FileSystemReviewStateRepositoryOptions
   ) {
@@ -236,6 +239,12 @@ export class FileSystemReviewStateRepository {
     this.createCommitId = options.createCommitId ?? randomUUID;
   }
 
+  /**
+   * Returns this instance's cached complete snapshot without reading disk.
+   *
+   * @returns A deep clone of the cached snapshot, or `undefined` when the target has not loaded or saved successfully.
+   * @throws Throws when the target cannot be routed from the configured storage locations.
+   */
   public getCurrent(
     target: ReviewStateRepositoryTarget
   ): ReviewStateCommit | undefined {
@@ -244,6 +253,12 @@ export class FileSystemReviewStateRepository {
     return current === undefined ? undefined : cloneCommit(current);
   }
 
+  /**
+   * Loads the manifest-selected repository context or single workspace document into this cache.
+   *
+   * @returns A deep clone of the persisted snapshot, or `undefined` if no state exists for the target.
+   * @throws Rejects on routing, validation, JSON, or filesystem failure after notifying the optional observer; observer failure is ignored.
+   */
   public async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
@@ -273,6 +288,12 @@ export class FileSystemReviewStateRepository {
     );
   }
 
+  /**
+   * Validates and persists a complete snapshot through a manifest-last or workspace replacement, then updates the cache.
+   *
+   * @param commit Caller-owned input cloned before persistence, so later caller mutation cannot alias cached state.
+   * @throws Rejects on validation or persistence failure without replacing the cached snapshot; observer failure is ignored.
+   */
   public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit

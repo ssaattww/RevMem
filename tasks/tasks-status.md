@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T109 SSC互換の継続的VSIX prerelease
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
+- 直近完了タスク: T104-2 T104マージ後レビュー修正の復旧
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T109はSSCのtrigger、event別version解決、main push時のnotes・PR取得・pre-release作成を移植し、NuGet処理だけをNode/npm/vsceとVSIX Release assetへ置換した。最新`0.0.1-pre`の次を`0.0.2-pre`、以後を1ずつincrementするresolver、dynamic VSIX package、全test、SSC忠実性reviewを通過し、task commitとdraft PR #18を提出済み
+- 実装状態: T104の最終レビュー修正を最新mainへ復旧した。T104 focused 20/20、T105〜T107関連unit 39/39、3段階Extension Host再起動、build、lint、contract typecheck、architecture検証が成功し、Sol/high最終再レビューは指摘なし。全unit 128/129の1件はT104-2から未変更のorigin/main由来release contract failureとしてheld
 - ブロッカー: なし
-- Gitブランチ: `fix/ssc-release-versioning`
-- Pull Request: #18
-- PR方針: T109をdraft PR #18として提出済み。SSCとの差分はNuGetからVSIXへの置換に限定する
+- Gitブランチ: `fix/t104-post-merge-review-followup`
+- Pull Request: #19
+- PR方針: T104の漏れた最終レビュー修正、証跡、T105〜T107回帰検証をdraft PR #19として提出済み
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -44,6 +44,14 @@
 - T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
 - T104実装レポート: `reports/issue-1-t104-implementation-20260723142500.md`
 - T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
+- T104独立再レビューレポート: `reports/issue-1-t104-review-r2-20260723144001.md`
+- T104 review follow-upレポート: `reports/issue-1-t104-review-followup-20260723144622.md`
+- T104再レビューレポート: `reports/issue-1-t104-review-r3-20260723145327.md`
+- T104追加review follow-upレポート: `reports/issue-1-t104-review-followup-r2-20260723145703.md`
+- T104最終再レビューレポート: `reports/issue-1-t104-review-r4-20260723150344.md`
+- T104-2復旧実装レポート: `reports/issue-1-t104-2-implementation-20260724205127.md`
+- T104-2初回レビューレポート: `reports/issue-1-t104-2-review-20260724210309.md`
+- T104-2最終再レビューレポート: `reports/issue-1-t104-2-review-r2-20260724211200.md`
 - T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
 - T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
 - T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
@@ -100,6 +108,7 @@
 | T102 | 完了 | M | Review State Serviceの範囲確認、解除、ファイル全体確認・解除、context/global更新用transaction contractを実装する | T101、T002 | 状態更新が正規化済みintervalだけを返し、ファイル全解除でoriginal側を含む全状態を消去し、未mapping revisionを拒否し、storage adapterがstale transactionを確実に検出でき、部分失敗で片側だけ更新されない。AC-01、AC-03〜AC-05のcore部分を満たす |
 | T103 | 完了 | M | workspace folder、document URI、相対pathからworkspace context、file ID、非Git repository IDを安定生成する | T002、T003 | 同じworkspace/fileは再起動後も同じID、別rootは別IDとなり、Windows・POSIX・remote URI fixtureが通る |
 | T104 | 完了 | L | Git・PR用`globalStorageUri`とGitなし用`storageUri`を選択する共通状態repositoryを実装し、manifest、context、schema version、atomic temp-write/flush/replace、書き込み失敗通知contractを定義する | T002、T003 | repository種別ごとに設計どおり保存先が分離され、保存中断で直前状態を壊さず、成功時だけメモリ状態を確定し、再読み込み結果が一致する。後続のhistory、cache、Global保存も同じrouting contractを利用できる |
+| T104-2 | 完了 | M | T104のsquash merge後に旧worktreeへ残った最終レビュー修正を最新mainへ復旧し、同一instanceのsave/commit直列化、complete snapshot CAS、target/context identity、公開API documentationと恒久回帰testを反映する | T104、T105 | T104 focused test、T105の通常エディタ操作、T106の装飾、T107の保存・再起動復元が通り、全unit testにT104-2起因の新規失敗がない。origin/main由来のrelease contract既知失敗はheldとして明示し、build、lint、contract typecheck、architecture検証、専用レビューが通る |
 | T105 | 完了 | M | 選択確認・解除、ファイル全体確認・解除の4コマンドを通常エディタへ接続し、ファイル全体操作だけ仕様どおり確認ダイアログを表示する | T102、T103、T104 | 単一・複数選択とカーソル1行が動き、キャンセル時は状態と履歴要求を変更しない。AC-01、AC-03、AC-06を満たす |
 | T106 | 完了 | M | visible editorだけを対象に、テーマ対応グレー背景、ガター、任意overview ruler、確認日時とcontextのhoverを描画する | T102、T105 | editor切替・状態更新後100ms目標で装飾が更新され、未確認は通常背景になる。AC-02を満たす |
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
@@ -185,4 +194,4 @@
 
 ## 次回開始時の選択
 
-T109はSSC互換の継続的VSIX prereleaseを修正・検証・レビューし、draft PR #18として提出済み。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T104-2は最新mainへの復旧、T105〜T107回帰検証、専用再レビューを完了した。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。

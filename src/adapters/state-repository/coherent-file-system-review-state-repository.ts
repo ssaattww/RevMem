@@ -94,19 +94,31 @@ const persistedFilePath = (error: unknown, fallbackPath: string): string => {
 
 /** Rejection raised when persisted state no longer equals transaction.expected. */
 export class StaleReviewStateError extends Error {
-  public constructor(
-    public readonly target: ReviewStateRepositoryTarget
-  ) {
+  /** Target whose persisted complete snapshot no longer matches the transaction's expected snapshot. */
+  public readonly target: ReviewStateRepositoryTarget;
+
+  /**
+   * Creates a stale-state error for a defensive copy of the target being compared.
+   *
+   * @param target Target whose persisted complete snapshot differed from `transaction.expected`.
+   */
+  public constructor(target: ReviewStateRepositoryTarget) {
+    const targetCopy = { ...target };
     super(
-      `Persisted review state for ${target.repositoryId}/${target.contextId} no longer matches transaction.expected`
+      `Persisted review state for ${targetCopy.repositoryId}/${targetCopy.contextId} no longer matches transaction.expected`
     );
     this.name = "StaleReviewStateError";
+    this.target = targetCopy;
   }
 }
 
 /**
  * Public filesystem repository that keeps one repository-wide Global state in
  * memory and commits Review State Service transactions by full-snapshot CAS.
+ * Inputs are cloned before persistence and `getCurrent`/`load` return clones, so
+ * callers cannot alias mutable repository memory. Same-instance saves and commits
+ * sharing a storage root are serialized; cross-window and cross-process locking
+ * remains T604.
  */
 export class FileSystemReviewStateRepository {
   private readonly atomicRepository: AtomicFileSystemReviewStateRepository;
@@ -114,7 +126,13 @@ export class FileSystemReviewStateRepository {
     string,
     RepositoryGlobalState
   >();
+  private readonly writeTailByStorageRoot = new Map<string, Promise<void>>();
 
+  /**
+   * Creates a repository using the supplied storage locations and optional persistence dependencies.
+   *
+   * @param options Dependencies retained for future operations; construction performs no I/O.
+   */
   public constructor(
     private readonly options: FileSystemReviewStateRepositoryOptions
   ) {
@@ -124,6 +142,12 @@ export class FileSystemReviewStateRepository {
     });
   }
 
+  /**
+   * Returns the current in-memory complete snapshot for a target without reading disk.
+   *
+   * @returns A deep clone of the current state, or `undefined` when this instance has not loaded or saved the target successfully.
+   * @throws Throws when the target cannot be routed from the configured storage URIs.
+   */
   public getCurrent(
     target: ReviewStateRepositoryTarget
   ): ReviewStateCommit | undefined {
@@ -141,6 +165,12 @@ export class FileSystemReviewStateRepository {
     });
   }
 
+  /**
+   * Loads the current manifest-selected or workspace state into this instance.
+   *
+   * @returns A deep clone of the persisted complete snapshot, or `undefined` when no state exists for the target.
+   * @throws Rejects on routing, validation, JSON, or filesystem failure after notifying the optional failure observer; notifier failures are ignored.
+   */
   public async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
@@ -160,27 +190,40 @@ export class FileSystemReviewStateRepository {
     }
   }
 
+  /**
+   * Validates and persists a complete snapshot, then updates this instance's memory only after persistence succeeds.
+   * The complete repository write is serialized with commits sharing the storage root.
+   *
+   * @param commit Caller-owned snapshot copied before write; later caller mutation cannot alias repository memory.
+   * @throws Rejects on invalid identity/schema or persistence failure, preserving the previous persisted and in-memory state; notifier failures are ignored.
+   */
   public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
   ): Promise<void> {
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
 
-    try {
-      await this.atomicRepository.save(target, commit);
-      this.recordRepositoryGlobal(target, commit.globalState);
-    } catch (error) {
-      await this.notifyFailure("save", target, route.statePointerPath, error);
-      throw error;
-    }
+    await this.serializeWrite(route.rootPath, async () => {
+      try {
+        await this.atomicRepository.save(target, commit);
+        this.recordRepositoryGlobal(target, commit.globalState);
+      } catch (error) {
+        await this.notifyFailure("save", target, route.statePointerPath, error);
+        throw error;
+      }
+    });
   }
 
   /**
    * Compares persisted complete context/Global snapshots and advances both only
    * when transaction.expected is still current.
    *
-   * Cross-window serialization is added by T604; this method provides the T104
-   * single-writer compare-and-replace boundary and never updates memory on failure.
+   * This instance serializes saves and commits sharing a storage root so
+   * read/compare/write is one same-process CAS boundary. Cross-window
+   * serialization is added by T604; this method never updates memory on failure.
+   *
+   * @param transaction Caller-owned complete snapshots copied before comparison and persistence.
+   * @throws Rejects with `StaleReviewStateError` when current persisted state differs from `expected`, or with validation/persistence errors; failure notification errors are ignored.
    */
   public async commit(
     transaction: Readonly<ReviewStateTransactionLike>
@@ -188,28 +231,57 @@ export class FileSystemReviewStateRepository {
     const target = requireMatchingIdentity(transaction);
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
 
-    try {
-      const reader = new AtomicFileSystemReviewStateRepository({
-        ...this.options,
-        notifyPersistenceFailure: undefined
-      });
-      const current = await reader.load(target);
-      const expected = transactionPairToCommit(transaction.expected);
+    await this.serializeWrite(route.rootPath, async () => {
+      try {
+        const reader = new AtomicFileSystemReviewStateRepository({
+          ...this.options,
+          notifyPersistenceFailure: undefined
+        });
+        const current = await reader.load(target);
+        const expected = transactionPairToCommit(transaction.expected);
 
-      if (
-        current === undefined ||
-        !isDeepStrictEqual(current.contextState, expected.contextState) ||
-        !isDeepStrictEqual(current.globalState, expected.globalState)
-      ) {
-        throw new StaleReviewStateError(target);
+        if (
+          current === undefined ||
+          !isDeepStrictEqual(current.contextState, expected.contextState) ||
+          !isDeepStrictEqual(current.globalState, expected.globalState)
+        ) {
+          throw new StaleReviewStateError(target);
+        }
+
+        const next = transactionPairToCommit(transaction.next);
+        await this.atomicRepository.save(target, next);
+        this.recordRepositoryGlobal(target, next.globalState);
+      } catch (error) {
+        await this.notifyFailure("commit", target, route.statePointerPath, error);
+        throw error;
       }
+    });
+  }
 
-      const next = transactionPairToCommit(transaction.next);
-      await this.atomicRepository.save(target, next);
-      this.recordRepositoryGlobal(target, next.globalState);
-    } catch (error) {
-      await this.notifyFailure("commit", target, route.statePointerPath, error);
-      throw error;
+  /**
+   * Orders every same-instance save and commit for one storage root so manifest
+   * read-modify-write and transaction CAS cannot interleave. The tail is released
+   * in `finally`, including after a failed operation, so later writes can proceed.
+   */
+  private async serializeWrite<T>(
+    storageRoot: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.writeTailByStorageRoot.get(storageRoot);
+    let release: () => void = () => undefined;
+    const tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.writeTailByStorageRoot.set(storageRoot, tail);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.writeTailByStorageRoot.get(storageRoot) === tail) {
+        this.writeTailByStorageRoot.delete(storageRoot);
+      }
     }
   }
 
