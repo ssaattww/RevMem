@@ -7,6 +7,18 @@ import test from "node:test";
 
 const readProjectFile = (path: string): string => readFileSync(resolve(process.cwd(), path), "utf8");
 
+const extractResolver = (workflow: string): string => {
+  const stepStart = workflow.indexOf("      - name: Resolve package version\n");
+  assert.notEqual(stepStart, -1);
+  const scriptStart = workflow.indexOf("        run: |\n", stepStart);
+  const nextStep = workflow.indexOf("\n      - name:", scriptStart);
+  assert.notEqual(scriptStart, -1);
+  assert.notEqual(nextStep, -1);
+  return workflow
+    .slice(scriptStart + "        run: |\n".length, nextStep)
+    .replace(/^ {10}/gm, "");
+};
+
 test("release metadata fixes the first prerelease version in package and lockfile", () => {
   const manifest = JSON.parse(readProjectFile("package.json")) as { version: string };
   const lockfile = JSON.parse(readProjectFile("package-lock.json")) as {
@@ -69,17 +81,25 @@ test("release workflow uploads to existing release/manual targets and skips dupl
   assert.doesNotMatch(workflow, /RELEASE_VERSION|RELEASE_TAG|ASSET_NAME|ASSET_PATH|concurrency:|remote_main_commit|git worktree|Release metadata does not match/);
 });
 
+test("workflow resolver extraction is identical for LF and CRLF", () => {
+  const lfWorkflow = [
+    "jobs:",
+    "  release:",
+    "    steps:",
+    "      - name: Resolve package version",
+    "        run: |",
+    "          echo resolver",
+    "      - name: Package extension",
+    "        run: npm run package"
+  ].join("\n");
+  const crlfWorkflow = lfWorkflow.replaceAll("\n", "\r\n");
+
+  assert.equal(extractResolver(crlfWorkflow), extractResolver(lfWorkflow));
+});
+
 test("workflow resolver increments one patch from the latest prerelease tag without backfilling commits", () => {
   const workflow = readProjectFile(".github/workflows/release-vsix.yml");
-  const stepStart = workflow.indexOf("      - name: Resolve package version\n");
-  assert.notEqual(stepStart, -1);
-  const scriptStart = workflow.indexOf("        run: |\n", stepStart);
-  const nextStep = workflow.indexOf("\n      - name:", scriptStart);
-  assert.notEqual(scriptStart, -1);
-  assert.notEqual(nextStep, -1);
-  const resolver = workflow
-    .slice(scriptStart + "        run: |\n".length, nextStep)
-    .replace(/^ {10}/gm, "");
+  const resolver = extractResolver(workflow);
   const fixture = mkdtempSync(join(tmpdir(), "release-vsix-contract-"));
   const git = (...args: string[]): void => {
     execFileSync("git", args, { cwd: fixture, stdio: "pipe" });
