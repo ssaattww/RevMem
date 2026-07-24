@@ -1,0 +1,67 @@
+# Issue #13 レビューレポート
+
+## 対象
+
+- Pull Request: #15
+- Branch: `issue/13-document-context-routing`
+- 最終確認head: `5da9b1efa6a24d5398634cdabd831578a9455a62`
+- 対象: 設計追補、document ownership router、external-file persistence、Extension接続、回帰test、README
+
+## レビュー観点
+
+- workspace membershipよりGit ownershipが優先されること
+- workspace外Git fileがrepository-relative identityを使用すること
+- Git failureを非Gitと誤認しないこと
+- UNC authorityがidentityから消えないこと
+- external-fileとGit repositoryの保存先が混線しないこと
+- context/Globalがatomicに更新されること
+- owner昇格時に不確実な範囲を移行しないこと
+- decoration readが状態を作成・変更しないこと
+- 既存workspace、Git、PR persistence contractを壊さないこと
+
+## 検出・修正事項
+
+### external-file debounce key
+
+`ReviewStateTransactionLike`から保存targetを復元するとき、`external-file` contextが`git`へ畳み込まれ、external pending saveとconfirmation commitが別queueになる問題を検出した。
+
+修正:
+
+- `external-file`を独立したtransaction targetへmappingした。
+- pending saveがcommit前にflushされる回帰testを追加した。
+
+### owner/context persistence整合性
+
+保存targetとcontext kindの組み合わせを明示的に検証し、external-file contextがGit targetへ混入しないことを固定した。
+
+### Windows path identity
+
+Windows pathのdrive、case、separator variationを同一repository-relative pathとfile IDへ正規化する回帰testを確認した。実行場所は`extensionKind: ["workspace"]`によりworkspace-side Extension Hostであり、T202のhost-native Git path contractと整合する。
+
+### external descriptor
+
+external-fileはcanonical URIとsnapshot revisionの両方を保持する。snapshot revisionは既存snapshot descriptorを再利用し、canonical locatorは`externalFile` descriptorへ分離する。
+
+### README不整合
+
+旧READMEの「workspace外は対象外」「Gitを認識しない」という記載を、Issue #13実装後のowner routingと現行制限へ修正した。
+
+## 最終判定
+
+- blocking finding: なし
+- non-blocking finding: なし
+- merge: 実施しない。ユーザーが行う。
+
+## 検証
+
+GitHub Actions run `30092391779`で、head `5da9b1efa6a24d5398634cdabd831578a9455a62`に紐づく次の工程がすべて成功した。
+
+- Install dependencies
+- Build
+- Lint
+- Unit tests
+- Temporary Git integration tests
+- Mock GitHub integration tests
+- VS Code Extension Host tests
+
+同repositoryの別branchまたは他作業者の最新runではなく、上記head SHAに紐づくrunだけを最終判定に使用した。
