@@ -15,6 +15,15 @@ const expectedDecorationDefaults = {
   "reviewRange.showOverviewRuler": false
 } as const;
 
+const expectedExcludeGlobs = [
+  "**/.git/**",
+  "**/node_modules/**",
+  "**/bin/**",
+  "**/obj/**",
+  "**/dist/**",
+  "**/build/**"
+] as const;
+
 const expectedThemeColors = new Map([
   [
     "reviewRange.reviewedBackground",
@@ -47,9 +56,22 @@ interface ReviewedInterval {
   readonly endLineExclusive: number;
 }
 
+interface FileExclusionPolicySnapshot {
+  readonly revision: number;
+  readonly userGlobs: readonly string[];
+}
+
+interface FileExclusionDecision {
+  readonly excluded: boolean;
+  readonly normalizedPath: string;
+  readonly reason?: { readonly kind: string; readonly pattern?: string };
+}
+
 interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedInterval[];
+  getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
+  evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
 
 const readTestPhase = (): TestPhase => {
@@ -78,6 +100,11 @@ const assertManifestAndConfiguration = async (
       `${configurationKey} should expose the designed default.`
     );
   }
+  assert.deepEqual(
+    configurationProperties["reviewRange.exclude"].default,
+    expectedExcludeGlobs,
+    "reviewRange.exclude should expose the designed default glob list."
+  );
 
   const contributedColors = new Map(
     extension.packageJSON.contributes.colors.map(
@@ -119,6 +146,93 @@ const assertManifestAndConfiguration = async (
       `${configurationKey} should resolve to its designed default.`
     );
   }
+  assert.deepEqual(
+    configuration.get("exclude"),
+    expectedExcludeGlobs,
+    "reviewRange.exclude should resolve to its designed default."
+  );
+};
+
+const waitForRevision = async (
+  extensionApi: ReviewRangeExtensionTestApi,
+  predicate: (revision: number) => boolean
+): Promise<number> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const revision = extensionApi.getFileExclusionPolicySnapshot().revision;
+    if (predicate(revision)) {
+      return revision;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the exclusion-policy revision.");
+};
+
+const assertExclusionConfigurationLifecycle = async (
+  extensionApi: ReviewRangeExtensionTestApi
+): Promise<void> => {
+  const configuration = vscode.workspace.getConfiguration("reviewRange");
+  const initial = extensionApi.getFileExclusionPolicySnapshot();
+  assert.deepEqual(initial.userGlobs, expectedExcludeGlobs);
+  assert.equal(extensionApi.evaluateFileExclusion("dist/index.js").excluded, true);
+
+  const configuredGlobs = [...expectedExcludeGlobs, "**/*.generated.ts"];
+  await configuration.update(
+    "exclude",
+    configuredGlobs,
+    vscode.ConfigurationTarget.Workspace
+  );
+  const configuredRevision = await waitForRevision(
+    extensionApi,
+    (revision) => revision > initial.revision
+  );
+  assert.equal(
+    extensionApi.evaluateFileExclusion("src/model.generated.ts").excluded,
+    true,
+    "A relevant effective setting change should update the shared policy."
+  );
+
+  await configuration.update(
+    "showOverviewRuler",
+    true,
+    vscode.ConfigurationTarget.Workspace
+  );
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(
+    extensionApi.getFileExclusionPolicySnapshot().revision,
+    configuredRevision,
+    "An unrelated setting change should not update the exclusion policy."
+  );
+  await configuration.update(
+    "showOverviewRuler",
+    undefined,
+    vscode.ConfigurationTarget.Workspace
+  );
+
+  await configuration.update(
+    "exclude",
+    [...expectedExcludeGlobs, " **\\*.generated.ts "],
+    vscode.ConfigurationTarget.Workspace
+  );
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(
+    extensionApi.getFileExclusionPolicySnapshot().revision,
+    configuredRevision,
+    "A semantically equivalent setting should not request recomputation."
+  );
+
+  await configuration.update(
+    "exclude",
+    undefined,
+    vscode.ConfigurationTarget.Workspace
+  );
+  await waitForRevision(
+    extensionApi,
+    (revision) => revision > configuredRevision
+  );
+  assert.deepEqual(
+    extensionApi.getFileExclusionPolicySnapshot().userGlobs,
+    expectedExcludeGlobs
+  );
 };
 
 const openLifecycleFixture = async (
@@ -171,9 +285,12 @@ export async function run(): Promise<void> {
   assert.equal(extension.isActive, true);
   assert.ok(
     extensionApi,
-    "Test-mode activation should expose lifecycle and decoration observation hooks."
+    "Test-mode activation should expose lifecycle and runtime observation hooks."
   );
   await assertManifestAndConfiguration(extension);
+  if (phase === "confirm") {
+    await assertExclusionConfigurationLifecycle(extensionApi);
+  }
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, "The Extension Host fixture should open a workspace folder.");

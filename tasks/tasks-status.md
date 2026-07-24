@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T104-2 T104マージ後レビュー修正の復旧
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
+- 直近完了タスク: T300 共通除外policy review follow-up
 - 現在のタスク: なし
 - 次のタスク: T203 diff parserとrevision間interval mapping
-- 実装状態: T104の最終レビュー修正を最新mainへ復旧した。T104 focused 20/20、T105〜T107関連unit 39/39、3段階Extension Host再起動、build、lint、contract typecheck、architecture検証が成功し、Sol/high最終再レビューは指摘なし。全unit 128/129の1件はT104-2から未変更のorigin/main由来release contract failureとしてheld
+- 実装状態: T300のR2指摘4件に対応した。VS Code設定runtime接続、POSIX Git pathのbackslash保持、glob件数・長さ・brace展開・RegExp数上限、最新main `938904da6e63c7111dc8add56cb3a53acd9e9904`への積み直しを完了した。回帰Red run `30093514144`と`30093714252`で診断artifactを生成し、コード整理後head `04c02622e320f57301a84b430e09b6a6d5f71b1b`のrun `30094763392`で全工程が成功した
 - ブロッカー: なし
-- Gitブランチ: `fix/t104-post-merge-review-followup`
-- Pull Request: #19
-- PR方針: T104の漏れた最終レビュー修正、証跡、T105〜T107回帰検証をdraft PR #19として提出済み
+- Gitブランチ: `task/t300-exclusion-policy`
+- Pull Request: #17
+- PR方針: T104-2を含む最新mainをbaseとし、T300のpolicy、runtime設定adapter、test、reports、進捗同期だけを提出する。マージはユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -77,6 +77,10 @@
 - T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
 - T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
 - T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
+- T300実装レポート: `reports/issue-1-t300-implementation-20260724205000.md`
+- T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
+- T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
+- T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
 
 ## 状態と規模
 
@@ -131,7 +135,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T300 | 未着手 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
+| T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、POSIX Git pathを保持し、設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
@@ -194,4 +198,4 @@
 
 ## 次回開始時の選択
 
-T104-2は最新mainへの復旧、T105〜T107回帰検証、専用再レビューを完了した。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
+T300は最新mainへの積み直し、R2指摘修正、TDD、Extension Host回帰、専用再レビュー、進捗同期を完了した。次回はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
