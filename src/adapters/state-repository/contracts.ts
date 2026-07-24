@@ -31,7 +31,7 @@ export interface ReviewStateStorageUris {
   readonly storageUri?: StorageUriLike;
 }
 
-/** Logical owner of one context/global state transaction. `git` maps to a branch context; other values map to identically named context kinds. */
+/** Logical owner of one context/global state transaction. `git` maps to a branch context, while the other values map to identically named context kinds. */
 export type ReviewStateRepositoryTargetKind =
   | "git"
   | "pull-request"
@@ -40,7 +40,7 @@ export type ReviewStateRepositoryTargetKind =
 
 /** Identity needed to route, validate, and load one review context. */
 export interface ReviewStateRepositoryTarget {
-  /** Storage and context-kind mapping: `git`/`branch`, `pull-request`, `workspace`, or `external-file`. */
+  /** Storage and context-kind mapping: `git`/`branch`, `pull-request`/`pull-request`, `workspace`/`workspace`, or `external-file`/`external-file`. */
   readonly kind: ReviewStateRepositoryTargetKind;
   /** Stable repository or standalone-resource identity used to select the storage root and validate both context and Global state. */
   readonly repositoryId: string;
@@ -50,9 +50,9 @@ export interface ReviewStateRepositoryTarget {
 
 /** Shared filesystem route reused by state, history, snapshot, cache, and lock stores. */
 export interface ReviewStateStorageRoute {
-  /** Whether this route stores a manifest-backed owner or the single workspace state document. */
+  /** Whether this route stores a repository-style manifest or the single workspace state document. */
   readonly storageKind: "repository" | "workspace";
-  /** Absolute storage root; manifest-backed roots are derived from a SHA-256 owner ID hash. */
+  /** Absolute storage root; repository-style roots are derived from a SHA-256 owner ID hash. */
   readonly rootPath: string;
   /** Absolute path of the manifest pointer or workspace-state document used to make a state commit visible. */
   readonly statePointerPath: string;
@@ -60,7 +60,7 @@ export interface ReviewStateStorageRoute {
   readonly historyDirectory: string;
   /** Absolute directory reserved for future snapshots; this adapter does not create or read snapshot entries. */
   readonly snapshotDirectory: string;
-  /** Absolute cache directory, omitted for a non-Git workspace route. */
+  /** Absolute repository-style cache directory, omitted for a non-Git workspace route. */
   readonly cacheDirectory?: string;
   /** Absolute future lock location; T104 does not acquire a cross-window or cross-process lock. */
   readonly lockPath: string;
@@ -102,11 +102,11 @@ export interface ReviewStateTransactionLike {
   readonly next: ReviewStateTransactionSnapshotPair;
 }
 
-/** Immutable context document selected by a repository manifest. */
+/** Immutable context document selected by a repository-style manifest. */
 export interface RepositoryStateManifestContextReference {
   /** Context identity used as the manifest lookup key; duplicate IDs make a manifest invalid. */
   readonly contextId: string;
-  /** Relative path below the owner root, required to remain in its `contexts/` subtree. */
+  /** Relative path below the storage root, required to remain in its `contexts/` subtree. */
   readonly file: string;
   /** Schema version of the referenced immutable document. */
   readonly schemaVersion: SchemaVersion;
@@ -114,9 +114,9 @@ export interface RepositoryStateManifestContextReference {
   readonly updatedAt: string;
 }
 
-/** Immutable Global document selected by a repository manifest. */
+/** Immutable Global document selected by a repository-style manifest. */
 export interface RepositoryStateManifestGlobalReference {
-  /** Relative path below the owner root, required to remain in its `global-state/` subtree. */
+  /** Relative path below the storage root, required to remain in its `global-state/` subtree. */
   readonly file: string;
   /** Schema version of the referenced immutable document. */
   readonly schemaVersion: SchemaVersion;
@@ -124,13 +124,13 @@ export interface RepositoryStateManifestGlobalReference {
   readonly updatedAt: string;
 }
 
-/** Atomic commit pointer for all manifest-backed context and Global state documents. */
+/** Atomic commit pointer for all Git/PR/external-file context and Global state documents. */
 export interface RepositoryStateManifest {
   /** Schema version of the manifest and every reference it contains. */
   readonly schemaVersion: SchemaVersion;
-  /** Constant discriminator that prevents interpreting a workspace document as a repository manifest. */
+  /** Constant discriminator that prevents interpreting a workspace document as a repository-style manifest. */
   readonly storageKind: "repository";
-  /** Owner identity that must match the target before referenced documents are loaded. */
+  /** Repository or standalone-resource identity that must match the target before referenced documents are loaded. */
   readonly repositoryId: string;
   /** One reference per saved context; replacing the manifest atomically publishes all referenced state. */
   readonly contexts: RepositoryStateManifestContextReference[];

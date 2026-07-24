@@ -26,6 +26,12 @@ const closeIfOpen = async (handle: FileHandle | undefined): Promise<void> => {
 
 /** Node filesystem implementation of temp-write, file flush, and atomic replace. */
 export class NodeAtomicTextFileStore implements AtomicTextFileStore {
+  /**
+   * Reads a UTF-8 file without treating its absence as an error.
+   *
+   * @returns The content at `filePath`, or `undefined` when it does not exist.
+   * @throws Propagates filesystem failures other than `ENOENT`.
+   */
   public async readText(filePath: string): Promise<string | undefined> {
     try {
       return await readFile(filePath, "utf8");
@@ -38,6 +44,11 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
     }
   }
 
+  /**
+   * Flushes complete UTF-8 content to a unique temporary file and renames it over `filePath`.
+   *
+   * @throws Rejects with the original filesystem error after best-effort temporary-file cleanup; it never exposes partial content at the destination through this method.
+   */
   public async writeTextAtomically(filePath: string, content: string): Promise<void> {
     const directory = path.dirname(filePath);
     const temporaryPath = path.join(
