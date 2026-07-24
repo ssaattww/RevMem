@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
-- 直近完了タスク: T201 Range Mapping Engine
+- 直近完了タスク: T202 Local Git Adapter
 - 現在のタスク: なし
-- 次のタスク: T202 PR #8を最新`main`へ追従・統合した後、T203 diff parserとrevision間interval mapping
-- 実装状態: T201 Range Mapping Engineを最新`main`へ統合し、main側13件とT201側2件のunit test入口を保持した。focused 18/18、unit 122/122、Git・GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功し、独立再レビューの競合findingを解消した
-- ブロッカー: T203着手前にPR #8の最新`main`追従・統合が必要
-- Gitブランチ: `task/t201-range-mapping-engine`
-- Pull Request: #7
-- PR方針: 最新`main`をmergeしてT201固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
+- 次のタスク: T203 diff parserとrevision間interval mapping
+- 実装状態: T202 Local Git Adapterを最新`main`へ統合し、Windows固定path fixtureをhost-native化した。`test:t202` 16/16、`test:git` 17/17、unit 122/122、GitHub・Extension Host、build、lint、contract typecheck、architecture検証が成功した
+- ブロッカー: なし
+- Gitブランチ: `task/t202-local-git-adapter`
+- Pull Request: #8
+- PR方針: 最新`main`をmergeしてT202固有差分と全回帰testを保持し、最終再レビュー後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -60,6 +60,11 @@
 - T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
 - T201 review follow-upレポート: `reports/issue-1-t201-review-followup-20260724194226.md`
 - T201最終再レビューレポート: `reports/issue-1-t201-review-r3-20260724194817.md`
+- T202実装レポート: `reports/issue-1-t202-implementation-20260723143500.md`
+- T202初回レビューレポート: `reports/issue-1-t202-review-20260723144000.md`
+- T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
+- T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
+- T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
 
 ## 状態と規模
 
@@ -101,8 +106,8 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
-| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。PR #8で実装・検証済み、最新`main`へ未統合 |
-| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす。着手前にPR #8を最新`main`へ統合する |
+| T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
+| T203 | 次 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 未着手 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
@@ -175,4 +180,4 @@
 
 ## 次回開始時の選択
 
-T201は最新`main`への追従、統合検証、最終再レビュー後にPR #7をsquash mergeする。次はT202 PR #8だけを最新`main`へ追従・統合し、その後の新規実装はT203だけを選択してdiff parserとrevision間interval mappingの失敗するテストから開始する。
+T201とT202は最新`main`への追従、統合検証、最終再レビューを完了した。次の新規実装はT203だけを選択し、diff parserとrevision間interval mappingの失敗するテストから開始する。
