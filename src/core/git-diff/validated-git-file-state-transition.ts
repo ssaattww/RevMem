@@ -70,6 +70,12 @@ function decodeMetadataPath(raw: string): string {
   return value;
 }
 
+function decodeFileHeaderPath(raw: string): string {
+  const tabIndex = raw.indexOf("\t");
+  const path = tabIndex >= 0 ? raw.slice(0, tabIndex) : raw;
+  return decodeMetadataPath(path);
+}
+
 function destinationOfSection(lines: readonly string[]): string | undefined {
   const copyTo = lines.find((line) => line.startsWith("copy to "));
   if (copyTo !== undefined) {
@@ -85,7 +91,7 @@ function destinationOfSection(lines: readonly string[]): string | undefined {
       throw new SyntaxError("New-file section is missing its destination header.");
     }
     const rawPath = newHeader.slice("+++ ".length);
-    const decoded = decodeMetadataPath(rawPath);
+    const decoded = decodeFileHeaderPath(rawPath);
     return decoded.startsWith("b/") ? decoded.slice(2) : decoded;
   }
   return undefined;
