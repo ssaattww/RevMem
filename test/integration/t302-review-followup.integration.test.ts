@@ -20,22 +20,6 @@ import { createTemporaryGitRepository } from "../support/temporary-git-repositor
 
 const immutableRevision = "0123456789abcdef0123456789abcdef01234567";
 
-type DescriptorWithPathSemantics = ReviewDiffDocumentDescriptor & {
-  readonly fileSystemPathSemantics: "posix" | "windows";
-};
-
-type ReadTextFileAtRevisionWithSemantics = (
-  repositoryRoot: string,
-  revision: string,
-  repositoryRelativePath: string,
-  fileSystemPathSemantics: "posix" | "windows"
-) => Promise<unknown>;
-
-const readWithSemantics = (
-  adapter: LocalGitAdapter
-): ReadTextFileAtRevisionWithSemantics =>
-  adapter.readTextFileAtRevision.bind(adapter) as ReadTextFileAtRevisionWithSemantics;
-
 class SequenceGitCommandExecutor implements GitCommandExecutor {
   public readonly invocations: GitCommandInvocation[] = [];
   private nextResult = 0;
@@ -67,12 +51,13 @@ const failure = (exitCode: number, stderr: string): GitCommandResult => ({
 });
 
 const createDescriptor = (
-  overrides: Partial<DescriptorWithPathSemantics> = {}
-): DescriptorWithPathSemantics => ({
+  overrides: Partial<ReviewDiffDocumentDescriptor> = {}
+): ReviewDiffDocumentDescriptor => ({
   contextId: "pull-request:github.com/owner/repository#42",
   filePath: "src/file.ts",
   fileSystemPathSemantics: "posix",
   side: "original",
+  revisionSource: "git-commit",
   revision: immutableRevision,
   ...overrides
 });
@@ -130,13 +115,14 @@ test("Windows review diff URI rejects backslash and control characters", () => {
 });
 
 test("fatal revision lookup exit 128 is preserved instead of reported as missing", async () => {
-  const executor = new SequenceGitCommandExecutor([
-    failure(128, "fatal: detected dubious ownership in repository")
-  ]);
-  const adapter = new LocalGitAdapter(executor);
+  const adapter = new LocalGitAdapter(
+    new SequenceGitCommandExecutor([
+      failure(128, "fatal: detected dubious ownership in repository")
+    ])
+  );
 
   await assert.rejects(
-    readWithSemantics(adapter)(
+    adapter.readTextFileAtRevision(
       "/workspace/repository",
       immutableRevision,
       "src/file.ts",
@@ -147,14 +133,15 @@ test("fatal revision lookup exit 128 is preserved instead of reported as missing
 });
 
 test("fatal file lookup exit 128 is preserved instead of reported as missing", async () => {
-  const executor = new SequenceGitCommandExecutor([
-    success(`${immutableRevision}\n`),
-    failure(128, "fatal: object database is corrupt")
-  ]);
-  const adapter = new LocalGitAdapter(executor);
+  const adapter = new LocalGitAdapter(
+    new SequenceGitCommandExecutor([
+      success(`${immutableRevision}\n`),
+      failure(128, "fatal: object database is corrupt")
+    ])
+  );
 
   await assert.rejects(
-    readWithSemantics(adapter)(
+    adapter.readTextFileAtRevision(
       "/workspace/repository",
       immutableRevision,
       "src/file.ts",
@@ -170,7 +157,12 @@ test("moving refs are rejected before immutable Git content lookup", async () =>
 
   try {
     await assert.rejects(
-      readWithSemantics(adapter)(repository.path, "HEAD", "fixture.txt", "posix"),
+      adapter.readTextFileAtRevision(
+        repository.path,
+        "HEAD",
+        "fixture.txt",
+        "posix"
+      ),
       TypeError
     );
   } finally {
@@ -195,7 +187,12 @@ test("POSIX Git content lookup supports tab, newline, and backslash filenames", 
     const revision = await repository.runGit(["rev-parse", "HEAD"]);
 
     assert.deepEqual(
-      await readWithSemantics(adapter)(repository.path, revision, fileName, "posix"),
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        revision,
+        fileName,
+        "posix"
+      ),
       { kind: "found", content: "unusual path\n" }
     );
   } finally {
@@ -217,21 +214,25 @@ test("Git content lookup reads UTF-8 text immediately below and above 4 MiB", as
     await repository.runGit(["commit", "--message", "add large text fixtures"]);
     const revision = await repository.runGit(["rev-parse", "HEAD"]);
 
-    const belowResult = await readWithSemantics(adapter)(
+    const belowResult = await adapter.readTextFileAtRevision(
       repository.path,
       revision,
       "below.txt",
       "posix"
     );
-    const aboveResult = await readWithSemantics(adapter)(
+    const aboveResult = await adapter.readTextFileAtRevision(
       repository.path,
       revision,
       "above.txt",
       "posix"
     );
 
-    assert.equal((belowResult as { content?: string }).content?.length, below.length);
-    assert.equal((aboveResult as { content?: string }).content?.length, above.length);
+    assert.equal(belowResult.kind, "found");
+    assert.equal(aboveResult.kind, "found");
+    if (belowResult.kind === "found" && aboveResult.kind === "found") {
+      assert.equal(belowResult.content.length, below.length);
+      assert.equal(aboveResult.content.length, above.length);
+    }
   } finally {
     await repository.cleanup();
   }
@@ -251,7 +252,7 @@ test("non-UTF-8 Git blob is rejected deterministically without replacement chara
     const revision = await repository.runGit(["rev-parse", "HEAD"]);
 
     assert.deepEqual(
-      await readWithSemantics(adapter)(
+      await adapter.readTextFileAtRevision(
         repository.path,
         revision,
         "invalid-utf8.txt",
