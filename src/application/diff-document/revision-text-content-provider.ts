@@ -8,14 +8,16 @@ import { ReviewDiffUriCodec } from "./review-diff-uri-codec";
 export type RevisionTextContentProviderErrorCode =
   | "missing-context"
   | "missing-revision"
-  | "missing-file";
+  | "missing-file"
+  | "invalid-encoding";
 
 const ERROR_MESSAGES: Readonly<
   Record<RevisionTextContentProviderErrorCode, string>
 > = {
   "missing-context": "Review context is unavailable",
   "missing-revision": "Revision object is unavailable",
-  "missing-file": "File is unavailable at the requested revision"
+  "missing-file": "File is unavailable at the requested revision",
+  "invalid-encoding": "File content is not valid UTF-8"
 };
 
 /** Deterministic failure returned for known unavailable diff-document inputs. */
@@ -34,8 +36,8 @@ export class RevisionTextContentProviderError extends Error {
  * Restores immutable original or modified text from a T302 virtual URI.
  *
  * The provider never substitutes another context, side, revision, or file. Known
- * absence is represented by stable error codes; unexpected adapter failures are
- * preserved for diagnostic handling by the caller.
+ * absence and unsupported text encoding use stable error codes; unexpected adapter
+ * failures are preserved for diagnostic handling by the caller.
  */
 export class RevisionTextContentProvider {
   public constructor(
