@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { toDefaultVisualState } from "../../src/core/contracts/index";
+import "./issue-13-r5-review-followup.test";
 import "./state-repository-memory.test";
 import "./state-repository.test";
 
