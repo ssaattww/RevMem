@@ -1,107 +1,123 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { DiffLine, PullRequestFileChange } from "../../src/core/contracts/index";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
-  type PullRequestDiffFile,
   type ReviewedPullRequestDiffLines
 } from "../../src/core/pr-progress/index";
 
+const line = (kind: DiffLine["kind"], oldLine?: number, newLine?: number): DiffLine => ({
+  kind,
+  oldLine,
+  newLine,
+  text: kind
+});
+
 const file = (
-  path: string,
-  additions: number,
-  deletions: number,
-  isBinary = false
-): PullRequestDiffFile => ({ path, additions, deletions, isBinary });
+  fileId: string,
+  status: PullRequestFileChange["status"],
+  oldPath: string | undefined,
+  newPath: string | undefined,
+  lines: readonly DiffLine[],
+  additions = lines.filter(({ kind }) => kind === "addition").length,
+  deletions = lines.filter(({ kind }) => kind === "deletion").length
+): PullRequestFileChange => ({
+  fileId,
+  status,
+  oldPath,
+  newPath,
+  additions,
+  deletions,
+  hunks: lines.length === 0 ? [] : [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [...lines] }]
+});
 
 const reviewed = (
-  path: string,
+  fileId: string,
   addedLines: readonly number[] = [],
   deletedLines: readonly number[] = []
-): ReviewedPullRequestDiffLines => ({ path, addedLines, deletedLines });
+): ReviewedPullRequestDiffLines => ({ fileId, addedLines, deletedLines });
 
-test("uses only added and deleted PR lines as the denominator", () => {
+const policy = new ReviewFileExclusionPolicy({ userGlobs: [] });
+
+test("counts only reviewed coordinates that are actual additions or deletions", () => {
   const result = calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", 3, 2), file("src/b.ts", 1, 4)],
-    reviewedLines: [reviewed("src/a.ts", [2, 4], [8]), reviewed("src/b.ts", [1], [3, 5])],
-    exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] })
-  });
-
-  assert.equal(result.reviewedLineCount, 6);
-  assert.equal(result.totalLineCount, 10);
-  assert.equal(result.progress, 0.6);
-  assert.deepEqual(result.files.map(({ path, progress }) => [path, progress]), [
-    ["src/a.ts", 0.6],
-    ["src/b.ts", 0.6]
-  ]);
-});
-
-test("deduplicates reviewed line numbers and clamps unknown lines to each diff-side total", () => {
-  const result = calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", 2, 1)],
-    reviewedLines: [reviewed("src/a.ts", [4, 4, 7], [2, 9])],
-    exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] })
-  });
-
-  assert.equal(result.reviewedLineCount, 3);
-  assert.equal(result.totalLineCount, 3);
-  assert.equal(result.progress, 1);
-});
-
-test("omits excluded files from numerator and denominator while retaining the exclusion reason", () => {
-  const result = calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", 2, 2), file("dist/bundle.js", 100, 20), file("assets/logo.png", 10, 0, true)],
-    reviewedLines: [reviewed("src/a.ts", [1], [1]), reviewed("dist/bundle.js", [1, 2, 3], [1]), reviewed("assets/logo.png", [1])],
-    exclusionPolicy: new ReviewFileExclusionPolicy()
+    files: [file("a", "modified", "src/a.ts", "src/a.ts", [
+      line("context", 1, 1),
+      line("deletion", 2),
+      line("addition", undefined, 2),
+      line("addition", undefined, 3),
+      line("context", 3, 4)
+    ])],
+    reviewedLines: [reviewed("a", [1, 2, 99], [1, 2, 99])],
+    exclusionPolicy: policy
   });
 
   assert.equal(result.reviewedLineCount, 2);
+  assert.equal(result.totalLineCount, 3);
+  assert.equal(result.progress, 2 / 3);
+});
+
+test("covers addition-only, deletion-only, replacement, context and PR-only review state", () => {
+  const result = calculatePullRequestDiffProgress({
+    files: [
+      file("add", "added", undefined, "src/add.ts", [line("addition", undefined, 1)]),
+      file("del", "deleted", "src/del.ts", undefined, [line("deletion", 4)]),
+      file("mod", "modified", "src/mod.ts", "src/mod.ts", [line("deletion", 7), line("addition", undefined, 8), line("context", 8, 9)])
+    ],
+    reviewedLines: [reviewed("add", [1]), reviewed("del", [], [4]), reviewed("mod", [8, 9], [7])],
+    exclusionPolicy: policy
+  });
+
+  assert.equal(result.reviewedLineCount, 4);
   assert.equal(result.totalLineCount, 4);
-  assert.equal(result.progress, 0.5);
-  assert.deepEqual(result.files[1], {
-    path: "dist/bundle.js",
+  assert.equal(result.progress, 1);
+});
+
+test("retains rename-only classification and returns one hundred percent for zero changed lines", () => {
+  const result = calculatePullRequestDiffProgress({
+    files: [file("rename", "renamed", "src/old.ts", "src/new.ts", [])],
+    reviewedLines: [],
+    exclusionPolicy: policy
+  });
+
+  assert.deepEqual(result.files[0], {
+    fileId: "rename",
+    oldPath: "src/old.ts",
+    newPath: "src/new.ts",
+    status: "renamed",
+    path: "src/new.ts",
     reviewedLineCount: 0,
     totalLineCount: 0,
     progress: 1,
-    excluded: true,
-    exclusionReason: { kind: "default-glob", pattern: "**/dist/**" }
+    excluded: false
   });
-  assert.deepEqual(result.files[2]?.exclusionReason, { kind: "binary" });
 });
 
-test("returns one hundred percent when the included denominator is zero", () => {
-  const empty = calculatePullRequestDiffProgress({
-    files: [],
-    reviewedLines: [],
-    exclusionPolicy: new ReviewFileExclusionPolicy()
-  });
-  const onlyExcluded = calculatePullRequestDiffProgress({
-    files: [file("dist/bundle.js", 10, 5)],
-    reviewedLines: [],
-    exclusionPolicy: new ReviewFileExclusionPolicy()
-  });
-  const metadataOnly = calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", 0, 0)],
-    reviewedLines: [],
-    exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] })
+test("applies user glob and binary exclusions while preserving reasons", () => {
+  const result = calculatePullRequestDiffProgress({
+    files: [
+      file("generated", "modified", "generated/a.ts", "generated/a.ts", [line("addition", undefined, 1)]),
+      file("binary", "binary", "assets/logo.png", "assets/logo.png", [])
+    ],
+    reviewedLines: [reviewed("generated", [1])],
+    exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] })
   });
 
-  assert.equal(empty.progress, 1);
-  assert.equal(onlyExcluded.progress, 1);
-  assert.equal(metadataOnly.progress, 1);
-  assert.equal(metadataOnly.files[0]?.progress, 1);
+  assert.equal(result.totalLineCount, 0);
+  assert.deepEqual(result.files[0]?.exclusionReason, { kind: "user-glob", pattern: "generated/**" });
+  assert.deepEqual(result.files[1]?.exclusionReason, { kind: "binary" });
 });
 
-test("rejects duplicate file entries and invalid diff counts instead of guessing", () => {
-  const policy = new ReviewFileExclusionPolicy({ userGlobs: [] });
+test("rejects duplicate file identities and invalid diff statistics", () => {
   assert.throws(() => calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", 1, 0), file("src/a.ts", 0, 1)],
+    files: [file("same", "modified", "a.ts", "a.ts", []), file("same", "modified", "b.ts", "b.ts", [])],
     reviewedLines: [],
     exclusionPolicy: policy
   }), /Duplicate PR diff file/);
   assert.throws(() => calculatePullRequestDiffProgress({
-    files: [file("src/a.ts", -1, 0)],
+    files: [file("bad", "modified", "a.ts", "a.ts", [], -1, 0)],
     reviewedLines: [],
     exclusionPolicy: policy
   }), /non-negative integer/);
