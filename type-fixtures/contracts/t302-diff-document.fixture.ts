@@ -9,7 +9,10 @@ import {
   type ReviewDiffRepositoryRootResolver
 } from "../../src/adapters/diff-document";
 import {
+  LocalGitAdapter,
+  NodeGitCommandExecutor,
   createNodeLocalGitAdapter,
+  type GitBlobReader,
   type NodeLocalGitAdapterOptions
 } from "../../src/adapters/local-git";
 import { ReviewDiffTextDocumentContentProvider } from "../../src/ui/diff-editor";
@@ -42,6 +45,16 @@ const nodeLocalGitAdapter = createNodeLocalGitAdapter(nodeRuntimeOptions);
 
 declare const resolver: ReviewDiffRepositoryRootResolver;
 declare const localGitSource: LocalGitRevisionTextContentSource;
+declare const blobReader: GitBlobReader;
+
+const explicitBoundaryAdapter = new LocalGitAdapter(
+  new NodeGitCommandExecutor(),
+  blobReader
+);
+
+// A LocalGitAdapter must never invent a second Node runtime policy implicitly.
+// @ts-expect-error The blob reader boundary is mandatory for direct construction.
+new LocalGitAdapter(new NodeGitCommandExecutor());
 
 void [
   codec.encode(descriptor),
@@ -50,5 +63,6 @@ void [
   resolver,
   localGitSource,
   nodeLocalGitAdapter,
+  explicitBoundaryAdapter,
   nodeRuntimeOptions
 ];
