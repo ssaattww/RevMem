@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   GitCommandFailedError,
   LocalGitAdapter,
+  type GitBlobReader,
   type GitCommandExecutor,
   type GitCommandInvocation,
   type GitCommandResult
@@ -19,17 +20,23 @@ import {
   type RevisionTextContentSource
 } from "../../src/application/diff-document/index";
 
+const originalRevision = "0123456789abcdef0123456789abcdef01234567";
+const modifiedRevision = "89abcdef0123456789abcdef0123456789abcdef";
+const blobObjectId = "abcdef0123456789abcdef0123456789abcdef01";
+
 const originalDescriptor: ReviewDiffDocumentDescriptor = {
   contextId: "pull-request:github.com/owner/repository#42",
   filePath: "src/日本語/space name.ts",
+  fileSystemPathSemantics: "posix",
   side: "original",
-  revision: "0123456789abcdef0123456789abcdef01234567"
+  revisionSource: "git-commit",
+  revision: originalRevision
 };
 
 const modifiedDescriptor: ReviewDiffDocumentDescriptor = {
   ...originalDescriptor,
   side: "modified",
-  revision: "89abcdef0123456789abcdef0123456789abcdef"
+  revision: modifiedRevision
 };
 
 class RecordingRevisionTextContentSource implements RevisionTextContentSource {
@@ -92,7 +99,26 @@ class RecordingGitCommandExecutor implements GitCommandExecutor {
   }
 }
 
-test("review diff URI round-trips context, file, side, and revision", () => {
+class RecordingGitBlobReader implements GitBlobReader {
+  public readonly requests: Array<{
+    readonly repositoryRoot: string;
+    readonly blobObjectId: string;
+  }> = [];
+
+  public constructor(private readonly contents: readonly Uint8Array[]) {}
+
+  public async readBlob(
+    repositoryRoot: string,
+    requestedBlobObjectId: string
+  ): Promise<Uint8Array> {
+    this.requests.push({ repositoryRoot, blobObjectId: requestedBlobObjectId });
+    const content = this.contents[this.requests.length - 1];
+    assert.ok(content, "Every blob request must have planned bytes");
+    return content;
+  }
+}
+
+test("review diff URI round-trips context, file, semantics, side, source, and revision", () => {
   const codec = new ReviewDiffUriCodec();
 
   const originalUri = codec.encode(originalDescriptor);
@@ -100,7 +126,7 @@ test("review diff URI round-trips context, file, side, and revision", () => {
 
   assert.match(
     originalUri,
-    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/original\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/u
+    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/posix\/original\/git-commit\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/u
   );
   assert.deepEqual(codec.decode(originalUri), originalDescriptor);
   assert.deepEqual(codec.decode(modifiedUri), modifiedDescriptor);
@@ -129,7 +155,9 @@ test("review diff URI decoding rejects non-canonical or malformed inputs determi
     valid.replace("/v1/", "/v2/"),
     `${valid}?query=forbidden`,
     `${valid}#fragment-forbidden`,
+    valid.replace("/posix/", "/unknown/"),
     valid.replace("/original/", "/unknown/"),
+    valid.replace("/git-commit/", "/moving-ref/"),
     valid.replace(/\/[A-Za-z0-9_-]+$/u, "/***")
   ];
 
@@ -143,13 +171,13 @@ test("review diff URI decoding rejects non-canonical or malformed inputs determi
   }
 });
 
-test("review diff URI encoding rejects empty and control-character fields", () => {
+test("review diff URI encoding rejects invalid descriptor fields", () => {
   const codec = new ReviewDiffUriCodec();
 
   for (const descriptor of [
     { ...originalDescriptor, contextId: "" },
     { ...originalDescriptor, filePath: "src/a\0.ts" },
-    { ...originalDescriptor, revision: "HEAD\nother" }
+    { ...originalDescriptor, revision: "HEAD" }
   ]) {
     assert.throws(
       () => codec.encode(descriptor),
@@ -179,19 +207,21 @@ test("content provider restores original and modified revision content", async (
   assert.deepEqual(source.requests, [originalDescriptor, modifiedDescriptor]);
 });
 
-test("content provider reports missing context, revision, and file with stable codes", async () => {
+test("content provider reports unavailable and invalid-encoding outcomes with stable codes", async () => {
   const codec = new ReviewDiffUriCodec();
   const source = new RecordingRevisionTextContentSource([
     { kind: "missing-context" },
     { kind: "missing-revision" },
-    { kind: "missing-file" }
+    { kind: "missing-file" },
+    { kind: "invalid-encoding", encoding: "utf-8" }
   ]);
   const provider = new RevisionTextContentProvider(codec, source);
   const uri = codec.encode(originalDescriptor);
   const expected = [
     ["missing-context", "Review context is unavailable"],
     ["missing-revision", "Revision object is unavailable"],
-    ["missing-file", "File is unavailable at the requested revision"]
+    ["missing-file", "File is unavailable at the requested revision"],
+    ["invalid-encoding", "File content is not valid UTF-8"]
   ] as const;
 
   for (const [code, message] of expected) {
@@ -205,47 +235,63 @@ test("content provider reports missing context, revision, and file with stable c
   }
 });
 
-test("local Git adapter reads exact text content at a revision", async () => {
+test("local Git adapter reads exact streamed text content at a commit", async () => {
   const executor = new RecordingGitCommandExecutor();
+  const blobReader = new RecordingGitBlobReader([
+    Buffer.from("const value = 1;\n", "utf8")
+  ]);
   const repositoryRoot = path.resolve("workspace", "repository");
   executor.queue(
     repositoryRoot,
-    ["cat-file", "-e", "base-ref^{commit}"],
-    success()
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    success(`${originalRevision}\n`)
   );
   executor.queue(
     repositoryRoot,
-    ["cat-file", "blob", "base-ref:src/file.ts"],
-    success("const value = 1;\n")
+    [
+      "ls-tree",
+      "--full-tree",
+      "-z",
+      originalRevision,
+      "--",
+      ":(literal)src/file.ts"
+    ],
+    success(`100644 blob ${blobObjectId}\tsrc/file.ts\0`)
   );
 
-  const result = await new LocalGitAdapter(executor).readTextFileAtRevision(
+  const result = await new LocalGitAdapter(
+    executor,
+    blobReader
+  ).readTextFileAtRevision(
     repositoryRoot,
-    "base-ref",
-    "src/file.ts"
+    originalRevision,
+    "src/file.ts",
+    "posix"
   );
 
   assert.deepEqual(result, {
     kind: "found",
     content: "const value = 1;\n"
   });
+  assert.deepEqual(blobReader.requests, [{ repositoryRoot, blobObjectId }]);
   executor.assertExhausted();
 });
 
-test("local Git adapter distinguishes missing revisions and missing files", async () => {
+test("local Git adapter distinguishes missing commits and missing files", async () => {
   const repositoryRoot = path.resolve("workspace", "repository");
   const missingRevisionExecutor = new RecordingGitCommandExecutor();
   missingRevisionExecutor.queue(
     repositoryRoot,
-    ["cat-file", "-e", "missing-ref^{commit}"],
-    failure(128, "fatal: Not a valid object name")
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    failure(1, "")
   );
 
   assert.deepEqual(
     await new LocalGitAdapter(missingRevisionExecutor).readTextFileAtRevision(
       repositoryRoot,
-      "missing-ref",
-      "src/file.ts"
+      originalRevision,
+      "src/file.ts",
+      "posix"
     ),
     { kind: "missing-revision" }
   );
@@ -254,39 +300,62 @@ test("local Git adapter distinguishes missing revisions and missing files", asyn
   const missingFileExecutor = new RecordingGitCommandExecutor();
   missingFileExecutor.queue(
     repositoryRoot,
-    ["cat-file", "-e", "base-ref^{commit}"],
-    success()
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    success(`${originalRevision}\n`)
   );
   missingFileExecutor.queue(
     repositoryRoot,
-    ["cat-file", "blob", "base-ref:src/missing.ts"],
-    failure(128, "fatal: path does not exist")
+    [
+      "ls-tree",
+      "--full-tree",
+      "-z",
+      originalRevision,
+      "--",
+      ":(literal)src/missing.ts"
+    ],
+    success()
   );
 
   assert.deepEqual(
     await new LocalGitAdapter(missingFileExecutor).readTextFileAtRevision(
       repositoryRoot,
-      "base-ref",
-      "src/missing.ts"
+      originalRevision,
+      "src/missing.ts",
+      "posix"
     ),
     { kind: "missing-file" }
   );
   missingFileExecutor.assertExhausted();
 });
 
-test("local Git adapter rejects unsafe revision and repository-relative path inputs", async () => {
+test("local Git adapter rejects moving revisions and unsafe repository paths", async () => {
   const adapter = new LocalGitAdapter(new RecordingGitCommandExecutor());
 
   await assert.rejects(
-    adapter.readTextFileAtRevision("/workspace/repository", "--help", "src/file.ts"),
+    adapter.readTextFileAtRevision(
+      "/workspace/repository",
+      "HEAD",
+      "src/file.ts",
+      "posix"
+    ),
     TypeError
   );
   await assert.rejects(
-    adapter.readTextFileAtRevision("/workspace/repository", "HEAD", "../secret.ts"),
+    adapter.readTextFileAtRevision(
+      "/workspace/repository",
+      originalRevision,
+      "../secret.ts",
+      "posix"
+    ),
     TypeError
   );
   await assert.rejects(
-    adapter.readTextFileAtRevision("/workspace/repository", "HEAD", "/absolute.ts"),
+    adapter.readTextFileAtRevision(
+      "/workspace/repository",
+      originalRevision,
+      "/absolute.ts",
+      "posix"
+    ),
     TypeError
   );
 });
@@ -295,15 +364,16 @@ test("local Git adapter preserves unexpected Git failures", async () => {
   const executor = new RecordingGitCommandExecutor();
   executor.queue(
     "/workspace/repository",
-    ["cat-file", "-e", "HEAD^{commit}"],
-    failure(2, "fatal: I/O failure")
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    failure(128, "fatal: I/O failure")
   );
 
   await assert.rejects(
     new LocalGitAdapter(executor).readTextFileAtRevision(
       "/workspace/repository",
-      "HEAD",
-      "src/file.ts"
+      originalRevision,
+      "src/file.ts",
+      "posix"
     ),
     GitCommandFailedError
   );
