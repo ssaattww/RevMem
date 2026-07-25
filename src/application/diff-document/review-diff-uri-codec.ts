@@ -48,6 +48,25 @@ const containsControlCharacter = (value: string): boolean => {
   return false;
 };
 
+const containsUnpairedSurrogate = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const validateField = (
   value: string,
   name: string,
@@ -59,6 +78,9 @@ const validateField = (
   }
   if (containsControlCharacter(value)) {
     throw failure(`${name} must not contain control characters`);
+  }
+  if (containsUnpairedSurrogate(value)) {
+    throw failure(`${name} must be well-formed UTF-16`);
   }
   if (Buffer.byteLength(value, "utf8") > maxBytes) {
     throw failure(`${name} exceeds the supported UTF-8 size`);
