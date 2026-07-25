@@ -11,7 +11,9 @@ import { ReviewDiffTextDocumentContentProvider } from "../../src/ui/diff-editor/
 const descriptor = {
   contextId: "branch:refs/heads/feature",
   filePath: "src/file.ts",
+  fileSystemPathSemantics: "posix" as const,
   side: "modified" as const,
+  revisionSource: "git-commit" as const,
   revision: "0123456789abcdef0123456789abcdef01234567"
 };
 
