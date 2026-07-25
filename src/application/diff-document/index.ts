@@ -1,7 +1,9 @@
 /** Public immutable diff-document contracts and services. */
 export type {
   ReviewDiffDocumentDescriptor,
+  ReviewDiffRevisionSource,
   RevisionTextContentFound,
+  RevisionTextContentInvalidEncoding,
   RevisionTextContentMissingContext,
   RevisionTextContentMissingFile,
   RevisionTextContentMissingRevision,
