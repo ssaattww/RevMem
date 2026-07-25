@@ -41,8 +41,15 @@
 - Test-first commit: `9f7d64dbd3a36d4ce56f3967d801eb606eed784e`
 - Implementation commit: `274898af39267ffdf96adc0501a11f50aab84992`
 - Public export commit: `5592913df162cabfecbda3cb751976fd03925105`
-- Validation run: `30143993668` / success
-- 最終report更新後のHEADとrunはPRコメントおよびPR本文に追記する。
+- Report refresh commit: `33a5cddcf3ba1ee76181c3ba86c995bad3ddaab0`
+- Green run: `30144044817` / success
+
+### R4再レビュー対応
+
+- Test-first commit: `f65c3b7715fb4ece6ca57d05dc4c3a8d7d83ad15`
+- Implementation commit: `91e52fd17d8fda2ddcab19362e084534a9db4a0d`
+- Green run: `30144899636` / success
+- 対応範囲: zero-count hunk anchor正規化、first-hunkからの累積delta検証、state payload identity検証、zero-zero hunk拒否、削除されていた回帰testの復元
 
 ## 現在の実装内容
 
@@ -51,10 +58,13 @@
 - `originalDiffId`を`${baseSha}..${headSha}`のcanonical keyとして検証
 - 既存`PullRequestFileChange`、`DiffHunk`、`DiffLine` contractを再利用
 - unified diffの各lineについてone-based old/new coordinate、反対side座標のabsence、source-order cursor進行を検証
-- hunk header/body count、hunk間order、未変更gap、重複actual coordinateを検証
+- zero-count側は`start`、countが正の側は`start - 1`をanchorとして正規化
+- first hunkからbase/head間のcumulative deltaを検証し、後続hunkのorderと未変更gapも検証
+- zero-zero no-op hunk、hunk header/body不一致、重複actual coordinateを拒否
 - hunkから得たunique addition/deletion座標数とGitHub統計値をside別に厳密照合
 - PR contextのzero-based half-open intervalをone-based座標へ変換し、実変更座標との積集合だけを分子へ算入
-- Global、branch、workspace、stale revision由来のstateを進捗計算へ混入させない
+- review context map keyだけでなく`FileReviewState.fileId` payload identityも照合
+- Global、branch、workspace、stale revision、誤routing state由来の範囲を進捗計算へ混入させない
 - T300 `ReviewFileExclusionPolicy`を再利用し、binary/default glob/user globの理由を保持
 - 除外fileは集計分子・分母を0にする一方、元の`additions`・`deletions`と分類を結果へ保持
 - file単位・PR全体とも分母0を100%として扱う
@@ -64,11 +74,15 @@
 ## テスト対象
 
 - 正常なaddition-only、deletion-only、replacement
+- zero-count addition/deletion後に続くvalid hunk
+- first-hunk cumulative delta mismatch
 - current PR contextのmodified/original interval
-- stale diff snapshot、context ID mismatch、base/head mismatch、original diff ID mismatch
+- stale diff snapshot、non-PR context、context ID mismatch、base/head mismatch、original diff ID mismatch
+- stale file revision、state payload file ID mismatch
 - line coordinate mismatch、opposite-side coordinate、context coordinate mismatch
-- multiple hunk、hunk order、hunk gap、重複actual coordinate
+- multiple hunk、hunk order、hunk gap、zero-zero hunk、重複actual coordinate
 - GitHub統計値とunique座標数の過不足
+- duplicate changed-file ID
 - rename-onlyとzero denominator
 - user glob、binary、exclusion reason、除外時source count保持
 
