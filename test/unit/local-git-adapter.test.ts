@@ -10,6 +10,7 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
+import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 const repositoryRoot = path.resolve("workspace", "repository");
 const repositorySource = path.join(repositoryRoot, "src");
@@ -83,6 +84,10 @@ class RecordingGitCommandExecutor implements GitCommandExecutor {
   }
 }
 
+const createMetadataAdapter = (
+  executor: GitCommandExecutor
+): LocalGitAdapter => new LocalGitAdapter(executor, unreachableGitBlobReader);
+
 const queueRepositoryInspection = (
   executor: RecordingGitCommandExecutor,
   options: {
@@ -134,7 +139,7 @@ test("repository inspection uses argument arrays and returns normalized Git iden
     remoteUrl: "git@GitHub.com:Owner/Repository.git"
   });
 
-  const inspection = await new LocalGitAdapter(executor).inspectRepository(
+  const inspection = await createMetadataAdapter(executor).inspectRepository(
     repositorySource
   );
 
@@ -204,10 +209,10 @@ test("fork remotes remain distinct repository identities", async () => {
     remoteUrl: "https://github.com/contributor/project.git"
   });
 
-  const upstream = await new LocalGitAdapter(upstreamExecutor).inspectRepository(
+  const upstream = await createMetadataAdapter(upstreamExecutor).inspectRepository(
     repositorySource
   );
-  const fork = await new LocalGitAdapter(forkExecutor).inspectRepository(
+  const fork = await createMetadataAdapter(forkExecutor).inspectRepository(
     repositorySource
   );
 
@@ -233,13 +238,13 @@ test("a repository without remotes receives a stable root-derived identity", asy
     rootPath: otherRepositoryRoot
   });
 
-  const first = await new LocalGitAdapter(firstExecutor).inspectRepository(
+  const first = await createMetadataAdapter(firstExecutor).inspectRepository(
     repositorySource
   );
-  const afterRestart = await new LocalGitAdapter(secondExecutor).inspectRepository(
+  const afterRestart = await createMetadataAdapter(secondExecutor).inspectRepository(
     repositorySource
   );
-  const otherRoot = await new LocalGitAdapter(otherRootExecutor).inspectRepository(
+  const otherRoot = await createMetadataAdapter(otherRootExecutor).inspectRepository(
     otherRepositorySource
   );
 
@@ -267,7 +272,7 @@ test("detached HEAD is distinguished while retaining the exact HEAD object", asy
     head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   });
 
-  const inspection = await new LocalGitAdapter(executor).inspectRepository(
+  const inspection = await createMetadataAdapter(executor).inspectRepository(
     repositorySource
   );
 
@@ -291,7 +296,7 @@ test("Git executable absence and non-repositories are separate outcomes", async 
     new GitExecutableNotFoundError("missing-git")
   );
 
-  const unavailable = await new LocalGitAdapter(
+  const unavailable = await createMetadataAdapter(
     unavailableExecutor
   ).inspectRepository("/workspace/repository");
   assert.equal(unavailable.kind, "git-unavailable");
@@ -311,7 +316,7 @@ test("Git executable absence and non-repositories are separate outcomes", async 
     failure(128, "fatal: not a git repository")
   );
 
-  const nonRepository = await new LocalGitAdapter(
+  const nonRepository = await createMetadataAdapter(
     nonRepositoryExecutor
   ).inspectRepository("/workspace/plain-folder");
   assert.deepEqual(nonRepository, {
@@ -338,7 +343,7 @@ test("merge-base and object existence use bounded argument-array commands", asyn
     failure(1, "")
   );
 
-  const adapter = new LocalGitAdapter(executor);
+  const adapter = createMetadataAdapter(executor);
 
   assert.equal(
     await adapter.findMergeBase(
@@ -360,7 +365,7 @@ test("merge-base and object existence use bounded argument-array commands", asyn
 });
 
 test("revision arguments that could be parsed as options are rejected", async () => {
-  const adapter = new LocalGitAdapter(new RecordingGitCommandExecutor());
+  const adapter = createMetadataAdapter(new RecordingGitCommandExecutor());
 
   await assert.rejects(
     adapter.findMergeBase("/workspace/repository", "--help", "HEAD"),
