@@ -17,7 +17,6 @@ import {
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
-import { NodeGitBlobReader } from "./node-git-blob-reader";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
@@ -134,10 +133,16 @@ const parseLsTreeBlobObjectId = (
  * blob bytes through the injected `GitBlobReader`.
  */
 export class LocalGitAdapter {
-  /** Creates the adapter with injectable metadata and blob-content boundaries. */
+  /**
+   * Creates the adapter with explicit metadata and blob-content boundaries.
+   *
+   * Node Extension Host production wiring must use `createNodeLocalGitAdapter()` so
+   * every subprocess shares one executable and timeout policy. Direct construction is
+   * reserved for tests and alternate runtimes and therefore requires both boundaries.
+   */
   public constructor(
     private readonly commandExecutor: GitCommandExecutor,
-    private readonly blobReader: GitBlobReader = new NodeGitBlobReader()
+    private readonly blobReader: GitBlobReader
   ) {}
 
   /**
