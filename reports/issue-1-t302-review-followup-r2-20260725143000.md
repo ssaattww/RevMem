@@ -80,7 +80,7 @@
 ### 11. 設計・進捗の同期
 
 - `doc/design/vscode-review-range-tracker-design-t302-amendment.md`を追加し、immutable revision、URI、filesystem semantics、Git取得、encoding、error policyを明文化した
-- 本follow-upレポートと最終再レビューレポートを進捗へ追加する
+- 本follow-upレポートと最終再レビューレポートを進捗へ追加した
 - provider登録、`vscode.diff`実行、original側transactionは引き続きT303の範囲とする
 
 ## TDD証跡
@@ -111,8 +111,8 @@
 
 ### Final Green
 
-- Head: `69207ef6a4fdf73629386ec96b8c01c420fc734f`
-- GitHub Actions Run: `30145765980`（#889）
+- Code head: `f62fd327ecd54451644412ebf1c4b1ab8e37cbf6`
+- GitHub Actions Run: `30145823663`（#891）
 - Install dependencies: success
 - Build: success
 - Contract typecheck: success
