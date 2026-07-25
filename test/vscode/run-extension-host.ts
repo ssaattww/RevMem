@@ -19,9 +19,25 @@ async function main(): Promise<void> {
   const workspacePath = join(temporaryDirectory.path, "workspace");
   const userDataPath = join(temporaryDirectory.path, "user-data");
   const extensionsPath = join(temporaryDirectory.path, "extensions");
+  const launchArgs = [
+    workspacePath,
+    "--user-data-dir",
+    userDataPath,
+    "--extensions-dir",
+    extensionsPath,
+    "--disable-extensions"
+  ];
 
   try {
     await Promise.all([mkdir(workspacePath), mkdir(userDataPath), mkdir(extensionsPath)]);
+
+    await runTests({
+      cachePath: join(projectRoot, ".vscode-test"),
+      extensionDevelopmentPath: projectRoot,
+      extensionTestsPath: join(__dirname, "t302-suite"),
+      launchArgs,
+      version: VS_CODE_TEST_VERSION
+    });
 
     for (const phase of testPhases) {
       process.env[TEST_PHASE_ENVIRONMENT_VARIABLE] = phase;
@@ -29,14 +45,7 @@ async function main(): Promise<void> {
         cachePath: join(projectRoot, ".vscode-test"),
         extensionDevelopmentPath: projectRoot,
         extensionTestsPath: join(__dirname, "suite"),
-        launchArgs: [
-          workspacePath,
-          "--user-data-dir",
-          userDataPath,
-          "--extensions-dir",
-          extensionsPath,
-          "--disable-extensions"
-        ],
+        launchArgs,
         version: VS_CODE_TEST_VERSION
       });
     }
