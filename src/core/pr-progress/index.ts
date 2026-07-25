@@ -1,7 +1,7 @@
 export {
   calculatePullRequestDiffProgress,
   type CalculatePullRequestDiffProgressInput,
-  type PullRequestDiffContextIdentity,
   type PullRequestDiffFileProgress,
-  type PullRequestDiffProgress
+  type PullRequestDiffProgress,
+  type PullRequestDiffSnapshot
 } from "./pr-diff-progress";
