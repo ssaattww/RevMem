@@ -121,21 +121,28 @@ const intervalCoordinates = (intervals: readonly LineInterval[], label: string):
   return result;
 };
 
-interface HunkEnd {
-  readonly oldExclusive: number;
-  readonly newExclusive: number;
+interface HunkPosition {
+  readonly oldAnchor: number;
+  readonly newAnchor: number;
+  readonly oldEndAnchor: number;
+  readonly newEndAnchor: number;
 }
+
+const hunkAnchor = (start: number, count: number): number => count === 0 ? start : start - 1;
 
 const validateHunkLines = (
   fileId: string,
   hunk: DiffHunk,
   additions: Set<number>,
   deletions: Set<number>
-): HunkEnd => {
+): HunkPosition => {
   validateCount(hunk.oldStart, "Diff hunk oldStart");
   validateCount(hunk.newStart, "Diff hunk newStart");
   validateCount(hunk.oldCount, "Diff hunk oldCount");
   validateCount(hunk.newCount, "Diff hunk newCount");
+  if (hunk.oldCount === 0 && hunk.newCount === 0) {
+    throw new RangeError(`Diff hunk must not be zero-zero for ${fileId}.`);
+  }
 
   let oldCursor = hunk.oldStart;
   let newCursor = hunk.newStart;
@@ -186,7 +193,15 @@ const validateHunkLines = (
   if (oldCursor !== expectedOldExclusive || newCursor !== expectedNewExclusive) {
     throw new RangeError(`Diff hunk header/body mismatch for ${fileId}.`);
   }
-  return { oldExclusive: oldCursor, newExclusive: newCursor };
+
+  const oldAnchor = hunkAnchor(hunk.oldStart, hunk.oldCount);
+  const newAnchor = hunkAnchor(hunk.newStart, hunk.newCount);
+  return {
+    oldAnchor,
+    newAnchor,
+    oldEndAnchor: oldAnchor + hunk.oldCount,
+    newEndAnchor: newAnchor + hunk.newCount
+  };
 };
 
 const changedCoordinates = (file: PullRequestFileChange): {
@@ -195,13 +210,17 @@ const changedCoordinates = (file: PullRequestFileChange): {
 } => {
   const additions = new Set<number>();
   const deletions = new Set<number>();
-  let previousEnd: HunkEnd | undefined;
+  let previous: HunkPosition | undefined;
+  let cumulativeDelta = 0;
 
   for (const hunk of file.hunks) {
-    const end = validateHunkLines(file.fileId, hunk, additions, deletions);
-    if (previousEnd !== undefined) {
-      const oldGap = hunk.oldStart - previousEnd.oldExclusive;
-      const newGap = hunk.newStart - previousEnd.newExclusive;
+    const position = validateHunkLines(file.fileId, hunk, additions, deletions);
+    if (position.newAnchor - position.oldAnchor !== cumulativeDelta) {
+      throw new RangeError(`Diff hunk delta mismatch for ${file.fileId}.`);
+    }
+    if (previous !== undefined) {
+      const oldGap = position.oldAnchor - previous.oldEndAnchor;
+      const newGap = position.newAnchor - previous.newEndAnchor;
       if (oldGap < 0 || newGap < 0) {
         throw new RangeError(`Diff hunk order mismatch for ${file.fileId}.`);
       }
@@ -209,7 +228,8 @@ const changedCoordinates = (file: PullRequestFileChange): {
         throw new RangeError(`Diff hunk gap mismatch for ${file.fileId}.`);
       }
     }
-    previousEnd = end;
+    cumulativeDelta += hunk.newCount - hunk.oldCount;
+    previous = position;
   }
 
   if (additions.size !== file.additions) {
@@ -243,9 +263,9 @@ const displayPath = (file: PullRequestFileChange): string => {
  *
  * @param input Exact diff snapshot, matching PR review context, and exclusion policy.
  * @returns Aggregate and ordered per-file progress. A zero included denominator returns progress `1`.
- * @throws {RangeError} When context or revision identity differs, originalDiffId is non-canonical,
- * diff statistics or hunk coordinates are inconsistent, file identities are duplicated, review intervals are
- * malformed, or a changed file has no display path.
+ * @throws {RangeError} When context, revision, or file-state identity differs; originalDiffId is non-canonical;
+ * diff statistics, hunk anchors, cumulative deltas, or line coordinates are inconsistent; file identities are
+ * duplicated; review intervals are malformed; or a changed file has no display path.
  */
 export const calculatePullRequestDiffProgress = (
   input: Readonly<CalculatePullRequestDiffProgressInput>
@@ -292,6 +312,9 @@ export const calculatePullRequestDiffProgress = (
 
     const actual = changedCoordinates(file);
     const state = input.reviewContext.files[file.fileId];
+    if (state !== undefined && state.fileId !== file.fileId) {
+      throw new RangeError(`File review identity mismatch for ${file.fileId}.`);
+    }
     if (state !== undefined && state.revisionId !== input.diff.headSha) {
       throw new RangeError(`File review revision mismatch for ${file.fileId}.`);
     }
