@@ -143,7 +143,8 @@ test("real Git revision content returns exact original and modified text", async
       await adapter.readTextFileAtRevision(
         repository.path,
         repository.baseCommit,
-        "fixture.txt"
+        "fixture.txt",
+        "posix"
       ),
       { kind: "found", content: "base\n" }
     );
@@ -151,7 +152,8 @@ test("real Git revision content returns exact original and modified text", async
       await adapter.readTextFileAtRevision(
         repository.path,
         repository.headCommit,
-        "fixture.txt"
+        "fixture.txt",
+        "posix"
       ),
       { kind: "found", content: "base\nhead\n" }
     );
@@ -159,7 +161,8 @@ test("real Git revision content returns exact original and modified text", async
       await adapter.readTextFileAtRevision(
         repository.path,
         repository.headCommit,
-        "missing.txt"
+        "missing.txt",
+        "posix"
       ),
       { kind: "missing-file" }
     );
@@ -167,7 +170,8 @@ test("real Git revision content returns exact original and modified text", async
       await adapter.readTextFileAtRevision(
         repository.path,
         "0000000000000000000000000000000000000000",
-        "fixture.txt"
+        "fixture.txt",
+        "posix"
       ),
       { kind: "missing-revision" }
     );
