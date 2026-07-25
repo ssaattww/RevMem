@@ -67,8 +67,14 @@ test("review diff URI enforces context and file UTF-8 byte limits", () => {
   const maxContext = "c".repeat(8_192);
   const maxPath = "p".repeat(32_768);
 
-  assert.equal(codec.decode(codec.encode({ ...descriptor, contextId: maxContext })).contextId, maxContext);
-  assert.equal(codec.decode(codec.encode({ ...descriptor, filePath: maxPath })).filePath, maxPath);
+  assert.equal(
+    codec.decode(codec.encode({ ...descriptor, contextId: maxContext })).contextId,
+    maxContext
+  );
+  assert.equal(
+    codec.decode(codec.encode({ ...descriptor, filePath: maxPath })).filePath,
+    maxPath
+  );
 
   assert.throws(
     () => codec.encode({ ...descriptor, contextId: `${maxContext}x` }),
@@ -84,10 +90,25 @@ test("review diff URI enforces context and file UTF-8 byte limits", () => {
   );
 });
 
-test("review diff URI rejects raw inputs beyond the URI length limit", () => {
+test("review diff URI distinguishes the maximum raw length from an over-limit input", () => {
   const codec = new ReviewDiffUriCodec();
-  expectInvalidUri(
-    codec,
-    `review-range-diff://document/v1/${"a".repeat(65_536)}`
+  const prefix = "review-range-diff://document/v1/";
+  const atLimit = `${prefix}${"a".repeat(65_536 - prefix.length)}`;
+  const overLimit = `${atLimit}a`;
+
+  assert.equal(atLimit.length, 65_536);
+  assert.throws(
+    () => codec.decode(atLimit),
+    (error: unknown) =>
+      error instanceof ReviewDiffUriCodecError &&
+      error.code === "invalid-review-diff-uri" &&
+      !error.message.includes("unsupported size")
+  );
+  assert.throws(
+    () => codec.decode(overLimit),
+    (error: unknown) =>
+      error instanceof ReviewDiffUriCodecError &&
+      error.code === "invalid-review-diff-uri" &&
+      error.message.includes("unsupported size")
   );
 });
