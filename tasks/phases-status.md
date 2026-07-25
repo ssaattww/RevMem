@@ -4,7 +4,7 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1およびT302では`doc/design/vscode-review-range-tracker-design-t302-amendment.md` rev1
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する。環境・scaffold-onlyタスクはテスト適用可否と後続test harnessの担当範囲を明示する
@@ -98,13 +98,15 @@
 - T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
 - R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
 - R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
-- T302は仮想URI codec、original/modified content provider、context別Local Git source、VS Code provider adapterをTDDで実装し、CI Run #720と専用レビューを完了した
-- URIからcontext、file、side、revisionを可逆復元でき、異なるcontextを分離し、revision・file・context欠落を決定的に扱う境界を検証した
+- T302は再レビューR2で仮想URI identityをcontext、file、filesystem semantics、side、revision source、immutable commit IDへ拡張し、moving refを拒否した
+- Local Git取得はmissingとfatal failureを分離し、exact pathをNUL終端で照合し、raw blob streamをfatal UTF-8 decodeする
+- POSIX特殊filename、Windows path境界、4 MiB直下・直上、invalid UTF-8、URI異常系、actual `vscode.Uri`、公開barrel consumer fixtureをTDDで検証した
+- T302のfollow-upと最終再レビューはblocking・non-blocking findingなしで完了した
 - T302完了によりT303とT405のURI依存が解消した。全体の次タスクはP2のT204とする
 
 ### 終了チェックポイント
 
-- 仮想URIからcontext、file、side、revisionを復元できる
+- 仮想URIからcontext、file、filesystem semantics、side、immutable revision sourceを復元できる
 - original側の削除行とmodified側の追加行を個別に確認・解除できる
 - 置換を削除1行と追加1行として数え、未変更行とGlobal状態を分子へ混入させない
 - ユーザー除外をPR進捗の分母から外し、未確認、完了、除外、rename-only、binaryのグループを仕様どおり表示する
