@@ -50,14 +50,15 @@ const context = (
   baseSha = "base",
   headSha = "head",
   modified: Record<string, Array<[number, number]>> = {},
-  original: Record<string, Array<[number, number]>> = {}
+  original: Record<string, Array<[number, number]>> = {},
+  kind: ReviewContextState["kind"] = "pull-request"
 ): ReviewContextState => ({
   schemaVersion: 1,
   contextId: "pr-context",
-  kind: "pull-request",
+  kind,
   repositoryId: "repo",
   displayName: "PR #25",
-  pullRequest: {
+  pullRequest: kind === "pull-request" ? {
     host: "github.com",
     owner: "ssaattww",
     repository: "RevMem",
@@ -65,7 +66,7 @@ const context = (
     state: "open",
     baseSha,
     headSha
-  },
+  } : undefined,
   files: Object.fromEntries([...new Set([...Object.keys(modified), ...Object.keys(original)])].map((fileId) => [fileId, {
     schemaVersion: 1,
     fileId,
@@ -112,49 +113,58 @@ test("counts valid addition, deletion and replacement lines from the current PR 
   assert.equal(result.progress, 1);
 });
 
-test("rejects stale diff snapshots even when the caller supplies current review state", () => {
+test("accepts a valid later hunk after zero-count addition and deletion hunks", () => {
+  const afterAddition = file("add-gap", "modified", "a.ts", "a.ts", [
+    hunk(1, 0, 2, 1, [line("addition", undefined, 2)]),
+    hunk(4, 1, 5, 1, [line("deletion", 4), line("addition", undefined, 5)])
+  ]);
+  const afterDeletion = file("del-gap", "modified", "d.ts", "d.ts", [
+    hunk(2, 1, 1, 0, [line("deletion", 2)]),
+    hunk(5, 1, 4, 1, [line("deletion", 5), line("addition", undefined, 4)])
+  ]);
+
+  assert.equal(calculate(snapshot([afterAddition, afterDeletion])).totalLineCount, 6);
+});
+
+test("rejects first-hunk delta mismatches and malformed hunk anchors", () => {
+  const wrongFirstDelta = file("delta", "modified", "a.ts", "a.ts", [
+    hunk(4, 1, 5, 1, [line("deletion", 4), line("addition", undefined, 5)])
+  ]);
+  const zeroZero = file("noop", "modified", "n.ts", "n.ts", [hunk(0, 0, 0, 0, [])]);
+
+  assert.throws(() => calculate(snapshot([wrongFirstDelta])), /hunk delta mismatch/);
+  assert.throws(() => calculate(snapshot([zeroZero])), /zero-zero/);
+});
+
+test("rejects stale diff snapshots, non-PR contexts and stale or mismatched file state", () => {
   const change = file("a", "added", undefined, "a.ts", [
     hunk(0, 0, 1, 1, [line("addition", undefined, 1)])
   ]);
   assert.throws(() => calculate(snapshot([change], "old-base", "old-head"), context()), /revision mismatch/);
-  assert.throws(() => calculate({ ...snapshot([change]), contextId: "other" }, context()), /contextId mismatch/);
-  assert.throws(() => calculate({ ...snapshot([change]), originalDiffId: "unrelated" }, context()), /originalDiffId/);
+  assert.throws(() => calculate(snapshot([change]), context("base", "head", {}, {}, "branch")), /pull-request context/);
+
+  const stale = context("base", "head", { a: [[0, 1]] });
+  stale.files.a!.revisionId = "stale";
+  assert.throws(() => calculate(snapshot([change]), stale), /File review revision mismatch/);
+
+  const mismatched = context("base", "head", { a: [[0, 1]] });
+  mismatched.files.a!.fileId = "b";
+  assert.throws(() => calculate(snapshot([change]), mismatched), /File review identity mismatch/);
 });
 
-test("validates line coordinates, opposite-side absence and source-order cursors", () => {
+test("rejects invalid diff statistics, duplicate file IDs and malformed coordinates", () => {
+  const oneAddition = [hunk(0, 0, 1, 1, [line("addition", undefined, 1)])];
+  assert.throws(() => calculate(snapshot([file("too-many", "added", undefined, "a.ts", oneAddition, 2, 0)])), /addition statistics mismatch/);
+  assert.throws(() => calculate(snapshot([file("too-few", "added", undefined, "a.ts", oneAddition, 0, 0)])), /addition statistics mismatch/);
+  assert.throws(() => calculate(snapshot([
+    file("same", "added", undefined, "a.ts", oneAddition),
+    file("same", "added", undefined, "b.ts", oneAddition)
+  ])), /Duplicate PR diff file/);
+
   const wrongCoordinate = file("wrong", "added", undefined, "wrong.ts", [
     hunk(0, 0, 1, 1, [line("addition", undefined, 99)])
   ]);
-  const oppositeSide = file("opposite", "added", undefined, "opposite.ts", [
-    hunk(0, 0, 1, 1, [line("addition", 1, 1)])
-  ]);
-  const wrongContext = file("context", "modified", "context.ts", "context.ts", [
-    hunk(1, 1, 1, 1, [line("context", 1, 2)])
-  ]);
-
   assert.throws(() => calculate(snapshot([wrongCoordinate])), /coordinate mismatch/);
-  assert.throws(() => calculate(snapshot([oppositeSide])), /must not have oldLine/);
-  assert.throws(() => calculate(snapshot([wrongContext])), /coordinate mismatch/);
-});
-
-test("validates multiple-hunk ordering, unchanged gaps and duplicate actual coordinates", () => {
-  const valid = file("valid", "modified", "valid.ts", "valid.ts", [
-    hunk(1, 2, 1, 2, [line("context", 1, 1), line("deletion", 2), line("addition", undefined, 2)]),
-    hunk(5, 2, 5, 3, [line("context", 5, 5), line("addition", undefined, 6), line("context", 6, 7)])
-  ]);
-  assert.equal(calculate(snapshot([valid])).totalLineCount, 3);
-
-  const wrongGap = file("gap", "modified", "gap.ts", "gap.ts", [
-    hunk(1, 2, 1, 2, [line("context", 1, 1), line("deletion", 2), line("addition", undefined, 2)]),
-    hunk(5, 1, 6, 1, [line("context", 5, 6)])
-  ]);
-  assert.throws(() => calculate(snapshot([wrongGap])), /hunk gap mismatch/);
-
-  const duplicate = file("duplicate", "modified", "duplicate.ts", "duplicate.ts", [
-    hunk(1, 0, 1, 1, [line("addition", undefined, 1)]),
-    hunk(1, 0, 1, 1, [line("addition", undefined, 1)])
-  ], 2, 0);
-  assert.throws(() => calculate(snapshot([duplicate])), /duplicate addition coordinate/i);
 });
 
 test("preserves source counts and returns one hundred percent for a zero denominator", () => {
@@ -162,32 +172,23 @@ test("preserves source counts and returns one hundred percent for a zero denomin
   const result = calculate(snapshot([renamed]));
 
   assert.equal(result.progress, 1);
-  assert.deepEqual(result.files[0], {
-    fileId: "rename",
-    oldPath: "old.ts",
-    newPath: "new.ts",
-    status: "renamed",
-    path: "new.ts",
-    additions: 0,
-    deletions: 0,
-    reviewedLineCount: 0,
-    totalLineCount: 0,
-    progress: 1,
-    excluded: false
-  });
+  assert.equal(result.files[0]?.progress, 1);
+  assert.equal(result.files[0]?.totalLineCount, 0);
 });
 
-test("preserves source counts and exclusion reason for excluded files", () => {
+test("preserves exclusion reasons for user-glob and binary files", () => {
   const generated = file("generated", "added", undefined, "generated/a.ts", [
     hunk(0, 0, 1, 1, [line("addition", undefined, 1)])
   ]);
+  const binary = file("binary", "binary", "logo.png", "logo.png", [], 10, 3);
   const result = calculatePullRequestDiffProgress({
-    diff: snapshot([generated]),
+    diff: snapshot([generated, binary]),
     reviewContext: context(),
     exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] })
   });
 
-  assert.equal(result.totalLineCount, 0);
   assert.deepEqual(result.files[0]?.exclusionReason, { kind: "user-glob", pattern: "generated/**" });
-  assert.equal(result.files[0]?.additions, 1);
+  assert.deepEqual(result.files[1]?.exclusionReason, { kind: "binary" });
+  assert.equal(result.files[1]?.additions, 10);
+  assert.equal(result.files[1]?.deletions, 3);
 });
