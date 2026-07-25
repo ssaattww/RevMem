@@ -134,6 +134,48 @@ test("real Git inspection distinguishes detached HEAD and supports merge-base/ob
   }
 });
 
+test("real Git revision content returns exact original and modified text", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+
+  try {
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.baseCommit,
+        "fixture.txt"
+      ),
+      { kind: "found", content: "base\n" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.headCommit,
+        "fixture.txt"
+      ),
+      { kind: "found", content: "base\nhead\n" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.headCommit,
+        "missing.txt"
+      ),
+      { kind: "missing-file" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        "0000000000000000000000000000000000000000",
+        "fixture.txt"
+      ),
+      { kind: "missing-revision" }
+    );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("a missing Git executable is reported without conflating it with a plain folder", async () => {
   const adapter = new LocalGitAdapter(
     new NodeGitCommandExecutor({
