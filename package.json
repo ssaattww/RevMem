@@ -125,7 +125,7 @@
       },
       {
         "id": "reviewRange.reviewedOverviewRuler",
-        "description": "確認済み範囲をOverview Ruler色。",
+        "description": "確認済み範囲のOverview Ruler色。",
         "defaults": {
           "dark": "#a0a0a08c",
           "light": "#6060608c",
