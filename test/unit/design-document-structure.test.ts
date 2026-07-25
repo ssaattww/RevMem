@@ -13,7 +13,7 @@ const amendmentPath = path.join(
   designDirectory,
   "vscode-review-range-tracker-design-t302-amendment.md"
 );
-const taskIdentifierPattern = /\bT\d{3}(?:-\d+)?\b/u;
+const taskIdentifierPattern = /T\d{3}(?:-\d+)?/u;
 
 const exists = async (targetPath: string): Promise<boolean> => {
   try {
