@@ -8,15 +8,12 @@ import type {
   DocumentReviewStateSessionProviderOptions
 } from "./document-review-state-session-provider";
 
-const cloneValue = <T>(value: T): T =>
-  JSON.parse(JSON.stringify(value)) as T;
-
 /**
- * Public document session provider that returns the active owner exactly as persisted.
+ * Public document session provider backed by the reconciled active-owner snapshot.
  *
- * Lower-owner reconciliation can write one atomic replacement after the initial owner
- * session has been opened. The final read-only load makes the returned command session
- * and the durable active-owner snapshot identical without reopening lower owners.
+ * The reconciliation provider returns the complete snapshot that was either loaded or
+ * committed for the selected owner. Reusing it avoids a second owner resolution and Git
+ * inspection while preserving the same durable CAS result for command execution.
  */
 export class DocumentReviewStateSessionProvider {
   private readonly delegate: ReconciledDocumentReviewStateSessionProvider;
@@ -25,23 +22,11 @@ export class DocumentReviewStateSessionProvider {
     this.delegate = new ReconciledDocumentReviewStateSessionProvider(options);
   }
 
-  /** Opens, reconciles, then reloads only the selected active owner. */
-  public async open(
+  /** Opens and reconciles the active owner exactly once. */
+  public open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    const session = await this.delegate.open(descriptor);
-    const persisted = await this.delegate.loadForDecoration(descriptor);
-    if (persisted === undefined || persisted.owner !== session.owner) {
-      return session;
-    }
-
-    return {
-      owner: persisted.owner,
-      contextState: cloneValue(persisted.contextState),
-      globalState: cloneValue(persisted.globalState),
-      target: { ...persisted.target },
-      committer: session.committer
-    };
+    return this.delegate.open(descriptor);
   }
 
   /** Delegates non-mutating decoration reads. */
