@@ -7,8 +7,7 @@
 - Branch: `issue/13-document-context-routing`
 - 指摘元: `reports/issue-13-review-r4-20260725131815.md`
 - 対応対象: blocking finding 2件
-- 基準設計修正: `doc/design/issue-13-document-context-routing.md` 7.2、7.4、7.5、9、10
-- 詳細設計追補: `doc/design/issue-13-owner-reconciliation-r4.md`
+- 基準設計修正: `doc/design/issue-13-document-context-routing.md` 7.4、7.5、9、10
 
 ## 指摘1: 対象file state不在時に空baselineを記録しない
 
@@ -74,8 +73,6 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - reconciliationの実CAS commitは1回だけとする
 - commit失敗時は範囲だけ、baselineだけ、一部sourceだけを残さない
 
-詳細な処理境界とテスト条件は`doc/design/issue-13-owner-reconciliation-r4.md`にも記録した。
-
 ## TDD Red
 
 ### 挙動Red
@@ -90,6 +87,7 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
   - 初回昇格の実commit回数が2回
   - workspaceとexternal-fileの実commit回数が3回
 - failure artifact: `ci-failure-diagnostics-30144211855-1`
+- artifact ID: `8615453579`
 
 ### 型境界Red
 
@@ -114,9 +112,9 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
-## PR最終Green
+## 文書同期前Green
 
-- final head: `b731d85f78ba173b5d3dc61ca94384c34d7d9095`
+- documentation head: `b731d85f78ba173b5d3dc61ca94384c34d7d9095`
 - workflow run: `30144682569`
 - Install dependencies: success
 - Build: success
@@ -126,7 +124,7 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
-同repositoryの別branchや他作業者のrunではなく、各head SHAに紐づくrunだけを検証に使用した。
+同repositoryの別branchや他作業者のrunではなく、各head SHAに紐づくrunだけを検証に使用した。重複設計ファイル削除と本レポート同期後の最終head/runはPR本文とPRコメントへ記録する。
 
 ## Scope確認
 
@@ -154,7 +152,7 @@ branchは`main`に対してbehind 0である。
 - source read後の並行target更新をCASが検出できること
 - decoration loadが非変更処理のままであること
 - R2・R3で修正済みのHEAD分類、baseline metadata更新、test runner登録を壊していないこと
-- 基準設計書とR4詳細設計追補が実装・testと一致すること
+- 基準設計書が実装・testと一致すること
 
 判定:
 
