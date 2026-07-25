@@ -1,39 +1,67 @@
 import type { DiffHunk, LineInterval, PullRequestFileChange, ReviewContextState } from "../contracts/index";
 import { type ReviewFileExclusionPolicy, type ReviewFileExclusionReason } from "../file-exclusion/index";
 
+/** Identity-bound changed-file snapshot for one exact pull-request comparison. */
 export interface PullRequestDiffSnapshot {
+  /** Stable PR review-context ID. */
   readonly contextId: string;
+  /** Base revision used to parse every file and hunk. */
   readonly baseSha: string;
+  /** Head revision used to parse every file and hunk. */
   readonly headSha: string;
+  /** Canonical original-side state key, exactly `${baseSha}..${headSha}`. */
   readonly originalDiffId: string;
+  /** Changed files in source/API order. */
   readonly files: readonly PullRequestFileChange[];
 }
 
+/** Progress result for one changed file. */
 export interface PullRequestDiffFileProgress {
+  /** Stable changed-file identity. */
   readonly fileId: string;
+  /** Validated repository-relative base-side path, when present. */
   readonly oldPath?: string;
+  /** Validated repository-relative head-side path, when present. */
   readonly newPath?: string;
+  /** Validated runtime change classification. */
   readonly status: PullRequestFileChange["status"];
+  /** Canonical normalized display path. */
   readonly path: string;
+  /** Raw source addition statistic, retained for excluded files. */
   readonly additions: number;
+  /** Raw source deletion statistic, retained for excluded files. */
   readonly deletions: number;
+  /** Reviewed changed lines; excluded files report zero. */
   readonly reviewedLineCount: number;
+  /** Reviewable changed lines; excluded files report zero. */
   readonly totalLineCount: number;
+  /** Ratio in `0..1`; a zero denominator is defined as `1`. */
   readonly progress: number;
+  /** Whether the shared exclusion policy removed this file from aggregation. */
   readonly excluded: boolean;
+  /** Stable exclusion reason when excluded. */
   readonly exclusionReason?: ReviewFileExclusionReason;
 }
 
+/** Aggregate PR progress with per-file results in snapshot order. */
 export interface PullRequestDiffProgress {
+  /** Reviewed changed lines across included files. */
   readonly reviewedLineCount: number;
+  /** Added plus deleted lines across included files. */
   readonly totalLineCount: number;
+  /** Aggregate ratio; a zero denominator is defined as `1`. */
   readonly progress: number;
+  /** Per-file results in the same order as `diff.files`. */
   readonly files: readonly PullRequestDiffFileProgress[];
 }
 
+/** Input for deterministic PR-diff progress calculation. */
 export interface CalculatePullRequestDiffProgressInput {
+  /** Exact identity-bound diff snapshot. */
   readonly diff: PullRequestDiffSnapshot;
+  /** Persisted state for the same PR context and head revision. */
   readonly reviewContext: ReviewContextState;
+  /** Shared T300 path-normalization and exclusion policy. */
   readonly exclusionPolicy: ReviewFileExclusionPolicy;
 }
 
@@ -42,9 +70,7 @@ const validateCount = (value: number, label: string): void => {
 };
 
 const validateCoordinate = (value: number | undefined, label: string): number => {
-  if (value === undefined || !Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError(`${label} must be a positive one-based coordinate.`);
-  }
+  if (value === undefined || !Number.isSafeInteger(value) || value < 1) throw new RangeError(`${label} must be a positive one-based coordinate.`);
   return value;
 };
 
@@ -65,9 +91,7 @@ const intervalCoordinates = (intervals: readonly LineInterval[], label: string, 
       || interval.startLine < 0 || interval.endLineExclusive < interval.startLine) {
       throw new RangeError(`${label} intervals must be zero-based half-open ranges.`);
     }
-    if (upperBound !== undefined && interval.endLineExclusive > upperBound) {
-      throw new RangeError(`${label} interval exceeds lineCount ${upperBound}.`);
-    }
+    if (upperBound !== undefined && interval.endLineExclusive > upperBound) throw new RangeError(`${label} interval exceeds lineCount ${upperBound}.`);
     for (let index = interval.startLine; index < interval.endLineExclusive; index += 1) result.add(index + 1);
   }
   return result;
@@ -87,7 +111,6 @@ const validateHunkLines = (fileId: string, hunk: DiffHunk, additions: Set<number
   validateCount(hunk.newStart, "Diff hunk newStart");
   validateCount(hunk.oldCount, "Diff hunk oldCount");
   validateCount(hunk.newCount, "Diff hunk newCount");
-
   let oldCursor = hunk.oldStart;
   let newCursor = hunk.newStart;
   let changedLineCount = 0;
@@ -128,10 +151,7 @@ const validateHunkLines = (fileId: string, hunk: DiffHunk, additions: Set<number
   }
 
   if (changedLineCount === 0) throw new RangeError(`Diff hunk must contain at least one changed line for ${fileId}.`);
-  if (oldCursor !== hunk.oldStart + hunk.oldCount || newCursor !== hunk.newStart + hunk.newCount) {
-    throw new RangeError(`Diff hunk header/body mismatch for ${fileId}.`);
-  }
-
+  if (oldCursor !== hunk.oldStart + hunk.oldCount || newCursor !== hunk.newStart + hunk.newCount) throw new RangeError(`Diff hunk header/body mismatch for ${fileId}.`);
   const oldAnchor = hunkAnchor(hunk.oldStart, hunk.oldCount);
   const newAnchor = hunkAnchor(hunk.newStart, hunk.newCount);
   return { oldAnchor, newAnchor, oldEndAnchor: oldAnchor + hunk.oldCount, newEndAnchor: newAnchor + hunk.newCount };
@@ -142,7 +162,6 @@ const changedCoordinates = (file: PullRequestFileChange): { readonly additions: 
   const deletions = new Set<number>();
   let previous: HunkPosition | undefined;
   let cumulativeDelta = 0;
-
   for (const hunk of file.hunks) {
     const position = validateHunkLines(file.fileId, hunk, additions, deletions);
     if (position.newAnchor - position.oldAnchor !== cumulativeDelta) throw new RangeError(`Diff hunk delta mismatch for ${file.fileId}.`);
@@ -155,31 +174,39 @@ const changedCoordinates = (file: PullRequestFileChange): { readonly additions: 
     cumulativeDelta += hunk.newCount - hunk.oldCount;
     previous = position;
   }
-
   if (additions.size !== file.additions) throw new RangeError(`PR diff addition statistics mismatch for ${file.fileId}.`);
   if (deletions.size !== file.deletions) throw new RangeError(`PR diff deletion statistics mismatch for ${file.fileId}.`);
   return { additions, deletions };
 };
 
-const validateStatusMatrix = (file: PullRequestFileChange): string => {
-  const status = (file as { status: unknown }).status;
-  switch (status) {
+interface ValidatedFilePaths {
+  readonly oldPath?: string;
+  readonly newPath?: string;
+  readonly displayPath: string;
+}
+
+const normalizePath = (path: string, policy: ReviewFileExclusionPolicy): string => policy.evaluate({ path, isBinary: false }).normalizedPath;
+
+const validateStatusMatrix = (file: PullRequestFileChange, policy: ReviewFileExclusionPolicy): ValidatedFilePaths => {
+  const oldPath = file.oldPath === undefined ? undefined : normalizePath(file.oldPath, policy);
+  const newPath = file.newPath === undefined ? undefined : normalizePath(file.newPath, policy);
+  switch ((file as { status: unknown }).status) {
     case "added":
-      if (file.oldPath !== undefined || file.newPath === undefined || file.deletions !== 0) break;
-      return file.newPath;
+      if (oldPath !== undefined || newPath === undefined || file.deletions !== 0 || file.hunks.some(({ oldCount }) => oldCount !== 0)) break;
+      return { newPath, displayPath: newPath };
     case "deleted":
-      if (file.oldPath === undefined || file.newPath !== undefined || file.additions !== 0) break;
-      return file.oldPath;
+      if (oldPath === undefined || newPath !== undefined || file.additions !== 0 || file.hunks.some(({ newCount }) => newCount !== 0)) break;
+      return { oldPath, displayPath: oldPath };
     case "modified":
-      if (file.oldPath === undefined || file.newPath === undefined) break;
-      return file.newPath;
+      if (oldPath === undefined || newPath === undefined || oldPath !== newPath) break;
+      return { oldPath, newPath, displayPath: newPath };
     case "renamed":
     case "copied":
-      if (file.oldPath === undefined || file.newPath === undefined) break;
-      return file.newPath;
+      if (oldPath === undefined || newPath === undefined || oldPath === newPath) break;
+      return { oldPath, newPath, displayPath: newPath };
     case "binary":
-      if ((file.oldPath === undefined && file.newPath === undefined) || file.hunks.length !== 0) break;
-      return file.newPath ?? file.oldPath!;
+      if ((oldPath === undefined && newPath === undefined) || file.hunks.length !== 0) break;
+      return { oldPath, newPath, displayPath: newPath ?? oldPath! };
     default:
       throw new RangeError(`Unknown PR file status for ${file.fileId}.`);
   }
@@ -192,13 +219,18 @@ const countIntersection = (reviewed: ReadonlySet<number>, changed: ReadonlySet<n
   return count;
 };
 
+const validateActualModifiedBounds = (coordinates: ReadonlySet<number>, lineCount: number, fileId: string): void => {
+  for (const coordinate of coordinates) if (coordinate > lineCount) throw new RangeError(`PR diff modified coordinate exceeds lineCount for ${fileId}.`);
+};
+
 /**
  * Calculates review progress for validated addition/deletion coordinates in one identity-bound PR diff snapshot.
+ * Nonbinary snapshot structure is validated independently of exclusion; exclusion affects aggregation only.
  *
  * @param input Exact diff snapshot, matching PR review context, and exclusion policy.
  * @returns Aggregate and ordered per-file progress. A zero included denominator returns progress `1`.
- * @throws {RangeError} For malformed runtime unions, status/path/count matrices, duplicate IDs or canonical paths,
- * invalid hunk structure, inconsistent statistics, stale context or file state, and out-of-bounds review intervals.
+ * @throws {RangeError} For malformed runtime unions, paths, status/side matrices, duplicate IDs or canonical paths,
+ * invalid hunks or statistics, stale state, and review or actual modified coordinates beyond `lineCount`.
  */
 export const calculatePullRequestDiffProgress = (input: Readonly<CalculatePullRequestDiffProgressInput>): PullRequestDiffProgress => {
   validateContext(input.reviewContext, input.diff);
@@ -214,22 +246,26 @@ export const calculatePullRequestDiffProgress = (input: Readonly<CalculatePullRe
     if (seenFileIds.has(file.fileId)) throw new RangeError(`Duplicate PR diff file: ${file.fileId}`);
     seenFileIds.add(file.fileId);
 
-    const sourcePath = validateStatusMatrix(file);
-    const decision = input.exclusionPolicy.evaluate({ path: sourcePath, isBinary: file.status === "binary" });
+    const paths = validateStatusMatrix(file, input.exclusionPolicy);
+    const decision = input.exclusionPolicy.evaluate({ path: paths.displayPath, isBinary: file.status === "binary" });
     if (seenPaths.has(decision.normalizedPath)) throw new RangeError(`Duplicate PR diff path: ${decision.normalizedPath}`);
     seenPaths.add(decision.normalizedPath);
 
-    const base = { fileId: file.fileId, oldPath: file.oldPath, newPath: file.newPath, status: file.status, path: decision.normalizedPath, additions: file.additions, deletions: file.deletions };
+    const actual = file.status === "binary" ? undefined : changedCoordinates(file);
+    const base = { fileId: file.fileId, oldPath: paths.oldPath, newPath: paths.newPath, status: file.status, path: decision.normalizedPath, additions: file.additions, deletions: file.deletions };
     if (decision.excluded) {
       files.push({ ...base, reviewedLineCount: 0, totalLineCount: 0, progress: 1, excluded: true, exclusionReason: decision.reason });
       continue;
     }
 
-    const actual = changedCoordinates(file);
+    if (actual === undefined) throw new RangeError(`Included binary file is not reviewable: ${file.fileId}.`);
     const state = input.reviewContext.files[file.fileId];
     if (state !== undefined && state.fileId !== file.fileId) throw new RangeError(`File review identity mismatch for ${file.fileId}.`);
     if (state !== undefined && state.revisionId !== input.diff.headSha) throw new RangeError(`File review revision mismatch for ${file.fileId}.`);
-    if (state !== undefined) validateCount(state.lineCount, `File review lineCount for ${file.fileId}`);
+    if (state !== undefined) {
+      validateCount(state.lineCount, `File review lineCount for ${file.fileId}`);
+      validateActualModifiedBounds(actual.additions, state.lineCount, file.fileId);
+    }
 
     const reviewedAdditions = intervalCoordinates(state?.modifiedReviewed ?? [], "Modified reviewed", state?.lineCount);
     const reviewedDeletions = intervalCoordinates(state?.originalReviewedByDiff[input.diff.originalDiffId] ?? [], "Original reviewed");
