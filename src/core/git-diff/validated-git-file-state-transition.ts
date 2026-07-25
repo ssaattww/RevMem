@@ -2,8 +2,10 @@ import type { FileReviewState, LineInterval } from "../contracts/index";
 import {
   applyGitFileStateTransitions as applyGitFileStateTransitionsUnchecked,
   type GitFileStateTransitionInput,
-  type GitFileStateTransitionResult
+  type GitFileStateTransitionResult,
+  type GitNewFileStateInput
 } from "./git-file-state-transition";
+import { parseZeroContextGitDiff } from "./git-diff-interval-mapping";
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -188,6 +190,9 @@ function validateFileState(file: Readonly<FileReviewState>, key: string): void {
   if (file.currentPath.length === 0 || file.revisionId.length === 0 || file.updatedAt.length === 0) {
     throw new RangeError("File-state path, revisionId, and updatedAt must be non-empty.");
   }
+  if (Number.isNaN(Date.parse(file.updatedAt))) {
+    throw new RangeError("File-state updatedAt must be a valid timestamp.");
+  }
   if (!Number.isSafeInteger(file.lineCount) || file.lineCount < 0) {
     throw new RangeError("File-state lineCount must be a non-negative safe integer.");
   }
@@ -221,18 +226,91 @@ function validateStateSnapshot(files: Readonly<Record<string, Readonly<FileRevie
   }
 }
 
+function textLines(text: string): string[] {
+  if (text.length === 0) {
+    return [];
+  }
+  const lines = text.split(/\r\n|\r|\n/u);
+  if (/\r\n|\r|\n$/u.test(text)) {
+    lines.pop();
+  }
+  return lines;
+}
+
+function validateNewFileMetadata(
+  newFiles: Readonly<Record<string, Readonly<GitNewFileStateInput>>> | undefined
+): void {
+  if (newFiles === undefined) {
+    return;
+  }
+  for (const [path, metadata] of Object.entries(newFiles)) {
+    if (path.length === 0 || metadata.fileId.length === 0) {
+      throw new RangeError("newFiles path and fileId must be non-empty.");
+    }
+    if (!Number.isSafeInteger(metadata.lineCount) || metadata.lineCount < 0) {
+      throw new RangeError("newFiles lineCount must be a non-negative safe integer.");
+    }
+    if (metadata.contentHash !== undefined && metadata.contentHash.length === 0) {
+      throw new RangeError("newFiles contentHash must be non-empty when present.");
+    }
+    if (metadata.newText !== undefined && textLines(metadata.newText).length !== metadata.lineCount) {
+      throw new RangeError("newFiles newText line count must equal lineCount.");
+    }
+  }
+}
+
+function equalLines(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((line, index) => line === right[index]);
+}
+
+function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>): void {
+  if (!input.options.ignoreWhitespaceChanges && !input.options.ignoreEolChanges) {
+    return;
+  }
+  const parsed = parseZeroContextGitDiff(input.diff);
+  const stateByPath = new Map(Object.values(input.files).map((file) => [file.currentPath, file]));
+  for (const file of parsed.files) {
+    if (file.oldPath === undefined || file.newPath === undefined) {
+      continue;
+    }
+    const oldText = input.oldTexts?.[file.oldPath];
+    const newMetadata = input.newFiles?.[file.newPath];
+    const newText = newMetadata?.newText;
+    if (oldText === undefined || newText === undefined) {
+      continue;
+    }
+    const oldLines = textLines(oldText);
+    const newLines = textLines(newText);
+    const oldState = stateByPath.get(file.oldPath);
+    if (oldState !== undefined && oldLines.length !== oldState.lineCount) {
+      throw new RangeError("oldTexts line count must equal the source file-state lineCount.");
+    }
+    for (const hunk of file.hunks) {
+      const removed = oldLines.slice(hunk.oldStart, hunk.oldStart + hunk.oldLineCount);
+      const added = newLines.slice(hunk.newStart, hunk.newStart + hunk.newLineCount);
+      if (!equalLines(removed, hunk.removedLines) || !equalLines(added, hunk.addedLines)) {
+        throw new SyntaxError("Full-text evidence does not match the parsed diff hunk.");
+      }
+    }
+  }
+}
+
 /**
- * Validates the complete state snapshot, transition metadata, and cross-section destination uniqueness.
+ * Validates the complete state snapshot, transition metadata, full-text evidence, and result snapshot.
  *
  * @param input Complete transition input accepted by the underlying T204 engine.
  * @returns The detached complete post-transition snapshot.
- * @throws When state invariants or Git transition metadata are malformed.
+ * @throws When state invariants, generated-file metadata, Git transition metadata, or text evidence are malformed.
  */
 export function applyGitFileStateTransitions(
   input: Readonly<GitFileStateTransitionInput>
 ): GitFileStateTransitionResult {
   validateStateSnapshot(input.files);
+  validateNewFileMetadata(input.newFiles);
   const sections = parseAndValidateSections(input.diff);
   validateUniqueDestinations(sections);
-  return applyGitFileStateTransitionsUnchecked(input);
+  validateFullTextEvidence(input);
+  const result = applyGitFileStateTransitionsUnchecked(input);
+  validateStateSnapshot(result.files);
+  return result;
 }
