@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev2
+# VS Code レビュー範囲トラッカー 設計書 rev3
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -280,7 +280,7 @@ metadata commandとblob commandは同一runtime optionsから構成する。
 
 Node Extension Hostでは共通factoryからmetadata executorとblob readerを生成する。portable Git、絶対path指定、Remote、Container環境で、metadataだけ設定済みGitを使いblobだけPATH上の別Gitを使う状態を禁止する。
 
-テストや別runtimeでは`GitCommandExecutor`と`GitBlobReader`を明示注入できる。
+`LocalGitAdapter`を直接構築する場合は、`GitCommandExecutor`と`GitBlobReader`の両方を明示注入する。blob readerの暗黙既定値を持たせない。Node runtimeのproduction wiringは共通factoryだけを使用し、低水準classの直接構築はtestまたは代替runtime adapterに限定する。
 
 ### 9.2 Commit確認
 
@@ -319,6 +319,12 @@ stdoutをraw byte streamとして取得し、blob本文へ`execFile.maxBuffer`�
 complete byte sequenceを取得後、fatal UTF-8 decoderで1回だけdecodeする。不正UTF-8をreplacement characterへ変換せず`invalid-encoding`とし、行単位レビュー対象外にする。
 
 Git objectから再取得可能な本文には固定の4 MiB上限を設けない。巨大入力の追加制御は性能計測に基づいて定義する。
+
+### 9.5 Process failure contract
+
+metadata commandとblob commandのtimeoutは、いずれもinvocation、partial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。
+
+Git executableが起動できない場合だけ`GitExecutableNotFoundError`として区別する。通常の非0 exitはmetadata commandではresultとしてadapterへ返し、adapterがmissingとfatalを分類する。blob commandの非0 exitは直接`GitCommandFailedError`とする。
 
 ## 10. 変更追従
 
@@ -414,22 +420,42 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 
 ## 13. アーキテクチャ
 
-依存方向:
+### 13.1 Layer dependency contract
+
+次の表はarchitecture validatorと同一の依存行列であり、source codeと設計の双方で維持する。
+
+<!-- architecture-layer-contract:start -->
+| `source layer` | allowed dependencies |
+|---|---|
+| `core` | `core` |
+| `application` | `core`, `application` |
+| `adapters` | `core`, `application`, `adapters` |
+| `ui` | `core`, `application`, `ui` |
+<!-- architecture-layer-contract:end -->
+
+UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。adapters層はapplication/core contractを実装する。
+
+### 13.2 Composition Root
+
+Composition Rootはlayer directoryの外側に置き、runtime object graphを構築する唯一の場所とする。
 
 ```text
+Composition Root
+  -> Runtime Adapters
+  -> Application Services
+  -> UI Adapter
+
 UI Adapter
   -> Application Services
       -> Core domain
-  -> Runtime Adapters
 
 Runtime Adapters
   -> Application/Core contracts
-
-Core domain
-  -X-> VS Code / Node filesystem / GitHub API
 ```
 
-主要コンポーネント:
+Composition RootはLocal Git、GitHub、snapshot、storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
+
+### 13.3 主要コンポーネント
 
 - UI Adapter: command、dialog、decoration、Tree View、Status Bar、diff表示
 - Review Context Resolver: repository、branch、PR、fallback context解決
@@ -505,16 +531,108 @@ globalStorageUri/
 
 ### 16.1 Activity Bar
 
-- Current Context
-- PR Progress
-- Global Understanding
-- Review Contexts
+Activity Barへ「Review Range」containerを追加し、次のviewを表示する。
 
-### 16.2 Editor decoration
+1. Current Context
+2. PR Progress
+3. Global Understanding
+4. Review Contexts
+
+### 16.2 Current Context View
+
+表示項目:
+
+- 現在のコンテキスト種別
+- PR番号、タイトル、状態
+- ブランチ名
+- base/head revision
+- GitHub接続状態
+- Global表示の有効・無効
+
+操作:
+
+- 現在コンテキストの切り替え
+- PR再検出
+- GitHub再接続
+- 現在状態の再計算
+
+PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
+
+### 16.3 PR Progress View
+
+分類:
+
+- 未確認変更が残るファイル
+- 確認完了したファイル
+- 除外されたファイル
+- 行以外の変更
+- 行単位レビュー対象外
+
+各fileへ次を表示する。
+
+- ファイルパス
+- 確認済み変更行数
+- 全変更行数
+- 進捗率
+- 追加行数
+- 削除行数
+- 除外・対象外の場合は理由
+
+ファイルを選択すると、そのcontextのdiff editorを開く。「次の未確認行」へは自動移動しない。
+
+既定sort:
+
+1. 未確認行数の降順
+2. ファイルパス昇順
+
+sort切替候補:
+
+- PR上の順序
+- パス順
+- 未確認行数順
+- 進捗率順
+
+rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「行単位レビュー対象外」へ表示する。
+
+### 16.4 Review Contexts View
+
+表示対象:
+
+- 現在のPR
+- 現在のブランチ
+- 保存済みのオープンPR
+- 保存済みのクローズ済みPR
+- ワークスペースコンテキスト
+
+各contextの操作:
+
+- 進捗表示
+- diffを開く
+- エディタ表示layerの有効・無効切り替え
+- ローカルキャッシュ更新
+- コンテキスト表示から削除
+
+コンテキスト表示から削除しても履歴を消さない。履歴削除は別操作とし、明示的な確認なしに実行しない。closed PRは既定でlayer無効とする。
+
+### 16.5 Global Understanding View
+
+表示項目:
+
+- リポジトリ全体の理解率
+- 確認済み非空行数
+- 対象非空行数
+- fileごとの理解率
+- 除外file数
+
+PR Progressとは別sectionで表示する。
+
+### 16.6 Editor decoration
 
 確認済み行はtheme対応の半透明グレー背景と任意のgutter iconで表示する。Overview Rulerは既定無効。hoverへcontext、確認日時、Global状態を表示する。
 
-### 16.3 Status Bar
+visible editorだけを装飾対象とし、現在PRの未確認変更行はGlobalだけでグレーにしない。
+
+### 16.7 Status Bar
 
 ```text
 PR #123: 67% | Global: 42%
@@ -522,7 +640,7 @@ PR #123: 67% | Global: 42%
 
 PRがない場合はbranchまたはworkspace contextを表示する。
 
-### 16.4 Commands
+### 16.8 Commands
 
 - 選択範囲を確認済みにする
 - 選択範囲を解除する
@@ -534,7 +652,9 @@ PRがない場合はbranchまたはworkspace contextを表示する。
 - Global layerを切り替える
 - 表示context layerを管理する
 
-### 16.5 主な設定
+commandはCommand Paletteと適切なeditor context menuへ登録する。
+
+### 16.9 主な設定
 
 ```json
 {
@@ -624,7 +744,10 @@ PRがない場合はbranchまたはworkspace contextを表示する。
 - 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
 - POSIX特殊path、Windows禁止path・予約デバイス名
 - missingとfatal failureの分離
+- metadata/blob timeout error contract
 - public barrel consumer contract
+- architecture validatorと設計依存行列の一致
+- Current Context、PR Progress、Review Contextsの既決UI要件
 - 設計仕様が単一の機能別文書に統合され、task identifierを含まないこと
 
 ### 20.2 Integration
