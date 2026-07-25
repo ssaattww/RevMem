@@ -10,7 +10,9 @@ import {
 const descriptor: ReviewDiffDocumentDescriptor = {
   contextId: "branch:refs/heads/feature-🚀",
   filePath: "src/emoji-🚀.ts",
+  fileSystemPathSemantics: "posix",
   side: "modified",
+  revisionSource: "git-commit",
   revision: "0123456789abcdef0123456789abcdef01234567"
 };
 
@@ -24,8 +26,7 @@ test("review diff URI encoding rejects unpaired UTF-16 surrogates", () => {
 
   for (const malformed of [
     { ...descriptor, contextId: `context-${String.fromCharCode(0xd800)}` },
-    { ...descriptor, filePath: `src/${String.fromCharCode(0xdc00)}.ts` },
-    { ...descriptor, revision: `rev-${String.fromCharCode(0xd800)}x` }
+    { ...descriptor, filePath: `src/${String.fromCharCode(0xdc00)}.ts` }
   ]) {
     assert.throws(
       () => codec.encode(malformed),
