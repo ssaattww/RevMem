@@ -3,6 +3,7 @@ import type {
   RevisionTextContentReadResult,
   RevisionTextContentSource
 } from "../../application/diff-document/index";
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import { LocalGitAdapter } from "../local-git/index";
 
 /** Resolves the local working-tree root that owns one persisted review context. */
@@ -36,10 +37,15 @@ export class LocalGitRevisionTextContentSource
       return { kind: "missing-context" };
     }
 
+    const filePath = requireCanonicalRepositoryRelativePath(
+      descriptor.filePath,
+      descriptor.fileSystemPathSemantics,
+      "descriptor.filePath"
+    );
     return this.localGitAdapter.readTextFileAtRevision(
       repositoryRoot,
       descriptor.revision,
-      descriptor.filePath,
+      filePath,
       descriptor.fileSystemPathSemantics
     );
   }
