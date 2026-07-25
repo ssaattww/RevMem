@@ -6,7 +6,7 @@ export {
 export {
   FileSystemReviewStateRepository,
   StaleReviewStateError
-} from "./coherent-file-system-review-state-repository";
+} from "./validated-file-system-review-state-repository";
 export { resolveReviewStateStorageRoute } from "./storage-router";
 
 export type {
