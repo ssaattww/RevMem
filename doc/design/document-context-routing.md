@@ -75,6 +75,14 @@ Git executable不在と`not-repository`以外の実行失敗を非Gitとして�
 
 `git rev-parse --verify HEAD^{commit}`はGit processのlocaleをCへ固定し、exit code 128かつ既知のunborn診断`fatal: Needed a single revision`だけをmissing HEADとして扱う。その他のexit code 128は`GitCommandFailedError`として伝播する。
 
+### 4.4 Inspection境界
+
+1回のwritable `open`では、active ownerを決定するLocal Git inspectionを1回だけ行う。
+
+reconciliation済みsessionを返した後に、同じdescriptorをread-only decoration経路へ再投入してownerを再解決してはならない。返却するwritable sessionは、owner解決、target snapshot読込、lower-owner reconciliationで確定した同じ結果を使用する。
+
+read-only decorationは別操作としてownerを解決してよいが、状態の初期化や永続化を行わない。
+
 ## 5. Identity
 
 ### 5.1 Git context
@@ -149,6 +157,10 @@ VS CodeのUNC securityを迂回しない。
 - stale expectationは拒否し、部分保存しない
 - content hash、revision、line count、current pathが現在documentと一致しないfile stateは、利用前に無効化する
 
+owner reconciliation metadataは、公開された`ReconciledReviewContextState`と`OwnerReconciliationSourceSnapshot`を正式な永続化contractとする。基本`ReviewContextState`は全context共通のfieldを表し、reconciliation metadataを保持するcontextだけが専用subtypeを使用する。
+
+`ownerReconciliation`はschema version 1のoptional additive sectionである。未保持の既存stateは有効であり、保持する場合は全keyとsnapshot fieldを検証する。
+
 ### 6.2 Git repository storage
 
 Git ownerの状態はVS Codeの`globalStorageUri`配下へrepository単位で保存する。
@@ -219,10 +231,13 @@ writable sessionを開くとき:
 2. 完全snapshotを読み込む
 3. snapshotがなければ空のcontext stateとGlobal stateを初期保存する
 4. repository、context、schema、revision identityを検証する
-5. 現在documentに対してstaleなfile stateだけを除去する
-6. detached cloneをsessionへ返す
+5. `ownerReconciliation`が存在する場合はsource identity、line count、interval、timestampを検証する
+6. 現在documentに対してstaleなfile stateだけを除去する
+7. detached cloneをsessionへ返す
 
 read-only decorationでは未保存snapshotを作成しない。stale file stateは返却するcloneから除外してよいが、読み込みだけでdiskを変更しない。
+
+malformedなreconciliation metadataは無視、削除、または空baselineへ変換せず、persistence errorとして拒否する。
 
 ### 6.6 Atomic transaction
 
@@ -244,10 +259,11 @@ committerは次を保証する。
 - contextとGlobalを両方置換するか、どちらも置換しない
 - stale writeを成功扱いしない
 - failure後に部分的なnext stateを公開しない
+- `expected`と`next`のreconciliation metadataを保存前に検証する
 
 ## 7. Owner Reconciliation
 
-### 7.1 移行元候補
+### 7.1 移行元候補と観測
 
 Git ownerへ移行するとき:
 
@@ -259,6 +275,10 @@ workspace ownerへ移行するとき:
 1. 同じcanonical URIのexternal-file state
 
 移行元候補はすべてread-onlyで読み込んでから、新ownerのnext snapshotを計算する。候補ごとに永続化commitを分けてはならない。
+
+同じwritable `open`中、各lower ownerは1回だけ観測する。初回昇格範囲、delta、baseline metadataはすべて、その1回のimmutable source snapshotから計算する。
+
+base owner resolverが初回昇格transactionを提案する場合も、そのsourceをreconciliation層で再読込してはならない。repositoryまたはprovider境界で観測結果をcacheし、promotionとbaselineが同一snapshotを参照することを保証する。
 
 ### 7.2 確実性条件
 
@@ -329,7 +349,7 @@ baselineがない場合は次の保守規則を使用する。
 
 共通baselineがない状態でfallback側に行われた解除は、由来を安全に判定できないためtargetへ推測反映しない。baseline確立後の解除だけを差分として反映する。
 
-### 7.7 複数sourceの集約
+### 7.7 複数sourceの集約と競合
 
 複数のlower ownerが存在する場合は、全sourceのdeltaと次baselineをメモリ上の同じplanned context・Global snapshotへ順次適用する。
 
@@ -341,7 +361,14 @@ planned snapshot
 1回のCAS commit
 ```
 
-source評価順はworkspace、external-fileの順とする。各sourceは直前sourceを適用済みのplanned snapshotに対して評価する。
+source評価順はworkspace、external-fileの順とする。ただし順番だけに依存せず、より高いownerの明示的な判断を保護する。
+
+- workspaceでreviewedと判断されたrangeを、external-fileのremovalで解除しない
+- workspaceで明示的に解除されたrangeを、external-fileのadditionで再追加しない
+- lower-priority sourceはhigher-priority sourceが今回の計画で確定したrangeを反転できない
+- baselineは各sourceについて現在観測したsnapshotへ更新する
+
+競合しないrangeについては、各sourceのdeltaを通常どおり同じplanned snapshotへ適用する。
 
 ### 7.8 初回昇格とatomicity
 
@@ -349,7 +376,7 @@ source評価順はworkspace、external-fileの順とする。各sourceは直前s
 
 1. 新owner stateを初期化または読み込み、必要ならstale file stateを先に無効化する
 2. base owner resolverが初回昇格transactionを生成しても、直ちに永続化せずメモリ上へ捕捉する
-3. 存在する全lower owner contextをread-onlyで読み込む
+3. 存在する全lower owner contextを、各ownerにつき1回だけread-onlyで観測する
 4. 初回昇格範囲、全source delta、全次baselineを1つの完全なnext context・Global snapshotへ集約する
 5. reconciliation前の新owner snapshotを`expected`として、完全snapshot transactionを1回だけCAS commitする
 6. commit成功後だけ、reconciliation済み新ownerをactive ownerとして返す
@@ -380,7 +407,9 @@ DocumentReviewStateSessionProvider.open(document descriptor)
   └─ external-file provider
 ```
 
-装飾読み込みは未保存resourceを初期化せず、owner判定だけを共有する。
+writable `open`はreconciliation済みsessionをそのまま返す。永続化確認を目的とした2回目の`loadForDecoration`やowner再解決は行わない。
+
+装飾読み込みは未保存resourceを初期化せず、owner判定規則だけを共有する。
 
 ## 9. エラー処理
 
@@ -389,7 +418,7 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - Git inspectionの予期しない失敗: ownerを推測せず通知する
 - HEAD確認の未知のexit 128: unborn扱いせず`GitCommandFailedError`を通知する
 - load failure: sessionを返さない
-- schemaまたはidentity不一致: 保存済みstateを別ownerへ流用しない
+- schema、identity、またはreconciliation metadata不一致: 保存済みstateを別ownerへ流用しない
 - initial save failure: sessionを返さない
 - CAS conflict: 再読込または操作再試行を要求する
 - persistence failure: 成功表示しない
@@ -410,6 +439,7 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - 既知のunborn HEAD診断だけをmissing HEADとして扱う
 - HEAD確認の未知のexit 128を`GitCommandFailedError`として伝播する
 - workspaceなしウィンドウでもownerを解決できる
+- 1回のwritable openでactive-owner Git inspectionを1回だけ行う
 
 ### 10.2 Storage
 
@@ -422,6 +452,9 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - stale expectationで両stateとも更新されない
 - decoration readが未保存resourceを初期化しない
 - content hashまたはrevision不一致のfile stateを現在documentへ再ラベルしない
+- reconciliation metadataをfilesystem persistenceでround-tripできる
+- malformedなsource owner、identity、line count、interval、timestampを拒否する
+- metadataを持たない既存schema version 1 stateを読み込める
 
 ### 10.3 Reconciliation
 
@@ -434,7 +467,10 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - baseline不在の曖昧な解除を推測反映しない
 - content hashまたはline count不一致では移行しない
 - metadata-onlyのbaseline更新を保存する
+- 初回昇格範囲とbaselineが同じlower-owner observationを使用する
 - 初回昇格範囲とbaselineを1回のCAS commitで保存する
 - commit失敗時に範囲またはbaselineだけを残さない
 - workspaceとexternal-fileの両sourceを1回のCAS commitへ集約する
+- workspaceのreviewed判断をexternal-fileのremovalが反転しない
+- workspaceのremovalをexternal-fileのadditionが反転しない
 - 複数source処理の途中失敗で一部sourceだけを保存しない
