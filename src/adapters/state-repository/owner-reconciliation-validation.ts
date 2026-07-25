@@ -1,7 +1,6 @@
 import type {
   LineInterval,
-  OwnerReconciliationSourceSnapshot,
-  ReviewContextState
+  OwnerReconciliationSourceSnapshot
 } from "../../core/contracts/index";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -94,10 +93,11 @@ const validateSnapshot = (
 };
 
 /** Validates the optional additive owner-reconciliation section of schema version 1. */
-export const validateOwnerReconciliation = (
-  contextState: Readonly<ReviewContextState>
-): void => {
-  const value: unknown = contextState.ownerReconciliation;
+export const validateOwnerReconciliation = (contextState: unknown): void => {
+  if (!isRecord(contextState)) {
+    throw new TypeError("contextState must be an object");
+  }
+  const value = contextState.ownerReconciliation;
   if (value === undefined) {
     return;
   }
