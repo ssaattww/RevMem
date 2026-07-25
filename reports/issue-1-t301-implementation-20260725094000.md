@@ -12,79 +12,54 @@
 
 作業開始時に `.github/workflows/ci.yml` を確認した。既存workflowは各工程の標準出力・標準エラー、生成物、source、test、設定file、head SHAとrefを失敗時artifactへ保存するため、workflow変更は不要だった。
 
-レビュー対応中のrun `30138361324` ではUnit testsが失敗した。保存されたfailure diagnostics artifactとjob logを確認し、assertionが期待するerror messageの大文字・小文字差を修正した。原因確認後のHEAD `5551e070215997294f1f6cf9eebe9bb6f1763504` に紐づくrun `30138438036`は成功した。
+R5対応のHEAD `b85a396f8ced10265d99db2cab72f34f99923404` に紐づくrun `30147427410`ではLintが失敗した。保存されたfailure diagnostics artifact `8616489254` の`lint.log`から、test path literalの不要escape 2件を特定し、commit `ab861d7823b2090879eadf52e0bfcdc768378006`で修正した。同HEADのrun `30147490531`は全工程成功した。
 
 ## TDD証跡
 
-### 初回実装
+### 初回〜R4
 
-- Red commit: `dafdb537145ab8c935c0d6c40a99182cb78fae7e`
-- Red run: `30136402379` / failure
-- Green commit: `32628bb1c80b1ac899e057a6c7183fdd40b1b6a5`
-- Green run: `30136493715` / success
+- 初回 Red: `dafdb537145ab8c935c0d6c40a99182cb78fae7e` / run `30136402379` failure
+- 初回 Green: `32628bb1c80b1ac899e057a6c7183fdd40b1b6a5` / run `30136493715` success
+- R1 Test-first: `a6994a606c5f2b4d67b49f614ce34b478e21eb67` / Green run `30137524150`
+- R2 Test-first: `940c33320b14d2914fd119641a4737cbbcbae064` / Green run `30138438036`
+- R3 Test-first: `9f7d64dbd3a36d4ce56f3967d801eb606eed784e` / Green run `30144044817`
+- R4 Test-first: `f65c3b7715fb4ece6ca57d05dc4c3a8d7d83ad15` / Green run `30144959022`
 
-### R1レビュー対応
+### R5レビュー対応
 
-- Test-first commit: `a6994a606c5f2b4d67b49f614ce34b478e21eb67`
-- Contract/implementation commits: `787e70bf0f4cfc0c31157a1e1b16b48d4f338ca9`, `a5ec9465fa5a9dcce2c1ade7081bc9dfc5cb46b0`
-- Green run: `30137524150` / success
-
-### R2レビュー対応
-
-- Test-first commit: `940c33320b14d2914fd119641a4737cbbcbae064`
-- Implementation commits: `f490e8143c8c9becc13974d6b1893e079e2cf6d0`, `adce5578fc6bbc4609719b67aa035cf9ae8f5c0d`
-- Diagnostic fix commit: `5551e070215997294f1f6cf9eebe9bb6f1763504`
-- Green run: `30138438036` / success
-
-### R3再レビュー対応
-
-- Test-first commit: `9f7d64dbd3a36d4ce56f3967d801eb606eed784e`
-- Implementation commit: `274898af39267ffdf96adc0501a11f50aab84992`
-- Public export commit: `5592913df162cabfecbda3cb751976fd03925105`
-- Report refresh commit: `33a5cddcf3ba1ee76181c3ba86c995bad3ddaab0`
-- Green run: `30144044817` / success
-
-### R4再レビュー対応
-
-- Test-first commit: `f65c3b7715fb4ece6ca57d05dc4c3a8d7d83ad15`
-- Implementation commit: `91e52fd17d8fda2ddcab19362e084534a9db4a0d`
-- Green run: `30144899636` / success
-- 対応範囲: zero-count hunk anchor正規化、first-hunkからの累積delta検証、state payload identity検証、zero-zero hunk拒否、削除されていた回帰testの復元
+- Test-first commit: `1ddfe5363672cc58ec98b4e9c5a0ef429ea61a4d`
+- Implementation commit: `b85a396f8ced10265d99db2cab72f34f99923404`
+- Lint diagnostic fix: `ab861d7823b2090879eadf52e0bfcdc768378006`
+- Green run: `30147490531` / success
 
 ## 現在の実装内容
 
-- `PullRequestDiffSnapshot`でbase SHA、head SHA、context ID、original diff ID、changed filesを一体化
-- snapshot identityと`ReviewContextState`のpull-request context/revisionをcalculator境界で照合
-- `originalDiffId`を`${baseSha}..${headSha}`のcanonical keyとして検証
-- 既存`PullRequestFileChange`、`DiffHunk`、`DiffLine` contractを再利用
-- unified diffの各lineについてone-based old/new coordinate、反対side座標のabsence、source-order cursor進行を検証
-- zero-count側は`start`、countが正の側は`start - 1`をanchorとして正規化
-- first hunkからbase/head間のcumulative deltaを検証し、後続hunkのorderと未変更gapも検証
-- zero-zero no-op hunk、hunk header/body不一致、重複actual coordinateを拒否
-- hunkから得たunique addition/deletion座標数とGitHub統計値をside別に厳密照合
-- PR contextのzero-based half-open intervalをone-based座標へ変換し、実変更座標との積集合だけを分子へ算入
-- review context map keyだけでなく`FileReviewState.fileId` payload identityも照合
-- Global、branch、workspace、stale revision、誤routing state由来の範囲を進捗計算へ混入させない
-- T300 `ReviewFileExclusionPolicy`を再利用し、binary/default glob/user globの理由を保持
-- 除外fileは集計分子・分母を0にする一方、元の`additions`・`deletions`と分類を結果へ保持
-- file単位・PR全体とも分母0を100%として扱う
-- 公開DTOとcalculatorに座標規約、除外時count、zero denominator、identity、validation failureを記載
-- `test:t301` focused testと通常unit suiteへ配線
+- `PullRequestDiffSnapshot`でbase/head SHA、context ID、original diff ID、changed filesを一体化
+- snapshotと`ReviewContextState`のPR context/revisionをcalculator境界で照合
+- runtimeの`DiffLine.kind`と`PullRequestFileChange.status`をexhaustiveに検証し、未知値を拒否
+- statusごとのold/new path・addition/deletion matrixを検証
+- exclusion policyで正規化したcanonical pathの重複を拒否
+- hunkごとにaddition/deletionが1件以上あることを必須化し、context-only・zero-zero hunkを拒否
+- unified diffのone-based座標、opposite-side absence、cursor進行、header/body countを検証
+- zero-count anchor正規化、first hunkからのcumulative delta、後続hunk order/gapを検証
+- unique addition/deletion座標数とsource統計値をside別に厳密照合
+- review stateのmap key、payload file ID、head revisionを照合
+- `lineCount`を非負safe integerとして検証し、modified reviewed intervalの上限超過を拒否
+- PR contextのzero-based half-open intervalと実変更座標の積集合だけを分子へ算入
+- binary/default glob/user glob除外理由と元のaddition/deletion統計を保持
+- 除外fileは集計対象外、zero denominatorは100%として扱う
 
-## テスト対象
+## 累積テスト対象
 
 - 正常なaddition-only、deletion-only、replacement
-- zero-count addition/deletion後に続くvalid hunk
-- first-hunk cumulative delta mismatch
-- current PR contextのmodified/original interval
-- stale diff snapshot、non-PR context、context ID mismatch、base/head mismatch、original diff ID mismatch
-- stale file revision、state payload file ID mismatch
-- line coordinate mismatch、opposite-side coordinate、context coordinate mismatch
-- multiple hunk、hunk order、hunk gap、zero-zero hunk、重複actual coordinate
-- GitHub統計値とunique座標数の過不足
-- duplicate changed-file ID
-- rename-onlyとzero denominator
-- user glob、binary、exclusion reason、除外時source count保持
+- zero-count addition/deletion後のvalid hunkとfirst-hunk delta
+- stale snapshot、context ID、base/head、original diff ID、non-PR context
+- stale file revision、state payload ID、lineCount・modified interval上限
+- unknown line kind/status、status/path/count matrix
+- line coordinate、opposite-side、context coordinate、header/body
+- multiple hunk order/gap、context-only、zero-zero、duplicate actual coordinate
+- source統計値の過不足、duplicate file ID、canonical path重複
+- rename-only、zero denominator、user glob、binary、exclusion reason
 
 ## 対象外
 
