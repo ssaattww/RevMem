@@ -10,6 +10,8 @@ export type {
   GlobalFileReviewState,
   InternalReviewState,
   LineInterval,
+  OwnerReconciliationSourceOwner,
+  OwnerReconciliationSourceSnapshot,
   PullRequestFileChange,
   PullRequestFileChangeStatus,
   PullRequestReviewContext,
