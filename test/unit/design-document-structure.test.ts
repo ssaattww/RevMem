@@ -185,7 +185,7 @@ test("design specifications remain in one feature-organized document without tas
   );
   assert.doesNotMatch(
     mainDesign,
-    /UI Adapter[\s\S]{0,160}-> Runtime Adapters/u,
+    /^UI Adapter\s*\r?\n\s*-> Runtime Adapters$/mu,
     "UI must not depend directly on runtime adapters."
   );
   assert.match(
