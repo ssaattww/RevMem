@@ -1,5 +1,5 @@
 import {
-  DocumentReviewStateSessionProvider as BaseDocumentReviewStateSessionProvider,
+  DocumentReviewStateSessionProvider as BaseProvider,
   type DocumentEditorReviewDescriptor,
   type DocumentNormalEditorDecorationState,
   type DocumentNormalEditorReviewStateSession,
@@ -18,6 +18,7 @@ import {
 } from "../workspace-review-state/index";
 import type {
   LineInterval,
+  OwnerReconciliationSourceSnapshot,
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
@@ -32,31 +33,15 @@ import {
   type ReviewStateTransaction
 } from "../../core/review-state/index";
 
-interface OwnerSourceSnapshot {
-  readonly sourceOwner: Exclude<DocumentReviewOwner, "git">;
-  readonly sourceRepositoryId: string;
-  readonly sourceContextId: string;
-  readonly sourceFileId: string;
-  readonly contentHash?: string;
-  readonly lineCount: number;
-  readonly reviewed: readonly LineInterval[];
-  readonly sourceCreatedAt: string;
-  readonly sourceUpdatedAt: string;
-}
-
-interface ReconciledReviewContextState extends ReviewContextState {
-  readonly ownerReconciliation?: Readonly<Record<string, OwnerSourceSnapshot>>;
-}
-
-interface PlannedReconciliationState {
-  readonly contextState: ReconciledReviewContextState;
+interface Plan {
+  readonly contextState: ReviewContextState;
   readonly globalState: RepositoryGlobalState;
   readonly changed: boolean;
+  readonly protectedReviewed: readonly LineInterval[];
+  readonly protectedUnreviewed: readonly LineInterval[];
 }
 
-const cloneValue = <T>(value: T): T =>
-  JSON.parse(JSON.stringify(value)) as T;
-
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const nonRepositoryInspector = {
   inspectRepository: async () => ({
     kind: "not-repository" as const,
@@ -64,9 +49,7 @@ const nonRepositoryInspector = {
   })
 };
 
-const normalizedReviewed = (
-  state: DocumentNormalEditorDecorationState
-): LineInterval[] => {
+const reviewed = (state: DocumentNormalEditorDecorationState): LineInterval[] => {
   const contextFile = state.contextState.files[state.target.fileId];
   const globalFile = state.globalState.files[state.target.fileId];
   return normalizeLineIntervals([
@@ -75,31 +58,26 @@ const normalizedReviewed = (
   ]);
 };
 
-const newestTimestamp = (
-  values: readonly (string | undefined)[]
-): string | undefined => values
-  .filter((value): value is string => value !== undefined)
-  .sort()
-  .at(-1);
+const newest = (values: readonly (string | undefined)[]): string | undefined =>
+  values.filter((value): value is string => value !== undefined).sort().at(-1);
 
 const sameIntervals = (
   left: readonly LineInterval[],
   right: readonly LineInterval[]
 ): boolean => {
-  const normalizedLeft = normalizeLineIntervals(left);
-  const normalizedRight = normalizeLineIntervals(right);
-  return normalizedLeft.length === normalizedRight.length &&
-    normalizedLeft.every((interval, index) => {
-      const candidate = normalizedRight[index];
-      return candidate !== undefined &&
-        interval.startLine === candidate.startLine &&
-        interval.endLineExclusive === candidate.endLineExclusive;
-    });
+  const a = normalizeLineIntervals(left);
+  const b = normalizeLineIntervals(right);
+  return a.length === b.length && a.every((value, index) => {
+    const other = b[index];
+    return other !== undefined &&
+      value.startLine === other.startLine &&
+      value.endLineExclusive === other.endLineExclusive;
+  });
 };
 
-const sameSourceSnapshot = (
-  left: OwnerSourceSnapshot,
-  right: OwnerSourceSnapshot
+const sameSnapshot = (
+  left: OwnerReconciliationSourceSnapshot,
+  right: OwnerReconciliationSourceSnapshot
 ): boolean =>
   left.sourceOwner === right.sourceOwner &&
   left.sourceRepositoryId === right.sourceRepositoryId &&
@@ -122,178 +100,142 @@ const laterThan = (left: string, right: string | undefined): boolean => {
     leftTime > rightTime;
 };
 
-/**
- * Captures the base provider's initial promotion transaction without publishing it.
- * Initialization and stale-state sanitization still delegate to the real repository.
- */
-class CapturingDocumentReviewStateRepository
-implements DocumentReviewStateRepository {
-  private capturedTransaction: ReviewStateTransaction | undefined;
+class CapturingRepository implements DocumentReviewStateRepository {
+  private captured: ReviewStateTransaction | undefined;
+  private readonly loaded = new Map<string, ReviewStateCommit | undefined>();
 
-  public constructor(
-    private readonly delegate: DocumentReviewStateRepository
-  ) {}
+  public constructor(private readonly delegate: DocumentReviewStateRepository) {}
 
-  public load(
+  public async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
-    return this.delegate.load(target);
+    const key = this.key(target);
+    if (!this.loaded.has(key)) {
+      const value = await this.delegate.load(target);
+      this.loaded.set(key, value === undefined ? undefined : clone(value));
+    }
+    const value = this.loaded.get(key);
+    return value === undefined ? undefined : clone(value);
   }
 
-  public save(
+  public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
   ): Promise<void> {
-    return this.delegate.save(target, commit);
+    await this.delegate.save(target, commit);
+    this.loaded.set(this.key(target), clone(commit));
   }
 
-  public async commit(
-    transaction: Readonly<ReviewStateTransaction>
-  ): Promise<void> {
-    if (this.capturedTransaction !== undefined) {
-      throw new Error(
-        "Document owner initialization attempted more than one promotion commit."
-      );
+  public async commit(transaction: Readonly<ReviewStateTransaction>): Promise<void> {
+    if (this.captured !== undefined) {
+      throw new Error("Document owner initialization attempted more than one promotion commit.");
     }
-    this.capturedTransaction = cloneValue(transaction) as ReviewStateTransaction;
+    this.captured = clone(transaction);
   }
 
-  public getCapturedTransaction(): ReviewStateTransaction | undefined {
-    return this.capturedTransaction === undefined
-      ? undefined
-      : cloneValue(this.capturedTransaction) as ReviewStateTransaction;
+  public capturedTransaction(): ReviewStateTransaction | undefined {
+    return this.captured === undefined ? undefined : clone(this.captured);
+  }
+
+  private key(target: ReviewStateRepositoryTarget): string {
+    return `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
   }
 }
 
-/**
- * Adds owner-recovery reconciliation to the base document router.
- *
- * The base provider still resolves ownership, initializes target storage, and sanitizes
- * stale target state. Any initial lower-owner promotion is captured in memory. All source
- * deltas and baseline metadata are then committed together in one real CAS transaction.
- */
+/** Routes and reconciles document review state with one observation per lower owner. */
 export class DocumentReviewStateSessionProvider {
-  private readonly readProvider: BaseDocumentReviewStateSessionProvider;
-  private readonly externalReader: BaseDocumentReviewStateSessionProvider;
+  private readonly decorationProvider: BaseProvider;
   private readonly now: () => Date;
 
   public constructor(
     private readonly options: DocumentReviewStateSessionProviderOptions
   ) {
+    this.decorationProvider = new BaseProvider(options);
     this.now = options.now ?? (() => new Date());
-    this.readProvider = new BaseDocumentReviewStateSessionProvider(options);
-    this.externalReader = new BaseDocumentReviewStateSessionProvider({
-      ...options,
-      gitInspector: nonRepositoryInspector
-    });
   }
 
-  /** Opens the active owner and publishes all certain source changes atomically. */
   public async open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    const capturingRepository = new CapturingDocumentReviewStateRepository(
-      this.options.repository
-    );
-    const baseProvider = new BaseDocumentReviewStateSessionProvider({
+    const repository = new CapturingRepository(this.options.repository);
+    const workspaceProvider = this.cachingWorkspaceProvider(repository);
+    const baseProvider = new BaseProvider({
       ...this.options,
-      repository: capturingRepository,
-      workspaceProvider: this.capturingWorkspaceProvider(capturingRepository)
+      repository,
+      workspaceProvider
     });
-    const openedSession = await baseProvider.open(descriptor);
-    const targetSession: DocumentNormalEditorReviewStateSession = {
-      ...openedSession,
+    const externalReader = new BaseProvider({
+      ...this.options,
+      repository,
+      workspaceProvider,
+      gitInspector: nonRepositoryInspector
+    });
+    const opened = await baseProvider.open(descriptor);
+    const target: DocumentNormalEditorReviewStateSession = {
+      ...opened,
       committer: this.options.repository
     };
-    const sources = await this.loadLowerOwnerSources(
-      targetSession.owner,
-      descriptor
+    const sources = await this.lowerSources(
+      target.owner,
+      descriptor,
+      workspaceProvider,
+      externalReader
     );
-    return this.reconcileCertainSources(
-      targetSession,
-      sources,
-      capturingRepository.getCapturedTransaction()
-    );
+    return this.reconcile(target, sources, repository.capturedTransaction());
   }
 
-  /** Keeps decoration reads non-mutating. */
   public loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
-    return this.readProvider.loadForDecoration(descriptor);
+    return this.decorationProvider.loadForDecoration(descriptor);
   }
 
-  private capturingWorkspaceProvider(
-    capturingRepository: CapturingDocumentReviewStateRepository
+  private cachingWorkspaceProvider(
+    repository: CapturingRepository
   ): WorkspaceReviewStateSessionProvider {
     const delegate = this.options.workspaceProvider;
+    const cache = new Map<string, WorkspaceNormalEditorDecorationState | undefined>();
     return {
-      open: async (descriptor: WorkspaceEditorReviewDescriptor) => {
-        const session = await delegate.open(descriptor);
-        return {
-          ...session,
-          committer: capturingRepository
-        };
-      },
-      loadForDecoration: (descriptor: WorkspaceEditorReviewDescriptor) =>
-        delegate.loadForDecoration(descriptor)
+      open: async (descriptor: WorkspaceEditorReviewDescriptor) => ({
+        ...(await delegate.open(descriptor)),
+        committer: repository
+      }),
+      loadForDecoration: async (descriptor: WorkspaceEditorReviewDescriptor) => {
+        const key = JSON.stringify(descriptor);
+        if (!cache.has(key)) {
+          const value = await delegate.loadForDecoration(descriptor);
+          cache.set(key, value === undefined ? undefined : clone(value));
+        }
+        const value = cache.get(key);
+        return value === undefined ? undefined : clone(value);
+      }
     } as unknown as WorkspaceReviewStateSessionProvider;
   }
 
-  private async loadLowerOwnerSources(
-    targetOwner: DocumentReviewOwner,
-    descriptor: DocumentEditorReviewDescriptor
+  private async lowerSources(
+    owner: DocumentReviewOwner,
+    descriptor: DocumentEditorReviewDescriptor,
+    workspaceProvider: WorkspaceReviewStateSessionProvider,
+    externalReader: BaseProvider
   ): Promise<readonly (DocumentNormalEditorDecorationState | undefined)[]> {
-    if (targetOwner === "external-file") {
+    if (owner === "external-file") {
       return [];
     }
-
-    const externalSource = await this.externalReader.loadForDecoration(
-      this.externalDescriptor(descriptor)
-    );
-    if (targetOwner === "workspace") {
-      return [externalSource];
-    }
-
-    return [
-      await this.loadWorkspaceSource(descriptor),
-      externalSource
-    ];
-  }
-
-  private externalDescriptor(
-    descriptor: DocumentEditorReviewDescriptor
-  ): DocumentEditorReviewDescriptor {
-    return {
+    const external = await externalReader.loadForDecoration({
       documentUri: descriptor.documentUri,
       documentFsPath: descriptor.documentFsPath,
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
       lineCount: descriptor.lineCount,
       contentHash: descriptor.contentHash
-    };
-  }
-
-  private async loadWorkspaceSource(
-    descriptor: DocumentEditorReviewDescriptor
-  ): Promise<DocumentNormalEditorDecorationState | undefined> {
+    });
+    if (owner === "workspace") {
+      return [external];
+    }
     const workspace = descriptor.workspace;
     if (workspace === undefined) {
-      return undefined;
+      return [undefined, external];
     }
-
-    const state = await this.options.workspaceProvider.loadForDecoration(
-      this.toWorkspaceDescriptor(descriptor, workspace)
-    );
-    return state === undefined
-      ? undefined
-      : this.workspaceDecorationState(state);
-  }
-
-  private toWorkspaceDescriptor(
-    descriptor: DocumentEditorReviewDescriptor,
-    workspace: NonNullable<DocumentEditorReviewDescriptor["workspace"]>
-  ): WorkspaceEditorReviewDescriptor {
-    return {
+    const state = await workspaceProvider.loadForDecoration({
       workspaceFolderUri: workspace.workspaceFolderUri,
       documentUri: descriptor.documentUri,
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
@@ -301,107 +243,87 @@ export class DocumentReviewStateSessionProvider {
       workspaceDisplayName: workspace.displayName,
       lineCount: descriptor.lineCount,
       contentHash: descriptor.contentHash
-    };
+    });
+    return [
+      state === undefined
+        ? undefined
+        : {
+            owner: "workspace",
+            contextState: clone(state.contextState),
+            globalState: clone(state.globalState),
+            target: { ...state.target }
+          },
+      external
+    ];
   }
 
-  private workspaceDecorationState(
-    state: WorkspaceNormalEditorDecorationState
-  ): DocumentNormalEditorDecorationState {
-    return {
-      owner: "workspace",
-      contextState: cloneValue(state.contextState),
-      globalState: cloneValue(state.globalState),
-      target: { ...state.target }
-    };
-  }
-
-  private async reconcileCertainSources(
-    targetSession: DocumentNormalEditorReviewStateSession,
+  private async reconcile(
+    target: DocumentNormalEditorReviewStateSession,
     sources: readonly (DocumentNormalEditorDecorationState | undefined)[],
-    capturedPromotion: ReviewStateTransaction | undefined
+    promotion: ReviewStateTransaction | undefined
   ): Promise<DocumentNormalEditorReviewStateSession> {
     const occurredAt = this.now().toISOString();
-    let planned: PlannedReconciliationState = {
-      contextState: cloneValue(targetSession.contextState) as ReconciledReviewContextState,
-      globalState: cloneValue(targetSession.globalState) as RepositoryGlobalState,
-      changed: capturedPromotion !== undefined
+    let plan: Plan = {
+      contextState: clone(target.contextState),
+      globalState: clone(target.globalState),
+      changed: promotion !== undefined,
+      protectedReviewed: [],
+      protectedUnreviewed: []
     };
-
     for (const source of sources) {
-      if (source === undefined || source.owner === "git") {
-        continue;
+      if (source !== undefined && source.owner !== "git") {
+        plan = this.planSource(target.target, plan, source, occurredAt);
       }
-      planned = this.planCertainSource(
-        targetSession.target,
-        planned,
-        source,
-        occurredAt
-      );
     }
-
-    if (!planned.changed) {
-      return targetSession;
+    if (!plan.changed) {
+      return target;
     }
-
-    const expectedContextState = capturedPromotion === undefined
-      ? targetSession.contextState
-      : capturedPromotion.expected.contextState;
-    const expectedGlobalState = capturedPromotion === undefined
-      ? targetSession.globalState
-      : capturedPromotion.expected.globalState;
-    const finalTransaction: ReviewStateTransaction = {
-      operation: capturedPromotion?.operation ?? "mark-ranges-reviewed",
-      repositoryId: targetSession.contextState.repositoryId,
-      contextId: targetSession.contextState.contextId,
-      fileId: targetSession.target.fileId,
+    const transaction: ReviewStateTransaction = {
+      operation: promotion?.operation ?? "mark-ranges-reviewed",
+      repositoryId: target.contextState.repositoryId,
+      contextId: target.contextState.contextId,
+      fileId: target.target.fileId,
       expected: {
-        contextState: cloneValue(expectedContextState) as ReviewContextState,
-        globalState: cloneValue(expectedGlobalState) as RepositoryGlobalState
+        contextState: clone(promotion?.expected.contextState ?? target.contextState),
+        globalState: clone(promotion?.expected.globalState ?? target.globalState)
       },
       next: {
-        contextState: cloneValue(planned.contextState) as ReviewContextState,
-        globalState: cloneValue(planned.globalState) as RepositoryGlobalState
+        contextState: clone(plan.contextState),
+        globalState: clone(plan.globalState)
       }
     };
-
-    await this.options.repository.commit(finalTransaction);
+    await this.options.repository.commit(transaction);
     return {
-      ...targetSession,
-      contextState: cloneValue(planned.contextState) as ReviewContextState,
-      globalState: cloneValue(planned.globalState) as RepositoryGlobalState,
+      ...target,
+      contextState: clone(plan.contextState),
+      globalState: clone(plan.globalState),
       committer: this.options.repository
     };
   }
 
-  private planCertainSource(
+  private planSource(
     target: ReviewStateFileTarget,
-    current: PlannedReconciliationState,
+    current: Plan,
     source: DocumentNormalEditorDecorationState,
     occurredAt: string
-  ): PlannedReconciliationState {
-    if (source.owner === "git") {
+  ): Plan {
+    if (source.owner === "git" ||
+        source.target.contentHash !== target.contentHash ||
+        source.target.lineCount !== target.lineCount) {
       return current;
     }
-    if (
-      source.target.contentHash !== target.contentHash ||
-      source.target.lineCount !== target.lineCount
-    ) {
-      return current;
-    }
-
+    const sourceReviewed = reviewed(source);
     const sourceContextFile = source.contextState.files[source.target.fileId];
     const sourceGlobalFile = source.globalState.files[source.target.fileId];
-    const sourceReviewed = normalizedReviewed(source);
-    const targetState: DocumentNormalEditorDecorationState = {
+    const targetReviewed = reviewed({
       owner: "git",
       contextState: current.contextState,
       globalState: current.globalState,
       target
-    };
-    const targetReviewed = normalizedReviewed(targetState);
-    const sourceKey = this.sourceKey(source);
-    const baseline = current.contextState.ownerReconciliation?.[sourceKey];
-    const matchingBaseline = baseline !== undefined &&
+    });
+    const key = this.sourceKey(source);
+    const baseline = current.contextState.ownerReconciliation?.[key];
+    const matching = baseline !== undefined &&
       baseline.sourceOwner === source.owner &&
       baseline.sourceRepositoryId === source.contextState.repositoryId &&
       baseline.sourceContextId === source.contextState.contextId &&
@@ -411,7 +333,7 @@ export class DocumentReviewStateSessionProvider {
 
     let additions: LineInterval[] = [];
     let removals: LineInterval[] = [];
-    if (matchingBaseline) {
+    if (matching) {
       additions = subtractLineIntervals(sourceReviewed, baseline.reviewed);
       removals = subtractLineIntervals(baseline.reviewed, sourceReviewed);
     } else if (targetReviewed.length === 0) {
@@ -419,16 +341,26 @@ export class DocumentReviewStateSessionProvider {
     } else if (!sameIntervals(sourceReviewed, targetReviewed)) {
       const targetContextFile = current.contextState.files[target.fileId];
       const targetGlobalFile = current.globalState.files[target.fileId];
-      const targetUpdatedAt = newestTimestamp([
+      if (laterThan(source.contextState.createdAt, newest([
         targetContextFile?.updatedAt,
         targetGlobalFile?.updatedAt
-      ]);
-      if (laterThan(source.contextState.createdAt, targetUpdatedAt)) {
+      ]))) {
         additions = subtractLineIntervals(sourceReviewed, targetReviewed);
       }
     }
 
-    const nextSnapshot: OwnerSourceSnapshot = {
+    const explicitRemovals = removals;
+    additions = subtractLineIntervals(additions, current.protectedUnreviewed);
+    removals = subtractLineIntervals(removals, current.protectedReviewed);
+    const protectedReviewed = normalizeLineIntervals([
+      ...current.protectedReviewed,
+      ...subtractLineIntervals(sourceReviewed, current.protectedUnreviewed)
+    ]);
+    const protectedUnreviewed = normalizeLineIntervals([
+      ...current.protectedUnreviewed,
+      ...subtractLineIntervals(explicitRemovals, current.protectedReviewed)
+    ]);
+    const snapshot: OwnerReconciliationSourceSnapshot = {
       sourceOwner: source.owner,
       sourceRepositoryId: source.contextState.repositoryId,
       sourceContextId: source.contextState.contextId,
@@ -439,22 +371,16 @@ export class DocumentReviewStateSessionProvider {
       lineCount: source.target.lineCount,
       reviewed: sourceReviewed.map((interval) => ({ ...interval })),
       sourceCreatedAt: source.contextState.createdAt,
-      sourceUpdatedAt: newestTimestamp([
+      sourceUpdatedAt: newest([
         sourceContextFile?.updatedAt,
         sourceGlobalFile?.updatedAt
       ]) ?? source.contextState.updatedAt
     };
-
-    if (
-      additions.length === 0 &&
-      removals.length === 0 &&
-      baseline !== undefined &&
-      sameSourceSnapshot(baseline, nextSnapshot)
-    ) {
-      return current;
+    if (additions.length === 0 && removals.length === 0 &&
+        baseline !== undefined && sameSnapshot(baseline, snapshot)) {
+      return { ...current, protectedReviewed, protectedUnreviewed };
     }
-
-    const afterIntervals = this.applyIntervalDelta(
+    const states = this.applyDelta(
       current.contextState,
       current.globalState,
       target,
@@ -462,74 +388,64 @@ export class DocumentReviewStateSessionProvider {
       removals,
       occurredAt
     );
-    const finalContextState: ReconciledReviewContextState = {
-      ...cloneValue(afterIntervals.contextState),
-      ownerReconciliation: {
-        ...(current.contextState.ownerReconciliation ?? {}),
-        [sourceKey]: nextSnapshot
-      },
-      updatedAt: occurredAt
-    };
-
     return {
-      contextState: finalContextState,
-      globalState: cloneValue(afterIntervals.globalState) as RepositoryGlobalState,
-      changed: true
+      contextState: {
+        ...clone(states.contextState),
+        ownerReconciliation: {
+          ...(current.contextState.ownerReconciliation ?? {}),
+          [key]: snapshot
+        },
+        updatedAt: occurredAt
+      },
+      globalState: clone(states.globalState),
+      changed: true,
+      protectedReviewed,
+      protectedUnreviewed
     };
   }
 
-  private applyIntervalDelta(
+  private applyDelta(
     contextState: ReviewContextState,
     globalState: RepositoryGlobalState,
     target: ReviewStateFileTarget,
     additions: readonly LineInterval[],
     removals: readonly LineInterval[],
     occurredAt: string
-  ): {
-    readonly contextState: ReviewContextState;
-    readonly globalState: RepositoryGlobalState;
-  } {
-    let nextContextState = cloneValue(contextState) as ReviewContextState;
-    let nextGlobalState = cloneValue(globalState) as RepositoryGlobalState;
-
+  ): { readonly contextState: ReviewContextState; readonly globalState: RepositoryGlobalState } {
+    let context = clone(contextState);
+    let global = clone(globalState);
     if (removals.length > 0) {
-      const removal = unmarkReviewedRanges({
-        contextState: nextContextState,
-        globalState: nextGlobalState,
+      const transaction = unmarkReviewedRanges({
+        contextState: context,
+        globalState: global,
         target,
         intervals: removals,
         occurredAt
       });
-      nextContextState = cloneValue(removal.next.contextState) as ReviewContextState;
-      nextGlobalState = cloneValue(removal.next.globalState) as RepositoryGlobalState;
+      context = clone(transaction.next.contextState);
+      global = clone(transaction.next.globalState);
     }
-
     if (additions.length > 0) {
-      const addition = markReviewedRanges({
-        contextState: nextContextState,
-        globalState: nextGlobalState,
+      const transaction = markReviewedRanges({
+        contextState: context,
+        globalState: global,
         target,
         intervals: additions,
         occurredAt
       });
-      nextContextState = cloneValue(addition.next.contextState) as ReviewContextState;
-      nextGlobalState = cloneValue(addition.next.globalState) as RepositoryGlobalState;
+      context = clone(transaction.next.contextState);
+      global = clone(transaction.next.globalState);
     }
-
-    return {
-      contextState: nextContextState,
-      globalState: nextGlobalState
-    };
+    return { contextState: context, globalState: global };
   }
 
   private sourceKey(source: DocumentNormalEditorDecorationState): string {
-    const digest = this.options.stableHash.digest([
+    return `owner-source:${this.options.stableHash.digest([
       "owner-reconciliation-source",
       source.owner,
       source.contextState.repositoryId,
       source.contextState.contextId,
       source.target.fileId
-    ].join("\0"));
-    return `owner-source:${digest}`;
+    ].join("\0"))}`;
   }
 }
