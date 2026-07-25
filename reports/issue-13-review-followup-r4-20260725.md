@@ -7,7 +7,7 @@
 - Branch: `issue/13-document-context-routing`
 - 指摘元: `reports/issue-13-review-r4-20260725131815.md`
 - 対応対象: blocking finding 2件
-- 基準設計修正: `doc/design/issue-13-document-context-routing.md` 7.4、7.5、9、10
+- 基準設計: `doc/design/document-context-routing.md`
 
 ## 指摘1: 対象file state不在時に空baselineを記録しない
 
@@ -55,23 +55,36 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 
 - `CapturingDocumentReviewStateRepository`を追加した
 - base providerの初回昇格transactionを実repositoryへ公開せず、メモリに捕捉する
-- owner初期化とstale state sanitizationの`load`・`save`は従来どおり実repositoryへ委譲する
+- owner初期化とstale state sanitizationの`load`・`save`は実repositoryへ委譲する
 - workspace sourceとexternal-file sourceをread-onlyで読み込む
 - 各sourceのdeltaと次baselineをメモリ上のplanned context・Global snapshotへ順次適用する
 - 捕捉した初回transactionの`expected`を維持し、全deltaと全baselineを含む`next`を実repositoryへ1回だけCAS commitする
 - final commit成功後だけ上位owner sessionを返す
 
-## 設計書修正
+## 設計書整理
 
-基準設計追補`doc/design/issue-13-document-context-routing.md`を次のように修正した。
+設計書をIssue単位ではなく、document review state ownership機能単位へ整理した。
 
-- lower owner contextが存在して対象file stateがない場合を、確実な空集合としてbaseline化する
-- lower owner context自体が存在しない場合はbaselineを作らない
-- 全移行元候補を読み込んでからnext snapshotを計算する
-- base routerの初回昇格transactionを永続化前に捕捉する
-- 初回昇格範囲、全source delta、全baselineを同じnext snapshotへ集約する
-- reconciliationの実CAS commitは1回だけとする
-- commit失敗時は範囲だけ、baselineだけ、一部sourceだけを残さない
+基準設計は次の1ファイルへ統合した。
+
+- `doc/design/document-context-routing.md`
+
+同文書に次を章単位でまとめている。
+
+- owner modelと解決順
+- Git inspectionとfailure分類
+- Git、workspace、external-fileのidentity
+- ownerごとのstorage layoutとatomic transaction
+- owner reconciliation、空baseline、複数source、単一CAS
+- Extension接続、エラー処理、検証条件
+
+次の設計書は削除した。
+
+- `doc/design/issue-13-document-context-routing.md`
+- `doc/design/review-state-storage.md`
+- `doc/design/owner-reconciliation.md`
+
+Issue番号とTask番号は基準設計から除外した。Issue番号は本レポート、PR、タスク管理などの変更履歴にだけ保持する。
 
 ## TDD Red
 
@@ -112,23 +125,11 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
-## 文書同期前Green
-
-- documentation head: `b731d85f78ba173b5d3dc61ca94384c34d7d9095`
-- workflow run: `30144682569`
-- Install dependencies: success
-- Build: success
-- Lint: success
-- Unit tests: success
-- Temporary Git integration tests: success
-- Mock GitHub integration tests: success
-- VS Code Extension Host tests: success
-
-同repositoryの別branchや他作業者のrunではなく、各head SHAに紐づくrunだけを検証に使用した。重複設計ファイル削除と本レポート同期後の最終head/runはPR本文とPRコメントへ記録する。
+同repositoryの別branchや他作業者のrunではなく、各head SHAに紐づくrunだけを検証に使用した。設計書統合後の最終headとrunはPR本文とPRコメントへ記録する。
 
 ## Scope確認
 
-R4レビューheadからの製品・test差分は、Issue #13のreconciliation実装、R4回帰test、test runner登録に限定した。
+R4レビューheadからの製品・test差分は、owner reconciliation実装、R4回帰test、test runner登録に限定した。
 
 変更していない範囲:
 
@@ -151,8 +152,8 @@ branchは`main`に対してbehind 0である。
 - final CAS失敗時に昇格interval・baseline・一部sourceが残らないこと
 - source read後の並行target更新をCASが検出できること
 - decoration loadが非変更処理のままであること
-- R2・R3で修正済みのHEAD分類、baseline metadata更新、test runner登録を壊していないこと
-- 基準設計書が実装・testと一致すること
+- HEAD分類、baseline metadata更新、test runner登録を壊していないこと
+- 基準設計書が機能単位で整理され、実装・testと一致すること
 
 判定:
 
