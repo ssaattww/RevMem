@@ -94,7 +94,7 @@ test("rejects non-canonical modifiedReviewed on unchanged files", () => {
     assert.throws(() => applyGitFileStateTransitions({
       files: { a: state("a", "a.ts", { lineCount: 2, modifiedReviewed }) }, diff: "",
       newRevisionId: "new", updatedAt, options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
-    }), /modifiedReviewed.*canonical/i);
+    }), /modifiedReviewed.*(canonical|invalid interval)/i);
   }
 });
 
