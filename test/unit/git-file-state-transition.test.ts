@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FileReviewState } from "../../src/core/contracts/index";
-import {
-  applyGitFileStateTransitions,
-  parseZeroContextGitDiff
-} from "../../src/core/git-diff/index";
+import { applyGitFileStateTransitions } from "../../src/core/git-diff/index";
 
 const options = {
   ignoreWhitespaceChanges: false,
@@ -27,13 +24,13 @@ function state(fileId: string, currentPath: string): FileReviewState {
 }
 
 test("follows a 100 percent rename while preserving stable file identity", () => {
-  const diff = parseZeroContextGitDiff([
+  const diff = [
     "diff --git a/src/old.ts b/src/new.ts",
     "similarity index 100%",
     "rename from src/old.ts",
     "rename to src/new.ts",
     ""
-  ].join("\n"));
+  ].join("\n");
 
   const result = applyGitFileStateTransitions({
     files: { file1: state("file1", "src/old.ts") },
@@ -51,7 +48,7 @@ test("follows a 100 percent rename while preserving stable file identity", () =>
 });
 
 test("maps reviewed intervals through an unambiguous rename with content changes", () => {
-  const diff = parseZeroContextGitDiff([
+  const diff = [
     "diff --git a/lib/old.ts b/lib/new.ts",
     "similarity index 75%",
     "rename from lib/old.ts",
@@ -62,7 +59,7 @@ test("maps reviewed intervals through an unambiguous rename with content changes
     "-old",
     "+changed",
     ""
-  ].join("\n"));
+  ].join("\n");
 
   const result = applyGitFileStateTransitions({
     files: { file1: state("file1", "lib/old.ts") },
@@ -80,7 +77,7 @@ test("maps reviewed intervals through an unambiguous rename with content changes
 });
 
 test("applies directory moves represented by independent unambiguous renames", () => {
-  const diff = parseZeroContextGitDiff([
+  const diff = [
     "diff --git a/old/a.ts b/new/a.ts",
     "similarity index 100%",
     "rename from old/a.ts",
@@ -90,7 +87,7 @@ test("applies directory moves represented by independent unambiguous renames", (
     "rename from old/b.ts",
     "rename to new/b.ts",
     ""
-  ].join("\n"));
+  ].join("\n");
 
   const result = applyGitFileStateTransitions({
     files: {
@@ -108,7 +105,7 @@ test("applies directory moves represented by independent unambiguous renames", (
 });
 
 test("removes deleted files from active state and reports their stable identities", () => {
-  const diff = parseZeroContextGitDiff([
+  const diff = [
     "diff --git a/src/deleted.ts b/src/deleted.ts",
     "deleted file mode 100644",
     "--- a/src/deleted.ts",
@@ -119,7 +116,7 @@ test("removes deleted files from active state and reports their stable identitie
     "-three",
     "-four",
     ""
-  ].join("\n"));
+  ].join("\n");
 
   const result = applyGitFileStateTransitions({
     files: { file1: state("file1", "src/deleted.ts") },
@@ -134,7 +131,7 @@ test("removes deleted files from active state and reports their stable identitie
 });
 
 test("does not transfer reviewed state through copies, splits, merges, or duplicate candidates", () => {
-  const diff = parseZeroContextGitDiff([
+  const diff = [
     "diff --git a/src/source.ts b/src/copy-a.ts",
     "similarity index 100%",
     "copy from src/source.ts",
@@ -144,7 +141,7 @@ test("does not transfer reviewed state through copies, splits, merges, or duplic
     "copy from src/source.ts",
     "copy to src/copy-b.ts",
     ""
-  ].join("\n"));
+  ].join("\n");
 
   const result = applyGitFileStateTransitions({
     files: { source: state("source", "src/source.ts") },
