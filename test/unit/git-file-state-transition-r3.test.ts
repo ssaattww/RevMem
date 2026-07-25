@@ -70,3 +70,24 @@ test("rejects copy and addition sections targeting the same destination", () => 
     /duplicate destination/i
   );
 });
+
+test("rejects copy and timestamp-suffixed addition targeting the same destination", () => {
+  const diff = [
+    "diff --git a/a.ts b/dest.ts",
+    "similarity index 100%",
+    "copy from a.ts",
+    "copy to dest.ts",
+    "diff --git a/dest.ts b/dest.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/dest.ts\t2026-07-25 13:50:00.000000000 +0900",
+    "@@ -0,0 +1 @@",
+    "+new",
+    ""
+  ].join("\n");
+
+  assert.throws(
+    () => apply({ a: state("a", "a.ts") }, diff),
+    /duplicate destination/i
+  );
+});
