@@ -1,3 +1,4 @@
+import type { FileReviewState, LineInterval } from "../contracts/index";
 import {
   applyGitFileStateTransitions as applyGitFileStateTransitionsUnchecked,
   type GitFileStateTransitionInput,
@@ -38,15 +39,7 @@ function decodeQuotedPath(raw: string): string {
       throw new SyntaxError("Git path ends in an incomplete escape.");
     }
     const escapes: Readonly<Record<string, number>> = {
-      a: 7,
-      b: 8,
-      f: 12,
-      n: 10,
-      r: 13,
-      t: 9,
-      v: 11,
-      "\\": 92,
-      "\"": 34
+      a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11, "\\": 92, "\"": 34
     };
     if (escaped in escapes) {
       bytes.push(escapes[escaped] as number);
@@ -82,9 +75,7 @@ function decodeFileHeaderPath(raw: string): string {
 }
 
 function metadataValues(lines: readonly string[], prefix: string): readonly string[] {
-  return lines
-    .filter((line) => line.startsWith(prefix))
-    .map((line) => decodeMetadataPath(line.slice(prefix.length)));
+  return lines.filter((line) => line.startsWith(prefix)).map((line) => decodeMetadataPath(line.slice(prefix.length)));
 }
 
 function headerPath(lines: readonly string[], prefix: "--- " | "+++ "): string | undefined {
@@ -103,8 +94,7 @@ function canonicalDestination(path: string): string {
 function validateSection(lines: readonly string[]): ValidatedSection {
   const renameFrom = metadataValues(lines, "rename from ");
   const renameTo = metadataValues(lines, "rename to ");
-  const hasRenameMetadata = renameFrom.length > 0 || renameTo.length > 0;
-  if (hasRenameMetadata) {
+  if (renameFrom.length > 0 || renameTo.length > 0) {
     if (renameFrom.length !== 1 || renameTo.length !== 1) {
       throw new SyntaxError("Rename metadata must contain exactly one rename from and one rename to path.");
     }
@@ -124,23 +114,17 @@ function validateSection(lines: readonly string[]): ValidatedSection {
   if (isNewFile && isDeletedFile) {
     throw new SyntaxError("Git diff section cannot contain both new file mode and deleted file mode.");
   }
-
   const oldPath = headerPath(lines, "--- ");
   const newPath = headerPath(lines, "+++ ");
-
   if (isNewFile) {
     if (oldPath !== DEV_NULL || newPath === undefined || newPath === DEV_NULL) {
       throw new SyntaxError("New file mode requires /dev/null on the old header side and a real destination path.");
     }
     return { destination: canonicalDestination(newPath) };
   }
-
-  if (isDeletedFile) {
-    if (oldPath === undefined || oldPath === DEV_NULL || newPath !== DEV_NULL) {
-      throw new SyntaxError("Deleted file mode requires a real old path and /dev/null on the new header side.");
-    }
+  if (isDeletedFile && (oldPath === undefined || oldPath === DEV_NULL || newPath !== DEV_NULL)) {
+    throw new SyntaxError("Deleted file mode requires a real old path and /dev/null on the new header side.");
   }
-
   return {};
 }
 
@@ -170,17 +154,84 @@ function validateUniqueDestinations(sections: readonly ValidatedSection[]): void
   }
 }
 
+function validateCanonicalIntervals(
+  intervals: readonly LineInterval[],
+  label: string,
+  upperBound?: number
+): void {
+  let previousEnd = -1;
+  for (const interval of intervals) {
+    const { startLine, endLineExclusive } = interval;
+    if (
+      !Number.isSafeInteger(startLine) ||
+      !Number.isSafeInteger(endLineExclusive) ||
+      startLine < 0 ||
+      startLine >= endLineExclusive ||
+      (upperBound !== undefined && endLineExclusive > upperBound)
+    ) {
+      throw new RangeError(`${label} contains an invalid interval.`);
+    }
+    if (startLine <= previousEnd) {
+      throw new RangeError(`${label} must be canonical, sorted, non-overlapping, and non-adjacent.`);
+    }
+    previousEnd = endLineExclusive;
+  }
+}
+
+function validateFileState(file: Readonly<FileReviewState>, key: string): void {
+  if (file.schemaVersion !== 1) {
+    throw new RangeError("File-state schemaVersion is unsupported.");
+  }
+  if (file.fileId.length === 0 || key !== file.fileId) {
+    throw new RangeError("File-state fileId must be non-empty and match its key.");
+  }
+  if (file.currentPath.length === 0 || file.revisionId.length === 0 || file.updatedAt.length === 0) {
+    throw new RangeError("File-state path, revisionId, and updatedAt must be non-empty.");
+  }
+  if (!Number.isSafeInteger(file.lineCount) || file.lineCount < 0) {
+    throw new RangeError("File-state lineCount must be a non-negative safe integer.");
+  }
+  const previousPaths = new Set<string>();
+  for (const path of file.previousPaths) {
+    if (path.length === 0 || path === file.currentPath || previousPaths.has(path)) {
+      throw new RangeError("File-state previousPaths must be non-empty, unique, and exclude currentPath.");
+    }
+    previousPaths.add(path);
+  }
+  if (file.contentHash !== undefined && file.contentHash.length === 0) {
+    throw new RangeError("File-state contentHash must be non-empty when present.");
+  }
+  validateCanonicalIntervals(file.modifiedReviewed, "modifiedReviewed", file.lineCount);
+  for (const [diffId, intervals] of Object.entries(file.originalReviewedByDiff)) {
+    if (diffId.length === 0) {
+      throw new RangeError("originalReviewedByDiff diff ID must be non-empty.");
+    }
+    validateCanonicalIntervals(intervals, `originalReviewedByDiff[${diffId}]`);
+  }
+}
+
+function validateStateSnapshot(files: Readonly<Record<string, Readonly<FileReviewState>>>): void {
+  const paths = new Set<string>();
+  for (const [key, file] of Object.entries(files)) {
+    validateFileState(file, key);
+    if (paths.has(file.currentPath)) {
+      throw new RangeError("File-state currentPath values must be unique.");
+    }
+    paths.add(file.currentPath);
+  }
+}
+
 /**
- * Validates transition metadata and cross-section destination uniqueness before applying the atomic T204 transition.
+ * Validates the complete state snapshot, transition metadata, and cross-section destination uniqueness.
  *
  * @param input Complete transition input accepted by the underlying T204 engine.
  * @returns The detached complete post-transition snapshot.
- * @throws When rename metadata is incomplete or duplicated, add/delete headers contradict file status,
- * or multiple copy, rename, or addition sections target the same destination path.
+ * @throws When state invariants or Git transition metadata are malformed.
  */
 export function applyGitFileStateTransitions(
   input: Readonly<GitFileStateTransitionInput>
 ): GitFileStateTransitionResult {
+  validateStateSnapshot(input.files);
   const sections = parseAndValidateSections(input.diff);
   validateUniqueDestinations(sections);
   return applyGitFileStateTransitionsUnchecked(input);
