@@ -1,40 +1,36 @@
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
 const projectRoot = path.resolve(__dirname, "../../..");
 const designDirectory = path.join(projectRoot, "doc", "design");
-const mainDesignPath = path.join(
-  designDirectory,
-  "vscode-review-range-tracker-design.md"
-);
-const amendmentPath = path.join(
-  designDirectory,
-  "vscode-review-range-tracker-design-t302-amendment.md"
-);
+const mainDesignFilename = "vscode-review-range-tracker-design.md";
+const mainDesignPath = path.join(designDirectory, mainDesignFilename);
+const relatedDesignFilenamePattern =
+  /^vscode-review-range-tracker-design(?:-.+)?\.md$/u;
 const taskIdentifierPattern = /T\d{3}(?:-\d+)?/u;
-
-const exists = async (targetPath: string): Promise<boolean> => {
-  try {
-    await access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 const writeFailureContext = async (
   mainDesign: string,
-  amendmentExists: boolean
+  relatedDesignFilenames: readonly string[]
 ): Promise<void> => {
   const outputDirectory = path.join(projectRoot, "test-output", "ci", "design");
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(path.join(outputDirectory, "main-design.md"), mainDesign, "utf8");
-  if (amendmentExists) {
+  await writeFile(
+    path.join(outputDirectory, "related-design-files.txt"),
+    `${relatedDesignFilenames.join("\n")}\n`,
+    "utf8"
+  );
+
+  for (const filename of relatedDesignFilenames) {
+    if (filename === mainDesignFilename) {
+      continue;
+    }
     await writeFile(
-      path.join(outputDirectory, "separate-design-document.md"),
-      await readFile(amendmentPath, "utf8"),
+      path.join(outputDirectory, filename),
+      await readFile(path.join(designDirectory, filename), "utf8"),
       "utf8"
     );
   }
@@ -42,17 +38,22 @@ const writeFailureContext = async (
 
 test("design specifications remain in one feature-organized document without task identifiers", async () => {
   const mainDesign = await readFile(mainDesignPath, "utf8");
-  const amendmentExists = await exists(amendmentPath);
+  const relatedDesignFilenames = (await readdir(designDirectory))
+    .filter((filename) => relatedDesignFilenamePattern.test(filename))
+    .sort();
   const containsTaskIdentifier = taskIdentifierPattern.test(mainDesign);
+  const hasOnlyMainDesign =
+    relatedDesignFilenames.length === 1 &&
+    relatedDesignFilenames[0] === mainDesignFilename;
 
-  if (amendmentExists || containsTaskIdentifier) {
-    await writeFailureContext(mainDesign, amendmentExists);
+  if (!hasOnlyMainDesign || containsTaskIdentifier) {
+    await writeFailureContext(mainDesign, relatedDesignFilenames);
   }
 
-  assert.equal(
-    amendmentExists,
-    false,
-    "Design amendments must be integrated into the single main design document."
+  assert.deepEqual(
+    relatedDesignFilenames,
+    [mainDesignFilename],
+    "All tracker design specifications must be integrated into the single main design document."
   );
   assert.equal(
     containsTaskIdentifier,
