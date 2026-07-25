@@ -202,6 +202,8 @@ workspace ownerへ移行するとき:
 
 1. 同じcanonical URIのexternal-file state
 
+移行元候補はすべて読み込んでから新ownerのnext snapshotを計算する。候補ごとに永続化commitを分けてはならない。
+
 ### 7.3 確実性条件
 
 次をすべて満たす場合だけ範囲をコピーまたは再調整する。
@@ -219,6 +221,10 @@ Git unavailableなどで一時的に下位ownerへfallbackした後、上位owne
 
 上位contextは下位ownerごとに、最後に確実に確認したsource snapshotを`ownerReconciliation` metadataとして保持する。snapshotはsource owner、repository/context/file ID、content hash、line count、確認済みinterval、source作成・更新日時を含む。
 
+lower ownerのcontextが存在し、現在のcontent hashとline countで対象file stateが存在しない場合、確認済み集合は確実な空集合である。この場合も空のsource snapshotをbaselineとして記録する。lower ownerのcontext自体が存在しない場合はbaselineを作成しない。
+
+空baselineを先に記録することで、その後fallback中に対象file stateを新規作成した場合も、追加範囲を`現在source - empty`として確実に上位ownerへ反映できる。空baseline確立後の解除・再追加も通常の差分計算に従う。
+
 共通baselineがある場合:
 
 ```text
@@ -231,19 +237,27 @@ Git unavailableなどで一時的に下位ownerへfallbackした後、上位owne
 
 baselineがない初回reconciliationでは次の保守規則を使う。
 
-- 移行先に対象file stateがない: 現在sourceを初期移行し、baselineを記録する
+- 移行先に対象file stateがない: 現在sourceを初期移行し、baselineを同じnext snapshotへ記録する
 - sourceと移行先のintervalが一致: intervalを変えずbaselineだけを記録する
 - source contextが移行先fileの最終更新後に新規作成された: sourceの追加分だけを移行し、baselineを記録する
 - 上記以外のlegacy・曖昧状態: intervalを変更せず現在sourceをbaselineとして記録し、次回以降の確実な差分だけを扱う
 
 共通baselineがない状態でfallback側に行われた解除は、安全に由来を判定できないため上位ownerへ推測反映しない。baseline確立後の解除だけを差分として反映する。
 
-### 7.5 書き込み順
+複数のlower ownerが存在する場合は、全候補の確実なdeltaと次baselineをメモリ上の同じnext context/Global snapshotへ順次適用し、最後に1回だけcommitする。途中の候補までを永続化した部分成功状態を作らない。
 
-1. 新owner stateを初期化または読み込む
-2. 確実なsource deltaと次baselineを計算する
-3. 新ownerへ完全snapshot transactionを1回commitする
-4. commit成功後、新ownerをactive ownerとして返す
+### 7.5 書き込み順とatomicity
+
+1. 新owner stateを初期化または読み込み、必要ならstale file stateを先に無効化する
+2. base owner resolverが初回昇格transactionを生成しても、直ちに永続化せずメモリ上へ捕捉する
+3. 存在する全lower owner contextを読み込み、対象file state不在を含むsource snapshotを確定する
+4. 初回昇格範囲、全source delta、全次baselineを1つの完全なnext context/Global snapshotへ集約する
+5. 新ownerのreconciliation前snapshotを`expected`として、完全snapshot transactionを1回だけCAS commitする
+6. commit成功後だけ、reconciliation済み新ownerをactive ownerとして返す
+
+初回昇格の範囲とbaselineを別commitにしてはならない。複数sourceのdeltaとbaselineもsource単位でcommitしてはならない。
+
+CAS commitが失敗した場合、新ownerには昇格範囲だけ、baselineだけ、または一部sourceだけを残してはならない。新ownerはreconciliation前の完全snapshotを維持し、旧owner stateもそのまま保持する。
 
 旧owner stateは履歴・復旧のため残してよいが、ルーターは高いownerが利用可能な間は参照表示と書き込みに使用しない。
 
@@ -276,7 +290,7 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - Git inspectionの予期しない失敗: 保存ownerを推測せず通知
 - HEAD確認の未知のexit 128: unborn扱いせず`GitCommandFailedError`を通知
 - persistence失敗: 成功表示しない
-- migration/reconciliation commit失敗: 新ownerの確認済み反映を返さず、旧ownerを保持
+- migration/reconciliation commit失敗: reconciliation前の新owner snapshotを維持し、範囲・baseline・一部sourceだけの部分保存を行わない
 - revision mapping未完了: 旧revisionを現在revisionへ再ラベルせず拒否
 
 ## 10. テスト条件
@@ -291,9 +305,16 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 - external-file状態をworkspaceへ移行できる
 - workspace/external状態をGit ownerへ移行できる
 - 既存Git stateがある復旧時もfallback側の追加範囲を取り込める
+- lower owner contextは存在するが対象file stateがない場合、空baselineを記録する
+- 空baseline確立後にfallbackで対象file stateを新規作成すると、その追加を復旧時に反映する
+- 空baseline確立後の解除・再追加が安定して差分計算される
 - baseline確立後のfallback解除を反映し、移行先で解除済みの範囲を復活させない
 - baseline不在の曖昧な解除を推測反映しない
 - content hashまたはline count不一致では移行しない
+- 初回昇格の範囲とbaselineを1回のCAS commitで保存する
+- 初回昇格commit失敗時に範囲だけを残さない
+- workspaceとexternal-fileの両sourceを1回のCAS commitへ集約する
+- 複数source処理の途中失敗で一部sourceだけを保存しない
 - 既知のunborn HEAD診断だけをmissing HEADとして扱う
 - HEAD確認の未知のexit 128を`GitCommandFailedError`として伝播する
 - decoration readは未保存resourceを初期化しない
