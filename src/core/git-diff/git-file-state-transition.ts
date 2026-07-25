@@ -355,9 +355,10 @@ function createUnreviewed(path: string, metadata: Readonly<GitNewFileStateInput>
 }
 
 function invalidateFile(state: Readonly<FileReviewState>, revisionId: string, updatedAt: string): FileReviewState {
-  const { contentHash: _contentHash, ...withoutHash } = cloneState(state);
+  const invalidated = cloneState(state);
+  delete invalidated.contentHash;
   return {
-    ...withoutHash,
+    ...invalidated,
     revisionId,
     modifiedReviewed: [],
     originalReviewedByDiff: {},
@@ -478,9 +479,10 @@ export function applyGitFileStateTransitions(input: Readonly<GitFileStateTransit
       throw new RangeError("Mapped reviewed interval is outside the new lineCount.");
     }
     const contentChanged = plan.section.file.hunks.length > 0 || plan.section.similarity !== 100;
-    const { contentHash: _oldHash, ...withoutOldHash } = cloneState(current);
+    const renamed = cloneState(current);
+    delete renamed.contentHash;
     active[plan.fileId] = {
-      ...withoutOldHash,
+      ...renamed,
       currentPath: newPath,
       previousPaths: current.previousPaths.includes(oldPath) ? [...current.previousPaths] : [...current.previousPaths, oldPath],
       revisionId: input.newRevisionId,
