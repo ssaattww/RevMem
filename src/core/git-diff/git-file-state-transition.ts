@@ -10,8 +10,7 @@ import {
 /** Why a file transition could not safely inherit reviewed state. */
 export type GitFileTransitionUnresolvedReason =
   | "ambiguous-file-mapping"
-  | "missing-source-state"
-  | "missing-new-file-metadata";
+  | "missing-source-state";
 
 /** One conservative file-level transition that was returned unreviewed. */
 export interface GitFileTransitionUnresolved {
@@ -49,7 +48,7 @@ export interface GitFileStateTransitionInput {
   readonly options: Readonly<GitDiffMappingOptions>;
   /** Complete old text keyed by old path, required to prove ignored changes. */
   readonly oldTexts?: Readonly<Record<string, string>>;
-  /** Metadata for destinations that are new, unresolved, or have known new content. */
+  /** Required metadata for every new, copied, or unresolved destination in the diff. */
   readonly newFiles?: Readonly<Record<string, Readonly<GitNewFileStateInput>>>;
 }
 
@@ -57,7 +56,7 @@ export interface GitFileStateTransitionInput {
 export interface GitFileStateTransitionResult {
   /** Complete detached snapshot. Unaffected files may retain their prior file-level revision. */
   readonly files: Record<string, FileReviewState>;
-  /** Stable IDs removed because their files were deleted. */
+  /** Stable IDs removed because their files were explicitly deleted. */
   readonly deletedFileIds: string[];
   /** Transitions whose source review state was not inherited. */
   readonly unresolved: GitFileTransitionUnresolved[];
@@ -107,7 +106,15 @@ function decodeQuotedPath(raw: string): string {
       throw new SyntaxError("Git path ends in an incomplete escape.");
     }
     const escapes: Readonly<Record<string, number>> = {
-      a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11, "\\": 92, "\"": 34
+      a: 7,
+      b: 8,
+      f: 12,
+      n: 10,
+      r: 13,
+      t: 9,
+      v: 11,
+      "\\": 92,
+      "\"": 34
     };
     if (escaped in escapes) {
       bytes.push(escapes[escaped] as number);
@@ -182,15 +189,23 @@ function parseSections(diff: string): FileSection[] {
       } else if (line.startsWith("copy to ")) {
         copyTo = setOnce(copyTo, line.slice("copy to ".length), "copy to");
       } else if (line.startsWith("deleted file mode ")) {
-        if (deleted) throw new SyntaxError("Git section contains duplicate delete metadata.");
+        if (deleted) {
+          throw new SyntaxError("Git section contains duplicate delete metadata.");
+        }
         deleted = true;
       } else if (line.startsWith("new file mode ")) {
-        if (added) throw new SyntaxError("Git section contains duplicate new-file metadata.");
+        if (added) {
+          throw new SyntaxError("Git section contains duplicate new-file metadata.");
+        }
         added = true;
       } else if (line.startsWith("similarity index ")) {
-        if (similarity !== undefined) throw new SyntaxError("Git section contains duplicate similarity metadata.");
+        if (similarity !== undefined) {
+          throw new SyntaxError("Git section contains duplicate similarity metadata.");
+        }
         const match = /^similarity index (\d+)%$/.exec(line);
-        if (match === null) throw new SyntaxError("Git similarity metadata is malformed.");
+        if (match === null) {
+          throw new SyntaxError("Git similarity metadata is malformed.");
+        }
         similarity = Number(match[1]);
         if (!Number.isInteger(similarity) || similarity < 0 || similarity > 100) {
           throw new RangeError("Git similarity must be between 0 and 100.");
@@ -200,15 +215,31 @@ function parseSections(diff: string): FileSection[] {
     if ((copyFrom === undefined) !== (copyTo === undefined)) {
       throw new SyntaxError("Copy metadata must contain both source and destination paths.");
     }
-    const statusCount = Number(copyFrom !== undefined) + Number(file.isRename) + Number(deleted) + Number(added);
+    const statusCount =
+      Number(copyFrom !== undefined) +
+      Number(file.isRename) +
+      Number(deleted) +
+      Number(added);
     if (statusCount > 1) {
       throw new SyntaxError("Git section contains conflicting file status metadata.");
     }
     if (copyFrom !== undefined && copyTo !== undefined) {
-      return { file, oldPath: copyFrom, newPath: copyTo, kind: "copy", ...(similarity === undefined ? {} : { similarity }) };
+      return {
+        file,
+        oldPath: copyFrom,
+        newPath: copyTo,
+        kind: "copy",
+        ...(similarity === undefined ? {} : { similarity })
+      };
     }
     if (file.isRename) {
-      return { file, oldPath: file.oldPath, newPath: file.newPath, kind: "rename", ...(similarity === undefined ? {} : { similarity }) };
+      return {
+        file,
+        oldPath: file.oldPath,
+        newPath: file.newPath,
+        kind: "rename",
+        ...(similarity === undefined ? {} : { similarity })
+      };
     }
     if (deleted || (file.oldPath !== undefined && file.newPath === undefined)) {
       return { file, oldPath: file.oldPath, kind: "delete" };
@@ -240,10 +271,14 @@ function validateLineCount(lineCount: number, label: string): void {
   }
 }
 
-function validateStateSnapshot(files: Readonly<Record<string, Readonly<FileReviewState>>>): Map<string, string> {
+function validateStateSnapshot(
+  files: Readonly<Record<string, Readonly<FileReviewState>>>
+): Map<string, string> {
   const byPath = new Map<string, string>();
   for (const [key, file] of Object.entries(files)) {
-    if (key !== file.fileId) throw new RangeError("File-state key must equal fileId.");
+    if (key !== file.fileId) {
+      throw new RangeError("File-state key must equal fileId.");
+    }
     if (file.currentPath.length === 0 || byPath.has(file.currentPath)) {
       throw new RangeError("File-state paths must be non-empty and unique.");
     }
@@ -258,11 +293,16 @@ function validateStateSnapshot(files: Readonly<Record<string, Readonly<FileRevie
   return byPath;
 }
 
-function countByPath(sections: readonly FileSection[], selector: (section: FileSection) => string | undefined): Map<string, number> {
+function countByPath(
+  sections: readonly FileSection[],
+  selector: (section: FileSection) => string | undefined
+): Map<string, number> {
   const counts = new Map<string, number>();
   for (const section of sections) {
     const path = selector(section);
-    if (path !== undefined) counts.set(path, (counts.get(path) ?? 0) + 1);
+    if (path !== undefined) {
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+    }
   }
   return counts;
 }
@@ -271,42 +311,118 @@ function canonicalizeHorizontal(lines: readonly string[]): string[] {
   return lines.map((line) => line.replace(/[^\S\r\n]+/g, ""));
 }
 
-function canonicalizeText(text: string, options: Readonly<GitDiffMappingOptions>): string {
+function canonicalizeText(
+  text: string,
+  options: Readonly<GitDiffMappingOptions>
+): string {
   const eolNormalized = text.replace(/\r\n|\r/g, "\n");
-  return options.ignoreWhitespaceChanges ? eolNormalized.replace(/[^\S\r\n]+/g, "") : eolNormalized;
+  return options.ignoreWhitespaceChanges
+    ? eolNormalized.replace(/[^\S\r\n]+/g, "")
+    : eolNormalized;
 }
 
-function documentsDifferOnlyByIgnoredEol(oldText: string | undefined, newText: string | undefined, options: Readonly<GitDiffMappingOptions>): boolean {
-  if (!options.ignoreEolChanges || oldText === undefined || newText === undefined || oldText === newText) return false;
-  return canonicalizeText(oldText, options) === canonicalizeText(newText, options);
+function differsByOneTerminalLineBreak(
+  oldText: string,
+  newText: string,
+  options: Readonly<GitDiffMappingOptions>
+): boolean {
+  const oldCanonical = canonicalizeText(oldText, options);
+  const newCanonical = canonicalizeText(newText, options);
+  const oldHasTerminal = oldCanonical.endsWith("\n");
+  const newHasTerminal = newCanonical.endsWith("\n");
+  if (oldHasTerminal === newHasTerminal) {
+    return false;
+  }
+  const withTerminal = oldHasTerminal ? oldCanonical : newCanonical;
+  const withoutTerminal = oldHasTerminal ? newCanonical : oldCanonical;
+  return !withTerminal.endsWith("\n\n") && withTerminal.slice(0, -1) === withoutTerminal;
 }
 
-function hasProvenUnchangedEols(hunk: GitDiffHunk, oldText: string | undefined, newText: string | undefined): boolean {
-  if (oldText === undefined || newText === undefined) return false;
+function documentsDifferOnlyByIgnoredEol(
+  oldText: string | undefined,
+  newText: string | undefined,
+  options: Readonly<GitDiffMappingOptions>
+): boolean {
+  if (
+    !options.ignoreEolChanges ||
+    oldText === undefined ||
+    newText === undefined ||
+    oldText === newText
+  ) {
+    return false;
+  }
+  const oldCanonical = canonicalizeText(oldText, options);
+  const newCanonical = canonicalizeText(newText, options);
+  return (
+    oldCanonical === newCanonical ||
+    differsByOneTerminalLineBreak(oldText, newText, options)
+  );
+}
+
+function hasProvenUnchangedEols(
+  hunk: GitDiffHunk,
+  oldText: string | undefined,
+  newText: string | undefined
+): boolean {
+  if (oldText === undefined || newText === undefined) {
+    return false;
+  }
   const oldEndings = Array.from(oldText.matchAll(/\r\n|\r|\n/g), (match) => match[0]);
   const newEndings = Array.from(newText.matchAll(/\r\n|\r|\n/g), (match) => match[0]);
   for (let offset = 0; offset < hunk.oldLineCount; offset += 1) {
-    if ((oldEndings[hunk.oldStart + offset] ?? "") !== (newEndings[hunk.newStart + offset] ?? "")) return false;
+    if (
+      (oldEndings[hunk.oldStart + offset] ?? "") !==
+      (newEndings[hunk.newStart + offset] ?? "")
+    ) {
+      return false;
+    }
   }
   return true;
 }
 
-function isIgnoredHunk(hunk: GitDiffHunk, oldText: string | undefined, newText: string | undefined, options: Readonly<GitDiffMappingOptions>, documentEolOnly: boolean): boolean {
-  if (hunk.oldLineCount !== hunk.newLineCount) return false;
-  if (documentEolOnly) return true;
-  if (!options.ignoreWhitespaceChanges || !hasProvenUnchangedEols(hunk, oldText, newText)) return false;
+function isIgnoredHunk(
+  hunk: GitDiffHunk,
+  oldText: string | undefined,
+  newText: string | undefined,
+  options: Readonly<GitDiffMappingOptions>,
+  documentEolOnly: boolean
+): boolean {
+  if (hunk.oldLineCount !== hunk.newLineCount) {
+    return false;
+  }
+  if (documentEolOnly) {
+    return true;
+  }
+  if (
+    !options.ignoreWhitespaceChanges ||
+    !hasProvenUnchangedEols(hunk, oldText, newText)
+  ) {
+    return false;
+  }
   const removed = canonicalizeHorizontal(hunk.removedLines);
   const added = canonicalizeHorizontal(hunk.addedLines);
   return removed.every((line, index) => line === added[index]);
 }
 
-function intersect(interval: LineInterval, start: number, end: number): LineInterval | undefined {
+function intersect(
+  interval: LineInterval,
+  start: number,
+  end: number
+): LineInterval | undefined {
   const overlapStart = Math.max(interval.startLine, start);
   const overlapEnd = Math.min(interval.endLineExclusive, end);
-  return overlapStart < overlapEnd ? { startLine: overlapStart, endLineExclusive: overlapEnd } : undefined;
+  return overlapStart < overlapEnd
+    ? { startLine: overlapStart, endLineExclusive: overlapEnd }
+    : undefined;
 }
 
-function mapReviewed(reviewed: readonly LineInterval[], file: GitDiffFile, oldText: string | undefined, newText: string | undefined, options: Readonly<GitDiffMappingOptions>): LineInterval[] {
+function mapReviewed(
+  reviewed: readonly LineInterval[],
+  file: GitDiffFile,
+  oldText: string | undefined,
+  newText: string | undefined,
+  options: Readonly<GitDiffMappingOptions>
+): LineInterval[] {
   const mapped: LineInterval[] = [];
   const documentEolOnly = documentsDifferOnlyByIgnoredEol(oldText, newText, options);
   for (const interval of normalizeLineIntervals(reviewed)) {
@@ -318,27 +434,45 @@ function mapReviewed(reviewed: readonly LineInterval[], file: GitDiffFile, oldTe
         delta += hunk.newLineCount - hunk.oldLineCount;
         continue;
       }
-      if (hunk.oldStart >= interval.endLineExclusive) break;
+      if (hunk.oldStart >= interval.endLineExclusive) {
+        break;
+      }
       const unchangedEnd = Math.min(interval.endLineExclusive, hunk.oldStart);
-      if (cursor < unchangedEnd) mapped.push({ startLine: cursor + delta, endLineExclusive: unchangedEnd + delta });
+      if (cursor < unchangedEnd) {
+        mapped.push({
+          startLine: cursor + delta,
+          endLineExclusive: unchangedEnd + delta
+        });
+      }
       cursor = Math.max(cursor, hunk.oldStart);
       const changed = intersect(interval, hunk.oldStart, oldEnd);
       if (changed !== undefined) {
         if (isIgnoredHunk(hunk, oldText, newText, options, documentEolOnly)) {
-          mapped.push({ startLine: changed.startLine + delta, endLineExclusive: changed.endLineExclusive + delta });
+          mapped.push({
+            startLine: changed.startLine + delta,
+            endLineExclusive: changed.endLineExclusive + delta
+          });
         }
         cursor = Math.max(cursor, changed.endLineExclusive);
       }
       delta += hunk.newLineCount - hunk.oldLineCount;
     }
     if (cursor < interval.endLineExclusive) {
-      mapped.push({ startLine: cursor + delta, endLineExclusive: interval.endLineExclusive + delta });
+      mapped.push({
+        startLine: cursor + delta,
+        endLineExclusive: interval.endLineExclusive + delta
+      });
     }
   }
   return normalizeLineIntervals(mapped);
 }
 
-function createUnreviewed(path: string, metadata: Readonly<GitNewFileStateInput>, revisionId: string, updatedAt: string): FileReviewState {
+function createUnreviewed(
+  path: string,
+  metadata: Readonly<GitNewFileStateInput>,
+  revisionId: string,
+  updatedAt: string
+): FileReviewState {
   validateLineCount(metadata.lineCount, `New file ${path}`);
   return {
     schemaVersion: 1,
@@ -350,19 +484,9 @@ function createUnreviewed(path: string, metadata: Readonly<GitNewFileStateInput>
     originalReviewedByDiff: {},
     lineCount: metadata.lineCount,
     updatedAt,
-    ...(metadata.contentHash === undefined ? {} : { contentHash: metadata.contentHash })
-  };
-}
-
-function invalidateFile(state: Readonly<FileReviewState>, revisionId: string, updatedAt: string): FileReviewState {
-  const invalidated = cloneState(state);
-  delete invalidated.contentHash;
-  return {
-    ...invalidated,
-    revisionId,
-    modifiedReviewed: [],
-    originalReviewedByDiff: {},
-    updatedAt
+    ...(metadata.contentHash === undefined
+      ? {}
+      : { contentHash: metadata.contentHash })
   };
 }
 
@@ -371,101 +495,180 @@ function invalidateFile(state: Readonly<FileReviewState>, revisionId: string, up
  *
  * The input is never mutated and no partial result is returned on error. Sources are resolved from
  * the pre-transition snapshot, so chains, swaps, and delete-plus-rename sequences are order
- * independent. Ambiguous or missing mappings never inherit reviewed ranges. New destination state
- * requires `newFiles` metadata; otherwise the unresolved result records the missing metadata.
+ * independent. Copy sources remain unchanged; only copy destinations start unreviewed. Ambiguous
+ * rename sources that no longer exist in the new revision are removed. Every destination that does
+ * not preserve an existing stable ID requires `newFiles` metadata, and its absence rejects the
+ * entire operation atomically.
  *
- * @param input Complete old snapshot, complete diff, revision metadata, settings, and optional content proof.
+ * @param input Complete old snapshot, complete diff, revision metadata, settings, and content proof.
  * @returns A detached complete snapshot with file-level revisions allowed to remain mixed for unaffected files.
- * @throws On malformed metadata, invalid state, duplicate IDs/paths, unsafe line counts, or conflicting transitions.
+ * @throws On malformed metadata, missing destination metadata, invalid state, duplicate IDs/paths, unsafe line counts, or conflicting transitions.
  */
-export function applyGitFileStateTransitions(input: Readonly<GitFileStateTransitionInput>): GitFileStateTransitionResult {
-  if (input.newRevisionId.length === 0) throw new TypeError("newRevisionId must not be empty.");
-  if (!Number.isFinite(Date.parse(input.updatedAt))) throw new TypeError("updatedAt must be an ISO-compatible timestamp.");
-  if (typeof input.options.ignoreWhitespaceChanges !== "boolean" || typeof input.options.ignoreEolChanges !== "boolean") {
+export function applyGitFileStateTransitions(
+  input: Readonly<GitFileStateTransitionInput>
+): GitFileStateTransitionResult {
+  if (input.newRevisionId.length === 0) {
+    throw new TypeError("newRevisionId must not be empty.");
+  }
+  if (!Number.isFinite(Date.parse(input.updatedAt))) {
+    throw new TypeError("updatedAt must be an ISO-compatible timestamp.");
+  }
+  if (
+    typeof input.options.ignoreWhitespaceChanges !== "boolean" ||
+    typeof input.options.ignoreEolChanges !== "boolean"
+  ) {
     throw new TypeError("Git diff mapping options must be booleans.");
   }
 
   const byPath = validateStateSnapshot(input.files);
   const sections = parseSections(input.diff);
-  const sourceCounts = countByPath(sections.filter((section) => section.kind === "rename" || section.kind === "copy"), (section) => section.oldPath);
-  const destinationCounts = countByPath(sections.filter((section) => section.kind === "rename" || section.kind === "copy"), (section) => section.newPath);
-  const vacatedPaths = new Set(sections.filter((section) => section.kind === "rename" || section.kind === "delete").map((section) => section.oldPath).filter((path): path is string => path !== undefined));
-  const snapshot = Object.fromEntries(Object.entries(input.files).map(([id, state]) => [id, cloneState(state)]));
-  const active = Object.fromEntries(Object.entries(snapshot).map(([id, state]) => [id, cloneState(state)]));
+  const sourceCounts = countByPath(
+    sections.filter(
+      (section) => section.kind === "rename" || section.kind === "copy"
+    ),
+    (section) => section.oldPath
+  );
+  const destinationCounts = countByPath(
+    sections.filter(
+      (section) => section.kind === "rename" || section.kind === "copy"
+    ),
+    (section) => section.newPath
+  );
+  const vacatedPaths = new Set(
+    sections
+      .filter(
+        (section) => section.kind === "rename" || section.kind === "delete"
+      )
+      .map((section) => section.oldPath)
+      .filter((path): path is string => path !== undefined)
+  );
+  const snapshot = Object.fromEntries(
+    Object.entries(input.files).map(([id, state]) => [id, cloneState(state)])
+  );
+  const active = Object.fromEntries(
+    Object.entries(snapshot).map(([id, state]) => [id, cloneState(state)])
+  );
   const plannedRenames: PlannedRename[] = [];
   const plannedDeletes = new Set<string>();
-  const invalidateIds = new Set<string>();
+  const unresolvedRenameSourceIds = new Set<string>();
   const unresolved: GitFileTransitionUnresolved[] = [];
   const newDestinations = new Map<string, FileReviewState>();
 
-  const addDestination = (path: string, reason?: GitFileTransitionUnresolvedReason): void => {
+  const addDestination = (path: string): void => {
     const metadata = input.newFiles?.[path];
     if (metadata === undefined) {
-      if (reason !== undefined) unresolved.push({ oldPath: undefined, newPath: path, reason: "missing-new-file-metadata" });
-      return;
+      throw new RangeError(`New-file metadata is required for destination ${path}.`);
     }
-    if ((metadata.fileId in snapshot) || [...newDestinations.values()].some((state) => state.fileId === metadata.fileId)) {
-      throw new RangeError("New-file metadata fileId must be unique and must not replace an unrelated file.");
+    if (
+      metadata.fileId in snapshot ||
+      [...newDestinations.values()].some(
+        (state) => state.fileId === metadata.fileId
+      )
+    ) {
+      throw new RangeError(
+        "New-file metadata fileId must be unique and must not replace an unrelated file."
+      );
     }
-    newDestinations.set(path, createUnreviewed(path, metadata, input.newRevisionId, input.updatedAt));
+    newDestinations.set(
+      path,
+      createUnreviewed(path, metadata, input.newRevisionId, input.updatedAt)
+    );
   };
 
   for (const section of sections) {
     if (section.kind === "add" && section.newPath !== undefined) {
-      addDestination(section.newPath, "missing-new-file-metadata");
+      addDestination(section.newPath);
       continue;
     }
     if (section.kind === "delete" && section.oldPath !== undefined) {
       const sourceId = byPath.get(section.oldPath);
       if (sourceId === undefined) {
-        unresolved.push({ oldPath: section.oldPath, newPath: undefined, reason: "missing-source-state" });
+        unresolved.push({
+          oldPath: section.oldPath,
+          newPath: undefined,
+          reason: "missing-source-state"
+        });
       } else {
         plannedDeletes.add(sourceId);
       }
       continue;
     }
-    if (section.kind === "copy" && section.oldPath !== undefined && section.newPath !== undefined) {
+    if (
+      section.kind === "copy" &&
+      section.oldPath !== undefined &&
+      section.newPath !== undefined
+    ) {
       const sourceId = byPath.get(section.oldPath);
-      if (sourceId !== undefined) invalidateIds.add(sourceId);
-      addDestination(section.newPath, "missing-new-file-metadata");
-      unresolved.push({ oldPath: section.oldPath, newPath: section.newPath, reason: "ambiguous-file-mapping" });
-      continue;
-    }
-    if (section.kind !== "rename" || section.oldPath === undefined || section.newPath === undefined) continue;
-
-    const sourceId = byPath.get(section.oldPath);
-    const destinationOccupant = byPath.get(section.newPath);
-    const unique = sourceCounts.get(section.oldPath) === 1 && destinationCounts.get(section.newPath) === 1;
-    const destinationAvailable = destinationOccupant === undefined || vacatedPaths.has(section.newPath);
-    if (sourceId === undefined || !unique || !destinationAvailable) {
-      if (sourceId !== undefined) invalidateIds.add(sourceId);
-      addDestination(section.newPath, "missing-new-file-metadata");
+      addDestination(section.newPath);
       unresolved.push({
         oldPath: section.oldPath,
         newPath: section.newPath,
-        reason: sourceId === undefined ? "missing-source-state" : "ambiguous-file-mapping"
+        reason:
+          sourceId === undefined
+            ? "missing-source-state"
+            : "ambiguous-file-mapping"
+      });
+      continue;
+    }
+    if (
+      section.kind !== "rename" ||
+      section.oldPath === undefined ||
+      section.newPath === undefined
+    ) {
+      continue;
+    }
+
+    const sourceId = byPath.get(section.oldPath);
+    const destinationOccupant = byPath.get(section.newPath);
+    const unique =
+      sourceCounts.get(section.oldPath) === 1 &&
+      destinationCounts.get(section.newPath) === 1;
+    const destinationAvailable =
+      destinationOccupant === undefined || vacatedPaths.has(section.newPath);
+    if (sourceId === undefined || !unique || !destinationAvailable) {
+      if (sourceId !== undefined) {
+        unresolvedRenameSourceIds.add(sourceId);
+      }
+      addDestination(section.newPath);
+      unresolved.push({
+        oldPath: section.oldPath,
+        newPath: section.newPath,
+        reason:
+          sourceId === undefined
+            ? "missing-source-state"
+            : "ambiguous-file-mapping"
       });
       continue;
     }
     plannedRenames.push({ section, fileId: sourceId });
   }
 
-  for (const fileId of plannedDeletes) delete active[fileId];
-  for (const fileId of invalidateIds) {
-    const source = snapshot[fileId];
-    if (source !== undefined && !plannedDeletes.has(fileId)) active[fileId] = invalidateFile(source, input.newRevisionId, input.updatedAt);
+  for (const fileId of plannedDeletes) {
+    delete active[fileId];
+  }
+  for (const fileId of unresolvedRenameSourceIds) {
+    if (!plannedDeletes.has(fileId)) {
+      delete active[fileId];
+    }
   }
 
   for (const plan of plannedRenames) {
     const current = snapshot[plan.fileId];
     const oldPath = plan.section.oldPath;
     const newPath = plan.section.newPath;
-    if (current === undefined || oldPath === undefined || newPath === undefined) throw new RangeError("Planned rename lost its source state.");
+    if (current === undefined || oldPath === undefined || newPath === undefined) {
+      throw new RangeError("Planned rename lost its source state.");
+    }
     const metadata = input.newFiles?.[newPath];
     if (metadata !== undefined && metadata.fileId !== plan.fileId) {
-      throw new RangeError("Rename destination metadata must preserve the source fileId.");
+      throw new RangeError(
+        "Rename destination metadata must preserve the source fileId."
+      );
     }
-    const delta = plan.section.file.hunks.reduce((sum, hunk) => sum + hunk.newLineCount - hunk.oldLineCount, 0);
+    const delta = plan.section.file.hunks.reduce(
+      (sum, hunk) => sum + hunk.newLineCount - hunk.oldLineCount,
+      0
+    );
     const lineCount = metadata?.lineCount ?? current.lineCount + delta;
     validateLineCount(lineCount, `Renamed file ${newPath}`);
     const reviewed = mapReviewed(
@@ -475,28 +678,46 @@ export function applyGitFileStateTransitions(input: Readonly<GitFileStateTransit
       metadata?.newText,
       input.options
     );
-    if (reviewed.some((interval) => interval.startLine < 0 || interval.endLineExclusive > lineCount)) {
-      throw new RangeError("Mapped reviewed interval is outside the new lineCount.");
+    if (
+      reviewed.some(
+        (interval) =>
+          interval.startLine < 0 || interval.endLineExclusive > lineCount
+      )
+    ) {
+      throw new RangeError(
+        "Mapped reviewed interval is outside the new lineCount."
+      );
     }
-    const contentChanged = plan.section.file.hunks.length > 0 || plan.section.similarity !== 100;
+    const contentChanged =
+      plan.section.file.hunks.length > 0 || plan.section.similarity !== 100;
     const renamed = cloneState(current);
     delete renamed.contentHash;
     active[plan.fileId] = {
       ...renamed,
       currentPath: newPath,
-      previousPaths: current.previousPaths.includes(oldPath) ? [...current.previousPaths] : [...current.previousPaths, oldPath],
+      previousPaths: current.previousPaths.includes(oldPath)
+        ? [...current.previousPaths]
+        : [...current.previousPaths, oldPath],
       revisionId: input.newRevisionId,
       modifiedReviewed: reviewed,
       lineCount,
       updatedAt: input.updatedAt,
-      ...(!contentChanged && metadata?.contentHash === undefined && current.contentHash !== undefined
+      ...(!contentChanged &&
+      metadata?.contentHash === undefined &&
+      current.contentHash !== undefined
         ? { contentHash: current.contentHash }
-        : metadata?.contentHash === undefined ? {} : { contentHash: metadata.contentHash })
+        : metadata?.contentHash === undefined
+          ? {}
+          : { contentHash: metadata.contentHash })
     };
   }
 
   for (const [path, state] of newDestinations) {
-    if ([...Object.values(active)].some((file) => file.currentPath === path && file.fileId !== state.fileId)) {
+    if (
+      [...Object.values(active)].some(
+        (file) => file.currentPath === path && file.fileId !== state.fileId
+      )
+    ) {
       throw new RangeError("New destination collides with an active file path.");
     }
     active[state.fileId] = state;
