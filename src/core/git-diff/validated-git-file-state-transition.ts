@@ -6,6 +6,11 @@ import {
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const DEV_NULL = "/dev/null";
+
+interface ValidatedSection {
+  readonly destination?: string;
+}
 
 function decodeQuotedPath(raw: string): string {
   const bytes: number[] = [];
@@ -76,40 +81,85 @@ function decodeFileHeaderPath(raw: string): string {
   return decodeMetadataPath(path);
 }
 
-function destinationOfSection(lines: readonly string[]): string | undefined {
-  const copyTo = lines.find((line) => line.startsWith("copy to "));
-  if (copyTo !== undefined) {
-    return decodeMetadataPath(copyTo.slice("copy to ".length));
-  }
-  const renameTo = lines.find((line) => line.startsWith("rename to "));
-  if (renameTo !== undefined) {
-    return decodeMetadataPath(renameTo.slice("rename to ".length));
-  }
-  if (lines.some((line) => line.startsWith("new file mode "))) {
-    const newHeader = lines.find((line) => line.startsWith("+++ "));
-    if (newHeader === undefined || newHeader === "+++ /dev/null") {
-      throw new SyntaxError("New-file section is missing its destination header.");
-    }
-    const rawPath = newHeader.slice("+++ ".length);
-    const decoded = decodeFileHeaderPath(rawPath);
-    return decoded.startsWith("b/") ? decoded.slice(2) : decoded;
-  }
-  return undefined;
+function metadataValues(lines: readonly string[], prefix: string): readonly string[] {
+  return lines
+    .filter((line) => line.startsWith(prefix))
+    .map((line) => decodeMetadataPath(line.slice(prefix.length)));
 }
 
-function validateUniqueDestinations(diff: string): void {
-  const sections: string[][] = [];
-  for (const line of diff.split(/\r?\n/u)) {
-    if (line.startsWith("diff --git ")) {
-      sections.push([line]);
-    } else if (sections.length > 0) {
-      sections[sections.length - 1]?.push(line);
+function headerPath(lines: readonly string[], prefix: "--- " | "+++ "): string | undefined {
+  const headers = lines.filter((line) => line.startsWith(prefix));
+  if (headers.length > 1) {
+    throw new SyntaxError(`Git diff contains duplicate ${prefix.trim()} file headers.`);
+  }
+  const header = headers[0];
+  return header === undefined ? undefined : decodeFileHeaderPath(header.slice(prefix.length));
+}
+
+function canonicalDestination(path: string): string {
+  return path.startsWith("b/") ? path.slice(2) : path;
+}
+
+function validateSection(lines: readonly string[]): ValidatedSection {
+  const renameFrom = metadataValues(lines, "rename from ");
+  const renameTo = metadataValues(lines, "rename to ");
+  const hasRenameMetadata = renameFrom.length > 0 || renameTo.length > 0;
+  if (hasRenameMetadata) {
+    if (renameFrom.length !== 1 || renameTo.length !== 1) {
+      throw new SyntaxError("Rename metadata must contain exactly one rename from and one rename to path.");
+    }
+    return { destination: renameTo[0] };
+  }
+
+  const copyTo = metadataValues(lines, "copy to ");
+  if (copyTo.length > 1) {
+    throw new SyntaxError("Copy metadata must contain exactly one copy to path.");
+  }
+  if (copyTo.length === 1) {
+    return { destination: copyTo[0] };
+  }
+
+  const isNewFile = lines.some((line) => line.startsWith("new file mode "));
+  const isDeletedFile = lines.some((line) => line.startsWith("deleted file mode "));
+  if (isNewFile && isDeletedFile) {
+    throw new SyntaxError("Git diff section cannot contain both new file mode and deleted file mode.");
+  }
+
+  const oldPath = headerPath(lines, "--- ");
+  const newPath = headerPath(lines, "+++ ");
+
+  if (isNewFile) {
+    if (oldPath !== DEV_NULL || newPath === undefined || newPath === DEV_NULL) {
+      throw new SyntaxError("New file mode requires /dev/null on the old header side and a real destination path.");
+    }
+    return { destination: canonicalDestination(newPath) };
+  }
+
+  if (isDeletedFile) {
+    if (oldPath === undefined || oldPath === DEV_NULL || newPath !== DEV_NULL) {
+      throw new SyntaxError("Deleted file mode requires a real old path and /dev/null on the new header side.");
     }
   }
 
+  return {};
+}
+
+function parseAndValidateSections(diff: string): readonly ValidatedSection[] {
+  const rawSections: string[][] = [];
+  for (const line of diff.split(/\r?\n/u)) {
+    if (line.startsWith("diff --git ")) {
+      rawSections.push([line]);
+    } else if (rawSections.length > 0) {
+      rawSections[rawSections.length - 1]?.push(line);
+    }
+  }
+  return rawSections.map(validateSection);
+}
+
+function validateUniqueDestinations(sections: readonly ValidatedSection[]): void {
   const destinations = new Set<string>();
   for (const section of sections) {
-    const destination = destinationOfSection(section);
+    const destination = section.destination;
     if (destination === undefined) {
       continue;
     }
@@ -121,15 +171,17 @@ function validateUniqueDestinations(diff: string): void {
 }
 
 /**
- * Validates cross-section destination uniqueness before applying the atomic T204 transition.
+ * Validates transition metadata and cross-section destination uniqueness before applying the atomic T204 transition.
  *
  * @param input Complete transition input accepted by the underlying T204 engine.
  * @returns The detached complete post-transition snapshot.
- * @throws When multiple copy, rename, or addition sections target the same destination path.
+ * @throws When rename metadata is incomplete or duplicated, add/delete headers contradict file status,
+ * or multiple copy, rename, or addition sections target the same destination path.
  */
 export function applyGitFileStateTransitions(
   input: Readonly<GitFileStateTransitionInput>
 ): GitFileStateTransitionResult {
-  validateUniqueDestinations(input.diff);
+  const sections = parseAndValidateSections(input.diff);
+  validateUniqueDestinations(sections);
   return applyGitFileStateTransitionsUnchecked(input);
 }
