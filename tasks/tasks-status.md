@@ -4,23 +4,26 @@
 
 ## 現在位置
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
-- GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1、Issue #13規範的追補 `doc/design/issue-13-document-context-routing.md`
+- GitHub Issue: #1、#13
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、横断Issue #13レビュー対応（完了）
 - 直近完了タスク: T203 diff parserとrevision間interval mapping
 - 現在のタスク: なし
 - 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T203初回7件と再レビュー4件の計11 findingをTerra/highでテスト先行修正し、Sol/high第3レビューは指摘なし。T203 focused 15/15、build、lint、contract typecheck、architecture、diff checkはpass。全unit 143/144の1件はorigin/main由来release contract failureとしてheld
+- 実装状態: T203を最新`main`へ統合済み。Issue #13はGit ownership優先のdocument routing、workspace外・UNC・external-file管理に加え、レビュー指摘のGit復旧時owner reconciliationとunborn HEAD診断の厳密分類までテスト先行で修正した。レビューfollow-upレポートに記録したPR #15のbranch headに紐づくActions runで全CI工程が成功した
 - ブロッカー: なし
 - Gitブランチ: `task/t203-diff-interval-mapping`
 - Pull Request: #16
 - PR方針: T203固有差分、最新main merge、review finding対応、最終検証証跡をPR #16へ反映する
+- 横断Issue #13ブランチ: `issue/13-document-context-routing`
+- 横断Issue #13 Pull Request: #15
+- 横断Issue #13方針: レビュー指摘対応、最新`main`統合、再レビュー、head SHAに紐づくCI証跡をPR #15へ反映し、マージはユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
 - T002初回レビューレポート: `reports/issue-1-t002-review-20260723112423.md`
 - T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
-- T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
+- T002再レビューレポート: `reports/issue-1-t002-review-20260723113759.md`
 - T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
 - T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
@@ -83,6 +86,10 @@
 - T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
 - T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
 - T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
+- Issue #13実装レポート: `reports/issue-13-implementation-20260724.md`
+- Issue #13初回レビューレポート: `reports/issue-13-review-20260724.md`
+- Issue #13再レビューレポート: `reports/issue-13-review-r2-20260725075248.md`
+- Issue #13 review follow-upレポート: `reports/issue-13-review-followup-20260725.md`
 
 ## 状態と規模
 
@@ -97,6 +104,12 @@
 | L | 4〜5日程度。超過見込みなら再分解する |
 
 各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。
+
+## 横断Issue
+
+| Issue | 状態 | 変更範囲 | 検証・終了条件 |
+| --- | --- | --- | --- |
+| #13 | 完了 | Git ownership優先のdocument routing、workspace外・UNC・external-file管理、owner変更時の昇格、Git復旧時のlower-owner delta reconciliation、unborn HEAD診断の厳密分類 | review finding 2件をTDDで修正し、最新`main`を統合。PR #15のbranch headに紐づくActions runで全工程成功。再レビューでblocking/non-blocking findingなし。マージはユーザーが行う |
 
 ## P0 開発基盤
 
@@ -200,4 +213,4 @@
 
 ## 次回開始時の選択
 
-T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。Issue #13のレビュー指摘対応も完了し、PR #15は最新`main`へ追従済みで全CI工程がGreenである。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
