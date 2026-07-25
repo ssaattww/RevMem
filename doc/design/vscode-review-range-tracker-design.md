@@ -1318,6 +1318,22 @@ storageUri/
 
 `historyRetentionDays = 0`は無期限保持を表す。
 
+`reviewRange.exclude`はVS Codeの配列設定として有効値全体を上書きする。manifestの
+defaultは`.git`、`node_modules`、`bin`、`obj`、`dist`、`build`を対象外にするが、
+workspaceまたはユーザー設定で既定patternを削除するか空配列にすれば、`.git`以外は
+再び集計対象に含められる。追加したpatternは既定patternと同じ順序で評価する。
+
+policy/serviceのoptionsで`userGlobs`を省略した場合もmanifest defaultを使用する。
+`userGlobs: []`を明示した場合だけ、binaryと`.git`以外を再包含する。設定から受け取る
+raw globでは単一backslashがseparator、二重backslashがliteral backslashを表す。getter、
+change event、除外reasonが返すcanonical snapshotではliteral backslashを二重backslashで
+表現するため、その配列をoptionsまたは次の設定更新へ再投入してもdecisionとreasonは変わらない。
+
+globの単一backslashは従来互換のseparatorであり`/`へ正規化する。literal backslashを
+表すには二重backslashを使う。たとえば`settings.json`では`"a\\\\b.ts"`はPOSIXの
+literal path `a\b.ts`だけに一致し、`a/b.ts`には一致しない。raw入力のpattern数、長さ、
+brace depth、brace展開数、RegExp数の上限はこのescape構文でも必ず適用する。
+
 色は`configurationDefaults`またはテーマ対応可能な設定として提供する。
 
 ## 16. 集計対象外
@@ -1328,12 +1344,21 @@ storageUri/
 - `.git`配下
 - VS Code内部仮想ドキュメントのうち、本拡張が管理しないもの
 
+この境界は設定で再包含できない。`.git`は常時除外でも、理由表示では既知の
+default globとして保持する。
+
 ### 16.2 デフォルト対象外
 
-- `.gitignore`に一致するファイル
-- 依存ライブラリ
-- ビルド成果物
-- 一般的な生成出力ディレクトリ
+- `.gitignore`に一致するファイル（T503のrepository列挙が判断する。T300のglob compilerは
+  `.gitignore`を解釈しない）
+- `node_modules`などの依存ライブラリ
+- `bin`、`obj`、`dist`、`build`などのビルド成果物・一般的な生成出力ディレクトリ
+
+`.gitignore`一致fileはT503が別の除外sourceとして扱う。残りは`reviewRange.exclude`の
+manifest defaultであり、常時除外ではない。effective配列に残る既知patternは
+`default-glob`理由、設定で追加したpatternは`user-glob`理由を返す。blank、duplicate、
+同値のseparator表記を除いたnormalized policy snapshotが同じ設定変更では、再計算通知を
+行わない。
 
 ### 16.3 ユーザー指定除外
 
