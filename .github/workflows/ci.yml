@@ -26,6 +26,10 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee test-output/ci/build.log
+      - name: Contract typecheck
+        run: |
+          set -o pipefail
+          npm run typecheck:contracts 2>&1 | tee test-output/ci/typecheck-contracts.log
       - name: Lint
         run: |
           set -o pipefail
