@@ -6,10 +6,15 @@ export {
 export { normalizeGitRemoteUrl } from "./git-remote-normalization";
 export { LocalGitAdapter } from "./local-git-adapter";
 export {
+  NodeGitBlobReader,
+  type NodeGitBlobReaderOptions
+} from "./node-git-blob-reader";
+export {
   NodeGitCommandExecutor,
   type NodeGitCommandExecutorOptions
 } from "./node-git-command-executor";
 
+export type { GitBlobReader } from "./git-blob-reader";
 export type {
   GitCommandExecutor,
   GitCommandInvocation,
@@ -26,6 +31,7 @@ export type {
 } from "./contracts";
 export type {
   LocalGitRevisionTextFound,
+  LocalGitRevisionTextInvalidEncoding,
   LocalGitRevisionTextMissingFile,
   LocalGitRevisionTextMissingRevision,
   LocalGitRevisionTextReadResult
