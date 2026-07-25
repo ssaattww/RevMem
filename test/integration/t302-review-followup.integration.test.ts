@@ -200,6 +200,36 @@ test("POSIX Git content lookup supports tab, newline, and backslash filenames", 
   }
 });
 
+test("POSIX Git content lookup supports a filename made only of a newline", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("POSIX filename semantics are unavailable on Windows runners.");
+    return;
+  }
+
+  const repository = await createTemporaryGitRepository();
+  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const fileName = "\n";
+
+  try {
+    await writeFile(path.join(repository.path, fileName), "newline name\n", "utf8");
+    await repository.runGit(["add", "--", fileName]);
+    await repository.runGit(["commit", "--message", "add newline-only path"]);
+    const revision = await repository.runGit(["rev-parse", "HEAD"]);
+
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        revision,
+        fileName,
+        "posix"
+      ),
+      { kind: "found", content: "newline name\n" }
+    );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("Git content lookup reads UTF-8 text immediately below and above 4 MiB", async () => {
   const repository = await createTemporaryGitRepository();
   const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
