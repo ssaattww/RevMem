@@ -17,7 +17,6 @@ const context = (baseSha = "base", headSha = "head", modified: Record<string, Ar
 });
 const policy = new ReviewFileExclusionPolicy({ userGlobs: [] });
 const calculate = (diff: PullRequestDiffSnapshot, reviewContext = context()) => calculatePullRequestDiffProgress({ diff, reviewContext, exclusionPolicy: policy });
-
 const addition = (id = "add", path = "add.ts") => file(id, "added", undefined, path, [hunk(0, 0, 1, 1, [line("addition", undefined, 1)])]);
 
 test("counts valid addition, deletion and replacement lines", () => {
@@ -75,7 +74,7 @@ test("rejects statistics, duplicate identities and canonical paths", () => {
   const one = [hunk(0, 0, 1, 1, [line("addition", undefined, 1)])];
   assert.throws(() => calculate(snapshot([file("many", "added", undefined, "a.ts", one, 2, 0)])), /statistics mismatch/);
   assert.throws(() => calculate(snapshot([addition("same", "a.ts"), addition("same", "b.ts")])), /Duplicate PR diff file/);
-  assert.throws(() => calculate(snapshot([addition("a", "\.\/src/a.ts"), addition("b", "src/a.ts")])), /Duplicate PR diff path/);
+  assert.throws(() => calculate(snapshot([addition("a", "./src/a.ts"), addition("b", "src/a.ts")])), /Duplicate PR diff path/);
 });
 
 test("preserves zero denominator and exclusion contracts", () => {
