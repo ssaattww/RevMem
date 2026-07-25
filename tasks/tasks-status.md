@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1、Issue #13規範的追補 `doc/design/issue-13-document-context-routing.md`
 - GitHub Issue: #1、#13
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、横断Issue #13レビュー対応（完了）
-- 直近完了タスク: T203 diff parserとrevision間interval mapping
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、横断Issue #13レビュー対応（完了）
+- 直近完了タスク: T300 共通除外policy
 - 現在のタスク: なし
 - 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T203初回7件と再レビュー4件の計11 findingをTerra/highでテスト先行修正し、Sol/high第3レビューは指摘なし。T203 focused 15/15、build、lint、contract typecheck、architecture、diff checkはpass。全unit 143/144の1件はorigin/main由来release contract failureとしてheld。Issue #13はGit ownership優先のdocument routing、workspace外・UNC・external-file管理に加え、レビュー指摘のGit復旧時owner reconciliationとunborn HEAD診断の厳密分類までテスト先行で修正し、PR #15のbranch headに紐づくActions runで全CI工程が成功した
-- ブロッカー: なし
-- Gitブランチ: `task/t203-diff-interval-mapping`
-- Pull Request: #16
-- PR方針: T203固有差分、最新main merge、review finding対応、最終検証証跡をPR #16へ反映する
+- 実装状態: T300共通除外policy、設定controller、runtime接続、VS Code Extension Host契約を実装した。isolated focused 78件、full unit 223件、build、lint、contracts、architecture、Git/GitHub integration、VS Code Extension Host、package、Sol/high第7レビューがpass。Issue #13はGit ownership優先のdocument routing、workspace外・UNC・external-file管理に加え、レビュー指摘のGit復旧時owner reconciliationとunborn HEAD診断の厳密分類までテスト先行で修正し、PR #15のbranch headに紐づくActions runで全CI工程が成功した
+- ブロッカー: T300 Windows runner実processはplatform追加時までpending。user globの複雑なescaping edge caseは現時点でnon-blocking held
+- Gitブランチ: `task/t300-common-exclusion-policy`
+- Pull Request: #17
+- PR方針: current main統合を含むT300 R5 follow-upのpolicy、runtime設定adapter、test、reports、進捗同期だけをPR #17へ反映する。マージはユーザーが行う
 - 横断Issue #13ブランチ: `issue/13-document-context-routing`
 - 横断Issue #13 Pull Request: #15
 - 横断Issue #13方針: レビュー指摘対応、最新`main`統合、再レビュー、head SHAに紐づくCI証跡をPR #15へ反映し、マージはユーザーが行う
@@ -86,6 +86,17 @@
 - T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
 - T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
 - T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
+- T300実装レポート: `reports/issue-1-t300-implementation-20260724205000.md`
+- T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
+- T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
+- T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
+- T300 R3レビューレポート: `reports/issue-1-t300-review-r3-20260724220500.md`
+- T300 R4レビューレポート: `reports/issue-1-t300-review-r4-20260725061500.md`
+- T300 R5レビューレポート: `reports/issue-1-t300-review-r5-20260725074608.md`
+- T300 R5 review follow-upレポート: `reports/issue-1-t300-review-followup-r5-20260725080046.md`
+- T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
+- T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
+- T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
 - Issue #13実装レポート: `reports/issue-13-implementation-20260724.md`
 - Issue #13初回レビューレポート: `reports/issue-13-review-20260724.md`
 - Issue #13再レビューレポート: `reports/issue-13-review-r2-20260725075248.md`
@@ -150,7 +161,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T300 | 未着手 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
+| T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、設定変更で再評価され、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 未着手 | L | context、file、side、revisionを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、revision別内容、欠落objectの失敗が決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
@@ -166,14 +177,14 @@
 | T402 | 未着手 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する | T203、T301、T401 | 各経路の成功・欠落・不完全patchをmockで再現し、全経路失敗時に確認済みを推測しない |
 | T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
-| T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
+| T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・workspace・external-fileを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
 
 ## P5 Global確認済みと理解率
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
+| T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspace、external-fileの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
 | T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
 | T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
 | T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
@@ -184,7 +195,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T601 | 未着手 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす |
+| T601 | 未着手 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace/external-file context追従、snapshot期限と上限を実装する | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす |
 | T602 | 未着手 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
@@ -213,4 +224,4 @@
 
 ## 次回開始時の選択
 
-T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。Issue #13のレビュー指摘対応も完了し、PR #15は最新`main`へ追従済みで全CI工程がGreenである。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T300は最新main上で共通除外policy、設定controller、runtime接続、Extension Host契約、全review follow-up、全検証、Sol/high第7レビューを完了した。Issue #13のレビュー指摘対応も完了し、PR #15は最新`main`へ追従済みで全CI工程がGreenである。次回は依存解消済みのT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。T300完了によりT301とT503の依存は一部解消したが、計画順序は変更しない。
