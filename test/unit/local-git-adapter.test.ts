@@ -123,7 +123,7 @@ const queueRepositoryInspection = (
   );
   executor.queue(
     rootPath,
-    ["rev-parse", "--verify", "HEAD^{commit}"],
+    ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
     success(`${head}\n`)
   );
 };
@@ -167,7 +167,7 @@ test("repository inspection uses argument arrays and returns normalized Git iden
       ["remote"],
       ["remote", "get-url", "origin"],
       ["symbolic-ref", "--quiet", "HEAD"],
-      ["rev-parse", "--verify", "HEAD^{commit}"]
+      ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]
     ]
   );
   executor.assertExhausted();
@@ -329,12 +329,12 @@ test("merge-base and object existence use bounded argument-array commands", asyn
   );
   executor.queue(
     "/workspace/repository",
-    ["cat-file", "-e", "base-ref^{object}"],
-    success()
+    ["rev-parse", "--verify", "--quiet", "base-ref^{object}"],
+    success("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n")
   );
   executor.queue(
     "/workspace/repository",
-    ["cat-file", "-e", "missing-ref^{object}"],
+    ["rev-parse", "--verify", "--quiet", "missing-ref^{object}"],
     failure(1, "")
   );
 
