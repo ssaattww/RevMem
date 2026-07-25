@@ -108,7 +108,7 @@
             "**/dist/**",
             "**/build/**"
           ],
-          "description": "PR進捗とGlobal理解率の集計対象から除外するファイルglobです。有効な配列は既定値を上書きし、空配列ではbinaryと.git以外を再包含できます。単一backslashはseparator、literal backslashは二重backslashで指定します（settings.jsonでは \"a\\\\b.ts\"）。"
+          "description": "PR進捗とGlobal理解率の集計対象から除外するファイルglobです。有効な配列は既定値を上書きし、空配列ではbinaryと.git以外を再包含できます。単一backslashはseparator、literal backslashは二重backslashで指定します（settings.jsonでは \"a\\\\\\\\b.ts\"）。"
         }
       }
     },
