@@ -10,7 +10,6 @@ const MAX_CONTEXT_ID_BYTES = 8_192;
 const MAX_FILE_PATH_BYTES = 32_768;
 const MAX_REVISION_BYTES = 8_192;
 const BASE64_URL_TOKEN = /^[A-Za-z0-9_-]+$/u;
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** Stable machine-readable reason for URI codec failures. */
@@ -38,6 +37,17 @@ const uriError = (message: string, cause?: unknown): ReviewDiffUriCodecError =>
     ...(cause === undefined ? {} : { cause })
   });
 
+const containsControlCharacter = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const validateField = (
   value: string,
   name: string,
@@ -47,7 +57,7 @@ const validateField = (
   if (value.length === 0) {
     throw failure(`${name} must not be empty`);
   }
-  if (CONTROL_CHARACTER.test(value)) {
+  if (containsControlCharacter(value)) {
     throw failure(`${name} must not contain control characters`);
   }
   if (Buffer.byteLength(value, "utf8") > maxBytes) {
@@ -143,7 +153,11 @@ export class ReviewDiffUriCodec {
 
   /** Decodes only canonical version-1 review-diff URIs. */
   public decode(uri: string): ReviewDiffDocumentDescriptor {
-    if (uri.length === 0 || uri.length > MAX_URI_LENGTH || CONTROL_CHARACTER.test(uri)) {
+    if (
+      uri.length === 0 ||
+      uri.length > MAX_URI_LENGTH ||
+      containsControlCharacter(uri)
+    ) {
       throw uriError("Review diff URI has an unsupported size or control character");
     }
 
@@ -167,7 +181,11 @@ export class ReviewDiffUriCodec {
     }
 
     const segments = parsed.pathname.split("/");
-    if (segments.length !== 6 || segments[0] !== "" || segments[1] !== REVIEW_DIFF_VERSION) {
+    if (
+      segments.length !== 6 ||
+      segments[0] !== "" ||
+      segments[1] !== REVIEW_DIFF_VERSION
+    ) {
       throw uriError("Review diff URI path version or segment count is invalid");
     }
 
