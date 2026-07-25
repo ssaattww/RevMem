@@ -13,6 +13,7 @@ import {
   type LocalGitRepositoryInspection
 } from "./contracts";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
+import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const requirePath = (value: string, name: string): string => {
   if (value.trim().length === 0 || value.includes("\0")) {
@@ -35,6 +36,26 @@ const requireRevision = (value: string, name: string): string => {
   }
 
   return value;
+};
+
+const requireRepositoryRelativePath = (value: string, name: string): string => {
+  const candidate = requirePath(value, name);
+  const segments = candidate.split("/");
+  if (
+    /[\r\n]/u.test(candidate) ||
+    candidate.includes("\\") ||
+    path.posix.isAbsolute(candidate) ||
+    path.win32.isAbsolute(candidate) ||
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === ".."
+    )
+  ) {
+    throw new TypeError(
+      `${name} must be a canonical repository-relative path using forward slashes`
+    );
+  }
+
+  return candidate;
 };
 
 const firstOutputLine = (output: string, name: string): string => {
@@ -174,9 +195,7 @@ export class LocalGitAdapter {
     return firstOutputLine(result.stdout, "git merge-base");
   }
 
-  /**
-   * Determines whether an object expression resolves in the local object database.
-   */
+  /** Determines whether an object expression resolves in the local object database. */
   public async objectExists(
     repositoryRoot: string,
     objectName: string
@@ -197,6 +216,54 @@ export class LocalGitAdapter {
     }
 
     throw new GitCommandFailedError(invocation, result);
+  }
+
+  /**
+   * Reads one repository-relative text file from exactly the requested commit.
+   *
+   * Missing commit objects and missing paths are returned as separate outcomes.
+   * Unexpected process failures retain the invocation and captured output.
+   */
+  public async readTextFileAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePath: string
+  ): Promise<LocalGitRevisionTextReadResult> {
+    const rootPath = requirePath(repositoryRoot, "repositoryRoot");
+    const object = requireRevision(revision, "revision");
+    const filePath = requireRepositoryRelativePath(
+      repositoryRelativePath,
+      "repositoryRelativePath"
+    );
+    const revisionInvocation: GitCommandInvocation = {
+      cwd: rootPath,
+      argumentsList: ["cat-file", "-e", `${object}^{commit}`]
+    };
+    const revisionResult = await this.commandExecutor.execute(revisionInvocation);
+
+    if (revisionResult.exitCode !== 0) {
+      if (isMissingValueExit(revisionResult)) {
+        return { kind: "missing-revision" };
+      }
+      throw new GitCommandFailedError(revisionInvocation, revisionResult);
+    }
+
+    const fileInvocation: GitCommandInvocation = {
+      cwd: rootPath,
+      argumentsList: ["cat-file", "blob", `${object}:${filePath}`]
+    };
+    const fileResult = await this.commandExecutor.execute(fileInvocation);
+    if (fileResult.exitCode === 0) {
+      return {
+        kind: "found",
+        content: fileResult.stdout
+      };
+    }
+    if (isMissingValueExit(fileResult)) {
+      return { kind: "missing-file" };
+    }
+
+    throw new GitCommandFailedError(fileInvocation, fileResult);
   }
 
   private execute(
