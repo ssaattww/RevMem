@@ -379,6 +379,9 @@ export class DocumentReviewStateSessionProvider {
     source: DocumentNormalEditorDecorationState,
     occurredAt: string
   ): PlannedReconciliationState {
+    if (source.owner === "git") {
+      return current;
+    }
     if (
       source.target.contentHash !== target.contentHash ||
       source.target.lineCount !== target.lineCount
