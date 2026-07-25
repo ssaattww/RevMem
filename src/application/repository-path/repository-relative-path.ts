@@ -2,6 +2,8 @@ import type { FileSystemPathSemantics } from "../workspace-identity/index";
 
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/u;
 const WINDOWS_FORBIDDEN_CHARACTER_PATTERN = /[<>:"\\|?*]/u;
+const WINDOWS_RESERVED_DEVICE_BASENAME_PATTERN =
+  /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/iu;
 
 const containsUnpairedSurrogate = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
@@ -31,13 +33,18 @@ const containsWindowsForbiddenControl = (value: string): boolean => {
   return false;
 };
 
+const isWindowsReservedDeviceSegment = (segment: string): boolean => {
+  const basename = segment.split(".", 1)[0]!;
+  return WINDOWS_RESERVED_DEVICE_BASENAME_PATTERN.test(basename);
+};
+
 /**
  * Validates a canonical repository-relative path using workspace filesystem semantics.
  *
  * POSIX paths retain every filename character except NUL and `/` separators. Windows
  * paths use `/` as the canonical separator and reject platform-forbidden characters,
- * control characters, drive roots, and trailing dot/space segments. Neither form
- * normalizes `.` or `..`; non-canonical input is rejected instead.
+ * control characters, drive roots, reserved device names, and trailing dot/space
+ * segments. Neither form normalizes `.` or `..`; non-canonical input is rejected.
  */
 export function requireCanonicalRepositoryRelativePath(
   value: unknown,
@@ -86,6 +93,9 @@ export function requireCanonicalRepositoryRelativePath(
       throw new TypeError(
         `${name} must not contain a Windows segment ending in dot or space`
       );
+    }
+    if (segments.some(isWindowsReservedDeviceSegment)) {
+      throw new TypeError(`${name} must not contain a Windows reserved device name`);
     }
   }
 
