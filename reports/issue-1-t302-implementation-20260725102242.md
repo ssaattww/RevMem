@@ -1,6 +1,6 @@
 # T302 実装レポート
 
-> このレポートは初回実装時点の記録である。再レビュー指摘を反映した最新実装は`reports/issue-1-t302-review-followup-20260725143200.md`、最終判定は`reports/issue-1-t302-review-r2-20260725143300.md`を参照する。
+> このレポートは初回実装時点の記録である。再レビュー指摘を反映した最新実装は`reports/issue-1-t302-review-followup-r2-20260725143000.md`、最終判定は`reports/issue-1-t302-review-r2-20260725143500.md`を参照する。
 
 ## タスク
 
@@ -69,7 +69,7 @@
 - public consumer type fixtureとCI Contract typecheck
 - T302設計補遺
 
-詳細は`reports/issue-1-t302-review-followup-20260725143200.md`を参照する。
+詳細は`reports/issue-1-t302-review-followup-r2-20260725143000.md`を参照する。
 
 ## 初回検証
 
@@ -82,7 +82,7 @@ CI Run #720、head SHA `03c059a459d5b1996008821ab5e57c044b940042`:
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
-最新検証は`reports/issue-1-t302-review-r2-20260725143300.md`を参照する。
+最新検証は`reports/issue-1-t302-review-r2-20260725143500.md`を参照する。
 
 ## 対象外
 
