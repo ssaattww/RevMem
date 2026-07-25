@@ -91,3 +91,84 @@ test("rejects copy and timestamp-suffixed addition targeting the same destinatio
     /duplicate destination/i
   );
 });
+
+test("rejects incomplete and duplicate rename metadata", () => {
+  const malformedDiffs = [
+    [
+      "diff --git a/a.ts b/b.ts",
+      "similarity index 100%",
+      "rename from a.ts",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/a.ts b/b.ts",
+      "similarity index 100%",
+      "rename to b.ts",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/a.ts b/b.ts",
+      "similarity index 100%",
+      "rename from a.ts",
+      "rename from c.ts",
+      "rename to b.ts",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/a.ts b/b.ts",
+      "similarity index 100%",
+      "rename from a.ts",
+      "rename to b.ts",
+      "rename to c.ts",
+      ""
+    ].join("\n")
+  ];
+
+  for (const diff of malformedDiffs) {
+    assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /rename metadata/i);
+  }
+});
+
+test("rejects add and delete sections whose headers contradict file status", () => {
+  const malformedDiffs = [
+    [
+      "diff --git a/dest.ts b/dest.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ /dev/null\t2026-07-25 13:50:00 +0900",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/dest.ts b/dest.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ \"/dev/null\"",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/dest.ts b/dest.ts",
+      "new file mode 100644",
+      "--- a/dest.ts",
+      "+++ b/dest.ts",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/a.ts b/a.ts",
+      "deleted file mode 100644",
+      "--- /dev/null",
+      "+++ /dev/null",
+      ""
+    ].join("\n"),
+    [
+      "diff --git a/a.ts b/a.ts",
+      "deleted file mode 100644",
+      "--- a/a.ts",
+      "+++ b/a.ts",
+      ""
+    ].join("\n")
+  ];
+
+  for (const diff of malformedDiffs) {
+    assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /file mode|header side/i);
+  }
+});
