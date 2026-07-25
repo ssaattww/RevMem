@@ -84,6 +84,20 @@ const sameIntervals = (
     });
 };
 
+const sameSourceSnapshot = (
+  left: OwnerSourceSnapshot,
+  right: OwnerSourceSnapshot
+): boolean =>
+  left.sourceOwner === right.sourceOwner &&
+  left.sourceRepositoryId === right.sourceRepositoryId &&
+  left.sourceContextId === right.sourceContextId &&
+  left.sourceFileId === right.sourceFileId &&
+  left.contentHash === right.contentHash &&
+  left.lineCount === right.lineCount &&
+  left.sourceCreatedAt === right.sourceCreatedAt &&
+  left.sourceUpdatedAt === right.sourceUpdatedAt &&
+  sameIntervals(left.reviewed, right.reviewed);
+
 const laterThan = (left: string, right: string | undefined): boolean => {
   if (right === undefined) {
     return true;
@@ -310,15 +324,7 @@ export class DocumentReviewStateSessionProvider {
       additions.length === 0 &&
       removals.length === 0 &&
       previousSnapshot !== undefined &&
-      sameIntervals(previousSnapshot.reviewed, nextSnapshot.reviewed)
-    ) {
-      return targetSession;
-    }
-
-    if (
-      additions.length === 0 &&
-      removals.length === 0 &&
-      targetReviewed.length === 0
+      sameSourceSnapshot(previousSnapshot, nextSnapshot)
     ) {
       return targetSession;
     }
