@@ -24,3 +24,9 @@ export type {
   LocalGitRepositoryInspectionSuccess,
   LocalGitUnavailableInspection
 } from "./contracts";
+export type {
+  LocalGitRevisionTextFound,
+  LocalGitRevisionTextMissingFile,
+  LocalGitRevisionTextMissingRevision,
+  LocalGitRevisionTextReadResult
+} from "./revision-text-content";
