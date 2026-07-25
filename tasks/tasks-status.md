@@ -4,13 +4,13 @@
 
 ## 現在位置
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev2
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev3
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T302 仮想diff URIとrevision content provider（レビューR3対応完了）
+- 直近完了タスク: T302 仮想diff URIとrevision content provider（レビューR4対応完了）
 - 現在のタスク: なし
 - 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T302はimmutable commit URI、filesystem semantics、fatal Git failure分離、raw blob取得、fatal UTF-8 decode、actual VS Code URI、公開contractに加え、metadata/blob共通Node runtime factory、Windows予約デバイス名拒否、単一の機能別設計書をTDDで実装・検証した
+- 実装状態: T302はimmutable commit URI、filesystem semantics、fatal Git failure分離、raw blob取得、fatal UTF-8 decode、actual VS Code URI、公開contract、metadata/blob共通Node runtime、Windows予約名に加え、validator一致のlayer contract、Composition Root、既決UI仕様、明示blob boundary、統一timeout errorをTDDで検証した
 - ブロッカー: なし。provider登録、diff editor open、original側の確認・解除transactionはT303の範囲
 - Gitブランチ: `task/t302-virtual-diff-content`
 - Pull Request: #26
@@ -98,6 +98,8 @@
 - T302最終再レビューレポートR2: `reports/issue-1-t302-review-r2-20260725143500.md`
 - T302レビュー対応レポートR3: `reports/issue-1-t302-review-followup-r3-20260725160000.md`
 - T302最終再レビューレポートR3: `reports/issue-1-t302-review-r3-20260725160500.md`
+- T302レビュー対応レポートR4: `reports/issue-1-t302-review-followup-r4-20260725164000.md`
+- T302最終再レビューレポートR4: `reports/issue-1-t302-review-r4-20260725164500.md`
 
 ## 状態と規模
 
@@ -118,7 +120,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T001 | 完了 | M | VS Code TypeScript拡張のmanifest、ビルド、lint、CIを初期化する。現在`package.json`とlockfileを除外している`.gitignore`を修正し、再現可能な依存管理にする | なし | clean checkoutでinstall、build、lintが成功し、Extension Development Hostでactivationできる構造になっている |
-| T002 | 完了 | M | `core`、`application`、`adapters`、`ui`の依存方向を定義し、設計書8章のinterval、file、context、global、diff、history、schema version型と設定contractを配置する | T001 | coreからVS Code、GitHub、Node filesystemへのimportがないことを静的検査し、全型fixtureがcompileする |
+| T002 | 完了 | M | `core`、`application`、`adapters`、`ui`の依存方向を定義し、設計書13章のlayer contractと共通model・設定contractを配置する | T001 | coreからVS Code、GitHub、Node filesystemへのimportがなく、設計依存行列とvalidatorが一致し、全型fixtureがcompileする |
 | T003 | 完了 | M | 単体テスト、temporary Git repository統合テスト、mock GitHub、VS Code Extension Hostの共通fixtureと実行コマンドを整備する | T001、T002 | 4種類の最小テストが独立実行でき、失敗時にfixtureを後始末し、CIから同じコマンドを実行できる |
 
 ## P1 ローカル行範囲管理
@@ -154,7 +156,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
-| T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path境界、Windows予約名、共通Git runtime、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contract、単一機能別設計書が決定的で、異なるcontextが衝突しない |
+| T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、明示blob boundary、metadata/blob timeout、architecture/UI設計contract、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
@@ -215,4 +217,4 @@
 
 ## 次回開始時の選択
 
-T302はレビューR3でmetadata/blob共通Node runtime、Windows予約デバイス名、単一の機能別設計書を追加検証し、follow-upと最終再レビューを完了した。全体の次タスクは引き続きT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T302はレビューR4で設計依存行列、Composition Root、既決UI仕様、明示blob boundary、metadata/blob timeout contractを追加検証し、follow-upと最終再レビューを完了した。全体の次タスクは引き続きT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
