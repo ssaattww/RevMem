@@ -13,5 +13,6 @@ export {
   type GitFileStateTransitionInput,
   type GitFileStateTransitionResult,
   type GitFileTransitionUnresolved,
-  type GitFileTransitionUnresolvedReason
+  type GitFileTransitionUnresolvedReason,
+  type GitNewFileStateInput
 } from "./git-file-state-transition";
