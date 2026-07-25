@@ -7,7 +7,8 @@
 - Branch: `issue/13-document-context-routing`
 - 指摘元: `reports/issue-13-review-r4-20260725131815.md`
 - 対応対象: blocking finding 2件
-- 設計追補: `doc/design/issue-13-owner-reconciliation-r4.md`
+- 基準設計修正: `doc/design/issue-13-document-context-routing.md` 7.2、7.4、7.5、9、10
+- 詳細設計追補: `doc/design/issue-13-owner-reconciliation-r4.md`
 
 ## 指摘1: 対象file state不在時に空baselineを記録しない
 
@@ -61,6 +62,20 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - 捕捉した初回transactionの`expected`を維持し、全deltaと全baselineを含む`next`を実repositoryへ1回だけCAS commitする
 - final commit成功後だけ上位owner sessionを返す
 
+## 設計書修正
+
+基準設計追補`doc/design/issue-13-document-context-routing.md`を次のように修正した。
+
+- lower owner contextが存在して対象file stateがない場合を、確実な空集合としてbaseline化する
+- lower owner context自体が存在しない場合はbaselineを作らない
+- 全移行元候補を読み込んでからnext snapshotを計算する
+- base routerの初回昇格transactionを永続化前に捕捉する
+- 初回昇格範囲、全source delta、全baselineを同じnext snapshotへ集約する
+- reconciliationの実CAS commitは1回だけとする
+- commit失敗時は範囲だけ、baselineだけ、一部sourceだけを残さない
+
+詳細な処理境界とテスト条件は`doc/design/issue-13-owner-reconciliation-r4.md`にも記録した。
+
 ## TDD Red
 
 ### 挙動Red
@@ -75,7 +90,6 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
   - 初回昇格の実commit回数が2回
   - workspaceとexternal-fileの実commit回数が3回
 - failure artifact: `ci-failure-diagnostics-30144211855-1`
-- artifact ID: `8615453579`
 
 ### 型境界Red
 
@@ -100,17 +114,23 @@ base providerがlower ownerのintervalを先にcommitし、reconciliation wrappe
 - Mock GitHub integration tests: success
 - VS Code Extension Host tests: success
 
-同repositoryの別branchや他作業者のrunではなく、上記code head SHAに紐づくrunだけをコード検証に使用した。
+## PR最終Green
+
+- final head: `b731d85f78ba173b5d3dc61ca94384c34d7d9095`
+- workflow run: `30144682569`
+- Install dependencies: success
+- Build: success
+- Lint: success
+- Unit tests: success
+- Temporary Git integration tests: success
+- Mock GitHub integration tests: success
+- VS Code Extension Host tests: success
+
+同repositoryの別branchや他作業者のrunではなく、各head SHAに紐づくrunだけを検証に使用した。
 
 ## Scope確認
 
-R4レビューhead `6e91f9db26534df3da518ddcf2b58b99124746af`からcode headまでの製品・test差分は次の3fileだけである。
-
-- `src/adapters/document-review-state/reconciled-document-review-state-session-provider.ts`
-- `test/unit/issue-13-atomic-reconciliation-review.test.ts`
-- `package.json`
-
-`package.json`の差分はIssue #13のunit・Git test fileの明示登録だけである。
+R4レビューheadからの製品・test差分は、Issue #13のreconciliation実装、R4回帰test、test runner登録に限定した。
 
 変更していない範囲:
 
@@ -118,6 +138,8 @@ R4レビューhead `6e91f9db26534df3da518ddcf2b58b99124746af`からcode headま�
 - T300のpolicy、runtime、設定、test
 - PR #22のreportと`test/unit/release-vsix-contract.test.ts`
 - その他のマージ済み`main`由来ファイル
+
+branchは`main`に対してbehind 0である。
 
 ## 独立再レビュー
 
@@ -132,6 +154,7 @@ R4レビューhead `6e91f9db26534df3da518ddcf2b58b99124746af`からcode headま�
 - source read後の並行target更新をCASが検出できること
 - decoration loadが非変更処理のままであること
 - R2・R3で修正済みのHEAD分類、baseline metadata更新、test runner登録を壊していないこと
+- 基準設計書とR4詳細設計追補が実装・testと一致すること
 
 判定:
 
