@@ -14,8 +14,8 @@ export interface ReviewDiffRepositoryRootResolver {
 /**
  * Supplies immutable diff content from local Git while preserving context isolation.
  *
- * The source never falls back to another context or revision. GitHub and snapshot
- * fallbacks can implement the same application contract in their later tasks.
+ * The source never falls back to another context, revision source, or revision.
+ * GitHub and snapshot implementations can provide separate application sources later.
  */
 export class LocalGitRevisionTextContentSource
   implements RevisionTextContentSource
@@ -25,7 +25,7 @@ export class LocalGitRevisionTextContentSource
     private readonly localGitAdapter: LocalGitAdapter
   ) {}
 
-  /** Resolves the context root and reads the descriptor's exact Git revision and path. */
+  /** Resolves the context root and reads the descriptor's exact Git commit and path. */
   public async readTextContent(
     descriptor: ReviewDiffDocumentDescriptor
   ): Promise<RevisionTextContentReadResult> {
@@ -39,7 +39,8 @@ export class LocalGitRevisionTextContentSource
     return this.localGitAdapter.readTextFileAtRevision(
       repositoryRoot,
       descriptor.revision,
-      descriptor.filePath
+      descriptor.filePath,
+      descriptor.fileSystemPathSemantics
     );
   }
 }
