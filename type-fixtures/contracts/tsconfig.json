@@ -5,7 +5,11 @@
     "moduleResolution": "node16",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": [
+      "node",
+      "vscode"
+    ]
   },
   "include": [
     "review-contracts.fixture.ts",
