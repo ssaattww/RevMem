@@ -41,7 +41,7 @@ interface Plan {
   readonly protectedUnreviewed: readonly LineInterval[];
 }
 
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const clone = <T>(value: unknown): T => JSON.parse(JSON.stringify(value)) as T;
 const nonRepositoryInspector = {
   inspectRepository: async () => ({
     kind: "not-repository" as const,
@@ -412,8 +412,8 @@ export class DocumentReviewStateSessionProvider {
     removals: readonly LineInterval[],
     occurredAt: string
   ): { readonly contextState: ReviewContextState; readonly globalState: RepositoryGlobalState } {
-    let context = clone(contextState);
-    let global = clone(globalState);
+    let context = clone<ReviewContextState>(contextState);
+    let global = clone<RepositoryGlobalState>(globalState);
     if (removals.length > 0) {
       const transaction = unmarkReviewedRanges({
         contextState: context,
@@ -422,8 +422,8 @@ export class DocumentReviewStateSessionProvider {
         intervals: removals,
         occurredAt
       });
-      context = clone(transaction.next.contextState);
-      global = clone(transaction.next.globalState);
+      context = clone<ReviewContextState>(transaction.next.contextState);
+      global = clone<RepositoryGlobalState>(transaction.next.globalState);
     }
     if (additions.length > 0) {
       const transaction = markReviewedRanges({
@@ -433,8 +433,8 @@ export class DocumentReviewStateSessionProvider {
         intervals: additions,
         occurredAt
       });
-      context = clone(transaction.next.contextState);
-      global = clone(transaction.next.globalState);
+      context = clone<ReviewContextState>(transaction.next.contextState);
+      global = clone<RepositoryGlobalState>(transaction.next.globalState);
     }
     return { contextState: context, globalState: global };
   }
