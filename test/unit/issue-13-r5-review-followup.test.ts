@@ -119,11 +119,6 @@ const nonRepository = (): LocalGitRepositoryInspection => ({
   gitVersion: "2.55.0"
 });
 
-const gitUnavailable = (): LocalGitRepositoryInspection => ({
-  kind: "git-unavailable",
-  executable: "git"
-});
-
 const repositoryInspection = (): LocalGitRepositoryInspection => ({
   kind: "repository",
   repository: {
