@@ -19,6 +19,7 @@ import {
 import type {
   LineInterval,
   OwnerReconciliationSourceSnapshot,
+  ReconciledReviewContextState,
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
@@ -34,7 +35,7 @@ import {
 } from "../../core/review-state/index";
 
 interface Plan {
-  readonly contextState: ReviewContextState;
+  readonly contextState: ReconciledReviewContextState;
   readonly globalState: RepositoryGlobalState;
   readonly changed: boolean;
   readonly protectedReviewed: readonly LineInterval[];
@@ -264,7 +265,7 @@ export class DocumentReviewStateSessionProvider {
   ): Promise<DocumentNormalEditorReviewStateSession> {
     const occurredAt = this.now().toISOString();
     let plan: Plan = {
-      contextState: clone(target.contextState),
+      contextState: clone<ReconciledReviewContextState>(target.contextState),
       globalState: clone(target.globalState),
       changed: promotion !== undefined,
       protectedReviewed: [],
