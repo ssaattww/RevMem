@@ -17,7 +17,7 @@ const context = (baseSha = "base", headSha = "head", modified: Record<string, Ar
 });
 const policy = new ReviewFileExclusionPolicy({ userGlobs: [] });
 const calculate = (diff: PullRequestDiffSnapshot, reviewContext = context()) => calculatePullRequestDiffProgress({ diff, reviewContext, exclusionPolicy: policy });
-const addition = (id = "add", path = "add.ts", coordinate = 1) => file(id, "added", undefined, path, [hunk(0, 0, coordinate, 1, [line("addition", undefined, coordinate)])]);
+const addition = (id = "add", path = "add.ts", coordinate = 1) => file(id, "added", undefined, path, [hunk(coordinate - 1, 0, coordinate, 1, [line("addition", undefined, coordinate)])]);
 
 test("reports file and aggregate partial progress", () => {
   const added = file("add", "added", undefined, "add.ts", [hunk(0, 0, 1, 2, [line("addition", undefined, 1), line("addition", undefined, 2)])]);
