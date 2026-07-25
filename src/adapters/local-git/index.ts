@@ -13,6 +13,10 @@ export {
   NodeGitCommandExecutor,
   type NodeGitCommandExecutorOptions
 } from "./node-git-command-executor";
+export {
+  createNodeLocalGitAdapter,
+  type NodeLocalGitAdapterOptions
+} from "./node-local-git-adapter";
 
 export type { GitBlobReader } from "./git-blob-reader";
 export type {
