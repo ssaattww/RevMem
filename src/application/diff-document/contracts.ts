@@ -1,14 +1,22 @@
 import type { ReviewDiffSide } from "../../core/contracts/index";
+import type { FileSystemPathSemantics } from "../workspace-identity/index";
+
+/** Source kind encoded into a virtual diff document revision identity. */
+export type ReviewDiffRevisionSource = "git-commit";
 
 /** Complete identity required to reopen one immutable side of a review diff. */
 export interface ReviewDiffDocumentDescriptor {
   /** Stable review-context identity used to isolate parallel PR and branch state. */
   readonly contextId: string;
-  /** Repository-relative file path represented by the virtual document. */
+  /** Canonical repository-relative file path represented by the virtual document. */
   readonly filePath: string;
+  /** Filesystem semantics used to validate repository path characters. */
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
   /** Original/base or modified/head side shown by the diff editor. */
   readonly side: ReviewDiffSide;
-  /** Exact Git object or snapshot revision used to obtain the document content. */
+  /** Immutable source kind. T601 may add a separately versioned snapshot source. */
+  readonly revisionSource: ReviewDiffRevisionSource;
+  /** Lowercase full SHA-1 or SHA-256 commit object ID. Moving refs are forbidden. */
   readonly revision: string;
 }
 
@@ -23,7 +31,7 @@ export interface RevisionTextContentMissingContext {
   readonly kind: "missing-context";
 }
 
-/** The requested revision object is no longer available. */
+/** The requested immutable revision object is no longer available. */
 export interface RevisionTextContentMissingRevision {
   readonly kind: "missing-revision";
 }
@@ -33,12 +41,19 @@ export interface RevisionTextContentMissingFile {
   readonly kind: "missing-file";
 }
 
+/** Blob bytes are not valid UTF-8 and cannot be represented as a line document. */
+export interface RevisionTextContentInvalidEncoding {
+  readonly kind: "invalid-encoding";
+  readonly encoding: "utf-8";
+}
+
 /** Complete deterministic outcome of an immutable revision text lookup. */
 export type RevisionTextContentReadResult =
   | RevisionTextContentFound
   | RevisionTextContentMissingContext
   | RevisionTextContentMissingRevision
-  | RevisionTextContentMissingFile;
+  | RevisionTextContentMissingFile
+  | RevisionTextContentInvalidEncoding;
 
 /** Injectable content boundary used by local Git, GitHub, and snapshot implementations. */
 export interface RevisionTextContentSource {
