@@ -124,3 +124,46 @@ test("rejects unsupported schema and invalid previous paths", () => {
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
   }), /previousPaths/i);
 });
+
+test("rejects invalid new-file metadata before creating output state", () => {
+  const diff = [
+    "diff --git a/new.ts b/new.ts", "new file mode 100644", "--- /dev/null", "+++ b/new.ts",
+    "@@ -0,0 +1 @@", "+new", ""
+  ].join("\n");
+  for (const metadata of [
+    { fileId: "", lineCount: 1 },
+    { fileId: "new", lineCount: 1, contentHash: "" }
+  ]) {
+    assert.throws(() => applyGitFileStateTransitions({
+      files: {}, diff, newRevisionId: "new", updatedAt,
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+      newFiles: { "new.ts": metadata }
+    }), /newFiles.*(fileId|contentHash)/i);
+  }
+});
+
+test("rejects unrelated full-text evidence for ignored EOL changes", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-oldValue", "+newValue", ""
+  ].join("\n");
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "same\r\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "same\n" } }
+  }), /text evidence.*diff hunk/i);
+});
+
+test("rejects full-text evidence whose line count disagrees with metadata", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-old", "+new", ""
+  ].join("\n");
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "old\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "new\n" } }
+  }), /newFiles.*newText.*lineCount/i);
+});
