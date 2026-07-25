@@ -8,6 +8,7 @@
     "noEmit": true
   },
   "include": [
-    "review-contracts.fixture.ts"
+    "review-contracts.fixture.ts",
+    "t302-diff-document.fixture.ts"
   ]
 }
