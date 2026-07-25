@@ -1,6 +1,10 @@
 import { TextDecoder } from "node:util";
 
-import type { ReviewDiffDocumentDescriptor } from "./contracts";
+import type { FileSystemPathSemantics } from "../workspace-identity/index";
+import type {
+  ReviewDiffDocumentDescriptor,
+  ReviewDiffRevisionSource
+} from "./contracts";
 
 const REVIEW_DIFF_SCHEME = "review-range-diff";
 const REVIEW_DIFF_AUTHORITY = "document";
@@ -8,8 +12,8 @@ const REVIEW_DIFF_VERSION = "v1";
 const MAX_URI_LENGTH = 65_536;
 const MAX_CONTEXT_ID_BYTES = 8_192;
 const MAX_FILE_PATH_BYTES = 32_768;
-const MAX_REVISION_BYTES = 8_192;
 const BASE64_URL_TOKEN = /^[A-Za-z0-9_-]+$/u;
+const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** Stable machine-readable reason for URI codec failures. */
@@ -44,7 +48,6 @@ const containsControlCharacter = (value: string): boolean => {
       return true;
     }
   }
-
   return false;
 };
 
@@ -66,11 +69,10 @@ const containsUnpairedSurrogate = (value: string): boolean => {
       return true;
     }
   }
-
   return false;
 };
 
-const validateField = (
+const requireWellFormedField = (
   value: string,
   name: string,
   maxBytes: number,
@@ -79,16 +81,116 @@ const validateField = (
   if (value.length === 0) {
     throw failure(`${name} must not be empty`);
   }
-  if (containsControlCharacter(value)) {
-    throw failure(`${name} must not contain control characters`);
-  }
   if (containsUnpairedSurrogate(value)) {
     throw failure(`${name} must be well-formed UTF-16`);
   }
   if (Buffer.byteLength(value, "utf8") > maxBytes) {
     throw failure(`${name} exceeds the supported UTF-8 size`);
   }
+  return value;
+};
 
+const validateContextId = (
+  value: string,
+  failure: (message: string) => ReviewDiffUriCodecError
+): string => {
+  const contextId = requireWellFormedField(
+    value,
+    "contextId",
+    MAX_CONTEXT_ID_BYTES,
+    failure
+  );
+  if (containsControlCharacter(contextId)) {
+    throw failure("contextId must not contain control characters");
+  }
+  return contextId;
+};
+
+const validatePathSemantics = (
+  value: FileSystemPathSemantics,
+  failure: (message: string) => ReviewDiffUriCodecError
+): FileSystemPathSemantics => {
+  if (value !== "posix" && value !== "windows") {
+    throw failure("fileSystemPathSemantics must be posix or windows");
+  }
+  return value;
+};
+
+const hasWindowsInvalidCharacter = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    const character = value[index]!;
+    if (
+      code <= 0x1f ||
+      code === 0x7f ||
+      character === "<" ||
+      character === ">" ||
+      character === ":" ||
+      character === '"' ||
+      character === "\\" ||
+      character === "|" ||
+      character === "?" ||
+      character === "*"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const validateFilePath = (
+  value: string,
+  semantics: FileSystemPathSemantics,
+  failure: (message: string) => ReviewDiffUriCodecError
+): string => {
+  const filePath = requireWellFormedField(
+    value,
+    "filePath",
+    MAX_FILE_PATH_BYTES,
+    failure
+  );
+  if (filePath.includes("\0")) {
+    throw failure("filePath must not contain a null character");
+  }
+  const segments = filePath.split("/");
+  if (
+    filePath.startsWith("/") ||
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === ".."
+    )
+  ) {
+    throw failure("filePath must be a canonical repository-relative path");
+  }
+  if (
+    semantics === "windows" &&
+    (hasWindowsInvalidCharacter(filePath) ||
+      /^[A-Za-z]:/u.test(filePath) ||
+      segments.some((segment) => /[. ]$/u.test(segment)))
+  ) {
+    throw failure("filePath is invalid under Windows path semantics");
+  }
+  return filePath;
+};
+
+const validateRevisionSource = (
+  value: ReviewDiffRevisionSource,
+  failure: (message: string) => ReviewDiffUriCodecError
+): ReviewDiffRevisionSource => {
+  if (value !== "git-commit") {
+    throw failure("revisionSource must be git-commit");
+  }
+  return value;
+};
+
+const validateRevision = (
+  value: string,
+  failure: (message: string) => ReviewDiffUriCodecError
+): string => {
+  if (!FULL_OBJECT_ID_PATTERN.test(value)) {
+    throw failure(
+      "revision must be a lowercase full SHA-1 or SHA-256 commit object ID"
+    );
+  }
   return value;
 };
 
@@ -112,9 +214,7 @@ const decodeField = (
     if (bytes.toString("base64url") !== token) {
       throw uriError(`${name} is not canonical base64url`);
     }
-
-    const value = utf8Decoder.decode(bytes);
-    return validateField(value, name, maxBytes, (message) => uriError(message));
+    return utf8Decoder.decode(bytes);
   } catch (error) {
     if (error instanceof ReviewDiffUriCodecError) {
       throw error;
@@ -127,32 +227,31 @@ const validateDescriptor = (
   descriptor: ReviewDiffDocumentDescriptor,
   failure: (message: string) => ReviewDiffUriCodecError
 ): ReviewDiffDocumentDescriptor => {
-  const contextId = validateField(
-    descriptor.contextId,
-    "contextId",
-    MAX_CONTEXT_ID_BYTES,
+  const contextId = validateContextId(descriptor.contextId, failure);
+  const fileSystemPathSemantics = validatePathSemantics(
+    descriptor.fileSystemPathSemantics,
     failure
   );
-  const filePath = validateField(
+  const filePath = validateFilePath(
     descriptor.filePath,
-    "filePath",
-    MAX_FILE_PATH_BYTES,
-    failure
-  );
-  const revision = validateField(
-    descriptor.revision,
-    "revision",
-    MAX_REVISION_BYTES,
+    fileSystemPathSemantics,
     failure
   );
   if (descriptor.side !== "original" && descriptor.side !== "modified") {
     throw failure("side must be original or modified");
   }
+  const revisionSource = validateRevisionSource(
+    descriptor.revisionSource,
+    failure
+  );
+  const revision = validateRevision(descriptor.revision, failure);
 
   return {
     contextId,
     filePath,
+    fileSystemPathSemantics,
     side: descriptor.side,
+    revisionSource,
     revision
   };
 };
@@ -160,19 +259,18 @@ const validateDescriptor = (
 /**
  * Encodes immutable review-diff document identity into one strict, versioned URI.
  *
- * The URI contains no repository path in its authority and never relies on query
- * ordering. Each variable field is canonical base64url, so reserved characters,
- * Unicode, and file separators round-trip without collisions between contexts.
+ * Variable text fields use canonical base64url, while filesystem semantics and
+ * revision source are explicit path segments. POSIX-only filename characters can
+ * round-trip without weakening Windows path validation or context isolation.
  */
 export class ReviewDiffUriCodec {
   /** Encodes one descriptor using the canonical `review-range-diff://document/v1` form. */
   public encode(descriptor: ReviewDiffDocumentDescriptor): string {
     const valid = validateDescriptor(descriptor, descriptorError);
-    const uri = `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}/${REVIEW_DIFF_VERSION}/${encodeField(valid.contextId)}/${valid.side}/${encodeField(valid.revision)}/${encodeField(valid.filePath)}`;
+    const uri = `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}/${REVIEW_DIFF_VERSION}/${encodeField(valid.contextId)}/${valid.fileSystemPathSemantics}/${valid.side}/${valid.revisionSource}/${encodeField(valid.revision)}/${encodeField(valid.filePath)}`;
     if (uri.length > MAX_URI_LENGTH) {
       throw descriptorError("Encoded review diff URI exceeds the supported size");
     }
-
     return uri;
   }
 
@@ -207,24 +305,41 @@ export class ReviewDiffUriCodec {
 
     const segments = parsed.pathname.split("/");
     if (
-      segments.length !== 6 ||
+      segments.length !== 8 ||
       segments[0] !== "" ||
       segments[1] !== REVIEW_DIFF_VERSION
     ) {
       throw uriError("Review diff URI path version or segment count is invalid");
     }
 
-    const [, , contextToken, sideToken, revisionToken, fileToken] = segments;
+    const [
+      ,
+      ,
+      contextToken,
+      semanticsToken,
+      sideToken,
+      sourceToken,
+      revisionToken,
+      fileToken
+    ] = segments;
+    if (semanticsToken !== "posix" && semanticsToken !== "windows") {
+      throw uriError("Review diff URI path semantics are invalid");
+    }
     if (sideToken !== "original" && sideToken !== "modified") {
       throw uriError("Review diff URI side is invalid");
+    }
+    if (sourceToken !== "git-commit") {
+      throw uriError("Review diff URI revision source is invalid");
     }
 
     const descriptor = validateDescriptor(
       {
         contextId: decodeField(contextToken!, "contextId", MAX_CONTEXT_ID_BYTES),
         filePath: decodeField(fileToken!, "filePath", MAX_FILE_PATH_BYTES),
+        fileSystemPathSemantics: semanticsToken,
         side: sideToken,
-        revision: decodeField(revisionToken!, "revision", MAX_REVISION_BYTES)
+        revisionSource: sourceToken,
+        revision: decodeField(revisionToken!, "revision", 64)
       },
       (message) => uriError(message)
     );
@@ -232,7 +347,6 @@ export class ReviewDiffUriCodec {
     if (this.encode(descriptor) !== uri) {
       throw uriError("Review diff URI is not in canonical form");
     }
-
     return descriptor;
   }
 }
