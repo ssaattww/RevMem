@@ -10,7 +10,7 @@
 - 直近完了タスク: T203 diff parserとrevision間interval mapping
 - 現在のタスク: なし
 - 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T203を最新`main`へ統合済み。Issue #13はGit ownership優先のdocument routing、workspace外・UNC・external-file管理に加え、レビュー指摘のGit復旧時owner reconciliationとunborn HEAD診断の厳密分類までテスト先行で修正した。レビューfollow-upレポートに記録したPR #15のbranch headに紐づくActions runで全CI工程が成功した
+- 実装状態: T203初回7件と再レビュー4件の計11 findingをTerra/highでテスト先行修正し、Sol/high第3レビューは指摘なし。T203 focused 15/15、build、lint、contract typecheck、architecture、diff checkはpass。全unit 143/144の1件はorigin/main由来release contract failureとしてheld。Issue #13はGit ownership優先のdocument routing、workspace外・UNC・external-file管理に加え、レビュー指摘のGit復旧時owner reconciliationとunborn HEAD診断の厳密分類までテスト先行で修正し、PR #15のbranch headに紐づくActions runで全CI工程が成功した
 - ブロッカー: なし
 - Gitブランチ: `task/t203-diff-interval-mapping`
 - Pull Request: #16
@@ -23,7 +23,7 @@
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
 - T002初回レビューレポート: `reports/issue-1-t002-review-20260723112423.md`
 - T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
-- T002再レビューレポート: `reports/issue-1-t002-review-20260723113759.md`
+- T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
 - T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
 - T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
