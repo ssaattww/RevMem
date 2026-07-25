@@ -1,6 +1,7 @@
 import type { FileSystemPathSemantics } from "../workspace-identity/index";
 
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/u;
+const WINDOWS_FORBIDDEN_CHARACTER_PATTERN = /[<>:"\\|?*]/u;
 
 const containsUnpairedSurrogate = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
@@ -34,8 +35,9 @@ const containsWindowsForbiddenControl = (value: string): boolean => {
  * Validates a canonical repository-relative path using workspace filesystem semantics.
  *
  * POSIX paths retain every filename character except NUL and `/` separators. Windows
- * paths use `/` as the canonical separator and reject backslashes and control characters.
- * Neither form normalizes `.` or `..`; non-canonical input is rejected instead.
+ * paths use `/` as the canonical separator and reject platform-forbidden characters,
+ * control characters, drive roots, and trailing dot/space segments. Neither form
+ * normalizes `.` or `..`; non-canonical input is rejected instead.
  */
 export function requireCanonicalRepositoryRelativePath(
   value: unknown,
@@ -60,14 +62,6 @@ export function requireCanonicalRepositoryRelativePath(
   ) {
     throw new TypeError(`${name} must be repository-relative`);
   }
-  if (pathSemantics === "windows") {
-    if (value.includes("\\")) {
-      throw new TypeError(`${name} must use forward slashes as canonical separators`);
-    }
-    if (containsWindowsForbiddenControl(value)) {
-      throw new TypeError(`${name} contains a character forbidden by Windows semantics`);
-    }
-  }
 
   const segments = value.split("/");
   if (
@@ -76,6 +70,23 @@ export function requireCanonicalRepositoryRelativePath(
     )
   ) {
     throw new TypeError(`${name} must not contain empty, dot, or parent segments`);
+  }
+
+  if (pathSemantics === "windows") {
+    if (value.includes("\\")) {
+      throw new TypeError(`${name} must use forward slashes as canonical separators`);
+    }
+    if (
+      containsWindowsForbiddenControl(value) ||
+      WINDOWS_FORBIDDEN_CHARACTER_PATTERN.test(value)
+    ) {
+      throw new TypeError(`${name} contains a character forbidden by Windows semantics`);
+    }
+    if (segments.some((segment) => /[. ]$/u.test(segment))) {
+      throw new TypeError(
+        `${name} must not contain a Windows segment ending in dot or space`
+      );
+    }
   }
 
   return value;
