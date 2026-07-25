@@ -135,7 +135,7 @@ test("allows a destination occupied only by a file deleted in the same diff", ()
   assert.deepEqual(result.deletedFileIds, ["b"]);
 });
 
-test("clears source review and creates unreviewed destinations for ambiguous copies", () => {
+test("preserves copy source review and creates only destinations as unreviewed", () => {
   const diff = [
     "diff --git a/source.ts b/copy-a.ts",
     "similarity index 100%",
@@ -147,14 +147,15 @@ test("clears source review and creates unreviewed destinations for ambiguous cop
     "copy to copy-b.ts",
     ""
   ].join("\n");
-  const result = apply({ source: state("source", "source.ts") }, diff, {
+  const source = state("source", "source.ts", { contentHash: "source-hash" });
+  const result = apply({ source }, diff, {
     newFiles: {
       "copy-a.ts": { fileId: "copy-a", lineCount: 4 },
       "copy-b.ts": { fileId: "copy-b", lineCount: 4 }
     }
   });
 
-  assert.deepEqual(result.files.source?.modifiedReviewed, []);
+  assert.deepEqual(result.files.source, source);
   assert.deepEqual(result.files["copy-a"]?.modifiedReviewed, []);
   assert.deepEqual(result.files["copy-b"]?.modifiedReviewed, []);
   assert.equal(result.unresolved.length, 2);
@@ -206,7 +207,62 @@ test("preserves whitespace-only rename changes only when complete texts prove th
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
 
-test("invalidates ambiguous rename source when two destinations compete", () => {
+test("preserves CRLF to LF rename changes when EOL changes are ignored", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts",
+    "similarity index 90%",
+    "rename from old.ts",
+    "rename to new.ts",
+    "--- a/old.ts",
+    "+++ b/new.ts",
+    "@@ -1,2 +1,2 @@",
+    "-one",
+    "-two",
+    "+one",
+    "+two",
+    ""
+  ].join("\n");
+  const result = applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    diff,
+    newRevisionId: "new",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "one\r\ntwo\r\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "one\ntwo\n" } }
+  });
+
+  assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
+});
+
+test("preserves one terminal line-break addition when EOL changes are ignored", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts",
+    "similarity index 90%",
+    "rename from old.ts",
+    "rename to new.ts",
+    "--- a/old.ts",
+    "+++ b/new.ts",
+    "@@ -1 +1 @@",
+    "-value",
+    "+value",
+    "\\ No newline at end of file",
+    ""
+  ].join("\n");
+  const result = applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 1, modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }] }) },
+    diff,
+    newRevisionId: "new",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "value" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "value\n" } }
+  });
+
+  assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+});
+
+test("removes ambiguous rename source and keeps only unreviewed destinations", () => {
   const diff = [
     "diff --git a/source.ts b/a.ts",
     "similarity index 100%",
@@ -225,10 +281,33 @@ test("invalidates ambiguous rename source when two destinations compete", () => 
     }
   });
 
-  assert.deepEqual(result.files.source?.modifiedReviewed, []);
-  assert.equal(result.files.source?.contentHash, undefined);
+  assert.equal(result.files.source, undefined);
   assert.deepEqual(result.files.a?.modifiedReviewed, []);
   assert.deepEqual(result.files.b?.modifiedReviewed, []);
+});
+
+test("fails atomically when required new-file metadata is missing", () => {
+  const added = [
+    "diff --git a/new.ts b/new.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/new.ts",
+    "@@ -0,0 +1 @@",
+    "+one",
+    ""
+  ].join("\n");
+  assert.throws(() => apply({}, added), /new-file metadata/i);
+
+  const copy = [
+    "diff --git a/source.ts b/copy.ts",
+    "similarity index 100%",
+    "copy from source.ts",
+    "copy to copy.ts",
+    ""
+  ].join("\n");
+  const source = state("source", "source.ts");
+  assert.throws(() => apply({ source }, copy), /new-file metadata/i);
+  assert.deepEqual(source.modifiedReviewed, [{ startLine: 0, endLineExclusive: 4 }]);
 });
 
 test("rejects malformed duplicate and trailing copy metadata", () => {
