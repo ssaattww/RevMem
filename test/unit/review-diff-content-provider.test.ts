@@ -118,6 +118,10 @@ class RecordingGitBlobReader implements GitBlobReader {
   }
 }
 
+const createAdapterWithoutBlobReads = (
+  executor: GitCommandExecutor
+): LocalGitAdapter => new LocalGitAdapter(executor, new RecordingGitBlobReader([]));
+
 test("review diff URI round-trips context, file, semantics, side, source, and revision", () => {
   const codec = new ReviewDiffUriCodec();
 
@@ -287,7 +291,9 @@ test("local Git adapter distinguishes missing commits and missing files", async 
   );
 
   assert.deepEqual(
-    await new LocalGitAdapter(missingRevisionExecutor).readTextFileAtRevision(
+    await createAdapterWithoutBlobReads(
+      missingRevisionExecutor
+    ).readTextFileAtRevision(
       repositoryRoot,
       originalRevision,
       "src/file.ts",
@@ -317,7 +323,7 @@ test("local Git adapter distinguishes missing commits and missing files", async 
   );
 
   assert.deepEqual(
-    await new LocalGitAdapter(missingFileExecutor).readTextFileAtRevision(
+    await createAdapterWithoutBlobReads(missingFileExecutor).readTextFileAtRevision(
       repositoryRoot,
       originalRevision,
       "src/missing.ts",
@@ -329,7 +335,7 @@ test("local Git adapter distinguishes missing commits and missing files", async 
 });
 
 test("local Git adapter rejects moving revisions and unsafe repository paths", async () => {
-  const adapter = new LocalGitAdapter(new RecordingGitCommandExecutor());
+  const adapter = createAdapterWithoutBlobReads(new RecordingGitCommandExecutor());
 
   await assert.rejects(
     adapter.readTextFileAtRevision(
@@ -369,7 +375,7 @@ test("local Git adapter preserves unexpected Git failures", async () => {
   );
 
   await assert.rejects(
-    new LocalGitAdapter(executor).readTextFileAtRevision(
+    createAdapterWithoutBlobReads(executor).readTextFileAtRevision(
       "/workspace/repository",
       originalRevision,
       "src/file.ts",
