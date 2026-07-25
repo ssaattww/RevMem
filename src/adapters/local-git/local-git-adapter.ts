@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { TextDecoder } from "node:util";
 
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
 import {
   GitCommandFailedError,
@@ -53,66 +54,6 @@ const requireImmutableCommitObjectId = (value: string, name: string): string => 
     );
   }
   return value;
-};
-
-const requirePathSemantics = (
-  value: FileSystemPathSemantics
-): FileSystemPathSemantics => {
-  if (value !== "posix" && value !== "windows") {
-    throw new TypeError('fileSystemPathSemantics must be either "posix" or "windows"');
-  }
-  return value;
-};
-
-const hasWindowsInvalidCharacter = (value: string): boolean => {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    const character = value[index]!;
-    if (
-      code <= 0x1f ||
-      code === 0x7f ||
-      character === "<" ||
-      character === ">" ||
-      character === ":" ||
-      character === '"' ||
-      character === "\\" ||
-      character === "|" ||
-      character === "?" ||
-      character === "*"
-    ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const requireRepositoryRelativePath = (
-  value: string,
-  name: string,
-  fileSystemPathSemantics: FileSystemPathSemantics
-): string => {
-  const candidate = requirePath(value, name);
-  const semantics = requirePathSemantics(fileSystemPathSemantics);
-  const segments = candidate.split("/");
-  if (
-    candidate.startsWith("/") ||
-    segments.some(
-      (segment) => segment.length === 0 || segment === "." || segment === ".."
-    )
-  ) {
-    throw new TypeError(`${name} must be a canonical repository-relative path`);
-  }
-
-  if (
-    semantics === "windows" &&
-    (hasWindowsInvalidCharacter(candidate) || /^[A-Za-z]:/u.test(candidate))
-  ) {
-    throw new TypeError(
-      `${name} contains a character that is invalid under Windows path semantics`
-    );
-  }
-
-  return candidate;
 };
 
 const firstOutputLine = (output: string, name: string): string => {
@@ -323,10 +264,10 @@ export class LocalGitAdapter {
   ): Promise<LocalGitRevisionTextReadResult> {
     const rootPath = requirePath(repositoryRoot, "repositoryRoot");
     const object = requireImmutableCommitObjectId(revision, "revision");
-    const filePath = requireRepositoryRelativePath(
+    const filePath = requireCanonicalRepositoryRelativePath(
       repositoryRelativePath,
-      "repositoryRelativePath",
-      fileSystemPathSemantics
+      fileSystemPathSemantics,
+      "repositoryRelativePath"
     );
     const revisionInvocation: GitCommandInvocation = {
       cwd: rootPath,
