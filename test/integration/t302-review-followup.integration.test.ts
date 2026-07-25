@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   GitCommandFailedError,
   LocalGitAdapter,
-  NodeGitCommandExecutor,
+  createNodeLocalGitAdapter,
   type GitCommandExecutor,
   type GitCommandInvocation,
   type GitCommandResult
@@ -17,6 +17,7 @@ import {
   type ReviewDiffDocumentDescriptor
 } from "../../src/application/diff-document/index";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository";
+import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 const immutableRevision = "0123456789abcdef0123456789abcdef01234567";
 
@@ -118,7 +119,8 @@ test("fatal revision lookup exit 128 is preserved instead of reported as missing
   const adapter = new LocalGitAdapter(
     new SequenceGitCommandExecutor([
       failure(128, "fatal: detected dubious ownership in repository")
-    ])
+    ]),
+    unreachableGitBlobReader
   );
 
   await assert.rejects(
@@ -137,7 +139,8 @@ test("fatal file lookup exit 128 is preserved instead of reported as missing", a
     new SequenceGitCommandExecutor([
       success(`${immutableRevision}\n`),
       failure(128, "fatal: object database is corrupt")
-    ])
+    ]),
+    unreachableGitBlobReader
   );
 
   await assert.rejects(
@@ -153,7 +156,7 @@ test("fatal file lookup exit 128 is preserved instead of reported as missing", a
 
 test("moving refs are rejected before immutable Git content lookup", async () => {
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
 
   try {
     await assert.rejects(
@@ -177,7 +180,7 @@ test("POSIX Git content lookup supports tab, newline, and backslash filenames", 
   }
 
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
   const fileName = "tab\tline\nback\\slash.txt";
 
   try {
@@ -207,7 +210,7 @@ test("POSIX Git content lookup supports a filename made only of a newline", asyn
   }
 
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
   const fileName = "\n";
 
   try {
@@ -232,7 +235,7 @@ test("POSIX Git content lookup supports a filename made only of a newline", asyn
 
 test("Git content lookup reads UTF-8 text immediately below and above 4 MiB", async () => {
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
   const fourMiB = 4 * 1024 * 1024;
   const below = "a".repeat(fourMiB - 1);
   const above = "b".repeat(fourMiB + 1);
@@ -270,7 +273,7 @@ test("Git content lookup reads UTF-8 text immediately below and above 4 MiB", as
 
 test("non-UTF-8 Git blob is rejected deterministically without replacement characters", async () => {
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
 
   try {
     await writeFile(
