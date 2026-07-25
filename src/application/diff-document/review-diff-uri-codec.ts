@@ -1,5 +1,6 @@
 import { TextDecoder } from "node:util";
 
+import { requireCanonicalRepositoryRelativePath } from "../repository-path/index";
 import type { FileSystemPathSemantics } from "../workspace-identity/index";
 import type {
   ReviewDiffDocumentDescriptor,
@@ -116,28 +117,6 @@ const validatePathSemantics = (
   return value;
 };
 
-const hasWindowsInvalidCharacter = (value: string): boolean => {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    const character = value[index]!;
-    if (
-      code <= 0x1f ||
-      code === 0x7f ||
-      character === "<" ||
-      character === ">" ||
-      character === ":" ||
-      character === '"' ||
-      character === "\\" ||
-      character === "|" ||
-      character === "?" ||
-      character === "*"
-    ) {
-      return true;
-    }
-  }
-  return false;
-};
-
 const validateFilePath = (
   value: string,
   semantics: FileSystemPathSemantics,
@@ -149,27 +128,15 @@ const validateFilePath = (
     MAX_FILE_PATH_BYTES,
     failure
   );
-  if (filePath.includes("\0")) {
-    throw failure("filePath must not contain a null character");
+  try {
+    return requireCanonicalRepositoryRelativePath(
+      filePath,
+      semantics,
+      "filePath"
+    );
+  } catch (error) {
+    throw failure(error instanceof Error ? error.message : String(error));
   }
-  const segments = filePath.split("/");
-  if (
-    filePath.startsWith("/") ||
-    segments.some(
-      (segment) => segment.length === 0 || segment === "." || segment === ".."
-    )
-  ) {
-    throw failure("filePath must be a canonical repository-relative path");
-  }
-  if (
-    semantics === "windows" &&
-    (hasWindowsInvalidCharacter(filePath) ||
-      /^[A-Za-z]:/u.test(filePath) ||
-      segments.some((segment) => /[. ]$/u.test(segment)))
-  ) {
-    throw failure("filePath is invalid under Windows path semantics");
-  }
-  return filePath;
 };
 
 const validateRevisionSource = (
