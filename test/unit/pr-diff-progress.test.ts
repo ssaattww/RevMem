@@ -73,7 +73,7 @@ test("rejects statistics that do not exactly match unique hunk coordinates", () 
   assert.throws(() => calculate([file("too-many", "modified", "a.ts", "a.ts", oneAddition, 2, 0)]), /addition statistics mismatch/);
   assert.throws(() => calculate([file("too-few", "modified", "a.ts", "a.ts", oneAddition, 0, 0)]), /addition statistics mismatch/);
   const duplicate = [hunk(1, 1, [line("addition", undefined, 1)]), hunk(1, 1, [line("addition", undefined, 1)])];
-  assert.throws(() => calculate([file("duplicate", "modified", "a.ts", "a.ts", duplicate, 2, 0)]), /duplicate addition coordinate/);
+  assert.throws(() => calculate([file("duplicate", "modified", "a.ts", "a.ts", duplicate, 2, 0)]), /duplicate addition coordinate/i);
   assert.throws(() => calculate([file("missing", "modified", "a.ts", "a.ts", [hunk(1, 1, [{ kind: "addition", text: "x" }])], 1, 0)]), /missing newLine/);
 });
 
