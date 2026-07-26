@@ -340,9 +340,18 @@ function reconstructNewEndings(
   let oldCursor = 0;
   for (const hunk of hunks) {
     reconstructed.push(...oldEndings.slice(oldCursor, hunk.oldStart));
+    if (
+      hunk.oldLineCount === 0 &&
+      hunk.oldStart === oldEndings.length &&
+      reconstructed.length > 0
+    ) {
+      reconstructed[reconstructed.length - 1] = undefined;
+    }
     for (let index = 0; index < hunk.newLineCount; index += 1) {
       reconstructed.push(
-        index < hunk.oldLineCount ? oldEndings[hunk.oldStart + index] : undefined
+        hunk.oldLineCount === hunk.newLineCount
+          ? oldEndings[hunk.oldStart + index]
+          : undefined
       );
     }
     oldCursor = hunk.oldStart + hunk.oldLineCount;

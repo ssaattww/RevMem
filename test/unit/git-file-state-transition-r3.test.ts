@@ -376,3 +376,90 @@ test("allows hunk-external and terminal EOL changes when EOL changes are ignored
   assert.deepEqual(external.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
   assert.deepEqual(terminal.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
+
+/** Verifies that count-increasing replacements and EOF zero-count insertions do not require unprovable new-line separators. */
+test("allows count-increasing replacements and EOF insertions with EOL checking enabled", () => {
+  const replacement = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1,2 @@", "-a", "+a", "+x", ""
+  ].join("\n");
+  const eofInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1,0 +2 @@", "+x", ""
+  ].join("\n");
+  const input = {
+    files: { file: state("file", "old.ts") }, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "a" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "a\nx" } }
+  } as const;
+
+  assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: replacement }));
+  assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: eofInsertion }));
+});
+
+/** Verifies that first and middle insertions plus line-count-decreasing and EOF deletions retain only provable EOL boundaries. */
+test("allows count-changing insertion and deletion boundaries that retain a valid complete document", () => {
+  const firstInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -0,0 +1 @@", "+x", ""
+  ].join("\n");
+  const middleInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1,0 +2 @@", "+x", ""
+  ].join("\n");
+  const deletion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -2 +1,0 @@", "-b", ""
+  ].join("\n");
+  const options = { ignoreWhitespaceChanges: true, ignoreEolChanges: false } as const;
+
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff: firstInsertion, newRevisionId: "new", updatedAt, options,
+    oldTexts: { "old.ts": "a" }, newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "x\na" } }
+  }));
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff: middleInsertion, newRevisionId: "new", updatedAt, options,
+    oldTexts: { "old.ts": "a\nb" }, newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "a\nx\nb" } }
+  }));
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff: deletion, newRevisionId: "new", updatedAt, options,
+    oldTexts: { "old.ts": "a\nb\n" }, newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "a\n" } }
+  }));
+});
+
+/** Verifies that an EOL change outside a count-changing hunk remains rejected when EOL changes are not ignored. */
+test("rejects unprovable hunk-external EOL changes after a count-changing replacement", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1,2 @@", "-a", "+a", "+x", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "a\nb\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "a\nx\nb" } }
+  }), /EOL signature/i);
+});
+
+/** Verifies that EOL-ignore continues to accept the same count-changing replacement and EOF insertion evidence. */
+test("allows count-changing replacement and EOF insertion when EOL changes are ignored", () => {
+  const replacement = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1,2 @@", "-a", "+a", "+x", ""
+  ].join("\n");
+  const eofInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1,0 +2 @@", "+x", ""
+  ].join("\n");
+  const input = {
+    files: { file: state("file", "old.ts") }, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "a" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "a\nx" } }
+  } as const;
+
+  assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: replacement }));
+  assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: eofInsertion }));
+});
