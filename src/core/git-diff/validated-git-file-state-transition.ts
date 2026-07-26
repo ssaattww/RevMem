@@ -343,7 +343,8 @@ function reconstructNewEndings(
     if (
       hunk.oldLineCount === 0 &&
       hunk.oldStart === oldEndings.length &&
-      reconstructed.length > 0
+      reconstructed.length > 0 &&
+      oldEndings[oldEndings.length - 1] === ""
     ) {
       reconstructed[reconstructed.length - 1] = undefined;
     }

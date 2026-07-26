@@ -463,3 +463,45 @@ test("allows count-changing replacement and EOF insertion when EOL changes are i
   assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: replacement }));
   assert.doesNotThrow(() => applyGitFileStateTransitions({ ...input, diff: eofInsertion }));
 });
+
+/** Verifies that EOF insertions cannot hide changes to pre-existing CRLF, LF, CR, or repeated terminal separators. */
+test("rejects EOL changes before EOF insertions when EOL changes are not ignored", () => {
+  const singleLineInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1,0 +2 @@", "+x", ""
+  ].join("\n");
+  const repeatedTerminalInsertion = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -2,0 +3 @@", "+x", ""
+  ].join("\n");
+  const options = { ignoreWhitespaceChanges: true, ignoreEolChanges: false } as const;
+  const cases = [
+    { oldText: "a\r\n", newText: "a\nx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
+    { oldText: "a\n", newText: "a\rx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
+    { oldText: "a\r", newText: "a\r\nx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
+    { oldText: "a\r\n\r\n", newText: "a\r\n\nx", diff: repeatedTerminalInsertion, oldLineCount: 2, lineCount: 3 }
+  ] as const;
+
+  for (const { oldText, newText, diff, oldLineCount, lineCount } of cases) {
+    assert.throws(() => applyGitFileStateTransitions({
+      files: { file: state("file", "old.ts", { lineCount: oldLineCount }) }, diff, newRevisionId: "new", updatedAt, options,
+      oldTexts: { "old.ts": oldText },
+      newFiles: { "new.ts": { fileId: "file", lineCount, newText } }
+    }), /EOL signature/i);
+  }
+});
+
+/** Verifies that an EOF insertion after a line without a terminal newline remains valid with EOL checking enabled. */
+test("allows EOF insertion after a missing terminal newline when EOL changes are not ignored", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1,0 +2 @@", "+x", ""
+  ].join("\n");
+
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "a" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "a\nx" } }
+  }));
+});
