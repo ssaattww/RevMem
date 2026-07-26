@@ -76,7 +76,8 @@
 - T201 Range Mapping Engineは最新`main`上で統合・検証済み
 - T202 Local Git Adapterは最新`main`上で統合・検証済み
 - T203 diff parserとrevision間interval mappingは最新`main`上で統合・検証・最終再レビュー済み
-- 次の実装対象はT204 rename・directory move・deleteのfile state適用
+- T204 rename・directory move・deleteのfile state適用はPR #15反映後の最新`main`上で統合・検証・Sol/high R13最終再レビュー済み
+- 次の実装対象はT205 branch context resolver・Git状態監視
 
 ### 終了チェックポイント
 
@@ -98,7 +99,7 @@
 - T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
 - R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
 - R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
-- T203とT300の完了によりT301とT302は着手可能である。全体の次タスクはP2のT204とする
+- T203、T204、T300の完了によりT301とT302は着手可能である。全体の次タスクはP2のT205とする
 
 ### 終了チェックポイント
 
