@@ -336,7 +336,7 @@ function canonicalizeRenameHistory(
   result: GitFileStateTransitionResult
 ): GitFileStateTransitionResult {
   const inputByPath = new Map(Object.values(input.files).map((file) => [file.currentPath, file]));
-  const renameByDestination = new Map(
+  const renameByDestination = new Map<string, string>(
     sections
       .filter(
         (section): section is ValidatedSection & { source: string; destination: string } =>
@@ -350,7 +350,7 @@ function canonicalizeRenameHistory(
     Object.entries(result.files).map(([fileId, file]) => {
       const source = renameByDestination.get(file.currentPath);
       const sourceState = source === undefined ? undefined : inputByPath.get(source);
-      if (sourceState?.fileId !== file.fileId) {
+      if (source === undefined || sourceState?.fileId !== file.fileId) {
         return [fileId, file];
       }
       const previousPaths = file.previousPaths.filter((path) => path !== file.currentPath);
