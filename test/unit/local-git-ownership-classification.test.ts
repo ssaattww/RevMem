@@ -8,6 +8,7 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
+import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 class RootResultExecutor implements GitCommandExecutor {
   public constructor(private readonly rootResult: GitCommandResult) {}
@@ -37,7 +38,7 @@ test("the known not-a-repository result falls back to non-Git ownership", async 
     exitCode: 128,
     stdout: "",
     stderr: "fatal: not a git repository (or any of the parent directories): .git\n"
-  }));
+  }), unreachableGitBlobReader);
 
   assert.deepEqual(await adapter.inspectRepository("/outside"), {
     kind: "not-repository",
@@ -51,7 +52,7 @@ test("an unexpected repository inspection failure is not relabeled as non-Git", 
     exitCode: 128,
     stdout: "",
     stderr: "fatal: cannot access parent directory: Permission denied\n"
-  }));
+  }), unreachableGitBlobReader);
 
   await assert.rejects(
     adapter.inspectRepository("/restricted"),

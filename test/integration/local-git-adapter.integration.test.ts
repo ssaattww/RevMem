@@ -3,10 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import {
-  LocalGitAdapter,
-  NodeGitCommandExecutor
-} from "../../src/adapters/local-git/index";
+import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository";
 
 test("real Git inspection resolves a nested path, branch ref, HEAD, and root identity", async () => {
@@ -15,9 +12,7 @@ test("real Git inspection resolves a nested path, branch ref, HEAD, and root ide
 
   try {
     await mkdir(nestedPath, { recursive: true });
-    const inspection = await new LocalGitAdapter(
-      new NodeGitCommandExecutor()
-    ).inspectRepository(nestedPath);
+    const inspection = await createNodeLocalGitAdapter().inspectRepository(nestedPath);
 
     assert.equal(inspection.kind, "repository");
     if (inspection.kind !== "repository") {
@@ -40,7 +35,7 @@ test("real Git inspection resolves a nested path, branch ref, HEAD, and root ide
 
 test("origin remote normalization keeps a fork separate from its upstream", async () => {
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
 
   try {
     await repository.runGit([
@@ -96,7 +91,7 @@ test("origin remote normalization keeps a fork separate from its upstream", asyn
 
 test("real Git inspection distinguishes detached HEAD and supports merge-base/object checks", async () => {
   const repository = await createTemporaryGitRepository();
-  const adapter = new LocalGitAdapter(new NodeGitCommandExecutor());
+  const adapter = createNodeLocalGitAdapter();
 
   try {
     assert.equal(
@@ -134,12 +129,56 @@ test("real Git inspection distinguishes detached HEAD and supports merge-base/ob
   }
 });
 
+test("real Git revision content returns exact original and modified text", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.baseCommit,
+        "fixture.txt",
+        "posix"
+      ),
+      { kind: "found", content: "base\n" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.headCommit,
+        "fixture.txt",
+        "posix"
+      ),
+      { kind: "found", content: "base\nhead\n" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        repository.headCommit,
+        "missing.txt",
+        "posix"
+      ),
+      { kind: "missing-file" }
+    );
+    assert.deepEqual(
+      await adapter.readTextFileAtRevision(
+        repository.path,
+        "0000000000000000000000000000000000000000",
+        "fixture.txt",
+        "posix"
+      ),
+      { kind: "missing-revision" }
+    );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("a missing Git executable is reported without conflating it with a plain folder", async () => {
-  const adapter = new LocalGitAdapter(
-    new NodeGitCommandExecutor({
-      executable: "review-range-git-executable-that-does-not-exist"
-    })
-  );
+  const adapter = createNodeLocalGitAdapter({
+    executable: "review-range-git-executable-that-does-not-exist"
+  });
 
   const inspection = await adapter.inspectRepository(process.cwd());
 

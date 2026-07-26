@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { TextDecoder } from "node:util";
 
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
+import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
 import {
   GitCommandFailedError,
   GitExecutableNotFoundError,
@@ -12,7 +15,13 @@ import {
   type LocalGitRemote,
   type LocalGitRepositoryInspection
 } from "./contracts";
+import type { GitBlobReader } from "./git-blob-reader";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
+import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
+
+const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 const requirePath = (value: string, name: string): string => {
   if (value.trim().length === 0 || value.includes("\0")) {
@@ -34,6 +43,15 @@ const requireRevision = (value: string, name: string): string => {
     );
   }
 
+  return value;
+};
+
+const requireImmutableCommitObjectId = (value: string, name: string): string => {
+  if (!FULL_OBJECT_ID_PATTERN.test(value)) {
+    throw new TypeError(
+      `${name} must be a lowercase full SHA-1 or SHA-256 commit object ID`
+    );
+  }
   return value;
 };
 
@@ -74,6 +92,39 @@ const rootRepositoryId = (rootPath: string): string => {
   return `git-root:${digest}`;
 };
 
+const parseLsTreeBlobObjectId = (
+  output: string,
+  expectedPath: string
+): string | undefined => {
+  if (output.length === 0) {
+    return undefined;
+  }
+  if (!output.endsWith("\0")) {
+    throw new Error("git ls-tree output is not NUL terminated");
+  }
+
+  const records = output.slice(0, -1).split("\0");
+  if (records.length !== 1) {
+    throw new Error("git ls-tree returned an ambiguous exact-path result");
+  }
+
+  const record = records[0]!;
+  const separator = record.indexOf("\t");
+  if (separator < 0) {
+    throw new Error("git ls-tree output is missing its path separator");
+  }
+  const metadata = record.slice(0, separator);
+  const returnedPath = record.slice(separator + 1);
+  const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
+  if (match === null || returnedPath !== expectedPath) {
+    throw new Error("git ls-tree output does not match the requested exact path");
+  }
+  if (match[2] !== "blob") {
+    return undefined;
+  }
+  return match[3]!;
+};
+
 const isMissingObjectExit = (result: GitCommandResult): boolean =>
   result.exitCode === 1 || result.exitCode === 128;
 
@@ -91,11 +142,21 @@ const isUnbornHeadResult = (result: GitCommandResult): boolean =>
  * Reads stable repository identity and revision metadata through local Git only.
  *
  * This adapter is independent from GitHub authentication and API availability.
- * All process execution is delegated as argument arrays to `GitCommandExecutor`.
+ * Metadata commands use argument arrays; immutable file content is streamed as raw
+ * blob bytes through the injected `GitBlobReader`.
  */
 export class LocalGitAdapter {
-  /** Creates the adapter with an injectable direct-process execution boundary. */
-  public constructor(private readonly commandExecutor: GitCommandExecutor) {}
+  /**
+   * Creates the adapter with explicit metadata and blob-content boundaries.
+   *
+   * Node Extension Host production wiring must use `createNodeLocalGitAdapter()` so
+   * every subprocess shares one executable and timeout policy. Direct construction is
+   * reserved for tests and alternate runtimes and therefore requires both boundaries.
+   */
+  public constructor(
+    private readonly commandExecutor: GitCommandExecutor,
+    private readonly blobReader: GitBlobReader
+  ) {}
 
   /**
    * Inspects a path and distinguishes missing Git, non-Git folders, and repositories.
@@ -186,9 +247,7 @@ export class LocalGitAdapter {
     return firstOutputLine(result.stdout, "git merge-base");
   }
 
-  /**
-   * Determines whether an object expression resolves in the local object database.
-   */
+  /** Determines whether an object expression resolves in the local object database. */
   public async objectExists(
     repositoryRoot: string,
     objectName: string
@@ -197,7 +256,7 @@ export class LocalGitAdapter {
     const object = requireRevision(objectName, "objectName");
     const invocation: GitCommandInvocation = {
       cwd: rootPath,
-      argumentsList: ["cat-file", "-e", `${object}^{object}`]
+      argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{object}`]
     };
     const result = await this.commandExecutor.execute(invocation);
 
@@ -209,6 +268,76 @@ export class LocalGitAdapter {
     }
 
     throw new GitCommandFailedError(invocation, result);
+  }
+
+  /**
+   * Reads one canonical repository-relative UTF-8 text file from an immutable commit.
+   *
+   * Missing commit objects, missing paths, and invalid UTF-8 are separate outcomes.
+   * Fatal Git failures retain the invocation and captured output.
+   */
+  public async readTextFileAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePath: string,
+    fileSystemPathSemantics: FileSystemPathSemantics
+  ): Promise<LocalGitRevisionTextReadResult> {
+    const rootPath = requirePath(repositoryRoot, "repositoryRoot");
+    const object = requireImmutableCommitObjectId(revision, "revision");
+    const filePath = requireCanonicalRepositoryRelativePath(
+      repositoryRelativePath,
+      fileSystemPathSemantics,
+      "repositoryRelativePath"
+    );
+    const revisionInvocation: GitCommandInvocation = {
+      cwd: rootPath,
+      argumentsList: [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `${object}^{commit}`
+      ]
+    };
+    const revisionResult = await this.commandExecutor.execute(revisionInvocation);
+
+    if (revisionResult.exitCode === 1) {
+      return { kind: "missing-revision" };
+    }
+    this.requireSuccess(revisionInvocation, revisionResult);
+    if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
+      return { kind: "missing-revision" };
+    }
+
+    const fileInvocation: GitCommandInvocation = {
+      cwd: rootPath,
+      argumentsList: [
+        "ls-tree",
+        "--full-tree",
+        "-z",
+        object,
+        "--",
+        `:(literal)${filePath}`
+      ]
+    };
+    const fileResult = await this.commandExecutor.execute(fileInvocation);
+    this.requireSuccess(fileInvocation, fileResult);
+    const blobObjectId = parseLsTreeBlobObjectId(fileResult.stdout, filePath);
+    if (blobObjectId === undefined) {
+      return { kind: "missing-file" };
+    }
+
+    const bytes = await this.blobReader.readBlob(rootPath, blobObjectId);
+    try {
+      return {
+        kind: "found",
+        content: utf8Decoder.decode(bytes)
+      };
+    } catch {
+      return {
+        kind: "invalid-encoding",
+        encoding: "utf-8"
+      };
+    }
   }
 
   private execute(
@@ -291,7 +420,7 @@ export class LocalGitAdapter {
   private async resolveHead(rootPath: string): Promise<string | undefined> {
     const invocation: GitCommandInvocation = {
       cwd: rootPath,
-      argumentsList: ["rev-parse", "--verify", "HEAD^{commit}"]
+      argumentsList: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]
     };
     const result = await this.commandExecutor.execute(invocation);
 

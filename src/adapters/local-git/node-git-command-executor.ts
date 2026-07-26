@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 
 import {
+  GitCommandFailedError,
   GitExecutableNotFoundError,
   type GitCommandExecutor,
   type GitCommandInvocation,
@@ -17,6 +18,12 @@ export interface NodeGitCommandExecutorOptions {
   readonly maxBufferBytes?: number;
 }
 
+interface ExecFileProcessError extends Error {
+  readonly code?: string | number | null;
+  readonly killed?: boolean;
+  readonly signal?: NodeJS.Signals | null;
+}
+
 const requirePositiveSafeInteger = (
   value: number,
   name: string
@@ -28,13 +35,18 @@ const requirePositiveSafeInteger = (
   return value;
 };
 
+const appendDiagnostic = (stderr: string, diagnostic: string): string =>
+  stderr.length === 0 ? diagnostic : `${stderr.trimEnd()}\n${diagnostic}`;
+
 /**
  * Node Extension Host command executor that invokes Git directly with `execFile`.
  *
  * The executor never enables a shell and never joins arguments into a command
  * string. Non-zero Git exits are returned as data so the adapter can distinguish
  * normal states such as detached HEAD and a missing object. Git output is forced
- * to the C locale because the adapter classifies stable diagnostic text.
+ * to the C locale because the adapter classifies stable diagnostic text. Process
+ * timeouts reject with `GitCommandFailedError`, matching raw blob reads and
+ * preserving invocation, partial output, and deterministic timeout diagnostics.
  */
 export class NodeGitCommandExecutor implements GitCommandExecutor {
   /** Configured Git executable name or path. */
@@ -62,8 +74,11 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
 
   /** Executes Git directly and captures UTF-8 output. */
   public execute(invocation: GitCommandInvocation): Promise<GitCommandResult> {
-    const argumentsList = [...invocation.argumentsList];
-    for (const [index, argument] of argumentsList.entries()) {
+    const normalizedInvocation: GitCommandInvocation = {
+      cwd: invocation.cwd,
+      argumentsList: [...invocation.argumentsList]
+    };
+    for (const [index, argument] of normalizedInvocation.argumentsList.entries()) {
       if (argument.includes("\0")) {
         throw new TypeError(`argumentsList[${index}] must not contain null characters`);
       }
@@ -72,9 +87,9 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
     return new Promise<GitCommandResult>((resolve, reject) => {
       execFile(
         this.executable,
-        argumentsList,
+        [...normalizedInvocation.argumentsList],
         {
-          cwd: invocation.cwd,
+          cwd: normalizedInvocation.cwd,
           encoding: "utf8",
           env: {
             ...process.env,
@@ -92,16 +107,35 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
             return;
           }
 
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          const processError = error as ExecFileProcessError;
+          if (processError.code === "ENOENT") {
             reject(
               new GitExecutableNotFoundError(this.executable, { cause: error })
             );
             return;
           }
 
-          if (typeof error.code === "number") {
+          if (
+            processError.killed === true &&
+            processError.signal !== undefined &&
+            processError.signal !== null
+          ) {
+            reject(
+              new GitCommandFailedError(normalizedInvocation, {
+                exitCode: -1,
+                stdout,
+                stderr: appendDiagnostic(
+                  stderr,
+                  `Git command timed out after ${this.timeoutMs} ms`
+                )
+              })
+            );
+            return;
+          }
+
+          if (typeof processError.code === "number") {
             resolve({
-              exitCode: error.code,
+              exitCode: processError.code,
               stdout,
               stderr
             });

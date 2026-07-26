@@ -26,6 +26,18 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee test-output/ci/build.log
+      - name: Contract typecheck
+        run: |
+          set -o pipefail
+          npm run typecheck:contracts 2>&1 | tee test-output/ci/typecheck-contracts.log
+      - name: Architecture validation
+        run: |
+          set -o pipefail
+          npm run validate:architecture 2>&1 | tee test-output/ci/architecture.log
+      - name: Architecture negative contract
+        run: |
+          set -o pipefail
+          npm run validate:architecture:negative 2>&1 | tee test-output/ci/architecture-negative.log
       - name: Lint
         run: |
           set -o pipefail

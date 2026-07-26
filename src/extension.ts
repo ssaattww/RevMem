@@ -7,8 +7,7 @@ import {
 } from "./adapters/document-review-state/index";
 import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
-  LocalGitAdapter,
-  NodeGitCommandExecutor
+  createNodeLocalGitAdapter
 } from "./adapters/local-git/index";
 import {
   DebouncedReviewStateRepository,
@@ -214,7 +213,7 @@ export function activate(
     repository
   });
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
-    gitInspector: new LocalGitAdapter(new NodeGitCommandExecutor()),
+    gitInspector: createNodeLocalGitAdapter(),
     repository,
     workspaceProvider: workspaceSessionProvider,
     stableHash

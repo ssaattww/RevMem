@@ -1,147 +1,52 @@
-# VS Code レビュー範囲トラッカー 設計書 rev1
+# VS Code レビュー範囲トラッカー 設計書 rev4
 
 - 文書種別: 基本設計・機能設計
-- 対象: Visual Studio Code 拡張機能
-- 作成日: 2026-07-23
+- 対象: Visual Studio Code Workspace Extension
 - 仮称: Review Range Tracker
-- 状態: 仕様壁打ち反映版
+- 状態: 機能別統合版
 
 ## 1. 概要
 
-本拡張は、コードレビュー中にレビュワーが確認したソースコードの範囲を行単位で記録し、確認済み範囲をエディタ上でグレー表示する。
+本拡張は、コードレビュー中に確認したソースコードの範囲を行単位で記録し、現在も確認済みと確実に判断できる範囲をエディタ上でグレー表示する。
 
-GitHubなどの既存レビュー画面にはファイル単位の確認済み管理があるが、ファイル内の一部分について「すでに読んだ範囲」を記録する機能がない。長いファイルでは複数の関数や処理を飛び飛びに確認するため、どこまで確認したかをレビュワー自身が見失いやすい。
+提供する主要機能は次のとおり。
 
-本拡張は、次の状態管理を提供する。
+- PR、ブランチ、Gitなしワークスペースごとの確認済み範囲管理
+- 編集、commit、rename等による変更箇所だけの未確認化
+- 過去の確認をリポジトリ単位で保持するGlobal確認済み状態
+- PRの追加・削除行を基準にした確認進捗
+- リポジトリ全体のGlobal理解率
+- GitHub障害、オフライン、Git未導入、非Git環境でのフォールバック
+- original側とmodified側を扱うVS Code diff editor
 
-1. PRまたはブランチごとの確認済み範囲
-2. コード変更に追従し、変更部分だけを未確認へ戻す機能
-3. 過去の別PR・別ブランチで読んだコードを保持するGlobal確認済み状態
-4. PR変更行の確認進捗
-5. リポジトリ全体の理解率
-6. GitHubに接続できない場合、およびGitリポジトリでない場合のフォールバック動作
+初期版では、レビューコメント、Approve、複数レビュワー共有、関数・クラス単位解析、メモ、自動完了判定、未確認箇所への自動ジャンプを扱わない。
 
-## 2. 背景と課題
+## 2. 設計原則
 
-### 2.1 背景
+### 2.1 確実性優先
 
-レビュワーは長いコードを確認するとき、呼び出し元と呼び出し先を往復したり、複数ファイルを行き来したりする。レビューは必ずしも上から下へ直線的に進まない。
+確認済み表示は、確認時点から内容が変わっていないと確実に判断できる場合だけ適用する。判断が曖昧、追跡不能、取得失敗の場合は未確認とする。
 
-既存のファイル単位の確認済みチェックでは、次の情報を保持できない。
+### 2.2 デフォルト表示は二値
 
-- ファイル内のどこを確認したか
-- どの範囲が未確認か
-- 確認後に変更された範囲はどこか
-- 過去の別対応ですでに読んだコードか
-
-### 2.2 解決する課題
-
-本拡張は次の問題を解決する。
-
-- 同じ処理を重複して読み直す
-- 確認済みだと思っていた範囲に変更が入っても気づきにくい
-- PRの変更行がどこまで確認済みか定量化できない
-- 過去に理解したコードの蓄積が可視化されない
-
-### 2.3 解決しない課題
-
-初期版では次を対象外とする。
-
-- レビューコメントの投稿・管理
-- GitHub上のApprove、Request changes等のレビュー操作
-- 関数、クラス、シンボルを解析した確認操作
-- 複数レビュワー間での確認状態共有
-- 確認済み理由やメモの入力
-- 自動的なレビュー完了判定
-- 次または前の未確認変更へのジャンプ
-- バイナリファイルの内容レビュー管理
-
-## 3. 設計原則
-
-### 3.1 確実性優先
-
-確認済み表示は、現在のコードが確認時点のコードから変更されていないと確実に判断できる場合だけ適用する。
-
-判断が曖昧な場合は未確認として扱う。
-
-```text
-確証あり   -> 確認済み表示
-確証なし   -> 未確認表示
-追跡不能   -> 未確認表示
-```
-
-### 3.2 表示はデフォルトで二値
-
-デフォルトの視覚状態は次の2種類とする。
-
-| 状態 | 表示 |
+| 内部状態 | デフォルト表示 |
 |---|---|
 | 確認済みであることが確実 | グレー背景 |
-| 未確認、変更済み、追跡不能、判断が曖昧 | 通常背景 |
+| 未確認、変更済み、追跡不能、曖昧 | 通常背景 |
 
-内部状態は詳細に保持するが、デフォルトでは色を増やさない。
+内部状態は詳細に保持するが、既定では色を増やさない。変更済みや追跡不能への追加色は任意設定とする。
 
-ユーザー設定により、変更済みや追跡不能へ個別の色を割り当てることは許可する。
+### 2.3 言語非依存
 
-### 3.3 言語非依存
+確認操作は行範囲またはファイル全体を対象とし、AST、Language Server、関数、クラスには依存しない。
 
-確認操作は選択行またはファイル全体だけを対象とする。
+### 2.4 PR進捗とGlobal理解率を分離
 
-関数定義、クラス定義、構文木等には依存しない。これにより、言語ごとの解析実装を不要にする。
+PR進捗は対象PRの変更行だけを数える。Global理解率は現在のリポジトリに存在する対象非空行を数える。Global確認済みだけで現在PRの変更行を確認済みにはしない。
 
-### 3.4 PR進捗とGlobal理解率を混在させない
+## 3. 対象環境
 
-PR進捗は、そのPRの変更行だけを分母とする。
-
-Global理解率は、現在のリポジトリ全体のうち、現在も確認済みと判断できる非空行を分母・分子に用いる。
-
-過去のGlobal確認済み状態をPR進捗へ算入しない。
-
-## 4. 用語
-
-### 4.1 確認済み範囲
-
-ユーザーが確認済みとして登録した、連続する行範囲。
-
-### 4.2 レビューコンテキスト
-
-確認状態を分離する単位。次のいずれかである。
-
-- GitHub PRコンテキスト
-- Gitブランチコンテキスト
-- Gitなしワークスペースコンテキスト
-
-### 4.3 Global確認済み
-
-特定PRやブランチだけに閉じず、リポジトリ全体で「この内容を過去に確認した」と扱う現在有効な状態。
-
-Globalは「永久に確認済み」という意味ではない。コード変更によって対応範囲が変わった場合、その変更部分は未確認になる。
-
-### 4.4 hunk
-
-Git diffで表現される、連続した変更箇所のまとまり。
-
-例:
-
-```diff
-@@ -10,3 +10,4 @@
--old value
-+new value
-+added line
-```
-
-本拡張ではhunkを差分解析の内部単位として利用する。ユーザー操作の単位にはしない。
-
-### 4.5 original側 / modified側
-
-VS Codeのdiff editorにおける次の区分。
-
-- original側: 変更前。削除行を含む
-- modified側: 変更後。追加行と現在のコードを含む
-
-## 5. 対象環境
-
-### 5.1 必須対象
+必須対象:
 
 - VS Code Desktop
 - ローカルワークスペース
@@ -149,7 +54,7 @@ VS Codeのdiff editorにおける次の区分。
 - GitHub PR
 - VS Code diff editor
 
-### 5.2 対応対象
+対応対象:
 
 - Remote SSH
 - Dev Containers
@@ -158,237 +63,147 @@ VS Codeのdiff editorにおける次の区分。
 - Git管理されていないワークスペース
 - マルチルートワークスペース
 
-拡張はWorkspace Extensionとして動作し、Gitコマンドやファイル操作はワークスペース側のExtension Hostで実行する。
+拡張はWorkspace Extensionとして動作し、Gitコマンドとファイル操作は対象ワークスペース側のExtension Hostで実行する。
 
-## 6. 機能要件
+## 4. 共通データモデル
 
-## 6.1 選択範囲を確認済みにする
+### 4.1 行範囲
 
-ユーザーがエディタで範囲を選択し、コマンドを実行すると、選択範囲を確認済みにする。
+内部表現は0始まり半開区間とする。
 
-### 6.1.1 行単位への正規化
-
-選択が行途中から始まる場合でも、選択に含まれる行全体を対象にする。
-
-例:
-
-```text
-5行目の途中から8行目の途中を選択
--> 5〜8行目を確認済み
+```ts
+interface LineInterval {
+  startLine: number;
+  endLineExclusive: number;
+}
 ```
 
-空の選択、すなわちカーソルだけの場合は、カーソルが存在する1行を対象にする。
+範囲は常に正規化し、空範囲を保持せず、重複・隣接区間を結合する。
 
-複数カーソル・複数選択がある場合は、各選択を行範囲へ正規化した後、重複・隣接範囲を結合する。
+### 4.2 レビューコンテキスト
 
-## 6.2 選択範囲の確認済みを解除する
+確認状態を分離する単位は次のいずれかとする。
 
-選択範囲を現在のレビューコンテキストとGlobal確認済みの両方から解除する。
+- GitHub PRコンテキスト
+- Gitブランチコンテキスト
+- detached commitコンテキスト
+- Gitなしワークスペースコンテキスト
 
-解除により範囲が分断される場合は、残存範囲を分割する。
+### 4.3 original側 / modified側
 
-例:
+- original側: 変更前。削除行を含む
+- modified側: 変更後。追加行と現在内容を含む
 
-```text
-確認済み: 10〜30
-解除:     15〜20
+### 4.4 Global確認済み
 
-結果:
-10〜14
-21〜30
-```
+特定コンテキストに閉じず、リポジトリ全体で現在も有効と判断できる確認済み状態。内容変更時は変更部分だけ無効化する。
 
-通常の範囲解除では確認ダイアログを表示しない。
+## 5. 確認操作
 
-## 6.3 ファイル全体を確認済みにする
+### 5.1 選択範囲を確認済みにする
 
-現在のファイル全体を確認済みにする。
+選択開始・終了が行途中でも含まれる行全体を対象にする。空選択はカーソル行1行を対象にする。複数選択は行範囲へ変換後、重複・隣接を結合する。
+
+### 5.2 選択範囲を解除する
+
+現在コンテキストとGlobal確認済みの両方から解除する。部分解除で区間が分断される場合は残存区間を分割する。通常の範囲操作では確認ダイアログを表示しない。
+
+### 5.3 ファイル全体を確認済みにする
 
 実行前に確認ダイアログを表示する。
 
-通常エディタでは、現在のファイルに存在する全行を対象にする。
+通常エディタでは現在ファイルの全行を対象にする。diff editorではmodified側の全行とoriginal側だけに存在する削除行を同時に対象にする。
 
-diff editorでは、次を対象にする。
+### 5.4 ファイル全体を解除する
 
-- modified側の全行
-- original側にだけ存在する削除行
+実行前に確認ダイアログを表示する。現在コンテキスト、Global、original側の削除行に対する確認状態をすべて解除する。履歴は削除せず解除イベントを追加する。
 
-確認ダイアログ例:
+### 5.5 永続化との整合
 
-```text
-このファイルの全行を確認済みにします。
-削除された変更行も確認済みになります。
+確認操作は永続化成功後だけ成功表示する。contextとGlobalは1つのatomic transactionとして更新し、片側だけ成功した状態を許容しない。staleなexpected snapshotは拒否する。
 
-[確認済みにする] [キャンセル]
-```
+## 6. コンテキストと識別子
 
-## 6.4 ファイル全体の確認済みを解除する
-
-ファイルに対する現在のレビューコンテキストとGlobal確認済みをすべて解除する。
-
-diff editorの削除行に対する確認状態も解除する。
-
-実行前に確認ダイアログを表示する。
-
-確認ダイアログ例:
-
-```text
-このファイルのすべての確認済み状態を解除します。
-Global確認済み状態も解除されます。
-
-[すべて解除] [キャンセル]
-```
-
-履歴は削除せず、解除イベントを追記する。
-
-## 6.5 確認済み範囲の重複・隣接結合
-
-重複または隣接する確認済み範囲は自動結合する。
-
-```text
-10〜20を確認済み
-15〜30を確認済み
--> 10〜30
-```
-
-```text
-10〜20を確認済み
-21〜30を確認済み
--> 10〜30
-```
-
-## 6.6 コード変更時の無効化
-
-確認済み範囲に変更が発生した場合、変更部分だけを未確認へ戻す。
-
-変更されていない前後部分は確認済みを維持する。
-
-例:
-
-```text
-確認済み: 100〜120
-変更:     110〜115
-
-結果:
-100〜109 確認済み
-110〜115 未確認
-116〜120 確認済み
-```
-
-追加行は未確認として扱う。
-
-削除行は現在ファイルから消えるが、履歴とdiff editorのoriginal側レビュー対象には残り得る。
-
-## 6.7 PRコンテキスト
-
-GitHub PRを特定できる場合、確認状態をPR単位で保持する。
+### 6.1 GitHub PRコンテキスト
 
 識別子は次を基礎とする。
 
 ```text
-GitHubホスト
-+ owner
-+ repository
-+ PR番号
+GitHub host + owner + repository + PR number
 ```
 
-base SHAとhead SHAは識別子ではなく、そのPRコンテキストの現在リビジョンとして保持する。
+base SHAとhead SHAはコンテキスト識別子ではなく現在revisionとして保持する。PRへcommitが追加されても同じコンテキストを継続する。
 
-PRへコミットが追加されても、同じPRの確認状態を継続する。
-
-## 6.8 ブランチコンテキスト
-
-GitHub PRを利用できないがGitリポジトリである場合、ブランチ単位で状態を保持する。
-
-識別子は次を基礎とする。
+### 6.2 ブランチコンテキスト
 
 ```text
-Repository ID
-+ 完全なブランチ参照名
+Repository ID + full branch ref
 ```
 
-Detached HEADの場合は、明示的なコミットコンテキストを一時作成する。
+branch名は完全な`refs/heads/...`を使用する。detached HEADはcommit object IDを使う一時コンテキストとして扱う。
 
-## 6.9 Gitなしワークスペースコンテキスト
-
-Gitリポジトリでない場合も基本機能を提供する。
-
-識別子は次を基礎とする。
+### 6.3 Gitなしワークスペースコンテキスト
 
 ```text
-Workspace URIのハッシュ
-+ Workspace folder相対パス
+Workspace URI hash + workspace-folder-relative path
 ```
 
-Git diffの代わりに、本拡張が保存したスナップショットと現在内容の行差分を使用する。
+Git diffの代わりに保存済みsnapshotと現在内容の行差分を使用する。Global確認済みはそのワークスペース内だけで有効とする。
 
-GitなしのGlobal確認済みは、そのワークスペース内だけで有効とする。
+### 6.4 Repository ID
 
-workspace-side Extension Host adapterは、`WorkspaceIdentityInput`へ対象
-workspaceのfilesystem path semanticsを必ず渡す。これは拡張機能プロセスの
-実行OSではなく、workspace実体のfilesystemを表す。したがって、ローカルが
-Windows以外でもremote Windows workspaceには`windows`を指定する。
+remoteが存在する場合はcredentialを除去したcanonical remote identityを使う。remoteがない場合はcanonical repository root URIをSHA-256でhashする。forkはupstreamと別IDにする。
 
-`windows`ではworkspace URI、document URI、workspace相対パスのすべてで
-backslashをseparatorとして扱い、driveとcaseを正規化する。`posix`では
-backslashはファイル名の文字であり、`/C:/Repo`と`/c:/repo`を区別する。
-同じ指定を3つの入力に一貫して適用する。
+## 7. Filesystem path
 
-このサービスはfilesystem workspace fileだけを識別するため、workspace URIと
-document URIのqueryおよびfragmentは空でなければならない。adapterはsuffixを
-持つresourceを渡さない責務を持ち、サービスも非空値をrejectする。
+### 7.1 Workspace filesystem semantics
 
-## 6.10 Global確認済みへの自動反映
+path semanticsは拡張プロセスのOSではなく、対象workspace filesystemを表す値として明示する。
 
-PR、ブランチ、ワークスペースのいずれで確認操作を行った場合も、同じ範囲をGlobal確認済みへ自動反映する。
-
-```text
-PRで確認
--> PR確認状態を更新
--> Global確認済みを更新
--> 履歴を追加
+```ts
+type FileSystemPathSemantics = "posix" | "windows";
 ```
 
-```text
-確認済み解除
--> 現在コンテキストを解除
--> Global確認済みも解除
--> 履歴を追加
-```
+Remote Windows workspaceではローカルOSに関係なく`windows`を指定する。
 
-Global確認済みは参照カウント方式にしない。ユーザーが解除した範囲はGlobalからも解除する。
+### 7.2 Canonical repository-relative path
 
-## 6.11 複数PRの並列管理
+Git、GitHub、snapshot、仮想diff文書が共有するfile pathはrepository rootからのcanonical相対pathとする。
 
-現在のPR以外に、過去のクローズ済みPRをレビューコンテキストとして保持・表示できる。
+全filesystemで拒否するもの:
 
-サイドバーでは複数PRの進捗を並列に表示できる。
+- 空文字列
+- NUL
+- `/`で始まる絶対path
+- 空segment
+- `.`および`..` segment
+- root外へ抜けるpath
+- 不正なUTF-16 surrogate
 
-エディタ上へ重ねるレビューコンテキストはユーザーが選択する。
+入力を暗黙に正規化して別ファイルへ読み替えず、canonicalでない入力は境界で拒否する。
 
-デフォルトの有効レイヤーは次とする。
+### 7.3 POSIX semantics
 
-- 現在のPRまたは現在のブランチ
-- Global確認済み
+`/`とNUL以外をファイル名文字として保持する。backslash、tab、newline、その他のcontrol characterをseparatorへ変換しない。
 
-クローズ済みPRはデフォルトではエディタ表示レイヤーを無効とし、ユーザーが明示的に有効化する。
+### 7.4 Windows semantics
 
-クローズ済みPRのコードが現在の作業ツリーに存在しない場合は、そのPR専用のdiff editorで表示する。
+URI内部のseparatorは`/`とする。次を拒否する。
 
-## 6.12 diff editor対応
+- backslash
+- drive付きpath
+- control character
+- `< > : " | ? *`
+- trailing dotまたはspaceを持つsegment
+- `CON`、`PRN`、`AUX`、`NUL`
+- `COM1`〜`COM9`、`LPT1`〜`LPT9`
+- 上記予約デバイス名に拡張子を付けたsegment
 
-本拡張からPRまたはファイルを開くと、original側とmodified側を持つdiff editorを表示する。
+予約デバイス名は各segmentのbasenameをcase-insensitiveで判定する。`con.txt`、`src/COM1.log`も拒否する。POSIXでは同じ文字列を通常のファイル名として許可する。
 
-両側で次の操作を利用できる。
+## 8. Diff editorと仮想文書
 
-- 選択範囲を確認済みにする
-- 選択範囲を解除する
-- ファイル全体を確認済みにする
-- ファイル全体を解除する
-
-original側の削除行も、PR進捗の対象として確認済みにできる。
-
-内部では対象を次のように識別する。
+### 8.1 Diff review target
 
 ```ts
 interface DiffReviewTarget {
@@ -400,67 +215,190 @@ interface DiffReviewTarget {
 }
 ```
 
-拡張が生成する仮想ドキュメントURIには、コンテキスト、ファイル、side、revisionを復元可能な情報を含める。
+original側の削除行も確認・解除・進捗計算の対象にできる。
 
-## 6.13 PR進捗
+### 8.2 仮想文書descriptor
 
-PR進捗は、そのPRの追加行と削除行だけを分母とする。
-
-```text
-PR確認進捗
-= 確認済み変更行数 / PRの全変更行数
+```ts
+interface ReviewDiffDocumentDescriptor {
+  contextId: string;
+  filePath: string;
+  fileSystemPathSemantics: "posix" | "windows";
+  side: "original" | "modified";
+  revisionSource: "git-commit";
+  revision: string;
+}
 ```
 
-変更前1行を削除し、変更後1行を追加した置換は2行として数える。
+同じpathでもcontext、side、revision source、revisionが異なれば別文書とする。別contextや別revisionの内容を代用しない。
 
-未変更の周辺行を確認済みにしても、PR進捗には影響しない。
+### 8.3 Immutable revision
 
-Global確認済み状態はPR進捗へ算入しない。
+Git revisionはlowercaseのfull SHA-1またはfull SHA-256 commit object IDに限定する。`HEAD`、branch、tag、短縮ID、revision range、Git optionとなる文字列を受理しない。
 
-### 6.13.1 ファイル単位進捗
+moving refはURI生成前にcommit object IDへ解決する。同じURIが後から別内容を返すことを禁止する。snapshot等を追加する場合は別のrevision sourceとimmutable IDを定義する。
 
-各変更ファイルについて次を計算する。
+### 8.4 Canonical URI
 
 ```text
-ファイル確認進捗
-= そのファイルで確認済みの追加・削除行数
-  / そのファイルの追加・削除行数
+review-range-diff://document/v1/
+  <context-base64url>/
+  <path-semantics>/
+  <side>/
+  <revision-source>/
+  <revision-base64url>/
+  <file-path-base64url>
 ```
 
-### 6.13.2 未確認変更が残るファイル一覧
+可変文字列はUTF-8のcanonical base64urlとする。padding、再encode不一致、不正UTF-8、userinfo、password、port、query、fragment、未知version、未知segmentを拒否する。
 
-PR進捗ビューには、未確認変更が1行以上残るファイルを常時表示する。
+上限:
 
-表示情報:
+- URI全長: 65,536文字
+- Context ID: UTF-8で8,192 bytes
+- file path: UTF-8で32,768 bytes
+- Git revision: full SHA-1またはfull SHA-256
 
-- ファイルパス
-- 確認済み変更行数
-- 全変更行数
-- 進捗率
-- 追加行数
-- 削除行数
+### 8.5 VS Code境界
 
-ファイルを選択すると、そのPRのdiff editorを開く。
+- codec生成URIを`vscode.Uri.parse`できる
+- `uri.toString(true)`がcanonical URIと一致する
+- decode後のdescriptorが完全一致する
+- `TextDocumentContentProvider`は同じURIをapplication providerへ渡す
 
-「次の未確認行」へ自動移動は行わない。
+provider登録と`vscode.diff`実行はUI adapterが行う。
 
-### 6.13.3 確認完了ファイル
+## 9. Local Git content取得
 
-変更行をすべて確認したファイルは、別の折りたたみ可能なグループへ表示する。
+### 9.1 Runtime構成
 
-### 6.13.4 rename-onlyファイル
+metadata commandとblob commandは同一runtime optionsから構成する。
 
-内容変更のないファイル名変更は変更行数が0となるため、行進捗の分母には含めない。
+- `executable`: 全Git subprocessで同じ値
+- `timeoutMs`: 全Git subprocessで同じ値
+- `maxBufferBytes`: boundedなmetadata出力だけへ適用
 
-PRビューには「行以外の変更」として表示する。
+Node Extension Hostでは共通factoryからmetadata executorとblob readerを生成する。portable Git、絶対path指定、Remote、Container環境で、metadataだけ設定済みGitを使いblobだけPATH上の別Gitを使う状態を禁止する。
 
-### 6.13.5 バイナリファイル
+`LocalGitAdapter`を直接構築する場合は、`GitCommandExecutor`と`GitBlobReader`の両方を明示注入する。blob readerの暗黙既定値を持たせない。Node runtimeのproduction wiringは共通factoryだけを使用し、低水準classの直接構築はtestまたは代替runtime adapterに限定する。
 
-バイナリファイルは行進捗から除外し、「行単位レビュー対象外」と表示する。
+### 9.2 Commit確認
 
-### 6.13.6 進捗証拠の検証と集計契約
+```bash
+git rev-parse --verify --quiet <full-object-id>^{commit}
+```
 
-進捗 calculator は、任意の行番号配列やGlobal状態から推測せず、1つの比較を一体化した`PullRequestDiffSnapshot`と、その比較に一致するPR `ReviewContextState`だけを入力にする。
+- exit 0かつ出力IDが入力と一致: 利用可能
+- exit 1: `missing-revision`
+- その他: 診断情報を保持したGit failure
+
+exit 128を一律missingへ変換しない。
+
+### 9.3 Exact path確認
+
+```bash
+git ls-tree --full-tree -z <commit-id> -- :(literal)<repository-path>
+```
+
+- exit 0、出力なし: `missing-file`
+- exit 0、exact pathのblob 1件: blob object IDを使用
+- treeまたはsubmodule: `missing-file`
+- 複数件、path不一致、壊れた出力: adapter failure
+- 非0 exit: Git failure
+
+NUL終端で解析し、newlineを含むPOSIX pathを行分割しない。pathspecはliteral指定とする。
+
+### 9.4 Blob本文とencoding
+
+```bash
+git cat-file blob <blob-id>
+```
+
+stdoutをraw byte streamとして取得し、blob本文へ`execFile.maxBuffer`を適用しない。4 MiBを超える通常textも取得可能とする。
+
+complete byte sequenceを取得後、fatal UTF-8 decoderで1回だけdecodeする。不正UTF-8をreplacement characterへ変換せず`invalid-encoding`とし、行単位レビュー対象外にする。
+
+Git objectから再取得可能な本文には固定の4 MiB上限を設けない。巨大入力の追加制御は性能計測に基づいて定義する。
+
+### 9.5 Process failure contract
+
+metadata commandとblob commandのtimeoutは、いずれもinvocation、partial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。
+
+blob commandがtimeoutした場合は、まずSIGTERMを送信し、その後もstdoutとstderrの収集を継続する。通常経路ではprocessのclose eventを待ってからfailureを確定し、timeoutまでに得た出力と終了処理中の出力を同じdiagnosticへ含める。
+
+SIGTERM後もtermination grace内にclose eventが発生しない場合はSIGKILLへ段階的に移行する。`child.kill()`が`false`を返した場合は送信失敗をdiagnosticへ記録し、close eventを待ちながら次の段階へ進む。SIGKILL後もgrace内にclose eventがない場合だけ、streamを破棄してchildをunrefし、process lifecycleが完了しなかった事実を含むbounded failureを返す。SIGTERMを無視するprocess、signal送信失敗、実際の終了signalを区別して記録する。
+
+Git executableが起動できない場合だけ`GitExecutableNotFoundError`として区別する。通常の非0 exitはmetadata commandではresultとしてadapterへ返し、adapterがmissingとfatalを分類する。blob commandの非0 exitは直接`GitCommandFailedError`とする。
+
+## 10. 変更追従
+
+### 10.1 編集イベント
+
+複数変更は変更前座標を基準に後方から適用する。
+
+- 変更より前: 維持
+- 変更より後: 行数差だけshift
+- 変更と重なる範囲: 重なった部分を未確認化
+- 追加行: 未確認
+
+### 10.2 Git revision間
+
+```bash
+git diff --unified=0 --find-renames R_old R_new -- <path>
+```
+
+branch比較ではmerge-baseを使用する。hunk前後の未変更部分を維持し、変更部分だけ未確認へ戻す。
+
+### 10.3 Rename・move・delete
+
+一意なrenameとdirectory moveはfile identityを追従する。renameと同時に変更された行は未確認にする。
+
+コピー、分割、統合、複数候補は自動追従せず新規未確認とする。deleteは現在表示から除外するが、履歴とoriginal側review targetを保持できる。
+
+#### 10.3.1 File-state snapshotと入力検証
+
+ファイル遷移は、差分に関係しないfileも含む完全なfile-state snapshotを入力とし、完全なpost-transition snapshotを出力する。部分更新や途中状態は返さない。
+
+処理前後のsnapshotではschema、file ID、current path、previous paths、revision、更新日時、content hash、line count、確認済みintervalを検証する。file IDはsnapshot keyと一致し、current pathは空でなくsnapshot内で一意でなければならない。line countとintervalは有効な範囲に収まり、previous pathsは空でなく重複せずcurrent pathを含まない。content hashを持つ場合は空文字列を許可しない。違反があれば遷移全体をrejectする。
+
+Git diffはzero-context sectionとしてcanonicalに解析する。壊れたheader、重複・矛盾するstatus metadata、必須のsourceまたはdestination pathの欠落は、対象sectionだけを推測して継続せず、全遷移をatomicにrejectする。
+
+#### 10.3.2 遷移graphと識別子の保持
+
+rename、move、copy、add、deleteは変更前snapshotだけをsourceとして解決する。rename chain、path swap、sectionの並び順に依存する結果を許可しない。同一sourceに対するdeleteとrenameの併存、duplicate delete、同一destinationへの複数遷移を指定するdiffは矛盾としてatomicにrejectする。
+
+一意に解決できるrenameまたはdirectory moveはstableなfile IDを維持する。旧current pathをprevious pathsへ重複なく記録し、rename先が履歴にあればそこから除去する。このため`A -> B -> A`のように過去のpathへ戻るrenameも、current pathをprevious pathsへ重複させず正当な遷移として扱う。
+
+copy、add、および曖昧なdestinationはsourceの確認済み状態を継承しない新規未確認fileとする。deleteはcurrent snapshotからsourceを除去し、返却snapshotでは`files`と`deletedFileIds`へ同じfile IDを同時に含めない。
+
+#### 10.3.3 Renameと内容変更の証明
+
+renameと同時に内容が変わる場合は変更行を未確認に戻し、未変更部分だけを追従する。空白または改行の変更を無視する設定では、old/newの完全な本文がrevision、path、line count、および各diff hunkの行内容と一致する場合だけ同値性を認める。staleまたは無関係な全文、line countが一致しない全文、hunkを再現しない全文は証拠としてrejectし、確認済み状態を継承しない。
+
+### 10.4 Rebase・force-push
+
+1. 旧Git objectがあれば直接diff
+2. なければ保存snapshotとdiff
+3. renameと内容対応が一意なら追従
+4. 曖昧なら未確認
+
+SHAが変わっただけで全解除しない。
+
+### 10.5 空白・改行
+
+既定ではインデント、空白数、tab/space、CRLF/LF、末尾改行も変更として扱う。設定で明示した場合だけ該当差分を無視する。
+
+## 11. PR進捗とGlobal理解率
+
+### 11.1 PR進捗
+
+```text
+PR確認進捗 = 確認済み追加・削除行数 / 対象追加・削除行数
+```
+
+置換は削除1行と追加1行として数える。未変更周辺行とGlobal確認済みは算入しない。
+
+進捗calculatorは任意の行番号配列やGlobal状態から推測せず、1つの比較を一体化した`PullRequestDiffSnapshot`と、その比較に一致するPR `ReviewContextState`だけを入力にする。
 
 ```ts
 interface PullRequestDiffSnapshot {
@@ -470,315 +408,30 @@ interface PullRequestDiffSnapshot {
   readonly originalDiffId: string; // `${baseSha}..${headSha}`
   readonly files: readonly PullRequestFileChange[];
 }
-```
-
-`reviewContext.kind`は`"pull-request"`でなければならず、snapshotの`contextId`、`baseSha`、`headSha`はPR contextと一致しなければならない。`originalDiffId`は正確に`${baseSha}..${headSha}`とし、削除行の確認範囲はこのkeyの`originalReviewedByDiff`だけから読む。Global確認済み状態は入力・分子のいずれにも使用しない。
-
-snapshotはcompleteかつvalidatedでなければならない。nonbinary fileは除外判定より先に次を検証し、不完全・stale・曖昧な証拠は進捗を推測せずrejectする。
-
-- unified diff line kindは`context`、`addition`、`deletion`だけとし、該当するold/new座標は正のone-based値とする。各hunkのcursorはheaderの開始座標から進め、line種別、headerのcount、body、終端が一致しなければならない。
-- hunkは少なくとも1つの変更行を含む。zero-count anchor、hunk順序、old/new gap、累積deltaを検証し、addition/deletion座標の重複を拒否する。unique addition/deletion座標数はfileの`additions`/`deletions`統計と完全一致しなければならない。
-- `status`、old/new repository-relative path、hunk side、file ID、canonical display pathを検証する。file IDとcanonical pathはsnapshot内で一意とする。nonempty added/deleted fileは、先頭から全行を表す単一complete hunkでなければならない。
-- stateが存在するときはmap key、payload `fileId`、`revisionId === headSha`、canonical `currentPath`、`lineCount`、modified reviewed interval、modified-side hunk最大extentを照合する。state boundsまたはcontext/revision/pathが一致しない場合もrejectする。
-
-追加行はmodified側、削除行はoriginal側で集計する。one-based changed coordinate `coordinate`は、`coordinate - 1`でzero-based行indexへ変換し、`startLine <= coordinate - 1 < endLineExclusive`となるhalf-open `LineInterval`だけを対応範囲として照合する。
-
-```text
-reviewedLineCount =
-  count(modifiedReviewed ∩ addition newLine)
-  + count(originalReviewedByDiff[originalDiffId] ∩ deletion oldLine)
-
-totalLineCount = additions + deletions
-```
-
-除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。rename-only、binary、excluded fileを区別して表示し、file単位・PR全体とも分母が0の進捗率は100%とする。
-
-## 6.14 Global理解率
-
-Global理解率は、現在のリポジトリの対象ファイルに存在する非空行のうち、現在も確認済みと確実に判断できる行の割合とする。
-
-```text
-Global理解率
-= 現在有効なGlobal確認済み非空行数
-  / 集計対象ファイルの全非空行数
-```
-
-コメント行は分母へ含める。言語解析を行わないため、コメントと実コードを区別しない。
-
-PR進捗とは別セクションで表示する。
-
-ファイル単位の理解率も表示する。
-
-## 6.15 履歴
-
-履歴は保持するが、初期版では履歴閲覧UIを提供しない。
-
-履歴は追記型イベントとして保存する。
-
-対象イベント:
-
-```ts
-type ReviewHistoryEventType =
-  | "marked-reviewed"
-  | "unmarked-reviewed"
-  | "marked-file-reviewed"
-  | "unmarked-file-reviewed"
-  | "invalidated-by-edit"
-  | "remapped-by-diff"
-  | "file-renamed"
-  | "file-deleted"
-  | "context-created"
-  | "context-revision-changed"
-  | "mapping-unresolved";
-```
-
-最低限保存する情報:
-
-- イベントID
-- 発生日時
-- セッションID
-- Repository ID
-- Context ID
-- revision
-- ファイルパス
-- diff side
-- 変更前範囲
-- 変更後範囲
-- 理由
-
-現在状態は履歴から毎回再構築せず、別途現在状態を保存する。
-
-## 7. コンテキスト解決仕様
-
-## 7.1 解決優先順位
-
-レビューコンテキストは次の順に解決する。
-
-```text
-1. GitHub PR
-2. Gitブランチ
-3. Gitなしワークスペース
-```
-
-### 7.1.1 GitHub PR解決
-
-次の条件を満たす場合、GitHub PRコンテキストを候補とする。
-
-- Gitリポジトリである
-- GitHub remoteを識別できる
-- GitHub認証セッションを取得できる、または公開リポジトリのAPIを利用できる
-- 現在ブランチまたはHEADに対応するPRを取得できる
-
-対応するオープンPRが1件だけの場合は自動選択する。
-
-0件の場合はブランチコンテキストへフォールバックする。
-
-複数件の場合は自動決定せず、ユーザーへ選択を求める。選択されない場合はブランチコンテキストを使う。
-
-### 7.1.2 GitHub未接続
-
-GitHub認証がない、ネットワークに接続できない、APIが失敗した場合もローカルGit機能は継続する。
-
-GitHub接続失敗を理由に、確認済み操作を無効化しない。
-
-### 7.1.3 Git未導入または非Git
-
-Gitコマンドを利用できない場合は、スナップショット差分方式へ移行する。
-
-## 7.2 Repository ID
-
-GitリポジトリのRepository IDは、正規化したremote URLを第一候補とする。
-
-正規化例:
-
-```text
-git@github.com:owner/repo.git
-https://github.com/owner/repo.git
-https://github.com/owner/repo
-
--> github.com/owner/repo
-```
-
-remoteがない場合は、GitリポジトリルートのURIをハッシュ化して使用する。
-
-非Git workspaceのRepository IDは6.9のcanonical workspace URIをハッシュ化して
-生成する。canonicalizationにはExtension Hostが渡したfilesystem path semanticsを
-使用し、remote workspaceでもExtension Host自身の実filesystemに従う。したがって
-remote Windowsは`windows`、POSIX workspaceは`posix`として扱い、Extension Hostを
-実行するローカル環境から推測しない。
-
-forkはremoteが異なるため、原則として別Repository IDとする。
-
-## 8. 状態モデル
-
-## 8.1 内部レビュー状態
-
-```ts
-type InternalReviewState =
-  | "reviewed"
-  | "unreviewed"
-  | "changed"
-  | "deleted"
-  | "unresolved";
-```
-
-表示上は次のように畳み込む。
-
-```ts
-function toDefaultVisualState(state: InternalReviewState): "reviewed" | "normal" {
-  return state === "reviewed" ? "reviewed" : "normal";
-}
-```
-
-## 8.2 範囲モデル
-
-行番号は内部的に0始まり、終了行を含まない半開区間で保持する。
-
-```ts
-interface LineInterval {
-  startLine: number;
-  endLineExclusive: number;
-}
-```
-
-例:
-
-```text
-ユーザー表示: 10〜20行
-内部表現:     [9, 20)
-```
-
-半開区間により、隣接判定、長さ計算、差分適用を単純化する。
-
-## 8.3 ファイル状態
-
-```ts
-interface FileReviewState {
-  schemaVersion: number;
-  fileId: string;
-  currentPath: string;
-  previousPaths: string[];
-  revisionId: string;
-
-  modifiedReviewed: LineInterval[];
-  originalReviewedByDiff: Record<string, LineInterval[]>;
-
-  contentHash?: string;
-  lineCount: number;
-  updatedAt: string;
-}
-```
-
-`originalReviewedByDiff`のキーは、PR revisionまたは比較ペアIDとする。
-
-## 8.4 レビューコンテキスト
-
-```ts
-type ReviewContextKind = "pull-request" | "branch" | "workspace";
-
-interface ReviewContextState {
-  schemaVersion: number;
-  contextId: string;
-  kind: ReviewContextKind;
-  repositoryId: string;
-  displayName: string;
-
-  pullRequest?: {
-    host: string;
-    owner: string;
-    repository: string;
-    number: number;
-    state: "open" | "closed" | "merged";
-    title?: string;
-    baseSha: string;
-    headSha: string;
-    url?: string;
-  };
-
-  branch?: {
-    refName: string;
-    baseRevision?: string;
-    headRevision: string;
-  };
-
-  workspace?: {
-    workspaceId: string;
-    snapshotRevision: string;
-  };
-
-  files: Record<string, FileReviewState>;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-## 8.5 Global状態
-
-```ts
-interface RepositoryGlobalState {
-  schemaVersion: number;
-  repositoryId: string;
-  currentRevisionId: string;
-  files: Record<string, GlobalFileReviewState>;
-  updatedAt: string;
-}
-
-interface GlobalFileReviewState {
-  fileId: string;
-  currentPath: string;
-  revisionId: string;
-  reviewed: LineInterval[];
-  contentHash?: string;
-  updatedAt: string;
-}
-```
-
-Global状態は現在有効な範囲だけを保持する。過去状態は履歴へ残す。
-
-## 8.6 PR変更モデル
-
-```ts
-type PullRequestFileChangeStatus =
-  | "added"
-  | "modified"
-  | "deleted"
-  | "renamed"
-  | "copied"
-  | "binary";
 
 interface PullRequestFileChange {
-  fileId: string;
-  oldPath?: string;
-  newPath?: string;
-  status: PullRequestFileChangeStatus;
-  additions: number;
-  deletions: number;
-  hunks: DiffHunk[];
+  readonly fileId: string;
+  readonly oldPath?: string;
+  readonly newPath?: string;
+  readonly status: "added" | "modified" | "deleted" | "renamed" | "copied" | "binary";
+  readonly additions: number;
+  readonly deletions: number;
+  readonly hunks: readonly DiffHunk[];
 }
 
 interface DiffHunk {
-  oldStart: number;
-  oldCount: number;
-  newStart: number;
-  newCount: number;
-  lines: DiffLine[];
+  readonly oldStart: number;
+  readonly oldCount: number;
+  readonly newStart: number;
+  readonly newCount: number;
+  readonly lines: readonly DiffLine[];
 }
-
-type DiffLineKind = "context" | "addition" | "deletion";
 
 interface DiffLine {
-  kind: DiffLineKind;
-  oldLine?: number;
-  newLine?: number;
-  text: string;
-}
-
-interface PullRequestDiffSnapshot {
-  readonly contextId: string;
-  readonly baseSha: string;
-  readonly headSha: string;
-  readonly originalDiffId: string;
-  readonly files: readonly PullRequestFileChange[];
+  readonly kind: "context" | "addition" | "deletion";
+  readonly oldLine?: number;
+  readonly newLine?: number;
+  readonly text: string;
 }
 
 interface CalculatePullRequestDiffProgressInput {
@@ -810,217 +463,189 @@ interface PullRequestDiffProgress {
 }
 ```
 
-`DiffHunk`と`DiffLine`の座標はunified diffのone-based座標である。`LineInterval`は別にzero-based half-openであり、PR進捗は各changed coordinateを`coordinate - 1`へ変換して`startLine <= coordinate - 1 < endLineExclusive`を照合する。`calculatePullRequestDiffProgress`はこのinputから順序を維持したfile resultとaggregate resultを返し、検証不能なsnapshotまたはstateを受理しない。T302はこのidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、T402はrejectをpatch欠落・不完全時のfallback判断として再利用する。
+`reviewContext.kind`は`"pull-request"`でなければならず、snapshotの`contextId`、`baseSha`、`headSha`はPR contextと一致しなければならない。`originalDiffId`は正確に`${baseSha}..${headSha}`とし、削除行の確認範囲はこのkeyの`originalReviewedByDiff`だけから読む。Global確認済み状態は入力・分子のいずれにも使用しない。
 
-## 9. 差分追従アルゴリズム
+snapshotはcompleteかつvalidatedでなければならない。nonbinary fileは除外判定より先に、unified diff line kindとpositive one-based座標、hunk cursor/header/body/count/終端、zero-count anchor、hunk順序、old/new gap、累積delta、addition/deletion座標重複、統計、status/path/file ID/canonical display pathを検証する。file IDとcanonical pathはsnapshot内で一意とする。nonempty added/deleted fileは先頭から全行を表す単一complete hunkでなければならない。不完全、stale、曖昧な証拠は進捗を推測せずrejectする。
 
-## 9.1 基本方針
+stateが存在するときはmap key、payload `fileId`、`revisionId === headSha`、canonical `currentPath`、`lineCount`、modified reviewed interval、modified-side hunk最大extentを照合する。state boundsまたはcontext/revision/pathが一致しない場合もrejectする。
 
-追従は次の順に行う。
-
-```text
-1. エディタ編集中の変更イベントで、開いているファイルを即時追従
-2. Git revision変更時にGit diffで確定追従
-3. Git diffを取得できない場合は保存スナップショットとの差分
-4. rename情報でファイルパスを追従
-5. 一意に対応できない場合は未確認
-```
-
-## 9.2 エディタ編集中の追従
-
-`TextDocumentContentChangeEvent`相当の変更情報を使い、現在開いているファイルの範囲を更新する。
-
-各変更について次を行う。
-
-1. 変更位置より前の確認済み範囲は維持
-2. 変更位置より後の範囲は行数差分だけ移動
-3. 変更位置と重なる部分は未確認化
-4. 挿入行は未確認
-5. 変更後も残る前後部分は分割して維持
-
-複数変更は、元ドキュメント上の行番号が大きい順に適用する。
-
-変更後の範囲は即時表示へ反映し、短いデバウンス後に永続化する。
-
-確認操作直後はデバウンスせず、即時永続化する。
-
-## 9.3 Git revision間の追従
-
-確認状態が対応するrevisionを`R_old`、現在revisionを`R_new`とする。
-
-基本コマンド:
-
-```bash
-git diff --unified=0 --find-renames R_old R_new -- <path>
-```
-
-ブランチのレビュー対象差分を取得する場合はmerge-baseを使用する。
-
-```bash
-git diff --unified=0 --find-renames <merge-base> HEAD
-```
-
-### 9.3.1 hunkより前の範囲
-
-位置を維持する。
-
-### 9.3.2 hunkより後の範囲
-
-次の差だけ移動する。
+追加行はmodified側、削除行はoriginal側で集計する。one-based changed coordinate `coordinate`は`coordinate - 1`でzero-based行indexへ変換し、`startLine <= coordinate - 1 < endLineExclusive`となるhalf-open `LineInterval`だけを対応範囲として照合する。
 
 ```text
-lineDelta = newCount - oldCount
+reviewedLineCount =
+  count(modifiedReviewed ∩ addition newLine)
+  + count(originalReviewedByDiff[originalDiffId] ∩ deletion oldLine)
+
+totalLineCount = additions + deletions
 ```
 
-### 9.3.3 hunkと重なる範囲
+### 11.2 ファイル進捗
 
-旧hunk範囲と重なる確認済み部分を未確認化する。
+fileごとに確認済み変更行数、全変更行数、率、追加数、削除数を計算する。
 
-旧hunkより前と後に残る部分は維持し、後側は新行位置へ移動する。
+未確認変更が残るfile、完了file、除外file、rename-only、binary/encoding対象外を別グループで表示する。
 
-新hunk内の追加・変更行は未確認とする。
+除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。file単位・PR全体とも分母が0の進捗率は100%とする。仮想diff文書はidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、PR差分取得はrejectをpatch欠落・不完全時のfallback判断として再利用する。
 
-### 9.3.4 追加のみのhunk
-
-挿入された新行は未確認とし、後続確認済み範囲を追加行数分移動する。
-
-### 9.3.5 削除のみのhunk
-
-削除された範囲は現在ファイルのGlobal表示から除外する。
-
-PRコンテキストではoriginal側のレビュー対象として保持できる。
-
-後続確認済み範囲を削除行数分だけ前へ移動する。
-
-## 9.4 ファイルrename・移動
-
-Git diffのrename情報により旧パスと新パスを関連付ける。
-
-次は追従対象とする。
-
-- ファイル名変更
-- ディレクトリ移動
-- renameと同時に行変更
-
-renameと同時に変更された行は未確認に戻す。
-
-次は自動追従しない。
-
-- 1ファイルから複数ファイルへの分割
-- 複数ファイルから1ファイルへの統合
-- コピー
-- 同一内容が複数候補に存在する移動
-
-コピーは新規ファイルとして未確認から開始する。
-
-### 9.4.1 file-state snapshotと入力検証
-
-ファイル遷移は、差分に関係しないファイルも含む完全なfile-state snapshotを入力とし、
-完全なpost-transition snapshotを出力する。部分更新や途中状態は返さない。
-
-処理前後のsnapshotでは、schema、file ID、current path、previous paths、revision、更新日時、
-content hash、line count、確認済みintervalを検証する。file IDはsnapshotのkeyと一致し、
-current pathは空でなくsnapshot内で一意でなければならない。line countとintervalは有効な
-範囲に収まり、previous pathsは空でなく重複せずcurrent pathを含まない。content hashを持つ
-場合は空文字列を許可しない。違反があれば遷移全体を拒否する。
-
-Git diffはzero-context sectionとしてcanonicalに解析する。壊れたheader、重複・矛盾する
-status metadata、必須のsourceまたはdestination pathの欠落は、対象sectionだけを推測して
-継続せず、全遷移をatomicに拒否する。
-
-### 9.4.2 遷移graphと識別子の保持
-
-rename、move、copy、add、deleteは、変更前snapshotだけをsourceとして解決する。したがって
-rename chain、path swap、sectionの並び順に依存する結果を許可しない。同一sourceに対する
-deleteとrenameの併存、duplicate delete、同一destinationへ複数の遷移を指定するdiffは
-矛盾としてatomicに拒否する。
-
-一意に解決できるrenameまたはディレクトリmoveはstableなfile IDを維持する。旧current pathを
-previous pathsへ重複なく記録し、rename先が履歴にあればそこから除去する。このため
-`A -> B -> A`のように過去のpathへ戻るrenameも、current pathをprevious pathsへ重複させず
-正当な遷移として扱う。
-
-copy、add、および曖昧なdestinationは、sourceの確認済み状態を継承しない新規未確認fileとする。
-deleteはcurrent snapshotからsourceを除去する。返却snapshotでは`files`と`deletedFileIds`へ
-同じfile IDを同時に含めない。
-
-### 9.4.3 renameと内容変更の証明
-
-renameと同時に内容が変わる場合は、変更行を未確認に戻し、未変更部分だけを追従する。空白または
-改行の変更を無視する設定では、old/newの完全な本文がrevision、path、line count、および各diff
-hunkの行内容と一致する場合だけ同値性を認める。staleまたは無関係な全文、line countが一致しない
-全文、hunkを再現しない全文は証拠として拒否し、確認済み状態を継承しない。
-
-## 9.5 rebase・force-push
-
-旧revisionが現在履歴の祖先でない場合、次の順に追従する。
-
-1. 旧revisionのGit objectが存在すれば、旧revisionと新revisionを直接diff
-2. Git objectが存在しなければ、保存済みスナップショットと新内容をdiff
-3. renameと内容対応が一意なら追従
-4. 曖昧なら対象範囲を未確認化
-
-コミットSHAが変わっただけで、全範囲を無条件に解除しない。
-
-## 9.6 空白・改行変更
-
-デフォルトでは次も変更として扱う。
-
-- インデント変更
-- 空白数変更
-- タブとスペースの変更
-- CRLFとLFの変更
-- ファイル末尾改行の変更
-
-設定により無視を選択できるようにするが、デフォルトは無視しない。
-
-## 9.7 同一コードの複数候補
-
-内容ハッシュやテキスト検索だけで複数候補が見つかる場合、自動追従しない。
-
-確認済みのコピーを別位置に作成しても、そのコピーは未確認とする。
-
-## 9.8 Gitなしの追従
-
-ファイル確認時、または確認状態を永続化するときに基準スナップショットを保存する。
-
-次回読み込み時にMyers差分等の行差分アルゴリズムを使用して範囲を追従する。
-
-スナップショットが存在しない、破損している、または対応が曖昧な場合は未確認とする。
-
-## 10. 表示優先順位
-
-同じ行へ複数状態が重なる場合、次の順で評価する。
+### 11.3 Global理解率
 
 ```text
+Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非空行数
+```
+
+コメント行も非空なら対象とする。PR進捗とは別表示する。確認操作はGlobalへ自動反映し、解除操作は参照数に関係なくGlobalからも解除する。
+
+### 11.4 表示優先順位
+
 1. 現在PRの未確認変更
 2. 追跡不能または変更済み
 3. 現在コンテキストで確認済み
-4. 有効化された別PRコンテキストで確認済み
+4. 有効な別コンテキストで確認済み
 5. Global確認済み
 6. 未確認
+
+現在PRの変更行は、そのPRコンテキストで確認済みになった場合だけグレーにする。
+
+## 12. 集計対象外と設定glob
+
+常に対象外:
+
+- binary
+- valid UTF-8としてdecodeできないtext blob
+- `.git`配下
+- 本拡張が管理しない仮想document
+
+既定除外:
+
+- `node_modules`
+- `bin`、`obj`、`dist`、`build`
+- repository列挙時に`.gitignore`へ一致するfile
+
+`reviewRange.exclude`は有効配列全体を上書きする。空配列ではbinaryと`.git`以外を再包含できる。単一backslashはseparator、二重backslashはliteral backslashとし、canonical snapshotを再投入してもdecisionとreasonが変わらないようにする。
+
+設定変更後はPR進捗とGlobal理解率で同じ除外policyを再利用する。
+
+## 13. アーキテクチャ
+
+### 13.1 Layer dependency contract
+
+次の表はarchitecture validatorと同一の依存行列であり、source codeと設計の双方で維持する。
+
+<!-- architecture-layer-contract:start -->
+| `source layer` | allowed dependencies |
+|---|---|
+| `core` | `core` |
+| `application` | `core`, `application` |
+| `adapters` | `core`, `application`, `adapters` |
+| `ui` | `core`, `application`, `ui` |
+<!-- architecture-layer-contract:end -->
+
+UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。adapters層はapplication/core contractを実装する。
+
+### 13.2 Composition Root
+
+Composition Rootはlayer directoryの外側に置き、runtime object graphを構築する唯一の場所とする。
+
+```text
+Composition Root
+  -> Runtime Adapters
+  -> Application Services
+  -> UI Adapter
+
+UI Adapter
+  -> Application Services
+      -> Core domain
+
+Runtime Adapters
+  -> Application/Core contracts
 ```
 
-デフォルト二値表示では、1、2、6は通常背景、3、4、5はグレー候補となる。
+Composition RootはLocal Git、GitHub、snapshot、storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
 
-ただし、現在PRの変更行は、そのPRコンテキストで確認済みになった場合だけグレーにする。Global確認済みだけでは現在PR変更行をグレーにしない。
+### 13.3 主要コンポーネント
 
-これにより、過去に読んだ付近であっても、今回変更されたコードは必ず再確認対象となる。
+- UI Adapter: command、dialog、decoration、Tree View、Status Bar、diff表示
+- Review Context Resolver: repository、branch、PR、fallback context解決
+- Review State Service: interval、context/Global transaction、history request
+- Range Mapping Engine: edit/Git/snapshot差分追従
+- Progress Calculator: PR/file進捗、Global理解率
+- Local Git Adapter: repository metadata、diff、object、immutable content
+- GitHub Adapter: 認証、PR metadata、file、content
+- Snapshot Adapter: Gitなし・object欠落時のsnapshot差分
+- State Repository: atomic persistence、migration、routing
+- History Store: append-only event
 
-## 11. UI設計
+公開barrelはconsumer type fixtureで固定し、内部compileだけで公開contractを検証済みとしない。
 
-## 11.1 Activity Bar
+## 14. GitHub連携とオフライン
 
-Activity Barに「Review Range」コンテナを追加する。
+PR差分取得の優先順:
 
-初期版のビュー:
+1. local base/head objectによるGit diff
+2. GitHub PR files APIのpatch
+3. base/head file内容取得後のローカル差分
+
+認証tokenは永続化しない。未認証でもpublic repository APIを試す。rate limit、network、API障害時はlocal Gitまたはcacheへfallbackし、最後に成功した更新日時を表示する。
+
+closed PRもcontextとして保存できるが、既定ではeditor layerを無効とする。ユーザーが明示的に有効化した場合だけ表示する。
+
+## 15. 永続化と履歴
+
+### 15.1 保存先
+
+Git/PR状態は`globalStorageUri`、Gitなしworkspace状態は`storageUri`へ保存する。
+
+```text
+globalStorageUri/
+  repositories/<repository-id-hash>/
+    manifest.json
+    global-state.json
+    contexts/<context-id>.json
+    history/events-YYYY-MM.jsonl
+    snapshots/<content-hash>.json.gz
+    cache/github/
+    cache/diffs/
+    lock
+```
+
+### 15.2 Atomic write
+
+1. 一時fileへ書く
+2. flushする
+3. 既存fileと置換する
+
+複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
+
+### 15.3 Schema migration
+
+全保存modelに`schemaVersion`を持たせる。起動時に段階移行し、移行前backupを作成する。破損dataは隔離し、不確実な範囲を確認済みにしない。
+
+### 15.4 履歴
+
+履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。
+
+最低限保存する情報:
+
+- event ID、日時、session ID
+- repository/context/revision
+- file path、diff side
+- 変更前後のinterval
+- event typeとreason
+
+現在状態は履歴から毎回再構築せず、別途snapshotとして保存する。履歴は原則無期限保持する。
+
+## 16. UIと設定
+
+### 16.1 Activity Bar
+
+Activity Barへ「Review Range」containerを追加し、次のviewを表示する。
 
 1. Current Context
 2. PR Progress
 3. Global Understanding
 4. Review Contexts
 
-## 11.2 Current Contextビュー
+### 16.2 Current Context View
 
 表示項目:
 
@@ -1038,55 +663,47 @@ Activity Barに「Review Range」コンテナを追加する。
 - GitHub再接続
 - 現在状態の再計算
 
-## 11.3 PR Progressビュー
+PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
-表示例:
+### 16.3 PR Progress View
 
-```text
-PR #123  67%  40 / 60 lines
+分類:
 
-未確認変更が残るファイル
-  src/Parser.cs        12 / 20
-  src/Service.cs        8 / 15
-  tests/ParserTests.cs  5 / 10
+- 未確認変更が残るファイル
+- 確認完了したファイル
+- 除外されたファイル
+- 行以外の変更
+- 行単位レビュー対象外
 
-確認完了したファイル
-  src/Models.cs        15 / 15
+各fileへ次を表示する。
 
-行以外の変更
-  src/OldName.cs -> src/NewName.cs
+- ファイルパス
+- 確認済み変更行数
+- 全変更行数
+- 進捗率
+- 追加行数
+- 削除行数
+- 除外・対象外の場合は理由
 
-行単位レビュー対象外
-  assets/schema.bin
-```
+ファイルを選択すると、そのcontextのdiff editorを開く。「次の未確認行」へは自動移動しない。
 
-デフォルトの並び順:
+既定sort:
 
 1. 未確認行数の降順
 2. ファイルパス昇順
 
-切替候補:
+sort切替候補:
 
 - PR上の順序
 - パス順
 - 未確認行数順
 - 進捗率順
 
-## 11.4 Global Understandingビュー
+rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「行単位レビュー対象外」へ表示する。
 
-表示項目:
+### 16.4 Review Contexts View
 
-- リポジトリ全体の理解率
-- 確認済み非空行数
-- 対象非空行数
-- ファイルごとの理解率
-- 除外ファイル数
-
-PR Progressとは明確に別表示する。
-
-## 11.5 Review Contextsビュー
-
-表示項目:
+表示対象:
 
 - 現在のPR
 - 現在のブランチ
@@ -1094,325 +711,57 @@ PR Progressとは明確に別表示する。
 - 保存済みのクローズ済みPR
 - ワークスペースコンテキスト
 
-各コンテキストに対して次を操作できる。
+各contextの操作:
 
 - 進捗表示
 - diffを開く
-- エディタ表示レイヤーを有効・無効化
+- エディタ表示layerの有効・無効切り替え
 - ローカルキャッシュ更新
 - コンテキスト表示から削除
 
-コンテキスト表示から削除しても、履歴削除は別操作とする。
+コンテキスト表示から削除しても履歴を消さない。履歴削除は別操作とし、明示的な確認なしに実行しない。closed PRは既定でlayer無効とする。
 
-## 11.6 エディタ装飾
+### 16.5 Global Understanding View
 
-確認済み行へ背景装飾を適用する。
+表示項目:
 
-デフォルト:
+- リポジトリ全体の理解率
+- 確認済み非空行数
+- 対象非空行数
+- fileごとの理解率
+- 除外file数
 
-- ライトテーマ: 低彩度の半透明グレー
-- ダークテーマ: 低彩度の半透明グレー
-- Overview Ruler: デフォルト無効
-- ガターアイコン: デフォルト有効
+PR Progressとは別sectionで表示する。
 
-装飾はテーマ別設定を許可する。
+### 16.6 Editor decoration
 
-ホバー表示例:
+確認済み行はtheme対応の半透明グレー背景と任意のgutter iconで表示する。Overview Rulerは既定無効。hoverへcontext、確認日時、Global状態を表示する。
 
-```text
-確認済み
-Context: PR #123
-Reviewed at: 2026-07-23 09:30
-Global: active
-```
+visible editorだけを装飾対象とし、現在PRの未確認変更行はGlobalだけでグレーにしない。
 
-変更済みや追跡不能の内部情報は、デフォルト色を変えずにホバーまたはログで確認できる。
-
-## 11.7 Status Bar
-
-表示例:
+### 16.7 Status Bar
 
 ```text
 PR #123: 67% | Global: 42%
 ```
 
-PRコンテキストがない場合:
-
-```text
-branch/feature-x | Global: 42%
-```
-
-Gitなしの場合:
-
-```text
-Workspace review | Global: 18%
-```
-
-## 11.8 コマンド
-
-| Command ID | 表示名 | 確認ダイアログ |
-|---|---|---|
-| `reviewRange.markSelectionReviewed` | 選択範囲を確認済みにする | なし |
-| `reviewRange.unmarkSelectionReviewed` | 選択範囲の確認済みを解除する | なし |
-| `reviewRange.markFileReviewed` | ファイル全体を確認済みにする | あり |
-| `reviewRange.unmarkFileReviewed` | ファイル全体の確認済みを解除する | あり |
-| `reviewRange.openPullRequestDiff` | PRのdiffを開く | なし |
-| `reviewRange.refreshContext` | レビュー状態を再計算する | なし |
-| `reviewRange.selectContext` | レビューコンテキストを選択する | なし |
-| `reviewRange.toggleGlobalLayer` | Global表示を切り替える | なし |
-| `reviewRange.manageContextLayers` | 表示PRを選択する | なし |
-
-コマンドはCommand Paletteとエディタのコンテキストメニューへ登録する。
-
-## 12. アーキテクチャ
-
-```mermaid
-flowchart TB
-    UI[VS Code UI Adapter]
-    CMD[Command Service]
-    DEC[Decoration Service]
-    VIEW[Tree View / Progress Service]
-
-    CTX[Review Context Resolver]
-    CORE[Review State Service]
-    MAP[Range Mapping Engine]
-    PROG[Progress Calculator]
-
-    GIT[Local Git Adapter]
-    GH[GitHub Adapter]
-    SNAP[Snapshot Diff Adapter]
-    DOC[Document Change Tracker]
-
-    STORE[Review State Repository]
-    HIST[History Store]
-    CACHE[Snapshot / PR Cache]
-
-    UI --> CMD
-    UI --> DEC
-    UI --> VIEW
-
-    CMD --> CORE
-    DEC --> CORE
-    VIEW --> PROG
-    VIEW --> CTX
-
-    CTX --> GIT
-    CTX --> GH
-    CTX --> SNAP
-
-    DOC --> MAP
-    GIT --> MAP
-    SNAP --> MAP
-    GH --> MAP
-
-    MAP --> CORE
-    CORE --> STORE
-    CORE --> HIST
-    CORE --> CACHE
-    PROG --> STORE
-```
-
-## 12.1 UI Adapter
-
-責務:
-
-- VS Codeコマンド登録
-- エディタ選択範囲取得
-- 確認ダイアログ表示
-- diff editor表示
-- Tree View更新
-- Status Bar更新
-
-## 12.2 Review Context Resolver
-
-責務:
-
-- ワークスペース内のGitリポジトリ検出
-- Repository ID解決
-- 現在ブランチ・HEAD取得
-- GitHub PR候補取得
-- フォールバックコンテキスト生成
-
-## 12.3 Review State Service
-
-責務:
-
-- 範囲追加
-- 範囲解除
-- 重複・隣接結合
-- コンテキスト状態更新
-- Global状態更新
-- 履歴生成
-- 永続化要求
-
-範囲操作は、context descriptorの現在revision、context file、Globalのcurrent revision、既存Global fileがtarget revisionへmapped/currentである場合だけ受け付ける。これらのrevisionが不一致の場合、またはtarget content hashと既存file hashが両方存在して不一致の場合は、旧範囲を新revisionへ再ラベルせずrejectする。target content hashが未指定の場合は、旧hashをnext stateへ継承せず省略する。
-
-永続化要求は入力時点のcontext/Global完全snapshotをexpectedとして比較し、contextとGlobalの完全next stateを一つのatomic compare-and-replaceで置換する。ファイル全体の解除はmodified/current、Global、original側の確認済み状態をすべて空にする。original側を確認済みにする操作の入力contract拡張はT303の責務であり、T102では追加しない。
-
-## 12.4 Range Mapping Engine
-
-責務:
-
-- 編集イベントによる範囲変換
-- Git diffによる範囲変換
-- スナップショットdiffによる範囲変換
-- rename追従
-- 曖昧判定
-
-本コンポーネントはVS Code APIやGitHub APIに依存しない純粋ロジックとして実装する。
-
-## 12.5 Progress Calculator
-
-責務:
-
-- PR全体進捗
-- ファイル別PR進捗
-- 未確認変更ファイル抽出
-- Global理解率
-- ファイル別Global理解率
-
-## 12.6 GitHub Adapter
-
-責務:
-
-- GitHub認証セッション取得
-- PR情報取得
-- PRファイル一覧取得
-- base/head SHA取得
-- クローズ済みPR取得
-- 必要なファイル内容またはblob取得
-
-認証トークンは本拡張の永続ストレージへ保存しない。
-
-## 12.7 Local Git Adapter
-
-責務:
-
-- Git利用可否判定
-- リポジトリルート検出
-- remote取得
-- branch・HEAD取得
-- merge-base取得
-- diff取得
-- rename検出
-- Git object存在判定
-- 指定revisionのファイル内容取得
-
-Gitコマンド実行は引数配列で行い、シェル文字列連結を使用しない。
-
-## 12.8 Snapshot Diff Adapter
-
-責務:
-
-- Gitなし時のスナップショット作成
-- Git object欠落時の補助スナップショット利用
-- 行差分計算
-- 圧縮・復元
-- 保存期限管理
-
-## 13. GitHub PRデータ取得
-
-## 13.1 基本経路
-
-PRメタデータはGitHub APIから取得する。
-
-変更行の内容は次の優先順で取得する。
-
-1. base/head commitがローカルGitに存在する場合、ローカル`git diff`
-2. GitHubのPR files APIが返すpatch
-3. patchが欠落または不完全な場合、base/headのファイル内容を取得してローカル差分計算
-
-APIだけを唯一の差分ソースにはしない。
-
-## 13.2 オフライン動作
-
-取得済みPRはローカルキャッシュから表示する。
-
-GitHubへ接続できなくても、ローカルにbase/head objectが存在すればPR差分と進捗を更新する。
-
-新しいPR情報を取得できない場合は、UIに最終更新日時を表示する。
-
-## 14. 永続化設計
-
-## 14.1 保存先
-
-GitリポジトリおよびGitHub PRの状態は、`ExtensionContext.globalStorageUri`配下へ保存する。
-
-Gitなしワークスペース固有の状態は、`ExtensionContext.storageUri`配下へ保存する。
-
-小さいインデックス情報やUI選択状態は`globalState`または`workspaceState`へ保存する。
-
-大きな状態、履歴、スナップショットはファイルとして保存する。
-
-## 14.2 ディレクトリ構成
-
-```text
-globalStorageUri/
-  repositories/
-    <repository-id-hash>/
-      manifest.json
-      global-state.json
-      contexts/
-        <context-id>.json
-      history/
-        events-YYYY-MM.jsonl
-      snapshots/
-        <content-hash>.json.gz
-      cache/
-        github/
-        diffs/
-      lock
-```
-
-Gitなしの場合:
-
-```text
-storageUri/
-  workspace-state.json
-  history/
-  snapshots/
-  lock
-```
-
-## 14.3 書き込み方式
-
-現在状態は次の手順でアトミックに更新する。
-
-1. 一時ファイルへ書き込む
-2. flushする
-3. 既存ファイルと置換する
-
-履歴はJSON Lines形式で追記する。
-
-同一リポジトリを複数VS Codeウィンドウで開いた場合に備え、排他ロックを行う。
-
-ロックは排他的ファイル作成と期限切れ判定を使用する。
-
-## 14.4 スキーマ移行
-
-全保存モデルに`schemaVersion`を持たせる。
-
-拡張起動時に、旧スキーマから新スキーマへ段階的に移行する。
-
-移行前にはバックアップを作成する。
-
-## 14.5 保存量管理
-
-現在状態と有効な確認証跡は保持する。
-
-中間スナップショットと古いキャッシュは整理対象とする。
-
-デフォルト方針:
-
-- 履歴: 無期限保持
-- Gitで再取得可能なファイル全文: 原則保存しない
-- Gitなしスナップショット: 現在状態の追従に必要な世代を保持
-- GitHub APIキャッシュ: 期限付き
-- 大容量スナップショット: 上限超過時に保存せず、そのファイルは再起動後に未確認へ倒す
-
-## 15. 設定
-
-初期設定案:
+PRがない場合はbranchまたはworkspace contextを表示する。
+
+### 16.8 Commands
+
+- 選択範囲を確認済みにする
+- 選択範囲を解除する
+- ファイル全体を確認済みにする
+- ファイル全体を解除する
+- PR/fileのdiffを開く
+- contextをrefreshする
+- contextを選択する
+- Global layerを切り替える
+- 表示context layerを管理する
+
+commandはCommand Paletteと適切なeditor context menuへ登録する。
+
+### 16.9 主な設定
 
 ```json
 {
@@ -1431,379 +780,143 @@ storageUri/
   ],
   "reviewRange.maxSnapshotFileSizeBytes": 5242880,
   "reviewRange.historyRetentionDays": 0,
-  "reviewRange.closedPullRequestLayerDefault": false,
-  "reviewRange.decorations.changed.enabled": false,
-  "reviewRange.decorations.unresolved.enabled": false
+  "reviewRange.closedPullRequestLayerDefault": false
 }
 ```
 
 `historyRetentionDays = 0`は無期限保持を表す。
 
-`reviewRange.exclude`はVS Codeの配列設定として有効値全体を上書きする。manifestの
-defaultは`.git`、`node_modules`、`bin`、`obj`、`dist`、`build`を対象外にするが、
-workspaceまたはユーザー設定で既定patternを削除するか空配列にすれば、`.git`以外は
-再び集計対象に含められる。追加したpatternは既定patternと同じ順序で評価する。
+## 17. エラー処理
 
-policy/serviceのoptionsで`userGlobs`を省略した場合もmanifest defaultを使用する。
-`userGlobs: []`を明示した場合だけ、binaryと`.git`以外を再包含する。設定から受け取る
-raw globでは単一backslashがseparator、二重backslashがliteral backslashを表す。getter、
-change event、除外reasonが返すcanonical snapshotではliteral backslashを二重backslashで
-表現するため、その配列をoptionsまたは次の設定更新へ再投入してもdecisionとreasonは変わらない。
+### 17.1 基本方針
 
-globの単一backslashは従来互換のseparatorであり`/`へ正規化する。literal backslashを
-表すには二重backslashを使う。たとえば`settings.json`では`"a\\\\b.ts"`はPOSIXの
-literal path `a\b.ts`だけに一致し、`a/b.ts`には一致しない。raw入力のpattern数、長さ、
-brace depth、brace展開数、RegExp数の上限はこのescape構文でも必ず適用する。
+障害によって誤った確認済み表示を行わない。直前の確実な状態を古い状態として維持するか、不確実な範囲を未確認へ戻す。
 
-色は`configurationDefaults`またはテーマ対応可能な設定として提供する。
+### 17.2 Revision contentのstable code
 
-## 16. 集計対象外
+| code | 条件 |
+|---|---|
+| `missing-context` | contextからrepository rootを解決できない |
+| `missing-revision` | immutable commitがない、またはcommitでない |
+| `missing-file` | commitはあるがexact pathのblobがない |
+| `invalid-encoding` | blobがvalid UTF-8でない |
 
-### 16.1 常に対象外
+権限、repository破損、safe.directory、timeout、I/O、実行file欠落はstable codeへ畳み込まない。invocation、exit code、stdout、stderrまたはprocess errorを保持する。
 
-- バイナリファイル
-- `.git`配下
-- VS Code内部仮想ドキュメントのうち、本拡張が管理しないもの
+### 17.3 その他
 
-この境界は設定で再包含できない。`.git`は常時除外でも、理由表示では既知の
-default globとして保持する。
+- Git未導入: snapshot方式またはGit機能利用不能を明示
+- diff parse失敗: 対象fileを未確認
+- rename曖昧: 旧履歴を保持し新fileは未確認
+- GitHub認証失敗: branch contextへfallback
+- rate limit: cache利用
+- 保存失敗: 成功表示せず再試行
 
-### 16.2 デフォルト対象外
+## 18. セキュリティとプライバシー
 
-- `.gitignore`に一致するファイル（T503のrepository列挙が判断する。T300のglob compilerは
-  `.gitignore`を解釈しない）
-- `node_modules`などの依存ライブラリ
-- `bin`、`obj`、`dist`、`build`などのビルド成果物・一般的な生成出力ディレクトリ
+- GitHub tokenをfileへ保存しない
+- ソース本文とsnapshotを外部serviceへ送信しない
+- snapshotはlocal extension storageへ保存する
+- shell command文字列を構築しない
+- logへtokenとsource本文を出さない
+- private repositoryのpathやPR titleを診断logで抑止可能にする
 
-`.gitignore`一致fileはT503が別の除外sourceとして扱う。残りは`reviewRange.exclude`の
-manifest defaultであり、常時除外ではない。effective配列に残る既知patternは
-`default-glob`理由、設定で追加したpatternは`user-glob`理由を返す。blank、duplicate、
-同値のseparator表記を除いたnormalized policy snapshotが同じ設定変更では、再計算通知を
-行わない。
+## 19. パフォーマンス
 
-### 16.3 ユーザー指定除外
+目標:
 
-glob設定により、生成コード、ロックファイル、minify済みファイル等を除外できる。
-
-除外設定変更後はGlobal理解率を再計算する。
-
-PR進捗では、GitHub/Git上の変更ファイルを基準とするが、ユーザー除外対象は「除外」と明示し、分母から除く。
-
-## 17. 状態更新タイミング
-
-## 17.1 即時更新
-
-- 選択範囲の確認
-- 選択範囲の解除
-- ファイル全体確認
-- ファイル全体解除
-- 開いているファイルの編集
-
-## 17.2 Git状態更新時
-
-- commit
-- checkout
-- branch変更
-- pull
-- merge
-- rebase
-- reset
-- GitHub PR head更新
-- ファイルrename・delete
-
-HEAD監視はVS Codeのファイル監視と定期的な軽量確認を組み合わせる。
-
-## 17.3 遅延・遅延読み込み
-
-- リポジトリ全体のGlobal理解率はバックグラウンドで段階計算する
-- 開いているファイルを優先する
-- PRファイル一覧はTree View展開時まで詳細diff解析を遅延できる
-- 装飾はvisible editorだけに適用する
-
-## 18. エラー処理
-
-## 18.1 基本方針
-
-エラーによって確認済みと誤表示することを避ける。
-
-処理失敗時は次のどちらかとする。
-
-- 直前の確実な状態を維持し、古い可能性を通知する
-- 対応範囲を未確認へ戻す
-
-どちらを選ぶかは、状態の確実性によって決める。
-
-## 18.2 Gitエラー
-
-- Git未導入: スナップショット方式
-- revision不明: スナップショット方式または未確認
-- diff parse失敗: 対象ファイルを未確認
-- rename曖昧: 旧ファイル履歴を保持し、新ファイルは未確認
-
-## 18.3 GitHubエラー
-
-- 認証失敗: ブランチコンテキストへフォールバック
-- API rate limit: キャッシュ利用
-- ネットワーク失敗: ローカルGitを利用
-- PR patch欠落: ファイル内容を取得して差分計算
-- 全経路失敗: 取得済み状態を古い状態として表示し、進捗更新を停止
-
-## 18.4 保存エラー
-
-確認操作をメモリ上だけ成功扱いにしない。
-
-永続化に失敗した場合はエラーを表示し、再試行を行う。
-
-再試行に失敗した場合は、そのセッションでの一時状態であることを明示する。
-
-## 19. セキュリティとプライバシー
-
-- GitHubトークンは本拡張がファイルへ保存しない
-- VS Codeの認証APIからセッションを取得する
-- ソースコードとスナップショットを外部サービスへ送信しない
-- GitHub APIへ送信するのはGitHub連携に必要なリポジトリ・PR要求だけとする
-- スナップショットはローカル拡張ストレージへ保存する
-- ログには認証情報とソース本文を出力しない
-- private repositoryのパス、PRタイトル等を診断ログへ出す場合は設定で抑止可能にする
-
-## 20. パフォーマンス要件
-
-初期目標:
-
-- 選択範囲確認後の装飾反映: 100ms以内を目標
-- 1ファイルの編集追従: 通常サイズで入力体感を阻害しない
-- visible editor以外の装飾計算を行わない
-- 1万変更行規模のPRでもTree Viewを段階表示する
-- リポジトリ全体理解率の計算でExtension Hostを長時間占有しない
+- 確認操作後のdecoration反映: 100ms以内を目標
+- 通常fileの編集追従で入力を阻害しない
+- visible editorだけを装飾計算
+- 1万変更行規模でもTree Viewを段階表示
+- repository集計でExtension Hostを長時間占有しない
 
 対策:
 
-- Intervalの正規化済み配列を使用
-- 二分探索で対象範囲を検索
-- 差分適用をファイル単位で行う
-- 進捗値をキャッシュする
-- 大規模計算をチャンク分割する
-- GitHub APIとファイル内容をキャッシュする
+- normalized interval配列と二分探索
+- file単位差分適用
+- 進捗cache
+- 大規模処理のchunk分割
+- GitHub metadata・diff cache
+- open file優先処理
 
-## 21. テスト方針
+## 20. テスト方針
 
-## 21.1 単体テスト
+### 20.1 Unit
 
-### Interval操作
+- interval追加、結合、解除、境界
+- edit/Git diff mapping、複数hunk、CRLF/LF、空白設定
+- rename、copy、分割、曖昧候補
+- PR/file進捗、Global混入防止、除外
+- 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
+- POSIX特殊path、Windows禁止path・予約デバイス名
+- missingとfatal failureの分離
+- metadata/blob timeout error contract
+- public barrel consumer contract
+- architecture validatorと設計依存行列の一致
+- Current Context、PR Progress、Review Contextsの既決UI要件
+- Architecture positive/negative gateをCIで実行し、設計contract testを通常unitとfocused suiteの両方で実行すること
+- 設計仕様が単一の機能別文書に統合され、task identifierを含まないこと
 
-- 範囲追加
-- 重複結合
-- 隣接結合
-- 部分解除
-- 全解除
-- 0行ファイル
-- 最終行選択
+### 20.2 Integration
 
-### 差分追従
+- temporary Git repositoryでbase/head、commit、rename、rebase、branch切替
+- immutable revisionのoriginal/modified content
+- PATHに存在しないportable Git絶対pathをmetadata・blob双方で利用
+- POSIX特殊filename
+- 4 MiB直下・直上blob
+- invalid UTF-8 blob
+- Gitなしfolderと複数repository
 
-- 変更より前
-- 変更より後
-- 一部重複
-- 全体重複
-- 挿入
-- 削除
-- 置換
-- 複数hunk
-- 連続commit
-- CRLF/LF
-- 空白のみ変更
+### 20.3 VS Code Extension Host
 
-### rename
+- 通常editor decorationとcommands
+- diff editor両side
+- dialog、Tree View、Status Bar
+- restart後の復元
+- actual `vscode.Uri`のparse・serialize・decode
+- `TextDocumentContentProvider`のdelegation
 
-- 100% rename
-- renameと一部変更
-- コピー
-- 分割相当
-- 複数候補
+### 20.4 Failure
 
-### 進捗
+- Git command/process failure
+- GitHub 401/403/404/429、network断、patch欠落
+- storage容量不足、JSON/snapshot破損、途中終了
+- stale lock、複数window競合
 
-- 追加だけ
-- 削除だけ
-- 置換
-- 未変更周辺行の確認
-- Global確認済みがPR進捗へ入らないこと
-- binaryとrename-only
+CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
 
-## 21.2 統合テスト
+## 21. 受け入れ条件
 
-- 一時Gitリポジトリを作成
-- PR相当のbase/headを作成
-- 確認範囲登録
-- commit追加
-- rebase
-- rename
-- force-push相当の履歴変更
-- branch切替
-- 複数リポジトリ
-- Gitなしフォルダ
+1. 選択行とファイル全体を確認・解除できる
+2. 確認済み行をグレー表示できる
+3. 重複・隣接結合と部分解除分割が正しい
+4. 編集・commit後に変更部分だけ未確認へ戻る
+5. 一意なrenameを追従し、曖昧なcopy・移動を継承しない
+6. PR、branch、workspaceで状態を分離できる
+7. original側とmodified側で確認操作できる
+8. 削除行をPR進捗へ含められる
+9. PR進捗が対象追加・削除行だけを数える
+10. 未確認file一覧と完了・除外・対象外分類を表示できる
+11. Global理解率をPR進捗と別表示できる
+12. 確認・解除がGlobalへ一貫して反映される
+13. closed PRを並列管理できる
+14. restart後に状態を復元できる
+15. GitHub障害・Gitなし環境でも確実性を損なわず動作できる
+16. 仮想URIからcontext、file、filesystem semantics、side、immutable revisionを復元できる
+17. Local Git metadataとblobが同じruntime executable・timeoutを使用する
+18. 大容量blobや不正encodingを誤表示しない
+19. エラー時に不確実な範囲を確認済み表示しない
+20. 恒久設計が本ファイル1つに機能別で整理されている
 
-## 21.3 VS Code Extension Hostテスト
+## 22. 将来検討
 
-- 通常エディタの装飾
-- diff editor両側の選択
-- コンテキストメニュー
-- ファイル全体操作の確認ダイアログ
-- Tree View更新
-- Status Bar更新
-- 再起動後の復元
-- 複数ウィンドウの保存競合
-
-## 21.4 障害系テスト
-
-- Gitコマンド失敗
-- GitHub 401/403/404/429
-- APIレスポンスのpatch欠落
-- 保存容量不足
-- JSON破損
-- スナップショット破損
-- 途中終了
-- stale lock
-
-## 22. 受け入れ条件
-
-初期版の完了条件を次とする。
-
-1. 任意の選択行を確認済みにできる
-2. 確認済み行がグレー表示される
-3. 選択行の確認済みを解除できる
-4. 重複・隣接範囲が結合される
-5. 一部解除で範囲が分割される
-6. ファイル全体確認・解除で確認ダイアログが出る
-7. Git commit追加後、未変更行は確認済みを維持する
-8. 変更行だけ未確認に戻る
-9. rename後も未変更部分が追従する
-10. 曖昧な移動・コピーを確認済みにしない
-11. GitHub PR単位で確認状態を分離できる
-12. GitHubなしでブランチ単位に動作する
-13. Gitなしでワークスペース単位に動作する
-14. diff editorのoriginal側とmodified側で確認操作できる
-15. 削除行をPR進捗へ含められる
-16. PR進捗が追加・削除行だけを分母にする
-17. 未確認変更が残るファイル一覧を表示できる
-18. Global理解率をPR進捗と別表示できる
-19. PRで確認した範囲がGlobalへ反映される
-20. 解除操作がGlobalにも反映される
-21. クローズ済みPRを並列管理できる
-22. 履歴が保存されるが、履歴UIは存在しない
-23. 再起動後に状態を復元できる
-24. エラー時に不確実な範囲を確認済み表示しない
-
-## 23. 初期版で実装しない機能
-
-- 関数・クラス単位の確認
-- Language ServerやASTとの統合
-- メモ
-- 確認理由
-- レビュワー名
-- チーム共有
-- GitHubレビューコメント
-- Approve連携
-- 次・前の未確認変更へ移動
-- 自動完了判定
+- 確認範囲へのメモと確認理由
+- チーム共有と確認者情報
 - 履歴閲覧UI
-- コピーされたコードの自動確認済み継承
-- クラウド経由のGlobal状態同期
+- GitHub Checks、GitHub App、外部同期
+- 関数・クラス単位操作を生成する言語解析補助層
+- UTF-16、Shift-JIS等の追加encoding policy
+- cloud経由のGlobal状態同期
 
-## 24. 将来検討
-
-### 24.1 メモ
-
-確認済み範囲へ短いメモを付与する。
-
-例:
-
-- 入力検証を確認
-- 例外経路を確認
-- 呼び出し元と整合
-
-初期版では実装しない。
-
-### 24.2 誰が確認したか
-
-チーム共有を導入する場合、確認者ID、確認日時、共有範囲を記録する。
-
-初期版では個人ローカル状態だけを扱う。
-
-### 24.3 履歴UI
-
-次を可視化する。
-
-- いつ確認したか
-- どのcommitで確認したか
-- どの変更で未確認へ戻ったか
-- 範囲がどのように移動したか
-
-### 24.4 外部保存・同期
-
-GitHub Checks、GitHub App、専用サーバー等によるチーム共有を検討する。
-
-ソースコード断片を外部へ保存しない方式を優先する。
-
-### 24.5 言語解析
-
-ユーザー需要が確認できた場合のみ、関数単位操作を別機能として追加する。
-
-コアの行単位モデルは維持し、言語解析は選択範囲を生成する補助層に限定する。
-
-## 25. 実装フェーズ案
-
-### Phase 1: ローカル行範囲管理
-
-- 通常エディタ
-- 選択範囲確認・解除
-- ファイル全体確認・解除
-- 装飾
-- Interval操作
-- ワークスペース永続化
-
-### Phase 2: 編集・Git diff追従
-
-- 編集イベント追従
-- commit間diff
-- rename
-- branchコンテキスト
-- 履歴
-
-### Phase 3: diff editorとPR進捗
-
-- 仮想ドキュメント
-- original/modified両側
-- 追加・削除行進捗
-- 未確認ファイル一覧
-
-### Phase 4: GitHub PR連携
-
-- GitHub認証
-- PR検出
-- open/closed PR取得
-- PRキャッシュ
-- 複数PR並列管理
-
-### Phase 5: Global理解率
-
-- Global状態
-- リポジトリ全体集計
-- 除外設定
-- パフォーマンス最適化
-
-### Phase 6: Gitなし・堅牢化
-
-- スナップショットdiff
-- rebase/force-push
-- ストレージ整理
-- 複数ウィンドウ排他
-- 障害系対応
-
-## 26. 参考資料
-
-- [Visual Studio Code Extension API](https://code.visualstudio.com/api/references/vscode-api)
-- [Visual Studio Code Extension Common Capabilities](https://code.visualstudio.com/api/extension-capabilities/common-capabilities)
-- [Git diff documentation](https://git-scm.com/docs/git-diff)
-- [Git diff format](https://git-scm.com/docs/diff-format)
-- [GitHub REST API endpoints for pull requests](https://docs.github.com/en/rest/pulls)
+コアの行単位モデルと確実性優先の原則は維持する。

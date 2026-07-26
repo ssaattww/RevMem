@@ -4,12 +4,12 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
-- 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する。環境・scaffold-onlyタスクはテスト適用可否と後続test harnessの担当範囲を明示する
+- 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
 - 確実性原則: 対応関係を一意に証明できない範囲は確認済みにしない
-- 初期版対象外: 設計書23章の機能は本計画に含めない
+- 恒久設計: task名やPR経緯を設計本文へ入れず、単一の設計書へ機能別に統合する
 
 ## 規模の目安
 
@@ -19,57 +19,55 @@
 | M | 2〜3日 | 複数モジュールまたは1種類の統合試験を含む変更 |
 | L | 4〜5日 | 外部API、Extension Host、永続化などの境界をまたぐ変更 |
 
-見積もりは実装着手前に再確認し、Lを超える見込みになった場合は`task-breakdown-planner`で再分解する。
+Lを超える見込みになった場合は再分解する。
 
 ## フェーズ一覧
 
 | Phase | 状態 | マイルストーン | タスク | 依存Phase | 終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| P0 | 完了 | 開発基盤 | T001〜T003 | なし | 拡張機能をビルドでき、単体・統合・Extension Hostテストの最小経路がローカルとCIで動く |
-| P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常エディタで確認・解除・装飾・再起動復元が動き、T104の最終レビュー修正を含む状態でT105〜T107の回帰がなく、main更新ごとのVSIX prereleaseとして配布・導入でき、AC-01〜AC-06とAC-23のローカル部分を満たす |
-| P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | 編集、commit、branch、renameに追従し、変更箇所だけが未確認になる。AC-07〜AC-10とAC-12を満たす |
-| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両側を操作でき、追加・削除行だけを使う進捗と除外を含むファイル一覧が表示される。AC-14〜AC-17を満たす |
-| P4 | 未着手 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得フォールバック、オフラインキャッシュ、複数PR管理が動く。AC-11とAC-21を満たす |
-| P5 | 未着手 | Global確認済みと理解率 | T501〜T506 | P2、P4 | Global状態の同期、表示優先順位、非空行集計、除外設定が動く。AC-18〜AC-20を満たす |
-| P6 | 未着手 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | Gitなし、履歴改変、移行、排他、障害、性能の試験を通し、AC-13、AC-22〜AC-24を含む24件すべてを満たす |
+| P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、Extension Hostの最小経路がローカルとCIで動く |
+| P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorで確認・解除・装飾・永続化・restart復元・VSIX配布が動く |
+| P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | edit、commit、branch、renameに追従し、変更部分だけ未確認になる |
+| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両side、変更行進捗、除外・未確認file一覧が動く |
+| P4 | 未着手 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
+| P5 | 未着手 | Global確認済みと理解率 | T501〜T506 | P2、P4 | Global同期、表示優先順位、非空行集計、除外設定が動く |
+| P6 | 未着手 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | Gitなし、履歴改変、移行、排他、障害、性能を含む全受け入れ条件を満たす |
 
 ## P0 開発基盤
 
 ### 目的
 
-後続タスクが同じビルド、テスト、モジュール境界、fixtureを再利用できる状態を作る。
+後続機能が同じbuild、test、module boundary、fixtureを再利用できる状態を作る。
 
 ### 終了チェックポイント
 
-- `package.json`とlockfileがGit追跡対象になっている
-- VS Code拡張機能を起動できる最小manifestとactivation entry pointがある
-- core層がVS Code API、GitHub API、ファイルシステムへ直接依存しない
-- 単体、Git fixture統合、Extension Hostの各テストを1件以上実行できる
+- reproducibleな依存管理がある
+- VS Code拡張を起動できるmanifestとentry pointがある
+- core層がVS Code、GitHub、filesystemへ直接依存しない
+- unit、Git integration、mock GitHub、Extension HostをCIで実行できる
+- architecture positive/negative gateを独立CI stepとして実行できる
+- CI失敗時に原因調査用artifactを保存できる
 
 ## P1 ローカル行範囲管理
 
 ### 目的
 
-外部Git・GitHub連携なしで、現在のファイルに対する確認操作と永続化を成立させる。
+外部Git・GitHub連携なしで、現在fileに対する確認操作、装飾、永続化を成立させる。
 
 ### 終了チェックポイント
 
-- 複数選択を半開区間へ正規化し、重複・隣接範囲を結合できる
-- 部分解除で範囲が分割され、コンテキスト状態と保存状態が一致する
-- ファイル全体操作だけ確認ダイアログを表示する
-- 通常エディタの確認済み行をグレー背景とガターで識別できる
-- Git・PR状態は`globalStorageUri`、Gitなし状態は`storageUri`へ保存し、VS Code再起動後に確実な状態だけを復元する
-- background snapshot保存をdebounceし、確認・解除は即時保存する
-- deactivationがpending保存と受付済み永続化操作を待つ
-- 同じworkspaceとuser-dataを使う3回のExtension Host起動で、確認状態と解除状態の装飾復元を確認する
-- GitHub ReleaseからVSIXを入手してインストールでき、現時点の機能と操作方法を日本語READMEで確認できる
-- SSCと同じversion解決でmain更新ごとにpre-releaseを作成し、同版VSIXをRelease assetとして添付する
+- 複数選択を半開区間へ正規化し、重複・隣接を結合できる
+- 部分解除とfile全体操作が正しい
+- 確認済み行をtheme対応で表示できる
+- Git/PR状態とGitなし状態を適切なstorageへ保存する
+- restart後に確実な状態だけを復元する
+- main更新ごとのVSIX prereleaseを配布できる
 
 ## P2 編集・Git差分追従
 
 ### 目的
 
-行編集とGit revision変更に対して、未変更部分を維持しつつ変更部分だけを無効化する。
+編集とGit revision変更に対して、未変更部分を維持しつつ変更部分だけを無効化する。
 
 ### 現在の進捗
 
@@ -81,12 +79,12 @@
 
 ### 終了チェックポイント
 
-- 編集イベントの複数変更を後方から適用し、範囲を正しく移動・分割できる
-- remote URLまたはroot URIから安定したRepository IDを解決できる
-- branch、detached HEAD、commit更新を別コンテキストとして安全に扱える
-- renameは一意な場合だけ追従し、copy・分割・統合・複数候補は未確認にする
-- 空白・EOL変更を既定では変更扱いとし、設定時だけ無視できる
-- 追記型履歴と現在状態が矛盾しない
+- editの複数変更を正しく移動・分割できる
+- remoteまたはroot URIからstable Repository IDを解決できる
+- branch、detached HEAD、commit更新を安全に扱える
+- renameは一意な場合だけ追従する
+- whitespace/EOLは既定で変更扱い、設定時だけ無視する
+- historyとcurrent stateが矛盾しない
 
 ## P3 diff editorとPR進捗
 
@@ -100,57 +98,63 @@
 - R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
 - R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
 - T301はPR #15/#24反映後のcurrent mainへ統合し、identity-bound snapshot、complete diff・state validation、除外後のPR/file進捗、20件の累積回帰test、設計6.13/8.6同期、Sol/high R10最終再レビューを完了した
-- T203、T204、T300、T301の完了によりT302は着手可能である。全体の次タスクはP2のT205とする
+- T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent provider、Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済みである
+- T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
+- T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
+- T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント
 
-- 仮想URIからcontext、file、side、revisionを復元できる
-- original側の削除行とmodified側の追加行を個別に確認・解除できる
-- 置換を削除1行と追加1行として数え、未変更行とGlobal状態を分子へ混入させない
-- ユーザー除外をPR進捗の分母から外し、未確認、完了、除外、rename-only、binaryのグループを仕様どおり表示する
+- 仮想URIからcontext、file、filesystem semantics、side、immutable revisionを復元できる
+- Local Git metadataとblobが同じruntime executable・timeoutを使用する
+- process timeout時のpartial diagnosticと終了lifecycleを保持する
+- design/architecture contractが通常CIで実行される
+- original削除行とmodified追加行を確認・解除できる
+- 置換を削除と追加として数え、GlobalをPR進捗へ混入させない
+- 未確認、完了、除外、rename-only、binary/encoding対象外を分類表示する
 
 ## P4 GitHub PR連携
 
 ### 目的
 
-GitHub接続を追加しつつ、認証・ネットワーク・API失敗がローカルレビュー機能を停止させない構成にする。
+GitHub接続を追加しつつ、認証・network・API障害がローカルレビューを停止させない構成にする。
 
 ### 終了チェックポイント
 
-- 認証sessionまたは公開repositoryの未認証APIでPRを検出し、open PRが1件なら自動選択、複数なら選択、0件または未選択ならbranchへフォールバックする
-- 差分取得をlocal Git、PR patch、base/head内容の順で試行する
-- トークンを独自保存せず、秘密情報やソース本文をログへ出さない
-- open/closed/merged PRを保存し、現在の表示レイヤーを選択できる
-- オフライン時は最終更新時刻付きキャッシュを使う
+- 認証sessionまたはpublic APIでPRを検出する
+- local Git、PR patch、base/head contentの順で差分取得する
+- tokenとsource本文を不要に保存・log出力しない
+- open/closed/merged PRを保存し、表示layerを管理できる
+- offline時は更新日時付きcacheを使用する
 
 ## P5 Global確認済みと理解率
 
 ### 目的
 
-コンテキスト固有の確認状態とGlobal状態を同期し、PR進捗とは分離した理解率を提供する。
+context確認状態とGlobalを同期し、PR進捗と分離した理解率を提供する。
 
 ### 終了チェックポイント
 
-- 確認と解除が現在コンテキストとGlobalへ同一トランザクションで反映される
-- 現在PRの未確認変更行がGlobalだけで確認済み表示にならない
-- バイナリ、gitignore、生成物、ユーザーglobを集計から除外できる
-- 現在有効な非空行だけでリポジトリ・ファイル理解率を計算できる
-- 大規模集計をチャンク化し、visible editorと開いているファイルを優先する
+- 確認・解除がcontextとGlobalへatomicに反映される
+- 現在PR未確認変更をGlobalだけで確認済みにしない
+- binary、gitignore、生成物、user globを共通policyで除外する
+- current valid non-empty lineだけで理解率を計算する
+- 大規模集計をchunk化する
 
 ## P6 Gitなし対応と堅牢化
 
 ### 目的
 
-フォールバック経路、履歴改変、ストレージ障害、並行実行、大規模データを含む初期版の受け入れ条件を閉じる。
+fallback、履歴改変、storage障害、並行実行、大規模dataを含む初期版の受け入れ条件を閉じる。
 
 ### 終了チェックポイント
 
-- Git未導入・非Gitではworkspace IDと保存スナップショット差分で動作する
-- rebase・force-push後も証拠がある範囲だけを追従し、曖昧な範囲を未確認にする
-- スキーマ移行前バックアップ、破損データ隔離、stale lock回復が動く
-- マルチルート、Remote SSH、Dev Containers、Codespaces相当のURI境界を扱える
-- 1万変更行規模でもUIを段階表示し、Extension Hostを長時間占有しない
-- 設計書22章の受け入れ条件24件を自動試験または明示的な手動試験で証明する
+- Git未導入・非Gitでsnapshot diffが動く
+- rebase・force-push後も証拠がある範囲だけ追従する
+- migration backup、破損隔離、stale lock回復が動く
+- multi-root、Remote SSH、Dev Containers、Codespaces境界を扱える
+- 1万変更行規模でもUIを段階表示する
+- 設計書21章の受け入れ条件を自動または明示的手動試験で証明する
 
 ## Phase間の依存関係
 

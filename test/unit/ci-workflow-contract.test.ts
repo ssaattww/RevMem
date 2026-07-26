@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+
+const projectRoot = path.resolve(__dirname, "../../..");
+const packageJsonPath = path.join(projectRoot, "package.json");
+const workflowPath = path.join(projectRoot, ".github", "workflows", "ci.yml");
+
+interface PackageManifest {
+  readonly scripts?: Readonly<Record<string, string>>;
+}
+
+const requireScript = (
+  scripts: Readonly<Record<string, string>>,
+  scriptName: string
+): string => {
+  const script = scripts[scriptName];
+  assert.ok(script, `package.json must define ${scriptName}`);
+  return script;
+};
+
+test("unit and focused suites execute the integrated design contract", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+
+  for (const scriptName of ["test:unit", "test:t302"]) {
+    assert.match(
+      requireScript(scripts, scriptName),
+      /test-dist\/test\/unit\/design-document-structure\.test\.js/u,
+      `${scriptName} must execute the design document contract test`
+    );
+  }
+});
+
+test("CI executes positive and negative architecture gates with diagnostic logs", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /- name: Architecture validation/u);
+  assert.match(workflow, /npm run validate:architecture\b/u);
+  assert.match(workflow, /tee test-output\/ci\/architecture\.log/u);
+  assert.match(workflow, /- name: Architecture negative contract/u);
+  assert.match(workflow, /npm run validate:architecture:negative\b/u);
+  assert.match(workflow, /tee test-output\/ci\/architecture-negative\.log/u);
+});

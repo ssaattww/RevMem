@@ -9,6 +9,7 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
+import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 const repositoryRoot = path.resolve("workspace", "repository");
 const repositorySource = path.join(repositoryRoot, "src");
@@ -74,7 +75,7 @@ const queueInspection = (
   );
   executor.queue(
     repositoryRoot,
-    ["rev-parse", "--verify", "HEAD^{commit}"],
+    ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
     headResult
   );
 };
@@ -87,7 +88,7 @@ test("known unborn HEAD diagnostic is accepted as a missing HEAD commit", async 
     failure(128, "fatal: Needed a single revision\n")
   );
 
-  const inspection = await new LocalGitAdapter(executor).inspectRepository(
+  const inspection = await new LocalGitAdapter(executor, unreachableGitBlobReader).inspectRepository(
     repositorySource
   );
 
@@ -111,7 +112,7 @@ test("unexpected HEAD exit code 128 is propagated as GitCommandFailedError", asy
   );
 
   await assert.rejects(
-    new LocalGitAdapter(executor).inspectRepository(repositorySource),
+    new LocalGitAdapter(executor, unreachableGitBlobReader).inspectRepository(repositorySource),
     (error: unknown) => {
       assert.ok(error instanceof GitCommandFailedError);
       assert.equal(error.result.exitCode, 128);
@@ -119,6 +120,7 @@ test("unexpected HEAD exit code 128 is propagated as GitCommandFailedError", asy
       assert.deepEqual(error.invocation.argumentsList, [
         "rev-parse",
         "--verify",
+        "--quiet",
         "HEAD^{commit}"
       ]);
       return true;
