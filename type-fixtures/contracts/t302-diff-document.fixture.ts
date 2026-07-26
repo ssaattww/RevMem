@@ -39,7 +39,8 @@ const uiProvider = new ReviewDiffTextDocumentContentProvider(applicationProvider
 const nodeRuntimeOptions = {
   executable: "/opt/portable-git/bin/git",
   timeoutMs: 10_000,
-  maxBufferBytes: 1_048_576
+  maxBufferBytes: 1_048_576,
+  blobTerminationGraceMs: 250
 } satisfies NodeLocalGitAdapterOptions;
 const nodeLocalGitAdapter = createNodeLocalGitAdapter(nodeRuntimeOptions);
 
