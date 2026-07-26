@@ -830,6 +830,44 @@ renameと同時に変更された行は未確認に戻す。
 
 コピーは新規ファイルとして未確認から開始する。
 
+### 9.4.1 file-state snapshotと入力検証
+
+ファイル遷移は、差分に関係しないファイルも含む完全なfile-state snapshotを入力とし、
+完全なpost-transition snapshotを出力する。部分更新や途中状態は返さない。
+
+処理前後のsnapshotでは、schema、file ID、current path、previous paths、revision、更新日時、
+content hash、line count、確認済みintervalを検証する。file IDはsnapshotのkeyと一致し、
+current pathは空でなくsnapshot内で一意でなければならない。line countとintervalは有効な
+範囲に収まり、previous pathsは空でなく重複せずcurrent pathを含まない。content hashを持つ
+場合は空文字列を許可しない。違反があれば遷移全体を拒否する。
+
+Git diffはzero-context sectionとしてcanonicalに解析する。壊れたheader、重複・矛盾する
+status metadata、必須のsourceまたはdestination pathの欠落は、対象sectionだけを推測して
+継続せず、全遷移をatomicに拒否する。
+
+### 9.4.2 遷移graphと識別子の保持
+
+rename、move、copy、add、deleteは、変更前snapshotだけをsourceとして解決する。したがって
+rename chain、path swap、sectionの並び順に依存する結果を許可しない。同一sourceに対する
+deleteとrenameの併存、duplicate delete、同一destinationへ複数の遷移を指定するdiffは
+矛盾としてatomicに拒否する。
+
+一意に解決できるrenameまたはディレクトリmoveはstableなfile IDを維持する。旧current pathを
+previous pathsへ重複なく記録し、rename先が履歴にあればそこから除去する。このため
+`A -> B -> A`のように過去のpathへ戻るrenameも、current pathをprevious pathsへ重複させず
+正当な遷移として扱う。
+
+copy、add、および曖昧なdestinationは、sourceの確認済み状態を継承しない新規未確認fileとする。
+deleteはcurrent snapshotからsourceを除去する。返却snapshotでは`files`と`deletedFileIds`へ
+同じfile IDを同時に含めない。
+
+### 9.4.3 renameと内容変更の証明
+
+renameと同時に内容が変わる場合は、変更行を未確認に戻し、未変更部分だけを追従する。空白または
+改行の変更を無視する設定では、old/newの完全な本文がrevision、path、line count、および各diff
+hunkの行内容と一致する場合だけ同値性を認める。staleまたは無関係な全文、line countが一致しない
+全文、hunkを再現しない全文は証拠として拒否し、確認済み状態を継承しない。
+
 ## 9.5 rebase・force-push
 
 旧revisionが現在履歴の祖先でない場合、次の順に追従する。

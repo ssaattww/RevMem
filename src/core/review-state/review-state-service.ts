@@ -174,7 +174,9 @@ function validateMappedCurrentInput(input: ReviewStateMutationInput): void {
       ? input.contextState.pullRequest?.headSha
       : input.contextState.kind === "branch"
         ? input.contextState.branch?.headRevision
-        : input.contextState.workspace?.snapshotRevision;
+        : input.contextState.kind === "workspace"
+          ? input.contextState.workspace?.snapshotRevision
+          : input.contextState.externalFile?.snapshotRevision;
   if (descriptorRevision !== input.target.revisionId) {
     throw new Error("Context descriptor must be mapped to the target revision.");
   }
