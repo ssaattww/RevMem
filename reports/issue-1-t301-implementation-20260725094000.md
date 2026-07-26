@@ -42,6 +42,12 @@
 - Test-first: 上記10件のbehavior JSDoc付き回帰testを追加した。production sourceはread-only probeと追加testで既に正しい契約を満たしたため変更していない。
 - Green: `npm run test:t301` は19 tests passed。Windows raw `npm run test:unit` はIssue #13のPOSIX固定fixture 19件により258/277で停止し、test-process限定preload適用後は277/277 Green。
 
+### R9レビュー対応
+
+- Test accuracy: inter-hunk gap不一致は先行するcumulative-delta invariantに数学的に内包され、productionのgap branchへ到達する前にdelta mismatchとしてrejectされる。test名・JSDoc・fixture・期待diagnosticをこの順序へ正規化し、productionの冗長なgap branchは変更していない。
+- Duplicate coordinates: 既存fixtureはdeletion重複を先に検出するため、test名とregexを`Duplicate deletion coordinate`へ限定した。別のpure-addition hunk fixtureを追加し、deletion重複なしで`Duplicate addition coordinate`へ到達することを固定した。
+- Green: `npm run test:t301` は20 tests passed。production sourceと設計は変更していない。
+
 ## 現在の実装内容
 
 - identity-bound snapshotとPR context/revisionをcalculator境界で照合
@@ -59,7 +65,7 @@
 
 ## 累積テスト対象
 
-- 現在のT301 focused suite: 19 test cases
+- 現在のT301 focused suite: 20 test cases
 - file単位とPR全体の部分進捗
 - added/deleted complete diffとpartial patch拒否
 - deletion-only hunkを含むmodified-side extentとlineCount
@@ -67,8 +73,8 @@
 - excluded fileでもdiff/state validationを継続
 - safe integer級の巨大intervalを展開しない計算
 - non-PR、stale snapshot/state、unknown runtime union
-- addition opposite-side、context-only/zero-zero、context cursor座標、hunk order/gap/delta、統計不一致
-- duplicate changed coordinate、valid multiple hunkとzero-count insertion anchor
+- addition opposite-side、context-only/zero-zero、context cursor座標、hunk orderとcumulative delta（gap不一致はdelta invariantで拒否）、統計不一致
+- duplicate deletion/addition changed coordinate、valid multiple hunkとzero-count insertion anchor
 - duplicate file ID・canonical path
 - original-side deletion reviewed、replacementの2行計上、reviewed context行の非算入
 - rename-only、binary/user glob、exclusion reason、zero denominator

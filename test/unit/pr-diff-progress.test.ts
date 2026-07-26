@@ -123,8 +123,8 @@ test("rejects a context cursor mismatch", () => {
   assert.throws(() => calculate(snapshot([malformed])), /context coordinate mismatch/i);
 });
 
-/** Verifies that a later hunk whose anchors disagree with the cumulative delta is rejected before progress calculation. */
-test("rejects a multi-hunk cumulative-delta and gap disagreement", () => {
+/** Verifies that an unequal inter-hunk gap is rejected by the earlier cumulative-delta invariant. */
+test("rejects an unequal inter-hunk gap through the prior cumulative-delta invariant", () => {
   const malformed = file("a", "modified", "a.ts", "a.ts", [
     hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)]),
     hunk(4, 1, 5, 1, [line("deletion", 4), line("addition", undefined, 5)])
@@ -133,14 +133,24 @@ test("rejects a multi-hunk cumulative-delta and gap disagreement", () => {
   assert.throws(() => calculate(snapshot([malformed])), /delta mismatch/i);
 });
 
-/** Verifies that the same changed modified-side coordinate cannot be supplied by more than one hunk. */
-test("rejects duplicate changed addition coordinates", () => {
+/** Verifies that the same changed original-side deletion coordinate cannot be supplied by more than one hunk. */
+test("rejects duplicate changed deletion coordinates", () => {
   const malformed = file("a", "modified", "a.ts", "a.ts", [
     hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)]),
     hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)])
   ]);
 
-  assert.throws(() => calculate(snapshot([malformed])), /Duplicate deletion coordinate|Duplicate addition coordinate/);
+  assert.throws(() => calculate(snapshot([malformed])), /Duplicate deletion coordinate/);
+});
+
+/** Verifies that repeated pure additions reach and reject the modified-side duplicate-coordinate validation. */
+test("rejects duplicate changed addition coordinates without duplicate deletions", () => {
+  const malformed = file("a", "modified", "a.ts", "a.ts", [
+    hunk(0, 0, 1, 1, [line("addition", undefined, 1)]),
+    hunk(0, 0, 1, 1, [line("addition", undefined, 1)])
+  ]);
+
+  assert.throws(() => calculate(snapshot([malformed])), /Duplicate addition coordinate/);
 });
 
 /** Verifies that a state-map entry whose payload file ID differs from its map key is rejected. */
