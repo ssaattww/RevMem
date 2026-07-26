@@ -124,7 +124,11 @@ class CapturingRepository implements DocumentReviewStateRepository {
     commit: ReviewStateCommit
   ): Promise<void> {
     await this.delegate.save(target, commit);
-    this.loaded.set(this.key(target), clone(commit));
+    const persisted = await this.delegate.load(target);
+    this.loaded.set(
+      this.key(target),
+      persisted === undefined ? clone(commit) : clone(persisted)
+    );
   }
 
   public async commit(transaction: Readonly<ReviewStateTransaction>): Promise<void> {
@@ -172,8 +176,15 @@ export class DocumentReviewStateSessionProvider {
       gitInspector: nonRepositoryInspector
     });
     const opened = await baseProvider.open(descriptor);
+    const persisted = await repository.load(this.repositoryTarget(opened));
     const target: DocumentNormalEditorReviewStateSession = {
       ...opened,
+      ...(persisted === undefined
+        ? {}
+        : {
+            contextState: clone(persisted.contextState),
+            globalState: clone(persisted.globalState)
+          }),
       committer: this.options.repository
     };
     const sources = await this.lowerSources(
@@ -189,6 +200,16 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     return this.decorationProvider.loadForDecoration(descriptor);
+  }
+
+  private repositoryTarget(
+    session: DocumentNormalEditorReviewStateSession
+  ): ReviewStateRepositoryTarget {
+    return {
+      kind: session.owner === "git" ? "git" : session.owner,
+      repositoryId: session.contextState.repositoryId,
+      contextId: session.contextState.contextId
+    };
   }
 
   private cachingWorkspaceProvider(
@@ -285,8 +306,8 @@ export class DocumentReviewStateSessionProvider {
       contextId: target.contextState.contextId,
       fileId: target.target.fileId,
       expected: {
-        contextState: clone(promotion?.expected.contextState ?? target.contextState),
-        globalState: clone(promotion?.expected.globalState ?? target.globalState)
+        contextState: clone(target.contextState),
+        globalState: clone(target.globalState)
       },
       next: {
         contextState: clone(plan.contextState),
@@ -330,7 +351,8 @@ export class DocumentReviewStateSessionProvider {
       baseline.sourceContextId === source.contextState.contextId &&
       baseline.sourceFileId === source.target.fileId &&
       baseline.contentHash === source.target.contentHash &&
-      baseline.lineCount === source.target.lineCount;
+      baseline.lineCount === source.target.lineCount &&
+      baseline.sourceCreatedAt === source.contextState.createdAt;
 
     let additions: LineInterval[] = [];
     let removals: LineInterval[] = [];
