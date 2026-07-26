@@ -108,6 +108,7 @@ class RecordingDelegate implements ReviewStatePersistenceDelegate {
   }
 }
 
+/** Verifies that an external-file confirmation first flushes its own pending save before the transaction commits. */
 test("external-file confirmation flushes its pending external-file save first", async () => {
   const scheduler = new ManualScheduler();
   const delegate = new RecordingDelegate();
@@ -130,6 +131,7 @@ test("external-file confirmation flushes its pending external-file save first", 
   ]);
 });
 
+/** Verifies that Git-target routing rejects a context document that claims external-file ownership before writing it. */
 test("filesystem persistence rejects external-file context under a Git target", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-target-kind-"));
   const repository = new FileSystemReviewStateRepository({
@@ -151,6 +153,7 @@ test("filesystem persistence rejects external-file context under a Git target", 
   }
 });
 
+/** Verifies that a valid external-file context persists and reloads only through the matching external-file repository target. */
 test("filesystem persistence accepts external-file context only under external-file target", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-external-kind-"));
   const repository = new FileSystemReviewStateRepository({

@@ -95,6 +95,21 @@ const descriptor = (): DocumentEditorReviewDescriptor => ({
   contentHash: "hash-current"
 });
 
+const alternateDescriptor = (): DocumentEditorReviewDescriptor => ({
+  ...descriptor(),
+  documentUri: {
+    scheme: "file",
+    authority: "",
+    path: "/repo/src/other.ts"
+  },
+  documentFsPath: path.resolve("/repo/src/other.ts"),
+  workspace: {
+    ...descriptor().workspace!,
+    relativePath: "src/other.ts"
+  },
+  contentHash: "hash-other"
+});
+
 const createProvider = (
   repository: DocumentReviewStateRepository,
   inspector: MutableGitInspector,
@@ -148,6 +163,7 @@ const createTemporaryStorage = async (): Promise<{
   };
 };
 
+/** Verifies that a newly selected Git context at an existing revision receives the owner-wide reviewed ranges without inheriting the other context's local ranges. */
 test("a new Git context at the same revision inherits repository-wide Global state", async () => {
   const temporary = await createTemporaryStorage();
   const head = "0123456789abcdef0123456789abcdef01234567";
@@ -181,6 +197,7 @@ test("a new Git context at the same revision inherits repository-wide Global sta
   }
 });
 
+/** Verifies that opening a context for a different revision rejects before it can replace the owner-wide Global snapshot. */
 test("a new Git context at an unmapped revision does not replace repository-wide Global state", async () => {
   const temporary = await createTemporaryStorage();
   const headA = "0123456789abcdef0123456789abcdef01234567";
@@ -260,6 +277,64 @@ class RecordingRepository implements DocumentReviewStateRepository {
   }
 }
 
+/** Test persistence boundary that inserts one concurrent complete-snapshot commit immediately before a chosen target persists. */
+class InterleavingRepository implements DocumentReviewStateRepository {
+  private beforeTargetPersistence = true;
+
+  /** Creates an interleaving boundary for one target and one deterministic concurrent operation. */
+  public constructor(
+    private readonly delegate: DocumentReviewStateRepository,
+    private readonly target: ReviewStateRepositoryTarget,
+    private readonly beforeSave: () => Promise<void>
+  ) {}
+
+  /** Delegates snapshot loading without changing the chosen persistence ordering. */
+  public load(
+    target: ReviewStateRepositoryTarget
+  ): Promise<ReviewStateCommit | undefined> {
+    return this.delegate.load(target);
+  }
+
+  /** Runs the deterministic interleaving before delegating the selected target's complete-snapshot save. */
+  public async save(
+    target: ReviewStateRepositoryTarget,
+    commit: ReviewStateCommit
+  ): Promise<void> {
+    await this.interleave(target);
+    await this.delegate.save(target, commit);
+  }
+
+  /** Runs the deterministic interleaving before delegating the selected target's compare-and-swap commit. */
+  public commit(
+    transaction: Readonly<ReviewStateTransactionLike>
+  ): Promise<void> {
+    return this.commitAfterInterleaving(transaction);
+  }
+
+  private async commitAfterInterleaving(
+    transaction: Readonly<ReviewStateTransactionLike>
+  ): Promise<void> {
+    await this.interleave({
+      kind: transaction.next.contextState.kind === "branch" ? "git" :
+        transaction.next.contextState.kind,
+      repositoryId: transaction.repositoryId,
+      contextId: transaction.contextId
+    });
+    return this.delegate.commit(transaction);
+  }
+
+  private async interleave(target: ReviewStateRepositoryTarget): Promise<void> {
+    if (
+      this.beforeTargetPersistence &&
+      targetKey(target) === targetKey(this.target)
+    ) {
+      this.beforeTargetPersistence = false;
+      await this.beforeSave();
+    }
+  }
+}
+
+/** Verifies that recreating a lower-priority owner records a fresh baseline rather than treating its old ranges as removals. */
 test("recreated lower-owner context does not turn the old baseline into removals", async () => {
   let currentTime = "2026-07-26T13:00:00.000Z";
   const repository = new RecordingRepository();
@@ -289,6 +364,55 @@ test("recreated lower-owner context does not turn the old baseline into removals
   currentTime = "2026-07-26T13:04:00.000Z";
   const recovered = await provider.open(descriptor());
   assert.deepEqual(reviewed(recovered), [intervalA]);
+});
+
+/** Verifies that stale-file cleanup replans against a later same-revision CAS commit so it preserves another context's owner-wide Global update. */
+test("stale Git cleanup preserves another context's later owner-wide Global update", async () => {
+  const temporary = await createTemporaryStorage();
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const inspector = new MutableGitInspector(
+    repositoryInspection("refs/heads/branch-a", head)
+  );
+  const repository = new FileSystemReviewStateRepository({
+    storageUris: temporary.storageUris
+  });
+  const provider = createProvider(
+    repository,
+    inspector,
+    () => new Date("2026-07-26T15:00:00.000Z")
+  );
+
+  try {
+    const branchA = await provider.open(descriptor());
+    await markReviewed(branchA, intervalA, "2026-07-26T15:01:00.000Z");
+
+    inspector.result = repositoryInspection("refs/heads/branch-b", head);
+    const branchB = await provider.open(alternateDescriptor());
+
+    inspector.result = repositoryInspection("refs/heads/branch-a", head);
+    const staleDescriptor = { ...descriptor(), contentHash: "hash-stale" };
+    const interleavingProvider = createProvider(
+      new InterleavingRepository(
+        repository,
+        {
+          kind: "git",
+          repositoryId: branchA.contextState.repositoryId,
+          contextId: branchA.contextState.contextId
+        },
+        () => markReviewed(branchB, intervalA, "2026-07-26T15:02:00.000Z")
+      ),
+      inspector,
+      () => new Date("2026-07-26T15:03:00.000Z")
+    );
+
+    await interleavingProvider.open(staleDescriptor);
+
+    inspector.result = repositoryInspection("refs/heads/branch-b", head);
+    const reloadedB = await provider.open(alternateDescriptor());
+    assert.deepEqual(globalReviewed(reloadedB), [intervalA]);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
 });
 
 const malformedCommit = (): ReviewStateCommit => {
@@ -348,6 +472,7 @@ const malformedTarget: ReviewStateRepositoryTarget = {
   contextId: "branch:main"
 };
 
+/** Verifies that persistence rejects owner-reconciliation ranges that exceed their source file's declared line count. */
 test("save rejects reconciliation intervals outside source lineCount", async () => {
   const temporary = await createTemporaryStorage();
   try {
@@ -363,6 +488,7 @@ test("save rejects reconciliation intervals outside source lineCount", async () 
   }
 });
 
+/** Verifies that compare-and-swap persistence validates the next owner-reconciliation ranges before writing either snapshot. */
 test("commit rejects reconciliation intervals outside source lineCount", async () => {
   const temporary = await createTemporaryStorage();
   try {
@@ -391,6 +517,7 @@ test("commit rejects reconciliation intervals outside source lineCount", async (
   }
 });
 
+/** Verifies that corrupted persisted owner-reconciliation ranges are rejected when a repository reloads them. */
 test("load rejects persisted reconciliation intervals outside source lineCount", async () => {
   const temporary = await createTemporaryStorage();
   try {

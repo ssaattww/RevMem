@@ -216,6 +216,7 @@ const baselineSnapshots = (
     (contextState as ReconciledContextView).ownerReconciliation ?? {}
   );
 
+/** Verifies that migration records an empty observed baseline before creating a missing target file, preventing old source ranges from becoming additions. */
 test("an old workspace context records an empty baseline before the target file is first created", async () => {
   let currentTime = "2026-07-25T13:00:00.000Z";
   const repository = new RecordingRepository();
@@ -298,6 +299,7 @@ test("an old workspace context records an empty baseline before the target file 
   ]);
 });
 
+/** Verifies that initial workspace-to-Git promotion atomically stores both promoted ranges and their reconciliation baseline. */
 test("initial workspace promotion persists ranges and baseline in one real CAS commit", async () => {
   let currentTime = "2026-07-25T14:00:00.000Z";
   const repository = new RecordingRepository();
@@ -327,6 +329,7 @@ test("initial workspace promotion persists ranges and baseline in one real CAS c
   assert.equal(baselineSnapshots(git.contextState).length, 1);
 });
 
+/** Verifies that a failed initial reconciliation commit publishes neither promoted ranges nor a baseline to the Git owner. */
 test("a failed initial promotion leaves the Git owner without promoted ranges or baseline", async () => {
   let currentTime = "2026-07-25T15:00:00.000Z";
   const repository = new RecordingRepository();
@@ -369,6 +372,7 @@ test("a failed initial promotion leaves the Git owner without promoted ranges or
   );
 });
 
+/** Verifies that all eligible lower-owner sources are combined into one compare-and-swap reconciliation commit. */
 test("workspace and external sources are reconciled by one real CAS commit", async () => {
   let currentTime = "2026-07-25T16:00:00.000Z";
   const repository = new RecordingRepository();

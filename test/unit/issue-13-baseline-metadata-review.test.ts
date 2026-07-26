@@ -190,6 +190,7 @@ const onlyBaseline = (session: OpenSession): ReconciliationSnapshot => {
   return snapshots[0]!;
 };
 
+/** Verifies that a content change replaces the remembered source baseline before later fallback additions are calculated. */
 test("content changes refresh the reconciliation baseline before later fallback additions", async () => {
   let currentTime = "2026-07-25T10:00:00.000Z";
   const repository = new MemoryRepository();

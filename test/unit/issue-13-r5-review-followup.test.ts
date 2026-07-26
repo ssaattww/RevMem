@@ -245,6 +245,7 @@ const baselineFor = (
 const intervalA: LineInterval = { startLine: 0, endLineExclusive: 2 };
 const intervalB: LineInterval = { startLine: 4, endLineExclusive: 6 };
 
+/** Verifies that initial promotion derives both its copied ranges and baseline from one lower-owner observation. */
 test("initial promotion and baseline use one lower-owner observation", async () => {
   let currentTime = "2026-07-25T17:00:00.000Z";
   const repository = new RecordingRepository();
@@ -283,6 +284,7 @@ test("initial promotion and baseline use one lower-owner observation", async () 
   assert.deepEqual(baselineFor(secondGit.contextState, "workspace")?.reviewed, [intervalB]);
 });
 
+/** Verifies that workspace precedence retains reviewed state when a lower external-file source reports a conflicting removal. */
 test("workspace reviewed state wins over a conflicting external-file removal", async () => {
   let currentTime = "2026-07-25T18:00:00.000Z";
   const repository = new RecordingRepository();
@@ -319,6 +321,7 @@ test("workspace reviewed state wins over a conflicting external-file removal", a
   assert.deepEqual(reviewed(recovered), [intervalA, intervalB]);
 });
 
+/** Verifies that a workspace removal blocks a conflicting attempt by an external-file source to add the same range. */
 test("workspace removal wins over a conflicting external-file addition", async () => {
   let currentTime = "2026-07-25T19:00:00.000Z";
   const repository = new RecordingRepository();
@@ -355,6 +358,7 @@ test("workspace removal wins over a conflicting external-file addition", async (
   assert.deepEqual(reviewed(recovered), []);
 });
 
+/** Verifies that writable Git-owner opening performs a single ownership inspection while reusing its result for routing. */
 test("writable open performs one active-owner Git inspection", async () => {
   const repository = new RecordingRepository();
   const inspector = new CountingGitInspector(repositoryInspection());
@@ -397,6 +401,7 @@ const findContextFile = async (
   return undefined;
 };
 
+/** Verifies that persisted owner-reconciliation metadata round-trips intact and rejects an invalid source identity on reload. */
 test("filesystem persistence round-trips and validates owner reconciliation metadata", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-owner-reconciliation-"));
   const repositoryId = "github.com/example/project";

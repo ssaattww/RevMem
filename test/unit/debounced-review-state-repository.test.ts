@@ -259,6 +259,7 @@ test("a confirmation transaction flushes pending background state and commits wi
   ]);
 });
 
+/** Verifies that confirming an external-file operation serializes its pending background snapshot before the command transaction. */
 test("external-file confirmation flushes the external pending state before commit", async () => {
   const scheduler = new ManualScheduler();
   const delegate = new RecordingRepository();

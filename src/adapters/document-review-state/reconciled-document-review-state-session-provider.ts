@@ -152,6 +152,7 @@ export class DocumentReviewStateSessionProvider {
   private readonly decorationProvider: BaseProvider;
   private readonly now: () => Date;
 
+  /** Creates a provider that applies lower-owner migration only through one complete-snapshot reconciliation commit. */
   public constructor(
     private readonly options: DocumentReviewStateSessionProviderOptions
   ) {
@@ -159,6 +160,7 @@ export class DocumentReviewStateSessionProvider {
     this.now = options.now ?? (() => new Date());
   }
 
+  /** Opens the routed owner and reconciles eligible lower-owner ranges without observing any source more than once. */
   public async open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
@@ -196,6 +198,7 @@ export class DocumentReviewStateSessionProvider {
     return this.reconcile(target, sources, repository.capturedTransaction());
   }
 
+  /** Loads routed decoration state without triggering reconciliation or persistence. */
   public loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {

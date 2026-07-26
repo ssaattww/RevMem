@@ -24,12 +24,14 @@ export class FileSystemReviewStateRepository
 extends CoherentFileSystemReviewStateRepository {
   private readonly outerWriteTailByStorageRoot = new Map<string, Promise<void>>();
 
+  /** Creates a repository that serializes writes per storage root while retaining the complete atomic snapshot contract. */
   public constructor(
     private readonly repositoryOptions: FileSystemReviewStateRepositoryOptions
   ) {
     super(repositoryOptions);
   }
 
+  /** Returns the current in-memory complete snapshot after validating owner-reconciliation metadata. */
   public override getCurrent(
     target: ReviewStateRepositoryTarget
   ): ReviewStateCommit | undefined {
@@ -40,6 +42,7 @@ extends CoherentFileSystemReviewStateRepository {
     return current;
   }
 
+  /** Loads a complete persisted snapshot and rejects invalid owner-reconciliation metadata before exposing it. */
   public override async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
@@ -58,6 +61,7 @@ extends CoherentFileSystemReviewStateRepository {
     return loaded === undefined ? undefined : clone(loaded);
   }
 
+  /** Saves a complete snapshot while preserving an existing owner-wide Global state during new-context initialization. */
   public override async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
@@ -98,6 +102,7 @@ extends CoherentFileSystemReviewStateRepository {
     });
   }
 
+  /** Atomically replaces matching complete context and Global snapshots after metadata validation and storage-root serialization. */
   public override async commit(
     transaction: Readonly<ReviewStateTransactionLike>
   ): Promise<void> {

@@ -171,6 +171,7 @@ const markReviewed = async (
   await session.committer.commit(transaction);
 };
 
+/** Verifies that a document discovered inside Git uses branch persistence even when it is outside the active workspace. */
 test("Git ownership routes a workspace-external file to the branch repository", async () => {
   const repository = new FakeRepository();
   const gitInspector = new FakeGitInspector(repositoryInspection());
@@ -187,6 +188,7 @@ test("Git ownership routes a workspace-external file to the branch repository", 
   assert.equal(gitInspector.inspectedPaths[0], path.dirname(path.resolve("/repo/src/example.ts")));
 });
 
+/** Verifies that discovered Git ownership takes precedence over otherwise valid workspace membership. */
 test("Git ownership wins even when the file belongs to the current workspace", async () => {
   const repository = new FakeRepository();
   const provider = createProvider(
@@ -201,6 +203,7 @@ test("Git ownership wins even when the file belongs to the current workspace", a
   assert.equal(repository.loads.some((target) => target.kind === "workspace"), true);
 });
 
+/** Verifies that a non-Git document within a workspace retains workspace-local persistence rather than using global storage. */
 test("a non-Git workspace file keeps workspace-local persistence", async () => {
   const repository = new FakeRepository();
   const provider = createProvider(repository, new FakeGitInspector(nonRepository()));
@@ -212,6 +215,7 @@ test("a non-Git workspace file keeps workspace-local persistence", async () => {
   assert.equal(repository.loads.at(-1)?.kind, "workspace");
 });
 
+/** Verifies that an accessible non-Git UNC file includes its URI authority when deriving its global external-file identity. */
 test("an accessible non-Git external UNC file keeps its authority in global identity", async () => {
   const repository = new FakeRepository();
   const provider = createProvider(repository, new FakeGitInspector(nonRepository()));
@@ -236,6 +240,7 @@ test("an accessible non-Git external UNC file keeps its authority in global iden
   assert.equal(repository.loads[0]?.kind, "external-file");
 });
 
+/** Verifies that reviewed ranges from an external-file owner migrate when the same unchanged file becomes workspace-owned. */
 test("external reviewed ranges are promoted when the same non-Git file joins a workspace", async () => {
   const repository = new FakeRepository();
   const gitInspector = new FakeGitInspector(nonRepository());
@@ -257,6 +262,7 @@ test("external reviewed ranges are promoted when the same non-Git file joins a w
   );
 });
 
+/** Verifies that reviewed ranges from workspace ownership migrate when the unchanged document is later discovered in Git. */
 test("workspace reviewed ranges are promoted when Git ownership is detected later", async () => {
   const repository = new FakeRepository();
   const gitInspector = new FakeGitInspector(nonRepository());
@@ -275,6 +281,7 @@ test("workspace reviewed ranges are promoted when Git ownership is detected late
   );
 });
 
+/** Verifies that owner promotion rejects ranges from a source whose current content identity differs from the target document. */
 test("promotion does not copy ranges when current content differs", async () => {
   const repository = new FakeRepository();
   const gitInspector = new FakeGitInspector(nonRepository());
@@ -293,6 +300,7 @@ test("promotion does not copy ranges when current content differs", async () => 
   assert.equal(workspace.globalState.files[workspace.target.fileId], undefined);
 });
 
+/** Verifies that read-only decoration lookup for an unseen external file does not initialize persistence or promote ranges. */
 test("decoration lookup for an unseen external file remains read-only", async () => {
   const repository = new FakeRepository();
   const provider = createProvider(repository, new FakeGitInspector(nonRepository()));
@@ -303,6 +311,7 @@ test("decoration lookup for an unseen external file remains read-only", async ()
   assert.equal(repository.saves.length, 0);
 });
 
+/** Verifies that external-file state resolves below its dedicated global-storage subtree instead of colliding with Git repositories. */
 test("external-file persistence uses a separate globalStorageUri subtree", () => {
   const route = resolveReviewStateStorageRoute(
     {

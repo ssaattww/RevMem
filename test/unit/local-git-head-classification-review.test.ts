@@ -79,6 +79,7 @@ const queueInspection = (
   );
 };
 
+/** Verifies that the known unborn-HEAD diagnostic is classified as an empty repository state instead of a command failure. */
 test("known unborn HEAD diagnostic is accepted as a missing HEAD commit", async () => {
   const executor = new PlannedExecutor();
   queueInspection(
@@ -101,6 +102,7 @@ test("known unborn HEAD diagnostic is accepted as a missing HEAD commit", async 
   executor.assertExhausted();
 });
 
+/** Verifies that an unrecognized Git exit-128 diagnostic remains an operational command failure. */
 test("unexpected HEAD exit code 128 is propagated as GitCommandFailedError", async () => {
   const executor = new PlannedExecutor();
   queueInspection(

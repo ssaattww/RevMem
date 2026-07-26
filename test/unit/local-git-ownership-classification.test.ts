@@ -31,6 +31,7 @@ class RootResultExecutor implements GitCommandExecutor {
   }
 }
 
+/** Verifies that only the recognized not-a-repository result permits routing to the non-Git owner. */
 test("the known not-a-repository result falls back to non-Git ownership", async () => {
   const adapter = new LocalGitAdapter(new RootResultExecutor({
     exitCode: 128,
@@ -44,6 +45,7 @@ test("the known not-a-repository result falls back to non-Git ownership", async 
   });
 });
 
+/** Verifies that unexpected inspection failures remain errors and cannot be relabeled as safe non-Git ownership. */
 test("an unexpected repository inspection failure is not relabeled as non-Git", async () => {
   const adapter = new LocalGitAdapter(new RootResultExecutor({
     exitCode: 128,

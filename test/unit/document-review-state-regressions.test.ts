@@ -128,6 +128,7 @@ const createProvider = (
   });
 };
 
+/** Verifies that external-file routing persists both the canonical URI identity and the revision of the inspected content. */
 test("external-file context retains canonical URI and snapshot revision", async () => {
   const session = await createProvider(
     new MemoryRepository(),
@@ -146,6 +147,7 @@ test("external-file context retains canonical URI and snapshot revision", async 
   );
 });
 
+/** Verifies that equivalent Windows paths map to one Git file identity despite drive, casing, and separator spelling differences. */
 test("Windows Git file identity normalizes drive, case, and separator variations", async () => {
   const repository = new MemoryRepository();
   const provider = createProvider(
@@ -177,6 +179,7 @@ test("Windows Git file identity normalizes drive, case, and separator variations
   assert.equal(first.target.fileId, second.target.fileId);
 });
 
+/** Verifies that unclassified Git inspection failures are surfaced instead of creating state under a lower-priority owner. */
 test("unexpected Git inspection failures do not fall back to a non-Git owner", async () => {
   const provider = createProvider(
     new MemoryRepository(),
@@ -189,6 +192,7 @@ test("unexpected Git inspection failures do not fall back to a non-Git owner", a
   );
 });
 
+/** Verifies that an external file's reviewed ranges can be reloaded after both persistence and routing objects are recreated. */
 test("external-file reviewed ranges survive repository and provider restart", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-external-restart-"));
   const storageUris = {
@@ -285,6 +289,7 @@ const externalCommit = (): ReviewStateCommit => ({
   }
 });
 
+/** Verifies that an external-file command cannot overtake its debounced background save when both update the complete snapshot. */
 test("external-file command commits flush pending external background state first", async () => {
   const delegate = new RecordingPersistenceDelegate();
   const scheduler = new ManualScheduler();
@@ -316,6 +321,7 @@ test("external-file command commits flush pending external background state firs
   assert.equal(scheduler.callback === undefined, false);
 });
 
+/** Verifies that external-file storage validates context kind before any mismatched branch state can be written. */
 test("external-file storage rejects a mismatched branch context before writing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-external-kind-"));
   try {

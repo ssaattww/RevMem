@@ -172,6 +172,7 @@ const reviewed = (session: OpenSession) => ({
   global: session.globalState.files[session.target.fileId]?.reviewed ?? []
 });
 
+/** Verifies that recovery incorporates newer lower-owner ranges without discarding already persisted Git-owner state. */
 test("Git recovery adds newer fallback ranges even when the Git owner already has state", async () => {
   let currentTime = "2026-07-25T08:00:00.000Z";
   const repository = new MemoryRepository();
@@ -222,6 +223,7 @@ test("Git recovery adds newer fallback ranges even when the Git owner already ha
   });
 });
 
+/** Verifies that lower-owner fallback cannot restore ranges deliberately removed by the higher-priority owner. */
 test("fallback additions do not resurrect ranges removed from the higher owner", async () => {
   let currentTime = "2026-07-25T09:00:00.000Z";
   const repository = new MemoryRepository();

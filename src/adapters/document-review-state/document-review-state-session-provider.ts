@@ -4,6 +4,9 @@ import type {
   LocalGitRepository,
   LocalGitRepositoryInspection
 } from "../local-git/index";
+import {
+  StaleReviewStateError
+} from "../state-repository/index";
 import type {
   ReviewStateCommit,
   ReviewStateRepositoryTarget
@@ -35,23 +38,33 @@ import {
 
 /** Git ownership inspection needed by document routing. */
 export interface DocumentGitInspector {
+  /** Inspects the nearest filesystem ancestor and returns either its Git ownership or a classified non-repository result. */
   inspectRepository(startPath: string): Promise<LocalGitRepositoryInspection>;
 }
 
 /** Optional workspace membership retained only for the non-Git fallback and migration. */
 export interface DocumentWorkspaceDescriptor {
+  /** Workspace root retained to derive the non-Git workspace owner identity. */
   readonly workspaceFolderUri: ResourceUri;
+  /** Repository-relative document path used only by workspace fallback persistence. */
   readonly relativePath: string;
+  /** Human-readable workspace name retained in workspace context metadata. */
   readonly displayName: string;
 }
 
 /** Filesystem-backed editor document resolved independently from workspace membership. */
 export interface DocumentEditorReviewDescriptor {
+  /** URI identity of the open editor; query and fragment are rejected for filesystem-backed documents. */
   readonly documentUri: ResourceUri;
+  /** Native filesystem path used to inspect Git ownership. */
   readonly documentFsPath: string;
+  /** Explicit path rules used to normalize both filesystem and URI identities. */
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
+  /** Optional workspace membership considered only after Git ownership is unavailable. */
   readonly workspace?: DocumentWorkspaceDescriptor;
+  /** Current document line count used to validate every persisted interval. */
   readonly lineCount: number;
+  /** Current content identity used to reject stale persisted file ranges. */
   readonly contentHash: string;
 }
 
@@ -64,27 +77,41 @@ export type DocumentReviewOwner = "git" | "workspace" | "external-file";
 /** Routed command session with the selected ownership exposed for diagnostics and tests. */
 export interface DocumentNormalEditorReviewStateSession
   extends NormalEditorReviewStateSession {
+  /** Owner selected by routing and exposed so callers never infer persistence ownership from workspace membership. */
   readonly owner: DocumentReviewOwner;
+  /** Complete current context snapshot paired atomically with {@link globalState}. */
   readonly contextState: ReviewContextState;
+  /** Complete owner-wide snapshot paired atomically with {@link contextState}. */
   readonly globalState: RepositoryGlobalState;
+  /** Current file identity and revision that every state operation must target. */
   readonly target: ReviewStateFileTarget;
+  /** Full-snapshot transaction boundary that rejects stale context or owner-wide Global state. */
   readonly committer: ReviewStateTransactionCommitter;
 }
 
 /** Routed read-only decoration state. */
 export interface DocumentNormalEditorDecorationState {
+  /** Owner from which these read-only decoration ranges were loaded. */
   readonly owner: DocumentReviewOwner;
+  /** Current context snapshot used for context-specific decorations. */
   readonly contextState: ReviewContextState;
+  /** Owner-wide snapshot used for reusable reviewed-range decorations. */
   readonly globalState: RepositoryGlobalState;
+  /** File identity that constrains the returned decoration state. */
   readonly target: ReviewStateFileTarget;
 }
 
 /** Constructor dependencies for document ownership routing. */
 export interface DocumentReviewStateSessionProviderOptions {
+  /** Git classification boundary consulted before workspace fallback routing. */
   readonly gitInspector: DocumentGitInspector;
+  /** Persistence boundary that stores complete context and owner-wide Global snapshots. */
   readonly repository: DocumentReviewStateRepository;
+  /** Non-Git workspace session provider reused for fallback and source promotion. */
   readonly workspaceProvider: WorkspaceReviewStateSessionProvider;
+  /** Stable digest provider used to derive owner, context, and file identities. */
   readonly stableHash: StableHash;
+  /** Optional UTC clock used for created and updated timestamps; the system clock is used when omitted. */
   readonly now?: () => Date;
 }
 
@@ -205,6 +232,7 @@ const contextRevision = (state: ReviewContextState): string | undefined =>
 export class DocumentReviewStateSessionProvider {
   private readonly now: () => Date;
 
+  /** Creates a router that gives discovered Git ownership priority over workspace and external-file fallbacks. */
   public constructor(
     private readonly options: DocumentReviewStateSessionProviderOptions
   ) {
@@ -529,21 +557,7 @@ export class DocumentReviewStateSessionProvider {
     );
 
     if (contextStale || globalStale) {
-      const updatedAt = this.now().toISOString();
-      commit = {
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-        contextState: {
-          ...cloneValue(commit.contextState),
-          files: withoutKey(commit.contextState.files, mapping.target.fileId),
-          updatedAt
-        },
-        globalState: {
-          ...cloneValue(commit.globalState),
-          files: withoutKey(commit.globalState.files, mapping.target.fileId),
-          updatedAt
-        }
-      };
-      await this.options.repository.save(mapping.repositoryTarget, commit);
+      commit = await this.removeStaleFile(mapping, commit);
     }
 
     return {
@@ -553,6 +567,63 @@ export class DocumentReviewStateSessionProvider {
       target: { ...mapping.target },
       committer: this.options.repository
     };
+  }
+
+  /** Removes one stale file through a complete-snapshot CAS and replans from the latest owner-wide state after a concurrent update. */
+  private async removeStaleFile(
+    mapping: OwnedMapping,
+    initial: ReviewStateCommit
+  ): Promise<ReviewStateCommit> {
+    let current = initial;
+    while (true) {
+      const updatedAt = this.now().toISOString();
+      const next: ReviewStateCommit = {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: {
+          ...cloneValue(current.contextState),
+          files: withoutKey(current.contextState.files, mapping.target.fileId),
+          updatedAt
+        },
+        globalState: {
+          ...cloneValue(current.globalState),
+          files: withoutKey(current.globalState.files, mapping.target.fileId),
+          updatedAt
+        }
+      };
+      try {
+        await this.options.repository.commit({
+          repositoryId: mapping.repositoryTarget.repositoryId,
+          contextId: mapping.repositoryTarget.contextId,
+          expected: {
+            contextState: current.contextState,
+            globalState: current.globalState
+          },
+          next: {
+            contextState: next.contextState,
+            globalState: next.globalState
+          }
+        });
+        return next;
+      } catch (error) {
+        if (!(error instanceof StaleReviewStateError)) {
+          throw error;
+        }
+        const latest = await this.options.repository.load(mapping.repositoryTarget);
+        if (latest === undefined) {
+          throw new Error("persisted review state disappeared during stale-file cleanup.");
+        }
+        this.validateLoadedIdentity(latest, mapping);
+        if (
+          contextRevision(latest.contextState) !== mapping.target.revisionId ||
+          latest.globalState.currentRevisionId !== mapping.target.revisionId
+        ) {
+          throw new Error(
+            "persisted review state requires revision mapping before it can be used."
+          );
+        }
+        current = latest;
+      }
+    }
   }
 
   private async loadOwnedForDecoration(
