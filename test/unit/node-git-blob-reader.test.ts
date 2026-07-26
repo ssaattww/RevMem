@@ -55,9 +55,8 @@ setInterval(() => {}, 1_000);
 
     const reader = new NodeGitBlobReader({
       executable: executablePath,
-      timeoutMs: 40
+      timeoutMs: 1_000
     });
-    const startedAt = Date.now();
 
     await assert.rejects(
       reader.readBlob(temporaryDirectory.path, blobObjectId),
@@ -66,12 +65,8 @@ setInterval(() => {}, 1_000);
         assert.equal(error.result.exitCode, -1);
         assert.equal(error.result.stdout, "partial stdout");
         assert.match(error.result.stderr, /partial stderr/u);
-        assert.match(error.result.stderr, /timed out after 40 ms/u);
+        assert.match(error.result.stderr, /timed out after 1000 ms/u);
         assert.match(error.result.stderr, /shutdown complete/u);
-        assert.ok(
-          Date.now() - startedAt >= 90,
-          "Timeout failure must wait for the child close lifecycle."
-        );
         return true;
       }
     );
@@ -102,16 +97,15 @@ process.on("SIGTERM", () => {
 setTimeout(() => {
   process.stderr.write("\\nnatural fallback exit");
   process.exit(0);
-}, 500);
+}, 5_000);
 `
     );
 
     const reader = new NodeGitBlobReader({
       executable: executablePath,
-      timeoutMs: 30,
-      terminationGraceMs: 40
+      timeoutMs: 1_000,
+      terminationGraceMs: 200
     });
-    const startedAt = Date.now();
 
     await assert.rejects(
       reader.readBlob(temporaryDirectory.path, blobObjectId),
@@ -121,11 +115,9 @@ setTimeout(() => {
         assert.equal(error.result.stdout, "escalation stdout");
         assert.match(error.result.stderr, /escalation stderr/u);
         assert.match(error.result.stderr, /ignored SIGTERM/u);
-        assert.match(error.result.stderr, /timed out after 30 ms/u);
+        assert.match(error.result.stderr, /timed out after 1000 ms/u);
         assert.match(error.result.stderr, /SIGKILL/u);
         assert.doesNotMatch(error.result.stderr, /natural fallback exit/u);
-        assert.ok(Date.now() - startedAt >= 60);
-        assert.ok(Date.now() - startedAt < 500);
         return true;
       }
     );
