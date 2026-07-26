@@ -68,7 +68,7 @@ test("handles huge reviewed intervals without expanding every line", () => {
 });
 
 test("validates malformed nonbinary files even when excluded", () => {
-  const malformed = file("generated", "added", undefined, "generated/a.ts", [hunk(0, 0, 1, 1, [{ kind: "future", newLine: 1, text: "x" } as unknown as DiffLine])]);
+  const malformed = file("generated", "added", undefined, "generated/a.ts", [hunk(0, 0, 1, 1, [{ kind: "future", newLine: 1, text: "x" } as unknown as DiffLine])], 1, 0);
   assert.throws(() => calculatePullRequestDiffProgress({ diff: snapshot([malformed]), reviewContext: context(), exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] }) }), /Unknown diff line kind/);
 });
 
