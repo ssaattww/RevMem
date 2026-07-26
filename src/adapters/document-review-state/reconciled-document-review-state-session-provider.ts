@@ -11,6 +11,7 @@ import type {
   ReviewStateCommit,
   ReviewStateRepositoryTarget
 } from "../state-repository/index";
+import { StaleReviewStateError } from "../state-repository/index";
 import {
   type WorkspaceEditorReviewDescriptor,
   type WorkspaceNormalEditorDecorationState,
@@ -132,6 +133,19 @@ class CapturingRepository implements DocumentReviewStateRepository {
   }
 
   public async commit(transaction: Readonly<ReviewStateTransaction>): Promise<void> {
+    if (transaction.operation === "unmark-file-reviewed") {
+      const target = this.target(transaction);
+      try {
+        await this.delegate.commit(transaction);
+      } catch (error) {
+        if (error instanceof StaleReviewStateError) {
+          await this.refresh(target);
+        }
+        throw error;
+      }
+      await this.refresh(target);
+      return;
+    }
     if (this.captured !== undefined) {
       throw new Error("Document owner initialization attempted more than one promotion commit.");
     }
@@ -144,6 +158,25 @@ class CapturingRepository implements DocumentReviewStateRepository {
 
   private key(target: ReviewStateRepositoryTarget): string {
     return `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
+  }
+
+  private target(
+    transaction: Readonly<ReviewStateTransaction>
+  ): ReviewStateRepositoryTarget {
+    return {
+      kind: transaction.next.contextState.kind === "branch" ? "git" :
+        transaction.next.contextState.kind,
+      repositoryId: transaction.repositoryId,
+      contextId: transaction.contextId
+    };
+  }
+
+  private async refresh(target: ReviewStateRepositoryTarget): Promise<void> {
+    const persisted = await this.delegate.load(target);
+    this.loaded.set(
+      this.key(target),
+      persisted === undefined ? undefined : clone(persisted)
+    );
   }
 }
 
