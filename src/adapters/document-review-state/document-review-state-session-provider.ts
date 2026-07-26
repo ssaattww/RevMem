@@ -542,19 +542,7 @@ export class DocumentReviewStateSessionProvider {
       }
     }
 
-    const contextFile = commit.contextState.files[mapping.target.fileId];
-    const globalFile = commit.globalState.files[mapping.target.fileId];
-    const contextStale = contextFile !== undefined && (
-      contextFile.contentHash !== mapping.target.contentHash ||
-      contextFile.revisionId !== mapping.target.revisionId ||
-      contextFile.lineCount !== mapping.target.lineCount ||
-      contextFile.currentPath !== mapping.target.currentPath
-    );
-    const globalStale = globalFile !== undefined && (
-      globalFile.contentHash !== mapping.target.contentHash ||
-      globalFile.revisionId !== mapping.target.revisionId ||
-      globalFile.currentPath !== mapping.target.currentPath
-    );
+    const { contextStale, globalStale } = this.staleFileState(commit, mapping);
 
     if (contextStale || globalStale) {
       commit = await this.removeStaleFile(mapping, commit);
@@ -576,17 +564,25 @@ export class DocumentReviewStateSessionProvider {
   ): Promise<ReviewStateCommit> {
     let current = initial;
     while (true) {
+      const { contextStale, globalStale } = this.staleFileState(current, mapping);
+      if (!contextStale && !globalStale) {
+        return current;
+      }
       const updatedAt = this.now().toISOString();
       const next: ReviewStateCommit = {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
           ...cloneValue(current.contextState),
-          files: withoutKey(current.contextState.files, mapping.target.fileId),
+          files: contextStale
+            ? withoutKey(current.contextState.files, mapping.target.fileId)
+            : cloneValue(current.contextState.files),
           updatedAt
         },
         globalState: {
           ...cloneValue(current.globalState),
-          files: withoutKey(current.globalState.files, mapping.target.fileId),
+          files: globalStale
+            ? withoutKey(current.globalState.files, mapping.target.fileId)
+            : cloneValue(current.globalState.files),
           updatedAt
         }
       };
@@ -630,6 +626,28 @@ export class DocumentReviewStateSessionProvider {
         current = latest;
       }
     }
+  }
+
+  /** Re-evaluates each complete snapshot side so a cleanup retry removes only file state that is still stale for the current descriptor. */
+  private staleFileState(
+    commit: ReviewStateCommit,
+    mapping: OwnedMapping
+  ): { readonly contextStale: boolean; readonly globalStale: boolean } {
+    const contextFile = commit.contextState.files[mapping.target.fileId];
+    const globalFile = commit.globalState.files[mapping.target.fileId];
+    return {
+      contextStale: contextFile !== undefined && (
+        contextFile.contentHash !== mapping.target.contentHash ||
+        contextFile.revisionId !== mapping.target.revisionId ||
+        contextFile.lineCount !== mapping.target.lineCount ||
+        contextFile.currentPath !== mapping.target.currentPath
+      ),
+      globalStale: globalFile !== undefined && (
+        globalFile.contentHash !== mapping.target.contentHash ||
+        globalFile.revisionId !== mapping.target.revisionId ||
+        globalFile.currentPath !== mapping.target.currentPath
+      )
+    };
   }
 
   private async loadOwnedForDecoration(

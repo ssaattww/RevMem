@@ -415,6 +415,53 @@ test("stale Git cleanup preserves another context's later owner-wide Global upda
   }
 });
 
+/** Verifies that stale cleanup preserves a later same-context commit when it has already restored a current file state in both snapshots. */
+test("stale Git cleanup preserves a later same-context current file state", async () => {
+  const temporary = await createTemporaryStorage();
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const inspector = new MutableGitInspector(
+    repositoryInspection("refs/heads/branch-a", head)
+  );
+  const repository = new FileSystemReviewStateRepository({
+    storageUris: temporary.storageUris
+  });
+  const currentDescriptor = descriptor();
+  const staleDescriptor = { ...currentDescriptor, contentHash: "hash-old" };
+  const provider = createProvider(
+    repository,
+    inspector,
+    () => new Date("2026-07-26T16:00:00.000Z")
+  );
+
+  try {
+    const initial = await provider.open(staleDescriptor);
+    await markReviewed(initial, intervalA, "2026-07-26T16:01:00.000Z");
+
+    const interleavingProvider = createProvider(
+      new InterleavingRepository(
+        repository,
+        {
+          kind: "git",
+          repositoryId: initial.contextState.repositoryId,
+          contextId: initial.contextState.contextId
+        },
+        async () => {
+          const current = await provider.open(currentDescriptor);
+          await markReviewed(current, intervalA, "2026-07-26T16:02:00.000Z");
+        }
+      ),
+      inspector,
+      () => new Date("2026-07-26T16:03:00.000Z")
+    );
+
+    const retried = await interleavingProvider.open(currentDescriptor);
+    assert.deepEqual(reviewed(retried), [intervalA]);
+    assert.deepEqual(globalReviewed(retried), [intervalA]);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
 const malformedCommit = (): ReviewStateCommit => {
   const contextState: ReconciledReviewContextState = {
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
