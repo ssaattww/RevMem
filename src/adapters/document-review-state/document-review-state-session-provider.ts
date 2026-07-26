@@ -592,8 +592,10 @@ export class DocumentReviewStateSessionProvider {
       };
       try {
         await this.options.repository.commit({
+          operation: "unmark-file-reviewed",
           repositoryId: mapping.repositoryTarget.repositoryId,
           contextId: mapping.repositoryTarget.contextId,
+          fileId: mapping.target.fileId,
           expected: {
             contextState: current.contextState,
             globalState: current.globalState
