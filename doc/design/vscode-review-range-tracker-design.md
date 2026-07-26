@@ -458,6 +458,41 @@ PRビューには「行以外の変更」として表示する。
 
 バイナリファイルは行進捗から除外し、「行単位レビュー対象外」と表示する。
 
+### 6.13.6 進捗証拠の検証と集計契約
+
+進捗 calculator は、任意の行番号配列やGlobal状態から推測せず、1つの比較を一体化した`PullRequestDiffSnapshot`と、その比較に一致するPR `ReviewContextState`だけを入力にする。
+
+```ts
+interface PullRequestDiffSnapshot {
+  readonly contextId: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  readonly originalDiffId: string; // `${baseSha}..${headSha}`
+  readonly files: readonly PullRequestFileChange[];
+}
+```
+
+`reviewContext.kind`は`"pull-request"`でなければならず、snapshotの`contextId`、`baseSha`、`headSha`はPR contextと一致しなければならない。`originalDiffId`は正確に`${baseSha}..${headSha}`とし、削除行の確認範囲はこのkeyの`originalReviewedByDiff`だけから読む。Global確認済み状態は入力・分子のいずれにも使用しない。
+
+snapshotはcompleteかつvalidatedでなければならない。nonbinary fileは除外判定より先に次を検証し、不完全・stale・曖昧な証拠は進捗を推測せずrejectする。
+
+- unified diff line kindは`context`、`addition`、`deletion`だけとし、該当するold/new座標は正のone-based値とする。各hunkのcursorはheaderの開始座標から進め、line種別、headerのcount、body、終端が一致しなければならない。
+- hunkは少なくとも1つの変更行を含む。zero-count anchor、hunk順序、old/new gap、累積deltaを検証し、addition/deletion座標の重複を拒否する。unique addition/deletion座標数はfileの`additions`/`deletions`統計と完全一致しなければならない。
+- `status`、old/new repository-relative path、hunk side、file ID、canonical display pathを検証する。file IDとcanonical pathはsnapshot内で一意とする。nonempty added/deleted fileは、先頭から全行を表す単一complete hunkでなければならない。
+- stateが存在するときはmap key、payload `fileId`、`revisionId === headSha`、canonical `currentPath`、`lineCount`、modified reviewed interval、modified-side hunk最大extentを照合する。state boundsまたはcontext/revision/pathが一致しない場合もrejectする。
+
+追加行はmodified側、削除行はoriginal側で集計する。one-based changed coordinate `coordinate`は、`coordinate - 1`でzero-based行indexへ変換し、`startLine <= coordinate - 1 < endLineExclusive`となるhalf-open `LineInterval`だけを対応範囲として照合する。
+
+```text
+reviewedLineCount =
+  count(modifiedReviewed ∩ addition newLine)
+  + count(originalReviewedByDiff[originalDiffId] ∩ deletion oldLine)
+
+totalLineCount = additions + deletions
+```
+
+除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。rename-only、binary、excluded fileを区別して表示し、file単位・PR全体とも分母が0の進捗率は100%とする。
+
 ## 6.14 Global理解率
 
 Global理解率は、現在のリポジトリの対象ファイルに存在する非空行のうち、現在も確認済みと確実に判断できる行の割合とする。
@@ -703,11 +738,19 @@ Global状態は現在有効な範囲だけを保持する。過去状態は履�
 ## 8.6 PR変更モデル
 
 ```ts
+type PullRequestFileChangeStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "binary";
+
 interface PullRequestFileChange {
   fileId: string;
   oldPath?: string;
   newPath?: string;
-  status: "added" | "modified" | "deleted" | "renamed" | "copied" | "binary";
+  status: PullRequestFileChangeStatus;
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
@@ -721,13 +764,53 @@ interface DiffHunk {
   lines: DiffLine[];
 }
 
+type DiffLineKind = "context" | "addition" | "deletion";
+
 interface DiffLine {
-  kind: "context" | "addition" | "deletion";
+  kind: DiffLineKind;
   oldLine?: number;
   newLine?: number;
   text: string;
 }
+
+interface PullRequestDiffSnapshot {
+  readonly contextId: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  readonly originalDiffId: string;
+  readonly files: readonly PullRequestFileChange[];
+}
+
+interface CalculatePullRequestDiffProgressInput {
+  readonly diff: PullRequestDiffSnapshot;
+  readonly reviewContext: ReviewContextState;
+  readonly exclusionPolicy: ReviewFileExclusionPolicy;
+}
+
+interface PullRequestDiffFileProgress {
+  readonly fileId: string;
+  readonly oldPath?: string;
+  readonly newPath?: string;
+  readonly status: PullRequestFileChange["status"];
+  readonly path: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+  readonly excluded: boolean;
+  readonly exclusionReason?: ReviewFileExclusionReason;
+}
+
+interface PullRequestDiffProgress {
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+  readonly files: readonly PullRequestDiffFileProgress[];
+}
 ```
+
+`DiffHunk`と`DiffLine`の座標はunified diffのone-based座標である。`LineInterval`は別にzero-based half-openであり、PR進捗は各changed coordinateを`coordinate - 1`へ変換して`startLine <= coordinate - 1 < endLineExclusive`を照合する。`calculatePullRequestDiffProgress`はこのinputから順序を維持したfile resultとaggregate resultを返し、検証不能なsnapshotまたはstateを受理しない。T302はこのidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、T402はrejectをpatch欠落・不完全時のfallback判断として再利用する。
 
 ## 9. 差分追従アルゴリズム
 
@@ -829,6 +912,44 @@ renameと同時に変更された行は未確認に戻す。
 - 同一内容が複数候補に存在する移動
 
 コピーは新規ファイルとして未確認から開始する。
+
+### 9.4.1 file-state snapshotと入力検証
+
+ファイル遷移は、差分に関係しないファイルも含む完全なfile-state snapshotを入力とし、
+完全なpost-transition snapshotを出力する。部分更新や途中状態は返さない。
+
+処理前後のsnapshotでは、schema、file ID、current path、previous paths、revision、更新日時、
+content hash、line count、確認済みintervalを検証する。file IDはsnapshotのkeyと一致し、
+current pathは空でなくsnapshot内で一意でなければならない。line countとintervalは有効な
+範囲に収まり、previous pathsは空でなく重複せずcurrent pathを含まない。content hashを持つ
+場合は空文字列を許可しない。違反があれば遷移全体を拒否する。
+
+Git diffはzero-context sectionとしてcanonicalに解析する。壊れたheader、重複・矛盾する
+status metadata、必須のsourceまたはdestination pathの欠落は、対象sectionだけを推測して
+継続せず、全遷移をatomicに拒否する。
+
+### 9.4.2 遷移graphと識別子の保持
+
+rename、move、copy、add、deleteは、変更前snapshotだけをsourceとして解決する。したがって
+rename chain、path swap、sectionの並び順に依存する結果を許可しない。同一sourceに対する
+deleteとrenameの併存、duplicate delete、同一destinationへ複数の遷移を指定するdiffは
+矛盾としてatomicに拒否する。
+
+一意に解決できるrenameまたはディレクトリmoveはstableなfile IDを維持する。旧current pathを
+previous pathsへ重複なく記録し、rename先が履歴にあればそこから除去する。このため
+`A -> B -> A`のように過去のpathへ戻るrenameも、current pathをprevious pathsへ重複させず
+正当な遷移として扱う。
+
+copy、add、および曖昧なdestinationは、sourceの確認済み状態を継承しない新規未確認fileとする。
+deleteはcurrent snapshotからsourceを除去する。返却snapshotでは`files`と`deletedFileIds`へ
+同じfile IDを同時に含めない。
+
+### 9.4.3 renameと内容変更の証明
+
+renameと同時に内容が変わる場合は、変更行を未確認に戻し、未変更部分だけを追従する。空白または
+改行の変更を無視する設定では、old/newの完全な本文がrevision、path、line count、および各diff
+hunkの行内容と一致する場合だけ同値性を認める。staleまたは無関係な全文、line countが一致しない
+全文、hunkを再現しない全文は証拠として拒否し、確認済み状態を継承しない。
 
 ## 9.5 rebase・force-push
 

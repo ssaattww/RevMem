@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev1
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T300 共通除外policy
+- 直近完了タスク: T204 rename・directory move・deleteのfile state適用
 - 現在のタスク: なし
-- 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T203は最終再レビューまで完了済み。T300はR5/R6指摘をTDDで修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した
-- ブロッカー: なし。Issue #21のWindows CRLF release assertionとMarkdown lint未整備はT300外のheld risk
-- Gitブランチ: `task/t300-exclusion-policy`
-- Pull Request: #17
-- PR方針: current main統合を含むT300 R5 follow-upのpolicy、runtime設定adapter、test、reports、進捗同期だけをPR #17へ反映する。マージはユーザーが行う
+- 次のタスク: T205 branch context resolver・Git状態監視
+- 実装状態: T204はPR #15反映後のcurrent mainを統合し、rename・move・deleteのfile state、完全スナップショット、atomic全文・EOL証拠をTDDで修正した。build、lint、T204 43/43、unit 258/258、Git 21/21、GitHub 1/1、全CIとSol/high R13最終再レビューが完了した
+- ブロッカー: なし。parser/validator構造重複、destination処理性能、Markdown lint基盤未整備はT204外のheld risk
+- Gitブランチ: `task/t204-file-state-transitions`
+- Pull Request: #24
+- PR方針: PR #15反映後のcurrent main統合、T204実装・test、設計9.4更新、review follow-up、reports、進捗同期をPR #24へ反映し、最終レビューとCI成功後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -92,6 +92,18 @@
 - T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
 - T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
 - T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
+- T204 current main統合レポート: `reports/issue-1-t204-main-integration-20260726131355.md`
+- T204設計更新レポート: `reports/issue-1-t204-design-update-20260726132156.md`
+- T204 R9レビューレポート: `reports/issue-1-t204-review-r9-20260726132635.md`
+- T204 R9 review follow-upレポート: `reports/issue-1-t204-review-followup-r9-20260726133527.md`
+- T204 R10レビューレポート: `reports/issue-1-t204-review-r10-20260726134419.md`
+- T204 R10 review follow-upレポート: `reports/issue-1-t204-review-followup-r10-20260726135004.md`
+- T204 R11レビューレポート: `reports/issue-1-t204-review-r11-20260726135810.md`
+- T204 R11 review follow-upレポート: `reports/issue-1-t204-review-followup-r11-20260726140411.md`
+- T204 R12レビューレポート: `reports/issue-1-t204-review-r12-20260726141246.md`
+- T204 R12 review follow-upレポート: `reports/issue-1-t204-review-followup-r12-20260726143000.md`
+- T204 R13最終再レビューレポート: `reports/issue-1-t204-review-r13-20260726142730.md`
+- T204進捗同期レポート: `reports/issue-1-t204-progress-sync-20260726142730.md`
 
 ## 状態と規模
 
@@ -137,8 +149,8 @@
 | T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
-| T204 | 次 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
+| T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
+| T205 | 次 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書6.15のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
@@ -209,4 +221,4 @@
 
 ## 次回開始時の選択
 
-T203は最新main統合、計11 findingの修正、focused・静的検証、Sol/high最終再レビューを完了した。T300はR5/R6 findingを回帰テストから修正し、current main統合、focused・全回帰検証、Sol/high R7最終再レビューを完了した。次回はT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T204はPR #15反映後のcurrent main統合、設計9.4のcontract更新、atomic全文・EOL証拠を含むreview follow-up、focused・全回帰検証、Sol/high R13最終再レビューを完了した。次回はP2を継続してT205だけを選択し、branch context resolverとGit状態監視の失敗するtestから開始する。T301とT302も依存関係は解消済みだが、唯一の次タスクはT205とする。
