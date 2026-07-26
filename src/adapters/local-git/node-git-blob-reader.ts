@@ -96,14 +96,11 @@ export class NodeGitBlobReader implements GitBlobReader {
       let settled = false;
       let timedOut = false;
       let timeoutDiagnostic = "";
-      let timeout: NodeJS.Timeout | undefined;
       let terminationTimer: NodeJS.Timeout | undefined;
       let forceCloseTimer: NodeJS.Timeout | undefined;
 
       const clearTimers = (): void => {
-        if (timeout !== undefined) {
-          clearTimeout(timeout);
-        }
+        clearTimeout(timeout);
         if (terminationTimer !== undefined) {
           clearTimeout(terminationTimer);
         }
@@ -177,7 +174,7 @@ export class NodeGitBlobReader implements GitBlobReader {
         forceCloseTimer = setTimeout(forceBoundedFailure, this.terminationGraceMs);
       };
 
-      timeout = setTimeout(() => {
+      const timeout = setTimeout(() => {
         if (settled) {
           return;
         }
