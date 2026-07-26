@@ -11,8 +11,12 @@ const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 const DEV_NULL = "/dev/null";
 
+type SourceOperation = "delete" | "rename";
+
 interface ValidatedSection {
   readonly destination?: string;
+  readonly source?: string;
+  readonly sourceOperation?: SourceOperation;
 }
 
 function decodeQuotedPath(raw: string): string {
@@ -89,8 +93,8 @@ function headerPath(lines: readonly string[], prefix: "--- " | "+++ "): string |
   return header === undefined ? undefined : decodeFileHeaderPath(header.slice(prefix.length));
 }
 
-function canonicalDestination(path: string): string {
-  return path.startsWith("b/") ? path.slice(2) : path;
+function canonicalPath(path: string): string {
+  return path.startsWith("a/") || path.startsWith("b/") ? path.slice(2) : path;
 }
 
 function validateSection(lines: readonly string[]): ValidatedSection {
@@ -100,7 +104,11 @@ function validateSection(lines: readonly string[]): ValidatedSection {
     if (renameFrom.length !== 1 || renameTo.length !== 1) {
       throw new SyntaxError("Rename metadata must contain exactly one rename from and one rename to path.");
     }
-    return { destination: renameTo[0] };
+    return {
+      source: renameFrom[0],
+      destination: renameTo[0],
+      sourceOperation: "rename"
+    };
   }
 
   const copyTo = metadataValues(lines, "copy to ");
@@ -122,10 +130,13 @@ function validateSection(lines: readonly string[]): ValidatedSection {
     if (oldPath !== DEV_NULL || newPath === undefined || newPath === DEV_NULL) {
       throw new SyntaxError("New file mode requires /dev/null on the old header side and a real destination path.");
     }
-    return { destination: canonicalDestination(newPath) };
+    return { destination: canonicalPath(newPath) };
   }
-  if (isDeletedFile && (oldPath === undefined || oldPath === DEV_NULL || newPath !== DEV_NULL)) {
-    throw new SyntaxError("Deleted file mode requires a real old path and /dev/null on the new header side.");
+  if (isDeletedFile) {
+    if (oldPath === undefined || oldPath === DEV_NULL || newPath !== DEV_NULL) {
+      throw new SyntaxError("Deleted file mode requires a real old path and /dev/null on the new header side.");
+    }
+    return { source: canonicalPath(oldPath), sourceOperation: "delete" };
   }
   return {};
 }
@@ -153,6 +164,30 @@ function validateUniqueDestinations(sections: readonly ValidatedSection[]): void
       throw new SyntaxError(`Git diff contains duplicate destination path: ${destination}`);
     }
     destinations.add(destination);
+  }
+}
+
+function validateSourceOperations(sections: readonly ValidatedSection[]): void {
+  const deletedSources = new Set<string>();
+  const renamedSources = new Set<string>();
+  for (const section of sections) {
+    const source = section.source;
+    if (source === undefined || section.sourceOperation === undefined) {
+      continue;
+    }
+    if (section.sourceOperation === "delete") {
+      if (deletedSources.has(source)) {
+        throw new SyntaxError(`Git diff contains duplicate delete source operation: ${source}`);
+      }
+      deletedSources.add(source);
+    } else {
+      renamedSources.add(source);
+    }
+  }
+  for (const source of deletedSources) {
+    if (renamedSources.has(source)) {
+      throw new SyntaxError(`Git diff contains conflicting delete and rename source operations: ${source}`);
+    }
   }
 }
 
@@ -295,6 +330,52 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
   }
 }
 
+function canonicalizeRenameHistory(
+  input: Readonly<GitFileStateTransitionInput>,
+  sections: readonly ValidatedSection[],
+  result: GitFileStateTransitionResult
+): GitFileStateTransitionResult {
+  const inputByPath = new Map(Object.values(input.files).map((file) => [file.currentPath, file]));
+  const renameByDestination = new Map(
+    sections
+      .filter(
+        (section): section is ValidatedSection & { source: string; destination: string } =>
+          section.sourceOperation === "rename" &&
+          section.source !== undefined &&
+          section.destination !== undefined
+      )
+      .map((section) => [section.destination, section.source])
+  );
+  const files = Object.fromEntries(
+    Object.entries(result.files).map(([fileId, file]) => {
+      const source = renameByDestination.get(file.currentPath);
+      const sourceState = source === undefined ? undefined : inputByPath.get(source);
+      if (sourceState?.fileId !== file.fileId) {
+        return [fileId, file];
+      }
+      const previousPaths = file.previousPaths.filter((path) => path !== file.currentPath);
+      if (!previousPaths.includes(source)) {
+        previousPaths.push(source);
+      }
+      return [fileId, { ...file, previousPaths }];
+    })
+  );
+  return { ...result, files };
+}
+
+function validateResultConsistency(result: Readonly<GitFileStateTransitionResult>): void {
+  const deleted = new Set<string>();
+  for (const fileId of result.deletedFileIds) {
+    if (fileId.length === 0 || deleted.has(fileId)) {
+      throw new RangeError("deletedFileIds must contain unique non-empty file IDs.");
+    }
+    if (fileId in result.files) {
+      throw new RangeError("A file ID cannot be present in both files and deletedFileIds.");
+    }
+    deleted.add(fileId);
+  }
+}
+
 /**
  * Validates the complete state snapshot, transition metadata, full-text evidence, and result snapshot.
  *
@@ -309,8 +390,14 @@ export function applyGitFileStateTransitions(
   validateNewFileMetadata(input.newFiles);
   const sections = parseAndValidateSections(input.diff);
   validateUniqueDestinations(sections);
+  validateSourceOperations(sections);
   validateFullTextEvidence(input);
-  const result = applyGitFileStateTransitionsUnchecked(input);
+  const result = canonicalizeRenameHistory(
+    input,
+    sections,
+    applyGitFileStateTransitionsUnchecked(input)
+  );
   validateStateSnapshot(result.files);
+  validateResultConsistency(result);
   return result;
 }
