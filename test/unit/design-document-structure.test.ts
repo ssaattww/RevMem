@@ -44,7 +44,11 @@ const requiredUiSpecificationFragments = [
   "保存済みのクローズ済みPR",
   "ローカルキャッシュ更新",
   "コンテキスト表示から削除",
-  "履歴削除は別操作"
+  "履歴削除は別操作",
+  "Architecture positive/negative gate",
+  "SIGTERM",
+  "SIGKILL",
+  "close event"
 ] as const;
 
 const normalizeLayerContract = (
