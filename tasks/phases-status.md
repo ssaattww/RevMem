@@ -4,13 +4,12 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev3
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
 - 確実性原則: 対応関係を一意に証明できない範囲は確認済みにしない
 - 恒久設計: task名やPR経緯を設計本文へ入れず、単一の設計書へ機能別に統合する
-- 依存方向: designのlayer tableとarchitecture validatorを一致させ、UIはapplication port経由でruntimeを利用する
 
 ## 規模の目安
 
@@ -45,8 +44,8 @@ Lを超える見込みになった場合は再分解する。
 - reproducibleな依存管理がある
 - VS Code拡張を起動できるmanifestとentry pointがある
 - core層がVS Code、GitHub、filesystemへ直接依存しない
-- design layer tableとarchitecture validatorが一致する
 - unit、Git integration、mock GitHub、Extension HostをCIで実行できる
+- architecture positive/negative gateを独立CI stepとして実行できる
 - CI失敗時に原因調査用artifactを保存できる
 
 ## P1 ローカル行範囲管理
@@ -97,13 +96,13 @@ Lを超える見込みになった場合は再分解する。
 - T300 共通除外policyは最終レビュー済み
 - T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent providerを実装済み
 - Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済み
-- metadata/blob共通Node runtime factoryとWindows予約デバイス名拒否を検証済み
-- レビューR4で`LocalGitAdapter`のblob boundaryを必須化し、誤った1引数構築経路を型contractで閉じた
-- metadata/blob timeoutをinvocationとdiagnosticsを持つ`GitCommandFailedError`へ統一した
-- 設計書rev3でvalidatorと同一のlayer table、Composition Root、UIからadapterへの直接依存禁止を明記した
-- Current Context、PR Progress、Review Contextsの既決UI仕様を復元し、設計contract testで固定した
-- 恒久仕様は`doc/design/vscode-review-range-tracker-design.md`の1fileへ機能別に維持している
-- R4 follow-upと最終再レビューではblocking・non-blocking findingなし
+- metadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout errorを検証済み
+- 恒久仕様は`doc/design/vscode-review-range-tracker-design.md` rev4の1fileへ機能別統合している
+- 設計依存行列、Composition Root、Current Context、PR Progress、Review Contextsの既決要件をcontract testで固定した
+- レビューR5でdesign testを通常unit/focused suiteへ直接接続した
+- architecture positive/negative gateを独立CI stepとして追加し、各logをfailure artifactへ保存する
+- blob timeoutはpartial stdout/stderrを保持し、close待機、SIGTERM、SIGKILL escalation、bounded failureを扱う
+- R5 follow-upと最終再レビューではblocking・non-blocking findingなし
 - T302完了によりT303とT405のURI依存が解消した
 - 全体の次タスクはP2のT204
 
@@ -111,9 +110,8 @@ Lを超える見込みになった場合は再分解する。
 
 - 仮想URIからcontext、file、filesystem semantics、side、immutable revisionを復元できる
 - Local Git metadataとblobが同じruntime executable・timeoutを使用する
-- direct constructionではexecutor/blob readerの両boundaryが必須である
-- architecture validatorと設計依存行列が一致する
-- Current Context、PR Progress、Review Contextsの既決仕様が設計と実装で維持される
+- process timeout時のpartial diagnosticと終了lifecycleを保持する
+- design/architecture contractが通常CIで実行される
 - original削除行とmodified追加行を確認・解除できる
 - 置換を削除と追加として数え、GlobalをPR進捗へ混入させない
 - 未確認、完了、除外、rename-only、binary/encoding対象外を分類表示する
