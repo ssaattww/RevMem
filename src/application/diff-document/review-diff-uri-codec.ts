@@ -25,6 +25,7 @@ export type ReviewDiffUriCodecErrorCode =
 /** Error raised when a descriptor or virtual URI violates the canonical T302 contract. */
 export class ReviewDiffUriCodecError extends Error {
   public constructor(
+    /** Stable reason distinguishing an invalid descriptor from an invalid encoded URI. */
     public readonly code: ReviewDiffUriCodecErrorCode,
     message: string,
     options?: ErrorOptions

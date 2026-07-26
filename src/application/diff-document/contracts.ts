@@ -22,28 +22,35 @@ export interface ReviewDiffDocumentDescriptor {
 
 /** Successful immutable text lookup. */
 export interface RevisionTextContentFound {
+  /** Discriminant proving that the exact descriptor content was restored. */
   readonly kind: "found";
+  /** Exact UTF-8 text read from the descriptor's immutable revision and path. */
   readonly content: string;
 }
 
 /** The review context encoded in the URI is not available in the current host. */
 export interface RevisionTextContentMissingContext {
+  /** Discriminant meaning that no current-host context matched the encoded identity. */
   readonly kind: "missing-context";
 }
 
 /** The requested immutable revision object is no longer available. */
 export interface RevisionTextContentMissingRevision {
+  /** Discriminant meaning that the exact immutable revision object cannot be read. */
   readonly kind: "missing-revision";
 }
 
 /** The file does not exist at the otherwise available revision. */
 export interface RevisionTextContentMissingFile {
+  /** Discriminant meaning that the descriptor path is absent from its available revision. */
   readonly kind: "missing-file";
 }
 
 /** Blob bytes are not valid UTF-8 and cannot be represented as a line document. */
 export interface RevisionTextContentInvalidEncoding {
+  /** Discriminant meaning that exact blob bytes failed fatal UTF-8 decoding. */
   readonly kind: "invalid-encoding";
+  /** Fixed encoding label for the fatal decoder that rejected the blob bytes. */
   readonly encoding: "utf-8";
 }
 

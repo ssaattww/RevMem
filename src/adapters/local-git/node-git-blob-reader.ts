@@ -55,6 +55,7 @@ const joinDiagnostics = (parts: readonly string[]): string =>
  * available. Process failures retain the invocation and captured diagnostics.
  */
 export class NodeGitBlobReader implements GitBlobReader {
+  /** Git executable name or absolute path used for every raw `cat-file blob` process. */
   public readonly executable: string;
   private readonly timeoutMs: number;
   private readonly terminationGraceMs: number;

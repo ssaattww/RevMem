@@ -23,7 +23,9 @@ const ERROR_MESSAGES: Readonly<
 /** Deterministic failure returned for known unavailable diff-document inputs. */
 export class RevisionTextContentProviderError extends Error {
   public constructor(
+    /** Stable unavailable-content reason for callers that must not infer a substitute. */
     public readonly code: RevisionTextContentProviderErrorCode,
+    /** Immutable descriptor copy that identifies the exact context, side, path, and revision that failed. */
     public readonly descriptor: ReviewDiffDocumentDescriptor
   ) {
     super(ERROR_MESSAGES[code]);
