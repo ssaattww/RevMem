@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev3
+# VS Code レビュー範囲トラッカー 設計書 rev4
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -323,6 +323,10 @@ Git objectから再取得可能な本文には固定の4 MiB上限を設けな�
 ### 9.5 Process failure contract
 
 metadata commandとblob commandのtimeoutは、いずれもinvocation、partial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。
+
+blob commandがtimeoutした場合は、まずSIGTERMを送信し、その後もstdoutとstderrの収集を継続する。通常経路ではprocessのclose eventを待ってからfailureを確定し、timeoutまでに得た出力と終了処理中の出力を同じdiagnosticへ含める。
+
+SIGTERM後もtermination grace内にclose eventが発生しない場合はSIGKILLへ段階的に移行する。`child.kill()`が`false`を返した場合は送信失敗をdiagnosticへ記録し、close eventを待ちながら次の段階へ進む。SIGKILL後もgrace内にclose eventがない場合だけ、streamを破棄してchildをunrefし、process lifecycleが完了しなかった事実を含むbounded failureを返す。SIGTERMを無視するprocess、signal送信失敗、実際の終了signalを区別して記録する。
 
 Git executableが起動できない場合だけ`GitExecutableNotFoundError`として区別する。通常の非0 exitはmetadata commandではresultとしてadapterへ返し、adapterがmissingとfatalを分類する。blob commandの非0 exitは直接`GitCommandFailedError`とする。
 
@@ -748,6 +752,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - public barrel consumer contract
 - architecture validatorと設計依存行列の一致
 - Current Context、PR Progress、Review Contextsの既決UI要件
+- Architecture positive/negative gateをCIで実行し、設計contract testを通常unitとfocused suiteの両方で実行すること
 - 設計仕様が単一の機能別文書に統合され、task identifierを含まないこと
 
 ### 20.2 Integration
