@@ -90,7 +90,7 @@ const parseDesignLayerContract = (design: string): LayerContract | undefined => 
 
   const entries: Array<readonly [string, readonly string[]]> = [];
   const block = design.slice(start + architectureContractStart.length, end);
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/u)) {
     const match = /^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|$/u.exec(line);
     if (match === null || match[1] === "source layer") {
       continue;

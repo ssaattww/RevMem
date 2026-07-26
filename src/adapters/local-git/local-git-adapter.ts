@@ -125,6 +125,19 @@ const parseLsTreeBlobObjectId = (
   return match[3]!;
 };
 
+const isMissingObjectExit = (result: GitCommandResult): boolean =>
+  result.exitCode === 1 || result.exitCode === 128;
+
+const isNotRepositoryResult = (result: GitCommandResult): boolean =>
+  result.exitCode === 128 &&
+  /(?:^|\n)fatal:\s+not a git repository\b/iu.test(
+    `${result.stdout}\n${result.stderr}`
+  );
+
+const isUnbornHeadResult = (result: GitCommandResult): boolean =>
+  result.exitCode === 128 &&
+  /^fatal:\s+Needed a single revision\s*$/u.test(result.stderr.trim());
+
 /**
  * Reads stable repository identity and revision metadata through local Git only.
  *
@@ -175,17 +188,19 @@ export class LocalGitAdapter {
       versionResult
     );
     const gitVersion = parseGitVersion(versionResult.stdout);
-    const rootResult = await this.execute(inspectedPath, [
-      "rev-parse",
-      "--show-toplevel"
-    ]);
+    const rootInvocation: GitCommandInvocation = {
+      cwd: inspectedPath,
+      argumentsList: ["rev-parse", "--show-toplevel"]
+    };
+    const rootResult = await this.commandExecutor.execute(rootInvocation);
 
-    if (rootResult.exitCode !== 0) {
+    if (isNotRepositoryResult(rootResult)) {
       return {
         kind: "not-repository",
         gitVersion
       };
     }
+    this.requireSuccess(rootInvocation, rootResult);
 
     const rootPath = path.resolve(firstOutputLine(rootResult.stdout, "repository root"));
     const remote = await this.resolveIdentityRemote(rootPath);
@@ -248,7 +263,7 @@ export class LocalGitAdapter {
     if (result.exitCode === 0) {
       return true;
     }
-    if (result.exitCode === 1) {
+    if (isMissingObjectExit(result)) {
       return false;
     }
 
@@ -409,7 +424,7 @@ export class LocalGitAdapter {
     };
     const result = await this.commandExecutor.execute(invocation);
 
-    if (result.exitCode === 1) {
+    if (isUnbornHeadResult(result)) {
       return undefined;
     }
 

@@ -71,10 +71,11 @@ Lを超える見込みになった場合は再分解する。
 
 ### 現在の進捗
 
-- T201 Range Mapping Engineは統合・検証済み
-- T202 Local Git Adapterは統合・検証済み
-- T203 diff parserとrevision interval mappingは統合・最終レビュー済み
-- 次の実装対象はT204 rename・directory move・deleteのfile state適用
+- T201 Range Mapping Engineは最新`main`上で統合・検証済み
+- T202 Local Git Adapterは最新`main`上で統合・検証済み
+- T203 diff parserとrevision間interval mappingは最新`main`上で統合・検証・最終再レビュー済み
+- T204 rename・directory move・deleteのfile state適用はPR #15反映後の最新`main`上で統合・検証・Sol/high R13最終再レビュー済み
+- 次の実装対象はT205 branch context resolver・Git状態監視
 
 ### 終了チェックポイント
 
@@ -93,18 +94,13 @@ Lを超える見込みになった場合は再分解する。
 
 ### 現在の進捗
 
-- T300 共通除外policyは最終レビュー済み
-- T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent providerを実装済み
-- Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済み
-- metadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout errorを検証済み
-- 恒久仕様は`doc/design/vscode-review-range-tracker-design.md` rev4の1fileへ機能別統合している
-- 設計依存行列、Composition Root、Current Context、PR Progress、Review Contextsの既決要件をcontract testで固定した
-- レビューR5でdesign testを通常unit/focused suiteへ直接接続した
-- architecture positive/negative gateを独立CI stepとして追加し、各logをfailure artifactへ保存する
-- blob timeoutはpartial stdout/stderrを保持し、close待機、SIGTERM、SIGKILL escalation、bounded failureを扱う
-- R5 follow-upと最終再レビューではblocking・non-blocking findingなし
-- T302完了によりT303とT405のURI依存が解消した
-- 全体の次タスクはP2のT204
+- T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
+- R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
+- R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
+- T301はPR #15/#24反映後のcurrent mainへ統合し、identity-bound snapshot、complete diff・state validation、除外後のPR/file進捗、20件の累積回帰test、設計6.13/8.6同期、Sol/high R10最終再レビューを完了した
+- T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent provider、Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済みである
+- T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
+- T302はcurrent main統合・最終レビュー中であり、最終完了同期はレビュー後に行う。全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント
 

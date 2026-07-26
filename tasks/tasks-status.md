@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T302 仮想diff URIとrevision content provider（レビューR5対応完了）
-- 現在のタスク: なし
-- 次のタスク: T204 rename・directory move・deleteのfile state適用
-- 実装状態: T302はimmutable commit URI、filesystem semantics、fatal Git failure分離、raw blob取得、fatal UTF-8 decode、actual VS Code URI、公開contract、共通Node runtime、Windows予約名、validator一致のlayer contract、既決UI仕様に加え、設計test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証した
-- ブロッカー: なし。provider登録、diff editor open、original側の確認・解除transactionはT303の範囲
+- 直近完了タスク: T301 PR差分ベース進捗計算
+- 現在のタスク: T302 仮想diff URIとrevision content providerのcurrent main統合・最終レビュー
+- 次のタスク: T205 branch context resolver・Git状態監視
+- 実装状態: T204とT301はcurrent main統合・最終再レビューを完了した。T302はimmutable commit URI、filesystem semantics、fatal Git failure分離、raw blob取得、fatal UTF-8 decode、actual VS Code URI、公開contract、共通Node runtime、Windows予約名、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証済みであり、PR #26のcurrent main統合・最終レビュー中である
+- ブロッカー: なし。empty identity・base/head同値・safe-integer arithmetic、zero-length interval、Windowsの既知POSIX fixture、Markdown lint基盤未整備はT301外のheld risk
 - Gitブランチ: `task/t302-virtual-diff-content`
 - Pull Request: #26
-- PR方針: T302のURI・content provider・Local Git content取得・test・reports・進捗同期だけをPR #26へ反映する。マージはユーザーが行う
+- PR方針: T302のURI・content provider・Local Git content取得・test・reportsとcurrent main統合をPR #26へ反映する。最終完了同期とマージはレビュー後に親agentとユーザーが行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -102,6 +102,34 @@
 - T302最終再レビューレポートR4: `reports/issue-1-t302-review-r4-20260725164500.md`
 - T302レビュー対応レポートR5: `reports/issue-1-t302-review-followup-r5-20260726113000.md`
 - T302最終再レビューレポートR5: `reports/issue-1-t302-review-r5-20260726113500.md`
+- T204 current main統合レポート: `reports/issue-1-t204-main-integration-20260726131355.md`
+- T204設計更新レポート: `reports/issue-1-t204-design-update-20260726132156.md`
+- T204 R9レビューレポート: `reports/issue-1-t204-review-r9-20260726132635.md`
+- T204 R9 review follow-upレポート: `reports/issue-1-t204-review-followup-r9-20260726133527.md`
+- T204 R10レビューレポート: `reports/issue-1-t204-review-r10-20260726134419.md`
+- T204 R10 review follow-upレポート: `reports/issue-1-t204-review-followup-r10-20260726135004.md`
+- T204 R11レビューレポート: `reports/issue-1-t204-review-r11-20260726135810.md`
+- T204 R11 review follow-upレポート: `reports/issue-1-t204-review-followup-r11-20260726140411.md`
+- T204 R12レビューレポート: `reports/issue-1-t204-review-r12-20260726141246.md`
+- T204 R12 review follow-upレポート: `reports/issue-1-t204-review-followup-r12-20260726143000.md`
+- T204 R13最終再レビューレポート: `reports/issue-1-t204-review-r13-20260726142730.md`
+- T204進捗同期レポート: `reports/issue-1-t204-progress-sync-20260726142730.md`
+- T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
+- T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
+- T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
+- T301初回レビューレポート: `reports/issue-1-t301-review-20260725095025.md`
+- T301 R2レビューレポート: `reports/issue-1-t301-review-r2-20260725101507.md`
+- T301 R3レビューレポート: `reports/issue-1-t301-review-r3-20260725131530.md`
+- T301 R4レビューレポート: `reports/issue-1-t301-review-r4-20260725134500.md`
+- T301 R5レビューレポート: `reports/issue-1-t301-review-r5-20260725151610.md`
+- T301 R6レビューレポート: `reports/issue-1-t301-review-r6-20260725154116.md`
+- T301 R7レビューレポート: `reports/issue-1-t301-review-r7-20260725162649.md`
+- T301 R8レビューレポート: `reports/issue-1-t301-review-r8-20260726145022.md`
+- T301 R8 review follow-upレポート: `reports/issue-1-t301-review-followup-r8-20260726151000.md`
+- T301 R9レビューレポート: `reports/issue-1-t301-review-r9-20260726151101.md`
+- T301 R9 review follow-upレポート: `reports/issue-1-t301-review-followup-r9-20260726152000.md`
+- T301 R10最終再レビューレポート: `reports/issue-1-t301-review-r10-20260726152625.md`
+- T301進捗同期レポート: `reports/issue-1-t301-progress-sync-20260726152625.md`
 
 ## 状態と規模
 
@@ -147,8 +175,8 @@
 | T201 | 完了 | L | `TextDocumentContentChangeEvent`相当の変更列を後方から適用するRange Mapping Engineを実装し、前方維持、後方shift、重複部分無効化、挿入未確認と`ignoreWhitespaceChanges`・`ignoreEolChanges`を扱う | T101、T102 | 挿入、削除、置換、複数変更、CRLF/LF、CR、空白変更を既定値`false`では無効化し、各設定が`true`の場合だけ該当差分を無視する。末尾改行1個の差と追加・削除空行を区別する単体テストを含め、最新`main`上の全検証と専用レビューが通る |
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
-| T204 | 次 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 未着手 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
+| T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
+| T205 | 次 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 未着手 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
@@ -157,8 +185,8 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
-| T301 | 未着手 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
-| T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
+| T301 | 完了 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
+| T302 | 進行中 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
@@ -219,4 +247,4 @@
 
 ## 次回開始時の選択
 
-T302はレビューR5でdesign test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleを追加検証し、follow-upと最終再レビューを完了した。全体の次タスクは引き続きT204だけを選択し、rename・directory move・deleteの失敗するfile-state testから開始する。
+T204はPR #15反映後のcurrent main統合とSol/high R13最終再レビューを完了した。T301はPR #15/#24反映後のcurrent main統合、設計6.13/8.6のcontract更新、20件の累積回帰test、focused・全回帰検証、Sol/high R10最終再レビューを完了した。T302はR5完了後にcurrent main統合・最終レビュー中であり、最終完了同期はこのレビュー後に行う。次回の実装タスクはP2を継続してT205だけを選択し、branch context resolverとGit状態監視の失敗するtestから開始する。
