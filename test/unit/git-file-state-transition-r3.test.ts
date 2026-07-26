@@ -32,6 +32,16 @@ function apply(files: Record<string, FileReviewState>, diff: string) {
   });
 }
 
+function renameDiff(oldPath: string, newPath: string): string {
+  return [
+    `diff --git a/${oldPath} b/${newPath}`,
+    "similarity index 100%",
+    `rename from ${oldPath}`,
+    `rename to ${newPath}`,
+    ""
+  ].join("\n");
+}
+
 test("rejects two copy sections targeting the same destination", () => {
   const diff = [
     "diff --git a/a.ts b/dest.ts", "similarity index 100%", "copy from a.ts", "copy to dest.ts",
@@ -166,4 +176,65 @@ test("rejects full-text evidence whose line count disagrees with metadata", () =
     oldTexts: { "old.ts": "old\n" },
     newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "new\n" } }
   }), /newFiles.*newText.*lineCount/i);
+});
+
+test("allows renaming a file back to a previous path without duplicating history", () => {
+  const result = applyGitFileStateTransitions({
+    files: { file: state("file", "b.ts", { previousPaths: ["a.ts"] }) },
+    diff: renameDiff("b.ts", "a.ts"),
+    newRevisionId: "new",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  });
+  assert.equal(result.files.file?.currentPath, "a.ts");
+  assert.deepEqual(result.files.file?.previousPaths, ["b.ts"]);
+});
+
+test("preserves canonical history across a to b to a renames", () => {
+  const first = applyGitFileStateTransitions({
+    files: { file: state("file", "a.ts") },
+    diff: renameDiff("a.ts", "b.ts"),
+    newRevisionId: "r2",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  });
+  const second = applyGitFileStateTransitions({
+    files: first.files,
+    diff: renameDiff("b.ts", "a.ts"),
+    newRevisionId: "r3",
+    updatedAt: "2026-07-25T04:31:00.000Z",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  });
+  assert.equal(second.files.file?.currentPath, "a.ts");
+  assert.deepEqual(second.files.file?.previousPaths, ["b.ts"]);
+});
+
+test("rejects delete and rename operations that consume the same source", () => {
+  const diff = [
+    "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null",
+    "diff --git a/a.ts b/b.ts", "similarity index 100%", "rename from a.ts", "rename to b.ts", ""
+  ].join("\n");
+  assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /source operation|delete.*rename/i);
+});
+
+test("rejects duplicate delete operations for the same source", () => {
+  const section = [
+    "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null"
+  ];
+  assert.throws(
+    () => apply({ a: state("a", "a.ts") }, [...section, ...section, ""].join("\n")),
+    /duplicate delete|source operation/i
+  );
+});
+
+test("never returns a file ID in both files and deletedFileIds", () => {
+  const diff = [
+    "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null", ""
+  ].join("\n");
+  const result = apply({ a: state("a", "a.ts") }, diff);
+  assert.equal(result.files.a, undefined);
+  assert.deepEqual(result.deletedFileIds, ["a"]);
+  for (const fileId of result.deletedFileIds) {
+    assert.equal(fileId in result.files, false);
+  }
 });
