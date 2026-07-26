@@ -458,6 +458,41 @@ PRビューには「行以外の変更」として表示する。
 
 バイナリファイルは行進捗から除外し、「行単位レビュー対象外」と表示する。
 
+### 6.13.6 進捗証拠の検証と集計契約
+
+進捗 calculator は、任意の行番号配列やGlobal状態から推測せず、1つの比較を一体化した`PullRequestDiffSnapshot`と、その比較に一致するPR `ReviewContextState`だけを入力にする。
+
+```ts
+interface PullRequestDiffSnapshot {
+  readonly contextId: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  readonly originalDiffId: string; // `${baseSha}..${headSha}`
+  readonly files: readonly PullRequestFileChange[];
+}
+```
+
+`reviewContext.kind`は`"pull-request"`でなければならず、snapshotの`contextId`、`baseSha`、`headSha`はPR contextと一致しなければならない。`originalDiffId`は正確に`${baseSha}..${headSha}`とし、削除行の確認範囲はこのkeyの`originalReviewedByDiff`だけから読む。Global確認済み状態は入力・分子のいずれにも使用しない。
+
+snapshotはcompleteかつvalidatedでなければならない。nonbinary fileは除外判定より先に次を検証し、不完全・stale・曖昧な証拠は進捗を推測せずrejectする。
+
+- unified diff line kindは`context`、`addition`、`deletion`だけとし、該当するold/new座標は正のone-based値とする。各hunkのcursorはheaderの開始座標から進め、line種別、headerのcount、body、終端が一致しなければならない。
+- hunkは少なくとも1つの変更行を含む。zero-count anchor、hunk順序、old/new gap、累積deltaを検証し、addition/deletion座標の重複を拒否する。unique addition/deletion座標数はfileの`additions`/`deletions`統計と完全一致しなければならない。
+- `status`、old/new repository-relative path、hunk side、file ID、canonical display pathを検証する。file IDとcanonical pathはsnapshot内で一意とする。nonempty added/deleted fileは、先頭から全行を表す単一complete hunkでなければならない。
+- stateが存在するときはmap key、payload `fileId`、`revisionId === headSha`、canonical `currentPath`、`lineCount`、modified reviewed interval、modified-side hunk最大extentを照合する。state boundsまたはcontext/revision/pathが一致しない場合もrejectする。
+
+追加行はmodified側、削除行はoriginal側で集計する。one-based changed coordinate `coordinate`は、`coordinate - 1`でzero-based行indexへ変換し、`startLine <= coordinate - 1 < endLineExclusive`となるhalf-open `LineInterval`だけを対応範囲として照合する。
+
+```text
+reviewedLineCount =
+  count(modifiedReviewed ∩ addition newLine)
+  + count(originalReviewedByDiff[originalDiffId] ∩ deletion oldLine)
+
+totalLineCount = additions + deletions
+```
+
+除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。rename-only、binary、excluded fileを区別して表示し、file単位・PR全体とも分母が0の進捗率は100%とする。
+
 ## 6.14 Global理解率
 
 Global理解率は、現在のリポジトリの対象ファイルに存在する非空行のうち、現在も確認済みと確実に判断できる行の割合とする。
@@ -703,11 +738,19 @@ Global状態は現在有効な範囲だけを保持する。過去状態は履�
 ## 8.6 PR変更モデル
 
 ```ts
+type PullRequestFileChangeStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "binary";
+
 interface PullRequestFileChange {
   fileId: string;
   oldPath?: string;
   newPath?: string;
-  status: "added" | "modified" | "deleted" | "renamed" | "copied" | "binary";
+  status: PullRequestFileChangeStatus;
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
@@ -721,13 +764,53 @@ interface DiffHunk {
   lines: DiffLine[];
 }
 
+type DiffLineKind = "context" | "addition" | "deletion";
+
 interface DiffLine {
-  kind: "context" | "addition" | "deletion";
+  kind: DiffLineKind;
   oldLine?: number;
   newLine?: number;
   text: string;
 }
+
+interface PullRequestDiffSnapshot {
+  readonly contextId: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  readonly originalDiffId: string;
+  readonly files: readonly PullRequestFileChange[];
+}
+
+interface CalculatePullRequestDiffProgressInput {
+  readonly diff: PullRequestDiffSnapshot;
+  readonly reviewContext: ReviewContextState;
+  readonly exclusionPolicy: ReviewFileExclusionPolicy;
+}
+
+interface PullRequestDiffFileProgress {
+  readonly fileId: string;
+  readonly oldPath?: string;
+  readonly newPath?: string;
+  readonly status: PullRequestFileChange["status"];
+  readonly path: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+  readonly excluded: boolean;
+  readonly exclusionReason?: ReviewFileExclusionReason;
+}
+
+interface PullRequestDiffProgress {
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+  readonly files: readonly PullRequestDiffFileProgress[];
+}
 ```
+
+`DiffHunk`と`DiffLine`の座標はunified diffのone-based座標である。`LineInterval`は別にzero-based half-openであり、PR進捗は各changed coordinateを`coordinate - 1`へ変換して`startLine <= coordinate - 1 < endLineExclusive`を照合する。`calculatePullRequestDiffProgress`はこのinputから順序を維持したfile resultとaggregate resultを返し、検証不能なsnapshotまたはstateを受理しない。T302はこのidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、T402はrejectをpatch欠落・不完全時のfallback判断として再利用する。
 
 ## 9. 差分追従アルゴリズム
 
