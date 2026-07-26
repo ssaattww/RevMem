@@ -229,7 +229,8 @@ test("rejects duplicate delete operations for the same source", () => {
 
 test("never returns a file ID in both files and deletedFileIds", () => {
   const diff = [
-    "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null", ""
+    "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null",
+    "@@ -1 +0,0 @@", "-old", ""
   ].join("\n");
   const result = apply({ a: state("a", "a.ts") }, diff);
   assert.equal(result.files.a, undefined);
