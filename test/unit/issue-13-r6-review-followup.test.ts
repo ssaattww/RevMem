@@ -18,8 +18,7 @@ import {
   type RepositoryStateManifest,
   type ReviewStateCommit,
   type ReviewStateRepositoryTarget,
-  type ReviewStateStorageUris,
-  type ReviewStateTransactionLike
+  type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
 import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
@@ -31,7 +30,8 @@ import {
   type ReviewContextState
 } from "../../src/core/contracts/index";
 import {
-  markReviewedRanges
+  markReviewedRanges,
+  type ReviewStateTransaction
 } from "../../src/core/review-state/index";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -254,7 +254,7 @@ class RecordingRepository implements DocumentReviewStateRepository {
   }
 
   public async commit(
-    transaction: Readonly<ReviewStateTransactionLike>
+    transaction: Readonly<ReviewStateTransaction>
   ): Promise<void> {
     const matching = [...this.commits.entries()].find(([, current]) =>
       current.contextState.repositoryId === transaction.repositoryId &&
@@ -306,13 +306,13 @@ class InterleavingRepository implements DocumentReviewStateRepository {
 
   /** Runs the deterministic interleaving before delegating the selected target's compare-and-swap commit. */
   public commit(
-    transaction: Readonly<ReviewStateTransactionLike>
+    transaction: Readonly<ReviewStateTransaction>
   ): Promise<void> {
     return this.commitAfterInterleaving(transaction);
   }
 
   private async commitAfterInterleaving(
-    transaction: Readonly<ReviewStateTransactionLike>
+    transaction: Readonly<ReviewStateTransaction>
   ): Promise<void> {
     await this.interleave({
       kind: transaction.next.contextState.kind === "branch" ? "git" :
