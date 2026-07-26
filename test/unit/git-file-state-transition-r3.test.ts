@@ -42,6 +42,7 @@ function renameDiff(oldPath: string, newPath: string): string {
   ].join("\n");
 }
 
+/** Verifies that two copy sections cannot create competing states for one destination path. */
 test("rejects two copy sections targeting the same destination", () => {
   const diff = [
     "diff --git a/a.ts b/dest.ts", "similarity index 100%", "copy from a.ts", "copy to dest.ts",
@@ -50,6 +51,7 @@ test("rejects two copy sections targeting the same destination", () => {
   assert.throws(() => apply({ a: state("a", "a.ts"), b: state("b", "b.ts") }, diff), /duplicate destination/i);
 });
 
+/** Verifies that copy and add sections cannot both claim the same destination path. */
 test("rejects copy and addition sections targeting the same destination", () => {
   const diff = [
     "diff --git a/a.ts b/dest.ts", "similarity index 100%", "copy from a.ts", "copy to dest.ts",
@@ -59,6 +61,7 @@ test("rejects copy and addition sections targeting the same destination", () => 
   assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /duplicate destination/i);
 });
 
+/** Verifies that timestamp-bearing file headers do not bypass duplicate destination validation. */
 test("rejects copy and timestamp-suffixed addition targeting the same destination", () => {
   const diff = [
     "diff --git a/a.ts b/dest.ts", "similarity index 100%", "copy from a.ts", "copy to dest.ts",
@@ -68,6 +71,7 @@ test("rejects copy and timestamp-suffixed addition targeting the same destinatio
   assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /duplicate destination/i);
 });
 
+/** Verifies that every rename declares exactly one source and destination without duplicate metadata. */
 test("rejects incomplete and duplicate rename metadata", () => {
   const malformedDiffs = [
     ["diff --git a/a.ts b/b.ts", "similarity index 100%", "rename from a.ts", ""].join("\n"),
@@ -80,6 +84,7 @@ test("rejects incomplete and duplicate rename metadata", () => {
   }
 });
 
+/** Verifies that add and delete status metadata agrees with the required /dev/null header sides. */
 test("rejects add and delete sections whose headers contradict file status", () => {
   const malformedDiffs = [
     ["diff --git a/dest.ts b/dest.ts", "new file mode 100644", "--- /dev/null", "+++ /dev/null\t2026-07-25 13:50:00 +0900", ""].join("\n"),
@@ -93,6 +98,7 @@ test("rejects add and delete sections whose headers contradict file status", () 
   }
 });
 
+/** Verifies that input reviewed intervals must already be sorted, disjoint, and non-empty. */
 test("rejects non-canonical modifiedReviewed on unchanged files", () => {
   const malformed = [
     [{ startLine: 0, endLineExclusive: 1 }, { startLine: 1, endLineExclusive: 2 }],
@@ -108,6 +114,7 @@ test("rejects non-canonical modifiedReviewed on unchanged files", () => {
   }
 });
 
+/** Verifies that original-side review maps require non-empty IDs and canonical valid intervals. */
 test("rejects invalid originalReviewedByDiff state", () => {
   const invalidStates = [
     state("a", "a.ts", { originalReviewedByDiff: { "": [{ startLine: 0, endLineExclusive: 1 }] } }),
@@ -124,6 +131,7 @@ test("rejects invalid originalReviewedByDiff state", () => {
   }
 });
 
+/** Verifies that unsupported schemas and non-canonical rename history are rejected before transition work. */
 test("rejects unsupported schema and invalid previous paths", () => {
   assert.throws(() => applyGitFileStateTransitions({
     files: { a: state("a", "a.ts", { schemaVersion: 2 as 1 }) }, diff: "", newRevisionId: "new", updatedAt,
@@ -135,6 +143,7 @@ test("rejects unsupported schema and invalid previous paths", () => {
   }), /previousPaths/i);
 });
 
+/** Verifies that new destination metadata requires a non-empty stable ID, valid count, and non-empty hash when supplied. */
 test("rejects invalid new-file metadata before creating output state", () => {
   const diff = [
     "diff --git a/new.ts b/new.ts", "new file mode 100644", "--- /dev/null", "+++ b/new.ts",
@@ -152,6 +161,7 @@ test("rejects invalid new-file metadata before creating output state", () => {
   }
 });
 
+/** Verifies that ignored-EOL mapping rejects supplied full text that does not reproduce the diff hunk. */
 test("rejects unrelated full-text evidence for ignored EOL changes", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
@@ -165,6 +175,7 @@ test("rejects unrelated full-text evidence for ignored EOL changes", () => {
   }), /text evidence.*diff hunk/i);
 });
 
+/** Verifies that destination full text must agree with its declared new-file line count. */
 test("rejects full-text evidence whose line count disagrees with metadata", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
@@ -178,6 +189,7 @@ test("rejects full-text evidence whose line count disagrees with metadata", () =
   }), /newFiles.*newText.*lineCount/i);
 });
 
+/** Verifies that returning to a historical path removes it from history and records only the prior current path. */
 test("allows renaming a file back to a previous path without duplicating history", () => {
   const result = applyGitFileStateTransitions({
     files: { file: state("file", "b.ts", { previousPaths: ["a.ts"] }) },
@@ -190,6 +202,7 @@ test("allows renaming a file back to a previous path without duplicating history
   assert.deepEqual(result.files.file?.previousPaths, ["b.ts"]);
 });
 
+/** Verifies that successive A-to-B-to-A renames retain a canonical history without the current path. */
 test("preserves canonical history across a to b to a renames", () => {
   const first = applyGitFileStateTransitions({
     files: { file: state("file", "a.ts") },
@@ -209,6 +222,7 @@ test("preserves canonical history across a to b to a renames", () => {
   assert.deepEqual(second.files.file?.previousPaths, ["b.ts"]);
 });
 
+/** Verifies that one source cannot be both deleted and renamed by the same atomic transition. */
 test("rejects delete and rename operations that consume the same source", () => {
   const diff = [
     "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null",
@@ -217,6 +231,7 @@ test("rejects delete and rename operations that consume the same source", () => 
   assert.throws(() => apply({ a: state("a", "a.ts") }, diff), /source operation|delete.*rename/i);
 });
 
+/** Verifies that duplicate delete sections for one source are rejected before output construction. */
 test("rejects duplicate delete operations for the same source", () => {
   const section = [
     "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null"
@@ -227,6 +242,7 @@ test("rejects duplicate delete operations for the same source", () => {
   );
 });
 
+/** Verifies that an explicitly deleted stable ID is absent from the returned active snapshot. */
 test("never returns a file ID in both files and deletedFileIds", () => {
   const diff = [
     "diff --git a/a.ts b/a.ts", "deleted file mode 100644", "--- a/a.ts", "+++ /dev/null",
@@ -238,4 +254,53 @@ test("never returns a file ID in both files and deletedFileIds", () => {
   for (const fileId of result.deletedFileIds) {
     assert.equal(fileId in result.files, false);
   }
+});
+
+/** Verifies that complete-text evidence rejects a semantic change after a valid ignored-whitespace hunk. */
+test("rejects hunk-after semantic changes hidden by otherwise valid full-text evidence", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const value = 1;\nconst later = 1;\nconst tail = 1;\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "const  value = 1;\nconst later = 2;\nconst tail = 1;\n" } }
+  }), /full-text evidence/i);
+});
+
+/** Verifies that complete-text evidence rejects a semantic change between two valid ignored-whitespace hunks. */
+test("rejects semantic changes hidden between valid full-text evidence hunks", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const first = 1;", "+const  first = 1;",
+    "@@ -5 +5 @@", "-const last = 1;", "+const  last = 1;", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 5, modifiedReviewed: [{ startLine: 0, endLineExclusive: 5 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const first = 1;\nconst middle = 1;\nconst third = 1;\nconst fourth = 1;\nconst last = 1;\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 5, newText: "const  first = 1;\nconst middle = 2;\nconst third = 1;\nconst fourth = 1;\nconst  last = 1;\n" } }
+  }), /full-text evidence/i);
+});
+
+/** Verifies that complete-text evidence rejects a semantic change at the end after a valid ignored-whitespace hunk. */
+test("rejects tail semantic changes hidden by otherwise valid full-text evidence", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const value = 1;\nconst tail = 1;\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\nconst tail = 2;\n" } }
+  }), /full-text evidence/i);
 });

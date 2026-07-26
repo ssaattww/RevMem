@@ -36,6 +36,7 @@ function apply(files: Record<string, FileReviewState>, diff: string, extra: Reco
   });
 }
 
+/** Verifies that an unchanged rename preserves its stable ID, review ranges, history, and content hash. */
 test("follows a 100 percent rename while preserving stable identity and content hash", () => {
   const diff = [
     "diff --git a/src/old.ts b/src/new.ts",
@@ -53,6 +54,7 @@ test("follows a 100 percent rename while preserving stable identity and content 
   assert.deepEqual(result.files.file1?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 4 }]);
 });
 
+/** Verifies that a content-changing rename invalidates only changed ranges and replaces stale hash metadata. */
 test("maps content-changing rename and replaces stale content hash", () => {
   const diff = [
     "diff --git a/lib/old.ts b/lib/new.ts",
@@ -78,6 +80,7 @@ test("maps content-changing rename and replaces stale content hash", () => {
   ]);
 });
 
+/** Verifies that chained renames resolve every source from the same pre-transition snapshot. */
 test("resolves rename chains from the pre-transition snapshot", () => {
   const diff = [
     "diff --git a/a.ts b/b.ts",
@@ -96,6 +99,7 @@ test("resolves rename chains from the pre-transition snapshot", () => {
   assert.equal(result.files.b?.currentPath, "c.ts");
 });
 
+/** Verifies that swapped rename destinations retain their identities independently of diff section ordering. */
 test("resolves rename swaps without section-order dependence", () => {
   const diff = [
     "diff --git a/a.ts b/b.ts",
@@ -114,6 +118,7 @@ test("resolves rename swaps without section-order dependence", () => {
   assert.equal(result.files.b?.currentPath, "a.ts");
 });
 
+/** Verifies that a destination vacated by an explicit delete can receive a renamed source in one transition. */
 test("allows a destination occupied only by a file deleted in the same diff", () => {
   const diff = [
     "diff --git a/b.ts b/b.ts",
@@ -135,6 +140,7 @@ test("allows a destination occupied only by a file deleted in the same diff", ()
   assert.deepEqual(result.deletedFileIds, ["b"]);
 });
 
+/** Verifies that copies retain source review state while every copied destination starts unreviewed. */
 test("preserves copy source review and creates only destinations as unreviewed", () => {
   const diff = [
     "diff --git a/source.ts b/copy-a.ts",
@@ -161,6 +167,7 @@ test("preserves copy source review and creates only destinations as unreviewed",
   assert.equal(result.unresolved.length, 2);
 });
 
+/** Verifies that an added file is created from required metadata without inheriting reviewed ranges. */
 test("creates a plain added file as new unreviewed state", () => {
   const diff = [
     "diff --git a/new.ts b/new.ts",
@@ -181,6 +188,7 @@ test("creates a plain added file as new unreviewed state", () => {
   assert.equal(result.files["new-id"]?.contentHash, "new-hash");
 });
 
+/** Verifies that whitespace-only rename changes preserve review only when complete text evidence proves equivalence. */
 test("preserves whitespace-only rename changes only when complete texts prove the setting", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts",
@@ -207,6 +215,7 @@ test("preserves whitespace-only rename changes only when complete texts prove th
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
 
+/** Verifies that EOL-ignore preserves reviewed ranges across a CRLF-to-LF rename when complete evidence matches. */
 test("preserves CRLF to LF rename changes when EOL changes are ignored", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts",
@@ -235,6 +244,7 @@ test("preserves CRLF to LF rename changes when EOL changes are ignored", () => {
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
 });
 
+/** Verifies that EOL-ignore accepts one terminal newline addition without treating the file content as changed. */
 test("preserves one terminal line-break addition when EOL changes are ignored", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts",
@@ -262,6 +272,7 @@ test("preserves one terminal line-break addition when EOL changes are ignored", 
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
 
+/** Verifies that ambiguous rename sources are removed while each possible destination is created unreviewed. */
 test("removes ambiguous rename source and keeps only unreviewed destinations", () => {
   const diff = [
     "diff --git a/source.ts b/a.ts",
@@ -286,6 +297,7 @@ test("removes ambiguous rename source and keeps only unreviewed destinations", (
   assert.deepEqual(result.files.b?.modifiedReviewed, []);
 });
 
+/** Verifies that missing add or copy destination metadata rejects the whole transition without mutating source review. */
 test("fails atomically when required new-file metadata is missing", () => {
   const added = [
     "diff --git a/new.ts b/new.ts",
@@ -310,6 +322,7 @@ test("fails atomically when required new-file metadata is missing", () => {
   assert.deepEqual(source.modifiedReviewed, [{ startLine: 0, endLineExclusive: 4 }]);
 });
 
+/** Verifies that duplicate or malformed quoted copy metadata is rejected before transition planning. */
 test("rejects malformed duplicate and trailing copy metadata", () => {
   const duplicate = [
     "diff --git a/a.ts b/b.ts",
@@ -329,6 +342,7 @@ test("rejects malformed duplicate and trailing copy metadata", () => {
   assert.throws(() => apply({ a: state("a", "a.ts") }, trailing), /trailing|quoted/i);
 });
 
+/** Verifies that invalid line counts or reviewed intervals fail before a rename can produce output state. */
 test("rejects invalid state line counts and reviewed intervals", () => {
   const diff = [
     "diff --git a/a.ts b/b.ts",

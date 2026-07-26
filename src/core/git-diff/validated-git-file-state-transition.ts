@@ -298,6 +298,21 @@ function equalLines(left: readonly string[], right: readonly string[]): boolean 
   return left.length === right.length && left.every((line, index) => line === right[index]);
 }
 
+function reconstructNewLines(
+  oldLines: readonly string[],
+  hunks: readonly { oldStart: number; oldLineCount: number; addedLines: readonly string[] }[]
+): string[] {
+  const reconstructed: string[] = [];
+  let oldCursor = 0;
+  for (const hunk of hunks) {
+    reconstructed.push(...oldLines.slice(oldCursor, hunk.oldStart));
+    reconstructed.push(...hunk.addedLines);
+    oldCursor = hunk.oldStart + hunk.oldLineCount;
+  }
+  reconstructed.push(...oldLines.slice(oldCursor));
+  return reconstructed;
+}
+
 function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>): void {
   if (!input.options.ignoreWhitespaceChanges && !input.options.ignoreEolChanges) {
     return;
@@ -326,6 +341,9 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
       if (!equalLines(removed, hunk.removedLines) || !equalLines(added, hunk.addedLines)) {
         throw new SyntaxError("Full-text evidence does not match the parsed diff hunk.");
       }
+    }
+    if (!equalLines(reconstructNewLines(oldLines, file.hunks), newLines)) {
+      throw new SyntaxError("Full-text evidence does not reconstruct the complete new document.");
     }
   }
 }
