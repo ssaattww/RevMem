@@ -72,8 +72,14 @@ extends CoherentFileSystemReviewStateRepository {
       const currentContext = await super.load(target);
       const persistedGlobal = await this.loadGlobal(target);
       let nextCommit = clone(commit);
+      const initializesWithEmptyGlobal =
+        Object.keys(nextCommit.globalState.files).length === 0;
 
-      if (currentContext === undefined && persistedGlobal !== undefined) {
+      if (
+        currentContext === undefined &&
+        persistedGlobal !== undefined &&
+        initializesWithEmptyGlobal
+      ) {
         if (
           persistedGlobal.currentRevisionId !==
           nextCommit.globalState.currentRevisionId
