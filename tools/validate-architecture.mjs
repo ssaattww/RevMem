@@ -152,22 +152,24 @@ for (const filePath of collectTypeScriptFiles(sourceRoot)) {
 }
 
 if (violations.length > 0) {
-  console.error("Architecture validation failed:");
+  console.error("Architecture validation findings:");
   for (const violation of violations) {
     console.error(`- ${violation}`);
   }
-  process.exitCode = 1;
-} else {
-  console.log("Architecture validation passed.");
 }
 
-if (expectedViolationCount !== undefined) {
-  if (violations.length === expectedViolationCount) {
-    console.log(`Architecture violation count matched expected ${expectedViolationCount}.`);
+if (expectedViolationCount === undefined) {
+  if (violations.length === 0) {
+    console.log("Architecture validation passed.");
   } else {
-    console.error(
-      `Architecture violation count was ${violations.length}; expected ${expectedViolationCount}.`
-    );
+    console.error(`Architecture validation failed with ${violations.length} violation(s).`);
     process.exitCode = 1;
   }
+} else if (violations.length === expectedViolationCount) {
+  console.log(`Architecture violation count matched expected ${expectedViolationCount}.`);
+} else {
+  console.error(
+    `Architecture violation count was ${violations.length}; expected ${expectedViolationCount}.`
+  );
+  process.exitCode = 1;
 }
