@@ -16,6 +16,8 @@ export interface NodeGitBlobReaderOptions {
   readonly executable?: string;
   /** Maximum execution time in milliseconds. Defaults to 30 seconds. */
   readonly timeoutMs?: number;
+  /** Grace period between SIGTERM and SIGKILL, and after SIGKILL. Defaults to 250 ms. */
+  readonly terminationGraceMs?: number;
 }
 
 const requirePositiveSafeInteger = (value: number, name: string): number => {
@@ -43,6 +45,9 @@ const requireObjectId = (value: string): string => {
 
 const diagnosticText = (bytes: Buffer): string => bytes.toString("utf8");
 
+const joinDiagnostics = (parts: readonly string[]): string =>
+  parts.filter((part) => part.length > 0).join("\n");
+
 /**
  * Streams exact blob bytes from `git cat-file blob` without `execFile.maxBuffer`.
  *
@@ -52,6 +57,7 @@ const diagnosticText = (bytes: Buffer): string => bytes.toString("utf8");
 export class NodeGitBlobReader implements GitBlobReader {
   public readonly executable: string;
   private readonly timeoutMs: number;
+  private readonly terminationGraceMs: number;
 
   public constructor(options: NodeGitBlobReaderOptions = {}) {
     const executable = options.executable ?? "git";
@@ -62,6 +68,10 @@ export class NodeGitBlobReader implements GitBlobReader {
     this.timeoutMs = requirePositiveSafeInteger(
       options.timeoutMs ?? 30_000,
       "timeoutMs"
+    );
+    this.terminationGraceMs = requirePositiveSafeInteger(
+      options.terminationGraceMs ?? 250,
+      "terminationGraceMs"
     );
   }
 
@@ -82,24 +92,107 @@ export class NodeGitBlobReader implements GitBlobReader {
       });
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
+      const lifecycleDiagnostics: string[] = [];
       let settled = false;
+      let timedOut = false;
+      let timeoutDiagnostic = "";
+      let timeout: NodeJS.Timeout | undefined;
+      let terminationTimer: NodeJS.Timeout | undefined;
+      let forceCloseTimer: NodeJS.Timeout | undefined;
+
+      const clearTimers = (): void => {
+        if (timeout !== undefined) {
+          clearTimeout(timeout);
+        }
+        if (terminationTimer !== undefined) {
+          clearTimeout(terminationTimer);
+        }
+        if (forceCloseTimer !== undefined) {
+          clearTimeout(forceCloseTimer);
+        }
+      };
+
+      const capturedResult = (
+        exitCode: number,
+        signal: NodeJS.Signals | null = null
+      ): GitCommandResult => {
+        const stderr = diagnosticText(Buffer.concat(stderrChunks));
+        return {
+          exitCode,
+          stdout: diagnosticText(Buffer.concat(stdoutChunks)),
+          stderr: joinDiagnostics([
+            stderr,
+            timeoutDiagnostic,
+            ...lifecycleDiagnostics,
+            signal === null ? "" : `Git process terminated by ${signal}`
+          ])
+        };
+      };
 
       const finishFailure = (result: GitCommandResult): void => {
         if (settled) {
           return;
         }
         settled = true;
-        clearTimeout(timeout);
+        clearTimers();
         reject(new GitCommandFailedError(invocation, result));
       };
 
-      const timeout = setTimeout(() => {
-        child.kill();
-        finishFailure({
-          exitCode: -1,
-          stdout: "",
-          stderr: `Git blob read timed out after ${this.timeoutMs} ms`
-        });
+      const finishProcessError = (error: NodeJS.ErrnoException): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimers();
+        if (error.code === "ENOENT") {
+          reject(new GitExecutableNotFoundError(this.executable, { cause: error }));
+          return;
+        }
+        reject(error);
+      };
+
+      const forceBoundedFailure = (): void => {
+        if (settled) {
+          return;
+        }
+        lifecycleDiagnostics.push(
+          "Git process did not emit close after SIGKILL within the termination grace period."
+        );
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        finishFailure(capturedResult(-1));
+      };
+
+      const escalateTermination = (): void => {
+        if (settled) {
+          return;
+        }
+        const sent = child.kill("SIGKILL");
+        lifecycleDiagnostics.push(
+          sent
+            ? "Git process did not close after SIGTERM; sent SIGKILL."
+            : "Git process did not close after SIGTERM; SIGKILL could not be sent."
+        );
+        forceCloseTimer = setTimeout(forceBoundedFailure, this.terminationGraceMs);
+      };
+
+      timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        timedOut = true;
+        timeoutDiagnostic = `Git blob read timed out after ${this.timeoutMs} ms`;
+        const sent = child.kill("SIGTERM");
+        if (!sent) {
+          lifecycleDiagnostics.push(
+            "SIGTERM could not be sent; waiting for process close before escalation."
+          );
+        }
+        terminationTimer = setTimeout(
+          escalateTermination,
+          this.terminationGraceMs
+        );
       }, this.timeoutMs);
 
       child.stdout.on("data", (chunk: Buffer | Uint8Array) => {
@@ -109,26 +202,26 @@ export class NodeGitBlobReader implements GitBlobReader {
         stderrChunks.push(Buffer.from(chunk));
       });
       child.on("error", (error: NodeJS.ErrnoException) => {
-        if (settled) {
+        if (timedOut) {
+          lifecycleDiagnostics.push(`Git process error after timeout: ${error.message}`);
           return;
         }
-        settled = true;
-        clearTimeout(timeout);
-        if (error.code === "ENOENT") {
-          reject(new GitExecutableNotFoundError(this.executable, { cause: error }));
-          return;
-        }
-        reject(error);
+        finishProcessError(error);
       });
       child.on("close", (code, signal) => {
         if (settled) {
           return;
         }
+        if (timedOut) {
+          finishFailure(capturedResult(-1, signal));
+          return;
+        }
+
         const stdout = Buffer.concat(stdoutChunks);
         const stderr = Buffer.concat(stderrChunks);
         if (code === 0) {
           settled = true;
-          clearTimeout(timeout);
+          clearTimers();
           resolve(new Uint8Array(stdout));
           return;
         }
