@@ -612,7 +612,10 @@ export class DocumentReviewStateSessionProvider {
         }
         const latest = await this.options.repository.load(mapping.repositoryTarget);
         if (latest === undefined) {
-          throw new Error("persisted review state disappeared during stale-file cleanup.");
+          throw new Error(
+            "persisted review state disappeared during stale-file cleanup.",
+            { cause: error }
+          );
         }
         this.validateLoadedIdentity(latest, mapping);
         if (
@@ -620,7 +623,8 @@ export class DocumentReviewStateSessionProvider {
           latest.globalState.currentRevisionId !== mapping.target.revisionId
         ) {
           throw new Error(
-            "persisted review state requires revision mapping before it can be used."
+            "persisted review state requires revision mapping before it can be used.",
+            { cause: error }
           );
         }
         current = latest;
