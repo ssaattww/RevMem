@@ -71,7 +71,7 @@ export interface FileReviewState {
   schemaVersion: SchemaVersion;
   /** Stable file identity that survives an unambiguous rename. */
   fileId: string;
-  /** Current repository-relative path for the file. */
+  /** Current repository-relative path, or canonical URI for an external file. */
   currentPath: string;
   /** Former repository-relative paths retained for rename tracking. */
   previousPaths: string[];
@@ -90,9 +90,13 @@ export interface FileReviewState {
 }
 
 /**
- * The unit that isolates review state for a pull request, branch, or workspace.
+ * The unit that isolates review state for a pull request, branch, workspace, or external file.
  */
-export type ReviewContextKind = "pull-request" | "branch" | "workspace";
+export type ReviewContextKind =
+  | "pull-request"
+  | "branch"
+  | "workspace"
+  | "external-file";
 
 /**
  * Pull-request metadata that identifies a pull-request review context.
@@ -141,7 +145,42 @@ export interface WorkspaceReviewContext {
 }
 
 /**
- * Persisted review state for a single pull-request, branch, or workspace context.
+ * Canonical resource and snapshot metadata for one non-Git file outside every workspace.
+ */
+export interface ExternalFileReviewContext {
+  /** Canonical URI including a UNC or remote authority when present. */
+  canonicalUri: string;
+  /** Snapshot revision used to compare the standalone file content. */
+  snapshotRevision: string;
+}
+
+/** Lower-owner kinds that may contribute review ranges during owner reconciliation. */
+export type OwnerReconciliationSourceOwner = "workspace" | "external-file";
+
+/** Persisted certain snapshot used to calculate later lower-owner deltas. */
+export interface OwnerReconciliationSourceSnapshot {
+  /** Lower owner represented by this snapshot. */
+  sourceOwner: OwnerReconciliationSourceOwner;
+  /** Stable repository or standalone-resource identity of the source. */
+  sourceRepositoryId: string;
+  /** Stable source context identity. */
+  sourceContextId: string;
+  /** Stable source file identity. */
+  sourceFileId: string;
+  /** Content hash against which the snapshot is certain, when available. */
+  contentHash?: string;
+  /** Current source line count. */
+  lineCount: number;
+  /** Certain reviewed ranges observed in the source. */
+  reviewed: LineInterval[];
+  /** ISO 8601 timestamp at which the source context was first persisted. */
+  sourceCreatedAt: string;
+  /** ISO 8601 timestamp of the source file or context update represented here. */
+  sourceUpdatedAt: string;
+}
+
+/**
+ * Persisted review state for a single pull-request, branch, workspace, or external-file context.
  */
 export interface ReviewContextState {
   /** Persisted-document version used by migration readers. */
@@ -150,7 +189,7 @@ export interface ReviewContextState {
   contextId: string;
   /** Determines which optional context descriptor is applicable. */
   kind: ReviewContextKind;
-  /** Stable identity of the repository that owns this context. */
+  /** Stable identity of the repository or standalone resource that owns this context. */
   repositoryId: string;
   /** User-facing name for context selection and display. */
   displayName: string;
@@ -160,6 +199,8 @@ export interface ReviewContextState {
   branch?: BranchReviewContext;
   /** Workspace descriptor when `kind` is `"workspace"`. */
   workspace?: WorkspaceReviewContext;
+  /** Canonical external resource when `kind` is `"external-file"`. */
+  externalFile?: ExternalFileReviewContext;
   /** File state keyed by stable file ID. */
   files: Record<string, FileReviewState>;
   /** ISO 8601 timestamp at which the context was first persisted. */
@@ -168,13 +209,19 @@ export interface ReviewContextState {
   updatedAt: string;
 }
 
+/** Context state extended with persisted lower-owner reconciliation snapshots. */
+export interface ReconciledReviewContextState extends ReviewContextState {
+  /** Last certain lower-owner snapshots keyed by stable reconciliation source key. */
+  ownerReconciliation?: Record<string, OwnerReconciliationSourceSnapshot>;
+}
+
 /**
  * Current reviewed state for one file in the repository-wide Global layer.
  */
 export interface GlobalFileReviewState {
   /** Stable file identity shared with context-specific state. */
   fileId: string;
-  /** Current repository-relative path for the file. */
+  /** Current repository-relative path, or canonical URI for an external file. */
   currentPath: string;
   /** Revision against which the Global ranges are valid. */
   revisionId: string;
@@ -187,12 +234,12 @@ export interface GlobalFileReviewState {
 }
 
 /**
- * Persisted repository-wide Global layer; it contains only currently valid ranges.
+ * Persisted owner-wide Global layer; it contains only currently valid ranges.
  */
 export interface RepositoryGlobalState {
   /** Persisted-document version used by migration readers. */
   schemaVersion: SchemaVersion;
-  /** Stable identity of the repository that owns the Global layer. */
+  /** Stable identity of the repository or standalone resource that owns the Global layer. */
   repositoryId: string;
   /** Revision at which the Global layer was last validated. */
   currentRevisionId: string;
