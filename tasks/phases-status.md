@@ -99,7 +99,8 @@
 - T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
 - R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
 - R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
-- T203、T204、T300の完了によりT301とT302は着手可能である。全体の次タスクはP2のT205とする
+- T301はPR #15/#24反映後のcurrent mainへ統合し、identity-bound snapshot、complete diff・state validation、除外後のPR/file進捗、20件の累積回帰test、設計6.13/8.6同期、Sol/high R10最終再レビューを完了した
+- T203、T204、T300、T301の完了によりT302は着手可能である。全体の次タスクはP2のT205とする
 
 ### 終了チェックポイント
 
