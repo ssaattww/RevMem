@@ -4,8 +4,6 @@ import test from "node:test";
 import { ReviewDiffUriCodec, ReviewDiffUriCodecError } from "../../src/application/diff-document/index";
 import { requireCanonicalRepositoryRelativePath } from "../../src/application/repository-path/index";
 
-import "./design-document-structure.test";
-
 const revision = "0123456789abcdef0123456789abcdef01234567";
 const windowsReservedPaths = [
   "CON",
