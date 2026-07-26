@@ -108,3 +108,89 @@ test("preserves rename zero denominator and exclusion contracts", () => {
   assert.deepEqual(result.files[3]?.exclusionReason, { kind: "binary" });
   assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 1, progress: 1 });
 });
+
+/** Verifies that an addition carrying an original-side coordinate is rejected instead of being counted. */
+test("rejects additions with an opposite-side old coordinate", () => {
+  const malformed = file("a", "modified", "a.ts", "a.ts", [hunk(1, 0, 1, 1, [line("addition", 1, 1)])]);
+
+  assert.throws(() => calculate(snapshot([malformed])), /Addition must not have oldLine/);
+});
+
+/** Verifies that context lines must advance from the unified-diff cursors declared by their hunk header. */
+test("rejects a context cursor mismatch", () => {
+  const malformed = file("a", "modified", "a.ts", "a.ts", [hunk(1, 1, 1, 1, [line("context", 2, 1)])]);
+
+  assert.throws(() => calculate(snapshot([malformed])), /context coordinate mismatch/i);
+});
+
+/** Verifies that a later hunk whose anchors disagree with the cumulative delta is rejected before progress calculation. */
+test("rejects a multi-hunk cumulative-delta and gap disagreement", () => {
+  const malformed = file("a", "modified", "a.ts", "a.ts", [
+    hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)]),
+    hunk(4, 1, 5, 1, [line("deletion", 4), line("addition", undefined, 5)])
+  ]);
+
+  assert.throws(() => calculate(snapshot([malformed])), /delta mismatch/i);
+});
+
+/** Verifies that the same changed modified-side coordinate cannot be supplied by more than one hunk. */
+test("rejects duplicate changed addition coordinates", () => {
+  const malformed = file("a", "modified", "a.ts", "a.ts", [
+    hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)]),
+    hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)])
+  ]);
+
+  assert.throws(() => calculate(snapshot([malformed])), /Duplicate deletion coordinate|Duplicate addition coordinate/);
+});
+
+/** Verifies that a state-map entry whose payload file ID differs from its map key is rejected. */
+test("rejects a state payload fileId mismatch", () => {
+  const state = context("base", "head", { a: [[0, 1]] });
+  state.files.a!.fileId = "other";
+
+  assert.throws(() => calculate(snapshot([addition("a", "a.ts")]), state), /identity mismatch/i);
+});
+
+/** Verifies that invalid modified and original reviewed interval bounds reject instead of contributing progress. */
+test("rejects invalid modified and original interval bounds", () => {
+  const invalidModified = context("base", "head", { a: [[0, 101]] });
+  const invalidOriginal = context("base", "head", {}, { deleted: [[3, 2]] });
+
+  assert.throws(() => calculate(snapshot([addition("a", "a.ts")]), invalidModified), /interval exceeds lineCount/i);
+  assert.throws(() => calculate(snapshot([deletion("deleted", "deleted.ts")]), invalidOriginal), /zero-based half-open/i);
+});
+
+/** Verifies that a valid replacement followed by a zero-count insertion hunk remains a complete multi-hunk diff. */
+test("accepts valid multiple hunks including a zero-count insertion anchor", () => {
+  const change = file("multiple", "modified", "multiple.ts", "multiple.ts", [
+    hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)]),
+    hunk(2, 0, 3, 1, [line("addition", undefined, 3)])
+  ]);
+
+  const result = calculate(snapshot([change]));
+
+  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 0, total: 3, progress: 0 });
+});
+
+/** Verifies that an original-side reviewed interval counts a deleted line for the matching comparison ID. */
+test("counts original-side reviewed deletions", () => {
+  const result = calculate(snapshot([deletion("deleted", "deleted.ts")]), context("base", "head", {}, { deleted: [[0, 1]] }));
+
+  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 1, progress: 1 });
+});
+
+/** Verifies that a replacement counts its reviewed deletion and addition as two changed lines. */
+test("counts a reviewed replacement as two changed lines", () => {
+  const replacement = file("replace", "modified", "replace.ts", "replace.ts", [hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)])]);
+  const result = calculate(snapshot([replacement]), context("base", "head", { replace: [[0, 1]] }, { replace: [[0, 1]] }));
+
+  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 2, total: 2, progress: 1 });
+});
+
+/** Verifies that reviewed context lines do not increase progress beyond the changed addition they surround. */
+test("does not count reviewed context lines as PR progress", () => {
+  const change = file("context", "modified", "context.ts", "context.ts", [hunk(1, 2, 1, 3, [line("context", 1, 1), line("addition", undefined, 2), line("context", 2, 3)])]);
+  const result = calculate(snapshot([change]), context("base", "head", { context: [[0, 3]] }));
+
+  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 1, progress: 1 });
+});

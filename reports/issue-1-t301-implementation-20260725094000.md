@@ -36,6 +36,12 @@
 - Fixture diagnostic fix: `35df3ff3cecbe182f4932d4e59a3d81cac725c8f`
 - Green run: `30183893735` / success
 
+### R8レビュー対応
+
+- Red/evidence gap: current `test:t301` は9件でGreenだったが、addition opposite-side、context cursor、hunk delta/gap、duplicate coordinate、state payload ID、interval bounds、multiple hunk、original deletion、replacement、reviewed contextを個別に固定するdurable test名・assertが0件だった。
+- Test-first: 上記10件のbehavior JSDoc付き回帰testを追加した。production sourceはread-only probeと追加testで既に正しい契約を満たしたため変更していない。
+- Green: `npm run test:t301` は19 tests passed。Windows raw `npm run test:unit` はIssue #13のPOSIX固定fixture 19件により258/277で停止し、test-process限定preload適用後は277/277 Green。
+
 ## 現在の実装内容
 
 - identity-bound snapshotとPR context/revisionをcalculator境界で照合
@@ -53,15 +59,18 @@
 
 ## 累積テスト対象
 
+- 現在のT301 focused suite: 19 test cases
 - file単位とPR全体の部分進捗
 - added/deleted complete diffとpartial patch拒否
 - deletion-only hunkを含むmodified-side extentとlineCount
-- state currentPath・revision・payload ID・interval bounds
+- state currentPath・revision・payload ID・modified/original interval bounds
 - excluded fileでもdiff/state validationを継続
 - safe integer級の巨大intervalを展開しない計算
 - non-PR、stale snapshot/state、unknown runtime union
-- context-only/zero-zero、座標、hunk order/gap/delta、統計不一致
+- addition opposite-side、context-only/zero-zero、context cursor座標、hunk order/gap/delta、統計不一致
+- duplicate changed coordinate、valid multiple hunkとzero-count insertion anchor
 - duplicate file ID・canonical path
+- original-side deletion reviewed、replacementの2行計上、reviewed context行の非算入
 - rename-only、binary/user glob、exclusion reason、zero denominator
 
 ## 対象外
@@ -74,3 +83,5 @@
 ## 検証方針
 
 CI判定はrepository全体の「最新run」ではなく、自分のbranch HEAD SHAに紐づくworkflow runだけを使用する。マージはユーザーが行うため、本対応ではマージしない。
+
+R8では`npm run build`、`npm run lint`、`npm run typecheck:contracts`、`npm run validate:architecture`、`npm run test:t301`、`npm run test:t204`、full unit、Git、GitHubを実行する。negative architecture fixtureは期待どおり10件を検出して非0終了する。Windows raw full unitとtest-process限定POSIX path preload適用結果を併記し、T301とは無関係なIssue #13 fixture差を隠さない。
