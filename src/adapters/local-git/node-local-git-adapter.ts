@@ -11,7 +11,11 @@ import {
  * `executable` and `timeoutMs` are applied to both metadata commands and raw
  * blob reads. `maxBufferBytes` applies only to bounded metadata command output.
  */
-export type NodeLocalGitAdapterOptions = NodeGitCommandExecutorOptions;
+export interface NodeLocalGitAdapterOptions
+  extends NodeGitCommandExecutorOptions {
+  /** Grace period between blob SIGTERM and SIGKILL escalation. */
+  readonly blobTerminationGraceMs?: number;
+}
 
 /**
  * Creates a local Git adapter whose metadata and blob commands use one runtime policy.
@@ -23,7 +27,10 @@ export function createNodeLocalGitAdapter(
     ...(options.executable === undefined
       ? {}
       : { executable: options.executable }),
-    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs })
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    ...(options.blobTerminationGraceMs === undefined
+      ? {}
+      : { terminationGraceMs: options.blobTerminationGraceMs })
   };
 
   return new LocalGitAdapter(
