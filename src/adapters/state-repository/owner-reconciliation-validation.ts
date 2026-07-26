@@ -31,7 +31,11 @@ const requireIsoTimestamp = (value: unknown, name: string): string => {
   return timestamp;
 };
 
-const validateInterval = (value: unknown, name: string): LineInterval => {
+const validateInterval = (
+  value: unknown,
+  name: string,
+  lineCount: number
+): LineInterval => {
   if (!isRecord(value)) {
     throw new TypeError(`${name} must be an object`);
   }
@@ -45,6 +49,9 @@ const validateInterval = (value: unknown, name: string): LineInterval => {
   );
   if (endLineExclusive <= startLine) {
     throw new TypeError(`${name}.endLineExclusive must be greater than startLine`);
+  }
+  if (endLineExclusive > lineCount) {
+    throw new RangeError(`${name} must stay within source lineCount`);
   }
   return { startLine, endLineExclusive };
 };
@@ -65,6 +72,13 @@ const validateSnapshot = (
   const contentHash = value.contentHash === undefined
     ? undefined
     : requireString(value.contentHash, `${name}.contentHash`);
+  const lineCount = requireNonNegativeSafeInteger(
+    value.lineCount,
+    `${name}.lineCount`
+  );
+  const reviewed = value.reviewed.map((interval, index) =>
+    validateInterval(interval, `${name}.reviewed[${index}]`, lineCount)
+  );
   return {
     sourceOwner: value.sourceOwner,
     sourceRepositoryId: requireString(
@@ -77,10 +91,8 @@ const validateSnapshot = (
     ),
     sourceFileId: requireString(value.sourceFileId, `${name}.sourceFileId`),
     ...(contentHash === undefined ? {} : { contentHash }),
-    lineCount: requireNonNegativeSafeInteger(value.lineCount, `${name}.lineCount`),
-    reviewed: value.reviewed.map((interval, index) =>
-      validateInterval(interval, `${name}.reviewed[${index}]`)
-    ),
+    lineCount,
+    reviewed,
     sourceCreatedAt: requireIsoTimestamp(
       value.sourceCreatedAt,
       `${name}.sourceCreatedAt`
