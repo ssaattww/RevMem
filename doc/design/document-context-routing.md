@@ -2,11 +2,12 @@
 
 ## 1. 目的
 
-本書は、通常エディタで開かれたfilesystem-backed documentについて、次の機能契約を一体として定義する。
+本書は、VS Codeの通常エディタで開かれたfilesystem-backed documentについて、次の機能契約を一体として定義する。
 
 - レビュー状態を所有するcontextの解決
 - Repository、Context、Fileのidentity
 - ownerごとの保存先と永続化境界
+- context変更時のRepository Global継承
 - owner変更時の確認済み範囲のreconciliation
 - VS Code Extensionとの接続
 
@@ -79,9 +80,7 @@ Git executable不在と`not-repository`以外の実行失敗を非Gitとして�
 
 1回のwritable `open`では、active ownerを決定するLocal Git inspectionを1回だけ行う。
 
-reconciliation済みsessionを返した後に、同じdescriptorをread-only decoration経路へ再投入してownerを再解決してはならない。返却するwritable sessionは、owner解決、target snapshot読込、lower-owner reconciliationで確定した同じ結果を使用する。
-
-read-only decorationは別操作としてownerを解決してよいが、状態の初期化や永続化を行わない。
+reconciliation済みsessionを返した後に、同じdescriptorをread-only decoration経路へ再投入してownerを再解決してはならない。read-only decorationは別操作としてownerを解決してよいが、状態の初期化や永続化を行わない。
 
 ## 5. Identity
 
@@ -150,16 +149,18 @@ VS CodeのUNC securityを迂回しない。
 
 ### 6.1 共通原則
 
-- context stateとRepository Global stateは同じrepository identityに属する
+- context stateとRepository Global stateは同じowner identityに属する
+- context stateはcontextごとに独立する
+- Repository Global stateはownerごとに1つだけ存在し、context間で共有する
 - 更新はcontextとGlobalの完全snapshotを一体として扱う
 - atomic committerは`expected`と現在snapshotを比較し、両stateを同時に置換する
-- contextだけ、Globalだけを更新するAPIを公開しない
+- contextだけ、Globalだけを更新する公開transaction APIを設けない
 - stale expectationは拒否し、部分保存しない
-- content hash、revision、line count、current pathが現在documentと一致しないfile stateは、利用前に無効化する
+- content hash、revision、line count、current pathが現在documentと一致しないfile stateは利用前に無効化する
 
-owner reconciliation metadataは、公開された`ReconciledReviewContextState`と`OwnerReconciliationSourceSnapshot`を正式な永続化contractとする。基本`ReviewContextState`は全context共通のfieldを表し、reconciliation metadataを保持するcontextだけが専用subtypeを使用する。
+owner reconciliation metadataは、公開された`ReconciledReviewContextState`と`OwnerReconciliationSourceSnapshot`を正式な永続化contractとする。基本`ReviewContextState`は全context共通fieldを表し、reconciliation metadataを保持するcontextだけが専用subtypeを使用する。
 
-`ownerReconciliation`はschema version 1のoptional additive sectionである。未保持の既存stateは有効であり、保持する場合は全keyとsnapshot fieldを検証する。
+`ownerReconciliation`はschema version 1のoptional additive sectionである。metadataを持たない既存stateは有効であり、保持する場合は全keyとsnapshot fieldを検証する。
 
 ### 6.2 Git repository storage
 
@@ -178,15 +179,7 @@ globalStorageUri/
       lock
 ```
 
-workspace内外で保存先を変えない。同じRepository IDを持つcloneは同じ論理repositoryとして扱う。
-
-保存対象:
-
-- branch context
-- detached HEAD context
-- pull-request context
-- repository単位のGlobal review state
-- owner reconciliation metadata
+repository manifestは複数のcontext参照と、1つのowner-wide Global参照を持つ。workspace内外で保存先を変えない。同じRepository IDを持つcloneは同じ論理repositoryとして扱う。
 
 ### 6.3 Non-Git workspace storage
 
@@ -204,7 +197,7 @@ workspace contextは複数fileで共有する。対象file stateが存在しな�
 
 ### 6.4 External-file storage
 
-Git working treeにもworkspaceにも所属しないdocumentは、canonical document URIから導出したrepository identityごとに保存する。
+Git working treeにもworkspaceにも所属しないdocumentは、canonical document URIから導出したowner identityごとに保存する。
 
 ```text
 globalStorageUri/
@@ -219,17 +212,47 @@ globalStorageUri/
       lock
 ```
 
-VS Codeの`globalStorageUri`とRevMemのGlobal確認済みlayerは別概念である。external-file contextとGlobal stateの両方を上記rootへ保存する。
+VS Codeの`globalStorageUri`とRevMemのGlobal確認済みlayerは別概念である。canonical URIはハッシュだけでなく、context descriptorとfile `currentPath`にも保存する。
 
-canonical URIはハッシュだけでなく、context descriptorとfile `currentPath`にも保存する。
+### 6.5 Ownerとcontextの存在状態
 
-### 6.5 初期化と読み込み
+永続化層は次を区別する。
+
+```text
+owner未作成
+  manifestまたはworkspace stateが存在しない
+
+owner作成済み・対象context未作成
+  owner-wide Globalは存在するが、対象Context IDのstateは存在しない
+
+対象context作成済み
+  context stateとowner-wide Globalの両方が存在する
+```
+
+対象contextの`load`が`undefined`でも、owner-wide Globalが存在する可能性がある。新context初期化では、contextの有無とは独立して最新Globalを読み出す。
+
+### 6.6 新context初期化
+
+新contextを空のcontext stateとして作成する場合、Globalを空で初期化して既存Globalを上書きしてはならない。
+
+1. 同一storage rootのwrite queueを取得する
+2. 対象contextを再読込する
+3. owner-wide Globalをcontextとは独立して再読込する
+4. owner-wide Globalが存在し、現在contextと同じrevisionなら、そのGlobalを新contextの初期snapshotへ継承する
+5. owner-wide Globalが異なるrevisionなら、mappingなしで書き換えずrevision mapping要求として拒否する
+6. context stateと確定したGlobalを同じmanifest-last writeで公開する
+
+新context作成と同時に呼び出し側が非空Globalを明示的に提示する保存処理は、空初期化とは区別する。明示的Global更新は既存の保存契約に従う。
+
+新context初期化、通常save、CAS commitは同一storage rootの同じ直列化境界を通過する。これにより、初期化前のGlobal読込とmanifest置換の間へ同一instanceの別writeが割り込まない。
+
+### 6.7 読み込みとvalidation
 
 writable sessionを開くとき:
 
 1. ownerとrepository targetを解決する
-2. 完全snapshotを読み込む
-3. snapshotがなければ空のcontext stateとGlobal stateを初期保存する
+2. context stateとowner-wide Globalを読み込む
+3. contextが未作成なら6.6の規則で初期化する
 4. repository、context、schema、revision identityを検証する
 5. `ownerReconciliation`が存在する場合はsource identity、line count、interval、timestampを検証する
 6. 現在documentに対してstaleなfile stateだけを除去する
@@ -239,18 +262,29 @@ read-only decorationでは未保存snapshotを作成しない。stale file state
 
 malformedなreconciliation metadataは無視、削除、または空baselineへ変換せず、persistence errorとして拒否する。
 
-### 6.6 Atomic transaction
+各`OwnerReconciliationSourceSnapshot`について次を強制する。
 
-review operationとowner reconciliationは、次のtransaction contractを使用する。
+- `lineCount`は非負のsafe integer
+- interval境界は非負のsafe integer
+- `startLine < endLineExclusive`
+- `endLineExclusive <= lineCount`
+- source identityは空文字ではない
+- timestampsは有効なISO 8601
+
+このvalidationはsave、load、transactionの`expected`と`next`のすべてで実行する。
+
+### 6.8 Atomic transaction
+
+review operationとowner reconciliationは次のtransaction contractを使用する。
 
 ```text
 expected:
   complete context state
-  complete Global state
+  complete owner-wide Global state
 
 next:
   complete context state
-  complete Global state
+  complete owner-wide Global state
 ```
 
 committerは次を保証する。
@@ -278,8 +312,6 @@ workspace ownerへ移行するとき:
 
 同じwritable `open`中、各lower ownerは1回だけ観測する。初回昇格範囲、delta、baseline metadataはすべて、その1回のimmutable source snapshotから計算する。
 
-base owner resolverが初回昇格transactionを提案する場合も、そのsourceをreconciliation層で再読込してはならない。repositoryまたはprovider境界で観測結果をcacheし、promotionとbaselineが同一snapshotを参照することを保証する。
-
 ### 7.2 確実性条件
 
 次をすべて満たすsourceだけを移行または再調整の対象とする。
@@ -291,7 +323,7 @@ base owner resolverが初回昇格transactionを提案する場合も、そのso
 
 不一致または曖昧な場合は範囲を変更しない。revision mappingまたはsnapshot diff mappingが確実に対応付けた範囲だけを移行できる。
 
-### 7.3 Source baseline
+### 7.3 Source baselineとincarnation
 
 上位contextはlower ownerごとに、最後に確実に確認したsource snapshotを`ownerReconciliation` metadataとして保持する。
 
@@ -304,27 +336,22 @@ baselineは次を含む。
 - content hash
 - line count
 - reviewed intervals
-- source context createdAt
-- source updatedAt
+- source context `createdAt`
+- source更新日時
 
-baseline省略は、上記すべてが現在source snapshotと一致する場合だけ許可する。intervalが同じでもmetadataが変化した場合はbaselineを更新する。
+共通baselineとして扱うには、owner、各ID、content hash、line countに加えて、source context `createdAt`が現在sourceと一致しなければならない。
+
+同じ決定的IDを持つcontextでも、削除後に再作成されて`createdAt`が変化した場合は別incarnationである。旧baselineとの差分を計算せず、baselineなしの保守規則を適用する。これにより、再作成された空contextを旧contextでの明示的解除とはみなさない。
+
+baseline省略は、snapshotの全fieldとintervalが現在sourceと一致する場合だけ許可する。intervalが同じでもmetadataが変化した場合はbaselineを更新する。
 
 ### 7.4 空baseline
 
 lower owner contextが存在し、現在documentに対応するfile stateがcontext・Globalの両方に存在しない場合、現在の確認済み集合は確実な空集合である。
 
-この場合も次のsource snapshotをbaselineとして記録する。
-
-```text
-reviewed = []
-content hash = current content hash
-line count = current line count
-source identity and timestamps = current source context
-```
+この場合も`reviewed = []`、現在content hash、line count、source identity、timestampsを持つsnapshotをbaselineとして記録する。
 
 lower owner context自体が存在しない場合はbaselineを作成しない。存在しないownerを空集合として推測しない。
-
-空baseline確立後にfallback側でfile stateを新規作成した場合、追加差分を`current source - empty`として計算する。解除と再追加も通常のbaseline差分として扱う。
 
 ### 7.5 Baseline差分
 
@@ -336,30 +363,22 @@ lower owner context自体が存在しない場合はbaselineを作成しない�
 移行先next = (現在移行先 - 解除差分) + 追加差分
 ```
 
-これにより、fallback側の追加と解除を反映しつつ、target側で既に解除した範囲を古いsourceの単純unionで復活させない。
+source incarnationが変化した場合、この式を適用しない。
 
-### 7.6 初回reconciliation
+### 7.6 初回またはincarnation変更時のreconciliation
 
-baselineがない場合は次の保守規則を使用する。
+共通baselineがない場合は次の保守規則を使用する。
 
 - targetに対象file stateがない: 現在sourceを初期移行し、baselineを同じnext snapshotへ記録する
 - sourceとtargetのintervalが一致する: intervalを変えずbaselineだけを記録する
 - source contextがtarget fileの最終更新後に新規作成された: sourceの追加分だけを移行し、baselineを記録する
-- その他のlegacyまたは曖昧状態: intervalを変更せず現在sourceをbaselineとして記録する
+- その他のlegacy、再作成、曖昧状態: intervalを変更せず現在sourceをbaselineとして記録する
 
-共通baselineがない状態でfallback側に行われた解除は、由来を安全に判定できないためtargetへ推測反映しない。baseline確立後の解除だけを差分として反映する。
+共通baselineがない状態でsource側に行われた解除は、由来を安全に判定できないためtargetへ推測反映しない。
 
 ### 7.7 複数sourceの集約と競合
 
 複数のlower ownerが存在する場合は、全sourceのdeltaと次baselineをメモリ上の同じplanned context・Global snapshotへ順次適用する。
-
-```text
-planned snapshot
-  ← workspace delta + workspace baseline
-  ← external-file delta + external-file baseline
-  ↓
-1回のCAS commit
-```
 
 source評価順はworkspace、external-fileの順とする。ただし順番だけに依存せず、より高いownerの明示的な判断を保護する。
 
@@ -375,10 +394,10 @@ source評価順はworkspace、external-fileの順とする。ただし順番だ�
 処理順:
 
 1. 新owner stateを初期化または読み込み、必要ならstale file stateを先に無効化する
-2. base owner resolverが初回昇格transactionを生成しても、直ちに永続化せずメモリ上へ捕捉する
+2. 初期化後に実際に永続化されたcontextとowner-wide Globalをplanning開始snapshotとして使用する
 3. 存在する全lower owner contextを、各ownerにつき1回だけread-onlyで観測する
 4. 初回昇格範囲、全source delta、全次baselineを1つの完全なnext context・Global snapshotへ集約する
-5. reconciliation前の新owner snapshotを`expected`として、完全snapshot transactionを1回だけCAS commitする
+5. planning開始snapshotを`expected`として、完全snapshot transactionを1回だけCAS commitする
 6. commit成功後だけ、reconciliation済み新ownerをactive ownerとして返す
 
 初回昇格範囲とbaselineを別commitにしてはならない。複数sourceのdeltaとbaselineもsource単位でcommitしてはならない。
@@ -392,8 +411,7 @@ source評価順はworkspace、external-fileの順とする。ただし順番だ�
 - 複数sourceの一部だけを反映しない
 - 成功したsessionを返さない
 - lower owner stateを変更しない
-
-新ownerの初期空snapshotが作成済みの場合、その空snapshotは残ってよい。ただし昇格範囲とbaselineは両方とも存在しない状態でなければならない。
+- owner-wide Globalを空またはstale snapshotへ置換しない
 
 ## 8. Extension接続
 
@@ -419,6 +437,7 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - HEAD確認の未知のexit 128: unborn扱いせず`GitCommandFailedError`を通知する
 - load failure: sessionを返さない
 - schema、identity、またはreconciliation metadata不一致: 保存済みstateを別ownerへ流用しない
+- 新contextとowner-wide Globalのrevision不一致: mapping前に保存せず拒否する
 - initial save failure: sessionを返さない
 - CAS conflict: 再読込または操作再試行を要求する
 - persistence failure: 成功表示しない
@@ -451,9 +470,11 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - contextとGlobalが1回のatomic commitで更新される
 - stale expectationで両stateとも更新されない
 - decoration readが未保存resourceを初期化しない
-- content hashまたはrevision不一致のfile stateを現在documentへ再ラベルしない
+- 同一revisionの新contextが既存owner-wide Globalを継承する
+- 異なるrevisionの新context初期化を拒否し、既存Globalを変更しない
+- 明示的な非空Globalを伴う新context saveは空初期化と区別される
 - reconciliation metadataをfilesystem persistenceでround-tripできる
-- malformedなsource owner、identity、line count、interval、timestampを拒否する
+- intervalがsource `lineCount`を超えるmetadataをsave、load、commitで拒否する
 - metadataを持たない既存schema version 1 stateを読み込める
 
 ### 10.3 Reconciliation
@@ -463,7 +484,7 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - 既存Git stateがある復旧時もfallback側の追加を取り込める
 - lower owner contextは存在するがfile stateがない場合、空baselineを記録する
 - 空baseline後の追加、解除、再追加を反映できる
-- baseline確立後のfallback解除を反映する
+- context再作成後は旧baseline removalを適用しない
 - baseline不在の曖昧な解除を推測反映しない
 - content hashまたはline count不一致では移行しない
 - metadata-onlyのbaseline更新を保存する
