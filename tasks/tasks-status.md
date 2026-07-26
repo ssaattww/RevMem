@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T301 PR差分ベース進捗計算
-- 現在のタスク: T302 仮想diff URIとrevision content providerのcurrent main統合・最終レビュー
+- 直近完了タスク: T302 仮想diff URIとrevision content provider
+- 現在のタスク: なし
 - 次のタスク: T205 branch context resolver・Git状態監視
-- 実装状態: T204とT301はcurrent main統合・最終再レビューを完了した。T302はimmutable commit URI、filesystem semantics、fatal Git failure分離、raw blob取得、fatal UTF-8 decode、actual VS Code URI、公開contract、共通Node runtime、Windows予約名、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証済みであり、PR #26のcurrent main統合・最終レビュー中である
-- ブロッカー: なし。empty identity・base/head同値・safe-integer arithmetic、zero-length interval、Windowsの既知POSIX fixture、Markdown lint基盤未整備はT301外のheld risk
+- 実装状態: T302はPR #15/#24/#25反映後のcurrent mainを統合し、immutable commit URI、filesystem semantics、missing/fatal分離、raw blob、fatal UTF-8、共通Node runtime、timeout lifecycle、actual VS Code URI、公開contract、design/architecture CI gateをTDDで検証した。T302 41 pass/5 skip、T204 43/43、T301 20/20、Git 31 pass/3 skip、GitHub 1/1、VS Code、全CIとSol/high R7最終再レビューが完了した
+- ブロッカー: なし。Windowsの既知POSIX fixture portabilityとMarkdown lint基盤未整備はT302外のheld risk
 - Gitブランチ: `task/t302-virtual-diff-content`
 - Pull Request: #26
-- PR方針: T302のURI・content provider・Local Git content取得・test・reportsとcurrent main統合をPR #26へ反映する。最終完了同期とマージはレビュー後に親agentとユーザーが行う
+- PR方針: T302のURI・content provider・Local Git content取得・test・reports、current main統合、設計rev4、進捗同期をPR #26へ反映し、最終レビューとCI成功後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -102,6 +102,11 @@
 - T302最終再レビューレポートR4: `reports/issue-1-t302-review-r4-20260725164500.md`
 - T302レビュー対応レポートR5: `reports/issue-1-t302-review-followup-r5-20260726113000.md`
 - T302最終再レビューレポートR5: `reports/issue-1-t302-review-r5-20260726113500.md`
+- T302 current main統合レポート: `reports/issue-1-t302-main-integration-20260726160000.md`
+- T302 R6レビューレポート: `reports/issue-1-t302-review-r6-20260726160636.md`
+- T302 R6 review follow-upレポート: `reports/issue-1-t302-review-followup-r6-20260726163000.md`
+- T302 R7最終再レビューレポート: `reports/issue-1-t302-review-r7-20260726162652.md`
+- T302進捗同期レポート: `reports/issue-1-t302-progress-sync-20260726162652.md`
 - T204 current main統合レポート: `reports/issue-1-t204-main-integration-20260726131355.md`
 - T204設計更新レポート: `reports/issue-1-t204-design-update-20260726132156.md`
 - T204 R9レビューレポート: `reports/issue-1-t204-review-r9-20260726132635.md`
@@ -186,7 +191,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 完了 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
-| T302 | 進行中 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
+| T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
 | T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
@@ -247,4 +252,4 @@
 
 ## 次回開始時の選択
 
-T204はPR #15反映後のcurrent main統合とSol/high R13最終再レビューを完了した。T301はPR #15/#24反映後のcurrent main統合、設計6.13/8.6のcontract更新、20件の累積回帰test、focused・全回帰検証、Sol/high R10最終再レビューを完了した。T302はR5完了後にcurrent main統合・最終レビュー中であり、最終完了同期はこのレビュー後に行う。次回の実装タスクはP2を継続してT205だけを選択し、branch context resolverとGit状態監視の失敗するtestから開始する。
+T204はPR #15反映後のcurrent main統合とSol/high R13最終再レビューを完了した。T301はPR #15/#24反映後のcurrent main統合、20件の累積回帰test、Sol/high R10最終再レビューを完了した。T302はPR #15/#24/#25反映後のcurrent main統合、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、focused・全回帰検証、Sol/high R7最終再レビューを完了した。次回の実装タスクはP2を継続してT205だけを選択し、branch context resolverとGit状態監視の失敗するtestから開始する。
