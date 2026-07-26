@@ -304,3 +304,75 @@ test("rejects tail semantic changes hidden by otherwise valid full-text evidence
     newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\nconst tail = 2;\n" } }
   }), /full-text evidence/i);
 });
+
+/** Verifies that a hunk-external CRLF-to-LF change rejects otherwise valid whitespace-only evidence when EOL changes are not ignored. */
+test("rejects hunk-after EOL changes hidden by otherwise valid whitespace evidence", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\r\nconst later = 1;\n" } }
+  }), /full-text evidence/i);
+});
+
+/** Verifies that an EOL change between two valid whitespace-only hunks rejects the complete evidence when EOL changes are not ignored. */
+test("rejects EOL changes hidden between valid whitespace evidence hunks", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const first = 1;", "+const  first = 1;",
+    "@@ -4 +4 @@", "-const last = 1;", "+const  last = 1;", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 4, modifiedReviewed: [{ startLine: 0, endLineExclusive: 4 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const first = 1;\r\nconst middle = 1;\r\nconst third = 1;\r\nconst last = 1;\r\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 4, newText: "const  first = 1;\r\nconst middle = 1;\nconst third = 1;\r\nconst  last = 1;\r\n" } }
+  }), /full-text evidence/i);
+});
+
+/** Verifies that a terminal newline addition rejects otherwise valid whitespace-only evidence when EOL changes are not ignored. */
+test("rejects terminal newline changes hidden by otherwise valid whitespace evidence", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", "\\ No newline at end of file", ""
+  ].join("\n");
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "const value = 1;" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "const  value = 1;\n" } }
+  }), /full-text evidence/i);
+});
+
+/** Verifies that EOL-ignore preserves reviewed ranges for the same hunk-external and terminal EOL evidence. */
+test("allows hunk-external and terminal EOL changes when EOL changes are ignored", () => {
+  const diff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", ""
+  ].join("\n");
+  const external = applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\r\nconst later = 1;\n" } }
+  });
+  const terminal = applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
+    oldTexts: { "old.ts": "const value = 1;" },
+    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "const  value = 1;\n" } }
+  });
+
+  assert.deepEqual(external.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
+  assert.deepEqual(terminal.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+});

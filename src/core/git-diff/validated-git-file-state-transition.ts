@@ -261,15 +261,34 @@ function validateStateSnapshot(files: Readonly<Record<string, Readonly<FileRevie
   }
 }
 
-function textLines(text: string): string[] {
+interface TextDocumentEvidence {
+  readonly endings: readonly string[];
+  readonly lines: readonly string[];
+}
+
+function parseTextDocumentEvidence(text: string): TextDocumentEvidence {
   if (text.length === 0) {
-    return [];
+    return { lines: [], endings: [] };
   }
-  const lines = text.split(/\r\n|\r|\n/u);
-  if (/\r\n|\r|\n$/u.test(text)) {
-    lines.pop();
+  const lines: string[] = [];
+  const endings: string[] = [];
+  let cursor = 0;
+  const separators = /\r\n|\r|\n/gu;
+  let separator: RegExpExecArray | null;
+  while ((separator = separators.exec(text)) !== null) {
+    lines.push(text.slice(cursor, separator.index));
+    endings.push(separator[0]);
+    cursor = separator.index + separator[0].length;
   }
-  return lines;
+  if (cursor < text.length) {
+    lines.push(text.slice(cursor));
+    endings.push("");
+  }
+  return { lines, endings };
+}
+
+function textLines(text: string): readonly string[] {
+  return parseTextDocumentEvidence(text).lines;
 }
 
 function validateNewFileMetadata(
@@ -313,6 +332,35 @@ function reconstructNewLines(
   return reconstructed;
 }
 
+function reconstructNewEndings(
+  oldEndings: readonly string[],
+  hunks: readonly { oldStart: number; oldLineCount: number; newLineCount: number }[]
+): readonly (string | undefined)[] {
+  const reconstructed: (string | undefined)[] = [];
+  let oldCursor = 0;
+  for (const hunk of hunks) {
+    reconstructed.push(...oldEndings.slice(oldCursor, hunk.oldStart));
+    for (let index = 0; index < hunk.newLineCount; index += 1) {
+      reconstructed.push(
+        index < hunk.oldLineCount ? oldEndings[hunk.oldStart + index] : undefined
+      );
+    }
+    oldCursor = hunk.oldStart + hunk.oldLineCount;
+  }
+  reconstructed.push(...oldEndings.slice(oldCursor));
+  return reconstructed;
+}
+
+function hasMatchingEolSignature(
+  expectedEndings: readonly (string | undefined)[],
+  actualEndings: readonly string[]
+): boolean {
+  return (
+    expectedEndings.length === actualEndings.length &&
+    expectedEndings.every((ending, index) => ending === undefined || ending === actualEndings[index])
+  );
+}
+
 function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>): void {
   if (!input.options.ignoreWhitespaceChanges && !input.options.ignoreEolChanges) {
     return;
@@ -329,8 +377,10 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
     if (oldText === undefined || newText === undefined) {
       continue;
     }
-    const oldLines = textLines(oldText);
-    const newLines = textLines(newText);
+    const oldDocument = parseTextDocumentEvidence(oldText);
+    const newDocument = parseTextDocumentEvidence(newText);
+    const oldLines = oldDocument.lines;
+    const newLines = newDocument.lines;
     const oldState = stateByPath.get(file.oldPath);
     if (oldState !== undefined && oldLines.length !== oldState.lineCount) {
       throw new RangeError("oldTexts line count must equal the source file-state lineCount.");
@@ -344,6 +394,15 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
     }
     if (!equalLines(reconstructNewLines(oldLines, file.hunks), newLines)) {
       throw new SyntaxError("Full-text evidence does not reconstruct the complete new document.");
+    }
+    if (
+      !input.options.ignoreEolChanges &&
+      !hasMatchingEolSignature(
+        reconstructNewEndings(oldDocument.endings, file.hunks),
+        newDocument.endings
+      )
+    ) {
+      throw new SyntaxError("Full-text evidence does not preserve the required EOL signature.");
     }
   }
 }
