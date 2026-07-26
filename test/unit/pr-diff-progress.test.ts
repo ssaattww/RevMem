@@ -17,17 +17,54 @@ const context = (baseSha = "base", headSha = "head", modified: Record<string, Ar
 });
 const policy = new ReviewFileExclusionPolicy({ userGlobs: [] });
 const calculate = (diff: PullRequestDiffSnapshot, reviewContext = context()) => calculatePullRequestDiffProgress({ diff, reviewContext, exclusionPolicy: policy });
-const addition = (id = "add", path = "add.ts", coordinate = 1) => file(id, "added", undefined, path, [hunk(coordinate - 1, 0, coordinate, 1, [line("addition", undefined, coordinate)])]);
+const addition = (id = "add", path = "add.ts", count = 1) => file(id, "added", undefined, path, count === 0 ? [] : [hunk(0, 0, 1, count, Array.from({ length: count }, (_, index) => line("addition", undefined, index + 1)))]);
+const deletion = (id = "del", path = "del.ts", count = 1) => file(id, "deleted", path, undefined, count === 0 ? [] : [hunk(1, count, 0, 0, Array.from({ length: count }, (_, index) => line("deletion", index + 1)))]);
 
 test("reports file and aggregate partial progress", () => {
-  const added = file("add", "added", undefined, "add.ts", [hunk(0, 0, 1, 2, [line("addition", undefined, 1), line("addition", undefined, 2)])]);
-  const deleted = file("del", "deleted", "del.ts", undefined, [hunk(1, 1, 0, 0, [line("deletion", 1)])]);
+  const added = addition("add", "add.ts", 2);
+  const deleted = deletion();
   const result = calculate(snapshot([added, deleted]), context("base", "head", { add: [[0, 1]] }));
   assert.deepEqual(result.files.map(({ reviewedLineCount, totalLineCount, progress }) => ({ reviewedLineCount, totalLineCount, progress })), [
     { reviewedLineCount: 1, totalLineCount: 2, progress: 0.5 },
     { reviewedLineCount: 0, totalLineCount: 1, progress: 0 }
   ]);
   assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 3, progress: 1 / 3 });
+});
+
+test("rejects partial added and deleted file patches", () => {
+  const partialAdded = file("added", "added", undefined, "added.ts", [hunk(99, 0, 100, 1, [line("addition", undefined, 100)])]);
+  const partialDeleted = file("deleted", "deleted", "deleted.ts", undefined, [hunk(100, 1, 99, 0, [line("deletion", 100)])]);
+  assert.throws(() => calculate(snapshot([partialAdded])), /complete|status matrix/);
+  assert.throws(() => calculate(snapshot([partialDeleted])), /complete|status matrix/);
+});
+
+test("binds complete modified-side hunk extent to state lineCount", () => {
+  const deletionOnly = file("a", "modified", "a.ts", "a.ts", [hunk(100, 1, 99, 0, [line("deletion", 100)])]);
+  const state = context("base", "head", { a: [] });
+  state.files.a!.currentPath = "a.ts";
+  state.files.a!.lineCount = 1;
+  assert.throws(() => calculate(snapshot([deletionOnly]), state), /lineCount/);
+});
+
+test("rejects misrouted currentPath and validates excluded state", () => {
+  const change = addition("a", "src/a.ts");
+  const wrongPath = context("base", "head", { a: [[0, 1]] });
+  wrongPath.files.a!.currentPath = "src/other.ts";
+  assert.throws(() => calculate(snapshot([change]), wrongPath), /currentPath/);
+
+  const excludedState = context("base", "head", { generated: [[0, 1]] });
+  excludedState.files.generated!.currentPath = "generated/a.ts";
+  excludedState.files.generated!.revisionId = "stale";
+  assert.throws(() => calculatePullRequestDiffProgress({ diff: snapshot([addition("generated", "generated/a.ts")]), reviewContext: excludedState, exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] }) }), /revision mismatch/);
+});
+
+test("handles huge reviewed intervals without expanding every line", () => {
+  const change = addition("a", "a.ts");
+  const state = context("base", "head", { a: [[0, Number.MAX_SAFE_INTEGER]] });
+  state.files.a!.currentPath = "a.ts";
+  state.files.a!.lineCount = Number.MAX_SAFE_INTEGER;
+  const result = calculate(snapshot([change]), state);
+  assert.equal(result.reviewedLineCount, 1);
 });
 
 test("validates malformed nonbinary files even when excluded", () => {
@@ -39,39 +76,35 @@ test("enforces status path and hunk-side invariants", () => {
   assert.throws(() => calculate(snapshot([file("modified-path", "modified", "old.ts", "new.ts", [hunk(1, 1, 1, 1, [line("deletion", 1), line("addition", undefined, 1)])])])), /status matrix/);
   assert.throws(() => calculate(snapshot([file("rename-same", "renamed", "same.ts", "./same.ts", [])])), /status matrix/);
   assert.throws(() => calculate(snapshot([file("copy-same", "copied", "same.ts", "same.ts", [])])), /status matrix/);
-  assert.throws(() => calculate(snapshot([file("added-old-side", "added", undefined, "a.ts", [hunk(1, 1, 1, 1, [line("context", 1, 1), line("addition", undefined, 2)])], 1, 0)])), /status matrix/);
-  assert.throws(() => calculate(snapshot([file("deleted-new-side", "deleted", "a.ts", undefined, [hunk(1, 1, 1, 1, [line("context", 1, 1), line("deletion", 2)])], 0, 1)])), /status matrix/);
   assert.throws(() => calculate(snapshot([file("secondary-path", "modified", "../outside.ts", "../outside.ts", [])])), /path|repository/i);
 });
 
-test("rejects modified diff coordinates beyond review-state lineCount", () => {
-  const change = addition("a", "a.ts", 100);
-  const state = context("base", "head", { a: [] });
-  state.files.a!.lineCount = 1;
-  assert.throws(() => calculate(snapshot([change]), state), /lineCount/);
-});
-
-test("reports excluded files without affecting aggregate counts", () => {
-  const included = addition("included", "src/a.ts");
-  const generated = addition("generated", "generated/a.ts");
-  const binary = file("binary", "binary", "logo.png", "logo.png", [], 10, 3);
-  const result = calculatePullRequestDiffProgress({ diff: snapshot([included, generated, binary]), reviewContext: context("base", "head", { included: [[0, 1]] }), exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] }) });
-  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 1, progress: 1 });
-  assert.deepEqual(result.files.map(({ excluded, reviewedLineCount, totalLineCount, progress }) => ({ excluded, reviewedLineCount, totalLineCount, progress })), [
-    { excluded: false, reviewedLineCount: 1, totalLineCount: 1, progress: 1 },
-    { excluded: true, reviewedLineCount: 0, totalLineCount: 0, progress: 1 },
-    { excluded: true, reviewedLineCount: 0, totalLineCount: 0, progress: 1 }
-  ]);
-});
-
-test("retains cumulative identity, coordinate, hunk and duplicate regressions", () => {
+test("retains context, state, runtime union and hunk regressions", () => {
   const change = addition("a", "a.ts");
   assert.throws(() => calculate({ ...snapshot([change]), contextId: "other" }), /contextId mismatch/);
   assert.throws(() => calculate({ ...snapshot([change]), originalDiffId: "other" }), /originalDiffId/);
-  assert.throws(() => calculate(snapshot([file("opposite", "added", undefined, "a.ts", [hunk(0, 0, 1, 1, [line("addition", 1, 1)])])])), /must not have oldLine/);
-  assert.throws(() => calculate(snapshot([file("context", "modified", "a.ts", "a.ts", [hunk(1, 1, 1, 1, [line("context", 1, 2), line("deletion", 2), line("addition", undefined, 2)])])])), /coordinate mismatch|header\/body/);
-  const wrongGap = file("gap", "modified", "a.ts", "a.ts", [hunk(1, 0, 2, 1, [line("addition", undefined, 2)]), hunk(4, 1, 6, 1, [line("deletion", 4), line("addition", undefined, 6)])]);
-  assert.throws(() => calculate(snapshot([wrongGap])), /delta mismatch|gap mismatch/);
-  const duplicate = file("dup", "modified", "a.ts", "a.ts", [hunk(1, 0, 2, 1, [line("addition", undefined, 2)]), hunk(1, 0, 2, 1, [line("addition", undefined, 2)])], 2, 0);
-  assert.throws(() => calculate(snapshot([duplicate])), /duplicate addition|order mismatch/i);
+  assert.throws(() => calculate(snapshot([change]), context("base", "head", {}, {}, "branch")), /pull-request context/);
+  const stale = context("base", "head", { a: [[0, 1]] }); stale.files.a!.revisionId = "stale";
+  assert.throws(() => calculate(snapshot([change]), stale), /revision mismatch/);
+  const unknownStatus = { ...change, status: "future" } as unknown as PullRequestFileChange;
+  assert.throws(() => calculate(snapshot([unknownStatus])), /Unknown PR file status/);
+  assert.throws(() => calculate(snapshot([file("context-only", "modified", "a.ts", "a.ts", [hunk(1, 1, 1, 1, [line("context", 1, 1)])])])), /changed line/);
+  assert.throws(() => calculate(snapshot([file("zero", "modified", "a.ts", "a.ts", [hunk(0, 0, 0, 0, [])])])), /changed line|zero-zero/);
+  assert.throws(() => calculate(snapshot([file("stats", "added", undefined, "a.ts", [hunk(0, 0, 1, 1, [line("addition", undefined, 1)])], 2, 0)])), /statistics|complete/);
+  assert.throws(() => calculate(snapshot([addition("same", "a.ts"), addition("same", "b.ts")])), /Duplicate PR diff file/);
+  assert.throws(() => calculate(snapshot([addition("one", "./src/a.ts"), addition("two", "src/a.ts")])), /Duplicate PR diff path/);
+});
+
+test("preserves rename zero denominator and exclusion contracts", () => {
+  const renamed = file("rename", "renamed", "old.ts", "new.ts", []);
+  const included = addition("included", "src/a.ts");
+  const generated = addition("generated", "generated/a.ts");
+  const binary = file("binary", "binary", "logo.png", "logo.png", [], 10, 3);
+  const state = context("base", "head", { included: [[0, 1]] });
+  state.files.included!.currentPath = "src/a.ts";
+  const result = calculatePullRequestDiffProgress({ diff: snapshot([renamed, included, generated, binary]), reviewContext: state, exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: ["generated/**"] }) });
+  assert.equal(result.files[0]?.progress, 1);
+  assert.deepEqual(result.files[2]?.exclusionReason, { kind: "user-glob", pattern: "generated/**" });
+  assert.deepEqual(result.files[3]?.exclusionReason, { kind: "binary" });
+  assert.deepEqual({ reviewed: result.reviewedLineCount, total: result.totalLineCount, progress: result.progress }, { reviewed: 1, total: 1, progress: 1 });
 });
