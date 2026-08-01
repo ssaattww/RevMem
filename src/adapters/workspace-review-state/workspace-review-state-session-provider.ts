@@ -325,12 +325,16 @@ export class WorkspaceReviewStateSessionProvider {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
           ...cloneValue(commit.contextState),
-          files: withoutKey(commit.contextState.files, mapping.fileTarget.fileId),
+          files: contextFileIsStale
+            ? withoutKey(commit.contextState.files, mapping.fileTarget.fileId)
+            : cloneValue(commit.contextState.files),
           updatedAt: occurredAt
         },
         globalState: {
           ...cloneValue(commit.globalState),
-          files: withoutKey(commit.globalState.files, mapping.fileTarget.fileId),
+          files: globalFileIsStale
+            ? withoutKey(commit.globalState.files, mapping.fileTarget.fileId)
+            : cloneValue(commit.globalState.files),
           updatedAt: occurredAt
         }
       };

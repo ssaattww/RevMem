@@ -259,6 +259,8 @@ test("open removes only the current file from context and Global when content ch
   assert.equal(repository.saves.length, 1);
   assert.equal(session.contextState.files[fileId], undefined);
   assert.equal(session.globalState.files[fileId], undefined);
+  assert.equal(repository.current?.contextState.files[fileId], undefined);
+  assert.equal(repository.current?.globalState.files[fileId], undefined);
   assert.deepEqual(
     session.contextState.files[otherFileId]!.modifiedReviewed,
     [interval(0, 2)]
@@ -307,8 +309,15 @@ test("open records context ranges when only the Context file is stale", async ()
     }
   };
 
-  await provider.open(descriptor());
+  const session = await provider.open(descriptor());
 
+  assert.equal(session.contextState.files[fileId], undefined);
+  assert.deepEqual(session.globalState.files[fileId]?.reviewed, [interval(1, 3)]);
+  assert.equal(repository.current?.contextState.files[fileId], undefined);
+  assert.deepEqual(
+    repository.current?.globalState.files[fileId]?.reviewed,
+    [interval(1, 3)]
+  );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.type, "invalidated-by-edit");
   assert.deepEqual(events[0]?.previousRanges, [interval(0, 6)]);
@@ -346,9 +355,16 @@ test("open appends no Context history event when only the Global file is stale",
     }
   };
 
-  await provider.open(descriptor());
+  const session = await provider.open(descriptor());
 
   assert.deepEqual(events, []);
+  assert.deepEqual(session.contextState.files[fileId]?.modifiedReviewed, [interval(1, 3)]);
+  assert.equal(session.globalState.files[fileId], undefined);
+  assert.deepEqual(
+    repository.current?.contextState.files[fileId]?.modifiedReviewed,
+    [interval(1, 3)]
+  );
+  assert.equal(repository.current?.globalState.files[fileId], undefined);
 });
 
 test("loadForDecoration keeps Context state when only the Global file is stale", async () => {
