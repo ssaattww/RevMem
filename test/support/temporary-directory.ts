@@ -24,9 +24,9 @@ export async function createTemporaryDirectory(prefix: string): Promise<Temporar
     async cleanup(): Promise<void> {
       await rm(directoryPath, {
         force: true,
+        maxRetries: 3,
         recursive: true,
-        maxRetries: 5,
-        retryDelay: 50
+        retryDelay: 100
       });
     }
   };
