@@ -10,8 +10,8 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T206 JSON Linesイベント履歴
 - 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: `T206-R1` event coverage・unresolved分類、`T206-R2`設計本文task ID、`T206-R3` semantic no-opをTDDで一括修正済み。T205 focused 31/31、T206 focused 14/14、静的検証は成功し、同じ通常reviewerのfix verification待ち
-- ブロッカー: 通常reviewerによる`T206-R1`〜`T206-R3` fix verification。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: `T206-R1`（high）、`T206-R2`（high）、`T206-R3`（medium）は同じ通常reviewerのfix verificationで全件closed。修正HEAD `154fa823ef897d0d0b050139f8c85d84ab5a1612`のCIは全gate成功し、独立reviewer 2/2の1回限りreviewへ進む
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t206-jsonl-history`
 - Pull Request: 未作成
 - PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名の最大2 reviewerによるreview証跡を1つのPRへ反映する。独立レビューで指摘が出た場合は修正と通常reviewerの確認まで行い、独立レビューは再実施しない。mergeは利用者が行う
@@ -147,6 +147,8 @@
 - T206実装レポート: `reports/issue-1-t206-implementation-20260801215844.md`
 - T206初回通常レビューレポート: `reports/issue-1-t206-review-20260801223000.md`
 - T206 review follow-upレポート: `reports/issue-1-t206-review-followup-20260801224500.md`
+- T206 fix verificationレポート: `reports/issue-1-t206-fix-verification-20260801230500.md`
+- T206独立最終レビューレポート: `reports/issue-1-t206-independent-final-review-20260801233000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -280,4 +282,4 @@
 
 ## 次回開始時の選択
 
-T205は独立レビュー2回目を`pass_with_held`で完了し、PR #27がmainへマージ済み。現在はP2のT206だけを選択し、設計15.4のJSON Lines event contractを具体化してからTDD実装する。T206完了後は新しいtask lifecycleでT207を開始する。
+T206は通常review finding 3件をclosedし、修正HEADのmatching CIも成功した。次は2人目の独立reviewerが1回だけ最終reviewを行う。独立reviewで指摘が出た場合は修正と通常reviewerの確認まで行い、独立reviewを再実施しない。T206完了後は新しいtask lifecycleでT207を開始する。
