@@ -200,6 +200,69 @@ test("whole-file operations update both layers and semantic no-op skips commit a
   assert.equal(noOpHarness.histories.length, 0);
 });
 
+test("range equality does not suppress current file metadata updates", async () => {
+  const harness = createHarness();
+  const context = contextState("branch", [interval(0, 12)]);
+  const global = globalState([interval(0, 12)]);
+  context.files["file-1"]!.currentPath = "src/old-name.ts";
+  global.files["file-1"]!.currentPath = "src/old-name.ts";
+
+  const result = await harness.repository.apply({
+    operation: "mark-file-reviewed",
+    contextState: context,
+    globalState: global,
+    target,
+    occurredAt,
+    committer: harness.committer
+  });
+
+  assert.equal(result.status, "applied");
+  assert.equal(harness.committed.length, 1);
+  assert.equal(harness.histories.length, 1);
+  assert.equal(
+    result.transaction.next.contextState.files["file-1"]?.currentPath,
+    target.currentPath
+  );
+  assert.equal(
+    result.transaction.next.globalState.files["file-1"]?.currentPath,
+    target.currentPath
+  );
+});
+
+test("an empty file operation persists newly created context and Global file entries", async () => {
+  const harness = createHarness();
+  const context = contextState("workspace");
+  const global = globalState();
+  context.files = {};
+  global.files = {};
+  const emptyTarget = {
+    ...target,
+    lineCount: 0,
+    contentHash: "empty-hash"
+  };
+
+  const result = await harness.repository.apply({
+    operation: "mark-file-reviewed",
+    contextState: context,
+    globalState: global,
+    target: emptyTarget,
+    occurredAt,
+    committer: harness.committer
+  });
+
+  assert.equal(result.status, "applied");
+  assert.equal(harness.committed.length, 1);
+  assert.equal(harness.histories.length, 1);
+  assert.deepEqual(
+    result.transaction.next.contextState.files["file-1"]?.modifiedReviewed,
+    []
+  );
+  assert.deepEqual(
+    result.transaction.next.globalState.files["file-1"]?.reviewed,
+    []
+  );
+});
+
 test("commit failure prevents history and propagates without a partial fallback", async () => {
   const histories: ReviewStateTransaction[] = [];
   const repository = new RepositoryGlobalStateRepository({
