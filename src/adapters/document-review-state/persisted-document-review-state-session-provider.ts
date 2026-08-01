@@ -1,38 +1,42 @@
 import {
-  DocumentReviewStateSessionProvider as ReconciledDocumentReviewStateSessionProvider
-} from "./reconciled-document-review-state-session-provider";
+  GitContextDocumentReviewStateSessionProvider
+} from "./git-context-document-review-state-session-provider";
+import type {
+  DocumentReviewStateSessionProviderOptions
+} from "./git-context-document-review-state-session-provider";
 import type {
   DocumentEditorReviewDescriptor,
   DocumentNormalEditorDecorationState,
-  DocumentNormalEditorReviewStateSession,
-  DocumentReviewStateSessionProviderOptions
+  DocumentNormalEditorReviewStateSession
 } from "./document-review-state-session-provider";
 
 /**
- * Public document session provider backed by the reconciled active-owner snapshot.
- *
- * The reconciliation provider returns the complete snapshot that was either loaded or
- * committed for the selected owner. Reusing it avoids a second owner resolution and Git
- * inspection while preserving the same durable CAS result for command execution.
+ * Public document session provider backed by Git context preparation and the
+ * existing reconciled active-owner snapshot.
  */
 export class DocumentReviewStateSessionProvider {
-  private readonly delegate: ReconciledDocumentReviewStateSessionProvider;
+  private readonly delegate: GitContextDocumentReviewStateSessionProvider;
 
   public constructor(options: DocumentReviewStateSessionProviderOptions) {
-    this.delegate = new ReconciledDocumentReviewStateSessionProvider(options);
+    this.delegate = new GitContextDocumentReviewStateSessionProvider(options);
   }
 
-  /** Opens and reconciles the active owner exactly once. */
+  /** Resolves and maps the active Git context before opening it exactly once. */
   public open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
     return this.delegate.open(descriptor);
   }
 
-  /** Delegates non-mutating decoration reads. */
+  /** Resolves and maps an existing Git context before non-mutating decoration reads. */
   public loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     return this.delegate.loadForDecoration(descriptor);
+  }
+
+  /** Stops Git state polling owned by this provider. */
+  public dispose(): void {
+    this.delegate.dispose();
   }
 }
