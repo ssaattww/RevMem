@@ -642,7 +642,7 @@ file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`�
 
 保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、後続eventをappendせずrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
 
-現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。保持期間・閲覧UI・export・複数windowのcross-process history lock・schema migration readerはT604以降の責務であり、T206はevent append、厳密な入力validation、同一process内の順序付けだけを提供する。履歴は原則無期限保持する。
+現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。保持期間・閲覧UI・export・複数windowのcross-process history lock・schema migration readerは将来の履歴管理機能の責務とし、初期の永続化層はevent append、厳密な入力validation、同一process内の順序付けだけを提供する。履歴は原則無期限保持する。
 
 ## 16. UIと設定
 

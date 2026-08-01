@@ -13,6 +13,7 @@ import {
 } from "../../src/adapters/document-review-state/index";
 import type { LocalGitRepositoryInspection } from "../../src/adapters/local-git/index";
 import type { GitRevisionMappingSource } from "../../src/application/review-context/index";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
@@ -163,6 +164,7 @@ class MutableGitInspector implements DocumentGitInspector {
 }
 
 class RevisionSource implements GitRevisionMappingSource {
+  public objectsExist = true;
   public diff = [
     "diff --git a/src/example.ts b/src/example.ts",
     "index 1111111..2222222 100644",
@@ -180,7 +182,7 @@ class RevisionSource implements GitRevisionMappingSource {
   ]);
 
   public async objectExists(): Promise<boolean> {
-    return true;
+    return this.objectsExist;
   }
 
   public async diffRevisions(
@@ -298,7 +300,8 @@ const createProvider = (
   repository: DocumentReviewStateRepository,
   inspector: MutableGitInspector,
   source: RevisionSource,
-  gitStateObserver?: (rootPath: string, head: string | undefined) => void
+  gitStateObserver?: (rootPath: string, head: string | undefined) => void,
+  historyRecorder?: ReviewHistoryRecorder
 ): DocumentReviewStateSessionProvider => {
   const workspaceProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
@@ -320,9 +323,71 @@ const createProvider = (
     repository,
     workspaceProvider,
     stableHash,
-    now: () => new Date(occurredAt)
+    now: () => new Date(occurredAt),
+    ...(historyRecorder === undefined ? {} : { historyRecorder })
   });
 };
+
+test("Git provider records an unresolved mapping event after a conservative missing-object clear", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string }> = [];
+  const recorder = new ReviewHistoryRecorder({
+    sessionId: "session",
+    createEventId: () => `event-${events.length}`,
+    appender: { append: async (_target, event) => { events.push(event); } }
+  });
+  const provider = createProvider(stableHash, repository, inspector, source, undefined, recorder);
+  const initial = await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma")));
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  inspector.head = newRevision;
+  source.objectsExist = false;
+
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma")));
+
+  assert.ok(events.some((event) => event.type === "mapping-unresolved" && event.reason === "mapping-unresolved"));
+  provider.dispose();
+});
+
+test("Git provider records binary mapping as unresolved instead of a successful remap", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "Binary files a/src/example.ts and b/src/example.ts differ",
+    ""
+  ].join("\n");
+  const events: Array<{ readonly type: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma")));
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  inspector.head = newRevision;
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma")));
+  assert.ok(events.some((event) => event.type === "mapping-unresolved"));
+  assert.equal(events.some((event) => event.type === "remapped-by-diff"), false);
+  provider.dispose();
+});
 
 /** Provider refreshes a moving branch, isolates branch state, and creates a detached-commit context keyed by immutable HEAD. */
 test("document sessions map branch commits and isolate branch and detached contexts", async () => {
@@ -802,7 +867,13 @@ test("document routing maps an ambiguous rename and copy graph without reusing i
   source.texts.set(`${oldRevision}\0src/a.ts`, "original");
   source.texts.set(`${newRevision}\0src/b.ts`, "original");
   source.texts.set(`${newRevision}\0src/c.ts`, "original");
-  const provider = createProvider(stableHash, repository, inspector, source);
+  const events: Array<{ readonly type: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
 
   const original = await provider.open(
     descriptor("src/a.ts", stableHash.digest("original"), 1)
@@ -834,5 +905,6 @@ test("document routing maps an ambiguous rename and copy graph without reusing i
     copied.contextState.files[copied.target.fileId]?.modifiedReviewed,
     []
   );
+  assert.ok(events.some((event) => event.type === "mapping-unresolved"));
   provider.dispose();
 });

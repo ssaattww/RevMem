@@ -572,6 +572,7 @@ export class DocumentReviewStateSessionProvider {
     if (commit === undefined) {
       commit = this.initialCommit(mapping);
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      await this.options.historyRecorder?.recordContextCreated(commit.contextState);
     } else {
       this.validateLoadedIdentity(commit, mapping);
       if (

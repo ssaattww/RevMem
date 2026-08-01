@@ -233,8 +233,10 @@ export class GitContextRevisionMapper {
     const newRevision = input.current.revisionId;
     const oldContextRevision = contextRevision(input.contextState);
     const oldGlobalRevision = input.globalState.currentRevisionId;
+    const oldObjectAvailable = FULL_OBJECT_ID_PATTERN.test(oldContextRevision) &&
+      await this.options.source.objectExists(input.current.repositoryRoot, oldContextRevision);
 
-    const contextFiles = await this.mapContextFiles(
+    const contextMapping = await this.mapContextFiles(
       input.contextState.files,
       input.current.repositoryId,
       oldContextRevision,
@@ -260,7 +262,7 @@ export class GitContextRevisionMapper {
         ...clone(input.contextState),
         displayName: input.current.contextState.displayName,
         branch: clone(input.current.contextState.branch),
-        files: contextFiles,
+        files: contextMapping.files,
         updatedAt: occurredAt
       },
       globalState: {
@@ -268,7 +270,10 @@ export class GitContextRevisionMapper {
         currentRevisionId: newRevision,
         files: globalFiles,
         updatedAt: occurredAt
-      }
+      },
+      unresolvedFileIds: oldObjectAvailable
+        ? contextMapping.unresolvedFileIds
+        : Object.keys(input.contextState.files).sort()
     };
   }
 
@@ -303,23 +308,20 @@ export class GitContextRevisionMapper {
     semantics: FileSystemPathSemantics,
     options: Readonly<GitDiffMappingOptions>,
     occurredAt: string
-  ): Promise<Record<string, FileReviewState>> {
+  ): Promise<{ readonly files: Record<string, FileReviewState>; readonly unresolvedFileIds: readonly string[] }> {
     if (oldRevision === newRevision) {
-      return clone(files);
+      return { files: clone(files), unresolvedFileIds: [] };
     }
     if (!FULL_OBJECT_ID_PATTERN.test(newRevision)) {
-      return {};
+      return { files: {}, unresolvedFileIds: Object.keys(files).sort() };
     }
     const oldExists = FULL_OBJECT_ID_PATTERN.test(oldRevision) &&
       await this.options.source.objectExists(repositoryRoot, oldRevision);
     if (!oldExists) {
-      return this.clearAndRefresh(
-        files,
-        newRevision,
-        repositoryRoot,
-        semantics,
-        occurredAt
-      );
+      return {
+        files: await this.clearAndRefresh(files, newRevision, repositoryRoot, semantics, occurredAt),
+        unresolvedFileIds: Object.keys(files).sort()
+      };
     }
 
     const rawDiff = await this.options.source.diffRevisions(
@@ -367,7 +369,7 @@ export class GitContextRevisionMapper {
       oldTexts,
       newFiles
     );
-    return this.refreshMappedFiles(
+    const refreshed = await this.refreshMappedFiles(
       mapped,
       newRevision,
       repositoryRoot,
@@ -376,6 +378,21 @@ export class GitContextRevisionMapper {
       binaryResolution.destinationPaths,
       binaryResolution.unresolvedPaths
     );
+    const unresolvedFileIds = new Set<string>();
+    const byPath = new Map(Object.values(files).map((file) => [file.currentPath, file.fileId]));
+    for (const unresolved of transitioned.unresolved) {
+      const fileId = unresolved.oldPath === undefined ? undefined : byPath.get(unresolved.oldPath);
+      if (fileId !== undefined) {
+        unresolvedFileIds.add(fileId);
+      }
+    }
+    for (const file of Object.values(files)) {
+      if (binaryResolution.destinationPaths.has(file.currentPath) ||
+          binaryResolution.unresolvedPaths.has(file.currentPath)) {
+        unresolvedFileIds.add(file.fileId);
+      }
+    }
+    return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort() };
   }
 
   private async mapGlobalFiles(
@@ -447,7 +464,7 @@ export class GitContextRevisionMapper {
       occurredAt
     );
     const result: Record<string, GlobalFileReviewState> = Object.fromEntries(
-      Object.values(mapped).map((file) => [
+      Object.values(mapped.files).map((file) => [
         file.fileId,
         {
           fileId: file.fileId,

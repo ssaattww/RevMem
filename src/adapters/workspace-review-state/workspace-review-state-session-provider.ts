@@ -19,6 +19,7 @@ import type {
   ReviewStateFileTarget,
   ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 
 /** Document and workspace information collected by the VS Code UI adapter. */
 export interface WorkspaceEditorReviewDescriptor {
@@ -90,6 +91,8 @@ export interface WorkspaceReviewStateSessionProviderOptions {
   readonly repository: WorkspaceReviewStateRepository;
   /** Optional clock for initial and sanitization timestamps; wall-clock time is used when omitted. */
   readonly now?: () => Date;
+  /** Optional append-only recorder invoked after workspace initialization or stale-file invalidation persists. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
 }
 
 const cloneValue = <T>(value: T): T =>
@@ -292,6 +295,7 @@ export class WorkspaceReviewStateSessionProvider {
         occurredAt
       );
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      await this.options.historyRecorder?.recordContextCreated(commit.contextState);
     } else {
       validateLoadedCommit(
         commit,
@@ -316,6 +320,7 @@ export class WorkspaceReviewStateSessionProvider {
     );
 
     if (contextFileIsStale || globalFileIsStale) {
+      const previousRanges = contextFile?.modifiedReviewed ?? globalFile?.reviewed ?? [];
       commit = {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
@@ -330,6 +335,11 @@ export class WorkspaceReviewStateSessionProvider {
         }
       };
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      await this.options.historyRecorder?.recordEditInvalidation(
+        commit.contextState,
+        mapping.fileTarget,
+        previousRanges
+      );
     }
 
     return {

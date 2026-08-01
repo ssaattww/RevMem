@@ -105,7 +105,8 @@ export class ReviewHistoryRecorder {
   public async recordRevisionMapping(
     previous: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
     next: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
-    reason = "git-revision-mapped"
+    reason = "git-revision-mapped",
+    unresolvedFileIds: readonly string[] = []
   ): Promise<void> {
     const nextRevision = revisionOf(next.contextState);
     const events: ReviewHistoryEvent[] = [{
@@ -137,7 +138,8 @@ export class ReviewHistoryRecorder {
         repositoryId: next.contextState.repositoryId,
         contextId: next.contextState.contextId,
         revisionId: nextRevision,
-        type: before === undefined ? "remapped-by-diff" :
+        type: unresolvedFileIds.includes(fileId) ? "mapping-unresolved" :
+          before === undefined ? "remapped-by-diff" :
           after === undefined ? "file-deleted" :
             before.currentPath !== after.currentPath ? "file-renamed" : "remapped-by-diff",
         reason,

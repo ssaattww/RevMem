@@ -224,7 +224,8 @@ export function activate(
   });
   const workspaceSessionProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
-    repository
+    repository,
+    historyRecorder
   });
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
     gitInspector: createNodeLocalGitAdapter(),
