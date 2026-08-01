@@ -9,6 +9,9 @@ export interface VsCodeAuthenticationLike {
   ): Thenable<vscode.AuthenticationSession | undefined>;
 }
 
+const authenticationProviderId = (host: string): "github" | "github-enterprise" =>
+  host.toLowerCase() === "github.com" ? "github" : "github-enterprise";
+
 /** Reads an existing VS Code GitHub authentication session without prompting. */
 export class VsCodeGitHubAuthenticationProvider {
   private readonly authentication: VsCodeAuthenticationLike;
@@ -22,10 +25,10 @@ export class VsCodeGitHubAuthenticationProvider {
     this.scopes = [...scopes];
   }
 
-  /** Returns an existing access token or `undefined` so public API fallback can proceed. */
-  public async getAccessToken(): Promise<string | undefined> {
+  /** Returns an existing host-appropriate access token or `undefined` so public API fallback can proceed. */
+  public async getAccessToken(host: string): Promise<string | undefined> {
     const session = await this.authentication.getSession(
-      "github",
+      authenticationProviderId(host),
       this.scopes,
       { createIfNone: false }
     );
