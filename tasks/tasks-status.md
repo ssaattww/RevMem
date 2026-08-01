@@ -10,8 +10,8 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T206 JSON Linesイベント履歴
 - 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: T206のJSON Lines event schema、canonical codec、月次history store、command/edit/Git context・revision mapping接続をTDD実装済み。focused 13/13、compile、contract typecheck、architecture、lint、diff checkは成功し、通常レビュー待ち
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: T206初回通常レビューは`4b796e4abf79974512bc2ab8089fec3c1980710b`に対してfail。`T206-R1` event coverage・unresolved分類、`T206-R2`設計本文task ID、`T206-R3` semantic no-opを一括修正する
+- ブロッカー: `T206-R1`（high）、`T206-R2`（high）、`T206-R3`（medium）。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t206-jsonl-history`
 - Pull Request: 未作成
 - PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名の最大2 reviewerによるreview証跡を1つのPRへ反映する。独立レビューで指摘が出た場合は修正と通常reviewerの確認まで行い、独立レビューは再実施しない。mergeは利用者が行う
@@ -145,6 +145,7 @@
 - T205 IFR1 focused fix verification R2レポート: `reports/issue-1-t205-ifr1-fix-verification-r2-20260801222500.md`
 - T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T206実装レポート: `reports/issue-1-t206-implementation-20260801215844.md`
+- T206初回通常レビューレポート: `reports/issue-1-t206-review-20260801223000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
