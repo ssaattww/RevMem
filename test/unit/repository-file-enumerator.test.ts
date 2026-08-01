@@ -46,6 +46,12 @@ test("enumerates deterministic included files and preserves file and directory e
   assert.equal(result.excluded.find((file) => file.path === "linked-a.ts")?.reason.kind, "symbolic-link");
   assert.equal(result.included.some((file) => file.path === "ignored/keep.ts"), false);
   assert.equal(result.excluded.some((file) => file.path === "dist" || file.path === "ignored"), false);
+
+  // T504 may only aggregate included lines. T505's excluded-file count must not absorb pruned directories.
+  assert.equal(result.included.reduce((sum, file) => sum + file.nonEmptyLineCount, 0), 9);
+  assert.equal(result.excluded.length, 5);
+  assert.equal(result.excludedDirectories.length, 2);
+  assert.deepEqual(result.excludedDirectories.map((entry) => entry.path), ["dist", "ignored"]);
 });
 
 test("counts comment lines as non-empty and excludes whitespace-only lines", () => {
