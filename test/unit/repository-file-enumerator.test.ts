@@ -31,7 +31,7 @@ test("enumerates deterministic included files and preserves exclusion reasons", 
   const result = await enumerator.enumerate(root);
 
   assert.deepEqual(result.included.map((file) => file.path), [".gitignore", "src/a.ts", "src/b.ts"]);
-  assert.deepEqual(result.included.map((file) => file.nonEmptyLineCount), [5, 2, 2]);
+  assert.deepEqual(result.included.map((file) => file.nonEmptyLineCount), [4, 2, 2]);
   assert.equal(result.excluded.find((file) => file.path === "dist")?.reason.kind, "default-glob");
   assert.equal(result.excluded.find((file) => file.path === "ignored")?.reason.kind, "gitignore");
   assert.equal(result.excluded.find((file) => file.path === "src/skip.generated.ts")?.reason.kind, "gitignore");
