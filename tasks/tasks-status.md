@@ -7,11 +7,11 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T302 仮想diff URIとrevision content provider
-- 現在のタスク: T205 independent review follow-up
-- 次のタスク: なし
-- 実装状態: High `T205-IFR1-P1`はclosed。High `T205-IFR1-P2`の残り兄弟caseをRed test後に修正し、inspection完了後・callback直前にroot generationを再検査してstale callback/baseline更新を破棄。focused 2/2、T205 29/29、lint/diff checkがpassし、Sol/high focused fix verification待ち
-- ブロッカー: なし。Issue #28は本筋外non-blocking held
+- 直近完了タスク: T205 branch context resolver・Git状態監視
+- 現在のタスク: なし
+- 次のタスク: T206 JSON Linesイベント履歴
+- 実装状態: 全normal findingと独立レビュー1回目のHigh `T205-IFR1-P1`、`T205-IFR1-P2`をidentity/severity維持でclosed。最終focused fix verificationは`12621f729619ca0657f071949ccfc697e830b131`でpass_with_held、matching CI成功。ユーザー指定の独立レビュー2回目を最終回として実施予定
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -142,6 +142,7 @@
 - T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
 - T205 IFR1 focused fix verificationレポート: `reports/issue-1-t205-ifr1-fix-verification-20260801213000.md`
 - T205 IFR1-P2 R2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-r2-20260801215500.md`
+- T205 IFR1 focused fix verification R2レポート: `reports/issue-1-t205-ifr1-fix-verification-r2-20260801222500.md`
 - T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -205,8 +206,8 @@
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 進行中 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
-| T206 | 未着手 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
+| T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
+| T206 | 次 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
@@ -276,4 +277,4 @@
 
 ## 次回開始時の選択
 
-T205のHigh `T205-IFR1-P1`はclosed。High `T205-IFR1-P2`のinspection中observe兄弟caseはidentity/severityを維持してTDD修正済み。次回はSol/high normal reviewerでこの1件だけをfocused fix verificationし、pass後に独立レビュー2回目を最終回として実施する。
+T205は全normal review findingと独立レビュー1回目のHigh 2件をclosedし、focused fix verificationをpass_with_heldで完了した。次は予約済みreportで独立レビュー2回目を最終回として実施する。pass時はreport-only attestation commitで終了し、次回実装はP2のT206だけを選択する。
