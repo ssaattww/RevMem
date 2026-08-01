@@ -88,7 +88,9 @@ export class PollingGitStateMonitor {
       return;
     }
     this.schedule = this.scheduler.scheduleRepeating(() => {
-      void this.pollNow();
+      void this.pollNow().catch((error: unknown) => {
+        this.reportScheduledError(error);
+      });
     }, this.intervalMs);
   }
 
@@ -118,6 +120,14 @@ export class PollingGitStateMonitor {
     this.schedule?.dispose();
     this.schedule = undefined;
     this.observed.clear();
+  }
+
+  private reportScheduledError(error: unknown): void {
+    try {
+      this.options.onError?.(error);
+    } catch {
+      return;
+    }
   }
 
   private async pollObserved(): Promise<void> {
