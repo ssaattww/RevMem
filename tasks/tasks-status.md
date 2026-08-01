@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 branch context resolver・Git状態監視 review follow-up
 - 次のタスク: なし
-- 実装状態: `T205-R5-P2`と`T205-R4-P2`はclosed。High `T205-R5-P1`を追加Red test後に再修正し、曖昧unquoted headerは明示reject、rename/copy metadataで確定できるsectionだけ回復、binary destinationは確定section pathを使用。focused 29/29、T205 22/22と各gateがpassし、Sol/high fix verification待ち
-- ブロッカー: なし。Issue #28は本筋外のnon-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: `T205-R5-P2`と`T205-R4-P2`はclosed。High `T205-R5-P1`はrename/copy metadata recoveryを満たしたが、same-path内` b/`のbinary add/deleteでsection recoveryがなくopenのまま、追加TDD修正待ち
+- ブロッカー: `T205-R5-P1`が有効なsame-path binary/add/deleteを`SyntaxError`でmapping全体停止する。Issue #28は本筋外のnon-blocking held
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -132,6 +132,7 @@
 - T205 R5 review follow-upレポート: `reports/issue-1-t205-review-followup-r5-20260801210000.md`
 - T205 R6 fix verificationレポート: `reports/issue-1-t205-review-r6-20260801214000.md`
 - T205 R6 review follow-upレポート: `reports/issue-1-t205-review-followup-r6-20260801221000.md`
+- T205 R7 fix verificationレポート: `reports/issue-1-t205-review-r7-20260801224000.md`
 - T205独立最終レビューレポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -266,4 +267,4 @@
 
 ## 次回開始時の選択
 
-T205のHigh `T205-R5-P1`はidentityとseverityを維持してTDD再修正済み。次回は同じSol/high normal reviewerでfix verificationを実施する。Issue #28は本筋外として別追跡し、T206は独立最終レビュー完了まで開始しない。
+T205のHigh `T205-R5-P1`はsame-path binary/add/deleteの兄弟caseがopen。次回はsection-levelのsame-path候補、`Binary files ... differ`、new/deleted modeをauthoritative evidenceとして用い、解決不能sectionだけを保守的に未確認化するRed testから再修正する。Issue #28は本筋外として別追跡し、T206は開始しない。
