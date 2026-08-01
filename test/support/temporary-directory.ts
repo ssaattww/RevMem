@@ -22,7 +22,12 @@ export async function createTemporaryDirectory(prefix: string): Promise<Temporar
   return {
     path: directoryPath,
     async cleanup(): Promise<void> {
-      await rm(directoryPath, { force: true, recursive: true });
+      await rm(directoryPath, {
+        force: true,
+        maxRetries: 3,
+        recursive: true,
+        retryDelay: 100
+      });
     }
   };
 }
