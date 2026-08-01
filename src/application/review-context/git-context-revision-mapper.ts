@@ -2,7 +2,6 @@ import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type FileReviewState,
   type GlobalFileReviewState,
-  type RepositoryGlobalState,
   type ReviewContextState
 } from "../../core/contracts/index";
 import {
