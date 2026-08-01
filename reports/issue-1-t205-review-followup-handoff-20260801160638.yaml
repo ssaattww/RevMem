@@ -1,0 +1,353 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: "2026-08-01T16:06:38+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #27"
+task_id: T205
+branch: task/t205-branch-context-resolver
+base_ref: main
+target:
+  current_head: 5772fb7cd6f2de8658a8f9d2618e90615a62cf65
+  reviewed_head: 15a10ca850f525a13c67e3d5af33ada77602240a
+  commit_range: fe5aa714bb94427761f8fc481bb214eaf070a5ee..bad75d4fe119e183361c0828b623712d6a1d79fe
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "2026-08-01 レビュー指摘対応"
+    summary: PR #27のレビュー指摘へ対応し、PR更新まで行う。
+  - source: repository_instruction
+    reference: project instructions
+    summary: RevMemはTDD、失敗診断artifact、small commits、詳細report、PR簡易report、HEAD一致CI、no mergeを要求する。
+  - source: pr
+    reference: "PR #27 review submission PRR_kwDOTgwD488AAAABICAALA"
+    summary: High finding T205-R1-P1。1root失敗による後続root starvationをinspection/callback双方で修正する。
+  - source: report
+    reference: reports/issue-1-t205-review-20260801155600.md
+    summary: reviewed implementation HEAD 15a10caに対する初回review verdictはchanges required。
+
+development_policy:
+  method: TDD
+  testing_order: multi-root starvation Red tests first, implementation second, focused/full CI validation last
+  governing_source: RevMem project instructions and review required action
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source and test snapshot
+    - generated output
+    - environment and Git status
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/review-context/polling-git-state-monitor.ts
+      reason: direct cause of T205-R1-P1
+    - path_or_operation: test/unit/polling-git-state-monitor-error.test.ts
+      reason: required inspection/callback Red regressions
+    - path_or_operation: reports/issue-1-t205-review-followup-20260801160638.md
+      reason: required detailed implementation report
+    - path_or_operation: reports/issue-1-t205-review-followup-handoff-20260801160638.yaml
+      reason: required cross-chat handoff
+    - path_or_operation: PR #27 metadata and conversation
+      reason: required implementation summary and reviewer handoff
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: finding does not require task tracking change
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: accepted design already requires Git state monitoring; finding is implementation defect
+    - path_or_operation: .github/workflows/ci.yml
+      reason: existing diagnostics workflow is sufficient
+    - path_or_operation: merge
+      reason: merge belongs to the user
+
+scope:
+  - Isolate inspection and callback failures per observed repository root.
+  - Continue processing later roots within the same poll.
+  - Update baseline only after successful callback completion.
+  - Preserve failed roots for next-poll retry.
+  - Preserve poll failure visibility through original error or AggregateError.
+non_goals:
+  - Change context resolution, revision mapping, document routing, Local Git behavior, settings, design, workflow, release, or merge.
+
+files:
+  changed:
+    - path: test/unit/polling-git-state-monitor-error.test.ts
+      purpose: Add inspection-failure and callback-failure multi-root starvation regressions.
+    - path: src/application/review-context/polling-git-state-monitor.ts
+      purpose: Isolate each root, collect failures, update only successful baselines, and report after processing all roots.
+    - path: reports/issue-1-t205-review-followup-20260801160638.md
+      purpose: Persist detailed review-follow-up evidence.
+    - path: reports/issue-1-t205-review-followup-handoff-20260801160638.yaml
+      purpose: Transport implementation evidence to the same normal reviewer for fix verification.
+  inspected:
+    - path: reports/issue-1-t205-review-20260801155600.md
+      purpose: Resolve finding identity, severity, reviewed HEAD, evidence, and required action.
+    - path: src/application/review-context/contracts.ts
+      purpose: Preserve PollingGitStateMonitorOptions and timer-driven onError contract.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm failure diagnostic artifact coverage.
+    - path: package.json
+      purpose: Confirm the focused monitor test is included in unit and T205 validation wiring.
+  intentionally_untouched:
+    - path_or_area: T205 context resolver, revision mapper, document routing, and Local Git adapter
+      reason: unrelated to T205-R1-P1 direct cause
+    - path_or_area: task tracker, design, workflow, release, merge
+      reason: outside accepted review follow-up scope
+
+commands:
+  - command: GitHub Actions CI for 1e404916bfe8071af15491a3d753b9f6a8a7f402
+    purpose: Confirm Red regression evidence.
+    exit_code: 1
+    result: failed
+    head_sha: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+    evidence: run 30688975002; two new starvation tests failed; artifact 8814981197
+  - command: GitHub Actions CI for bad75d4fe119e183361c0828b623712d6a1d79fe
+    purpose: Validate the implementation across the complete project gate.
+    exit_code: 0
+    result: passed
+    head_sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+    evidence: run 30689021555 success
+
+tests:
+  - name: polling continues after an inspection failure in an earlier root
+    phase: red
+    result: failed
+    head_sha: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+    evidence: healthy root callback list was empty instead of containing /repo-healthy
+  - name: polling continues after a change callback failure in an earlier root
+    phase: red
+    result: failed
+    head_sha: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+    evidence: healthy root callback list was empty instead of containing /repo-healthy
+  - name: multi-root inspection and callback failure regressions
+    phase: green
+    result: passed
+    head_sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+    evidence: Unit tests passed in run 30689021555
+  - name: complete project validation
+    phase: verification
+    result: passed
+    head_sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+    evidence: build, contracts, architecture positive/negative, lint, unit, Git, GitHub mock, VS Code Extension Host all passed
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30689021555
+  head_sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+  conclusion: success
+  artifacts:
+    - id: 8814981197
+      name: ci-failure-diagnostics-30688975002-1
+      purpose: Red test results, stdout/stderr, source/test/config, generated output, environment, and Git status
+
+implementation:
+  outcome: completed
+  final_head: bad75d4fe119e183361c0828b623712d6a1d79fe
+  commits:
+    - sha: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+      purpose: Add required failing multi-root inspection/callback regression tests.
+    - sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+      purpose: Isolate polling failures per root and preserve successful root progress.
+    - sha: 5772fb7cd6f2de8658a8f9d2618e90615a62cf65
+      purpose: Persist detailed review-follow-up report.
+  addressed_findings:
+    - id: T205-R1-P1
+      reviewed_head: 15a10ca850f525a13c67e3d5af33ada77602240a
+      disposition: addressed
+      evidence: Both required Red tests pass at bad75d4; failed root baselines remain retryable; full HEAD-matching CI succeeds.
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8814981197
+      summary: Contains Red test output and full configured diagnostics.
+    - type: standard_output
+      location: run 30688975002 Unit tests log
+      summary: Shows only the two required starvation regressions failing.
+  blocked_items: []
+  summary:
+    - Each root is processed within an independent try/catch.
+    - Later roots continue after earlier inspection or callback failures.
+    - Baselines update only after successful change handling.
+    - Failures remain visible after all roots are processed.
+
+review:
+  mode: fix_verification
+  reviewed_head: 15a10ca850f525a13c67e3d5af33ada77602240a
+  reviewer:
+    identity: ChatGPT review worker from PR review PRR_kwDOTgwD488AAAABICAALA
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT review worker
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence:
+        - Reviewer declared no participation in T205 implementation in reports/issue-1-t205-review-20260801155600.md.
+  verdict: incomplete
+  required_coverage:
+    - criterion: T205-R1-P1 inspection failure isolation
+      disposition: checked_finding
+      evidence: Implementation worker evidence is ready; normal reviewer verification pending.
+    - criterion: T205-R1-P1 callback failure isolation
+      disposition: checked_finding
+      evidence: Implementation worker evidence is ready; normal reviewer verification pending.
+    - criterion: current-HEAD matching CI
+      disposition: unexplored
+      evidence: Final administrative handoff commit CI must be checked after persistence.
+  validation_assessment:
+    - item: implementation HEAD CI
+      result: supported
+      evidence: run 30689021555 matches bad75d4 and succeeded
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Implementation worker does not issue the fix-verification verdict.
+    - The same normal reviewer must verify the new PR current HEAD and matching CI.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t205-review-followup-20260801160638.md
+    - reports/issue-1-t205-review-followup-handoff-20260801160638.yaml
+  reviewed_head: 15a10ca850f525a13c67e3d5af33ada77602240a
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed TDD, diagnostics, implementation, and validation evidence persisted.
+
+findings:
+  - id: T205-R1-P1
+    severity: high
+    origin: introduced_by_change
+    location: src/application/review-context/polling-git-state-monitor.ts pollObserved()
+    description: One root failure previously stopped later observed roots in the same poll.
+    impact: A persistent faulty root could indefinitely starve healthy repositories from branch or HEAD change detection.
+    evidence: Red run 30688975002 failed both required multi-root tests; Green run 30689021555 passed all gates.
+    required_action: Same normal reviewer performs fix verification against the new current HEAD.
+
+held:
+  - item: Native Windows mixed-case Git tree path validation
+    reason: Existing T205 held risk unrelated to this finding.
+    owner: future task or user decision
+    remaining_risk: Platform-specific path behavior remains unverified on a native Windows runner.
+    verdict_impact: No change to T205-R1-P1 disposition; reviewer decides overall verdict.
+  - item: Real Git object prune integration
+    reason: Existing T205 held risk unrelated to this finding.
+    owner: future task or user decision
+    remaining_risk: Missing-history path is validated with a controlled source rather than destructive real prune.
+    verdict_impact: No change to T205-R1-P1 disposition; reviewer decides overall verdict.
+
+unexplored:
+  - area: Final handoff-commit HEAD CI
+    blocker: Handoff commit does not exist until this packet is persisted.
+    remaining_risk: Final PR current HEAD must not be declared successful until a matching run completes.
+    verdict_impact: Fix verification remains incomplete until checked.
+
+unknown:
+  - field_or_fact: Final reviewer verdict
+    reason: Implementation worker cannot review its own fix.
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: This is normal-review fix follow-up, not terminal independent final review.
+remaining_risks:
+  - AggregateError preserves multiple failures but does not add new root-path metadata to each existing error.
+  - User-facing polling error notification remains outside this finding.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: review follow-up
+      accepted_scope:
+        - Address T205-R1-P1 only.
+      final_implementation_head: bad75d4fe119e183361c0828b623712d6a1d79fe
+      red_head: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+      red_run: 30688975002
+      red_artifact: 8814981197
+      green_run: 30689021555
+      result: completed; reviewer verification pending
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/issue-1-t205-review-followup-20260801160638.md
+
+extensions:
+  - namespace: revmem.review_followup
+    payload:
+      source_review_id: PRR_kwDOTgwD488AAAABICAALA
+      source_review_report_commit: fe5aa714bb94427761f8fc481bb214eaf070a5ee
+      report_commit: 5772fb7cd6f2de8658a8f9d2618e90615a62cf65
+      final_handoff_commit: recorded externally after packet persistence
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix verification
+  summary: Verify T205-R1-P1 using the same normal reviewer against PR #27 current HEAD.
+  instructions:
+    - Fetch PR #27 current HEAD after this handoff commit.
+    - Confirm the current HEAD includes 1e404916, bad75d4, the follow-up report, and this handoff.
+    - Confirm the workflow run used for verdict has head_sha exactly equal to that current HEAD.
+    - Verify inspection failure on the first root does not prevent a later root callback and the failed root retries.
+    - Verify callback failure on the first root does not prevent a later root callback and the failed root retries.
+    - Preserve finding ID T205-R1-P1 and source severity high.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #27
+    - reports/issue-1-t205-review-20260801155600.md
+    - reports/issue-1-t205-review-followup-20260801160638.md
+    - this handoff packet
+    - CI run 30688975002 and artifact 8814981197
+    - CI run 30689021555
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t205-review-followup-handoff-20260801160638.yaml
+  packet_url: null
+  transport_note: The packet is committed on PR #27. The reviewer must resolve the actual current HEAD and matching CI after this persistence commit; no merge was performed.
