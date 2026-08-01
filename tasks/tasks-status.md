@@ -26,7 +26,7 @@
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
 - T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
 - T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
-- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T003最終レビューレポート: `reports/issue-1-t003-rereview-2-20260723120507.md`
 - T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
 - T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
 - T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
@@ -248,9 +248,9 @@
 | --- | --- | --- | --- | --- | --- |
 | T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
 | T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
-| T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
-| T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
-| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数、除外数を表示する。AC-18を満たす |
+| T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`へコメント行を含む非空行の分母候補file、`excluded`へ実際に列挙した除外file、`excludedDirectories`へ再帰前にpruneしたdirectoryを1 directoryにつき1件保持する。pruneしたdirectoryを配下fileへ展開・推定せず、3配列をpath昇順・配列内重複なしで返し、共通ユーザーglob・binary・`.gitignore`・symbolic linkの理由を保持する |
+| T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | `included`の有効なGlobal非空行だけを分子・分母へ数え、`excluded`と`excludedDirectories`は理解率へ寄与させず、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
+| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数を表示する。除外file数は`excluded.length`だけを表示し、`excludedDirectories.length`は加算せず、pruneした除外directory数を別の診断項目として表示する。AC-18を満たす |
 | T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
 
 ## P6 Gitなし対応と堅牢化
