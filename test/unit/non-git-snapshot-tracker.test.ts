@@ -91,19 +91,37 @@ test("missing, corrupt, and expired snapshots return unreviewed state", async ()
 });
 
 test("snapshot cleanup enforces count and compressed-byte limits oldest-first", async () => {
-  const storage = new InMemoryNonGitSnapshotStorage();
-  const tracker = new NonGitSnapshotTracker(storage, {
+  const countStorage = new InMemoryNonGitSnapshotStorage();
+  const countTracker = new NonGitSnapshotTracker(countStorage, {
     maxSnapshots: 2,
-    maxCompressedBytes: 150,
+    maxCompressedBytes: 1024 * 1024,
     retentionMs: 60_000,
   });
 
-  const first = await tracker.save(state("first"), 1_000);
-  await tracker.save(state("second"), 1_001);
-  const third = await tracker.save(state("third"), 1_002);
+  const first = await countTracker.save(state("first"), 1_000);
+  await countTracker.save(state("second"), 1_001);
+  const third = await countTracker.save(state("third"), 1_002);
 
-  assert.equal(storage.has(first.snapshotId), false);
-  assert.equal(storage.has(third.snapshotId), true);
-  assert.ok(storage.count() <= 2);
-  assert.ok(storage.totalBytes() <= 150);
+  assert.equal(countStorage.has(first.snapshotId), false);
+  assert.equal(countStorage.has(third.snapshotId), true);
+  assert.equal(countStorage.count(), 2);
+
+  const byteStorage = new InMemoryNonGitSnapshotStorage();
+  const sizingTracker = new NonGitSnapshotTracker(byteStorage, {
+    maxSnapshots: 8,
+    maxCompressedBytes: 1024 * 1024,
+    retentionMs: 60_000,
+  });
+  const byteFirst = await sizingTracker.save(state("byte-first"), 2_000);
+  const byteLimit = byteFirst.compressedBytes * 2 - 1;
+  const byteTracker = new NonGitSnapshotTracker(byteStorage, {
+    maxSnapshots: 8,
+    maxCompressedBytes: byteLimit,
+    retentionMs: 60_000,
+  });
+  const byteSecond = await byteTracker.save(state("byte-second"), 2_001);
+
+  assert.equal(byteStorage.has(byteFirst.snapshotId), false);
+  assert.equal(byteStorage.has(byteSecond.snapshotId), true);
+  assert.ok(byteStorage.totalBytes() <= byteLimit);
 });
