@@ -21,6 +21,7 @@ import {
   type GitStateObserver,
   type ResolvedGitReviewContext
 } from "../../application/review-context/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
 import type { GitDiffMappingOptions } from "../../core/git-diff/index";
 import {
@@ -37,6 +38,8 @@ import type {
 /** T205 dependencies added around the existing routed/reconciled document provider. */
 export interface DocumentReviewStateSessionProviderOptions
 extends BaseDocumentReviewStateSessionProviderOptions {
+  /** Optional append-only recorder invoked only after context creation or revision mapping commits. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
   /** Optional explicit revision source; production normally reuses the Local Git inspector when it implements this port. */
   readonly gitRevisionSource?: GitRevisionMappingSource;
   /** Optional observation sink used by composition or tests to register inspected Git state. */
@@ -263,6 +266,10 @@ export class GitContextDocumentReviewStateSessionProvider {
             commit(value: Readonly<ReviewStateTransactionLike>): Promise<void>;
           }
         ).commit(transaction);
+        await this.options.historyRecorder?.recordRevisionMapping(
+          { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
+          { contextState: clone(next.contextState), globalState: clone(next.globalState) }
+        );
         return;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
@@ -328,6 +335,7 @@ export class GitContextDocumentReviewStateSessionProvider {
           globalState: clone(mapped.globalState)
         }
       });
+      await this.options.historyRecorder?.recordContextCreated(mapped.contextState);
       return;
     }
     if (isGlobalLoader(this.options.repository)) {
@@ -336,6 +344,7 @@ export class GitContextDocumentReviewStateSessionProvider {
       );
     }
     await this.options.repository.save(target, mapped);
+    await this.options.historyRecorder?.recordContextCreated(mapped.contextState);
   }
 
   private async mapCommit(

@@ -110,6 +110,7 @@ interface HarnessOptions {
   readonly globalReviewed?: readonly LineInterval[];
   readonly confirmation?: boolean;
   readonly commitError?: Error;
+  readonly historyError?: Error;
 }
 
 const createHarness = (options: HarnessOptions = {}) => {
@@ -143,6 +144,9 @@ const createHarness = (options: HarnessOptions = {}) => {
     },
     requestHistory: async (transaction) => {
       historyRequests.push(transaction as ReviewStateTransaction);
+      if (options.historyError !== undefined) {
+        throw options.historyError;
+      }
     },
     now: () => new Date(occurredAt)
   });
@@ -294,6 +298,23 @@ test("history is requested only after a successful state commit", async () => {
 
   assert.deepEqual(harness.commits, []);
   assert.deepEqual(harness.historyRequests, []);
+});
+
+test("a history append rejection remains observable after the successful state commit", async () => {
+  const historyError = new Error("history append failed");
+  const harness = createHarness({ historyError });
+
+  await assert.rejects(
+    harness.service.markSelectionReviewed({
+      lineCount: 10,
+      selections: [selection(1, 0)]
+    }),
+    historyError
+  );
+
+  assert.equal(harness.commits.length, 1);
+  assert.equal(harness.historyRequests.length, 1);
+  assert.equal(harness.historyRequests[0], harness.commits[0]);
 });
 
 test("an empty editor selection collection is a no-op without state or history requests", async () => {

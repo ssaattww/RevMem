@@ -634,17 +634,15 @@ create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を
 
 ### 15.4 履歴
 
-履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。
+履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。1 eventは1行のUTF-8 JSON objectとしてcanonicalにserializeし、改行を含む値や整形済みJSONを許容しない。event schemaの初期versionは既存の`schemaVersion`と同じversionであり、readerは未知version、未知field type、欠落required field、file/context discriminatorとの矛盾、非有限number、範囲外または未正規化intervalを推測・補完せずrejectする。
 
-最低限保存する情報:
+event共通のrequired fieldは`schemaVersion`、`eventId`、`occurredAt`、`sessionId`、`repositoryId`、`contextId`、`revisionId`、`type`、`reason`である。`eventId`はsession内だけでなく履歴処理全体で一意なopaque ID、`occurredAt`はUTC ISO 8601 timestamp、`reason`は機械可読な遷移原因とする。`type`がfile eventの場合だけ`filePath`、`diffSide`、`previousRanges`、`nextRanges`をrequiredとし、context eventではこれらをnullableにせずfield自体をomitする。file eventのrangeは0始まり半開区間をcanonical orderで保存する。
 
-- event ID、日時、session ID
-- repository/context/revision
-- file path、diff side
-- 変更前後のinterval
-- event typeとreason
+file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`、`marked-file-reviewed`、`unmarked-file-reviewed`、編集結果の`invalidated-by-edit`、Git diff再計算結果の`remapped-by-diff`、renameの`file-renamed`、deleteの`file-deleted`、一意に対応付けられない場合の`mapping-unresolved`である。context event typeは`context-created`と`context-revision-changed`である。各成功したstate transactionまたはcontext初期化・revision mapping結果は、affected fileごとに1 eventをappendする。失敗、cancel、no-op、またはstate commit前の計画はeventをappendしない。state commit後のhistory append失敗はstate rollbackを要求せず、呼び出し側へobservable partial successとしてrejectする。
 
-現在状態は履歴から毎回再構築せず、別途snapshotとして保存する。履歴は原則無期限保持する。
+保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、後続eventをappendせずrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
+
+現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。保持期間・閲覧UI・export・複数windowのcross-process history lock・schema migration readerはT604以降の責務であり、T206はevent append、厳密な入力validation、同一process内の順序付けだけを提供する。履歴は原則無期限保持する。
 
 ## 16. UIと設定
 

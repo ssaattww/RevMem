@@ -35,6 +35,7 @@ import {
   type ReviewStateFileTarget,
   type ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 
 /** Git ownership inspection needed by document routing. */
 export interface DocumentGitInspector {
@@ -113,6 +114,8 @@ export interface DocumentReviewStateSessionProviderOptions {
   readonly stableHash: StableHash;
   /** Optional UTC clock used for created and updated timestamps; the system clock is used when omitted. */
   readonly now?: () => Date;
+  /** Optional append-only recorder invoked after conservative edited-file invalidation commits. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
 }
 
 interface OwnedMapping {
@@ -641,6 +644,13 @@ export class DocumentReviewStateSessionProvider {
             globalState: next.globalState
           }
         });
+        const previousRanges = current.contextState.files[mapping.target.fileId]
+          ?.modifiedReviewed ?? current.globalState.files[mapping.target.fileId]?.reviewed ?? [];
+        await this.options.historyRecorder?.recordEditInvalidation(
+          next.contextState,
+          mapping.target,
+          previousRanges
+        );
         return next;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError)) {
