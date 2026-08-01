@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { gunzip, gzip } from "node:zlib";
 import { promisify } from "node:util";
+import { gunzip, gzip } from "node:zlib";
 
 import type { LineInterval } from "../../core/line-intervals/index";
 import { normalizeLineIntervals } from "../../core/line-intervals/index";
@@ -56,9 +56,7 @@ export class InMemoryNonGitSnapshotStorage implements NonGitSnapshotStorage {
 
   public get(snapshotId: string): StoredSnapshot | undefined {
     const value = this.snapshots.get(snapshotId);
-    return value === undefined
-      ? undefined
-      : { bytes: Buffer.from(value.bytes), createdAt: value.createdAt };
+    return value === undefined ? undefined : { bytes: Buffer.from(value.bytes), createdAt: value.createdAt };
   }
 
   public delete(snapshotId: string): void {
@@ -138,6 +136,9 @@ export class NonGitSnapshotTracker {
 
     const oldLines = splitLines(restored.state.content);
     const newLines = splitLines(currentContent);
+    if (hasChangedDuplicateMultiplicity(oldLines, newLines)) {
+      return { status: "ambiguous", reviewedRanges: [] };
+    }
     const mapping = uniqueLcsMapping(oldLines, newLines);
     if (mapping === undefined) {
       return { status: "ambiguous", reviewedRanges: [] };
@@ -149,12 +150,10 @@ export class NonGitSnapshotTracker {
         reviewedOldLines.add(line);
       }
     }
-
     const reviewedNewLines = [...mapping.entries()]
       .filter(([oldLine]) => reviewedOldLines.has(oldLine))
       .map(([, newLine]) => newLine)
       .sort((left, right) => left - right);
-
     return { status: "mapped", reviewedRanges: linesToIntervals(reviewedNewLines) };
   }
 
@@ -171,33 +170,22 @@ export class NonGitSnapshotTracker {
       this.storage.delete(snapshotId);
       return { status: "expired" };
     }
-
     try {
       const payload = await gunzipAsync(stored.bytes);
       if (createHash("sha256").update(payload).digest("hex") !== snapshotId) {
         return { status: "corrupt" };
       }
       const value = JSON.parse(payload.toString("utf8")) as Partial<SnapshotEnvelope>;
-      if (
-        value.schemaVersion !== 1 ||
-        value.createdAt !== stored.createdAt ||
-        typeof value.workspaceContextId !== "string" ||
-        value.workspaceContextId.length === 0 ||
-        typeof value.fileId !== "string" ||
-        value.fileId.length === 0 ||
-        typeof value.content !== "string" ||
-        !Array.isArray(value.reviewedRanges)
-      ) {
+      if (!isSnapshotEnvelope(value, stored.createdAt)) {
         return { status: "corrupt" };
       }
-      const reviewedRanges = normalizeLineIntervals(value.reviewedRanges as readonly LineInterval[]);
       return {
         status: "ok",
         state: {
           workspaceContextId: value.workspaceContextId,
           fileId: value.fileId,
           content: value.content,
-          reviewedRanges,
+          reviewedRanges: normalizeLineIntervals(value.reviewedRanges),
         },
       };
     } catch {
@@ -206,18 +194,16 @@ export class NonGitSnapshotTracker {
   }
 
   private cleanup(now: number): void {
-    const entries = [...this.storage.entries()].sort(
-      ([leftId, left], [rightId, right]) => left.createdAt - right.createdAt || leftId.localeCompare(rightId),
-    );
-    for (const [id, value] of entries) {
+    const ordered = (): (readonly [string, StoredSnapshot])[] =>
+      [...this.storage.entries()].sort(
+        ([leftId, left], [rightId, right]) => left.createdAt - right.createdAt || leftId.localeCompare(rightId),
+      );
+    for (const [id, value] of ordered()) {
       if (now - value.createdAt > this.limits.retentionMs) {
         this.storage.delete(id);
       }
     }
-
-    const remaining = [...this.storage.entries()].sort(
-      ([leftId, left], [rightId, right]) => left.createdAt - right.createdAt || leftId.localeCompare(rightId),
-    );
+    const remaining = ordered();
     let totalBytes = remaining.reduce((total, [, value]) => total + value.bytes.byteLength, 0);
     while (remaining.length > this.limits.maxSnapshots || totalBytes > this.limits.maxCompressedBytes) {
       const oldest = remaining.shift();
@@ -230,6 +216,40 @@ export class NonGitSnapshotTracker {
   }
 }
 
+function isSnapshotEnvelope(value: Partial<SnapshotEnvelope>, createdAt: number): value is SnapshotEnvelope {
+  return (
+    value.schemaVersion === 1 &&
+    value.createdAt === createdAt &&
+    typeof value.workspaceContextId === "string" &&
+    value.workspaceContextId.length > 0 &&
+    typeof value.fileId === "string" &&
+    value.fileId.length > 0 &&
+    typeof value.content === "string" &&
+    Array.isArray(value.reviewedRanges)
+  );
+}
+
+function hasChangedDuplicateMultiplicity(oldLines: readonly string[], newLines: readonly string[]): boolean {
+  const oldCounts = countLines(oldLines);
+  const newCounts = countLines(newLines);
+  for (const line of new Set([...oldCounts.keys(), ...newCounts.keys()])) {
+    const oldCount = oldCounts.get(line) ?? 0;
+    const newCount = newCounts.get(line) ?? 0;
+    if ((oldCount > 1 || newCount > 1) && oldCount !== newCount) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function countLines(lines: readonly string[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  return counts;
+}
+
 function uniqueLcsMapping(oldLines: readonly string[], newLines: readonly string[]): ReadonlyMap<number, number> | undefined {
   const lengths = Array.from({ length: oldLines.length + 1 }, () => new Uint32Array(newLines.length + 1));
   const counts = Array.from({ length: oldLines.length + 1 }, () => new Uint8Array(newLines.length + 1));
@@ -239,7 +259,6 @@ function uniqueLcsMapping(oldLines: readonly string[], newLines: readonly string
   for (let newIndex = newLines.length; newIndex >= 0; newIndex -= 1) {
     counts[oldLines.length]![newIndex] = 1;
   }
-
   for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
     for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
       if (oldLines[oldIndex] === newLines[newIndex]) {
@@ -258,11 +277,9 @@ function uniqueLcsMapping(oldLines: readonly string[], newLines: readonly string
       }
     }
   }
-
   if (counts[0]![0] !== 1) {
     return undefined;
   }
-
   const mapping = new Map<number, number>();
   let oldIndex = 0;
   let newIndex = 0;
