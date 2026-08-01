@@ -139,13 +139,13 @@ export class PollingGitStateMonitor {
       if (fingerprint(previous) === fingerprint(current)) {
         continue;
       }
-      this.observed.set(rootPath, current);
       const change: GitStateChange = {
         rootPath,
         ...(previous === undefined ? {} : { previous: cloneSnapshot(previous) }),
         ...(current === undefined ? {} : { current: cloneSnapshot(current) })
       };
       await this.options.onDidChange(change);
+      this.observed.set(rootPath, current);
     }
   }
 }
