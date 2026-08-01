@@ -1,4 +1,8 @@
-import type { LineInterval } from "../../core/contracts/index";
+import type {
+  FileReviewState,
+  GlobalFileReviewState,
+  LineInterval
+} from "../../core/contracts/index";
 import {
   commitReviewStateTransaction,
   markFileReviewed,
@@ -44,7 +48,7 @@ export type RepositoryGlobalStateMutationResult =
       readonly transaction: ReviewStateTransaction;
     }
   | {
-      /** The requested operation did not change any review range. */
+      /** The requested operation did not change persisted file state. */
       readonly status: "no-op";
       /** Detached transaction used to prove semantic equality. */
       readonly transaction: ReviewStateTransaction;
@@ -69,6 +73,47 @@ const sameOriginalRanges = (
   );
 };
 
+const sameStrings = (
+  left: readonly string[],
+  right: readonly string[]
+): boolean => left.length === right.length && left.every(
+  (value, index) => value === right[index]
+);
+
+const sameContextFileState = (
+  left: Readonly<FileReviewState> | undefined,
+  right: Readonly<FileReviewState> | undefined
+): boolean => {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+
+  return left.schemaVersion === right.schemaVersion &&
+    left.fileId === right.fileId &&
+    left.currentPath === right.currentPath &&
+    sameStrings(left.previousPaths, right.previousPaths) &&
+    left.revisionId === right.revisionId &&
+    sameRanges(left.modifiedReviewed, right.modifiedReviewed) &&
+    sameOriginalRanges(left.originalReviewedByDiff, right.originalReviewedByDiff) &&
+    left.contentHash === right.contentHash &&
+    left.lineCount === right.lineCount;
+};
+
+const sameGlobalFileState = (
+  left: Readonly<GlobalFileReviewState> | undefined,
+  right: Readonly<GlobalFileReviewState> | undefined
+): boolean => {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+
+  return left.fileId === right.fileId &&
+    left.currentPath === right.currentPath &&
+    left.revisionId === right.revisionId &&
+    sameRanges(left.reviewed, right.reviewed) &&
+    left.contentHash === right.contentHash;
+};
+
 const hasSemanticChange = (
   transaction: Readonly<ReviewStateTransaction>
 ): boolean => {
@@ -77,16 +122,8 @@ const hasSemanticChange = (
   const expectedGlobal = transaction.expected.globalState.files[transaction.fileId];
   const nextGlobal = transaction.next.globalState.files[transaction.fileId];
 
-  return !sameRanges(
-    expectedContext?.modifiedReviewed ?? [],
-    nextContext?.modifiedReviewed ?? []
-  ) || !sameRanges(
-    expectedGlobal?.reviewed ?? [],
-    nextGlobal?.reviewed ?? []
-  ) || !sameOriginalRanges(
-    expectedContext?.originalReviewedByDiff ?? {},
-    nextContext?.originalReviewedByDiff ?? {}
-  );
+  return !sameContextFileState(expectedContext, nextContext) ||
+    !sameGlobalFileState(expectedGlobal, nextGlobal);
 };
 
 const requireIntervals = (
@@ -129,9 +166,10 @@ const createTransaction = (
 /**
  * Application boundary for repository-wide Global review-state mutations.
  *
- * It creates one full context/Global transaction, suppresses semantic no-ops,
- * commits both snapshots through the supplied atomic boundary, and requests
- * append-only history only after the commit succeeds.
+ * It creates one full context/Global transaction, suppresses operations whose
+ * complete persisted target-file state differs only by timestamps, commits both
+ * snapshots through the supplied atomic boundary, and requests append-only
+ * history only after the commit succeeds.
  */
 export class RepositoryGlobalStateRepository {
   public constructor(
