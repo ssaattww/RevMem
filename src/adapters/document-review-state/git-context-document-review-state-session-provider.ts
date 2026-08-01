@@ -1,6 +1,9 @@
 import path from "node:path";
 
-import type { LocalGitRepository } from "../local-git/index";
+import type {
+  LocalGitRepository,
+  LocalGitRepositoryInspection
+} from "../local-git/index";
 import {
   StaleReviewStateError,
   type ReviewStateCommit,
@@ -17,13 +20,14 @@ import {
   type GitStateObserver,
   type ResolvedGitReviewContext
 } from "../../application/review-context/index";
-import type { GitDiffMappingOptions } from "../../core/git-diff/index";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
+import type { GitDiffMappingOptions } from "../../core/git-diff/index";
 import {
   DocumentReviewStateSessionProvider as ReconciledDocumentReviewStateSessionProvider
 } from "./reconciled-document-review-state-session-provider";
 import type {
   DocumentEditorReviewDescriptor,
+  DocumentGitInspector,
   DocumentNormalEditorDecorationState,
   DocumentNormalEditorReviewStateSession,
   DocumentReviewStateSessionProviderOptions as BaseDocumentReviewStateSessionProviderOptions
@@ -90,7 +94,6 @@ const revisionOf = (commit: ReviewStateCommit): string => {
  * reconciliation, command, and decoration behavior.
  */
 export class GitContextDocumentReviewStateSessionProvider {
-  private readonly delegate: ReconciledDocumentReviewStateSessionProvider;
   private readonly resolver: GitReviewContextResolver;
   private readonly revisionSource: GitRevisionMappingSource | undefined;
   private readonly mapper: GitContextRevisionMapper | undefined;
@@ -102,7 +105,6 @@ export class GitContextDocumentReviewStateSessionProvider {
   public constructor(
     private readonly options: DocumentReviewStateSessionProviderOptions
   ) {
-    this.delegate = new ReconciledDocumentReviewStateSessionProvider(options);
     this.resolver = new GitReviewContextResolver({
       stableHash: options.stableHash,
       ...(options.now === undefined ? {} : { now: options.now })
@@ -129,7 +131,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         const snapshot = change.current;
         const descriptor = this.knownDescriptors.get(change.rootPath);
         if (snapshot !== undefined && descriptor !== undefined) {
-          await this.prepareGitState(descriptor, false, snapshot);
+          await this.prepareSnapshot(descriptor, false, snapshot);
         }
       }
     });
@@ -140,16 +142,16 @@ export class GitContextDocumentReviewStateSessionProvider {
   public async open(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    await this.prepareGitState(descriptor, true);
-    return this.delegate.open(descriptor);
+    const inspection = await this.inspectAndPrepare(descriptor, true);
+    return this.createDelegate(inspection).open(descriptor);
   }
 
   /** Maps an existing current Git context before performing a read-only decoration load. */
   public async loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
-    await this.prepareGitState(descriptor, false);
-    return this.delegate.loadForDecoration(descriptor);
+    const inspection = await this.inspectAndPrepare(descriptor, false);
+    return this.createDelegate(inspection).loadForDecoration(descriptor);
   }
 
   /** Stops polling; callers that own this provider may invoke it during deactivation. */
@@ -158,21 +160,39 @@ export class GitContextDocumentReviewStateSessionProvider {
     this.knownDescriptors.clear();
   }
 
-  private async prepareGitState(
+  private createDelegate(
+    inspection: LocalGitRepositoryInspection
+  ): ReconciledDocumentReviewStateSessionProvider {
+    const cachedInspector: DocumentGitInspector = {
+      inspectRepository: async () => clone(inspection)
+    };
+    return new ReconciledDocumentReviewStateSessionProvider({
+      ...this.options,
+      gitInspector: cachedInspector
+    });
+  }
+
+  private async inspectAndPrepare(
+    descriptor: DocumentEditorReviewDescriptor,
+    initializeMissingContext: boolean
+  ): Promise<LocalGitRepositoryInspection> {
+    const inspectedPath = path.dirname(descriptor.documentFsPath);
+    const inspection = await this.options.gitInspector.inspectRepository(inspectedPath);
+    if (inspection.kind === "repository") {
+      await this.prepareSnapshot(
+        descriptor,
+        initializeMissingContext,
+        toSnapshot(inspection.repository)
+      );
+    }
+    return clone(inspection);
+  }
+
+  private async prepareSnapshot(
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean,
-    knownSnapshot?: GitReviewContextRepositorySnapshot
+    snapshot: GitReviewContextRepositorySnapshot
   ): Promise<void> {
-    const inspectedPath = path.dirname(descriptor.documentFsPath);
-    let snapshot = knownSnapshot;
-    if (snapshot === undefined) {
-      const inspection = await this.options.gitInspector.inspectRepository(inspectedPath);
-      if (inspection.kind !== "repository") {
-        return;
-      }
-      snapshot = toSnapshot(inspection.repository);
-    }
-
     this.knownDescriptors.set(snapshot.rootPath, clone(descriptor));
     this.monitor.observe(snapshot.rootPath, snapshot);
     this.options.gitStateObserver?.observe(snapshot.rootPath, snapshot);
@@ -224,11 +244,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         }
       };
       try {
-        await (
-          this.options.repository as unknown as {
-            commit(value: Readonly<ReviewStateTransactionLike>): Promise<void>;
-          }
-        ).commit(transaction);
+        await this.options.repository.commit(transaction);
         return;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
@@ -273,7 +289,7 @@ export class GitContextDocumentReviewStateSessionProvider {
   ): Promise<ReviewStateCommit> {
     if (this.mapper === undefined) {
       throw new Error(
-        "Git revision mapping source is required after branch or HEAD changes."
+        "Persisted Git state requires revision mapping, but no Git revision mapping source is available."
       );
     }
     const mapped = await this.mapper.map({
