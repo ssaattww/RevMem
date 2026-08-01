@@ -28,20 +28,28 @@ export function parseGitHubRemote(
     return undefined;
   }
 
+  if (trimmed.includes("://")) {
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol !== "https:" &&
+        parsed.protocol !== "http:" &&
+        parsed.protocol !== "ssh:" &&
+        parsed.protocol !== "git:"
+      ) {
+        return undefined;
+      }
+      return fromHostAndPath(parsed.hostname, parsed.pathname);
+    } catch {
+      return undefined;
+    }
+  }
+
   const scpLike = /^(?:[^@\s]+@)?([^:/\s]+):([^\s]+)$/u.exec(trimmed);
   if (scpLike !== null && !/^[A-Za-z]:[\\/]/u.test(trimmed)) {
     return fromHostAndPath(scpLike[1]!, scpLike[2]!);
   }
-
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:" && parsed.protocol !== "ssh:" && parsed.protocol !== "git:") {
-      return undefined;
-    }
-    return fromHostAndPath(parsed.hostname, parsed.pathname);
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 /** Returns the REST API base URL for GitHub.com or GitHub Enterprise Server. */
