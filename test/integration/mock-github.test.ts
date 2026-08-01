@@ -160,6 +160,35 @@ test("GitHub adapter follows pagination until an exact HEAD candidate is found",
   });
 });
 
+test("GitHub adapter rejects cross-origin pagination before forwarding authentication", async () => {
+  const requestedUrls: string[] = [];
+  const authorizationHeaders: Array<string | null> = [];
+  const adapter = new FetchGitHubPullRequestAdapter({
+    apiBaseUrl: "https://api.github.test",
+    token: "private-token",
+    fetch: async (input, init) => {
+      requestedUrls.push(input.toString());
+      authorizationHeaders.push(new Headers(init?.headers).get("authorization"));
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          link: '<https://attacker.example/steal?page=2>; rel="next"'
+        }
+      });
+    }
+  });
+
+  const result = await adapter.findOpenByHead(
+    { host: "github.test", owner: "example", repository: "review-range" },
+    "0123456789abcdef0123456789abcdef01234567"
+  );
+
+  assert.deepEqual(result, { kind: "unavailable", reason: "api" });
+  assert.equal(requestedUrls.length, 1);
+  assert.deepEqual(authorizationHeaders, ["Bearer private-token"]);
+});
+
 test("GitHub adapter attempts a public API request without authentication", async () => {
   const server = await createMockGitHubServer([
     {
