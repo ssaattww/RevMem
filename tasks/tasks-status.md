@@ -10,8 +10,8 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T206 JSON Linesイベント履歴
 - 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: `T206-R1`（high）、`T206-R2`（high）、`T206-R3`（medium）は同じ通常reviewerのfix verificationで全件closed。修正HEAD `154fa823ef897d0d0b050139f8c85d84ab5a1612`のCIは全gate成功し、独立reviewer 2/2の1回限りreviewへ進む
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: 独立reviewer 2/2の1回限りreviewは`455036f04e9f87d0b1bd08eca240a47b1f4c4bd6`に対してfail。`T206-IFR-R1` binary rename分類、`T206-IFR-R2` mixed reason、`T206-IFR-R3` Global-only stale rangesを修正し、通常reviewerが確認する。独立レビューは再実施しない
+- ブロッカー: `T206-IFR-R1`（high）、`T206-IFR-R2`（medium）、`T206-IFR-R3`（medium）。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t206-jsonl-history`
 - Pull Request: 未作成
 - PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名の最大2 reviewerによるreview証跡を1つのPRへ反映する。独立レビューで指摘が出た場合は修正と通常reviewerの確認まで行い、独立レビューは再実施しない。mergeは利用者が行う
@@ -282,4 +282,4 @@
 
 ## 次回開始時の選択
 
-T206は通常review finding 3件をclosedし、修正HEADのmatching CIも成功した。次は2人目の独立reviewerが1回だけ最終reviewを行う。独立reviewで指摘が出た場合は修正と通常reviewerの確認まで行い、独立reviewを再実施しない。T206完了後は新しいtask lifecycleでT207を開始する。
+T206の独立reviewは1回で終了し、3件のfindingを検出した。次は`T206-IFR-R1`〜`R3`を修正し、既存の通常reviewerが確認する。独立reviewは再実施しない。T206完了後は新しいtask lifecycleでT207を開始する。
