@@ -7,3 +7,7 @@ export {
   type WorkspaceReviewStateRepository,
   type WorkspaceReviewStateSessionProviderOptions
 } from "./workspace-review-state-session-provider";
+export {
+  SnapshotTrackingWorkspaceReviewStateSessionProvider,
+  type SnapshotTrackingWorkspaceReviewStateSessionProviderOptions,
+} from "./snapshot-tracking-workspace-review-state-session-provider";
