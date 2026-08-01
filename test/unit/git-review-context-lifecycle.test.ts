@@ -58,6 +58,7 @@ test("resolver separates branch and detached contexts without putting moving HEA
 
   assert.equal(mainOld.contextId, mainNew.contextId);
   assert.notEqual(mainNew.contextId, feature.contextId);
+  assert.equal(mainOld.kind, "branch");
   assert.equal(mainOld.contextState.kind, "branch");
   assert.equal(mainOld.contextState.branch?.refName, "refs/heads/main");
   assert.equal(mainNew.contextState.branch?.headRevision, newRevision);
@@ -65,11 +66,10 @@ test("resolver separates branch and detached contexts without putting moving HEA
   assert.equal(detachedOld.contextId, detachedOldAgain.contextId);
   assert.notEqual(detachedOld.contextId, detachedNew.contextId);
   assert.notEqual(detachedOld.contextId, mainOld.contextId);
-  assert.equal(detachedOld.contextState.kind, "detached-commit");
-  assert.equal(
-    detachedOld.contextState.detachedCommit?.commitRevision,
-    oldRevision
-  );
+  assert.equal(detachedOld.kind, "detached-commit");
+  assert.equal(detachedOld.contextState.kind, "branch");
+  assert.equal(detachedOld.contextState.branch?.refName, `HEAD@${oldRevision}`);
+  assert.equal(detachedOld.contextState.branch?.headRevision, oldRevision);
 });
 
 /** A detached context without an immutable commit cannot be assigned a stable context identity. */
@@ -124,9 +124,9 @@ class FakeRevisionSource implements GitRevisionMappingSource {
   }
 }
 
-const branchState = (): ReviewContextState => ({
+const branchState = (contextId: string): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-  contextId: "branch-context:test",
+  contextId,
   kind: "branch",
   repositoryId,
   displayName: "refs/heads/main",
@@ -197,7 +197,7 @@ test("revision mapper preserves only unchanged reviewed lines after a commit", a
 
   const result = await mapper.map({
     current,
-    contextState: branchState(),
+    contextState: branchState(current.contextId),
     globalState: globalState(),
     fileSystemPathSemantics: "posix",
     options: {
@@ -206,7 +206,7 @@ test("revision mapper preserves only unchanged reviewed lines after a commit", a
     }
   });
 
-  assert.equal(result.contextState.contextId, "branch-context:test");
+  assert.equal(result.contextState.contextId, current.contextId);
   assert.equal(result.contextState.branch?.headRevision, newRevision);
   assert.equal(result.globalState.currentRevisionId, newRevision);
   assert.deepEqual(
@@ -234,6 +234,7 @@ test("revision mapper advances conservatively with empty reviewed ranges when ol
   source.oldRevisionExists = false;
   source.texts.set(`${newRevision}\0src/example.ts`, "alpha\nbeta\ngamma");
   const resolver = new GitReviewContextResolver({ stableHash });
+  const current = resolver.resolve(attached("refs/heads/main", newRevision));
   const mapper = new GitContextRevisionMapper({
     source,
     stableHash,
@@ -241,8 +242,8 @@ test("revision mapper advances conservatively with empty reviewed ranges when ol
   });
 
   const result = await mapper.map({
-    current: resolver.resolve(attached("refs/heads/main", newRevision)),
-    contextState: branchState(),
+    current,
+    contextState: branchState(current.contextId),
     globalState: globalState(),
     fileSystemPathSemantics: "posix",
     options: {
