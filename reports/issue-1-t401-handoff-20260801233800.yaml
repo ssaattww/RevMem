@@ -1,0 +1,356 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial_implementation
+  generated_at: 2026-08-01T23:38:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #31
+task_id: T401
+branch: task/t401-github-pr-context-resolver
+base_ref: main
+target:
+  current_head: 1df75aae2b590574d06757122a759132a17bb14b
+  reviewed_head: null
+  commit_range: ec1ce78ab35867397c33d711095424e3eedd6e2c..1df75aae2b590574d06757122a759132a17bb14b
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use the GitHub connector, TDD, diagnostic failure artifacts, small commits, a detailed repository report, a concise PR comment, PR creation or update, and no merge.
+  - source: task
+    reference: tasks/tasks-status.md T401
+    summary: Implement VS Code authentication, GitHub adapters, remote identity resolution, authenticated or unauthenticated public API HEAD-matching PR search, and zero/one/multiple candidate resolution with branch fallback.
+  - source: repository_instruction
+    reference: .github/workflows/ci.yml
+    summary: CI must retain stdout, stderr-equivalent command logs, test/build output, generated files, and source in a failure artifact.
+
+development_policy:
+  method: TDD
+  testing_order: Add a failing test first, confirm failure evidence, implement, then run regression and full CI gates.
+  governing_source: RevMem project instruction and uploaded implementation-worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test-output/ci command logs containing standard output and standard error
+    - environment and Git status
+    - generated test/build files
+    - source, tests, tools, and configuration required for root-cause analysis
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/github-pr-context/**
+      reason: T401 application contracts and candidate resolver.
+    - path_or_operation: src/adapters/github/**
+      reason: Git remote, REST API, and VS Code authentication adapters.
+    - path_or_operation: test/integration/mock-github.test.ts
+      reason: T401 Red and Green integration coverage.
+    - path_or_operation: reports/issue-1-t401-implementation-20260801233800.md
+      reason: Required detailed implementation report.
+    - path_or_operation: reports/issue-1-t401-handoff-20260801233800.yaml
+      reason: Required lossless cross-chat handoff.
+    - path_or_operation: PR #31 metadata and conversation
+      reason: Required implementation summary and reviewer handoff.
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: Repository file states that only dedicated task/progress Skills may update it.
+    - path_or_operation: T402 and later GitHub diff, cache, persistence, and UI implementation
+      reason: Outside T401 scope.
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+
+scope:
+  - Parse GitHub.com and GitHub Enterprise HTTPS, SSH URL, and SCP-like remotes.
+  - Read an existing VS Code GitHub authentication session without forcing login.
+  - Search open pull requests through authenticated or unauthenticated public REST API access.
+  - Filter candidates by exact immutable HEAD SHA.
+  - Resolve zero, one, and multiple candidates and preserve branch operation on fallback.
+  - Classify rate-limit, network, and API failure without blocking local review operations.
+non_goals:
+  - PR files API and patch/diff fallback.
+  - GitHub metadata cache and offline persistence.
+  - Persistent PR context layers and Review Contexts UI.
+  - Merge or release.
+
+files:
+  changed:
+    - path: test/integration/mock-github.test.ts
+      purpose: T401 Red/Green coverage for remote parsing, API modes, failure classification, and candidate resolution.
+    - path: src/application/github-pr-context/contracts.ts
+      purpose: Repository, candidate, search, chooser, and resolution contracts.
+    - path: src/application/github-pr-context/github-pull-request-context-resolver.ts
+      purpose: Zero, one, multiple, cancellation, and unavailable resolution.
+    - path: src/application/github-pr-context/index.ts
+      purpose: Public application exports.
+    - path: src/adapters/github/git-remote.ts
+      purpose: Remote parsing and REST API base URL resolution.
+    - path: src/adapters/github/fetch-github-pull-request-adapter.ts
+      purpose: Authenticated or public GitHub REST open-PR search with exact HEAD filtering.
+    - path: src/adapters/github/vscode-github-authentication-provider.ts
+      purpose: Existing VS Code GitHub authentication session access.
+    - path: src/adapters/github/index.ts
+      purpose: Public adapter exports.
+    - path: reports/issue-1-t401-implementation-20260801233800.md
+      purpose: Detailed implementation and validation report.
+    - path: reports/issue-1-t401-handoff-20260801233800.yaml
+      purpose: Transport complete implementation evidence to review.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve the exact T401 scope, dependencies, and exit conditions.
+    - path: .github/workflows/ci.yml
+      purpose: Verify failure artifact coverage before implementation.
+    - path: src/application/review-context/contracts.ts
+      purpose: Preserve T205 Git branch context boundaries and naming conventions.
+    - path: src/extension.ts
+      purpose: Evaluate runtime composition boundary.
+    - path: test/support/mock-github-server.ts
+      purpose: Reuse deterministic localhost GitHub API fixtures.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill-only update rule.
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing workflow already satisfies mandatory failure diagnostics.
+    - path_or_area: src/extension.ts runtime composition
+      reason: Persistent PR context routing and UI integration are not yet available; T401 delivers the resolver and adapter boundary without changing branch session behavior.
+    - path_or_area: T402-T405 implementation
+      reason: Explicitly outside T401.
+
+commands:
+  - command: GitHub Actions CI run 30704078168
+    purpose: Validate implementation HEAD ff466017d2de5a4dfefacff705a689295b1684b1 and capture failure diagnostics.
+    exit_code: 1
+    result: failed
+    head_sha: ff466017d2de5a4dfefacff705a689295b1684b1
+    evidence: Mock GitHub integration failed because HTTPS remote parsing returned undefined; artifact 8819756155 was uploaded.
+  - command: GitHub Actions CI run 30704132615
+    purpose: Validate parser fix HEAD 54f00363abf1385fca0095c37b3f32366f5be523.
+    exit_code: unknown
+    result: passed
+    head_sha: 54f00363abf1385fca0095c37b3f32366f5be523
+    evidence: Build, typecheck, architecture positive/negative, lint, unit, Git integration, and Mock GitHub integration succeeded; final Extension Host conclusion was pending when the report commit was created.
+
+tests:
+  - name: T401 missing-module contract tests
+    phase: red
+    result: failed
+    head_sha: f40bdbf7d8e1c03b4bc63b87881c0e4330a8e2bf
+    evidence: Test-first commit imported application and adapter modules before they existed.
+  - name: GitHub remote parser resolves HTTPS, SCP-like SSH, and enterprise SSH remotes
+    phase: verification
+    result: failed
+    head_sha: ff466017d2de5a4dfefacff705a689295b1684b1
+    evidence: Exact-head run 30704078168 exposed HTTPS/SCP-like detection ordering.
+  - name: Mock GitHub integration suite
+    phase: green
+    result: passed
+    head_sha: 54f00363abf1385fca0095c37b3f32366f5be523
+    evidence: Exact-head run 30704132615 passed all seven T401 tests.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 1df75aae2b590574d06757122a759132a17bb14b
+  conclusion: in_progress
+  artifacts:
+    - id: 8819756155
+      name: ci-failure-diagnostics-30704078168-1
+      purpose: Initial parser failure logs, test output, generated files, source, tests, and configuration.
+
+implementation:
+  outcome: completed
+  final_head: 1df75aae2b590574d06757122a759132a17bb14b
+  commits:
+    - sha: f40bdbf7d8e1c03b4bc63b87881c0e4330a8e2bf
+      purpose: Add failing T401 tests first.
+    - sha: 47ccc3237779128fc8d77bfd646ac448dce9b622
+      purpose: Add GitHub PR context contracts.
+    - sha: 856638e7871795139372c5fdf911db60bc6a54d2
+      purpose: Implement PR candidate resolution.
+    - sha: da6fc58dd0b705b1902ce8de219d17331c3c2a7f
+      purpose: Export application API.
+    - sha: 105477243e4eb18c1e8685a57b8a04a19f117dde
+      purpose: Add initial remote parsing.
+    - sha: 486597ddaa42d87234fe274589f5a2230716335b
+      purpose: Add authenticated and public GitHub PR search.
+    - sha: 2c6182256e8245a493e6bb76f3cb94342f562f55
+      purpose: Add VS Code GitHub authentication adapter.
+    - sha: ff466017d2de5a4dfefacff705a689295b1684b1
+      purpose: Export GitHub adapters.
+    - sha: 54f00363abf1385fca0095c37b3f32366f5be523
+      purpose: Fix URL and SCP-like remote detection order.
+    - sha: 1df75aae2b590574d06757122a759132a17bb14b
+      purpose: Persist detailed implementation report.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: GitHub Actions run 30704078168 job 91380042700
+      summary: One of seven Mock GitHub tests failed; all earlier gates passed.
+    - type: artifact
+      location: artifact 8819756155
+      summary: Complete CI failure diagnostics were uploaded successfully.
+    - type: standard_output
+      location: test-output/ci/test-github.log
+      summary: Node test output showed actual undefined versus expected GitHub repository identity.
+    - type: standard_error
+      location: test-output/ci/test-github.log
+      summary: The combined tee log retained the assertion stack and process exit failure.
+  blocked_items: []
+  summary:
+    - T401 adapter and resolver boundaries are implemented with test-first evidence.
+    - Public repository lookup is attempted without a token when no VS Code session exists.
+    - GitHub unavailability falls back to branch context instead of blocking local operations.
+    - PR #31 is open as a draft and was not merged.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Normal review has not started.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t401-implementation-20260801233800.md
+    - reports/issue-1-t401-handoff-20260801233800.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed TDD, diagnostics, implementation, and validation evidence was persisted.
+
+findings: []
+held: []
+unexplored:
+  - area: Runtime composition in src/extension.ts
+    blocker: Persistent PR context routing and layer storage are assigned to later T401/T404 integration work; the current task implementation exposes the required adapters and resolver but does not switch the active document session to PR state.
+    remaining_risk: The exported boundary requires later UI/runtime injection before a user can select a PR in the extension.
+    verdict_impact: Must be evaluated by normal review against the exact T401 acceptance interpretation.
+unknown:
+  - field_or_fact: Final exact-head CI run after report and handoff persistence
+    reason: This handoff commit creates a new HEAD; the matching run must be resolved after the commit.
+not_applicable:
+  - field_or_area: Review findings and verdict
+    reason: Normal review has not started.
+remaining_risks:
+  - Open-PR pagination is currently limited to the first 100 API results.
+  - GitHub Enterprise authentication provider behavior may require host-specific runtime integration.
+  - Runtime Quick Pick and branch-to-PR context switching are not composed in src/extension.ts.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      status: completed
+      task: T401
+      pull_request: 31
+      branch: task/t401-github-pr-context-resolver
+      report: reports/issue-1-t401-implementation-20260801233800.md
+      implementation_head_before_handoff: 1df75aae2b590574d06757122a759132a17bb14b
+      initial_failed_ci:
+        run_id: 30704078168
+        head_sha: ff466017d2de5a4dfefacff705a689295b1684b1
+        artifact_id: 8819756155
+        root_cause: HTTPS remote was parsed as SCP-like syntax before URL syntax.
+      fixed_ci:
+        run_id: 30704132615
+        head_sha: 54f00363abf1385fca0095c37b3f32366f5be523
+        observed_successful_gates:
+          - build
+          - contract_typecheck
+          - architecture_positive
+          - architecture_negative
+          - lint
+          - unit
+          - git_integration
+          - mock_github_integration
+extensions:
+  - namespace: revmem
+    payload:
+      task_tracking_update_performed: false
+      task_tracking_reason: Dedicated task/progress Skill-only repository rule.
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Review PR #31 at its immutable final implementation HEAD, including whether the intentionally uncomposed runtime selection boundary satisfies T401.
+  instructions:
+    - Resolve PR #31 current HEAD after this handoff commit.
+    - Use only CI runs whose head SHA exactly matches that current HEAD.
+    - Inspect all changed production, test, report, and handoff files and direct dependencies.
+    - Validate unauthenticated public access, failure fallback, exact HEAD filtering, multiple-candidate behavior, pagination assumptions, and VS Code authentication behavior.
+    - Persist a detailed review report and a concise PR comment; do not merge.
+  required_attachments_or_references:
+    - PR #31
+    - reports/issue-1-t401-implementation-20260801233800.md
+    - reports/issue-1-t401-handoff-20260801233800.yaml
+    - CI failure artifact 8819756155
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t401-handoff-20260801233800.yaml
+  packet_url: null
+  transport_note: The packet is committed on PR #31. Resolve the actual final HEAD and matching CI after this persistence commit. No merge was performed.

@@ -1,0 +1,107 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-02T06:20:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #31
+task_id: T401
+branch: task/t401-github-pr-context-resolver
+base_ref: main
+target:
+  reviewed_head: be0c324721aa3b69c0807992fb679c9b69613c57
+  commit_range: 4929c153672f042d6e14c5fe8e9e5713f35c822f..be0c324721aa3b69c0807992fb679c9b69613c57
+review:
+  mode: fix_verification
+  reviewed_head: be0c324721aa3b69c0807992fb679c9b69613c57
+  reviewer:
+    identity: ChatGPT normal reviewer
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer
+      changed: false
+      reason: Same chat performed the initial review.
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - reports/issue-1-t401-review-20260801235300.md
+  verdict: fail
+  summary:
+    - T401-R001 High addressed.
+    - T401-R002 High addressed.
+    - T401-R003 High introduced by the pagination fix.
+findings:
+  - id: T401-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/fetch-github-pull-request-adapter.ts
+    description: First-page-only search.
+    impact: Exact-head PRs after page one were missed.
+    evidence: Pagination loop and page-two regression test now exist.
+    required_action: Addressed.
+  - id: T401-R002
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/vscode-github-authentication-provider.ts
+    description: Authentication provider was fixed to GitHub.com.
+    impact: Existing Enterprise sessions were unavailable.
+    evidence: Host-aware provider selection and regression test now exist.
+    required_action: Addressed.
+  - id: T401-R003
+    severity: high
+    origin: introduced_by_fix
+    location: src/adapters/github/fetch-github-pull-request-adapter.ts nextPageUrl and findOpenByHead
+    description: Pagination follows a next-page URL without confirming that it remains on the original API origin while reusing authenticated request headers.
+    impact: Authentication credentials may be sent outside the intended API trust boundary.
+    evidence: The next URL is accepted after URL parsing only, and the same headers are reused for every page.
+    required_action: Restrict pagination to the original API origin and add a cross-origin rejection regression test.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30705222720
+  head_sha: be0c324721aa3b69c0807992fb679c9b69613c57
+  conclusion: success
+  artifacts: []
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t401-review-r2-20260802062000.md
+    - reports/issue-1-t401-review-r2-handoff-20260802062000.yaml
+  reviewed_head: be0c324721aa3b69c0807992fb679c9b69613c57
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed fix-verification report persisted.
+remaining_risks:
+  - Pagination URL grammar and safe-origin policy need explicit handling.
+  - Live GitHub Enterprise end-to-end behavior remains untested.
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_fix
+  summary: Fix T401-R003 with TDD and request another fix verification in this chat.
+  instructions:
+    - Add a failing cross-origin pagination test.
+    - Validate next-page URLs against the original API origin.
+    - Confirm CI using only a run whose head SHA matches the new PR current HEAD.
+  required_attachments_or_references:
+    - reports/issue-1-t401-review-r2-20260802062000.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t401-review-r2-handoff-20260802062000.yaml
+  packet_url: null
+  transport_note: Use with the detailed report.

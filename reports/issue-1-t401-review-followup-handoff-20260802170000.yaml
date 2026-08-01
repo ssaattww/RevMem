@@ -1,0 +1,266 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-02T17:00:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #31
+task_id: T401
+branch: task/t401-github-pr-context-resolver
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: 4929c153672f042d6e14c5fe8e9e5713f35c822f
+  commit_range: 4929c153672f042d6e14c5fe8e9e5713f35c822f..current
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Address the review findings and continue through completion without merging.
+  - source: report
+    reference: reports/issue-1-t401-review-20260801235300.md
+    summary: Address T401-R001 pagination and T401-R002 host-aware Enterprise authentication, preserving High severity.
+  - source: task
+    reference: tasks/tasks-status.md T401
+    summary: Resolve GitHub repository identity, authenticated or public API current-HEAD PR search, candidate resolution, and branch fallback.
+
+development_policy:
+  method: TDD
+  testing_order: Add failing regression tests before implementation, then focused and full CI validation.
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output and standard error logs
+    - generated artifacts and relevant source/test files
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/adapters/github/fetch-github-pull-request-adapter.ts
+      reason: Direct cause of T401-R001.
+    - path_or_operation: src/adapters/github/vscode-github-authentication-provider.ts
+      reason: Direct cause of T401-R002.
+    - path_or_operation: test/integration/mock-github.test.ts
+      reason: Required Red/Green regression coverage.
+    - path_or_operation: reports/issue-1-t401-review-followup-20260802170000.md
+      reason: Detailed review-follow-up report.
+    - path_or_operation: reports/issue-1-t401-review-followup-handoff-20260802170000.yaml
+      reason: Lossless handoff to fix verification.
+    - path_or_operation: PR #31 comment
+      reason: Concise implementation and validation summary.
+  forbidden:
+    - path_or_operation: merge
+      reason: User performs merge.
+    - path_or_operation: tasks/tasks-status.md
+      reason: Repository file restricts updates to dedicated task/progress Skills.
+    - path_or_operation: T402 and later implementation
+      reason: Outside review finding scope.
+scope:
+  - Follow every open-PR REST page and collect exact current-HEAD candidates.
+  - Select VS Code authentication provider by GitHub host without prompting.
+  - Preserve existing fallback and error classification behavior.
+non_goals:
+  - PR files or diff retrieval.
+  - Metadata caching and persistent PR layers.
+  - Review Contexts UI.
+files:
+  changed:
+    - path: test/integration/mock-github.test.ts
+      purpose: Pagination and host-aware authentication regression tests.
+    - path: src/adapters/github/fetch-github-pull-request-adapter.ts
+      purpose: Follow Link rel=next pages and aggregate exact-HEAD candidates.
+    - path: src/adapters/github/vscode-github-authentication-provider.ts
+      purpose: Select github or github-enterprise provider by repository host.
+    - path: reports/issue-1-t401-review-followup-20260802170000.md
+      purpose: Persist detailed evidence.
+    - path: reports/issue-1-t401-review-followup-handoff-20260802170000.yaml
+      purpose: Transport evidence to fix verification.
+  inspected:
+    - path: reports/issue-1-t401-review-20260801235300.md
+      purpose: Resolve finding identities, severity, evidence, and required actions.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm failure diagnostics artifact coverage.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated progress Skill boundary.
+    - path_or_area: T402 and later GitHub integration
+      reason: Outside review follow-up scope.
+commands:
+  - command: GitHub Actions CI run 30705108453
+    purpose: Full validation for implementation HEAD d5649e6d685bbf302562ffa10703a0b5c64a1cb7.
+    exit_code: 0
+    result: passed
+    head_sha: d5649e6d685bbf302562ffa10703a0b5c64a1cb7
+    evidence: All configured CI steps succeeded.
+tests:
+  - name: pagination finds an exact HEAD pull request on page two
+    phase: red
+    result: failed
+    head_sha: 8f248b46aa06b61e49bdde5cdb851b2e244746e8
+    evidence: Existing adapter did not follow the Link next relation.
+  - name: host-aware GitHub and Enterprise authentication provider selection
+    phase: red
+    result: failed
+    head_sha: 8f248b46aa06b61e49bdde5cdb851b2e244746e8
+    evidence: Existing getAccessToken accepted no host and always selected github.
+  - name: mock GitHub integration suite
+    phase: green
+    result: passed
+    head_sha: d5649e6d685bbf302562ffa10703a0b5c64a1cb7
+    evidence: CI run 30705108453 Mock GitHub integration tests succeeded.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30705108453
+  head_sha: d5649e6d685bbf302562ffa10703a0b5c64a1cb7
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: unknown
+  commits:
+    - sha: 8f248b46aa06b61e49bdde5cdb851b2e244746e8
+      purpose: Add review-finding regression tests first.
+    - sha: 3a3b7ab9679e85d5d2b41a486e0faa4a3786d068
+      purpose: Implement complete open-PR pagination.
+    - sha: d5649e6d685bbf302562ffa10703a0b5c64a1cb7
+      purpose: Implement host-aware VS Code authentication provider selection.
+  addressed_findings:
+    - id: T401-R001
+      reviewed_head: 4929c153672f042d6e14c5fe8e9e5713f35c822f
+      disposition: addressed
+      evidence: Page-two regression test, Link pagination implementation, and matching-head CI success.
+    - id: T401-R002
+      reviewed_head: 4929c153672f042d6e14c5fe8e9e5713f35c822f
+      disposition: addressed
+      evidence: GitHub.com/Enterprise provider regression test, host-aware implementation, and matching-head CI success.
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Both High review findings were addressed with TDD regressions.
+    - No merge was performed.
+review:
+  mode: not_applicable
+  reviewed_head: 4929c153672f042d6e14c5fe8e9e5713f35c822f
+  reviewer:
+    identity: original ChatGPT normal reviewer
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - reports/issue-1-t401-review-20260801235300.md
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - The next action is fix verification by the original normal reviewer.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t401-review-followup-20260802170000.md
+    - reports/issue-1-t401-review-followup-handoff-20260802170000.yaml
+  reviewed_head: 4929c153672f042d6e14c5fe8e9e5713f35c822f
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed review-follow-up evidence was persisted.
+findings:
+  - id: T401-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/fetch-github-pull-request-adapter.ts findOpenByHead
+    description: The original implementation searched only the first 100 open pull requests.
+    impact: A matching PR on a later page was silently treated as not found.
+    evidence: reports/issue-1-t401-review-20260801235300.md
+    required_action: Follow all REST pages and test a page-two exact HEAD result.
+  - id: T401-R002
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/vscode-github-authentication-provider.ts
+    description: The original implementation always selected the github provider.
+    impact: Private GitHub Enterprise repositories could not use an existing Enterprise session.
+    evidence: reports/issue-1-t401-review-20260801235300.md
+    required_action: Select github or github-enterprise based on repository host and test both.
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final current HEAD and matching CI run after report/handoff commits
+    reason: Must be resolved after this handoff commit.
+not_applicable:
+  - field_or_area: merge
+    reason: User-owned action.
+remaining_risks:
+  - Real GitHub Enterprise OAuth/API end-to-end validation was not available.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: review follow-up
+      addressed_findings:
+        - T401-R001
+        - T401-R002
+      implementation_head: d5649e6d685bbf302562ffa10703a0b5c64a1cb7
+      validation_run: 30705108453
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix verification
+  summary: Verify T401-R001 and T401-R002 on the final immutable HEAD.
+  instructions:
+    - Resolve the actual final PR HEAD after report/handoff persistence.
+    - Use only a CI run whose head SHA exactly matches that final HEAD.
+    - Preserve finding IDs and High severity.
+  required_attachments_or_references:
+    - reports/issue-1-t401-review-20260801235300.md
+    - reports/issue-1-t401-review-followup-20260802170000.md
+    - reports/issue-1-t401-review-followup-handoff-20260802170000.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t401-review-followup-handoff-20260802170000.yaml
+  packet_url: null
+  transport_note: Resolve final HEAD and matching CI after this commit; no merge was performed.

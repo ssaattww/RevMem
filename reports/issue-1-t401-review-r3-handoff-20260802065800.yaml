@@ -1,0 +1,340 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-02T06:58:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #31
+task_id: T401
+branch: task/t401-github-pr-context-resolver
+base_ref: main
+target:
+  current_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  commit_range: 9444bff29c92976c5abf2a07aa89a147b66b7c8f..a2d931300c8f1508fcff8464c8a4aac02ae210c2
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current conversation
+    summary: Re-review T401 using the uploaded Skills, GitHub connector, repository report, concise PR comment, exact-HEAD CI evidence, and no merge.
+  - source: task
+    reference: tasks/tasks-status.md T401
+    summary: Resolve GitHub pull request context from remote identity, existing VS Code authentication, exact HEAD open-PR search, and branch fallback.
+  - source: report
+    reference: reports/issue-1-t401-review-r2-20260802062000.md
+    summary: Verify T401-R003 High and inspect newly changed areas.
+
+development_policy:
+  method: TDD
+  testing_order: Add a failing regression test, confirm exact-HEAD failure and diagnostics, implement, then verify exact-HEAD CI success.
+  governing_source: RevMem project instruction and uploaded worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output and standard error equivalent logs
+    - generated files
+    - source, tests, tools, and configuration required for root-cause analysis
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t401-review-r3-20260802065800.md
+      reason: Required detailed fix-verification report.
+    - path_or_operation: reports/issue-1-t401-review-r3-handoff-20260802065800.yaml
+      reason: Required lossless handoff.
+    - path_or_operation: PR #31 review comment
+      reason: Required concise result summary.
+  forbidden:
+    - path_or_operation: implementation and test fixes
+      reason: Reviewer must not implement findings.
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+
+scope:
+  - Verify T401-R003 by identity and High severity.
+  - Reconfirm T401-R001 and T401-R002 remain addressed.
+  - Inspect all changes after the previous review report and handoff.
+  - Inspect direct contracts, tests, security handling, reports, and exact-current-HEAD CI.
+non_goals:
+  - T402 and later files API, diff, cache, persistence, and UI implementation.
+  - Independent final review.
+  - Merge.
+
+files:
+  changed:
+    - path: src/adapters/github/fetch-github-pull-request-adapter.ts
+      purpose: Validate pagination next URLs before reusing authenticated headers.
+    - path: test/integration/mock-github.test.ts
+      purpose: Cross-origin pagination security regression test.
+    - path: reports/issue-1-t401-review-followup-r2-20260802063000.md
+      purpose: R003 implementation evidence.
+    - path: reports/issue-1-t401-review-followup-r2-handoff-20260802063000.yaml
+      purpose: R003 implementation handoff.
+    - path: test/support/temporary-directory.ts
+      purpose: Align cleanup retry settings with current main.
+    - path: reports/issue-1-t401-review-r3-20260802065800.md
+      purpose: Detailed fix-verification report.
+    - path: reports/issue-1-t401-review-r3-handoff-20260802065800.yaml
+      purpose: This handoff.
+  inspected:
+    - path: src/application/github-pr-context/contracts.ts
+      purpose: Confirm search result and fallback contract remains compatible.
+    - path: src/application/github-pr-context/github-pull-request-context-resolver.ts
+      purpose: Confirm unavailable search remains non-blocking branch fallback.
+    - path: src/adapters/github/vscode-github-authentication-provider.ts
+      purpose: Reconfirm R002 host-aware authentication remains addressed.
+    - path: test/support/temporary-directory.ts on main
+      purpose: Confirm the additional test-support change matches current main.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skills only.
+    - path_or_area: implementation files
+      reason: Reviewer did not implement fixes.
+    - path_or_area: merge
+      reason: Reserved for user.
+
+commands:
+  - command: GitHub Actions CI run 30719175623
+    purpose: Confirm R003 regression test fails before implementation.
+    exit_code: 1
+    result: failed
+    head_sha: b39f5ddecea35ee21276b8d77e843c2b3f2e23c0
+    evidence: Mock GitHub integration failed and artifact 8824303685 was uploaded.
+  - command: GitHub Actions CI run 30719218852
+    purpose: Confirm R003 green implementation.
+    exit_code: 0
+    result: passed
+    head_sha: b046ab21395543199c227242185448bc170182f0
+    evidence: All configured gates succeeded.
+  - command: GitHub Actions CI run 30720200878
+    purpose: Validate the reviewed current implementation HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+    evidence: Workflow completed successfully; no other SHA was substituted.
+
+tests:
+  - name: Cross-origin pagination security regression
+    phase: red
+    result: failed
+    head_sha: b39f5ddecea35ee21276b8d77e843c2b3f2e23c0
+    evidence: Existing implementation followed an attacker-origin next link.
+  - name: Cross-origin pagination security regression
+    phase: green
+    result: passed
+    head_sha: b046ab21395543199c227242185448bc170182f0
+    evidence: Only the initial API request occurs and result is unavailable/api.
+  - name: Full configured CI gates
+    phase: verification
+    result: passed
+    head_sha: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+    evidence: Matching run 30720200878 succeeded.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30720200878
+  head_sha: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  conclusion: success
+  artifacts:
+    - id: 8824303685
+      name: ci-failure-diagnostics-30719175623-1
+      purpose: R003 Red failure diagnostics.
+
+implementation:
+  outcome: completed
+  final_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  commits:
+    - sha: b39f5ddecea35ee21276b8d77e843c2b3f2e23c0
+      purpose: Add failing R003 cross-origin pagination test.
+    - sha: b046ab21395543199c227242185448bc170182f0
+      purpose: Validate pagination next URL origin, protocol, userinfo, path, and fragment.
+    - sha: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+      purpose: Align temporary cleanup retry settings with main.
+  addressed_findings:
+    - id: T401-R001
+      reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+      disposition: addressed
+      evidence: Multi-page exact-HEAD test and implementation remain present.
+    - id: T401-R002
+      reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+      disposition: addressed
+      evidence: Host-aware github/github-enterprise provider test and implementation remain present.
+    - id: T401-R003
+      reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+      disposition: addressed
+      evidence: Cross-origin next link is rejected before a second authenticated request; matching CI succeeds.
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8824303685
+      summary: Red security regression failure logs and required source/test diagnostics.
+  blocked_items: []
+  summary:
+    - All normal-review findings are addressed at the reviewed implementation HEAD.
+
+review:
+  mode: fix_verification
+  reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  reviewer:
+    identity: ChatGPT normal reviewer in the existing T401 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer in the existing T401 review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat authored the initial and R2 normal reviews and did not implement the fixes.
+  verdict: pass
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: Accepted T401 contracts remain satisfied.
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: Valid pagination, invalid next link, cycle prevention, and fallback behavior inspected.
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: No T402+ product scope added; test-support settings match current main.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: All R3 changes and direct application contracts inspected.
+    - criterion: API and compatibility effects
+      disposition: checked_no_finding
+      evidence: Search result and branch fallback contracts unchanged.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Invalid links map to unavailable/api and Red artifact exists.
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: Authentication is not forwarded cross-origin or to a different collection path.
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: TDD Red/Green and full exact-HEAD CI evidence exist.
+    - criterion: current-HEAD CI
+      disposition: checked_no_finding
+      evidence: Run 30720200878 matches reviewed HEAD and succeeds.
+    - criterion: report and documentation accuracy
+      disposition: checked_no_finding
+      evidence: Follow-up report preserves finding identity and High severity.
+    - criterion: regression and maintainability
+      disposition: checked_no_finding
+      evidence: Validation is localized in a typed helper and existing behavior remains covered.
+  validation_assessment:
+    - item: exact-HEAD CI for reviewed implementation
+      result: supported
+      evidence: Run 30720200878 success for a2d931300c8f1508fcff8464c8a4aac02ae210c2.
+    - item: R003 TDD evidence
+      result: supported
+      evidence: Red run 30719175623 failure, artifact 8824303685, Green run 30719218852 success.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T401-R001, R002, and R003 are addressed.
+    - No new required finding was identified.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t401-review-r3-20260802065800.md
+    - reports/issue-1-t401-review-r3-handoff-20260802065800.yaml
+  reviewed_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed R3 fix-verification report and handoff were persisted.
+
+findings: []
+held: []
+unexplored:
+  - area: Live GitHub Enterprise OAuth/API end-to-end execution
+    blocker: No live Enterprise environment is available.
+    remaining_risk: Provider and REST integration is verified by contracts and mocks rather than a live server.
+    verdict_impact: Non-blocking for this fix verification.
+unknown: []
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: This is normal fix verification, not independent final review.
+remaining_risks:
+  - No explicit maximum page count exists for a long but non-cyclic pagination chain.
+  - Runtime PR context composition is assigned to later tasks.
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: a2d931300c8f1508fcff8464c8a4aac02ae210c2
+      verdict: pass
+      findings: []
+      addressed_findings:
+        - T401-R001
+        - T401-R002
+        - T401-R003
+      matching_ci_run: 30720200878
+extensions:
+  - namespace: chatgpt_runtime
+    payload:
+      report_commit: 83bc7453c5d616d2cbfe4eb019d2ecd5bf568c33
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: independent_final_review
+  summary: Start an independent final review in a fresh chat if required by the project lifecycle.
+  instructions:
+    - Freeze all implementation and normal-review changes before starting.
+    - Use a reviewer chat that did not implement fixes or perform normal review.
+    - Use only CI whose head SHA matches the frozen implementation HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #31
+    - reports/issue-1-t401-review-r3-20260802065800.md
+    - this handoff
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t401-review-r3-handoff-20260802065800.yaml
+  packet_url: null
+  transport_note: Detailed report and complete handoff are stored on the PR branch; PR comment is posted separately.

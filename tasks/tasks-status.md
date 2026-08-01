@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T303 diff editor commands（独立reviewの全5 findingをclosure済み）
-- 現在のタスク: PR #30 squash merge準備
-- 次のタスク: PR #30をsquash merge後、依存順に次タスクへ進む
-- 実装状態: T303はPR #30で、implementation・初回通常review evidenceを復元し、T303-R1-P3 reopenedとT303-IFR-P1〜P4の全5件を修正した。同じ独立reviewerのclosure限定R2で必須findingなし、`pass_with_held`、exact-head CI成功を確認済み。Issue #28はnon-blocking held
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）
+- 直近完了タスク: T401 GitHub PR context resolver（独立reviewの全7 findingをclosure済み）
+- 現在のタスク: PR #31 squash merge準備
+- 次のタスク: PR #31をsquash merge後、依存順に次タスクへ進む
+- 実装状態: T401はPR #31で通常review完了後、独立reviewのT401-IFR2-P1〜P7を一括修正した。同じ独立reviewerのclosure限定確認で全7件addressed、openなし、`pass_with_held`、exact-head CI成功を確認済み。Issue #28はnon-blocking held
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
-- Gitブランチ: `task/t303-diff-editor-commands`
-- Pull Request: #30（base=`main`）
-- PR方針: T207の統合test、必要最小限のproduction fix、通常1名と独立1名の最大2 reviewerによる証跡を別PRへ反映する。独立reviewの広域確認は1回とし、fail時は同じ独立reviewerが既存findingのclosureだけを再確認して新規観点・新規findingを追加しない。全finding closureとCI成功後にsquash mergeする
+- Gitブランチ: `task/t401-github-pr-context-resolver`
+- Pull Request: #31（base=`main`）
+- PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureとCI成功後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -166,6 +166,9 @@
 - T303独立finding fix verificationレポート: `reports/issue-1-t303-independent-fix-verification-20260802103000.md`
 - T303独立review follow-up R2レポート: `reports/issue-1-t303-independent-review-followup-r2-20260802110000.md`
 - T303独立finding closure R2レポート: `reports/issue-1-t303-independent-fix-verification-r2-20260802113000.md`
+- T401独立最終レビューレポート: `reports/issue-1-t401-independent-final-review-20260802090030.md`
+- T401独立review follow-upレポート: `reports/issue-1-t401-independent-review-followup-20260802121500.md`
+- T401独立finding closureレポート: `reports/issue-1-t401-independent-fix-verification-20260802124500.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -248,7 +251,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T401 | 未着手 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない |
+| T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 未着手 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する | T203、T301、T401 | 各経路の成功・欠落・不完全patchをmockで再現し、全経路失敗時に確認済みを推測しない |
 | T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
