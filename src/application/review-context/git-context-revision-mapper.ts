@@ -25,8 +25,14 @@ const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-const lineCountOf = (content: string): number =>
-  content.split(/\r\n|\r|\n/u).length;
+const lineCountOf = (content: string): number => {
+  if (content.length === 0) {
+    return 0;
+  }
+
+  const lines = content.split(/\r\n|\r|\n/u);
+  return /\r\n|\r|\n$/u.test(content) ? lines.length - 1 : lines.length;
+};
 
 const contextRevision = (state: ReviewContextState): string => {
   if (state.kind !== "branch" || state.branch === undefined) {
