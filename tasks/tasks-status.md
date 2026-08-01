@@ -6,14 +6,16 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）
 - 直近完了タスク: T401 GitHub PR context resolver（独立reviewの全7 findingをclosure済み）
-- 現在のタスク: PR #31 squash merge準備
-- 次のタスク: PR #31をsquash merge後、依存順に次タスクへ進む
-- 実装状態: T401はPR #31で通常review完了後、独立reviewのT401-IFR2-P1〜P7を一括修正した。同じ独立reviewerのclosure限定確認で全7件addressed、openなし、`pass_with_held`、exact-head CI成功を確認済み。Issue #28はnon-blocking held
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
-- Gitブランチ: `task/t401-github-pr-context-resolver`
-- Pull Request: #31（base=`main`）
+- 現在のタスク: T501 Repository Global State repository（PR #32）の独立review finding closure
+- 次のタスク: T501の同一独立reviewerによる既存4 finding限定closure確認後、PR #32をsquash mergeする
+- 実装状態: T501は`origin/main`の`238149edb632d298ea43122b12b4cde72b70ec38`へrebaseし、T501-IFR2-P1〜P4を一括対応した。Global-only解除のContext/Global履歴証跡、public consumer fixture、trackingを追加し、通常verificationと同一独立reviewerのclosure限定確認を残す。Issue #28はnon-blocking held
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
+- Gitブランチ: `task/t501-global-state-repository`
+- Pull Request: #32（base=`main`）
+- T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
+- T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureとCI成功後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
@@ -262,7 +264,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
+| T501 | 独立review指摘対応済み | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。T501-IFR2-P1〜P4のclosure限定確認、exact-head CI、squash mergeが残る |
 | T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
 | T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
 | T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |

@@ -14,6 +14,7 @@ const CONTEXT_EVENT_TYPES = new Set<ReviewHistoryEventType>(["context-created", 
 const COMMON_FIELDS = ["schemaVersion", "eventId", "occurredAt", "sessionId", "repositoryId", "contextId", "revisionId", "type", "reason"] as const;
 const MODIFIED_FILE_FIELDS = [...COMMON_FIELDS, "filePath", "diffSide", "previousRanges", "nextRanges"];
 const ORIGINAL_FILE_FIELDS = [...COMMON_FIELDS, "filePath", "diffSide", "diffId", "previousRanges", "nextRanges"];
+const CONTEXT_AND_GLOBAL_RANGE_FIELDS = ["rangeRepresentation", "globalPreviousRanges", "globalNextRanges"];
 
 const assertPlainObject = (value: unknown, name: string): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${name} must be an object.`);
@@ -69,7 +70,19 @@ export const validateReviewHistoryEvent = (value: unknown): ReviewHistoryEvent =
   }
   if (event.diffSide !== "modified" && event.diffSide !== "original") throw new TypeError("diffSide must be modified or original.");
   const diffSide: "modified" | "original" = event.diffSide;
-  assertExactFields(event, diffSide === "original" ? ORIGINAL_FILE_FIELDS : MODIFIED_FILE_FIELDS);
+  const baseFields = diffSide === "original" ? ORIGINAL_FILE_FIELDS : MODIFIED_FILE_FIELDS;
+  const rangeEvidence = event.rangeRepresentation === undefined
+    ? undefined
+    : (() => {
+        assertExactFields(event, [...baseFields, ...CONTEXT_AND_GLOBAL_RANGE_FIELDS]);
+        if (event.rangeRepresentation !== "context-and-global") throw new TypeError("rangeRepresentation is unsupported.");
+        return {
+          rangeRepresentation: "context-and-global" as const,
+          globalPreviousRanges: validateRanges(event.globalPreviousRanges, "globalPreviousRanges"),
+          globalNextRanges: validateRanges(event.globalNextRanges, "globalNextRanges")
+        };
+      })();
+  if (rangeEvidence === undefined) assertExactFields(event, baseFields);
   const fileEvent = {
     ...common,
     type: type as Exclude<ReviewHistoryEventType, "context-created" | "context-revision-changed">,
@@ -77,9 +90,14 @@ export const validateReviewHistoryEvent = (value: unknown): ReviewHistoryEvent =
     previousRanges: validateRanges(event.previousRanges, "previousRanges"),
     nextRanges: validateRanges(event.nextRanges, "nextRanges")
   };
+  if (rangeEvidence === undefined) {
+    return diffSide === "original"
+      ? { ...fileEvent, diffSide: "original", diffId: assertNonEmptyString(event.diffId, "diffId") }
+      : { ...fileEvent, diffSide: "modified" };
+  }
   return diffSide === "original"
-    ? { ...fileEvent, diffSide: "original", diffId: assertNonEmptyString(event.diffId, "diffId") }
-    : { ...fileEvent, diffSide: "modified" };
+    ? { ...fileEvent, diffSide: "original", diffId: assertNonEmptyString(event.diffId, "diffId"), ...rangeEvidence }
+    : { ...fileEvent, diffSide: "modified", ...rangeEvidence };
 };
 /** Validates and serializes one canonical JSONL review-history event. */
 export const serializeReviewHistoryEvent = (value: unknown): string => JSON.stringify(validateReviewHistoryEvent(value));

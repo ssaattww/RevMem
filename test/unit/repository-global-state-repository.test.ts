@@ -6,8 +6,13 @@ import {
   type LineInterval,
   type RepositoryGlobalState,
   type ReviewContextKind,
-  type ReviewContextState
+  type ReviewContextState,
+  type ReviewHistoryEvent
 } from "../../src/core/contracts/index";
+import {
+  parseReviewHistoryEventLine,
+  serializeReviewHistoryEvent
+} from "../../src/core/review-history/index";
 import type {
   ReviewStateTransaction,
   ReviewStateTransactionCommitter
@@ -15,6 +20,7 @@ import type {
 import {
   RepositoryGlobalStateRepository
 } from "../../src/application/repository-global-state/index";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 
 const interval = (startLine: number, endLineExclusive: number): LineInterval => ({
   startLine,
@@ -165,6 +171,75 @@ test("unmarking removes Global ranges even when the current context does not con
   assert.deepEqual(
     result.transaction.next.globalState.files["file-1"]?.reviewed,
     [interval(1, 3), interval(6, 8)]
+  );
+});
+
+test("Global-only range and whole-file unmarks retain both Context and Global ranges through the production history recorder", async () => {
+  const events: ReviewHistoryEvent[] = [];
+  let eventNumber = 0;
+  const recorder = new ReviewHistoryRecorder({
+    sessionId: "session-1",
+    createEventId: () => `event-${++eventNumber}`,
+    appender: { append: async (_target, event) => { events.push(event); } }
+  });
+  const committed: ReviewStateTransaction[] = [];
+  const repository = new RepositoryGlobalStateRepository({
+    requestHistory: async (transaction) => recorder.recordTransaction(transaction, "user-selection")
+  });
+  const committer: ReviewStateTransactionCommitter = {
+    commit: async (transaction) => { committed.push(structuredClone(transaction)); }
+  };
+
+  await repository.apply({
+    operation: "unmark-ranges-reviewed",
+    contextState: contextState("branch", []),
+    globalState: globalState([interval(1, 8)]),
+    target,
+    intervals: [interval(3, 6)],
+    occurredAt,
+    committer
+  });
+  await repository.apply({
+    operation: "unmark-file-reviewed",
+    contextState: contextState("branch", []),
+    globalState: globalState([interval(0, 12)]),
+    target,
+    occurredAt,
+    committer
+  });
+
+  assert.equal(committed.length, 2);
+  const rangeEvidence = events.map((event) => {
+    if (!("rangeRepresentation" in event) || event.rangeRepresentation !== "context-and-global") {
+      throw new Error("Global repository operations must retain Context and Global history evidence.");
+    }
+    return {
+      representation: event.rangeRepresentation,
+      contextBefore: event.previousRanges,
+      contextAfter: event.nextRanges,
+      globalBefore: event.globalPreviousRanges,
+      globalAfter: event.globalNextRanges
+    };
+  });
+  assert.deepEqual(rangeEvidence, [
+    {
+      representation: "context-and-global",
+      contextBefore: [],
+      contextAfter: [],
+      globalBefore: [interval(1, 8)],
+      globalAfter: [interval(1, 3), interval(6, 8)]
+    },
+    {
+      representation: "context-and-global",
+      contextBefore: [],
+      contextAfter: [],
+      globalBefore: [interval(0, 12)],
+      globalAfter: []
+    }
+  ]);
+  assert.deepEqual(
+    events.map((event) => parseReviewHistoryEventLine(serializeReviewHistoryEvent(event))),
+    events
   );
 });
 

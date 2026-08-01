@@ -28,7 +28,10 @@ export interface RepositoryGlobalStateRepositoryDependencies {
 export interface RepositoryGlobalStateMutationInput
 extends ReviewStateMutationInput {
   /** Operation applied to the current context and owner-wide Global state together. */
-  readonly operation: ReviewStateOperation;
+  readonly operation: Exclude<
+    ReviewStateOperation,
+    "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed"
+  >;
   /** Atomic full-snapshot compare-and-replace boundary. */
   readonly committer: ReviewStateTransactionCommitter;
   /** Required only for range-scoped operations. */
