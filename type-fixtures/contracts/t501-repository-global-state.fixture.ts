@@ -1,6 +1,7 @@
 import {
   RepositoryGlobalStateRepository,
   type RepositoryGlobalStateMutationInput,
+  type RepositoryGlobalStateMutationResult,
   type RepositoryGlobalStateRepositoryDependencies
 } from "../../src/application/repository-global-state/index";
 import {
@@ -50,11 +51,19 @@ const fileInput = {
   operation: "unmark-file-reviewed" as const
 } satisfies RepositoryGlobalStateMutationInput;
 
+const consumeResult = (result: RepositoryGlobalStateMutationResult): void => {
+  if (result.status === "applied") {
+    void result.transaction.next.globalState;
+  } else {
+    void result.transaction.expected.contextState;
+  }
+};
+
 const consume = async (): Promise<void> => {
   const rangeResult = await repository.apply(rangeInput);
   const fileResult = await repository.apply(fileInput);
-  if (rangeResult.status === "applied") void rangeResult.transaction.next.globalState;
-  if (fileResult.status === "no-op") void fileResult.transaction.expected.contextState;
+  consumeResult(rangeResult);
+  consumeResult(fileResult);
 };
 
 void consume();
