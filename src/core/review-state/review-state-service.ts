@@ -22,7 +22,9 @@ export type ReviewStateOperation =
   | "mark-ranges-reviewed"
   | "unmark-ranges-reviewed"
   | "mark-file-reviewed"
-  | "unmark-file-reviewed";
+  | "unmark-file-reviewed"
+  | "mark-original-ranges-reviewed"
+  | "unmark-original-ranges-reviewed";
 
 /** Current file metadata required to evaluate a review-state operation. */
 export interface ReviewStateFileTarget {
@@ -53,6 +55,14 @@ export interface ReviewStateMutationInput {
 /** Input for a range-scoped review-state transition. */
 export interface ReviewRangeMutationInput extends ReviewStateMutationInput {
   /** Ranges to mark or unmark; reversed, empty, overlapping, and adjacent input is accepted. */
+  readonly intervals: readonly DeepReadonly<LineInterval>[];
+}
+
+/** Input for an original-side diff range transition. */
+export interface OriginalReviewRangeMutationInput extends ReviewStateMutationInput {
+  readonly side: "original";
+  readonly diffId: string;
+  readonly originalLineCount: number;
   readonly intervals: readonly DeepReadonly<LineInterval>[];
 }
 
@@ -87,6 +97,10 @@ export interface ReviewStateTransaction {
   readonly contextId: string;
   /** File affected by the transition. */
   readonly fileId: string;
+  /** Diff side affected by a side-specific transition. */
+  readonly side?: "modified" | "original";
+  /** Immutable diff identity for original-side deletion ranges. */
+  readonly diffId?: string;
   /** Values against which an atomic adapter detects stale writes. */
   readonly expected: ReviewStateTransactionExpectation;
   /** Complete normalized states to replace atomically. */
@@ -448,6 +462,101 @@ export function unmarkFileReviewed(
 ): ReviewStateTransaction {
   validateMappedCurrentInput(input);
   return createTransaction("unmark-file-reviewed", input, [], [], {});
+}
+
+function validateOriginalInput(input: OriginalReviewRangeMutationInput): LineInterval[] {
+  validateMappedCurrentInput(input);
+  assertNonEmptyString(input.diffId, "diffId");
+  assertLineCount(input.originalLineCount);
+  return normalizeWithinFile(input.intervals, input.originalLineCount, "intervals");
+}
+
+function createOriginalTransaction(
+  operation: "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed",
+  input: OriginalReviewRangeMutationInput,
+  reviewed: readonly LineInterval[]
+): ReviewStateTransaction {
+  const expectedContextState = cloneValue(input.contextState);
+  const expectedGlobalState = cloneValue(input.globalState);
+  const previous = input.contextState.files[input.target.fileId];
+  const originalReviewedByDiff = normalizeOriginalReviewedByDiff(
+    previous?.originalReviewedByDiff
+  );
+  originalReviewedByDiff[input.diffId] = normalizeWithinFile(
+    reviewed,
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+
+  const nextInput: ReviewStateMutationInput = {
+    ...input,
+    contextState: cloneValue(input.contextState),
+    globalState: cloneValue(input.globalState),
+    target: cloneValue(input.target)
+  };
+  const contextFile = createContextFileState(
+    nextInput,
+    currentContextRanges(input),
+    originalReviewedByDiff
+  );
+
+  return {
+    operation,
+    repositoryId: input.contextState.repositoryId,
+    contextId: input.contextState.contextId,
+    fileId: input.target.fileId,
+    side: "original",
+    diffId: input.diffId,
+    expected: {
+      contextState: expectedContextState,
+      globalState: expectedGlobalState
+    },
+    next: {
+      contextState: {
+        ...nextInput.contextState,
+        files: {
+          ...nextInput.contextState.files,
+          [input.target.fileId]: contextFile
+        },
+        updatedAt: input.occurredAt
+      },
+      globalState: expectedGlobalState
+    }
+  };
+}
+
+/** Marks deletion ranges on the immutable original side of one diff. */
+export function markOriginalReviewedRanges(
+  input: OriginalReviewRangeMutationInput
+): ReviewStateTransaction {
+  const additions = validateOriginalInput(input);
+  const current = normalizeWithinFile(
+    input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [],
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+  return createOriginalTransaction(
+    "mark-original-ranges-reviewed",
+    input,
+    [...current, ...additions]
+  );
+}
+
+/** Unmarks deletion ranges on the immutable original side of one diff. */
+export function unmarkOriginalReviewedRanges(
+  input: OriginalReviewRangeMutationInput
+): ReviewStateTransaction {
+  const removals = validateOriginalInput(input);
+  const current = normalizeWithinFile(
+    input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [],
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+  return createOriginalTransaction(
+    "unmark-original-ranges-reviewed",
+    input,
+    subtractLineIntervals(current, removals)
+  );
 }
 
 /**
