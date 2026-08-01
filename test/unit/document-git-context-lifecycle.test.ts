@@ -181,9 +181,7 @@ const createProvider = (
   repository: MemoryRepository,
   inspector: MutableGitInspector,
   source: RevisionSource,
-  gitStateObserver?: DocumentReviewStateSessionProvider extends never
-    ? never
-    : (rootPath: string, head: string | undefined) => void
+  gitStateObserver?: (rootPath: string, head: string | undefined) => void
 ): DocumentReviewStateSessionProvider => {
   const workspaceProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
