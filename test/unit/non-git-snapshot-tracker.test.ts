@@ -78,6 +78,20 @@ test("duplicate-line reorder with unchanged multiplicity remains ambiguous", asy
   assert.deepEqual(mapped.reviewedRanges, []);
 });
 
+test("equal diagonal does not hide an alternate longest duplicate mapping", async () => {
+  const tracker = new NonGitSnapshotTracker(new InMemoryNonGitSnapshotStorage(), {
+    maxSnapshots: 8,
+    maxCompressedBytes: 1024 * 1024,
+    retentionMs: 60_000,
+  });
+  const saved = await tracker.save(state("A\nA\nB\nB"), 1_000);
+
+  const mapped = await tracker.map(saved.snapshotId, "A\nB\nB\nA", 1_001);
+
+  assert.equal(mapped.status, "ambiguous");
+  assert.deepEqual(mapped.reviewedRanges, []);
+});
+
 test("missing, corrupt, and expired snapshots return unreviewed state", async () => {
   const storage = new InMemoryNonGitSnapshotStorage();
   const tracker = new NonGitSnapshotTracker(storage, {
