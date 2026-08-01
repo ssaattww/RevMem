@@ -51,6 +51,32 @@ const requireFound = (
 const unique = (values: readonly (string | undefined)[]): string[] =>
   [...new Set(values.filter((value): value is string => value !== undefined))];
 
+const isBinaryDiffSection = (lines: readonly string[]): boolean =>
+  lines.some((line) =>
+    line.startsWith("Binary files ") || line === "GIT binary patch"
+  );
+
+/** Keeps complete text diff sections while excluding files outside line review. */
+const reviewableDiff = (diff: string): string => {
+  if (typeof diff !== "string") {
+    throw new TypeError("diff must be a string.");
+  }
+  const sections: string[][] = [];
+  for (const line of diff.split(/\r?\n/u)) {
+    if (line.startsWith("diff --git ")) {
+      sections.push([line]);
+    } else if (sections.length > 0) {
+      sections.at(-1)?.push(line);
+    } else if (line.length > 0) {
+      throw new SyntaxError("Diff content must begin with a diff --git header.");
+    }
+  }
+  return sections
+    .filter((section) => !isBinaryDiffSection(section))
+    .map((section) => section.join("\n"))
+    .join("\n");
+};
+
 const copyAwareParsedFiles = (diff: string): readonly GitDiffFile[] =>
   parseZeroContextGitDiff(
     diff
@@ -173,11 +199,12 @@ export class GitContextRevisionMapper {
       );
     }
 
-    const diff = await this.options.source.diffRevisions(
+    const rawDiff = await this.options.source.diffRevisions(
       repositoryRoot,
       oldRevision,
       newRevision
     );
+    const diff = reviewableDiff(rawDiff);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
