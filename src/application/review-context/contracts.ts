@@ -170,6 +170,8 @@ export interface PollingGitStateMonitorOptions {
   readonly inspector: GitStateInspectionPort;
   /** Observer called once per distinct repository state transition. */
   readonly onDidChange: (change: GitStateChange) => void | Promise<void>;
+  /** Error boundary for failures originating from timer-driven polling. */
+  readonly onError?: (error: unknown) => void;
   /** Poll interval in milliseconds. */
   readonly intervalMs?: number;
   /** Optional timer scheduler; the default uses an unreferenced JavaScript interval when supported. */
