@@ -131,7 +131,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         const snapshot = change.current;
         const descriptor = this.knownDescriptors.get(change.rootPath);
         if (snapshot !== undefined && descriptor !== undefined) {
-          await this.prepareSnapshot(descriptor, false, snapshot);
+          await this.prepareSnapshot(descriptor, false, snapshot, false);
         }
       }
     });
@@ -191,17 +191,20 @@ export class GitContextDocumentReviewStateSessionProvider {
   private async prepareSnapshot(
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean,
-    snapshot: GitReviewContextRepositorySnapshot
+    snapshot: GitReviewContextRepositorySnapshot,
+    registerMonitorBaseline = true
   ): Promise<void> {
     this.knownDescriptors.set(snapshot.rootPath, clone(descriptor));
-    this.monitor.observe(snapshot.rootPath, snapshot);
-    this.options.gitStateObserver?.observe(snapshot.rootPath, snapshot);
     const current = this.resolver.resolve(snapshot);
     await this.ensureMapped(
       current,
       descriptor,
       initializeMissingContext
     );
+    if (registerMonitorBaseline) {
+      this.monitor.observe(snapshot.rootPath, snapshot);
+    }
+    this.options.gitStateObserver?.observe(snapshot.rootPath, snapshot);
   }
 
   private async ensureMapped(
