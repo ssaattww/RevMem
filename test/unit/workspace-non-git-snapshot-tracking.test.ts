@@ -8,7 +8,6 @@ import {
 } from "../../src/adapters/workspace-review-state/index";
 import type {
   ReviewStateCommit,
-  ReviewStateRepositoryTarget,
   ReviewStateTransactionLike,
 } from "../../src/adapters/state-repository/index";
 import {
@@ -23,11 +22,11 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 class Repository implements WorkspaceReviewStateRepository {
   public current: ReviewStateCommit | undefined;
 
-  public async load(_target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined> {
+  public async load(): Promise<ReviewStateCommit | undefined> {
     return this.current === undefined ? undefined : clone(this.current);
   }
 
-  public async save(_target: ReviewStateRepositoryTarget, commit: ReviewStateCommit): Promise<void> {
+  public async save(_target: never, commit: ReviewStateCommit): Promise<void> {
     this.current = clone(commit);
   }
 
