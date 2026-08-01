@@ -523,6 +523,45 @@ export class DocumentReviewStateSessionProvider {
     }
   }
 
+  /** Resolves the stable mapped file identity retained by a Git rename. */
+  private resolvePersistedFileMapping(
+    commit: ReviewStateCommit,
+    mapping: OwnedMapping
+  ): OwnedMapping {
+    if (mapping.owner !== "git") {
+      return mapping;
+    }
+
+    const matchingFileIds = new Set<string>();
+    for (const [fileId, file] of Object.entries(commit.contextState.files)) {
+      if (file.currentPath === mapping.target.currentPath) {
+        matchingFileIds.add(fileId);
+      }
+    }
+    for (const [fileId, file] of Object.entries(commit.globalState.files)) {
+      if (file.currentPath === mapping.target.currentPath) {
+        matchingFileIds.add(fileId);
+      }
+    }
+
+    if (matchingFileIds.size > 1) {
+      throw new Error(
+        "persisted Git review state has conflicting file identities for the current path."
+      );
+    }
+    const fileId = matchingFileIds.values().next().value as string | undefined;
+    if (fileId === undefined) {
+      return mapping;
+    }
+    return {
+      ...mapping,
+      target: {
+        ...mapping.target,
+        fileId
+      }
+    };
+  }
+
   private async openOwned(
     mapping: OwnedMapping
   ): Promise<DocumentNormalEditorReviewStateSession> {
@@ -540,6 +579,7 @@ export class DocumentReviewStateSessionProvider {
           "persisted review state requires revision mapping before it can be used."
         );
       }
+      mapping = this.resolvePersistedFileMapping(commit, mapping);
     }
 
     const { contextStale, globalStale } = this.staleFileState(commit, mapping);
@@ -623,6 +663,7 @@ export class DocumentReviewStateSessionProvider {
             { cause: error }
           );
         }
+        mapping = this.resolvePersistedFileMapping(latest, mapping);
         current = latest;
       }
     }
@@ -658,6 +699,7 @@ export class DocumentReviewStateSessionProvider {
       return undefined;
     }
     this.validateLoadedIdentity(commit, mapping);
+    mapping = this.resolvePersistedFileMapping(commit, mapping);
 
     const contextFile = commit.contextState.files[mapping.target.fileId];
     const globalFile = commit.globalState.files[mapping.target.fileId];
