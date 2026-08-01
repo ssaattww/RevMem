@@ -24,7 +24,7 @@ const oldRevision = "0123456789abcdef0123456789abcdef01234567";
 const newRevision = "89abcdef0123456789abcdef0123456789abcdef";
 const occurredAt = "2026-08-01T05:10:00.000Z";
 const repositoryId = "github.com/example/review-range";
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const clone = <T>(value: unknown): T => JSON.parse(JSON.stringify(value)) as T;
 const keyOf = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
 
@@ -35,7 +35,7 @@ class MemoryRepository implements DocumentReviewStateRepository {
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
     const value = this.commits.get(keyOf(target));
-    return value === undefined ? undefined : clone(value);
+    return value === undefined ? undefined : clone<ReviewStateCommit>(value);
   }
 
   public async loadGlobal(
@@ -44,19 +44,21 @@ class MemoryRepository implements DocumentReviewStateRepository {
     const value = [...this.commits.values()].find(
       (commit) => commit.globalState.repositoryId === target.repositoryId
     );
-    return value === undefined ? undefined : clone(value.globalState);
+    return value === undefined
+      ? undefined
+      : clone<ReviewStateCommit["globalState"]>(value.globalState);
   }
 
   public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit
   ): Promise<void> {
-    this.commits.set(keyOf(target), clone(commit));
+    this.commits.set(keyOf(target), clone<ReviewStateCommit>(commit));
     for (const [key, current] of this.commits) {
       if (current.globalState.repositoryId === commit.globalState.repositoryId) {
         this.commits.set(key, {
-          ...clone(current),
-          globalState: clone(commit.globalState)
+          ...clone<ReviewStateCommit>(current),
+          globalState: clone<ReviewStateCommit["globalState"]>(commit.globalState)
         });
       }
     }
@@ -73,15 +75,19 @@ class MemoryRepository implements DocumentReviewStateRepository {
     const [targetKey] = targetEntry;
     const next: ReviewStateCommit = {
       schemaVersion: transaction.next.contextState.schemaVersion,
-      contextState: clone(transaction.next.contextState),
-      globalState: clone(transaction.next.globalState)
+      contextState: clone<ReviewStateCommit["contextState"]>(
+        transaction.next.contextState
+      ),
+      globalState: clone<ReviewStateCommit["globalState"]>(
+        transaction.next.globalState
+      )
     };
     this.commits.set(targetKey, next);
     for (const [key, current] of this.commits) {
       if (current.globalState.repositoryId === transaction.repositoryId) {
         this.commits.set(key, {
-          ...clone(current),
-          globalState: clone(next.globalState)
+          ...clone<ReviewStateCommit>(current),
+          globalState: clone<ReviewStateCommit["globalState"]>(next.globalState)
         });
       }
     }
@@ -165,7 +171,7 @@ const descriptor = (
   contentHash
 });
 
-/** Provider refreshes a moving branch, isolates branch state, and creates an explicit detached-commit context. */
+/** Provider refreshes a moving branch, isolates branch state, and creates a detached-commit context keyed by immutable HEAD. */
 test("document sessions map branch commits and isolate branch and detached contexts", async () => {
   const stableHash = new NodeSha256StableHash();
   const repository = new MemoryRepository();
@@ -181,7 +187,10 @@ test("document sessions map branch commits and isolate branch and detached conte
     gitRevisionSource: new RevisionSource(),
     gitStateObserver: {
       observe: (rootPath, snapshot) => {
-        observed.push({ rootPath, ...(snapshot.head === undefined ? {} : { head: snapshot.head }) });
+        observed.push({
+          rootPath,
+          ...(snapshot.head === undefined ? {} : { head: snapshot.head })
+        });
       }
     },
     repository,
@@ -239,11 +248,13 @@ test("document sessions map branch commits and isolate branch and detached conte
   const detached = await provider.open(
     descriptor(stableHash.digest("alpha\nBETA\ngamma"))
   );
-  assert.equal(detached.contextState.kind, "detached-commit");
-  assert.equal(detached.contextState.detachedCommit?.commitRevision, newRevision);
+  assert.equal(detached.contextState.kind, "branch");
+  assert.equal(detached.contextState.branch?.refName, `HEAD@${newRevision}`);
+  assert.equal(detached.contextState.branch?.headRevision, newRevision);
   assert.notEqual(detached.contextState.contextId, feature.contextState.contextId);
   assert.equal(detached.contextState.files[detached.target.fileId], undefined);
 
   assert.equal(observed.length, 4);
   assert.equal(observed.at(-1)?.head, newRevision);
+  provider.dispose();
 });
