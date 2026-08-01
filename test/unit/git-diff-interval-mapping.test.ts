@@ -22,9 +22,9 @@ test("parses unambiguous non-quoted diff header paths containing spaces", () => 
     parseGitDiffHeaderPaths("diff --git a/src/old name.ts b/src/new name.ts"),
     { oldPath: "src/old name.ts", newPath: "src/new name.ts" }
   );
-  assert.throws(
-    () => parseGitDiffHeaderPaths("diff --git a/src/a b/ marker.ts b/src/a b/ marker.ts"),
-    /ambiguous/i
+  assert.deepEqual(
+    parseGitDiffHeaderPaths("diff --git a/src/a b/ marker.ts b/src/a b/ marker.ts"),
+    { oldPath: "src/a b/ marker.ts", newPath: "src/a b/ marker.ts" }
   );
 });
 

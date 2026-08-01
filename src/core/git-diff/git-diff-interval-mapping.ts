@@ -217,6 +217,12 @@ const readUnquotedHeaderPaths = (header: string, start: number): GitDiffHeaderPa
   if (candidates.length === 0) {
     throw new SyntaxError("Git diff header paths must contain a b/ destination.");
   }
+  const samePathCandidates = candidates.filter(
+    (candidate) => candidate.oldPath === candidate.newPath
+  );
+  if (samePathCandidates.length === 1) {
+    return samePathCandidates[0] as GitDiffHeaderPaths;
+  }
   if (candidates.length !== 1) {
     throw new SyntaxError(AMBIGUOUS_HEADER_PATHS);
   }

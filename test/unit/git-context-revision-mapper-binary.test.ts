@@ -33,10 +33,10 @@ class BinaryAwareRevisionSource implements GitRevisionMappingSource {
       "@@ -2 +2 @@",
       "-beta",
       "+BETA",
-      "diff --git a/assets/image.bin b/assets/image.bin",
+      "diff --git a/assets/a b/add.bin b/assets/a b/add.bin",
       "new file mode 100644",
       "index 0000000..3333333",
-      "Binary files /dev/null and b/assets/image.bin differ",
+      "Binary files /dev/null and b/assets/a b/add.bin differ",
       ""
     ].join("\n");
   }
@@ -51,7 +51,7 @@ class BinaryAwareRevisionSource implements GitRevisionMappingSource {
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
-    if (repositoryRelativePath === "assets/image.bin") {
+    if (repositoryRelativePath === "assets/a b/add.bin") {
       return { kind: "invalid-encoding", encoding: "utf-8" };
     }
     if (repositoryRelativePath !== "src/example.ts") {
@@ -194,7 +194,7 @@ class ExistingBinaryRevisionSource implements GitRevisionMappingSource {
 }
 
 /** Git-declared binary paths are excluded even when their blob can be decoded as UTF-8. */
-for (const [label, binaryPath, binarySection] of [
+for (const [label, binaryPath, binarySection, expected] of [
   [
     "NUL-containing UTF-8",
     "assets/payload.bin",
@@ -203,7 +203,8 @@ for (const [label, binaryPath, binarySection] of [
       "index 1111111..2222222 100644",
       "Binary files a/assets/payload.bin and b/assets/payload.bin differ",
       ""
-    ].join("\n")
+    ].join("\n"),
+    "excluded"
   ],
   [
     "attribute-driven binary",
@@ -215,7 +216,8 @@ for (const [label, binaryPath, binarySection] of [
       "literal 10",
       "",
       ""
-    ].join("\n")
+    ].join("\n"),
+    "excluded"
   ],
   [
     "quoted NUL-containing UTF-8",
@@ -225,7 +227,8 @@ for (const [label, binaryPath, binarySection] of [
       "index 1111111..2222222 100644",
       "Binary files \"a/assets/weird\\tpayload.bin\" and \"b/assets/weird\\tpayload.bin\" differ",
       ""
-    ].join("\n")
+    ].join("\n"),
+    "excluded"
   ],
   [
     "quoted attribute-driven binary",
@@ -237,7 +240,8 @@ for (const [label, binaryPath, binarySection] of [
       "literal 10",
       "",
       ""
-    ].join("\n")
+    ].join("\n"),
+    "excluded"
   ],
   [
     "non-quoted space-containing attribute-driven binary",
@@ -248,7 +252,41 @@ for (const [label, binaryPath, binarySection] of [
       "GIT binary patch",
       "literal 10",
       ""
-    ].join("\n")
+    ].join("\n"),
+    "excluded"
+  ],
+  [
+    "same-path b-slash binary",
+    "assets/a b/same.bin",
+    [
+      "diff --git a/assets/a b/same.bin b/assets/a b/same.bin",
+      "index 1111111..2222222 100644",
+      "Binary files a/assets/a b/same.bin and b/assets/a b/same.bin differ",
+      ""
+    ].join("\n"),
+    "excluded"
+  ],
+  [
+    "deleted b-slash binary",
+    "assets/a b/removed.bin",
+    [
+      "diff --git a/assets/a b/removed.bin b/assets/a b/removed.bin",
+      "deleted file mode 100644",
+      "Binary files a/assets/a b/removed.bin and /dev/null differ",
+      ""
+    ].join("\n"),
+    "excluded"
+  ],
+  [
+    "unresolved b-slash binary",
+    "x b/y",
+    [
+      "diff --git a/x b/y b/z",
+      "GIT binary patch",
+      "literal 10",
+      ""
+    ].join("\n"),
+    "unreviewed"
   ]
 ] as const) {
   test(`revision mapping excludes existing ${label} files from reviewed state`, async () => {
@@ -316,7 +354,15 @@ for (const [label, binaryPath, binarySection] of [
       options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
     });
 
-    assert.deepEqual(result.contextState.files, {});
-    assert.deepEqual(result.globalState.files, {});
+    if (expected === "excluded") {
+      assert.deepEqual(result.contextState.files, {});
+      assert.deepEqual(result.globalState.files, {});
+      return;
+    }
+    assert.deepEqual(
+      result.contextState.files[fileId]?.modifiedReviewed,
+      []
+    );
+    assert.deepEqual(result.globalState.files[fileId]?.reviewed, []);
   });
 }

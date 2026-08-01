@@ -7,7 +7,6 @@ import {
 import {
   applyGitFileStateTransitions,
   mapReviewedIntervalsAcrossDiff,
-  parseGitDiffHeaderPaths,
   parseZeroContextGitDiff,
   type GitDiffFile,
   type GitDiffMappingOptions,
@@ -57,6 +56,51 @@ const isBinaryDiffSection = (lines: readonly string[]): boolean =>
     line.startsWith("Binary files ") || line === "GIT binary patch"
   );
 
+const stripDiffPrefix = (path: string): string | undefined =>
+  path === "/dev/null"
+    ? undefined
+    : (path.startsWith("a/") || path.startsWith("b/"))
+      ? path.slice(2)
+      : path;
+
+const binaryModePath = (section: readonly string[]): string | undefined => {
+  const line = section.find((candidate) => candidate.startsWith("Binary files "));
+  if (line === undefined || !line.endsWith(" differ")) {
+    return undefined;
+  }
+  const body = line.slice("Binary files ".length, -" differ".length);
+  if (section.some((candidate) => candidate.startsWith("new file mode "))) {
+    const prefix = "/dev/null and b/";
+    return body.startsWith(prefix) ? stripDiffPrefix(body.slice(prefix.length - 2)) : undefined;
+  }
+  if (section.some((candidate) => candidate.startsWith("deleted file mode "))) {
+    const suffix = " and /dev/null";
+    return body.endsWith(suffix) ? stripDiffPrefix(body.slice(0, -suffix.length)) : undefined;
+  }
+  return undefined;
+};
+
+const ambiguousHeaderCandidatePaths = (header: string): readonly string[] => {
+  const prefix = "diff --git a/";
+  if (!header.startsWith(prefix)) {
+    return [];
+  }
+  const candidates = new Set<string>();
+  for (let separator = header.indexOf(" b/", prefix.length);
+    separator !== -1;
+    separator = header.indexOf(" b/", separator + 1)) {
+    candidates.add(header.slice(prefix.length, separator));
+    candidates.add(header.slice(separator + 3));
+  }
+  return [...candidates];
+};
+
+interface BinaryDiffResolution {
+  readonly destinationPaths: ReadonlySet<string>;
+  readonly unresolvedPaths: ReadonlySet<string>;
+  readonly resolvedSections: ReadonlyMap<number, string>;
+}
+
 /** Keeps complete text diff sections while excluding files outside line review. */
 const reviewableDiff = (diff: string): string => {
   if (typeof diff !== "string") {
@@ -79,7 +123,10 @@ const reviewableDiff = (diff: string): string => {
 };
 
 /** Adds file headers required by the transition validator for binary additions and deletions. */
-const fileTransitionDiff = (diff: string): string => {
+const fileTransitionDiff = (
+  diff: string,
+  binaryResolution: Readonly<BinaryDiffResolution>
+): string => {
   const sections: string[][] = [];
   for (const line of diff.split(/\r?\n/u)) {
     if (line.startsWith("diff --git ")) {
@@ -88,29 +135,34 @@ const fileTransitionDiff = (diff: string): string => {
       sections.at(-1)?.push(line);
     }
   }
-  return sections.map((section) => {
+  return sections.map((section, index) => {
     if (!isBinaryDiffSection(section) || section.some((line) => line.startsWith("--- "))) {
       return section.join("\n");
+    }
+    const resolvedPath = binaryResolution.resolvedSections.get(index);
+    if (resolvedPath === undefined) {
+      return "";
     }
     const isNewFile = section.some((line) => line.startsWith("new file mode "));
     const isDeletedFile = section.some((line) => line.startsWith("deleted file mode "));
     if (!isNewFile && !isDeletedFile) {
       return section.join("\n");
     }
-    const headerPaths = parseGitDiffHeaderPaths(section[0] as string);
     if (isNewFile) {
-      return [...section, "--- /dev/null", `+++ b/${headerPaths.newPath}`].join("\n");
+      return [...section, "--- /dev/null", `+++ b/${resolvedPath}`].join("\n");
     }
     if (isDeletedFile) {
-      return [...section, `--- a/${headerPaths.oldPath}`, "+++ /dev/null"].join("\n");
+      return [...section, `--- a/${resolvedPath}`, "+++ /dev/null"].join("\n");
     }
     return section.join("\n");
   }).join("\n");
 };
 
-/** Returns binary-section destinations so only current binary paths are excluded from line review. */
-const binaryDestinationPaths = (diff: string): ReadonlySet<string> => {
-  const paths = new Set<string>();
+/** Resolves binary destinations per section and records possible paths when syntax remains ambiguous. */
+const resolveBinarySections = (diff: string): BinaryDiffResolution => {
+  const destinationPaths = new Set<string>();
+  const unresolvedPaths = new Set<string>();
+  const resolvedSections = new Map<number, string>();
   const sections: string[][] = [];
   for (const line of diff.split(/\r?\n/u)) {
     if (line.startsWith("diff --git ")) {
@@ -119,21 +171,33 @@ const binaryDestinationPaths = (diff: string): ReadonlySet<string> => {
       sections.at(-1)?.push(line);
     }
   }
-  const files = copyAwareParsedFiles(diff);
-  if (sections.length !== files.length) {
-    throw new SyntaxError("Git diff section count does not match parsed file metadata.");
-  }
   for (const [index, section] of sections.entries()) {
     if (!isBinaryDiffSection(section)) {
       continue;
     }
-    const destination = files[index]?.newPath;
-    if (destination === undefined) {
-      throw new SyntaxError("Git-declared binary section has no resolved destination path.");
+    try {
+      const destination = copyAwareParsedFiles(section.join("\n"))[0]?.newPath;
+      if (destination !== undefined) {
+        destinationPaths.add(destination);
+        resolvedSections.set(index, destination);
+        continue;
+      }
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        throw error;
+      }
     }
-    paths.add(destination);
+    const modePath = binaryModePath(section);
+    if (modePath !== undefined) {
+      destinationPaths.add(modePath);
+      resolvedSections.set(index, modePath);
+      continue;
+    }
+    for (const path of ambiguousHeaderCandidatePaths(section[0] as string)) {
+      unresolvedPaths.add(path);
+    }
   }
-  return paths;
+  return { destinationPaths, unresolvedPaths, resolvedSections };
 };
 
 const copyAwareParsedFiles = (diff: string): readonly GitDiffFile[] =>
@@ -264,8 +328,8 @@ export class GitContextRevisionMapper {
       newRevision
     );
     const diff = reviewableDiff(rawDiff);
-    const transitionDiff = fileTransitionDiff(rawDiff);
-    const binaryPaths = binaryDestinationPaths(rawDiff);
+    const binaryResolution = resolveBinarySections(rawDiff);
+    const transitionDiff = fileTransitionDiff(rawDiff, binaryResolution);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
@@ -275,13 +339,13 @@ export class GitContextRevisionMapper {
       options
     );
     const newFiles = await this.loadNewFileMetadata(
-      rawDiff,
+      transitionDiff,
       files,
       repositoryId,
       newRevision,
       repositoryRoot,
       semantics,
-      binaryPaths
+      binaryResolution.destinationPaths
     );
     const transitioned = applyGitFileStateTransitions({
       files,
@@ -309,7 +373,8 @@ export class GitContextRevisionMapper {
       repositoryRoot,
       semantics,
       occurredAt,
-      binaryPaths
+      binaryResolution.destinationPaths,
+      binaryResolution.unresolvedPaths
     );
   }
 
@@ -639,7 +704,8 @@ export class GitContextRevisionMapper {
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
     occurredAt: string,
-    binaryPaths: ReadonlySet<string> = new Set()
+    binaryPaths: ReadonlySet<string> = new Set(),
+    unresolvedBinaryPaths: ReadonlySet<string> = new Set()
   ): Promise<Record<string, FileReviewState>> {
     const refreshed: Record<string, FileReviewState> = {};
     for (const file of Object.values(files)) {
@@ -659,6 +725,9 @@ export class GitContextRevisionMapper {
       refreshed[file.fileId] = {
         ...clone(file),
         revisionId: newRevision,
+        ...(unresolvedBinaryPaths.has(file.currentPath)
+          ? { modifiedReviewed: [] }
+          : {}),
         contentHash: this.digest(content),
         lineCount: lineCountOf(content),
         updatedAt: occurredAt
