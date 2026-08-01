@@ -4,6 +4,7 @@ import {
   type DiffHunk,
   type DiffLine,
   type FileReviewState,
+  type FileReviewHistoryEvent,
   type GlobalFileReviewState,
   type InternalReviewState,
   type LineInterval,
@@ -16,6 +17,21 @@ import {
   type ReviewHistoryEventType,
   type SchemaVersion
 } from "../../src/core/contracts";
+import {
+  type DiffEditorReviewCommandDependencies,
+  type DiffEditorReviewStateSession
+} from "../../src/application/review-commands";
+import { type ReviewHistoryRecorderOptions } from "../../src/application/review-history";
+import {
+  type ModifiedReviewStateTransaction,
+  type OriginalReviewStateTransaction,
+  type ReviewStateTransaction
+} from "../../src/core/review-state";
+import {
+  type OpenReviewDiffInput,
+  type ReviewDiffEditorHost,
+  type ReviewDiffEditorSideInput
+} from "../../src/ui/diff-editor";
 import {
   DEFAULT_REVIEW_RANGE_CONFIGURATION,
   REVIEW_RANGE_CONFIGURATION_KEYS,
@@ -111,6 +127,24 @@ const fileHistoryEvent = {
   nextRanges: [lineInterval],
   reason: "user-selection"
 } satisfies ReviewHistoryEvent;
+const originalFileHistoryEvent = {
+  ...fileHistoryEvent,
+  eventId: "event-original",
+  diffSide: "original",
+  diffId: "base..head"
+} satisfies FileReviewHistoryEvent;
+// @ts-expect-error Original-side history must include a canonical diff identity.
+const invalidOriginalFileHistoryEvent: FileReviewHistoryEvent = {
+  ...fileHistoryEvent,
+  eventId: "event-invalid-original",
+  diffSide: "original"
+};
+// @ts-expect-error Modified-side history must not include an original diff identity.
+const invalidModifiedFileHistoryEvent: FileReviewHistoryEvent = {
+  ...fileHistoryEvent,
+  eventId: "event-invalid-modified",
+  diffId: "base..head"
+};
 const contextHistoryEvent = {
   schemaVersion,
   type: "context-created",
@@ -137,6 +171,52 @@ const configuration = {
     unresolved: { enabled: false }
   }
 } satisfies ReviewRangeConfiguration;
+const originalTransaction = {
+  operation: "mark-original-ranges-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  side: "original",
+  diffId: "base..head",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+} satisfies OriginalReviewStateTransaction;
+const modifiedTransaction = {
+  operation: "mark-file-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+} satisfies ModifiedReviewStateTransaction;
+// @ts-expect-error Original-side transactions must include their canonical diff identity.
+const invalidOriginalTransaction: ReviewStateTransaction = {
+  operation: "mark-original-ranges-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  side: "original",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+};
+// @ts-expect-error Modified and whole-file transactions must not include a diff identity.
+const invalidModifiedTransaction: ReviewStateTransaction = {
+  operation: "mark-file-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  diffId: "base..head",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+};
+type T303PublicBarrels = [
+  DiffEditorReviewCommandDependencies<unknown>,
+  DiffEditorReviewStateSession,
+  ReviewHistoryRecorderOptions,
+  OpenReviewDiffInput,
+  ReviewDiffEditorHost<string>,
+  ReviewDiffEditorSideInput
+];
 
 const internalStates = [
   "reviewed",
@@ -188,6 +268,13 @@ void [
   repositoryGlobalState.files["file-1"]?.reviewed,
   pullRequestFileChange.hunks[0]?.lines[0]?.text,
   fileHistoryEvent.nextRanges[0]?.startLine,
+  originalFileHistoryEvent.diffId,
+  originalTransaction.diffId,
+  modifiedTransaction.operation,
+  invalidOriginalFileHistoryEvent,
+  invalidModifiedFileHistoryEvent,
+  invalidOriginalTransaction,
+  invalidModifiedTransaction,
   contextHistoryEvent.reason,
   configuration.decorations.changed.enabled,
   DEFAULT_REVIEW_RANGE_CONFIGURATION.historyRetentionDays,
@@ -198,3 +285,4 @@ void [
   contextKinds,
   historyEventTypes
 ];
+void (undefined as unknown as T303PublicBarrels);
