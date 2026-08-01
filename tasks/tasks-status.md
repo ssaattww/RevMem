@@ -10,8 +10,8 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T206 JSON Linesイベント履歴
 - 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: `T206-IFR-R1` binary rename分類、`T206-IFR-R2` mixed reason、`T206-IFR-R3` Global-only stale rangesをTDD修正済み。T205 focused 31/31、T206 focused 25/25、静的検証は成功し、既存通常reviewerの最終fix verification待ち。独立レビューは再実施しない
-- ブロッカー: 通常reviewerによる`T206-IFR-R1`〜`R3` fix verification。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: 最終normal fix verificationで`T206-IFR-R1`（high）と`R2`（medium）はclosed、`R3`（medium）はworkspace Global-only stale siblingがpartial。Context/Global除去を各stale flagで独立化して再確認する。独立レビューは再実施しない
+- ブロッカー: `T206-IFR-R3`（medium）workspace Global-only stale cleanup。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t206-jsonl-history`
 - Pull Request: 未作成
 - PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名の最大2 reviewerによるreview証跡を1つのPRへ反映する。独立レビューで指摘が出た場合は修正と通常reviewerの確認まで行い、独立レビューは再実施しない。mergeは利用者が行う
@@ -150,6 +150,7 @@
 - T206 fix verificationレポート: `reports/issue-1-t206-fix-verification-20260801230500.md`
 - T206独立最終レビューレポート: `reports/issue-1-t206-independent-final-review-20260801233000.md`
 - T206独立review follow-upレポート: `reports/issue-1-t206-independent-review-followup-20260801235500.md`
+- T206独立finding fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-20260802002000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
