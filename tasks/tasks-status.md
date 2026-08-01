@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 independent review follow-up
 - 次のタスク: なし
-- 実装状態: 独立レビュー1回目のHigh `T205-IFR1-P1`と`T205-IFR1-P2`を設計更新後にTDD修正。atomic new-context create/CASと最新Global再planning、root generationとretry前Git freshnessを実装。focused 3/3、T205 28/28、全configured gateがpassし、Sol/high normal fix verification待ち
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。VS Code環境warningはexit 0、Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: High `T205-IFR1-P1`はSol/high focused fix verificationでclosed。High `T205-IFR1-P2`はcallback中generation changeとretry前Git freshnessを満たしたが、inspection中にforeground observeが完了する順序でcallback直前検査がなくopenのまま
+- ブロッカー: `T205-IFR1-P2`のinspection完了後・callback直前generation検査不足。Issue #28は本筋外non-blocking held
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -140,6 +140,7 @@
 - T205 IFR1-P1 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-20260801194000.md`
 - T205 IFR1-P2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-20260801201500.md`
 - T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
+- T205 IFR1 focused fix verificationレポート: `reports/issue-1-t205-ifr1-fix-verification-20260801213000.md`
 - T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -274,4 +275,4 @@
 
 ## 次回開始時の選択
 
-T205のHigh `T205-IFR1-P1`と`T205-IFR1-P2`は設計更新後にidentity/severityを維持してTDD修正済み。次回はSol/high normal reviewerで2件だけをfocused fix verificationし、pass後に予約済みreportで独立レビュー2回目を最終回として実施する。Issue #28は本筋外として別追跡し、T206は開始しない。
+T205のHigh `T205-IFR1-P1`はclosed。次回はHigh `T205-IFR1-P2`を維持し、poll inspection完了後・callback直前にroot generationを再検査してstale callbackを破棄するRed testから追加修正する。focused verification pass後、予約済みreportで独立レビュー2回目を最終回として実施する。
