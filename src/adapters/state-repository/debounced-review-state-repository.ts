@@ -56,8 +56,10 @@ const defaultScheduler: ReviewStateSaveScheduler = {
 const targetKey = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\u0000${target.repositoryId}\u0000${target.contextId}`;
 
-const ownerKey = (target: ReviewStateRepositoryTarget): string =>
-  `${target.kind}\u0000${target.repositoryId}`;
+const storageOwnerKey = (target: ReviewStateRepositoryTarget): string =>
+  (target.kind === "git" || target.kind === "pull-request")
+    ? `repository\u0000${target.repositoryId}`
+    : `${target.kind}\u0000${target.repositoryId}`;
 
 const transactionTarget = (
   transaction: Readonly<ReviewStateTransactionLike>
@@ -119,7 +121,7 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<ReviewStateCommit | undefined> => {
       const key = targetKey(target);
       await this.flushPendingTarget(key);
-      return this.enqueue(ownerKey(target), () => this.options.delegate.load(target));
+      return this.enqueue(storageOwnerKey(target), () => this.options.delegate.load(target));
     })();
     return this.trackOperation(operation);
   }
@@ -132,7 +134,7 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<ReviewStateCommit["globalState"] | undefined> => {
       await this.flush();
       const loadGlobal = this.options.delegate.loadGlobal;
-      return this.enqueue(ownerKey(target), () =>
+      return this.enqueue(storageOwnerKey(target), () =>
         loadGlobal === undefined
           ? Promise.resolve(undefined)
           : loadGlobal.call(this.options.delegate, target)
@@ -189,7 +191,7 @@ export class DebouncedReviewStateRepository {
       const key = targetKey(transactionTarget(transaction));
       await this.flushPendingTarget(key);
       await this.enqueue(
-        ownerKey(transactionTarget(transaction)),
+        storageOwnerKey(transactionTarget(transaction)),
         () => this.options.delegate.commit(transaction)
       );
     })();
@@ -274,7 +276,7 @@ export class DebouncedReviewStateRepository {
     this.scheduler.cancel(pending.timerHandle);
 
     try {
-      await this.enqueue(ownerKey(pending.target), () =>
+      await this.enqueue(storageOwnerKey(pending.target), () =>
         this.options.delegate.save(pending.target, pending.commit)
       );
       for (const waiter of pending.waiters) {

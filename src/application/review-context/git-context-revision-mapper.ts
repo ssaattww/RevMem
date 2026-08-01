@@ -78,30 +78,52 @@ const reviewableDiff = (diff: string): string => {
     .join("\n");
 };
 
-/** Returns paths in Git-declared binary sections so they cannot inherit line-review state. */
-const binaryDiffPaths = (diff: string): ReadonlySet<string> => {
+/** Adds file headers required by the transition validator for binary additions and deletions. */
+const fileTransitionDiff = (diff: string): string => {
+  const sections: string[][] = [];
+  for (const line of diff.split(/\r?\n/u)) {
+    if (line.startsWith("diff --git ")) {
+      sections.push([line]);
+    } else if (sections.length > 0) {
+      sections.at(-1)?.push(line);
+    }
+  }
+  return sections.map((section) => {
+    if (!isBinaryDiffSection(section) || section.some((line) => line.startsWith("--- "))) {
+      return section.join("\n");
+    }
+    const headerPaths = parseGitDiffHeaderPaths(section[0] as string);
+    if (section.some((line) => line.startsWith("new file mode "))) {
+      return [...section, "--- /dev/null", `+++ b/${headerPaths.newPath}`].join("\n");
+    }
+    if (section.some((line) => line.startsWith("deleted file mode "))) {
+      return [...section, `--- a/${headerPaths.oldPath}`, "+++ /dev/null"].join("\n");
+    }
+    return section.join("\n");
+  }).join("\n");
+};
+
+/** Returns binary-section destinations so only current binary paths are excluded from line review. */
+const binaryDestinationPaths = (diff: string): ReadonlySet<string> => {
   const paths = new Set<string>();
-  let headerPaths: readonly string[] = [];
+  let headerPath: string | undefined;
   let binary = false;
-  const addPaths = (): void => {
-    if (binary) {
-      for (const path of headerPaths) {
-        paths.add(path);
-      }
+  const addPath = (): void => {
+    if (binary && headerPath !== undefined) {
+      paths.add(headerPath);
     }
   };
 
   for (const line of diff.split(/\r?\n/u)) {
     if (line.startsWith("diff --git ")) {
-      addPaths();
+      addPath();
       binary = false;
-      const paths = parseGitDiffHeaderPaths(line);
-      headerPaths = [paths.oldPath, paths.newPath];
+      headerPath = parseGitDiffHeaderPaths(line).newPath;
     } else if (line.startsWith("Binary files ") || line === "GIT binary patch") {
       binary = true;
     }
   }
-  addPaths();
+  addPath();
   return paths;
 };
 
@@ -233,7 +255,8 @@ export class GitContextRevisionMapper {
       newRevision
     );
     const diff = reviewableDiff(rawDiff);
-    const binaryPaths = binaryDiffPaths(rawDiff);
+    const transitionDiff = fileTransitionDiff(rawDiff);
+    const binaryPaths = binaryDestinationPaths(rawDiff);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
@@ -243,16 +266,17 @@ export class GitContextRevisionMapper {
       options
     );
     const newFiles = await this.loadNewFileMetadata(
-      diff,
+      rawDiff,
       files,
       repositoryId,
       newRevision,
       repositoryRoot,
-      semantics
+      semantics,
+      binaryPaths
     );
     const transitioned = applyGitFileStateTransitions({
       files,
-      diff,
+      diff: transitionDiff,
       newRevisionId: newRevision,
       updatedAt: occurredAt,
       options,
@@ -468,7 +492,8 @@ export class GitContextRevisionMapper {
     repositoryId: string,
     newRevision: string,
     repositoryRoot: string,
-    semantics: FileSystemPathSemantics
+    semantics: FileSystemPathSemantics,
+    binaryPaths: ReadonlySet<string>
   ): Promise<Record<string, GitNewFileStateInput>> {
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const copyAwareFiles = copyAwareParsedFiles(diff);
@@ -510,6 +535,19 @@ export class GitContextRevisionMapper {
       ...copyAwareFiles.map((file) => file.newPath)
     ]);
     for (const filePath of destinationPaths) {
+      const preservedFileId = preservedDestinationIds.get(filePath);
+      if (binaryPaths.has(filePath)) {
+        if (preservedFileId === undefined) {
+          const fileId = this.createUnoccupiedFileId(
+            repositoryId,
+            filePath,
+            occupiedFileIds
+          );
+          result[filePath] = { fileId, lineCount: 0 };
+          occupiedFileIds.add(fileId);
+        }
+        continue;
+      }
       const textResult = await this.options.source.readTextFileAtRevision(
         repositoryRoot,
         newRevision,
@@ -518,7 +556,7 @@ export class GitContextRevisionMapper {
       );
       const content = requireFound(textResult, newRevision, filePath);
       result[filePath] = {
-        fileId: preservedDestinationIds.get(filePath) ??
+        fileId: preservedFileId ??
           this.createUnoccupiedFileId(repositoryId, filePath, occupiedFileIds),
         lineCount: lineCountOf(content),
         contentHash: this.digest(content),

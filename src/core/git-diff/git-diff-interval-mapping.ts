@@ -84,6 +84,8 @@ interface MutableFile {
   hunks: GitDiffHunk[];
   hasOldContentHeader: boolean;
   hasNewContentHeader: boolean;
+  hasNewFileMode: boolean;
+  hasDeletedFileMode: boolean;
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -199,6 +201,36 @@ const readHeaderPath = (
   throw new SyntaxError("Quoted Git path is unterminated.");
 };
 
+const commonPrefixLength = (left: string, right: string): number => {
+  let index = 0;
+  while (index < left.length && index < right.length && left[index] === right[index]) {
+    index += 1;
+  }
+  return index;
+};
+
+const readUnquotedHeaderPaths = (header: string, start: number): GitDiffHeaderPaths => {
+  const candidates: GitDiffHeaderPaths[] = [];
+  for (let separator = header.indexOf(" b/", start);
+    separator !== -1;
+    separator = header.indexOf(" b/", separator + 1)) {
+    const oldPath = decodePath(header.slice(start, separator), true);
+    const newPath = decodePath(header.slice(separator + 1), true);
+    if (oldPath !== undefined && newPath !== undefined) {
+      candidates.push({ oldPath, newPath });
+    }
+  }
+  if (candidates.length === 0) {
+    throw new SyntaxError("Git diff header paths must contain a b/ destination.");
+  }
+  return candidates.reduce((best, candidate) =>
+    commonPrefixLength(candidate.oldPath, candidate.newPath) >
+      commonPrefixLength(best.oldPath, best.newPath)
+      ? candidate
+      : best
+  );
+};
+
 /**
  * Decodes both paths in a Git `diff --git` header using the same quoted-path contract as diff metadata.
  *
@@ -211,11 +243,17 @@ export function parseGitDiffHeaderPaths(header: string): GitDiffHeaderPaths {
   if (!header.startsWith(prefix)) {
     throw new SyntaxError("Git diff header must begin with diff --git.");
   }
+  if (header[prefix.length] !== "\"") {
+    return readUnquotedHeaderPaths(header, prefix.length);
+  }
   const oldToken = readHeaderPath(header, prefix.length);
   if (header[oldToken.next] !== " ") {
     throw new SyntaxError("Git diff header paths must be separated by one space.");
   }
-  const newToken = readHeaderPath(header, oldToken.next + 1);
+  const newStart = oldToken.next + 1;
+  const newToken = header[newStart] === "\""
+    ? readHeaderPath(header, newStart)
+    : { raw: header.slice(newStart), next: header.length };
   if (newToken.next !== header.length) {
     throw new SyntaxError("Git diff header has trailing content.");
   }
@@ -288,11 +326,16 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
     if (line.startsWith("diff --git ")) {
+      const headerPaths = parseGitDiffHeaderPaths(line);
       currentFile = {
+        oldPath: headerPaths.oldPath,
+        newPath: headerPaths.newPath,
         isRename: false,
         hunks: [],
         hasOldContentHeader: false,
-        hasNewContentHeader: false
+        hasNewContentHeader: false,
+        hasNewFileMode: false,
+        hasDeletedFileMode: false
       };
       files.push(currentFile);
       continue;
@@ -306,6 +349,14 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
     if (line.startsWith("rename from ")) {
       currentFile.oldPath = decodePath(line.slice("rename from ".length), false);
       currentFile.isRename = true;
+      continue;
+    }
+    if (line.startsWith("new file mode ")) {
+      currentFile.hasNewFileMode = true;
+      continue;
+    }
+    if (line.startsWith("deleted file mode ")) {
+      currentFile.hasDeletedFileMode = true;
       continue;
     }
     if (line.startsWith("rename to ")) {
@@ -370,7 +421,12 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
     if (file.hasOldContentHeader !== file.hasNewContentHeader) {
       throw new SyntaxError("Diff content headers must occur as an old/new pair.");
     }
-    if (file.hasOldContentHeader && file.hunks.length === 0) {
+    if (
+      file.hasOldContentHeader &&
+      file.hunks.length === 0 &&
+      !file.hasNewFileMode &&
+      !file.hasDeletedFileMode
+    ) {
       throw new SyntaxError("Modified-file content headers must be followed by at least one hunk.");
     }
     validateHunks(file.hunks);

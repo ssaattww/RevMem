@@ -196,8 +196,11 @@ class BlockingRepository implements ReviewStatePersistenceDelegate {
 class BlockingGlobalRepository implements ReviewStatePersistenceDelegate {
   public readonly loadGlobalStarted = createDeferred();
   public readonly releaseLoadGlobal = createDeferred();
+  public readonly saveStarted = createDeferred();
+  public readonly releaseSave = createDeferred();
   public readonly commitStarted = createDeferred();
   public readonly releaseCommit = createDeferred();
+  public saveInvoked = false;
   public commitInvoked = false;
 
   public async load(): Promise<ReviewStateCommit | undefined> {
@@ -211,7 +214,9 @@ class BlockingGlobalRepository implements ReviewStatePersistenceDelegate {
   }
 
   public async save(): Promise<void> {
-    throw new Error("Unexpected background save.");
+    this.saveInvoked = true;
+    this.saveStarted.resolve();
+    await this.releaseSave.promise;
   }
 
   public async commit(): Promise<void> {
@@ -418,6 +423,41 @@ test("owner-wide Global load serializes a different context commit", async () =>
   await delegate.commitStarted.promise;
   delegate.releaseCommit.resolve();
   await Promise.all([loadGlobal, commit]);
+});
+
+/** Git and pull-request targets share the same physical repository storage owner. */
+test("Git Global load serializes a pull-request save for the same repository", async () => {
+  const scheduler = new ManualScheduler();
+  const delegate = new BlockingGlobalRepository();
+  const repository = new DebouncedReviewStateRepository({ delegate, scheduler });
+  const gitTarget: ReviewStateRepositoryTarget = {
+    kind: "git",
+    repositoryId: "github.com/example/shared",
+    contextId: "branch:main"
+  };
+  const pullRequestTarget: ReviewStateRepositoryTarget = {
+    kind: "pull-request",
+    repositoryId: gitTarget.repositoryId,
+    contextId: "pr:27"
+  };
+  const loadGlobal = repository.loadGlobal(gitTarget);
+  await delegate.loadGlobalStarted.promise;
+  const save = repository.save(pullRequestTarget, createCommit(1));
+  scheduler.runAll();
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(
+    delegate.saveInvoked,
+    false,
+    "A pull-request save must not run while the shared Git repository Global read is active."
+  );
+
+  delegate.releaseLoadGlobal.resolve();
+  await delegate.saveStarted.promise;
+  delegate.releaseSave.resolve();
+  await Promise.all([loadGlobal, save]);
 });
 
 test("all callers observe a debounced persistence failure instead of receiving a false success", async () => {

@@ -238,6 +238,17 @@ for (const [label, binaryPath, binarySection] of [
       "",
       ""
     ].join("\n")
+  ],
+  [
+    "non-quoted space-containing attribute-driven binary",
+    "assets/payload file.bin",
+    [
+      "diff --git a/assets/payload file.bin b/assets/payload file.bin",
+      "index 1111111..2222222 100644",
+      "GIT binary patch",
+      "literal 10",
+      ""
+    ].join("\n")
   ]
 ] as const) {
   test(`revision mapping excludes existing ${label} files from reviewed state`, async () => {

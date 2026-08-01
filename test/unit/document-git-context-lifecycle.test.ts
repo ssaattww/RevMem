@@ -462,6 +462,70 @@ test("document routing distinguishes a renamed file from a new file at its old p
   provider.dispose();
 });
 
+/** A binary rename still changes file identity even though its destination is not line-reviewable. */
+test("document routing excludes a binary rename while routing a new text file at its old path", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/b.bin",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/b.bin",
+    "GIT binary patch",
+    "literal 10",
+    "diff --git a/src/a.ts b/src/a.ts",
+    "new file mode 100644",
+    "index 0000000..3333333",
+    "--- /dev/null",
+    "+++ b/src/a.ts",
+    "@@ -0,0 +1 @@",
+    "+replacement",
+    ""
+  ].join("\n");
+  source.texts.clear();
+  source.texts.set(`${oldRevision}\0src/a.ts`, "original");
+  source.texts.set(`${newRevision}\0src/b.bin`, "binary\0data");
+  source.texts.set(`${newRevision}\0src/a.ts`, "replacement");
+  const provider = createProvider(stableHash, repository, inspector, source);
+
+  const original = await provider.open(
+    descriptor("src/a.ts", stableHash.digest("original"), 1)
+  );
+  await original.committer.commit(markReviewedRanges({
+    contextState: original.contextState,
+    globalState: original.globalState,
+    target: original.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+
+  inspector.head = newRevision;
+  const replacement = await provider.open(
+    descriptor("src/a.ts", stableHash.digest("replacement"), 1)
+  );
+
+  assert.notEqual(replacement.target.fileId, original.target.fileId);
+  assert.deepEqual(
+    replacement.contextState.files[replacement.target.fileId]?.modifiedReviewed,
+    []
+  );
+  assert.equal(
+    Object.values(replacement.contextState.files).some(
+      (file) => file.currentPath === "src/b.bin"
+    ),
+    false
+  );
+  assert.equal(
+    Object.values(replacement.globalState.files).some(
+      (file) => file.currentPath === "src/b.bin"
+    ),
+    false
+  );
+  provider.dispose();
+});
+
 /** Ambiguous rename and copy destinations become separately routed unreviewed files. */
 test("document routing maps an ambiguous rename and copy graph without reusing its source ID", async () => {
   const stableHash = new NodeSha256StableHash();
