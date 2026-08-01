@@ -291,6 +291,10 @@ function textLines(text: string): readonly string[] {
   return parseTextDocumentEvidence(text).lines;
 }
 
+function textDocumentLineCount(text: string): number {
+  return text.split(/\r\n|\r|\n/u).length;
+}
+
 function validateNewFileMetadata(
   newFiles: Readonly<Record<string, Readonly<GitNewFileStateInput>>> | undefined
 ): void {
@@ -313,12 +317,16 @@ function validateNewFileMetadata(
     if (metadata.contentHash !== undefined && metadata.contentHash.length === 0) {
       throw new RangeError("newFiles contentHash must be non-empty when present.");
     }
-    if (
-      metadata.newText !== undefined &&
-      metadata.physicalLineCount !== undefined &&
-      textLines(metadata.newText).length !== metadata.physicalLineCount
-    ) {
-      throw new RangeError("newFiles newText physical line count must equal physicalLineCount.");
+    if (metadata.newText !== undefined) {
+      if (textDocumentLineCount(metadata.newText) !== metadata.lineCount) {
+        throw new RangeError("newFiles newText line count must equal lineCount.");
+      }
+      if (
+        metadata.physicalLineCount !== undefined &&
+        textLines(metadata.newText).length !== metadata.physicalLineCount
+      ) {
+        throw new RangeError("newFiles newText physical line count must equal physicalLineCount.");
+      }
     }
   }
 }

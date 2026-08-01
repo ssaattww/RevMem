@@ -171,12 +171,12 @@ test("rejects unrelated full-text evidence for ignored EOL changes", () => {
     files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
     oldTexts: { "old.ts": "same\r\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "same\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "same\n" } }
   }), /text evidence.*diff hunk/i);
 });
 
-/** Verifies that destination full text must agree with its declared new-file line count. */
-test("rejects full-text evidence whose line count disagrees with metadata", () => {
+/** Verifies that destination full text must agree with its declared VS Code line count. */
+test("rejects full-text evidence whose VS Code line count disagrees with metadata", () => {
   const diff = [
     "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
     "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-old", "+new", ""
@@ -185,8 +185,46 @@ test("rejects full-text evidence whose line count disagrees with metadata", () =
     files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "old\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "new\n" } }
+    newFiles: {
+      "new.ts": {
+        fileId: "file",
+        lineCount: 1,
+        physicalLineCount: 1,
+        newText: "new\n"
+      }
+    }
   }), /newFiles.*newText.*lineCount/i);
+});
+
+/** Verifies that terminal-EOL and empty text preserve the separate VS Code and physical line-count contracts. */
+test("accepts matching VS Code and physical line counts for terminal EOL and empty text", () => {
+  const terminalDiff = [
+    "diff --git a/old.ts b/new.ts", "similarity index 90%", "rename from old.ts", "rename to new.ts",
+    "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-old", "+new", ""
+  ].join("\n");
+  const emptyDiff = [
+    "diff --git a/empty-old.ts b/empty-new.ts", "similarity index 100%",
+    "rename from empty-old.ts", "rename to empty-new.ts", ""
+  ].join("\n");
+
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "old.ts", { lineCount: 2 }) }, diff: terminalDiff,
+    newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "old.ts": "old\n" },
+    newFiles: {
+      "new.ts": { fileId: "file", lineCount: 2, physicalLineCount: 1, newText: "new\n" }
+    }
+  }));
+  assert.doesNotThrow(() => applyGitFileStateTransitions({
+    files: { file: state("file", "empty-old.ts", { lineCount: 1 }) }, diff: emptyDiff,
+    newRevisionId: "new", updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "empty-old.ts": "" },
+    newFiles: {
+      "empty-new.ts": { fileId: "file", lineCount: 1, physicalLineCount: 0, newText: "" }
+    }
+  }));
 });
 
 /** Verifies that returning to a historical path removes it from history and records only the prior current path. */
@@ -268,7 +306,7 @@ test("rejects hunk-after semantic changes hidden by otherwise valid full-text ev
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\nconst later = 1;\nconst tail = 1;\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "const  value = 1;\nconst later = 2;\nconst tail = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 4, newText: "const  value = 1;\nconst later = 2;\nconst tail = 1;\n" } }
   }), /full-text evidence/i);
 });
 
@@ -285,7 +323,7 @@ test("rejects semantic changes hidden between valid full-text evidence hunks", (
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const first = 1;\nconst middle = 1;\nconst third = 1;\nconst fourth = 1;\nconst last = 1;\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 5, newText: "const  first = 1;\nconst middle = 2;\nconst third = 1;\nconst fourth = 1;\nconst  last = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 6, newText: "const  first = 1;\nconst middle = 2;\nconst third = 1;\nconst fourth = 1;\nconst  last = 1;\n" } }
   }), /full-text evidence/i);
 });
 
@@ -301,7 +339,7 @@ test("rejects tail semantic changes hidden by otherwise valid full-text evidence
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\nconst tail = 1;\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\nconst tail = 2;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "const  value = 1;\nconst tail = 2;\n" } }
   }), /full-text evidence/i);
 });
 
@@ -317,7 +355,7 @@ test("rejects hunk-after EOL changes hidden by otherwise valid whitespace eviden
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\r\nconst later = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "const  value = 1;\r\nconst later = 1;\n" } }
   }), /full-text evidence/i);
 });
 
@@ -334,7 +372,7 @@ test("rejects EOL changes hidden between valid whitespace evidence hunks", () =>
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const first = 1;\r\nconst middle = 1;\r\nconst third = 1;\r\nconst last = 1;\r\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 4, newText: "const  first = 1;\r\nconst middle = 1;\nconst third = 1;\r\nconst  last = 1;\r\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 5, newText: "const  first = 1;\r\nconst middle = 1;\nconst third = 1;\r\nconst  last = 1;\r\n" } }
   }), /full-text evidence/i);
 });
 
@@ -349,7 +387,7 @@ test("rejects terminal newline changes hidden by otherwise valid whitespace evid
     files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "const  value = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\n" } }
   }), /full-text evidence/i);
 });
 
@@ -364,13 +402,13 @@ test("allows hunk-external and terminal EOL changes when EOL changes are ignored
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
     oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\r\nconst later = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "const  value = 1;\r\nconst later = 1;\n" } }
   });
   const terminal = applyGitFileStateTransitions({
     files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
     oldTexts: { "old.ts": "const value = 1;" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "const  value = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\n" } }
   });
 
   assert.deepEqual(external.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
@@ -424,7 +462,7 @@ test("allows count-changing insertion and deletion boundaries that retain a vali
   }));
   assert.doesNotThrow(() => applyGitFileStateTransitions({
     files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff: deletion, newRevisionId: "new", updatedAt, options,
-    oldTexts: { "old.ts": "a\nb\n" }, newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "a\n" } }
+    oldTexts: { "old.ts": "a\nb\n" }, newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "a\n" } }
   }));
 });
 
