@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 branch context resolver・Git状態監視 review follow-up
 - 次のタスク: なし
-- 実装状態: 既存High finding `T205-R1-P1`はclosed。`T205-R3-P1`〜`P4`をRed test後に修正し、production Global load、旧path再利用identity、Git宣言binary失効、extension monitor disposeを実装。focused 17/17、build、contract、architecture、lint、Git、GitHub、VS Codeがpassし、Sol/high fix verification待ち
-- ブロッカー: なし。Windowsで既存POSIX fixtureのunit test 19件がpath解決により失敗する本筋外問題はIssue #28へ登録。held riskはnative Windowsのmixed-case Git tree path、実Git object prune、大規模repositoryのpolling負荷、Markdown lint基盤未整備
+- 実装状態: `T205-R3-P1`、`P2`、`P4`はSol/high fix verificationでclosed。`T205-R3-P3`はquoted binary pathでopenのまま、兄弟caseとしてHigh `T205-R4-P1`とMedium `T205-R4-P2`が見つかり、追加TDD修正待ち
+- ブロッカー: `T205-R3-P3` quoted Git binary pathでreviewed stateを保持、`T205-R4-P1` rename＋copy曖昧graphでfile ID衝突、`T205-R4-P2` `loadGlobal()`がactive operation追跡・repository owner直列化外。Issue #28は本筋外のnon-blocking held
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -126,6 +126,7 @@
 - T205進捗同期レポート: `reports/issue-1-t205-progress-sync-20260801172324.md`
 - T205 R3レビューレポート: `reports/issue-1-t205-review-r3-20260801173000.md`
 - T205 R3 review follow-upレポート: `reports/issue-1-t205-review-followup-r3-20260801180000.md`
+- T205 R4 fix verificationレポート: `reports/issue-1-t205-review-r4-20260801190000.md`
 - T205独立最終レビューレポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -260,4 +261,4 @@
 
 ## 次回開始時の選択
 
-T205の`T205-R3-P1`〜`P4`はidentityとseverityを維持してTDD修正済み。次回は同じSol/high normal reviewerでfix verificationを実施する。本筋外のWindows POSIX fixture portabilityはIssue #28で追跡し、T206はT205の独立最終レビュー完了まで開始しない。
+T205の`T205-R3-P1`、`P2`、`P4`はclosed。次回は`T205-R3-P3`のquoted binary pathをHighのまま再修正し、新規High `T205-R4-P1`の曖昧rename/copy graphとMedium `T205-R4-P2`のGlobal load concurrencyをRed testから修正する。Issue #28は本筋外として別追跡し、T206は開始しない。
