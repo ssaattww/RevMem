@@ -39,11 +39,12 @@ class MutableInspector implements GitStateInspectionPort {
   }
 }
 
-/** Timer-driven failures are reported explicitly instead of becoming unhandled promise rejections. */
-test("scheduled polling reports change-handler failures", async () => {
+/** Timer-driven failures are reported and the same Git transition remains eligible for a later retry. */
+test("scheduled polling reports and retries change-handler failures", async () => {
   const scheduler = new ManualScheduler();
   const inspector = new MutableInspector();
   const failure = new Error("mapping failed");
+  let attempts = 0;
   let resolveReported: ((error: unknown) => void) | undefined;
   const reported = new Promise<unknown>((resolve) => {
     resolveReported = resolve;
@@ -53,7 +54,10 @@ test("scheduled polling reports change-handler failures", async () => {
     scheduler,
     intervalMs: 100,
     onDidChange: async () => {
-      throw failure;
+      attempts += 1;
+      if (attempts === 1) {
+        throw failure;
+      }
     },
     onError: (error) => {
       resolveReported?.(error);
@@ -66,5 +70,7 @@ test("scheduled polling reports change-handler failures", async () => {
   scheduler.callback?.();
 
   assert.equal(await reported, failure);
+  await monitor.pollNow();
+  assert.equal(attempts, 2);
   monitor.dispose();
 });
