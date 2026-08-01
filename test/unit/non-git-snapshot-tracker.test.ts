@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import "./workspace-non-git-snapshot-tracking.test";
 import {
   InMemoryNonGitSnapshotStorage,
   NonGitSnapshotTracker,
