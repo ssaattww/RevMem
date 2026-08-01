@@ -46,6 +46,7 @@ const validateRanges = (value: unknown, name: string): LineInterval[] => {
   });
 };
 
+/** Validates one runtime event against its side-specific canonical field set. */
 export const validateReviewHistoryEvent = (value: unknown): ReviewHistoryEvent => {
   const event = assertPlainObject(value, "Review history event");
   if (event.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION) throw new RangeError("Review history event schemaVersion is unsupported.");
@@ -73,13 +74,16 @@ export const validateReviewHistoryEvent = (value: unknown): ReviewHistoryEvent =
     ...common,
     type: type as Exclude<ReviewHistoryEventType, "context-created" | "context-revision-changed">,
     filePath: assertNonEmptyString(event.filePath, "filePath"),
-    diffSide,
     previousRanges: validateRanges(event.previousRanges, "previousRanges"),
     nextRanges: validateRanges(event.nextRanges, "nextRanges")
   };
-  return diffSide === "original" ? { ...fileEvent, diffId: assertNonEmptyString(event.diffId, "diffId") } : fileEvent;
+  return diffSide === "original"
+    ? { ...fileEvent, diffSide: "original", diffId: assertNonEmptyString(event.diffId, "diffId") }
+    : { ...fileEvent, diffSide: "modified" };
 };
+/** Validates and serializes one canonical JSONL review-history event. */
 export const serializeReviewHistoryEvent = (value: unknown): string => JSON.stringify(validateReviewHistoryEvent(value));
+/** Parses one canonical, non-empty JSONL review-history line. */
 export const parseReviewHistoryEventLine = (line: string): ReviewHistoryEvent => {
   if (line.length === 0 || line.includes("\n") || line.includes("\r")) throw new SyntaxError("Review history record must be one non-empty JSON line.");
   let parsed: unknown;

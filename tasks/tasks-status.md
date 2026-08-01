@@ -7,13 +7,13 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T207 temporary Git repository統合試験
-- 現在のタスク: なし
-- 次のタスク: なし（T207完了後に次taskを選択）
-- 実装状態: T206はPR #29でmerge済み。T207通常・独立reviewの全findingはclosedし、独立再確認は既存P1/P2 closure限定で`pass_with_held`。PR #35へ提出済み
+- 直近完了タスク: T303 diff editor commands（独立review follow-up実装・focused検証完了）
+- 現在のタスク: T303 independent finding closure verification
+- 次のタスク: T303 closure確認・CI成功後にPR #30をsquash merge
+- 実装状態: T303はPR #30で、implementation・初回通常review evidenceを復元し、T303-R1-P3 reopenedとT303-IFR-P1〜P4の5件を同一follow-upで修正・focused検証済み。完了済みnormal reviewは繰り返さず、同じ独立reviewerが既存findingだけを確認する。Issue #28はnon-blocking held
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
-- Gitブランチ: `task/t207-git-history-integration`
-- Pull Request: #35（base=`main`、T206 merge後にrestack済み）
+- Gitブランチ: `task/t303-diff-editor-commands`
+- Pull Request: #30（base=`main`）
 - PR方針: T207の統合test、必要最小限のproduction fix、通常1名と独立1名の最大2 reviewerによる証跡を別PRへ反映する。独立reviewの広域確認は1回とし、fail時は同じ独立reviewerが既存findingのclosureだけを再確認して新規観点・新規findingを追加しない。mergeは利用者が行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
@@ -234,7 +234,7 @@
 | T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 完了 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
-| T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
+| T303 | レビュー対応中 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の5件follow-upは独立reviewerのclosure限定確認待ち |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
 | T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |

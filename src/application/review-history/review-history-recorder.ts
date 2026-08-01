@@ -1,6 +1,6 @@
 import type {
   ReviewHistoryEvent,
-  ReviewHistoryEventType,
+  FileReviewHistoryEventType,
   ReviewContextState,
   RepositoryGlobalState
 } from "../../core/contracts/index";
@@ -9,15 +9,23 @@ import type {
   ReviewStateTransaction
 } from "../../core/review-state/index";
 
+/** Storage identity selected from a committed review context. */
 export interface ReviewHistoryStorageTarget {
+  /** Backing storage category. */
   readonly kind: "git" | "pull-request" | "workspace" | "external-file";
+  /** Repository that owns the event stream. */
   readonly repositoryId: string;
+  /** Context that owns the event stream. */
   readonly contextId: string;
 }
 
+/** Dependencies for recording canonical events after state persistence succeeds. */
 export interface ReviewHistoryRecorderOptions {
+  /** Stable identity for events created by this recorder instance. */
   readonly sessionId: string;
+  /** Creates a new unique event identity for every append. */
   readonly createEventId: () => string;
+  /** Append-only persistence port. */
   readonly appender: { append(target: ReviewHistoryStorageTarget, event: ReviewHistoryEvent): Promise<void> };
 }
 
@@ -31,7 +39,7 @@ const targetFor = (state: Readonly<{
   contextId: state.contextId
 });
 
-const typeForOperation = (operation: ReviewStateTransaction["operation"]): ReviewHistoryEventType => {
+const typeForOperation = (operation: ReviewStateTransaction["operation"]): FileReviewHistoryEventType => {
   switch (operation) {
     case "mark-ranges-reviewed":
     case "mark-original-ranges-reviewed": return "marked-reviewed";
@@ -42,9 +50,12 @@ const typeForOperation = (operation: ReviewStateTransaction["operation"]): Revie
   }
 };
 
+/** Records state and lifecycle transitions in canonical append-only history order. */
 export class ReviewHistoryRecorder {
+  /** Creates a recorder that appends only after the state transaction has committed. */
   public constructor(private readonly options: ReviewHistoryRecorderOptions) {}
 
+  /** Records the modified and, when applicable, original-side ranges changed by one committed transaction. */
   public async recordTransaction(transaction: Readonly<ReviewStateTransaction>, reason: string): Promise<void> {
     const nextContext = transaction.next.contextState;
     const nextFile = nextContext.files[transaction.fileId];
@@ -58,7 +69,7 @@ export class ReviewHistoryRecorder {
       nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
       diffId?: string
     ): void => {
-      events.push({
+      const common = {
         schemaVersion: nextContext.schemaVersion,
         eventId: this.options.createEventId(),
         occurredAt: nextContext.updatedAt,
@@ -69,11 +80,11 @@ export class ReviewHistoryRecorder {
         type: eventType,
         reason,
         filePath: nextFile.currentPath,
-        diffSide,
-        ...(diffSide === "original" ? { diffId: diffId! } : {}),
         previousRanges: previousRanges.map((range) => ({ ...range })),
         nextRanges: nextRanges.map((range) => ({ ...range }))
-      });
+      };
+      if (diffSide === "original") events.push({ ...common, diffSide, diffId: diffId! });
+      else events.push({ ...common, diffSide });
     };
     if (transaction.side === "original") {
       if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
@@ -100,6 +111,7 @@ export class ReviewHistoryRecorder {
     for (const event of events) await this.options.appender.append(targetFor(nextContext), event);
   }
 
+  /** Appends the lifecycle event for a newly created review context. */
   public async recordContextCreated(contextState: Readonly<ReviewContextState>, reason = "context-initialized"): Promise<void> {
     await this.options.appender.append(targetFor(contextState), {
       schemaVersion: contextState.schemaVersion,
@@ -114,6 +126,7 @@ export class ReviewHistoryRecorder {
     });
   }
 
+  /** Appends context and per-file events for a revision mapping, including unresolved files. */
   public async recordRevisionMapping(
     previous: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
     next: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
@@ -149,6 +162,7 @@ export class ReviewHistoryRecorder {
     for (const event of events) await this.options.appender.append(targetFor(next.contextState), event);
   }
 
+  /** Appends the modified-side range transition caused by content invalidation. */
   public async recordEditInvalidation(
     contextState: Readonly<ReviewContextState>,
     target: Readonly<ReviewStateFileTarget>,

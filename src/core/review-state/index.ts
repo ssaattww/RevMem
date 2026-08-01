@@ -9,6 +9,8 @@ export {
   unmarkReviewedRanges,
   type DeepReadonly,
   type OriginalReviewRangeMutationInput,
+  type OriginalReviewStateTransaction,
+  type ModifiedReviewStateTransaction,
   type ReviewRangeMutationInput,
   type ReviewStateFileTarget,
   type ReviewStateMutationInput,

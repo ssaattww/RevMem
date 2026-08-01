@@ -101,6 +101,7 @@ Lを超える見込みになった場合は再分解する。
 - T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent provider、Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済みである
 - T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
 - T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
+- T303はPR #30でimplementation・通常review evidenceを復元し、timestamp-only no-op、whole-file回帰、canonical original diff ID、public JSDoc、consumer contract fixtureの独立review follow-upを通常fix verificationへ送る
 - T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント

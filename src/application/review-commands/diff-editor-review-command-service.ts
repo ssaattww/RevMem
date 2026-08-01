@@ -18,36 +18,68 @@ import type {
   ReviewContextState
 } from "../../core/contracts/index";
 
+/** User-confirmed operation that changes all reviewable ranges in a diff file. */
 export type DiffReviewWholeFileOperation = "mark-file-reviewed" | "unmark-file-reviewed";
+/** Observable result of a diff-editor review command. */
 export type DiffEditorReviewCommandResult = "applied" | "cancelled" | "no-op";
 
+/** Immutable state and identity snapshot required to mutate one diff-editor file. */
 export interface DiffEditorReviewStateSession {
+  /** Context-local state that must be atomically committed with the mutation. */
   readonly contextState: ReviewStateMutationInput["contextState"];
+  /** Repository-global state that must be atomically committed with the mutation. */
   readonly globalState: ReviewStateMutationInput["globalState"];
+  /** Current modified-side file identity and immutable revision. */
   readonly target: ReviewStateFileTarget;
+  /** Original-side identity for non-PR contexts; PR contexts derive their canonical comparison ID. */
   readonly diffId: string;
+  /** Number of lines in the immutable original-side document. */
   readonly originalLineCount: number;
+  /** Original-side intervals representing deletions in the current diff. */
   readonly originalDeletionIntervals: readonly { readonly startLine: number; readonly endLineExclusive: number }[];
+  /** Atomic persistence boundary for the generated transaction. */
   readonly committer: ReviewStateTransactionCommitter;
 }
 
+/** Host operations used by the API-independent diff-editor command service. */
 export interface DiffEditorReviewCommandDependencies<Editor> {
+  /** Returns the focused immutable original or mutable modified side. */
   readonly getSide: (editor: Editor) => "original" | "modified";
+  /** Returns the line count for the focused side. */
   readonly getLineCount: (editor: Editor) => number;
+  /** Returns the current host selections. */
   readonly getSelections: (editor: Editor) => readonly TextSelection[];
+  /** Opens the state snapshot that matches the focused editor. */
   readonly openSession: (editor: Editor) => Promise<DiffEditorReviewStateSession>;
+  /** Requests confirmation before a whole-file mutation. */
   readonly confirmWholeFileOperation: (operation: DiffReviewWholeFileOperation) => Promise<boolean>;
+  /** Appends history only after the transaction has committed. */
   readonly requestHistory: (transaction: Readonly<ReviewStateTransaction>) => void | Promise<void>;
+  /** Optional clock for transaction timestamps. */
   readonly now?: () => Date;
 }
 
+/** Returns only the persisted file attributes that distinguish an effective review mutation. */
+const semanticFileEntry = <File extends { readonly updatedAt: string }>(file: File | undefined): Omit<File, "updatedAt"> | undefined => {
+  if (file === undefined) return undefined;
+  return Object.fromEntries(Object.entries(file).filter(([key]) => key !== "updatedAt")) as Omit<File, "updatedAt">;
+};
+
+/** Ignores generated timestamps while retaining file presence, ranges, path, revision, hash, and line-count changes. */
 const hasSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boolean => {
   const expectedContext = transaction.expected.contextState.files[transaction.fileId];
   const nextContext = transaction.next.contextState.files[transaction.fileId];
   const expectedGlobal = transaction.expected.globalState.files[transaction.fileId];
   const nextGlobal = transaction.next.globalState.files[transaction.fileId];
-  return JSON.stringify(expectedContext) !== JSON.stringify(nextContext) ||
-    JSON.stringify(expectedGlobal) !== JSON.stringify(nextGlobal);
+  return JSON.stringify(semanticFileEntry(expectedContext)) !== JSON.stringify(semanticFileEntry(nextContext)) ||
+    JSON.stringify(semanticFileEntry(expectedGlobal)) !== JSON.stringify(semanticFileEntry(nextGlobal));
+};
+
+/** Derives the one canonical original-side state key required by a pull-request context. */
+const canonicalDiffIdFor = (contextState: DiffEditorReviewStateSession["contextState"], fallback: string): string => {
+  if (contextState.kind !== "pull-request") return fallback;
+  if (contextState.pullRequest === undefined) throw new Error("Pull-request diff review session must include pull-request identity.");
+  return `${contextState.pullRequest.baseSha}..${contextState.pullRequest.headSha}`;
 };
 
 const intersectRanges = (
@@ -82,7 +114,6 @@ const markDiffFileReviewed = (
   if (file === undefined) throw new Error("Marked diff file must retain its context file state.");
   return {
     ...transaction,
-    diffId,
     next: {
       contextState: {
         ...nextContext,
@@ -99,20 +130,26 @@ const markDiffFileReviewed = (
   };
 };
 
+/** Applies selection and whole-file review commands with atomic state and history ordering. */
 export class DiffEditorReviewCommandService<Editor> {
   private readonly now: () => Date;
+  /** Creates a command service whose host dependencies are kept outside the core transaction layer. */
   public constructor(private readonly dependencies: DiffEditorReviewCommandDependencies<Editor>) {
     this.now = dependencies.now ?? (() => new Date());
   }
+  /** Marks the selected ranges on the focused original or modified side. */
   public async markSelectionReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applySelectionOperation(editor, "mark");
   }
+  /** Removes review marks from the selected ranges on the focused side. */
   public async unmarkSelectionReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applySelectionOperation(editor, "unmark");
   }
+  /** Marks all modified lines and current original deletion lines after confirmation. */
   public async markFileReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applyWholeFileOperation(editor, "mark-file-reviewed");
   }
+  /** Clears all context, Global, and original diff ranges after confirmation. */
   public async unmarkFileReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applyWholeFileOperation(editor, "unmark-file-reviewed");
   }
@@ -130,10 +167,11 @@ export class DiffEditorReviewCommandService<Editor> {
       target: session.target,
       occurredAt: this.now().toISOString()
     };
+    const diffId = canonicalDiffIdFor(session.contextState, session.diffId);
     const transaction = side === "original"
       ? operation === "mark"
-        ? markOriginalReviewedRanges({ ...common, side, diffId: session.diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
-        : unmarkOriginalReviewedRanges({ ...common, side, diffId: session.diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
+        ? markOriginalReviewedRanges({ ...common, side, diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
+        : unmarkOriginalReviewedRanges({ ...common, side, diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
       : operation === "mark"
         ? markReviewedRanges({ ...common, intervals: effectiveIntervals })
         : unmarkReviewedRanges({ ...common, intervals: effectiveIntervals });
@@ -151,7 +189,7 @@ export class DiffEditorReviewCommandService<Editor> {
       occurredAt: this.now().toISOString()
     };
     const transaction = operation === "mark-file-reviewed"
-      ? markDiffFileReviewed(input, session.diffId, session.originalLineCount, session.originalDeletionIntervals)
+      ? markDiffFileReviewed(input, canonicalDiffIdFor(session.contextState, session.diffId), session.originalLineCount, session.originalDeletionIntervals)
       : unmarkFileReviewed(input);
     return this.commitWhenChanged(transaction, session.committer);
   }

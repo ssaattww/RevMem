@@ -7,56 +7,98 @@ import type {
 } from "../contracts/index";
 import { normalizeLineIntervals, subtractLineIntervals } from "../intervals/index";
 
+/** Recursively readonly view used to prevent mutation of caller-owned snapshots. */
 export type DeepReadonly<T> = T extends readonly (infer Item)[]
   ? readonly DeepReadonly<Item>[]
   : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> } : T;
 
+/** Supported atomic review-state mutation operations. */
 export type ReviewStateOperation =
   | "mark-ranges-reviewed" | "unmark-ranges-reviewed"
   | "mark-file-reviewed" | "unmark-file-reviewed"
   | "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed";
 
+/** Immutable current-side file identity used to validate a state mutation. */
 export interface ReviewStateFileTarget {
+  /** Stable repository file identity. */
   readonly fileId: string;
+  /** Canonical current repository-relative path. */
   readonly currentPath: string;
+  /** Immutable current revision that the ranges belong to. */
   readonly revisionId: string;
+  /** Current modified-side line count. */
   readonly lineCount: number;
+  /** Optional content identity that must agree with an existing state entry. */
   readonly contentHash?: string;
 }
+/** Common immutable snapshot and timestamp input for every mutation. */
 export interface ReviewStateMutationInput {
+  /** Context-local state to compare and replace atomically. */
   readonly contextState: DeepReadonly<ReviewContextState>;
+  /** Repository-global state to compare and replace atomically. */
   readonly globalState: DeepReadonly<RepositoryGlobalState>;
+  /** File identity and bounds for the mutation. */
   readonly target: ReviewStateFileTarget;
+  /** Canonical timestamp used only when an effective mutation is committed. */
   readonly occurredAt: string;
 }
+/** Input for a mutable modified-side interval mutation. */
 export interface ReviewRangeMutationInput extends ReviewStateMutationInput {
+  /** Modified-side intervals to mark or unmark. */
   readonly intervals: readonly DeepReadonly<LineInterval>[];
 }
+/** Input for an immutable original-side deletion interval mutation. */
 export interface OriginalReviewRangeMutationInput extends ReviewStateMutationInput {
+  /** Discriminates this as an original-side operation. */
   readonly side: "original";
+  /** Canonical non-empty `${baseSha}..${headSha}` identity for the original ranges. */
   readonly diffId: string;
+  /** Immutable original-side line-count bound. */
   readonly originalLineCount: number;
+  /** Original-side deletion intervals to mark or unmark. */
   readonly intervals: readonly DeepReadonly<LineInterval>[];
 }
+/** Expected snapshot used by the atomic compare-and-swap boundary. */
 export interface ReviewStateTransactionExpectation {
   readonly contextState: DeepReadonly<ReviewContextState>;
   readonly globalState: DeepReadonly<RepositoryGlobalState>;
 }
+/** Replacement snapshot used by the atomic compare-and-swap boundary. */
 export interface ReviewStateTransactionNext {
   readonly contextState: DeepReadonly<ReviewContextState>;
   readonly globalState: DeepReadonly<RepositoryGlobalState>;
 }
-export interface ReviewStateTransaction {
-  readonly operation: ReviewStateOperation;
+/** Fields shared by all atomic state transactions. */
+interface ReviewStateTransactionBase {
   readonly repositoryId: string;
   readonly contextId: string;
   readonly fileId: string;
-  readonly side?: "modified" | "original";
-  readonly diffId?: string;
   readonly expected: ReviewStateTransactionExpectation;
   readonly next: ReviewStateTransactionNext;
 }
+/** Atomic transaction for modified-side or whole-file state, which has no original diff identity. */
+export interface ModifiedReviewStateTransaction extends ReviewStateTransactionBase {
+  /** Operation that changes modified or whole-file state. */
+  readonly operation: Exclude<ReviewStateOperation, "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed">;
+  /** Optional explicit modified-side marker. */
+  readonly side?: "modified";
+  /** Forbidden because modified and whole-file operations are not keyed by a single original diff. */
+  readonly diffId?: never;
+}
+/** Atomic transaction for one immutable original-side diff identity. */
+export interface OriginalReviewStateTransaction extends ReviewStateTransactionBase {
+  /** Operation that changes only original-side ranges. */
+  readonly operation: "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed";
+  /** Discriminates the original-side transaction. */
+  readonly side: "original";
+  /** Canonical non-empty comparison identity required for the affected original ranges. */
+  readonly diffId: string;
+}
+/** Discriminated atomic review-state transaction with side-specific diff identity requirements. */
+export type ReviewStateTransaction = ModifiedReviewStateTransaction | OriginalReviewStateTransaction;
+/** Persistence port for a complete compare-and-swap transaction. */
 export interface ReviewStateTransactionCommitter {
+  /** Persists the expected and next snapshots atomically or reports a conflict. */
   commit(transaction: Readonly<ReviewStateTransaction>): Promise<void>;
 }
 
@@ -146,7 +188,7 @@ function createGlobalFileState(input: ReviewStateMutationInput, reviewed: readon
   if (input.target.contentHash !== undefined) next.contentHash = input.target.contentHash;
   return next;
 }
-function createTransaction(operation: ReviewStateOperation, input: ReviewStateMutationInput, modifiedReviewed: readonly LineInterval[], globalReviewed: readonly LineInterval[], originalReviewedByDiff?: Readonly<Record<string, readonly LineInterval[]>>): ReviewStateTransaction {
+function createTransaction(operation: ModifiedReviewStateTransaction["operation"], input: ReviewStateMutationInput, modifiedReviewed: readonly LineInterval[], globalReviewed: readonly LineInterval[], originalReviewedByDiff?: Readonly<Record<string, readonly LineInterval[]>>): ModifiedReviewStateTransaction {
   validateMappedCurrentInput(input);
   const expectedContextState = cloneValue(input.contextState);
   const expectedGlobalState = cloneValue(input.globalState);
@@ -171,22 +213,26 @@ function currentContextRanges(input: ReviewStateMutationInput): LineInterval[] {
 function currentGlobalRanges(input: ReviewStateMutationInput): LineInterval[] {
   return normalizeWithinFile(input.globalState.files[input.target.fileId]?.reviewed ?? [], input.target.lineCount, "Global reviewed");
 }
-export function markReviewedRanges(input: ReviewRangeMutationInput): ReviewStateTransaction {
+/** Marks normalized modified-side and Global intervals in one transaction. */
+export function markReviewedRanges(input: ReviewRangeMutationInput): ModifiedReviewStateTransaction {
   validateMappedCurrentInput(input);
   const additions = normalizeWithinFile(input.intervals, input.target.lineCount, "intervals");
   return createTransaction("mark-ranges-reviewed", input, [...currentContextRanges(input), ...additions], [...currentGlobalRanges(input), ...additions]);
 }
-export function unmarkReviewedRanges(input: ReviewRangeMutationInput): ReviewStateTransaction {
+/** Removes normalized modified-side and Global intervals in one transaction. */
+export function unmarkReviewedRanges(input: ReviewRangeMutationInput): ModifiedReviewStateTransaction {
   validateMappedCurrentInput(input);
   const removals = normalizeWithinFile(input.intervals, input.target.lineCount, "intervals");
   return createTransaction("unmark-ranges-reviewed", input, subtractLineIntervals(currentContextRanges(input), removals), subtractLineIntervals(currentGlobalRanges(input), removals));
 }
-export function markFileReviewed(input: ReviewStateMutationInput): ReviewStateTransaction {
+/** Marks every modified-side line and Global line for the target file. */
+export function markFileReviewed(input: ReviewStateMutationInput): ModifiedReviewStateTransaction {
   validateMappedCurrentInput(input);
   const wholeFile = input.target.lineCount === 0 ? [] : [{ startLine: 0, endLineExclusive: input.target.lineCount }];
   return createTransaction("mark-file-reviewed", input, wholeFile, wholeFile);
 }
-export function unmarkFileReviewed(input: ReviewStateMutationInput): ReviewStateTransaction {
+/** Clears modified-side, Global, and original-by-diff ranges for the target file. */
+export function unmarkFileReviewed(input: ReviewStateMutationInput): ModifiedReviewStateTransaction {
   validateMappedCurrentInput(input);
   return createTransaction("unmark-file-reviewed", input, [], [], {});
 }
@@ -196,7 +242,7 @@ function validateOriginalInput(input: OriginalReviewRangeMutationInput): LineInt
   assertLineCount(input.originalLineCount);
   return normalizeWithinFile(input.intervals, input.originalLineCount, "intervals");
 }
-function createOriginalTransaction(operation: "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed", input: OriginalReviewRangeMutationInput, reviewed: readonly LineInterval[]): ReviewStateTransaction {
+function createOriginalTransaction(operation: OriginalReviewStateTransaction["operation"], input: OriginalReviewRangeMutationInput, reviewed: readonly LineInterval[]): OriginalReviewStateTransaction {
   const expectedContextState = cloneValue(input.contextState);
   const expectedGlobalState = cloneValue(input.globalState);
   const previous = input.contextState.files[input.target.fileId];
@@ -218,16 +264,19 @@ function createOriginalTransaction(operation: "mark-original-ranges-reviewed" | 
     }
   };
 }
-export function markOriginalReviewedRanges(input: OriginalReviewRangeMutationInput): ReviewStateTransaction {
+/** Marks immutable original-side deletion intervals for one canonical diff identity. */
+export function markOriginalReviewedRanges(input: OriginalReviewRangeMutationInput): OriginalReviewStateTransaction {
   const additions = validateOriginalInput(input);
   const current = normalizeWithinFile(input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [], input.originalLineCount, "originalReviewedByDiff");
   return createOriginalTransaction("mark-original-ranges-reviewed", input, [...current, ...additions]);
 }
-export function unmarkOriginalReviewedRanges(input: OriginalReviewRangeMutationInput): ReviewStateTransaction {
+/** Removes immutable original-side deletion intervals for one canonical diff identity. */
+export function unmarkOriginalReviewedRanges(input: OriginalReviewRangeMutationInput): OriginalReviewStateTransaction {
   const removals = validateOriginalInput(input);
   const current = normalizeWithinFile(input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [], input.originalLineCount, "originalReviewedByDiff");
   return createOriginalTransaction("unmark-original-ranges-reviewed", input, subtractLineIntervals(current, removals));
 }
+/** Commits a complete atomic transaction through the caller-provided persistence boundary. */
 export async function commitReviewStateTransaction(transaction: Readonly<ReviewStateTransaction>, committer: ReviewStateTransactionCommitter): Promise<void> {
   await committer.commit(transaction);
 }

@@ -336,20 +336,22 @@ export class DocumentReviewStateSessionProvider {
     if (!plan.changed) {
       return target;
     }
-    const transaction: ReviewStateTransaction = {
-      operation: promotion?.operation ?? "mark-ranges-reviewed",
+    const snapshots = {
       repositoryId: target.contextState.repositoryId,
       contextId: target.contextState.contextId,
       fileId: target.target.fileId,
       expected: {
-        contextState: clone(target.contextState),
-        globalState: clone(target.globalState)
+        contextState: clone<ReviewContextState>(target.contextState),
+        globalState: clone<RepositoryGlobalState>(target.globalState)
       },
       next: {
-        contextState: clone(plan.contextState),
-        globalState: clone(plan.globalState)
+        contextState: clone<ReviewContextState>(plan.contextState),
+        globalState: clone<RepositoryGlobalState>(plan.globalState)
       }
     };
+    const transaction: ReviewStateTransaction = promotion?.side === "original"
+      ? { ...snapshots, operation: promotion.operation, side: "original", diffId: promotion.diffId }
+      : { ...snapshots, operation: promotion?.operation ?? "mark-ranges-reviewed" };
     await this.options.repository.commit(transaction);
     return {
       ...target,

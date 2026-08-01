@@ -4,6 +4,8 @@ import { DiffEditorReviewCommandService, type DiffEditorReviewStateSession } fro
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type FileReviewHistoryEvent, type RepositoryGlobalState, type ReviewContextState, type ReviewHistoryEvent } from "../../src/core/contracts/index";
 import type { TextSelection } from "../../src/core/intervals/index";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
+import { calculatePullRequestDiffProgress } from "../../src/core/pr-progress/index";
 
 interface FakeEditor { readonly side: "original" | "modified"; readonly lineCount: number; readonly selections: readonly TextSelection[] }
 const interval = (startLine: number, endLineExclusive: number) => ({ startLine, endLineExclusive });
@@ -63,4 +65,46 @@ test("T303-R1-P3 metadata-only and empty-file entry changes are committed", asyn
   const emptyBase = session();
   const emptyState: DiffEditorReviewStateSession = { ...emptyBase, contextState: { ...emptyBase.contextState, files: {} }, target: { ...emptyBase.target, lineCount: 0 }, originalLineCount: 0, originalDeletionIntervals: [] };
   assert.equal(await serviceFor(emptyState, committed).markFileReviewed({ side: "modified", lineCount: 0, selections: [] }), "applied"); assert.equal(committed.length, 2);
+});
+
+test("T303-IFR-P2/P4 derives the canonical PR diff ID and makes an original deletion count toward progress", async () => {
+  const base = session();
+  const pullRequestContext = {
+    ...base.contextState,
+    kind: "pull-request",
+    pullRequest: { host: "github.com", owner: "owner", repository: "repository", number: 1, state: "open", title: "PR", baseSha: "base", headSha: "head" },
+    files: { "file-1": { ...base.contextState.files["file-1"]!, revisionId: "head", lineCount: 0 } }
+  } as unknown as ReviewContextState;
+  const pullRequestSession: DiffEditorReviewStateSession = {
+    ...base,
+    contextState: pullRequestContext,
+    globalState: { ...base.globalState, currentRevisionId: "head" },
+    target: { ...base.target, revisionId: "head", lineCount: 0 },
+    diffId: "non-canonical",
+    originalLineCount: 2,
+    originalDeletionIntervals: [interval(0, 2)]
+  };
+  const committed: unknown[] = [];
+  const service = new DiffEditorReviewCommandService<FakeEditor>({
+    getSide: (editor) => editor.side,
+    getLineCount: (editor) => editor.lineCount,
+    getSelections: (editor) => editor.selections,
+    openSession: async () => ({ ...pullRequestSession, committer: { commit: async (transaction) => { committed.push(transaction); } } }),
+    confirmWholeFileOperation: async () => true,
+    requestHistory: async () => undefined
+  });
+
+  assert.equal(await service.markSelectionReviewed({ side: "original", lineCount: 2, selections: [selection(0)] }), "applied");
+  const next = (committed[0] as { next: { contextState: unknown } }).next.contextState as ReviewContextState;
+  assert.deepEqual(next.files["file-1"]!.originalReviewedByDiff, { "base..head": [interval(0, 1)] });
+  const progress = calculatePullRequestDiffProgress({
+    diff: {
+      contextId: "context-1", baseSha: "base", headSha: "head", originalDiffId: "base..head",
+      files: [{ fileId: "file-1", status: "deleted", oldPath: "src/example.ts", additions: 0, deletions: 2, hunks: [{ oldStart: 1, oldCount: 2, newStart: 0, newCount: 0, lines: [{ kind: "deletion", oldLine: 1, text: "a" }, { kind: "deletion", oldLine: 2, text: "b" }] }] }]
+    },
+    reviewContext: next,
+    exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  assert.equal(progress.reviewedLineCount, 1);
+  assert.equal(progress.totalLineCount, 2);
 });
