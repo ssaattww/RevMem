@@ -64,6 +64,20 @@ test("ambiguous duplicate-line mapping does not invent reviewed evidence", async
   assert.deepEqual(mapped.reviewedRanges, []);
 });
 
+test("duplicate-line reorder with unchanged multiplicity remains ambiguous", async () => {
+  const tracker = new NonGitSnapshotTracker(new InMemoryNonGitSnapshotStorage(), {
+    maxSnapshots: 8,
+    maxCompressedBytes: 1024 * 1024,
+    retentionMs: 60_000,
+  });
+  const saved = await tracker.save(state("A\nX\nA"), 1_000);
+
+  const mapped = await tracker.map(saved.snapshotId, "A\nA\nX", 1_001);
+
+  assert.equal(mapped.status, "ambiguous");
+  assert.deepEqual(mapped.reviewedRanges, []);
+});
+
 test("missing, corrupt, and expired snapshots return unreviewed state", async () => {
   const storage = new InMemoryNonGitSnapshotStorage();
   const tracker = new NonGitSnapshotTracker(storage, {
