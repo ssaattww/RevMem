@@ -5,6 +5,7 @@ import {
   type ReviewFileExclusionReason
 } from "../../core/file-exclusion/review-file-exclusion-policy";
 
+/** A repository file that contributes non-empty lines to the Global denominator candidate set. */
 export interface IncludedRepositoryFile {
   readonly path: string;
   readonly nonEmptyLineCount: number;
@@ -15,16 +16,32 @@ export type RepositoryFileEnumerationExclusionReason =
   | { readonly kind: "gitignore"; readonly pattern: string }
   | { readonly kind: "symbolic-link" };
 
+/** One concrete file identity excluded from Global aggregation. */
 export interface ExcludedRepositoryFile {
   readonly path: string;
   readonly reason: RepositoryFileEnumerationExclusionReason;
 }
 
+/**
+ * One pruned directory identity excluded from traversal.
+ *
+ * This record represents exactly one directory, not every descendant file. Descendant identities and counts are
+ * deliberately unknown because traversal stops at the directory boundary. T505 may display this as a separate
+ * excluded-directory diagnostic, but must not add it to the excluded-file count or the Global line denominator.
+ */
 export interface ExcludedRepositoryDirectory {
   readonly path: string;
   readonly reason: Exclude<RepositoryFileEnumerationExclusionReason, { readonly kind: "symbolic-link" }>;
 }
 
+/**
+ * Stable public boundary between repository enumeration and later Global calculation/UI tasks.
+ *
+ * `included` and `excluded` contain file identities only. `excludedDirectories` contains one entry per pruned
+ * directory and never expands descendants. T504 consumes only `included` for denominator calculation. T505 reports
+ * `excluded.length` as excluded files and may report `excludedDirectories.length` separately; the two counts must
+ * never be merged. All arrays are repository-path sorted and contain no duplicate path within the same array.
+ */
 export interface RepositoryFileEnumerationResult {
   readonly included: readonly IncludedRepositoryFile[];
   readonly excluded: readonly ExcludedRepositoryFile[];
