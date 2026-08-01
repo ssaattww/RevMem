@@ -349,6 +349,14 @@ git diff --unified=0 --find-renames R_old R_new -- <path>
 
 branch比較ではmerge-baseを使用する。hunk前後の未変更部分を維持し、変更部分だけ未確認へ戻す。
 
+#### 10.2.1 Repository rootごとの観測順序
+
+Git revision追従の入力はrepository root、完全なGit snapshot、rootごとの観測generation、および観測元（foreground `open`またはpoll）とする。rootごとに現在の`{ generation, snapshot }`を保持し、`observe()`は同じrootについてgenerationを単調増加させてsnapshotと一体で更新する。
+
+pollは開始時に`{ generation, snapshot }`をcaptureしてinspectionとmappingを行う。callbackを実行する直前と永続化CASを再試行する直前に、captureしたgenerationとsnapshotが現在値に一致すること、さらに現在のGit snapshotがmapping targetと一致することを再確認しなければならない。いずれかが不一致なら、そのpollは`stale`として破棄し、callback、`observe()`、context/Global永続化を行わない。
+
+foreground `open`がpollより新しいsnapshotを観測した場合は、foregroundの`observe()`がrootのgenerationを進める。先行pollの完了はこのgeneration検証で破棄され、foregroundが保存したrevisionを古いpoll targetへ巻き戻してはならない。CAS conflict後のretryも、先に現在のGit snapshotを再inspectionし、targetが変化していれば旧targetのmappingをretryせず最新snapshotから再計画する。
+
 ### 10.3 Rename・move・delete
 
 一意なrenameとdirectory moveはfile identityを追従する。renameと同時に変更された行は未確認にする。
@@ -616,6 +624,10 @@ globalStorageUri/
 
 複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
 
+新contextを作成するtransactionは、対象contextが存在しないこととowner-wide Globalの期待snapshotおよびversionを同じCAS条件に含める。入力は対象Context ID、現在Git snapshot、context不存在期待、Globalの存在状態を含む完全snapshot、Global versionである。Globalが異revisionなら、その入力snapshotからmappingしたnext contextとnext Globalを1 transactionで公開する。読込、mapping、保存を分離した非atomicなwindowを設けない。
+
+create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を返す。呼び出し側は最新Globalと現在Git snapshotを再読込してmappingを再計画する。既存contextの通常更新と新context初期化はともに、片側だけの保存または古いGlobal snapshotによる置換を許可しない。
+
 ### 15.3 Schema migration
 
 全保存modelに`schemaVersion`を持たせる。起動時に段階移行し、移行前backupを作成する。破損dataは隔離し、不確実な範囲を確認済みにしない。
@@ -857,6 +869,8 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - Current Context、PR Progress、Review Contextsの既決UI要件
 - Architecture positive/negative gateをCIで実行し、設計contract testを通常unitとfocused suiteの両方で実行すること
 - 設計仕様が単一の機能別文書に統合され、task identifierを含まないこと
+- 新contextのmapping中に別contextがGlobalを更新した場合、create/CASが`stale`となり、最新Globalから再計画して確認済み範囲を失わないこと
+- pollがGit snapshotをmapping中にforeground `open`がより新しいsnapshotを観測した場合、古いpoll completionを破棄し、保存済みrevisionを巻き戻さないこと
 
 ### 20.2 Integration
 

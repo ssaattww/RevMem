@@ -1,0 +1,200 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: "2026-08-01T15:06:46+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #27"
+task_id: T205
+branch: task/t205-branch-context-resolver
+base_ref: main
+target:
+  base_sha: 68a2b49847fcaae2dd5943358c8ff875a1ce75a9
+  implementation_head: fb4e4f7206f35b04cc43b2f7057a92b0ce62c675
+  commit_range: 68a2b49847fcaae2dd5943358c8ff875a1ce75a9..fb4e4f7206f35b04cc43b2f7057a92b0ce62c675
+  reviewed_head: null
+scope:
+  - Resolve stable branch contexts from repository ID and full branch ref without including moving HEAD.
+  - Resolve detached commit contexts from immutable commit object IDs.
+  - Detect branch, HEAD, and detached-state transitions through serialized polling.
+  - Recalculate complete Context and owner-wide Global snapshots when the Git revision changes.
+  - Compose T203 same-path interval mapping with T204 rename, copy, add, and delete transitions.
+  - Preserve stable file identity across unique renames and use repository-scoped IDs for added or copied files.
+  - Exclude binary diff sections from line-review mapping while retaining complete Git diff acquisition.
+  - Advance conservatively with empty reviewed ranges when prior Git objects are unavailable.
+  - Provide a shell-free Node Git complete zero-context revision-diff boundary.
+non_goals:
+  - Pull-request context resolution or GitHub API integration.
+  - UI progress, settings, or user-facing error notification changes.
+  - Task tracker updates.
+  - Design-document restructuring.
+  - CI workflow changes, independent review verdict, merge, or release work.
+requirements:
+  authoritative:
+    - tasks/tasks-status.md T205 definition and dependencies T104, T202, T203, and T204.
+    - doc/design/vscode-review-range-tracker-design.md context identity, revision mapping, file transition, conservative invalidation, binary exclusion, and Context/Global consistency requirements.
+    - Project instruction requiring TDD, diagnostic artifacts, small commits, repository report, PR summary comment, and no merge.
+  preserved_contracts:
+    - Existing ReviewContextState branch persistence schema.
+    - Existing state repository complete-snapshot transaction and stale-write behavior.
+    - Existing document ownership priority and workspace or external-file fallback behavior.
+    - Existing T203 and T204 core mapping contracts.
+write_boundary:
+  allowed:
+    - src/application/review-context/
+    - src/adapters/document-review-state/
+    - src/adapters/local-git/node-local-git-adapter.ts
+    - test/unit/
+    - test/integration/
+    - package.json
+    - reports/
+  intentionally_untouched:
+    - tasks/tasks-status.md
+    - doc/design/vscode-review-range-tracker-design.md
+    - .github/workflows/ci.yml
+    - Other tasks, PRs, release metadata, and merge state.
+changed_files:
+  - package.json
+  - src/adapters/document-review-state/document-review-state-session-provider.ts
+  - src/adapters/document-review-state/git-context-document-review-state-session-provider.ts
+  - src/adapters/document-review-state/index.ts
+  - src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+  - src/adapters/local-git/node-local-git-adapter.ts
+  - src/application/review-context/contracts.ts
+  - src/application/review-context/git-context-revision-mapper.ts
+  - src/application/review-context/git-review-context-resolver.ts
+  - src/application/review-context/index.ts
+  - src/application/review-context/polling-git-state-monitor.ts
+  - test/integration/git-context-revision-source.integration.test.ts
+  - test/unit/document-git-context-lifecycle.test.ts
+  - test/unit/git-context-revision-mapper-binary.test.ts
+  - test/unit/git-review-context-lifecycle.test.ts
+  - test/unit/polling-git-state-monitor-error.test.ts
+implementation:
+  outcome: completed
+  summary:
+    - Added GitReviewContextResolver with stable branch identity and commit-keyed detached identity.
+    - Added GitContextRevisionMapper that advances Context and Global snapshots through T203 and T204 mapping contracts.
+    - Added PollingGitStateMonitor with deduplication, serialized polling, explicit scheduled-error handling, and retry after callback failure.
+    - Added Git-aware document-session preparation before existing routed and reconciled providers.
+    - Added persisted-path stable file-ID resolution for renamed documents.
+    - Added complete revision diff support to the production Node Local Git adapter.
+  behavioral_notes:
+    - Detached contexts expose logical kind detached-commit but persist using the existing branch schema with refName HEAD@<commit>.
+    - A failed monitor callback does not confirm the new baseline; a later poll retries the same transition.
+    - Missing prior objects clear reviewed ranges instead of guessing continuity.
+    - Binary sections are outside line review and do not abort mapping of text files.
+tdd_evidence:
+  - phase: initial_red
+    head: bf7372ec9fb023447aec3e964403fce45c4cd42a
+    run_id: 30684822827
+    result: failure
+    failure: Missing review-context module and contracts.
+    diagnostic_artifact_id: 8813524266
+  - phase: added_file_identity_red
+    head: 7eb37ac5ba664b94c6d07165680268b9c8dbd9e9
+    run_id: 30685681629
+    result: failure
+    failure: Added-file ID was path-only instead of repository-scoped.
+    diagnostic_artifact_id: 8813810126
+  - phase: rename_routing_red
+    head: fed078c4c9e35f40622617d6620be066a0d98921
+    run_id: 30685898552
+    result: failure
+    failure: Document routing regenerated a new-path ID after rename.
+    diagnostic_artifact_id: 8813889582
+  - phase: binary_mapping_red
+    head: e6ec7707e013ffdba60b08dd414109d79596fec2
+    run_id: 30686334431
+    result: failure
+    failure: Binary diff section aborted text mapping.
+    diagnostic_artifact_id: 8814045086
+  - phase: scheduled_error_red
+    head: bae230cbb370b405cb4082365913e5fcc6bd3f37
+    run_id: 30686622476
+    result: failure
+    failure: Scheduled polling had no explicit error boundary.
+    diagnostic_artifact_id: 8814144182
+  - phase: retry_baseline_red
+    head: 2e1dfdbeafdbc1c52d4aba05bd8c6d1d2538b075
+    run_id: 30686828187
+    result: failure
+    failure: Failed change callback confirmed the monitor baseline and prevented retry.
+    diagnostic_artifact_id: 8814219601
+  - phase: implementation_green
+    head: fb4e4f7206f35b04cc43b2f7057a92b0ce62c675
+    run_id: 30686940290
+    result: success
+    diagnostic_artifact_id: null
+validation:
+  exact_head_policy: Only workflow runs whose head SHA exactly matched the stated HEAD were used.
+  implementation_head:
+    sha: fb4e4f7206f35b04cc43b2f7057a92b0ce62c675
+    workflow_run_id: 30686940290
+    conclusion: success
+    checks:
+      build: success
+      contract_typecheck: success
+      architecture: success
+      negative_architecture_fixture: success
+      lint: success
+      unit_tests: success
+      git_integration: success
+      github_mock: success
+      vscode_extension_host: success
+  focused_test_script: npm run test:t205
+  focused_coverage:
+    - Branch and detached context identity.
+    - Context and Global interval mapping across commits.
+    - Added-file identity.
+    - Missing-history conservative invalidation.
+    - Branch switch and detached routing.
+    - Stable identity after rename.
+    - Binary diff coexistence.
+    - Scheduled monitor error reporting and retry.
+    - Real Git complete zero-context diff.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t205-implementation-20260801150646.md
+review:
+  mode: not_applicable
+  verdict: not_applicable
+  reason: This handoff is produced by the implementation worker and does not contain an independent code-review verdict.
+findings:
+  unresolved: []
+  addressed_during_implementation:
+    - Added-file identity initially diverged from normal document routing; fixed and covered by Red/Green evidence.
+    - Rename mapping preserved stable identity, but routing regenerated an ID from the new path; fixed and covered by Red/Green evidence.
+    - Binary additions initially aborted text mapping; fixed and covered by Red/Green evidence.
+    - Timer-driven monitor failures initially lacked an error boundary and retry; fixed and covered by Red/Green evidence.
+remaining_risks:
+  - Native Windows mixed-case Git tree paths were not individually exercised by the Ubuntu CI runner.
+  - Actual Git object pruning was not used in integration tests; missing-history behavior is covered with a controlled revision source.
+  - Polling failures are contained and retried, but no user-facing notification callback is configured by the document provider.
+  - Detached contexts retain the branch persistence schema for compatibility; a future distinct persisted kind would require migration.
+next_action:
+  skill: independent code review worker
+  instruction: Review PR #27 at its current HEAD, using the detailed implementation report and this packet. Verify all changed files, dependency impacts, persistence and concurrency behavior, mapping edge cases, tests, and exact-head CI. Save a detailed review report and post a concise PR comment. Do not merge.
+  requested_actions:
+    - read_repository
+    - read_pull_request
+    - read_reports
+    - inspect_exact_head_ci
+    - create_review_report
+    - post_pull_request_comment
+transport:
+  mode: repository_file
+  packet_path: reports/issue-1-t205-handoff-20260801150646.yaml
+  pr_number: 27
+  merge_performed: false
+source_payloads:
+  implementation_output:
+    status: completed
+    implementation_head: fb4e4f7206f35b04cc43b2f7057a92b0ce62c675
+    report_path: reports/issue-1-t205-implementation-20260801150646.md
+    exact_head_ci_run: 30686940290
+    exact_head_ci_result: success
+    merge_performed: false

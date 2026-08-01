@@ -25,6 +25,8 @@ export type {
   RepositoryStateManifestContextReference,
   RepositoryStateManifestGlobalReference,
   ReviewStateCommit,
+  ReviewStateCreateExpectedSnapshot,
+  ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateRepositoryTargetKind,
   ReviewStateStorageRoute,

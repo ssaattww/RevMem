@@ -8,6 +8,7 @@ import {
 import type {
   FileSystemReviewStateRepositoryOptions,
   ReviewStateCommit,
+  ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
@@ -126,6 +127,31 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, () => super.commit(transaction));
+  }
+
+  /** Atomically creates a validated absent context after comparing the expected owner-wide Global snapshot. */
+  public override async create(
+    transaction: Readonly<ReviewStateCreateTransactionLike>
+  ): Promise<void> {
+    validateOwnerReconciliation(transaction.next.contextState);
+    const target: ReviewStateRepositoryTarget = {
+      kind:
+        transaction.next.contextState.kind === "pull-request"
+          ? "pull-request"
+          : transaction.next.contextState.kind === "workspace"
+            ? "workspace"
+            : transaction.next.contextState.kind === "external-file"
+              ? "external-file"
+              : "git",
+      repositoryId: transaction.repositoryId,
+      contextId: transaction.contextId
+    };
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+
+    await this.serializeOuterWrite(route.rootPath, () => super.create(transaction));
   }
 
   private async serializeOuterWrite<T>(

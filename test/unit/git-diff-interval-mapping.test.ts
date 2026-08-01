@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   mapReviewedIntervalsAcrossDiff,
+  parseGitDiffHeaderPaths,
   parseZeroContextGitDiff
 } from "../../src/core/git-diff/index";
 import { mapReviewedIntervalsAcrossDiff as mapFromModule } from "../../src/core/git-diff/git-diff-interval-mapping";
@@ -11,6 +12,51 @@ const options = {
   ignoreWhitespaceChanges: false,
   ignoreEolChanges: false
 } as const;
+
+test("parses unambiguous non-quoted diff header paths containing spaces", () => {
+  assert.deepEqual(
+    parseGitDiffHeaderPaths("diff --git a/src/file name.ts b/src/file name.ts"),
+    { oldPath: "src/file name.ts", newPath: "src/file name.ts" }
+  );
+  assert.deepEqual(
+    parseGitDiffHeaderPaths("diff --git a/src/old name.ts b/src/new name.ts"),
+    { oldPath: "src/old name.ts", newPath: "src/new name.ts" }
+  );
+  assert.deepEqual(
+    parseGitDiffHeaderPaths("diff --git a/src/a b/ marker.ts b/src/a b/ marker.ts"),
+    { oldPath: "src/a b/ marker.ts", newPath: "src/a b/ marker.ts" }
+  );
+});
+
+test("uses rename and copy metadata for ambiguous non-quoted diff headers", () => {
+  const rename = parseZeroContextGitDiff([
+    "diff --git a/x b/y b/z",
+    "similarity index 100%",
+    "rename from x b/y",
+    "rename to z",
+    ""
+  ].join("\n")).files[0];
+  const copy = parseZeroContextGitDiff([
+    "diff --git a/x b/y b/z",
+    "similarity index 100%",
+    "copy from x b/y",
+    "copy to z",
+    ""
+  ].join("\n")).files[0];
+
+  assert.deepEqual(rename, {
+    oldPath: "x b/y",
+    newPath: "z",
+    isRename: true,
+    hunks: []
+  });
+  assert.deepEqual(copy, {
+    oldPath: "x b/y",
+    newPath: "z",
+    isRename: false,
+    hunks: []
+  });
+});
 
 test("parses zero-context git diff metadata and multiple hunks", () => {
   const parsed = parseZeroContextGitDiff([

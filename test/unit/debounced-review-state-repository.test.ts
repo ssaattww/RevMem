@@ -19,7 +19,10 @@ const target: ReviewStateRepositoryTarget = {
   contextId
 };
 
-const createCommit = (revision: number): ReviewStateCommit => {
+const createCommit = (
+  revision: number,
+  commitContextId = contextId
+): ReviewStateCommit => {
   const occurredAt = `2026-07-23T10:00:0${revision}.000Z`;
   const revisionId = "workspace-live:t107";
 
@@ -27,7 +30,7 @@ const createCommit = (revision: number): ReviewStateCommit => {
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
     contextState: {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-      contextId,
+      contextId: commitContextId,
       kind: "workspace",
       repositoryId,
       displayName: "Workspace review",
@@ -190,6 +193,39 @@ class BlockingRepository implements ReviewStatePersistenceDelegate {
   }
 }
 
+class BlockingGlobalRepository implements ReviewStatePersistenceDelegate {
+  public readonly loadGlobalStarted = createDeferred();
+  public readonly releaseLoadGlobal = createDeferred();
+  public readonly saveStarted = createDeferred();
+  public readonly releaseSave = createDeferred();
+  public readonly commitStarted = createDeferred();
+  public readonly releaseCommit = createDeferred();
+  public saveInvoked = false;
+  public commitInvoked = false;
+
+  public async load(): Promise<ReviewStateCommit | undefined> {
+    return undefined;
+  }
+
+  public async loadGlobal(): Promise<ReviewStateCommit["globalState"] | undefined> {
+    this.loadGlobalStarted.resolve();
+    await this.releaseLoadGlobal.promise;
+    return createCommit(1).globalState;
+  }
+
+  public async save(): Promise<void> {
+    this.saveInvoked = true;
+    this.saveStarted.resolve();
+    await this.releaseSave.promise;
+  }
+
+  public async commit(): Promise<void> {
+    this.commitInvoked = true;
+    this.commitStarted.resolve();
+    await this.releaseCommit.promise;
+  }
+}
+
 test("multiple background saves are coalesced and persist only the newest complete snapshot", async () => {
   const scheduler = new ManualScheduler();
   const delegate = new RecordingRepository();
@@ -337,6 +373,91 @@ test("dispose waits for an immediate commit queued behind an in-flight load", as
   delegate.releaseCommit.resolve();
   await Promise.all([load, commit, dispose]);
   assert.equal(disposeCompleted, true);
+});
+
+/** Owner-wide Global reads accepted before deactivation must complete before disposal. */
+test("dispose waits for an in-flight owner-wide Global load", async () => {
+  const delegate = new BlockingGlobalRepository();
+  const repository = new DebouncedReviewStateRepository({ delegate });
+  const loadGlobal = repository.loadGlobal(target);
+  await delegate.loadGlobalStarted.promise;
+  let disposeCompleted = false;
+  const dispose = repository.dispose().then(() => {
+    disposeCompleted = true;
+  });
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(
+    disposeCompleted,
+    false,
+    "Extension Host deactivation must wait for an accepted owner-wide Global load."
+  );
+
+  delegate.releaseLoadGlobal.resolve();
+  await Promise.all([loadGlobal, dispose]);
+  assert.equal(disposeCompleted, true);
+});
+
+/** A Global read and a different context's commit share one repository-owner operation queue. */
+test("owner-wide Global load serializes a different context commit", async () => {
+  const delegate = new BlockingGlobalRepository();
+  const repository = new DebouncedReviewStateRepository({ delegate });
+  const loadGlobal = repository.loadGlobal(target);
+  await delegate.loadGlobalStarted.promise;
+  const otherInitial = createCommit(1, "workspace:other");
+  const otherNext = createCommit(2, "workspace:other");
+  const commit = repository.commit(createTransaction(otherInitial, otherNext));
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(
+    delegate.commitInvoked,
+    false,
+    "A different context must not commit while its repository owner Global read is active."
+  );
+
+  delegate.releaseLoadGlobal.resolve();
+  await delegate.commitStarted.promise;
+  delegate.releaseCommit.resolve();
+  await Promise.all([loadGlobal, commit]);
+});
+
+/** Git and pull-request targets share the same physical repository storage owner. */
+test("Git Global load serializes a pull-request save for the same repository", async () => {
+  const scheduler = new ManualScheduler();
+  const delegate = new BlockingGlobalRepository();
+  const repository = new DebouncedReviewStateRepository({ delegate, scheduler });
+  const gitTarget: ReviewStateRepositoryTarget = {
+    kind: "git",
+    repositoryId: "github.com/example/shared",
+    contextId: "branch:main"
+  };
+  const pullRequestTarget: ReviewStateRepositoryTarget = {
+    kind: "pull-request",
+    repositoryId: gitTarget.repositoryId,
+    contextId: "pr:27"
+  };
+  const loadGlobal = repository.loadGlobal(gitTarget);
+  await delegate.loadGlobalStarted.promise;
+  const save = repository.save(pullRequestTarget, createCommit(1));
+  scheduler.runAll();
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(
+    delegate.saveInvoked,
+    false,
+    "A pull-request save must not run while the shared Git repository Global read is active."
+  );
+
+  delegate.releaseLoadGlobal.resolve();
+  await delegate.saveStarted.promise;
+  delegate.releaseSave.resolve();
+  await Promise.all([loadGlobal, save]);
 });
 
 test("all callers observe a debounced persistence failure instead of receiving a false success", async () => {

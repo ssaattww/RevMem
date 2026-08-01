@@ -1,0 +1,307 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix verification
+  generated_at: "2026-08-01T16:42:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #27"
+task_id: T205
+branch: task/t205-branch-context-resolver
+base_ref: main
+target:
+  current_head: 72217f45169bca1399ffc87fd22a070d384b983c
+  reviewed_head: 72217f45169bca1399ffc87fd22a070d384b983c
+  commit_range: 68a2b49847fcaae2dd5943358c8ff875a1ce75a9..72217f45169bca1399ffc87fd22a070d384b983c
+authoritative_requirements:
+  - source: user_instruction
+    reference: current conversation
+    summary: Re-review T205 using uploaded Skills and GitHub connector.
+  - source: report
+    reference: reports/issue-1-t205-review-20260801155600.md
+    summary: Verify High finding T205-R1-P1 without changing its identity or severity.
+  - source: pr
+    reference: PR #27
+    summary: Use only workflow runs whose head SHA exactly matches the reviewed current HEAD.
+development_policy:
+  method: TDD
+  testing_order: Red tests before implementation
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source, test, configuration, environment, and Git-state logs
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t205-review-r2-20260801164200.md
+      reason: Detailed fix-verification report.
+    - path_or_operation: reports/issue-1-t205-review-r2-handoff-20260801164200.yaml
+      reason: Lossless handoff for independent final review.
+    - path_or_operation: PR #27 review comment
+      reason: Concise verification result.
+  forbidden:
+    - path_or_operation: implementation, tests, design, workflow, configuration, or tracking files
+      reason: Reviewer must not implement fixes.
+    - path_or_operation: merge
+      reason: Merge is performed by the user.
+scope:
+  - Verify T205-R1-P1 against the updated immutable implementation HEAD.
+  - Inspect the fix diff, direct impact, sibling failure cases, tests, reports, and matching CI.
+  - Check newly changed areas for additional defects.
+non_goals:
+  - Implement fixes.
+  - Perform independent final review in this normal-review chat.
+  - Merge or release.
+files:
+  changed:
+    - path: reports/issue-1-t205-review-r2-20260801164200.md
+      purpose: Persist fix-verification verdict and evidence.
+    - path: reports/issue-1-t205-review-r2-handoff-20260801164200.yaml
+      purpose: Transport complete review state.
+  inspected:
+    - path: src/application/review-context/polling-git-state-monitor.ts
+      purpose: Verify root-level fault isolation and baseline update ordering.
+    - path: test/unit/polling-git-state-monitor-error.test.ts
+      purpose: Verify Red/Green coverage for inspection and callback failures.
+    - path: reports/issue-1-t205-review-20260801155600.md
+      purpose: Preserve finding identity and source severity.
+    - path: reports/issue-1-t205-review-followup-20260801160638.md
+      purpose: Validate implementation and TDD evidence.
+    - path: PR #27 body and comments
+      purpose: Confirm current target and report accuracy.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Normal reviewer does not update tracking.
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: No design defect identified.
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing workflow already saves required failure diagnostics.
+    - path_or_area: implementation and test files
+      reason: Reviewer did not implement changes.
+commands:
+  - command: GitHub fetch PR #27
+    purpose: Resolve immutable reviewed HEAD and full change context.
+    exit_code: 0
+    result: passed
+    head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+    evidence: PR metadata reports current head_sha 72217f45169bca1399ffc87fd22a070d384b983c.
+  - command: GitHub fetch workflow runs for reviewed HEAD
+    purpose: Enforce exact-head CI policy.
+    exit_code: 0
+    result: passed
+    head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+    evidence: CI run 30689159739 completed with conclusion success.
+tests:
+  - name: polling continues after an inspection failure in an earlier root
+    phase: verification
+    result: passed
+    head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+    evidence: Present in focused unit suite; current-head full CI success.
+  - name: polling continues after a change callback failure in an earlier root
+    phase: verification
+    result: passed
+    head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+    evidence: Present in focused unit suite; current-head full CI success.
+  - name: scheduled polling reports and retries change-handler failures
+    phase: regression
+    result: passed
+    head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+    evidence: Existing sibling-case test remains in current-head unit suite.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30689159739
+  head_sha: 72217f45169bca1399ffc87fd22a070d384b983c
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 72217f45169bca1399ffc87fd22a070d384b983c
+  commits:
+    - sha: 1e404916bfe8071af15491a3d753b9f6a8a7f402
+      purpose: Add failing multi-root starvation regression tests.
+    - sha: bad75d4fe119e183361c0828b623712d6a1d79fe
+      purpose: Isolate per-root failures and preserve retry baselines.
+    - sha: 72217f45169bca1399ffc87fd22a070d384b983c
+      purpose: Persist review follow-up evidence and establish final implementation handoff HEAD.
+  addressed_findings:
+    - id: T205-R1-P1
+      reviewed_head: 15a10ca850f525a13c67e3d5af33ada77602240a
+      disposition: addressed
+      evidence: Both required multi-root failure tests pass; failed roots retain their baseline and healthy roots continue.
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8814981197
+      summary: Red run diagnostics for the two intentionally failing regression tests.
+  blocked_items: []
+  summary:
+    - Root inspection and callback failures are isolated per observed repository.
+    - Successful roots advance their baseline; failed roots remain retryable.
+    - Poll-level failure propagation remains explicit.
+review:
+  mode: fix_verification
+  reviewed_head: 72217f45169bca1399ffc87fd22a070d384b983c
+  reviewer:
+    identity: ChatGPT GPT-5.6 Thinking normal reviewer in the original T205 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT GPT-5.6 Thinking normal reviewer in the original T205 review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat produced the initial T205 finding and performed only review/report operations.
+  verdict: pass
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: Fix implements root-level fault isolation, retry, and successful-only baseline update.
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: Inspection and callback failures are independently exercised with a healthy later root.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: Follow-up is limited to monitor, regression tests, reports, and handoff.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: Provider scheduled polling and direct pollNow rejection behavior remain compatible.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_no_finding
+      evidence: No public API, schema, configuration, or workflow change.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Errors propagate after all roots are processed; Red diagnostics artifact exists.
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: Required Red tests, retry assertions, sibling scheduled retry test, and full CI are present.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30689159739 exactly matches reviewed HEAD and succeeded.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_no_finding
+      evidence: Finding ID and High severity are preserved; task/design/workflow intentionally untouched.
+    - criterion: regression and maintainability risks
+      disposition: checked_no_finding
+      evidence: Straightforward per-root try/catch with post-loop error propagation.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No secret or credential path changed.
+  validation_assessment:
+    - item: T205-R1-P1 closure
+      result: supported
+      evidence: Source code, targeted tests, Red/Green evidence, and exact-head CI agree.
+    - item: full regression status
+      result: supported
+      evidence: Current-head CI run 30689159739 succeeded across all configured jobs.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - This is normal fix verification, not independent final review.
+  summary:
+    - High finding T205-R1-P1 is addressed and closed.
+    - No new findings were identified.
+    - Verdict is pass for implementation HEAD 72217f45169bca1399ffc87fd22a070d384b983c.
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t205-review-r2-20260801164200.md
+    - reports/issue-1-t205-review-r2-handoff-20260801164200.yaml
+  reviewed_head: 72217f45169bca1399ffc87fd22a070d384b983c
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed fix-verification report and lossless handoff were persisted.
+findings: []
+held:
+  - item: Native Windows mixed-case Git tree paths are not individually tested.
+    reason: Existing T205 held risk outside this monitor fix.
+    owner: future validation
+    remaining_risk: Platform-specific path behavior may require later verification.
+    verdict_impact: Does not block this fix-verification pass.
+  - item: Real Git object pruning is not executed by integration tests.
+    reason: Missing-history behavior uses a controlled revision source.
+    owner: future validation
+    remaining_risk: Real prune environment differences remain possible.
+    verdict_impact: Does not block this fix-verification pass.
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: independent final review report attestation
+    reason: This is a normal-review fix-verification round.
+remaining_risks:
+  - User-facing polling error notification remains a documented non-goal.
+  - AggregateError multi-failure behavior has no dedicated test, but does not block acceptance based on the simple collection path and full CI.
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: current uploaded Skill
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 72217f45169bca1399ffc87fd22a070d384b983c
+      source_finding:
+        id: T205-R1-P1
+        severity: high
+        disposition: addressed
+      findings: []
+      verdict: pass
+      next_action: independent_final_review
+extensions: []
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent final review
+  summary: Start a fresh independent review chat against the then-current PR HEAD.
+  instructions:
+    - Confirm every implementation, report, and handoff change is committed and pushed.
+    - Resolve the new current PR HEAD after this normal-review report and handoff are committed.
+    - Use only CI whose head SHA exactly matches that frozen HEAD.
+    - The fresh reviewer must not have implemented, fixed, or served as the normal reviewer.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #27
+    - reports/issue-1-t205-review-r2-20260801164200.md
+    - reports/issue-1-t205-review-r2-handoff-20260801164200.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t205-review-r2-handoff-20260801164200.yaml
+  packet_url: null
+  transport_note: Use this packet in a fresh chat for independent final review; current permissions do not transfer.

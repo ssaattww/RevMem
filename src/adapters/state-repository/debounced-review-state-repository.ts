@@ -1,5 +1,6 @@
 import type {
   ReviewStateCommit,
+  ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
@@ -7,8 +8,14 @@ import type {
 /** Persistence surface wrapped by the lifecycle-aware debounce adapter. */
 export interface ReviewStatePersistenceDelegate {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
+  /** Optionally loads an owner-wide Global snapshot even when the requested context is absent. */
+  loadGlobal?(
+    target: ReviewStateRepositoryTarget
+  ): Promise<ReviewStateCommit["globalState"] | undefined>;
   save(target: ReviewStateRepositoryTarget, commit: ReviewStateCommit): Promise<void>;
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
+  /** Optionally creates an absent context after comparing its owner-wide Global snapshot. */
+  create?(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
 
 /** Timer boundary injected to make debounce and deactivation behavior deterministic in tests. */
@@ -52,8 +59,13 @@ const defaultScheduler: ReviewStateSaveScheduler = {
 const targetKey = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\u0000${target.repositoryId}\u0000${target.contextId}`;
 
+const storageOwnerKey = (target: ReviewStateRepositoryTarget): string =>
+  (target.kind === "git" || target.kind === "pull-request")
+    ? `repository\u0000${target.repositoryId}`
+    : `${target.kind}\u0000${target.repositoryId}`;
+
 const transactionTarget = (
-  transaction: Readonly<ReviewStateTransactionLike>
+  transaction: Readonly<ReviewStateTransactionLike | ReviewStateCreateTransactionLike>
 ): ReviewStateRepositoryTarget => {
   const contextKind = transaction.next.contextState.kind;
   return {
@@ -78,7 +90,7 @@ const transactionTarget = (
  * `commit` first flushes pending state for the same context and then delegates immediately, so
  * a confirmation command cannot display success before its atomic transaction is durable.
  * `dispose` is the Extension Host deactivation boundary and flushes every pending save while
- * waiting for load and commit operations accepted before shutdown.
+ * waiting for load, owner-wide Global load, and commit operations accepted before shutdown.
  */
 export class DebouncedReviewStateRepository {
   private readonly debounceMilliseconds: number;
@@ -112,7 +124,24 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<ReviewStateCommit | undefined> => {
       const key = targetKey(target);
       await this.flushPendingTarget(key);
-      return this.enqueue(key, () => this.options.delegate.load(target));
+      return this.enqueue(storageOwnerKey(target), () => this.options.delegate.load(target));
+    })();
+    return this.trackOperation(operation);
+  }
+
+  /** Loads the owner-wide Global snapshot through the debounce boundary. */
+  public loadGlobal(
+    target: ReviewStateRepositoryTarget
+  ): Promise<ReviewStateCommit["globalState"] | undefined> {
+    this.assertNotDisposed();
+    const operation = (async (): Promise<ReviewStateCommit["globalState"] | undefined> => {
+      await this.flush();
+      const loadGlobal = this.options.delegate.loadGlobal;
+      return this.enqueue(storageOwnerKey(target), () =>
+        loadGlobal === undefined
+          ? Promise.resolve(undefined)
+          : loadGlobal.call(this.options.delegate, target)
+      );
     })();
     return this.trackOperation(operation);
   }
@@ -164,7 +193,31 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<void> => {
       const key = targetKey(transactionTarget(transaction));
       await this.flushPendingTarget(key);
-      await this.enqueue(key, () => this.options.delegate.commit(transaction));
+      await this.enqueue(
+        storageOwnerKey(transactionTarget(transaction)),
+        () => this.options.delegate.commit(transaction)
+      );
+    })();
+    return this.trackOperation(operation);
+  }
+
+  /** Flushes pending owner state, then atomically creates a context only when its absence and Global expectation still match. */
+  public create(
+    transaction: Readonly<ReviewStateCreateTransactionLike>
+  ): Promise<void> {
+    this.assertNotDisposed();
+    const operation = (async (): Promise<void> => {
+      await this.flush();
+      const target = transactionTarget(transaction);
+      await this.enqueue(storageOwnerKey(target), () => {
+        const create = this.options.delegate.create;
+        if (create === undefined) {
+          throw new Error(
+            "Review-state persistence delegate does not support atomic context creation."
+          );
+        }
+        return create.call(this.options.delegate, transaction);
+      });
     })();
     return this.trackOperation(operation);
   }
@@ -247,7 +300,7 @@ export class DebouncedReviewStateRepository {
     this.scheduler.cancel(pending.timerHandle);
 
     try {
-      await this.enqueue(key, () =>
+      await this.enqueue(storageOwnerKey(pending.target), () =>
         this.options.delegate.save(pending.target, pending.commit)
       );
       for (const waiter of pending.waiters) {
