@@ -324,7 +324,7 @@ export class GitContextRevisionMapper {
     oldTexts: Readonly<Record<string, string>> | undefined,
     newFiles: Readonly<Record<string, GitNewFileStateInput>>
   ): Record<string, FileReviewState> {
-    const next = clone(transitioned);
+    const next = clone(transitioned) as Record<string, FileReviewState>;
     const previousByPath = new Map(
       Object.values(previous).map((file) => [file.currentPath, file])
     );
