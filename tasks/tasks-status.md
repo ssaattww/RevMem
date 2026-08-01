@@ -7,11 +7,11 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T205 branch context resolver・Git状態監視
-- 現在のタスク: なし
-- 次のタスク: T206 JSON Linesイベント履歴
-- 実装状態: T205はbranch/detached context解決、Git状態監視、T203/T204を合成したContext/Global revision mapping、Git-aware document routing、binary除外、複数root障害分離をTDDで実装した。High finding `T205-R1-P1`を修正し、focused・全CIとnormal fix verificationがpass。独立最終レビュー用report pathを予約済み
-- ブロッカー: なし。native Windowsのmixed-case Git tree path、実Git object prune、大規模repositoryのpolling負荷はT205外のheld risk。Markdown lint基盤は未整備
+- 直近完了タスク: T302 仮想diff URIとrevision content provider
+- 現在のタスク: T205 branch context resolver・Git状態監視 review follow-up
+- 次のタスク: なし
+- 実装状態: T205の既存High finding `T205-R1-P1`はclosed。同期後HEAD `bf6c9c65d38f9262810943d96da8898223bdf5fa`へのSol/high normal reviewでHigh 3件（`T205-R3-P1`〜`P3`）とMedium 1件（`T205-R3-P4`）が見つかり、TDD修正待ち
+- ブロッカー: `T205-R3-P1` production debounced repositoryのGlobal load欠落、`T205-R3-P2` rename後の旧path再利用file ID衝突、`T205-R3-P3` UTF-8 decode可能binaryでreviewed範囲を保持、`T205-R3-P4` extension deactivation時のmonitor未dispose。held riskはnative Windowsのmixed-case Git tree path、実Git object prune、大規模repositoryのpolling負荷、Markdown lint基盤未整備
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -124,6 +124,7 @@
 - T205 review follow-upレポート: `reports/issue-1-t205-review-followup-20260801160638.md`
 - T205 fix verificationレポート: `reports/issue-1-t205-review-r2-20260801164200.md`
 - T205進捗同期レポート: `reports/issue-1-t205-progress-sync-20260801172324.md`
+- T205 R3レビューレポート: `reports/issue-1-t205-review-r3-20260801173000.md`
 - T205独立最終レビューレポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -187,8 +188,8 @@
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
-| T206 | 次 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
+| T205 | 進行中 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
+| T206 | 未着手 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
@@ -258,4 +259,4 @@
 
 ## 次回開始時の選択
 
-T205はbranch/detached context、Git状態監視、revision mapping、document routingをTDDで実装し、High finding `T205-R1-P1`の修正とnormal fix verificationを完了した。独立最終レビュー証跡は予約済みreportへattestationする。次回の実装タスクはP2を継続してT206だけを選択し、設計書15.4のJSON Linesイベントcontractを失敗するtestから開始する。
+T205はnormal reviewで`T205-R3-P1`〜`P4`が見つかったため進行中へ戻した。次回は同じfinding IDとseverityを維持し、production repository composition、rename後の旧path再利用、binary化、extension lifecycleの失敗するtestを追加してから修正する。T206はT205完了まで開始しない。
