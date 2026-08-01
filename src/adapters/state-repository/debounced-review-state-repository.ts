@@ -56,6 +56,9 @@ const defaultScheduler: ReviewStateSaveScheduler = {
 const targetKey = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\u0000${target.repositoryId}\u0000${target.contextId}`;
 
+const ownerKey = (target: ReviewStateRepositoryTarget): string =>
+  `${target.kind}\u0000${target.repositoryId}`;
+
 const transactionTarget = (
   transaction: Readonly<ReviewStateTransactionLike>
 ): ReviewStateRepositoryTarget => {
@@ -82,7 +85,7 @@ const transactionTarget = (
  * `commit` first flushes pending state for the same context and then delegates immediately, so
  * a confirmation command cannot display success before its atomic transaction is durable.
  * `dispose` is the Extension Host deactivation boundary and flushes every pending save while
- * waiting for load and commit operations accepted before shutdown.
+ * waiting for load, owner-wide Global load, and commit operations accepted before shutdown.
  */
 export class DebouncedReviewStateRepository {
   private readonly debounceMilliseconds: number;
@@ -116,21 +119,26 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<ReviewStateCommit | undefined> => {
       const key = targetKey(target);
       await this.flushPendingTarget(key);
-      return this.enqueue(key, () => this.options.delegate.load(target));
+      return this.enqueue(ownerKey(target), () => this.options.delegate.load(target));
     })();
     return this.trackOperation(operation);
   }
 
   /** Loads the owner-wide Global snapshot through the debounce boundary. */
-  public async loadGlobal(
+  public loadGlobal(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit["globalState"] | undefined> {
     this.assertNotDisposed();
-    await this.flush();
-    const loadGlobal = this.options.delegate.loadGlobal;
-    return loadGlobal === undefined
-      ? undefined
-      : loadGlobal.call(this.options.delegate, target);
+    const operation = (async (): Promise<ReviewStateCommit["globalState"] | undefined> => {
+      await this.flush();
+      const loadGlobal = this.options.delegate.loadGlobal;
+      return this.enqueue(ownerKey(target), () =>
+        loadGlobal === undefined
+          ? Promise.resolve(undefined)
+          : loadGlobal.call(this.options.delegate, target)
+      );
+    })();
+    return this.trackOperation(operation);
   }
 
   /**
@@ -180,7 +188,10 @@ export class DebouncedReviewStateRepository {
     const operation = (async (): Promise<void> => {
       const key = targetKey(transactionTarget(transaction));
       await this.flushPendingTarget(key);
-      await this.enqueue(key, () => this.options.delegate.commit(transaction));
+      await this.enqueue(
+        ownerKey(transactionTarget(transaction)),
+        () => this.options.delegate.commit(transaction)
+      );
     })();
     return this.trackOperation(operation);
   }
@@ -263,7 +274,7 @@ export class DebouncedReviewStateRepository {
     this.scheduler.cancel(pending.timerHandle);
 
     try {
-      await this.enqueue(key, () =>
+      await this.enqueue(ownerKey(pending.target), () =>
         this.options.delegate.save(pending.target, pending.commit)
       );
       for (const waiter of pending.waiters) {

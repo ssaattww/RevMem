@@ -7,6 +7,7 @@ import {
 import {
   applyGitFileStateTransitions,
   mapReviewedIntervalsAcrossDiff,
+  parseGitDiffHeaderPaths,
   parseZeroContextGitDiff,
   type GitDiffFile,
   type GitDiffMappingOptions,
@@ -94,8 +95,8 @@ const binaryDiffPaths = (diff: string): ReadonlySet<string> => {
     if (line.startsWith("diff --git ")) {
       addPaths();
       binary = false;
-      const match = /^diff --git a\/(.+) b\/(.+)$/u.exec(line);
-      headerPaths = match === null ? [] : [match[1] as string, match[2] as string];
+      const paths = parseGitDiffHeaderPaths(line);
+      headerPaths = [paths.oldPath, paths.newPath];
     } else if (line.startsWith("Binary files ") || line === "GIT binary patch") {
       binary = true;
     }
@@ -474,12 +475,26 @@ export class GitContextRevisionMapper {
     const existingByPath = new Map(
       Object.values(existing).map((file) => [file.currentPath, file.fileId])
     );
+    const transitions = copyAwareFiles.filter(
+      (file) =>
+        file.isRename && file.oldPath !== undefined && file.newPath !== undefined
+    );
+    const sourceCounts = new Map<string, number>();
+    const destinationCounts = new Map<string, number>();
+    for (const transition of transitions) {
+      const oldPath = transition.oldPath as string;
+      const newPath = transition.newPath as string;
+      sourceCounts.set(oldPath, (sourceCounts.get(oldPath) ?? 0) + 1);
+      destinationCounts.set(newPath, (destinationCounts.get(newPath) ?? 0) + 1);
+    }
     const preservedDestinationIds = new Map<string, string>();
     for (const file of parsedFiles) {
       if (
         file.oldPath !== undefined &&
         file.newPath !== undefined &&
-        (file.isRename || file.oldPath === file.newPath)
+        file.isRename &&
+        sourceCounts.get(file.oldPath) === 1 &&
+        destinationCounts.get(file.newPath) === 1
       ) {
         const sourceId = existingByPath.get(file.oldPath);
         if (sourceId !== undefined) {

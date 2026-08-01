@@ -160,7 +160,10 @@ test("revision mapping ignores binary diff sections and maps text state", async 
 });
 
 class ExistingBinaryRevisionSource implements GitRevisionMappingSource {
-  public constructor(private readonly binarySection: string) {}
+  public constructor(
+    private readonly binarySection: string,
+    private readonly binaryPath: string
+  ) {}
 
   public async objectExists(): Promise<boolean> {
     return true;
@@ -180,7 +183,7 @@ class ExistingBinaryRevisionSource implements GitRevisionMappingSource {
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
-    if (repositoryRelativePath !== "assets/payload.bin") {
+    if (repositoryRelativePath !== this.binaryPath) {
       return { kind: "missing-file" };
     }
     return {
@@ -191,9 +194,10 @@ class ExistingBinaryRevisionSource implements GitRevisionMappingSource {
 }
 
 /** Git-declared binary paths are excluded even when their blob can be decoded as UTF-8. */
-for (const [label, binarySection] of [
+for (const [label, binaryPath, binarySection] of [
   [
     "NUL-containing UTF-8",
+    "assets/payload.bin",
     [
       "diff --git a/assets/payload.bin b/assets/payload.bin",
       "index 1111111..2222222 100644",
@@ -203,8 +207,31 @@ for (const [label, binarySection] of [
   ],
   [
     "attribute-driven binary",
+    "assets/payload.bin",
     [
       "diff --git a/assets/payload.bin b/assets/payload.bin",
+      "index 1111111..2222222 100644",
+      "GIT binary patch",
+      "literal 10",
+      "",
+      ""
+    ].join("\n")
+  ],
+  [
+    "quoted NUL-containing UTF-8",
+    "assets/weird\tpayload.bin",
+    [
+      "diff --git \"a/assets/weird\\tpayload.bin\" \"b/assets/weird\\tpayload.bin\"",
+      "index 1111111..2222222 100644",
+      "Binary files \"a/assets/weird\\tpayload.bin\" and \"b/assets/weird\\tpayload.bin\" differ",
+      ""
+    ].join("\n")
+  ],
+  [
+    "quoted attribute-driven binary",
+    "assets/weird\tpayload.bin",
+    [
+      "diff --git \"a/assets/weird\\tpayload.bin\" \"b/assets/weird\\tpayload.bin\"",
       "index 1111111..2222222 100644",
       "GIT binary patch",
       "literal 10",
@@ -222,7 +249,7 @@ for (const [label, binarySection] of [
       head: newRevision
     });
     const fileId = `repository-file:${stableHash.digest(
-      ["repository-file", repositoryId, "assets/payload.bin"].join("\0")
+      ["repository-file", repositoryId, binaryPath].join("\0")
     )}`;
     const contextState: ReviewContextState = {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -235,7 +262,7 @@ for (const [label, binarySection] of [
         [fileId]: {
           schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
           fileId,
-          currentPath: "assets/payload.bin",
+          currentPath: binaryPath,
           previousPaths: [],
           revisionId: oldRevision,
           modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }],
@@ -255,7 +282,7 @@ for (const [label, binarySection] of [
       files: {
         [fileId]: {
           fileId,
-          currentPath: "assets/payload.bin",
+          currentPath: binaryPath,
           revisionId: oldRevision,
           reviewed: [{ startLine: 0, endLineExclusive: 2 }],
           contentHash: stableHash.digest("alpha\nbeta"),
@@ -265,7 +292,7 @@ for (const [label, binarySection] of [
       updatedAt: occurredAt
     };
     const mapper = new GitContextRevisionMapper({
-      source: new ExistingBinaryRevisionSource(binarySection),
+      source: new ExistingBinaryRevisionSource(binarySection, binaryPath),
       stableHash,
       now: () => new Date(occurredAt)
     });

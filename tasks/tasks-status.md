@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 branch context resolver・Git状態監視 review follow-up
 - 次のタスク: なし
-- 実装状態: `T205-R3-P1`、`P2`、`P4`はSol/high fix verificationでclosed。`T205-R3-P3`はquoted binary pathでopenのまま、兄弟caseとしてHigh `T205-R4-P1`とMedium `T205-R4-P2`が見つかり、追加TDD修正待ち
-- ブロッカー: `T205-R3-P3` quoted Git binary pathでreviewed stateを保持、`T205-R4-P1` rename＋copy曖昧graphでfile ID衝突、`T205-R4-P2` `loadGlobal()`がactive operation追跡・repository owner直列化外。Issue #28は本筋外のnon-blocking held
+- 実装状態: `T205-R3-P1`、`P2`、`P4`はclosed。openだったHigh `T205-R3-P3`、High `T205-R4-P1`、Medium `T205-R4-P2`を追加Red test後に修正し、quoted binary path、曖昧rename/copy graph、Global load concurrencyへ対応。focused 20/20と各gateがpassし、Sol/high fix verification待ち
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。ほかのheld riskはnative Windowsのmixed-case Git tree path、実Git object prune、大規模repositoryのpolling負荷、Markdown lint基盤未整備
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -127,6 +127,7 @@
 - T205 R3レビューレポート: `reports/issue-1-t205-review-r3-20260801173000.md`
 - T205 R3 review follow-upレポート: `reports/issue-1-t205-review-followup-r3-20260801180000.md`
 - T205 R4 fix verificationレポート: `reports/issue-1-t205-review-r4-20260801190000.md`
+- T205 R4 review follow-upレポート: `reports/issue-1-t205-review-followup-r4-20260801193000.md`
 - T205独立最終レビューレポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -261,4 +262,4 @@
 
 ## 次回開始時の選択
 
-T205の`T205-R3-P1`、`P2`、`P4`はclosed。次回は`T205-R3-P3`のquoted binary pathをHighのまま再修正し、新規High `T205-R4-P1`の曖昧rename/copy graphとMedium `T205-R4-P2`のGlobal load concurrencyをRed testから修正する。Issue #28は本筋外として別追跡し、T206は開始しない。
+T205の`T205-R3-P3`、`T205-R4-P1`、`T205-R4-P2`はidentityとseverityを維持してTDD修正済み。次回は同じSol/high normal reviewerでfix verificationを実施する。Issue #28は本筋外として別追跡し、T206はT205の独立最終レビュー完了まで開始しない。

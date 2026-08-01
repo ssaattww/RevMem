@@ -35,6 +35,14 @@ export interface ParsedGitDiff {
   readonly files: readonly GitDiffFile[];
 }
 
+/** Decoded old and new repository-relative paths from one `diff --git` header. */
+export interface GitDiffHeaderPaths {
+  /** Repository-relative path on the old side of the header. */
+  readonly oldPath: string;
+  /** Repository-relative path on the new side of the header. */
+  readonly newPath: string;
+}
+
 /** Independent equivalence settings for whitespace and line-terminator changes. */
 export interface GitDiffMappingOptions {
   /** Preserve a replacement only when horizontal whitespace is the sole proven difference. */
@@ -161,6 +169,62 @@ function decodePath(raw: string, stripDiffPrefix: boolean): string | undefined {
   return stripDiffPrefix && (encoded.startsWith("a/") || encoded.startsWith("b/"))
     ? encoded.slice(2)
     : encoded;
+}
+
+const readHeaderPath = (
+  header: string,
+  start: number
+): { readonly raw: string; readonly next: number } => {
+  if (start >= header.length) {
+    throw new SyntaxError("Git diff header is missing a path.");
+  }
+  if (header[start] !== "\"") {
+    const end = header.indexOf(" ", start);
+    const next = end === -1 ? header.length : end;
+    return { raw: header.slice(start, next), next };
+  }
+
+  let index = start + 1;
+  while (index < header.length) {
+    const character = header[index];
+    if (character === "\\") {
+      index += 2;
+      continue;
+    }
+    if (character === "\"") {
+      return { raw: header.slice(start, index + 1), next: index + 1 };
+    }
+    index += 1;
+  }
+  throw new SyntaxError("Quoted Git path is unterminated.");
+};
+
+/**
+ * Decodes both paths in a Git `diff --git` header using the same quoted-path contract as diff metadata.
+ *
+ * @param header Complete header line beginning with `diff --git `.
+ * @returns Decoded repository-relative old and new paths.
+ * @throws When the header is malformed, quoted paths are invalid, or either path is `/dev/null`.
+ */
+export function parseGitDiffHeaderPaths(header: string): GitDiffHeaderPaths {
+  const prefix = "diff --git ";
+  if (!header.startsWith(prefix)) {
+    throw new SyntaxError("Git diff header must begin with diff --git.");
+  }
+  const oldToken = readHeaderPath(header, prefix.length);
+  if (header[oldToken.next] !== " ") {
+    throw new SyntaxError("Git diff header paths must be separated by one space.");
+  }
+  const newToken = readHeaderPath(header, oldToken.next + 1);
+  if (newToken.next !== header.length) {
+    throw new SyntaxError("Git diff header has trailing content.");
+  }
+  const oldPath = decodePath(oldToken.raw, true);
+  const newPath = decodePath(newToken.raw, true);
+  if (oldPath === undefined || newPath === undefined) {
+    throw new SyntaxError("Git diff header paths must not be /dev/null.");
+  }
+  return { oldPath, newPath };
 }
 
 function parseCoordinate(raw: string, count: number, side: string): number {

@@ -461,3 +461,59 @@ test("document routing distinguishes a renamed file from a new file at its old p
   );
   provider.dispose();
 });
+
+/** Ambiguous rename and copy destinations become separately routed unreviewed files. */
+test("document routing maps an ambiguous rename and copy graph without reusing its source ID", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/b.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/b.ts",
+    "diff --git a/src/a.ts b/src/c.ts",
+    "similarity index 100%",
+    "copy from src/a.ts",
+    "copy to src/c.ts",
+    ""
+  ].join("\n");
+  source.texts.clear();
+  source.texts.set(`${oldRevision}\0src/a.ts`, "original");
+  source.texts.set(`${newRevision}\0src/b.ts`, "original");
+  source.texts.set(`${newRevision}\0src/c.ts`, "original");
+  const provider = createProvider(stableHash, repository, inspector, source);
+
+  const original = await provider.open(
+    descriptor("src/a.ts", stableHash.digest("original"), 1)
+  );
+  await original.committer.commit(markReviewedRanges({
+    contextState: original.contextState,
+    globalState: original.globalState,
+    target: original.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+
+  inspector.head = newRevision;
+  const renamed = await provider.open(
+    descriptor("src/b.ts", stableHash.digest("original"), 1)
+  );
+  const copied = await provider.open(
+    descriptor("src/c.ts", stableHash.digest("original"), 1)
+  );
+
+  assert.notEqual(renamed.target.fileId, original.target.fileId);
+  assert.notEqual(copied.target.fileId, original.target.fileId);
+  assert.notEqual(renamed.target.fileId, copied.target.fileId);
+  assert.deepEqual(
+    renamed.contextState.files[renamed.target.fileId]?.modifiedReviewed,
+    []
+  );
+  assert.deepEqual(
+    copied.contextState.files[copied.target.fileId]?.modifiedReviewed,
+    []
+  );
+  provider.dispose();
+});

@@ -1,5 +1,7 @@
 export {
+  parseGitDiffHeaderPaths,
   parseZeroContextGitDiff,
+  type GitDiffHeaderPaths,
   type GitDiffFile,
   type GitDiffHunk,
   type GitDiffIntervalMappingInput,
