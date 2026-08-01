@@ -137,19 +137,40 @@ export class DiffEditorReviewCommandService<Editor> {
   public constructor(private readonly dependencies: DiffEditorReviewCommandDependencies<Editor>) {
     this.now = dependencies.now ?? (() => new Date());
   }
-  /** Marks the selected ranges on the focused original or modified side. */
+  /**
+   * Marks the selected ranges on the focused original or modified side.
+   * @returns `applied` only after an effective transaction commits and its history request completes; `no-op` for empty,
+   * non-deletion original, or semantically unchanged selections.
+   * @throws {Error} When the focused line count or pull-request identity does not match the opened session; commit and
+   * history-request rejections propagate after their respective boundary.
+   */
   public async markSelectionReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applySelectionOperation(editor, "mark");
   }
-  /** Removes review marks from the selected ranges on the focused side. */
+  /**
+   * Removes review marks from selected ranges on the focused original or modified side.
+   * @returns `applied` only after an effective commit and history request, or `no-op` when the selection changes no
+   * persisted range.
+   * @throws {Error} When the session line-count/PR identity preconditions fail; persistence and history failures are not swallowed.
+   */
   public async unmarkSelectionReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applySelectionOperation(editor, "unmark");
   }
-  /** Marks all modified lines and current original deletion lines after confirmation. */
+  /**
+   * Marks all modified lines and current original deletion lines after confirmation.
+   * @returns `cancelled` without opening state when confirmation is declined; otherwise `applied` after commit then
+   * history, or `no-op` when the resulting state is semantically unchanged.
+   * @throws {Error} When focused-side line counts, canonical PR identity, persistence, or history ordering cannot be satisfied.
+   */
   public async markFileReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applyWholeFileOperation(editor, "mark-file-reviewed");
   }
-  /** Clears all context, Global, and original diff ranges after confirmation. */
+  /**
+   * Clears all context, Global, and original diff ranges after confirmation.
+   * @returns `cancelled` before state access, `applied` after atomic commit then history, or `no-op` when no persisted
+   * file attribute changes.
+   * @throws {Error} When session preconditions fail or the commit/history boundary rejects; failures propagate to the caller.
+   */
   public async unmarkFileReviewed(editor: Editor): Promise<DiffEditorReviewCommandResult> {
     return this.applyWholeFileOperation(editor, "unmark-file-reviewed");
   }

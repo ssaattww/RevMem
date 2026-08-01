@@ -55,7 +55,12 @@ export class ReviewHistoryRecorder {
   /** Creates a recorder that appends only after the state transaction has committed. */
   public constructor(private readonly options: ReviewHistoryRecorderOptions) {}
 
-  /** Records the modified and, when applicable, original-side ranges changed by one committed transaction. */
+  /**
+   * Records the modified and, when applicable, original-side ranges changed by one already committed transaction.
+   * @returns A promise that resolves after every affected event is appended in modified-then-sorted-original order.
+   * @throws {Error} When the committed next state omits the affected file or an original transaction lacks its diff ID.
+   * Appender failures propagate; this method never hides a post-commit history failure.
+   */
   public async recordTransaction(transaction: Readonly<ReviewStateTransaction>, reason: string): Promise<void> {
     const nextContext = transaction.next.contextState;
     const nextFile = nextContext.files[transaction.fileId];
@@ -111,7 +116,11 @@ export class ReviewHistoryRecorder {
     for (const event of events) await this.options.appender.append(targetFor(nextContext), event);
   }
 
-  /** Appends the lifecycle event for a newly created review context. */
+  /**
+   * Appends the lifecycle event for a newly created review context.
+   * @returns A promise that resolves after the append succeeds.
+   * @throws {Error} When the context lacks the revision required by its kind or the appender rejects.
+   */
   public async recordContextCreated(contextState: Readonly<ReviewContextState>, reason = "context-initialized"): Promise<void> {
     await this.options.appender.append(targetFor(contextState), {
       schemaVersion: contextState.schemaVersion,
@@ -126,7 +135,11 @@ export class ReviewHistoryRecorder {
     });
   }
 
-  /** Appends context and per-file events for a revision mapping, including unresolved files. */
+  /**
+   * Appends context and per-file events for a revision mapping, including unresolved files.
+   * @returns A promise that resolves after the ordered lifecycle and file events append.
+   * @throws {Error} When the next context lacks its kind-specific revision or an append fails; failures propagate.
+   */
   public async recordRevisionMapping(
     previous: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
     next: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
@@ -162,7 +175,11 @@ export class ReviewHistoryRecorder {
     for (const event of events) await this.options.appender.append(targetFor(next.contextState), event);
   }
 
-  /** Appends the modified-side range transition caused by content invalidation. */
+  /**
+   * Appends the modified-side range transition caused by content invalidation.
+   * @returns A promise that resolves after the invalidation event is persisted.
+   * @throws {Error} When the history appender rejects; the persistence failure propagates to the caller.
+   */
   public async recordEditInvalidation(
     contextState: Readonly<ReviewContextState>,
     target: Readonly<ReviewStateFileTarget>,

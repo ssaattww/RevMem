@@ -39,7 +39,12 @@ export class ReviewDiffEditorController<Uri> {
   /** Creates a controller with the canonical URI codec and platform host boundary. */
   public constructor(private readonly codec: ReviewDiffUriCodec, private readonly host: ReviewDiffEditorHost<Uri>) {}
 
-  /** Opens the original/base URI first and modified/head URI second. */
+  /**
+   * Opens the original/base URI first and modified/head URI second.
+   * @returns A promise that resolves only after the host accepts both canonical immutable URIs in diff order.
+   * @throws {TypeError} When `input.title` is empty or whitespace-only before any codec or host call.
+   * @throws {Error} Codec validation, URI parsing, and host opening failures propagate unchanged so callers can surface them.
+   */
   public async openReviewDiff(input: OpenReviewDiffInput): Promise<void> {
     if (input.title.trim().length === 0) throw new TypeError("Diff editor title must be a non-empty string.");
     const descriptor = (side: "original" | "modified", value: ReviewDiffEditorSideInput): ReviewDiffDocumentDescriptor => ({

@@ -163,6 +163,33 @@ test("repeated whole-file operations with only a newer timestamp do not commit o
   assert.equal(history.length, 2);
 });
 
+test("repeated identical diff selection is a timestamp-only no-op without another repository commit or history append", async () => {
+  let state = session();
+  let timestamp = 0;
+  const committed: unknown[] = [];
+  const history: unknown[] = [];
+  const service = new DiffEditorReviewCommandService<FakeEditor>({
+    getSide: (editor) => editor.side,
+    getLineCount: (editor) => editor.lineCount,
+    getSelections: (editor) => editor.selections,
+    openSession: async () => ({ ...state, committer: { commit: async (transaction) => {
+      committed.push(transaction);
+      state = { ...state, contextState: transaction.next.contextState, globalState: transaction.next.globalState };
+    } } }),
+    confirmWholeFileOperation: async () => true,
+    requestHistory: async (transaction) => { history.push(transaction); },
+    now: () => new Date(Date.UTC(2026, 7, 1, 15, 0, timestamp++))
+  });
+  const editor = { side: "modified" as const, lineCount: 6, selections: [selection(2)] };
+
+  assert.equal(await service.markSelectionReviewed(editor), "applied");
+  assert.equal(committed.length, 1);
+  assert.equal(history.length, 1);
+  assert.equal(await service.markSelectionReviewed(editor), "no-op");
+  assert.equal(committed.length, 1);
+  assert.equal(history.length, 1);
+});
+
 test("diff command returns no-op for empty selection collection", async () => {
   let opened = false;
   const service = new DiffEditorReviewCommandService<{ side: "modified" }>({
