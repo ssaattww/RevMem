@@ -51,6 +51,24 @@ const toCandidate = (
   };
 };
 
+const nextPageUrl = (response: Response): URL | undefined => {
+  const link = response.headers.get("link");
+  if (link === null) {
+    return undefined;
+  }
+  for (const entry of link.split(",")) {
+    const match = /^\s*<([^>]+)>\s*;\s*rel="([^"]+)"\s*$/u.exec(entry);
+    if (match?.[2]?.split(/\s+/u).includes("next") === true) {
+      try {
+        return new URL(match[1]!);
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+};
+
 /** Searches GitHub without requiring authentication for public repositories. */
 export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPort {
   private readonly apiBaseUrl: string;
@@ -67,7 +85,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     repository: GitHubRepositoryIdentity,
     headSha: string
   ): Promise<GitHubPullRequestSearchResult> {
-    const url = new URL(
+    let url = new URL(
       `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/pulls`
     );
     url.searchParams.set("state", "open");
@@ -81,34 +99,46 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       headers.authorization = `Bearer ${this.token}`;
     }
 
-    let response: Response;
-    try {
-      response = await this.fetchImplementation(url, { headers });
-    } catch {
-      return { kind: "unavailable", reason: "network" };
+    const candidates: GitHubPullRequestCandidate[] = [];
+    const visited = new Set<string>();
+    while (!visited.has(url.toString())) {
+      visited.add(url.toString());
+      let response: Response;
+      try {
+        response = await this.fetchImplementation(url, { headers });
+      } catch {
+        return { kind: "unavailable", reason: "network" };
+      }
+
+      if (response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")) {
+        return { kind: "unavailable", reason: "rate-limit" };
+      }
+      if (!response.ok) {
+        return { kind: "unavailable", reason: "api" };
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        return { kind: "unavailable", reason: "api" };
+      }
+      if (!Array.isArray(payload)) {
+        return { kind: "unavailable", reason: "api" };
+      }
+
+      candidates.push(...payload
+        .map(value => toCandidate(value as GitHubPullRequestResponse, headSha))
+        .filter((value): value is GitHubPullRequestCandidate => value !== undefined));
+
+      const next = nextPageUrl(response);
+      if (next === undefined) {
+        break;
+      }
+      url = next;
     }
 
-    if (response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")) {
-      return { kind: "unavailable", reason: "rate-limit" };
-    }
-    if (!response.ok) {
-      return { kind: "unavailable", reason: "api" };
-    }
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      return { kind: "unavailable", reason: "api" };
-    }
-    if (!Array.isArray(payload)) {
-      return { kind: "unavailable", reason: "api" };
-    }
-
-    const candidates = payload
-      .map(value => toCandidate(value as GitHubPullRequestResponse, headSha))
-      .filter((value): value is GitHubPullRequestCandidate => value !== undefined)
-      .sort((left, right) => left.number - right.number);
+    candidates.sort((left, right) => left.number - right.number);
     return { kind: "found", candidates };
   }
 }
