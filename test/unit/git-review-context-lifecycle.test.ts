@@ -228,6 +228,63 @@ test("revision mapper preserves only unchanged reviewed lines after a commit", a
   assert.equal(result.contextState.files["file-1"]?.lineCount, 4);
 });
 
+/** Added files must use the same repository-scoped identity as normal document routing. */
+test("revision mapper assigns document-routing identity to an added file", async () => {
+  const source = new FakeRevisionSource();
+  source.diff = [
+    "diff --git a/src/new.ts b/src/new.ts",
+    "new file mode 100644",
+    "index 0000000..2222222",
+    "--- /dev/null",
+    "+++ b/src/new.ts",
+    "@@ -0,0 +1 @@",
+    "+value",
+    ""
+  ].join("\n");
+  source.texts.set(`${newRevision}\0src/new.ts`, "value");
+
+  const resolver = new GitReviewContextResolver({ stableHash });
+  const current = resolver.resolve(attached("refs/heads/main", newRevision));
+  const mapper = new GitContextRevisionMapper({
+    source,
+    stableHash,
+    now: () => new Date(occurredAt)
+  });
+  const emptyContext: ReviewContextState = {
+    ...branchState(current.contextId),
+    files: {}
+  };
+  const emptyGlobal: RepositoryGlobalState = {
+    ...globalState(),
+    files: {}
+  };
+
+  const result = await mapper.map({
+    current,
+    contextState: emptyContext,
+    globalState: emptyGlobal,
+    fileSystemPathSemantics: "posix",
+    options: {
+      ignoreWhitespaceChanges: false,
+      ignoreEolChanges: false
+    }
+  });
+
+  const expectedFileId = `repository-file:${stableHash.digest(
+    ["repository-file", repositoryId, "src/new.ts"].join("\0")
+  )}`;
+  assert.deepEqual(Object.keys(result.contextState.files), [expectedFileId]);
+  assert.deepEqual(Object.keys(result.globalState.files), [expectedFileId]);
+  assert.equal(
+    result.contextState.files[expectedFileId]?.currentPath,
+    "src/new.ts"
+  );
+  assert.deepEqual(
+    result.contextState.files[expectedFileId]?.modifiedReviewed,
+    []
+  );
+});
+
 /** Missing old objects must not cause stale reviewed ranges to be guessed as current. */
 test("revision mapper advances conservatively with empty reviewed ranges when old revision is unavailable", async () => {
   const source = new FakeRevisionSource();
