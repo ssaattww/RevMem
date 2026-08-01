@@ -7,11 +7,11 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T205 branch context resolver・Git状態監視
-- 現在のタスク: なし
-- 次のタスク: T206 JSON Linesイベント履歴
-- 実装状態: T205の全normal review findingはidentity/severityを維持してclosed。最終fix verificationは`f0db3df098c10e5fc0efc305afe7b38fe5acc63d`でpass_with_held、focused 32/32、T205 25/25、exact-head CI 2本と全configured gateがpass。独立最終レビュー用report pathを予約済み
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。VS Codeの既知warningはexit 0、Markdown lintはrepository wiring未整備でunsupported
+- 直近完了タスク: T302 仮想diff URIとrevision content provider
+- 現在のタスク: T205 independent review follow-up
+- 次のタスク: なし
+- 実装状態: normal review findingは全件closed。独立レビュー1回目はfrozen HEAD `571978e7aae4031a2b3ae8d9e1a4cb2aa902456e`にHigh `T205-IFR1-P1`と`T205-IFR1-P2`を検出してfail。ユーザー指定により独立レビューは最大2回で、TDD修正待ち
+- ブロッカー: `T205-IFR1-P1`新context初期化のloadGlobal→mapping→saveが非atomicで並行Global commitを消失、`T205-IFR1-P2`stale poll完了がforegroundの新HEADを上書き。Issue #28は本筋外non-blocking held
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -135,7 +135,8 @@
 - T205 R7 fix verificationレポート: `reports/issue-1-t205-review-r7-20260801224000.md`
 - T205 R7 review follow-upレポート: `reports/issue-1-t205-review-followup-r7-20260801231000.md`
 - T205 R8最終fix verificationレポート: `reports/issue-1-t205-review-r8-20260801234000.md`
-- T205独立最終レビューレポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
+- T205独立レビュー1回目レポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
+- T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -198,8 +199,8 @@
 | T202 | 完了 | L | 引数配列で実行するLocal Git Adapterを実装し、Git可否、root、remote正規化、Repository ID、branch完全ref、detached HEAD、HEAD、merge-base、object有無を取得する | T003 | shell文字列連結がなく、remote有無、fork、detached HEAD、Git未導入をfixtureで識別できる。Windowsを含む最新`main`上のfocused・Git・全回帰testと専用レビューが通る |
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
-| T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
-| T206 | 次 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
+| T205 | 進行中 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
+| T206 | 未着手 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
 | T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
@@ -269,4 +270,4 @@
 
 ## 次回開始時の選択
 
-T205は全normal review findingをclosedし、最終fix verificationをpass_with_heldで完了した。独立最終レビュー証跡は予約済みreportへattestationする。次回の実装タスクはP2を継続してT206だけを選択し、設計書15.4のJSON Linesイベントcontractを失敗するtestから開始する。Issue #28は本筋外として別追跡する。
+T205の独立レビュー1回目でHigh `T205-IFR1-P1`と`T205-IFR1-P2`が見つかった。次回はGlobal atomic create/CASとpoll/foreground observation generationをRed testから修正し、focused normal fix verification後、予約済みreportで独立レビュー2回目を最終回として実施する。Issue #28は本筋外として別追跡し、T206は開始しない。
