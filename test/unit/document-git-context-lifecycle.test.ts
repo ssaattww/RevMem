@@ -469,10 +469,10 @@ test("document routing excludes a binary rename while routing a new text file at
   const inspector = new MutableGitInspector();
   const source = new RevisionSource();
   source.diff = [
-    "diff --git a/src/a.ts b/src/b.bin",
+    "diff --git a/src/x b/y b/z.bin",
     "similarity index 100%",
-    "rename from src/a.ts",
-    "rename to src/b.bin",
+    "rename from src/x b/y",
+    "rename to z.bin",
     "GIT binary patch",
     "literal 10",
     "diff --git a/src/a.ts b/src/a.ts",
@@ -485,13 +485,13 @@ test("document routing excludes a binary rename while routing a new text file at
     ""
   ].join("\n");
   source.texts.clear();
-  source.texts.set(`${oldRevision}\0src/a.ts`, "original");
-  source.texts.set(`${newRevision}\0src/b.bin`, "binary\0data");
+  source.texts.set(`${oldRevision}\0src/x b/y`, "original");
+  source.texts.set(`${newRevision}\0z.bin`, "binary\0data");
   source.texts.set(`${newRevision}\0src/a.ts`, "replacement");
   const provider = createProvider(stableHash, repository, inspector, source);
 
   const original = await provider.open(
-    descriptor("src/a.ts", stableHash.digest("original"), 1)
+    descriptor("src/x b/y", stableHash.digest("original"), 1)
   );
   await original.committer.commit(markReviewedRanges({
     contextState: original.contextState,
@@ -513,13 +513,13 @@ test("document routing excludes a binary rename while routing a new text file at
   );
   assert.equal(
     Object.values(replacement.contextState.files).some(
-      (file) => file.currentPath === "src/b.bin"
+      (file) => file.currentPath === "z.bin"
     ),
     false
   );
   assert.equal(
     Object.values(replacement.globalState.files).some(
-      (file) => file.currentPath === "src/b.bin"
+      (file) => file.currentPath === "z.bin"
     ),
     false
   );

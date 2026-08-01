@@ -86,11 +86,13 @@ interface MutableFile {
   hasNewContentHeader: boolean;
   hasNewFileMode: boolean;
   hasDeletedFileMode: boolean;
+  hasAmbiguousHeaderPaths: boolean;
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const AMBIGUOUS_HEADER_PATHS = "Git diff header path boundary is ambiguous.";
 
 function assertBoolean(value: boolean, name: string): void {
   if (typeof value !== "boolean") {
@@ -201,14 +203,6 @@ const readHeaderPath = (
   throw new SyntaxError("Quoted Git path is unterminated.");
 };
 
-const commonPrefixLength = (left: string, right: string): number => {
-  let index = 0;
-  while (index < left.length && index < right.length && left[index] === right[index]) {
-    index += 1;
-  }
-  return index;
-};
-
 const readUnquotedHeaderPaths = (header: string, start: number): GitDiffHeaderPaths => {
   const candidates: GitDiffHeaderPaths[] = [];
   for (let separator = header.indexOf(" b/", start);
@@ -223,20 +217,18 @@ const readUnquotedHeaderPaths = (header: string, start: number): GitDiffHeaderPa
   if (candidates.length === 0) {
     throw new SyntaxError("Git diff header paths must contain a b/ destination.");
   }
-  return candidates.reduce((best, candidate) =>
-    commonPrefixLength(candidate.oldPath, candidate.newPath) >
-      commonPrefixLength(best.oldPath, best.newPath)
-      ? candidate
-      : best
-  );
+  if (candidates.length !== 1) {
+    throw new SyntaxError(AMBIGUOUS_HEADER_PATHS);
+  }
+  return candidates[0] as GitDiffHeaderPaths;
 };
 
 /**
  * Decodes both paths in a Git `diff --git` header using the same quoted-path contract as diff metadata.
  *
  * @param header Complete header line beginning with `diff --git `.
- * @returns Decoded repository-relative old and new paths.
- * @throws When the header is malformed, quoted paths are invalid, or either path is `/dev/null`.
+ * @returns Decoded repository-relative old and new paths when the unquoted boundary is unique.
+ * @throws When the header is malformed, its unquoted path boundary is ambiguous, quoted paths are invalid, or either path is `/dev/null`.
  */
 export function parseGitDiffHeaderPaths(header: string): GitDiffHeaderPaths {
   const prefix = "diff --git ";
@@ -309,7 +301,8 @@ function validateHunks(hunks: readonly GitDiffHunk[]): void {
  *
  * Coordinates are converted to zero-based, end-exclusive intervals; zero-count ranges retain
  * Git's anchor coordinate. Malformed, truncated, overlapping, or delta-inconsistent content is
- * rejected so callers never preserve reviewed state from an ambiguous diff.
+ * rejected so callers never preserve reviewed state from an ambiguous diff. Ambiguous unquoted
+ * header paths require complete rename or copy metadata to establish both paths.
  *
  * @param diff Complete Git diff text.
  * @returns Detached parsed metadata and hunks. Rename metadata is parse-only and is not applied.
@@ -326,16 +319,28 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
     if (line.startsWith("diff --git ")) {
-      const headerPaths = parseGitDiffHeaderPaths(line);
+      let headerPaths: GitDiffHeaderPaths | undefined;
+      let hasAmbiguousHeaderPaths = false;
+      try {
+        headerPaths = parseGitDiffHeaderPaths(line);
+      } catch (error) {
+        if (!(error instanceof SyntaxError) || error.message !== AMBIGUOUS_HEADER_PATHS) {
+          throw error;
+        }
+        hasAmbiguousHeaderPaths = true;
+      }
       currentFile = {
-        oldPath: headerPaths.oldPath,
-        newPath: headerPaths.newPath,
+        ...(headerPaths === undefined ? {} : {
+          oldPath: headerPaths.oldPath,
+          newPath: headerPaths.newPath
+        }),
         isRename: false,
         hunks: [],
         hasOldContentHeader: false,
         hasNewContentHeader: false,
         hasNewFileMode: false,
-        hasDeletedFileMode: false
+        hasDeletedFileMode: false,
+        hasAmbiguousHeaderPaths
       };
       files.push(currentFile);
       continue;
@@ -362,6 +367,14 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
     if (line.startsWith("rename to ")) {
       currentFile.newPath = decodePath(line.slice("rename to ".length), false);
       currentFile.isRename = true;
+      continue;
+    }
+    if (line.startsWith("copy from ")) {
+      currentFile.oldPath = decodePath(line.slice("copy from ".length), false);
+      continue;
+    }
+    if (line.startsWith("copy to ")) {
+      currentFile.newPath = decodePath(line.slice("copy to ".length), false);
       continue;
     }
     if (line.startsWith("--- ")) {
@@ -418,6 +431,12 @@ export function parseZeroContextGitDiff(diff: string): ParsedGitDiff {
   }
 
   for (const file of files) {
+    if (
+      file.hasAmbiguousHeaderPaths &&
+      (file.oldPath === undefined || file.newPath === undefined)
+    ) {
+      throw new SyntaxError(AMBIGUOUS_HEADER_PATHS);
+    }
     if (file.hasOldContentHeader !== file.hasNewContentHeader) {
       throw new SyntaxError("Diff content headers must occur as an old/new pair.");
     }

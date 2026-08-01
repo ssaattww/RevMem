@@ -92,11 +92,16 @@ const fileTransitionDiff = (diff: string): string => {
     if (!isBinaryDiffSection(section) || section.some((line) => line.startsWith("--- "))) {
       return section.join("\n");
     }
+    const isNewFile = section.some((line) => line.startsWith("new file mode "));
+    const isDeletedFile = section.some((line) => line.startsWith("deleted file mode "));
+    if (!isNewFile && !isDeletedFile) {
+      return section.join("\n");
+    }
     const headerPaths = parseGitDiffHeaderPaths(section[0] as string);
-    if (section.some((line) => line.startsWith("new file mode "))) {
+    if (isNewFile) {
       return [...section, "--- /dev/null", `+++ b/${headerPaths.newPath}`].join("\n");
     }
-    if (section.some((line) => line.startsWith("deleted file mode "))) {
+    if (isDeletedFile) {
       return [...section, `--- a/${headerPaths.oldPath}`, "+++ /dev/null"].join("\n");
     }
     return section.join("\n");
@@ -106,24 +111,28 @@ const fileTransitionDiff = (diff: string): string => {
 /** Returns binary-section destinations so only current binary paths are excluded from line review. */
 const binaryDestinationPaths = (diff: string): ReadonlySet<string> => {
   const paths = new Set<string>();
-  let headerPath: string | undefined;
-  let binary = false;
-  const addPath = (): void => {
-    if (binary && headerPath !== undefined) {
-      paths.add(headerPath);
-    }
-  };
-
+  const sections: string[][] = [];
   for (const line of diff.split(/\r?\n/u)) {
     if (line.startsWith("diff --git ")) {
-      addPath();
-      binary = false;
-      headerPath = parseGitDiffHeaderPaths(line).newPath;
-    } else if (line.startsWith("Binary files ") || line === "GIT binary patch") {
-      binary = true;
+      sections.push([line]);
+    } else if (sections.length > 0) {
+      sections.at(-1)?.push(line);
     }
   }
-  addPath();
+  const files = copyAwareParsedFiles(diff);
+  if (sections.length !== files.length) {
+    throw new SyntaxError("Git diff section count does not match parsed file metadata.");
+  }
+  for (const [index, section] of sections.entries()) {
+    if (!isBinaryDiffSection(section)) {
+      continue;
+    }
+    const destination = files[index]?.newPath;
+    if (destination === undefined) {
+      throw new SyntaxError("Git-declared binary section has no resolved destination path.");
+    }
+    paths.add(destination);
+  }
   return paths;
 };
 
