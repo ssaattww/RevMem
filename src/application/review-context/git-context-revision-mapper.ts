@@ -6,7 +6,9 @@ import {
 } from "../../core/contracts/index";
 import {
   applyGitFileStateTransitions,
+  mapReviewedIntervalsAcrossDiff,
   parseZeroContextGitDiff,
+  type GitDiffFile,
   type GitDiffMappingOptions,
   type GitNewFileStateInput
 } from "../../core/git-diff/index";
@@ -49,6 +51,13 @@ const requireFound = (
 const unique = (values: readonly (string | undefined)[]): string[] =>
   [...new Set(values.filter((value): value is string => value !== undefined))];
 
+const copyAwareParsedFiles = (diff: string): readonly GitDiffFile[] =>
+  parseZeroContextGitDiff(
+    diff
+      .replace(/^copy from /gmu, "rename from ")
+      .replace(/^copy to /gmu, "rename to ")
+  ).files;
+
 /** Maps complete context and Global snapshots between immutable Git revisions. */
 export class GitContextRevisionMapper {
   private readonly now: () => Date;
@@ -63,8 +72,9 @@ export class GitContextRevisionMapper {
   /**
    * Advances both persisted snapshots to `input.current.revisionId`.
    *
-   * Existing objects use T204 file-state transitions. When an old object is no
-   * longer available, surviving paths are retained only as unreviewed state.
+   * T204 applies rename/copy/add/delete transitions and T203 maps ordinary
+   * same-path modifications. When an old object is unavailable, surviving
+   * paths are retained only as unreviewed state.
    */
   public async map(
     input: GitContextRevisionMappingInput
@@ -165,6 +175,7 @@ export class GitContextRevisionMapper {
       oldRevision,
       newRevision
     );
+    const parsedFiles = parseZeroContextGitDiff(diff).files;
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
       oldRevision,
@@ -188,8 +199,19 @@ export class GitContextRevisionMapper {
       ...(oldTexts === undefined ? {} : { oldTexts }),
       newFiles
     });
-    return this.refreshMappedFiles(
+    const mapped = this.mapOrdinaryModifications(
+      files,
       transitioned.files,
+      parsedFiles,
+      diff,
+      newRevision,
+      occurredAt,
+      options,
+      oldTexts,
+      newFiles
+    );
+    return this.refreshMappedFiles(
+      mapped,
       newRevision,
       repositoryRoot,
       semantics,
@@ -213,33 +235,45 @@ export class GitContextRevisionMapper {
       return {};
     }
 
+    const oldExists = FULL_OBJECT_ID_PATTERN.test(oldRevision) &&
+      await this.options.source.objectExists(repositoryRoot, oldRevision);
+    if (!oldExists) {
+      return this.clearGlobalFiles(
+        files,
+        newRevision,
+        repositoryRoot,
+        semantics,
+        occurredAt
+      );
+    }
+
     const transitionInput: Record<string, FileReviewState> = {};
-    if (FULL_OBJECT_ID_PATTERN.test(oldRevision)) {
-      for (const file of Object.values(files)) {
-        const result = await this.options.source.readTextFileAtRevision(
-          repositoryRoot,
-          oldRevision,
-          file.currentPath,
-          semantics
-        );
-        if (result.kind !== "found") {
-          continue;
-        }
-        transitionInput[file.fileId] = {
-          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-          fileId: file.fileId,
-          currentPath: file.currentPath,
-          previousPaths: [],
-          revisionId: oldRevision,
-          modifiedReviewed: clone(file.reviewed),
-          originalReviewedByDiff: {},
-          ...(file.contentHash === undefined
-            ? { contentHash: this.digest(result.content) }
-            : { contentHash: file.contentHash }),
-          lineCount: lineCountOf(result.content),
-          updatedAt: file.updatedAt
-        };
+    const missingOldFiles: GlobalFileReviewState[] = [];
+    for (const file of Object.values(files)) {
+      const result = await this.options.source.readTextFileAtRevision(
+        repositoryRoot,
+        oldRevision,
+        file.currentPath,
+        semantics
+      );
+      if (result.kind !== "found") {
+        missingOldFiles.push(clone(file));
+        continue;
       }
+      transitionInput[file.fileId] = {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: file.fileId,
+        currentPath: file.currentPath,
+        previousPaths: [],
+        revisionId: oldRevision,
+        modifiedReviewed: clone(file.reviewed),
+        originalReviewedByDiff: {},
+        ...(file.contentHash === undefined
+          ? { contentHash: this.digest(result.content) }
+          : { contentHash: file.contentHash }),
+        lineCount: lineCountOf(result.content),
+        updatedAt: file.updatedAt
+      };
     }
 
     const mapped = await this.mapContextFiles(
@@ -251,7 +285,7 @@ export class GitContextRevisionMapper {
       options,
       occurredAt
     );
-    return Object.fromEntries(
+    const result: Record<string, GlobalFileReviewState> = Object.fromEntries(
       Object.values(mapped).map((file) => [
         file.fileId,
         {
@@ -264,6 +298,79 @@ export class GitContextRevisionMapper {
         }
       ])
     );
+    const conservative = await this.clearGlobalFiles(
+      Object.fromEntries(missingOldFiles.map((file) => [file.fileId, file])),
+      newRevision,
+      repositoryRoot,
+      semantics,
+      occurredAt
+    );
+    for (const [fileId, file] of Object.entries(conservative)) {
+      if (!(fileId in result)) {
+        result[fileId] = file;
+      }
+    }
+    return result;
+  }
+
+  private mapOrdinaryModifications(
+    previous: Readonly<Record<string, FileReviewState>>,
+    transitioned: Readonly<Record<string, FileReviewState>>,
+    parsedFiles: readonly GitDiffFile[],
+    diff: string,
+    newRevision: string,
+    occurredAt: string,
+    options: Readonly<GitDiffMappingOptions>,
+    oldTexts: Readonly<Record<string, string>> | undefined,
+    newFiles: Readonly<Record<string, GitNewFileStateInput>>
+  ): Record<string, FileReviewState> {
+    const next = clone(transitioned);
+    const previousByPath = new Map(
+      Object.values(previous).map((file) => [file.currentPath, file])
+    );
+    for (const file of parsedFiles) {
+      if (
+        file.isRename ||
+        file.hunks.length === 0 ||
+        file.oldPath === undefined ||
+        file.newPath === undefined ||
+        file.oldPath !== file.newPath
+      ) {
+        continue;
+      }
+      const prior = previousByPath.get(file.oldPath);
+      const current = prior === undefined ? undefined : next[prior.fileId];
+      if (prior === undefined || current === undefined) {
+        continue;
+      }
+      const metadata = newFiles[file.newPath];
+      const mapped = mapReviewedIntervalsAcrossDiff({
+        reviewed: prior.modifiedReviewed,
+        diff,
+        oldPath: file.oldPath,
+        newPath: file.newPath,
+        ...(oldTexts?.[file.oldPath] === undefined
+          ? {}
+          : { oldText: oldTexts[file.oldPath] }),
+        ...(metadata?.newText === undefined
+          ? {}
+          : { newText: metadata.newText }),
+        options
+      });
+      next[prior.fileId] = {
+        ...clone(current),
+        revisionId: newRevision,
+        modifiedReviewed: mapped.reviewed,
+        ...(metadata?.lineCount === undefined
+          ? {}
+          : { lineCount: metadata.lineCount }),
+        updatedAt: occurredAt,
+        ...(metadata?.contentHash === undefined
+          ? {}
+          : { contentHash: metadata.contentHash })
+      };
+    }
+    return next;
   }
 
   private async loadOldTextsWhenRequired(
@@ -299,12 +406,31 @@ export class GitContextRevisionMapper {
     repositoryRoot: string,
     semantics: FileSystemPathSemantics
   ): Promise<Record<string, GitNewFileStateInput>> {
-    const parsed = parseZeroContextGitDiff(diff);
+    const parsedFiles = parseZeroContextGitDiff(diff).files;
+    const copyAwareFiles = copyAwareParsedFiles(diff);
     const existingByPath = new Map(
       Object.values(existing).map((file) => [file.currentPath, file.fileId])
     );
+    const preservedDestinationIds = new Map<string, string>();
+    for (const file of parsedFiles) {
+      if (
+        file.oldPath !== undefined &&
+        file.newPath !== undefined &&
+        (file.isRename || file.oldPath === file.newPath)
+      ) {
+        const sourceId = existingByPath.get(file.oldPath);
+        if (sourceId !== undefined) {
+          preservedDestinationIds.set(file.newPath, sourceId);
+        }
+      }
+    }
+
     const result: Record<string, GitNewFileStateInput> = {};
-    for (const filePath of unique(parsed.files.map((file) => file.newPath))) {
+    const destinationPaths = unique([
+      ...parsedFiles.map((file) => file.newPath),
+      ...copyAwareFiles.map((file) => file.newPath)
+    ]);
+    for (const filePath of destinationPaths) {
       const textResult = await this.options.source.readTextFileAtRevision(
         repositoryRoot,
         newRevision,
@@ -313,7 +439,7 @@ export class GitContextRevisionMapper {
       );
       const content = requireFound(textResult, newRevision, filePath);
       result[filePath] = {
-        fileId: existingByPath.get(filePath) ?? this.createFileId(filePath),
+        fileId: preservedDestinationIds.get(filePath) ?? this.createFileId(filePath),
         lineCount: lineCountOf(content),
         contentHash: this.digest(content),
         newText: content
@@ -347,6 +473,36 @@ export class GitContextRevisionMapper {
       semantics,
       occurredAt
     );
+  }
+
+  private async clearGlobalFiles(
+    files: Readonly<Record<string, GlobalFileReviewState>>,
+    newRevision: string,
+    repositoryRoot: string,
+    semantics: FileSystemPathSemantics,
+    occurredAt: string
+  ): Promise<Record<string, GlobalFileReviewState>> {
+    const result: Record<string, GlobalFileReviewState> = {};
+    for (const file of Object.values(files)) {
+      const read = await this.options.source.readTextFileAtRevision(
+        repositoryRoot,
+        newRevision,
+        file.currentPath,
+        semantics
+      );
+      if (read.kind !== "found") {
+        continue;
+      }
+      result[file.fileId] = {
+        fileId: file.fileId,
+        currentPath: file.currentPath,
+        revisionId: newRevision,
+        reviewed: [],
+        contentHash: this.digest(read.content),
+        updatedAt: occurredAt
+      };
+    }
+    return result;
   }
 
   private async refreshMappedFiles(
