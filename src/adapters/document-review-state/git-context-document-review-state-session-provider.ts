@@ -244,7 +244,11 @@ export class GitContextDocumentReviewStateSessionProvider {
         }
       };
       try {
-        await this.options.repository.commit(transaction);
+        await (
+          this.options.repository as unknown as {
+            commit(value: Readonly<ReviewStateTransactionLike>): Promise<void>;
+          }
+        ).commit(transaction);
         return;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
