@@ -66,7 +66,7 @@ export class InMemoryNonGitSnapshotStorage implements NonGitSnapshotStorage {
   }
 
   public entries(): readonly (readonly [string, StoredSnapshot])[] {
-    return [...this.snapshots.entries()].map(([id, value]) => [id, this.get(id)!] as const);
+    return [...this.snapshots.keys()].map((id) => [id, this.get(id)!] as const);
   }
 
   public inspect(snapshotId: string): Buffer | undefined {
@@ -215,7 +215,7 @@ export class NonGitSnapshotTracker {
       }
     }
 
-    let remaining = [...this.storage.entries()].sort(
+    const remaining = [...this.storage.entries()].sort(
       ([leftId, left], [rightId, right]) => left.createdAt - right.createdAt || leftId.localeCompare(rightId),
     );
     let totalBytes = remaining.reduce((total, [, value]) => total + value.bytes.byteLength, 0);
