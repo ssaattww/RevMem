@@ -68,7 +68,8 @@ const fileState = (
 });
 
 const contextState = (
-  reviewed: readonly LineInterval[] = []
+  reviewed: readonly LineInterval[] = [],
+  originalReviewedByDiff?: Record<string, LineInterval[]>
 ): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   contextId: "context-1",
@@ -80,7 +81,9 @@ const contextState = (
     headRevision: "revision-1"
   },
   files: {
-    "file-1": fileState(reviewed)
+    "file-1": fileState(reviewed, originalReviewedByDiff === undefined
+      ? {}
+      : { originalReviewedByDiff })
   },
   createdAt: "2026-07-23T05:00:00.000Z",
   updatedAt: "2026-07-23T06:00:00.000Z"
@@ -110,6 +113,8 @@ interface HarnessOptions {
   readonly globalReviewed?: readonly LineInterval[];
   readonly confirmation?: boolean;
   readonly commitError?: Error;
+  readonly historyError?: Error;
+  readonly originalReviewedByDiff?: Record<string, LineInterval[]>;
 }
 
 const createHarness = (options: HarnessOptions = {}) => {
@@ -124,7 +129,7 @@ const createHarness = (options: HarnessOptions = {}) => {
     openSession: async (editor) => {
       openedSessions += 1;
       return {
-        contextState: contextState(options.contextReviewed),
+        contextState: contextState(options.contextReviewed, options.originalReviewedByDiff),
         globalState: globalState(options.globalReviewed),
         target: target(editor.lineCount),
         committer: {
@@ -143,6 +148,9 @@ const createHarness = (options: HarnessOptions = {}) => {
     },
     requestHistory: async (transaction) => {
       historyRequests.push(transaction as ReviewStateTransaction);
+      if (options.historyError !== undefined) {
+        throw options.historyError;
+      }
     },
     now: () => new Date(occurredAt)
   });
@@ -296,6 +304,23 @@ test("history is requested only after a successful state commit", async () => {
   assert.deepEqual(harness.historyRequests, []);
 });
 
+test("a history append rejection remains observable after the successful state commit", async () => {
+  const historyError = new Error("history append failed");
+  const harness = createHarness({ historyError });
+
+  await assert.rejects(
+    harness.service.markSelectionReviewed({
+      lineCount: 10,
+      selections: [selection(1, 0)]
+    }),
+    historyError
+  );
+
+  assert.equal(harness.commits.length, 1);
+  assert.equal(harness.historyRequests.length, 1);
+  assert.equal(harness.historyRequests[0], harness.commits[0]);
+});
+
 test("an empty editor selection collection is a no-op without state or history requests", async () => {
   const harness = createHarness();
 
@@ -309,4 +334,45 @@ test("an empty editor selection collection is a no-op without state or history r
   assert.deepEqual(harness.commits, []);
   assert.deepEqual(harness.historyRequests, []);
   assert.deepEqual(harness.confirmations, []);
+});
+
+test("repeated selection and whole-file operations with unchanged semantic state do not commit or record history", async () => {
+  const cases: ReadonlyArray<{
+    readonly operation: "markSelectionReviewed" | "unmarkSelectionReviewed" | "markFileReviewed" | "unmarkFileReviewed";
+    readonly contextReviewed: readonly LineInterval[];
+    readonly globalReviewed: readonly LineInterval[];
+    readonly originalReviewedByDiff?: Record<string, LineInterval[]>;
+  }> = [
+    {
+      operation: "markSelectionReviewed",
+      contextReviewed: [interval(0, 10)],
+      globalReviewed: [interval(0, 10)]
+    },
+    {
+      operation: "unmarkSelectionReviewed",
+      contextReviewed: [],
+      globalReviewed: []
+    },
+    {
+      operation: "markFileReviewed",
+      contextReviewed: [interval(0, 10)],
+      globalReviewed: [interval(0, 10)]
+    },
+    {
+      operation: "unmarkFileReviewed",
+      contextReviewed: [],
+      globalReviewed: [],
+      originalReviewedByDiff: {}
+    }
+  ];
+  for (const entry of cases) {
+    const harness = createHarness(entry);
+    const result = await harness.service[entry.operation]({
+      lineCount: 10,
+      selections: [selection(0, 0)]
+    });
+    assert.equal(result, "no-op", entry.operation);
+    assert.deepEqual(harness.commits, []);
+    assert.deepEqual(harness.historyRequests, []);
+  }
 });

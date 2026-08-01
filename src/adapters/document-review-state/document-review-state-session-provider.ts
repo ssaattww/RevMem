@@ -35,6 +35,7 @@ import {
   type ReviewStateFileTarget,
   type ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 
 /** Git ownership inspection needed by document routing. */
 export interface DocumentGitInspector {
@@ -113,6 +114,8 @@ export interface DocumentReviewStateSessionProviderOptions {
   readonly stableHash: StableHash;
   /** Optional UTC clock used for created and updated timestamps; the system clock is used when omitted. */
   readonly now?: () => Date;
+  /** Optional append-only recorder invoked after conservative edited-file invalidation commits. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
 }
 
 interface OwnedMapping {
@@ -569,6 +572,7 @@ export class DocumentReviewStateSessionProvider {
     if (commit === undefined) {
       commit = this.initialCommit(mapping);
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      await this.options.historyRecorder?.recordContextCreated(commit.contextState);
     } else {
       this.validateLoadedIdentity(commit, mapping);
       if (
@@ -641,6 +645,14 @@ export class DocumentReviewStateSessionProvider {
             globalState: next.globalState
           }
         });
+        if (contextStale) {
+          await this.options.historyRecorder?.recordEditInvalidation(
+            next.contextState,
+            mapping.target,
+            current.contextState.files[mapping.target.fileId]?.modifiedReviewed ?? [],
+            next.contextState.files[mapping.target.fileId]?.modifiedReviewed ?? []
+          );
+        }
         return next;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError)) {

@@ -8,6 +8,8 @@ export {
   StaleReviewStateError
 } from "./validated-file-system-review-state-repository";
 export { resolveReviewStateStorageRoute } from "./storage-router";
+/** Public append-only JSONL review-history adapter. */
+export { JsonlReviewHistoryStore } from "./jsonl-review-history-store";
 
 export type {
   DebouncedReviewStateRepositoryOptions,
@@ -16,6 +18,7 @@ export type {
 } from "./debounced-review-state-repository";
 export type {
   AtomicTextFileStore,
+  JsonlReviewHistoryStoreOptions,
   FileSystemReviewStateRepositoryOptions,
   PersistenceDeepReadonly,
   PersistenceFailureNotification,
@@ -33,5 +36,6 @@ export type {
   ReviewStateStorageUris,
   ReviewStateTransactionLike,
   ReviewStateTransactionSnapshotPair,
+  ReviewHistoryEventAppender,
   StorageUriLike
 } from "./contracts";

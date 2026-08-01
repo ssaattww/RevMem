@@ -21,6 +21,7 @@ import {
   type GitStateObserver,
   type ResolvedGitReviewContext
 } from "../../application/review-context/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
 import type { GitDiffMappingOptions } from "../../core/git-diff/index";
 import {
@@ -37,6 +38,8 @@ import type {
 /** T205 dependencies added around the existing routed/reconciled document provider. */
 export interface DocumentReviewStateSessionProviderOptions
 extends BaseDocumentReviewStateSessionProviderOptions {
+  /** Optional append-only recorder invoked only after context creation or revision mapping commits. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
   /** Optional explicit revision source; production normally reuses the Local Git inspector when it implements this port. */
   readonly gitRevisionSource?: GitRevisionMappingSource;
   /** Optional observation sink used by composition or tests to register inspected Git state. */
@@ -245,7 +248,8 @@ export class GitContextDocumentReviewStateSessionProvider {
         ) {
           return;
         }
-        const next = await this.mapCommit(current, commit, descriptor);
+        const mapped = await this.mapCommit(current, commit, descriptor);
+        const next = mapped.commit;
         const transaction: ReviewStateTransactionLike = {
           repositoryId: current.repositoryId,
           contextId: current.contextId,
@@ -263,6 +267,12 @@ export class GitContextDocumentReviewStateSessionProvider {
             commit(value: Readonly<ReviewStateTransactionLike>): Promise<void>;
           }
         ).commit(transaction);
+        await this.options.historyRecorder?.recordRevisionMapping(
+          { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
+          { contextState: clone(next.contextState), globalState: clone(next.globalState) },
+          mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
+          mapped.unresolvedFileIds
+        );
         return;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
@@ -313,7 +323,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     };
     const mapped =
       initial.globalState.currentRevisionId === current.revisionId
-        ? initial
+        ? { commit: initial, unresolvedFileIds: [] }
         : await this.mapCommit(current, initial, descriptor);
     if (isGlobalCreator(this.options.repository)) {
       await this.options.repository.create({
@@ -324,10 +334,11 @@ export class GitContextDocumentReviewStateSessionProvider {
           globalState: global === undefined ? undefined : clone(global)
         },
         next: {
-          contextState: clone(mapped.contextState),
-          globalState: clone(mapped.globalState)
+          contextState: clone(mapped.commit.contextState),
+          globalState: clone(mapped.commit.globalState)
         }
       });
+      await this.options.historyRecorder?.recordContextCreated(mapped.commit.contextState);
       return;
     }
     if (isGlobalLoader(this.options.repository)) {
@@ -335,14 +346,15 @@ export class GitContextDocumentReviewStateSessionProvider {
         "Owner-wide Global initialization requires atomic context creation support."
       );
     }
-    await this.options.repository.save(target, mapped);
+    await this.options.repository.save(target, mapped.commit);
+    await this.options.historyRecorder?.recordContextCreated(mapped.commit.contextState);
   }
 
   private async mapCommit(
     current: ResolvedGitReviewContext,
     commit: ReviewStateCommit,
     descriptor: DocumentEditorReviewDescriptor
-  ): Promise<ReviewStateCommit> {
+  ): Promise<{ readonly commit: ReviewStateCommit; readonly unresolvedFileIds: readonly string[] }> {
     if (this.mapper === undefined) {
       throw new Error(
         "Persisted Git state requires revision mapping, but no Git revision mapping source is available."
@@ -356,9 +368,12 @@ export class GitContextDocumentReviewStateSessionProvider {
       options: this.mappingOptions
     });
     return {
-      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-      contextState: clone(mapped.contextState),
-      globalState: clone(mapped.globalState)
+      commit: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: clone(mapped.contextState),
+        globalState: clone(mapped.globalState)
+      },
+      unresolvedFileIds: [...mapped.unresolvedFileIds]
     };
   }
 }

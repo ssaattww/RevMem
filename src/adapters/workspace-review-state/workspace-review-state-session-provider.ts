@@ -19,6 +19,7 @@ import type {
   ReviewStateFileTarget,
   ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
+import { ReviewHistoryRecorder } from "../../application/review-history/index";
 
 /** Document and workspace information collected by the VS Code UI adapter. */
 export interface WorkspaceEditorReviewDescriptor {
@@ -90,6 +91,8 @@ export interface WorkspaceReviewStateSessionProviderOptions {
   readonly repository: WorkspaceReviewStateRepository;
   /** Optional clock for initial and sanitization timestamps; wall-clock time is used when omitted. */
   readonly now?: () => Date;
+  /** Optional append-only recorder invoked after workspace initialization or stale-file invalidation persists. */
+  readonly historyRecorder?: ReviewHistoryRecorder;
 }
 
 const cloneValue = <T>(value: T): T =>
@@ -292,6 +295,7 @@ export class WorkspaceReviewStateSessionProvider {
         occurredAt
       );
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      await this.options.historyRecorder?.recordContextCreated(commit.contextState);
     } else {
       validateLoadedCommit(
         commit,
@@ -316,20 +320,33 @@ export class WorkspaceReviewStateSessionProvider {
     );
 
     if (contextFileIsStale || globalFileIsStale) {
+      const previousRanges = contextFile?.modifiedReviewed ?? [];
       commit = {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
           ...cloneValue(commit.contextState),
-          files: withoutKey(commit.contextState.files, mapping.fileTarget.fileId),
+          files: contextFileIsStale
+            ? withoutKey(commit.contextState.files, mapping.fileTarget.fileId)
+            : cloneValue(commit.contextState.files),
           updatedAt: occurredAt
         },
         globalState: {
           ...cloneValue(commit.globalState),
-          files: withoutKey(commit.globalState.files, mapping.fileTarget.fileId),
+          files: globalFileIsStale
+            ? withoutKey(commit.globalState.files, mapping.fileTarget.fileId)
+            : cloneValue(commit.globalState.files),
           updatedAt: occurredAt
         }
       };
       await this.options.repository.save(mapping.repositoryTarget, commit);
+      if (contextFileIsStale) {
+        await this.options.historyRecorder?.recordEditInvalidation(
+          commit.contextState,
+          mapping.fileTarget,
+          previousRanges,
+          commit.contextState.files[mapping.fileTarget.fileId]?.modifiedReviewed ?? []
+        );
+      }
     }
 
     return {

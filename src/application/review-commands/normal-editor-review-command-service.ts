@@ -74,6 +74,38 @@ export interface NormalEditorReviewCommandDependencies<Editor> {
 
 type SelectionOperation = "mark" | "unmark";
 
+const sameRanges = (
+  left: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+  right: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
+): boolean => left.length === right.length && left.every((range, index) =>
+  range.startLine === right[index]?.startLine &&
+  range.endLineExclusive === right[index]?.endLineExclusive
+);
+
+const sameOriginalRanges = (
+  left: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>,
+  right: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>
+): boolean => {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+    key === rightKeys[index] && sameRanges(left[key] ?? [], right[key] ?? [])
+  );
+};
+
+const hasSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boolean => {
+  const expectedContext = transaction.expected.contextState.files[transaction.fileId];
+  const nextContext = transaction.next.contextState.files[transaction.fileId];
+  const expectedGlobal = transaction.expected.globalState.files[transaction.fileId];
+  const nextGlobal = transaction.next.globalState.files[transaction.fileId];
+  return !sameRanges(expectedContext?.modifiedReviewed ?? [], nextContext?.modifiedReviewed ?? []) ||
+    !sameRanges(expectedGlobal?.reviewed ?? [], nextGlobal?.reviewed ?? []) ||
+    !sameOriginalRanges(
+      expectedContext?.originalReviewedByDiff ?? {},
+      nextContext?.originalReviewedByDiff ?? {}
+    );
+};
+
 /**
  * Connects normal-editor selections and whole-file actions to Review State Service.
  *
@@ -145,6 +177,9 @@ export class NormalEditorReviewCommandService<Editor> {
       ? markReviewedRanges(input)
       : unmarkReviewedRanges(input);
 
+    if (!hasSemanticChange(transaction)) {
+      return "no-op";
+    }
     await this.commitAndRequestHistory(transaction, session.committer);
     return "applied";
   }
@@ -170,6 +205,9 @@ export class NormalEditorReviewCommandService<Editor> {
       ? markFileReviewed(input)
       : unmarkFileReviewed(input);
 
+    if (!hasSemanticChange(transaction)) {
+      return "no-op";
+    }
     await this.commitAndRequestHistory(transaction, session.committer);
     return "applied";
   }

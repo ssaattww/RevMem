@@ -112,6 +112,8 @@ export interface GitContextRevisionMappingResult {
   readonly contextState: ReviewContextState;
   /** Global state advanced to the current resolved revision. */
   readonly globalState: RepositoryGlobalState;
+  /** File identities whose prior review evidence was conservatively invalidated without a proven mapping. */
+  readonly unresolvedFileIds: readonly string[];
 }
 
 /** Constructor dependencies for the revision mapper. */

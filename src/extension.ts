@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { randomUUID } from "node:crypto";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import {
@@ -11,7 +12,8 @@ import {
 } from "./adapters/local-git/index";
 import {
   DebouncedReviewStateRepository,
-  FileSystemReviewStateRepository
+  FileSystemReviewStateRepository,
+  JsonlReviewHistoryStore
 } from "./adapters/state-repository/index";
 import { WorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
 import {
@@ -20,6 +22,7 @@ import {
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "./application/review-commands/index";
+import { ReviewHistoryRecorder } from "./application/review-history/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
@@ -209,15 +212,27 @@ export function activate(
   const repository = new DebouncedReviewStateRepository({
     delegate: atomicRepository
   });
+  const historyRecorder = new ReviewHistoryRecorder({
+    sessionId: randomUUID(),
+    createEventId: randomUUID,
+    appender: new JsonlReviewHistoryStore({
+      storageUris: {
+        globalStorageUri: context.globalStorageUri,
+        storageUri: context.storageUri
+      }
+    })
+  });
   const workspaceSessionProvider = new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
-    repository
+    repository,
+    historyRecorder
   });
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
     gitInspector: createNodeLocalGitAdapter(),
     repository,
     workspaceProvider: workspaceSessionProvider,
-    stableHash
+    stableHash,
+    historyRecorder
   });
   const appliedDecorations = new Map<
     vscode.TextEditor,
@@ -376,10 +391,13 @@ export function activate(
       );
       return result === UNMARK_FILE_CONFIRMATION;
     },
-    requestHistory: () => {
-      // T206 connects the append-only history store. The request boundary is already
-      // ordered after the atomic state commit by NormalEditorReviewCommandService.
-    }
+    requestHistory: (transaction) => historyRecorder.recordTransaction(
+      transaction,
+      transaction.operation === "mark-ranges-reviewed" ||
+        transaction.operation === "unmark-ranges-reviewed"
+        ? "user-selection"
+        : "user-file"
+    )
   });
   const host: NormalEditorCommandHost<vscode.TextEditor> = {
     getActiveEditor: () => vscode.window.activeTextEditor,

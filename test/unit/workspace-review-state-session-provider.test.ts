@@ -13,11 +13,13 @@ import type {
   ReviewStateTransactionLike
 } from "../../src/adapters/state-repository/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type FileReviewState,
   type GlobalFileReviewState,
-  type LineInterval
+  type LineInterval,
+  type ReviewHistoryEvent
 } from "../../src/core/contracts/index";
 
 const now = "2026-07-23T06:45:00.000Z";
@@ -81,12 +83,29 @@ class FakeRepository implements WorkspaceReviewStateRepository {
   }
 }
 
-const createProvider = (repository: FakeRepository) =>
+const createProvider = (
+  repository: FakeRepository,
+  historyRecorder?: ReviewHistoryRecorder
+) =>
   new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(new NodeSha256StableHash()),
     repository,
-    now: () => new Date(now)
+    now: () => new Date(now),
+    historyRecorder
   });
+
+const createHistoryRecorder = (events: ReviewHistoryEvent[]) => {
+  let nextEvent = 1;
+  return new ReviewHistoryRecorder({
+    sessionId: "workspace-test-session",
+    createEventId: () => `workspace-event-${nextEvent++}`,
+    appender: {
+      append: async (_target, event) => {
+        events.push(event);
+      }
+    }
+  });
+};
 
 test("open initializes one workspace context and returns a committable mapped session", async () => {
   const repository = new FakeRepository();
@@ -194,8 +213,10 @@ test("open preserves mapped ranges when the current content hash is unchanged", 
 
 test("open removes only the current file from context and Global when content changed", async () => {
   const repository = new FakeRepository();
-  const provider = createProvider(repository);
+  const events: ReviewHistoryEvent[] = [];
+  const provider = createProvider(repository, createHistoryRecorder(events));
   const initial = await provider.open(descriptor());
+  events.length = 0;
   const fileId = initial.target.fileId;
   const revisionId = initial.target.revisionId;
   const otherFileId = "workspace-file:other";
@@ -238,6 +259,8 @@ test("open removes only the current file from context and Global when content ch
   assert.equal(repository.saves.length, 1);
   assert.equal(session.contextState.files[fileId], undefined);
   assert.equal(session.globalState.files[fileId], undefined);
+  assert.equal(repository.current?.contextState.files[fileId], undefined);
+  assert.equal(repository.current?.globalState.files[fileId], undefined);
   assert.deepEqual(
     session.contextState.files[otherFileId]!.modifiedReviewed,
     [interval(0, 2)]
@@ -249,6 +272,99 @@ test("open removes only the current file from context and Global when content ch
   assert.equal(session.target.contentHash, "hash-new");
   assert.equal(session.contextState.updatedAt, now);
   assert.equal(session.globalState.updatedAt, now);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.type, "invalidated-by-edit");
+  assert.deepEqual(events[0]?.previousRanges, [interval(0, 6)]);
+  assert.deepEqual(events[0]?.nextRanges, []);
+});
+
+test("open records context ranges when only the Context file is stale", async () => {
+  const repository = new FakeRepository();
+  const events: ReviewHistoryEvent[] = [];
+  const provider = createProvider(repository, createHistoryRecorder(events));
+  const initial = await provider.open(descriptor());
+  events.length = 0;
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-old", [interval(0, 6)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    }
+  };
+
+  const session = await provider.open(descriptor());
+
+  assert.equal(session.contextState.files[fileId], undefined);
+  assert.deepEqual(session.globalState.files[fileId]?.reviewed, [interval(1, 3)]);
+  assert.equal(repository.current?.contextState.files[fileId], undefined);
+  assert.deepEqual(
+    repository.current?.globalState.files[fileId]?.reviewed,
+    [interval(1, 3)]
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.type, "invalidated-by-edit");
+  assert.deepEqual(events[0]?.previousRanges, [interval(0, 6)]);
+  assert.deepEqual(events[0]?.nextRanges, []);
+});
+
+test("open appends no Context history event when only the Global file is stale", async () => {
+  const repository = new FakeRepository();
+  const events: ReviewHistoryEvent[] = [];
+  const provider = createProvider(repository, createHistoryRecorder(events));
+  const initial = await provider.open(descriptor());
+  events.length = 0;
+  const fileId = initial.target.fileId;
+  const revisionId = initial.target.revisionId;
+
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...clone(initial.contextState),
+      files: {
+        [fileId]: {
+          ...contextFile(fileId, "src/example.ts", "hash-1", [interval(1, 3)]),
+          revisionId
+        }
+      }
+    },
+    globalState: {
+      ...clone(initial.globalState),
+      files: {
+        [fileId]: {
+          ...globalFile(fileId, "src/example.ts", "hash-old", [interval(0, 6)]),
+          revisionId
+        }
+      }
+    }
+  };
+
+  const session = await provider.open(descriptor());
+
+  assert.deepEqual(events, []);
+  assert.deepEqual(session.contextState.files[fileId]?.modifiedReviewed, [interval(1, 3)]);
+  assert.equal(session.globalState.files[fileId], undefined);
+  assert.deepEqual(
+    repository.current?.contextState.files[fileId]?.modifiedReviewed,
+    [interval(1, 3)]
+  );
+  assert.equal(repository.current?.globalState.files[fileId], undefined);
 });
 
 test("loadForDecoration keeps Context state when only the Global file is stale", async () => {

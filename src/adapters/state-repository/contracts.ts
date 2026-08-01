@@ -1,5 +1,6 @@
 import type {
   RepositoryGlobalState,
+  ReviewHistoryEvent,
   ReviewContextState,
   SchemaVersion
 } from "../../core/contracts/index";
@@ -175,6 +176,20 @@ export interface AtomicTextFileStore {
    * @throws Rejects when directory creation, temporary writing, flushing, replacement, or cleanup cannot complete.
    */
   writeTextAtomically(filePath: string, content: string): Promise<void>;
+}
+
+/** Append-only persistence boundary for one validated review-history event. */
+export interface ReviewHistoryEventAppender {
+  /** Appends one event only after its related state transition has committed. */
+  append(target: ReviewStateRepositoryTarget, event: ReviewHistoryEvent): Promise<void>;
+}
+
+/** Constructor inputs for the JSONL history adapter. */
+export interface JsonlReviewHistoryStoreOptions {
+  /** VS Code-compatible storage locations reused through the common storage router. */
+  readonly storageUris: ReviewStateStorageUris;
+  /** Optional atomic text implementation for deterministic tests. */
+  readonly atomicFileStore?: AtomicTextFileStore;
 }
 
 /** Persistence phase surfaced to the UI/application notification adapter. */
