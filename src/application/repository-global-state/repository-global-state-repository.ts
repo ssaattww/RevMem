@@ -1,8 +1,4 @@
-import type {
-  FileReviewState,
-  GlobalFileReviewState,
-  LineInterval
-} from "../../core/contracts/index";
+import type { LineInterval } from "../../core/contracts/index";
 import {
   commitReviewStateTransaction,
   markFileReviewed,
@@ -54,6 +50,11 @@ export type RepositoryGlobalStateMutationResult =
       readonly transaction: ReviewStateTransaction;
     };
 
+type ContextFileSnapshot =
+  ReviewStateTransaction["expected"]["contextState"]["files"][string];
+type GlobalFileSnapshot =
+  ReviewStateTransaction["expected"]["globalState"]["files"][string];
+
 const sameRanges = (
   left: readonly LineInterval[],
   right: readonly LineInterval[]
@@ -81,8 +82,8 @@ const sameStrings = (
 );
 
 const sameContextFileState = (
-  left: Readonly<FileReviewState> | undefined,
-  right: Readonly<FileReviewState> | undefined
+  left: ContextFileSnapshot | undefined,
+  right: ContextFileSnapshot | undefined
 ): boolean => {
   if (left === undefined || right === undefined) {
     return left === right;
@@ -100,8 +101,8 @@ const sameContextFileState = (
 };
 
 const sameGlobalFileState = (
-  left: Readonly<GlobalFileReviewState> | undefined,
-  right: Readonly<GlobalFileReviewState> | undefined
+  left: GlobalFileSnapshot | undefined,
+  right: GlobalFileSnapshot | undefined
 ): boolean => {
   if (left === undefined || right === undefined) {
     return left === right;
