@@ -43,8 +43,12 @@ const targetFor = (state: Readonly<{
 
 const typeForOperation = (operation: ReviewStateTransaction["operation"]): ReviewHistoryEventType => {
   switch (operation) {
-    case "mark-ranges-reviewed": return "marked-reviewed";
-    case "unmark-ranges-reviewed": return "unmarked-reviewed";
+    case "mark-ranges-reviewed":
+    case "mark-original-ranges-reviewed":
+      return "marked-reviewed";
+    case "unmark-ranges-reviewed":
+    case "unmark-original-ranges-reviewed":
+      return "unmarked-reviewed";
     case "mark-file-reviewed": return "marked-file-reviewed";
     case "unmark-file-reviewed": return "unmarked-file-reviewed";
   }
@@ -65,6 +69,16 @@ export class ReviewHistoryRecorder {
       throw new Error("Committed review-state transaction must retain its affected file for history.");
     }
     const previousFile = transaction.expected.contextState.files[transaction.fileId];
+    const isOriginal = transaction.side === "original";
+    if (isOriginal && transaction.diffId === undefined) {
+      throw new Error("Original-side review transaction must include a diff identity for history.");
+    }
+    const previousRanges = isOriginal
+      ? previousFile?.originalReviewedByDiff[transaction.diffId!] ?? []
+      : previousFile?.modifiedReviewed ?? [];
+    const nextRanges = isOriginal
+      ? nextFile.originalReviewedByDiff[transaction.diffId!] ?? []
+      : nextFile.modifiedReviewed;
     const event: ReviewHistoryEvent = {
       schemaVersion: nextContext.schemaVersion,
       eventId: this.options.createEventId(),
@@ -76,9 +90,9 @@ export class ReviewHistoryRecorder {
       type: typeForOperation(transaction.operation),
       reason,
       filePath: nextFile.currentPath,
-      diffSide: "modified",
-      previousRanges: (previousFile?.modifiedReviewed ?? []).map((range) => ({ ...range })),
-      nextRanges: nextFile.modifiedReviewed.map((range) => ({ ...range }))
+      diffSide: isOriginal ? "original" : "modified",
+      previousRanges: previousRanges.map((range) => ({ ...range })),
+      nextRanges: nextRanges.map((range) => ({ ...range }))
     };
     await this.options.appender.append(targetFor(nextContext), event);
   }
