@@ -120,6 +120,10 @@ Lを超える見込みになった場合は再分解する。
 
 GitHub接続を追加しつつ、認証・network・API障害がローカルレビューを停止させない構成にする。
 
+### 現在の進捗
+
+- T401はPR #31で実装・通常reviewを完了した。独立reviewの`T401-IFR2-P1`〜`P7`に対して、configured Enterprise authorityへのtoken binding、T202 canonical remote identity共有、malformed/cyclic paginationのunavailable分類、network/API/shapeからbranch fallbackまでの受入matrix、public barrel consumer fixture、tracking同期を一括で実装した。closure reviewと修正HEADのCI成功を待つ。
+
 ### 終了チェックポイント
 
 - 認証sessionまたはpublic APIでPRを検出する

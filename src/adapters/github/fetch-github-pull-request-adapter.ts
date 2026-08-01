@@ -25,10 +25,16 @@ export interface FetchGitHubPullRequestAdapterOptions {
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
+const isResponseObject = (value: unknown): value is GitHubPullRequestResponse =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
 const toCandidate = (
-  value: GitHubPullRequestResponse,
+  value: unknown,
   expectedHead: string
-): GitHubPullRequestCandidate | undefined => {
+): GitHubPullRequestCandidate | undefined | "malformed" => {
+  if (!isResponseObject(value)) {
+    return "malformed";
+  }
   if (
     typeof value.number !== "number" ||
     !Number.isSafeInteger(value.number) ||
@@ -39,6 +45,19 @@ const toCandidate = (
     !isString(value.base?.sha) ||
     value.head.sha !== expectedHead
   ) {
+    if (
+      typeof value.number !== "number" ||
+      !Number.isSafeInteger(value.number) ||
+      !isString(value.title) ||
+      !isString(value.html_url) ||
+      !isResponseObject(value.head) ||
+      !isString(value.head.sha) ||
+      !isResponseObject(value.base) ||
+      !isString(value.base.ref) ||
+      !isString(value.base.sha)
+    ) {
+      return "malformed";
+    }
     return undefined;
   }
   return {
@@ -127,7 +146,10 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
 
     const candidates: GitHubPullRequestCandidate[] = [];
     const visited = new Set<string>();
-    while (!visited.has(url.toString())) {
+    while (true) {
+      if (visited.has(url.toString())) {
+        return { kind: "unavailable", reason: "api" };
+      }
       visited.add(url.toString());
       let response: Response;
       try {
@@ -153,9 +175,17 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
         return { kind: "unavailable", reason: "api" };
       }
 
-      candidates.push(...payload
-        .map(value => toCandidate(value as GitHubPullRequestResponse, headSha))
-        .filter((value): value is GitHubPullRequestCandidate => value !== undefined));
+      const pageCandidates: GitHubPullRequestCandidate[] = [];
+      for (const value of payload) {
+        const candidate = toCandidate(value, headSha);
+        if (candidate === "malformed") {
+          return { kind: "unavailable", reason: "api" };
+        }
+        if (candidate !== undefined) {
+          pageCandidates.push(candidate);
+        }
+      }
+      candidates.push(...pageCandidates);
 
       const next = nextPageUrl(response, url, collectionUrl);
       if (next.kind === "invalid") {

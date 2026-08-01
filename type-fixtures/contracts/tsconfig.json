@@ -13,6 +13,7 @@
   },
   "include": [
     "review-contracts.fixture.ts",
-    "t302-diff-document.fixture.ts"
+    "t302-diff-document.fixture.ts",
+    "t401-github-pr-context.fixture.ts"
   ]
 }

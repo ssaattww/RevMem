@@ -1,6 +1,6 @@
 /** Repository identity parsed from a Git remote URL. */
 export interface GitHubRepositoryIdentity {
-  /** GitHub or GitHub Enterprise host name. */
+  /** Canonical GitHub or Enterprise HTTPS authority, including a non-default port. */
   readonly host: string;
   /** Repository owner login or organization. */
   readonly owner: string;
