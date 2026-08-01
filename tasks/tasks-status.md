@@ -8,13 +8,13 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
 - 直近完了タスク: T205 branch context resolver・Git状態監視
-- 現在のタスク: T206 JSON Linesイベント履歴
+- 現在のタスク: なし
 - 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: `T206-IFR-R3`のworkspace Global-only stale siblingをTDD修正済み。Context/Global除去を各flagで独立化し、T206 focused 25/25と静的検証は成功。既存通常reviewerのR3最終確認待ちで、独立レビューは再実施しない
-- ブロッカー: 通常reviewerによる`T206-IFR-R3`最終fix verification。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
+- 実装状態: T206は通常finding 3件と独立review finding 3件を全件closed。独立reviewはユーザー指定どおり1回で終了し、修正後は既存normal reviewerが最終`pass_with_held`を確認。実装HEAD `e00ff752407c2cdca017a92153114c320eec9522`のCIは全gate成功
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t206-jsonl-history`
-- Pull Request: 未作成
-- PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名の最大2 reviewerによるreview証跡を1つのPRへ反映する。独立レビューで指摘が出た場合は修正と通常reviewerの確認まで行い、独立レビューは再実施しない。mergeは利用者が行う
+- Pull Request: #29
+- PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名のreview証跡をPR #29へ反映した。独立reviewは1回で終了し、指摘修正後はnormal reviewer確認のみ実施。mergeは利用者が行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -152,6 +152,7 @@
 - T206独立review follow-upレポート: `reports/issue-1-t206-independent-review-followup-20260801235500.md`
 - T206独立finding fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-20260802002000.md`
 - T206独立review follow-up R2レポート: `reports/issue-1-t206-independent-review-followup-r2-20260802003500.md`
+- T206独立finding最終fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-r2-20260802005000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -215,8 +216,8 @@
 | T203 | 完了 | L | `--unified=0 --find-renames`のdiff parserとrevision間interval mappingを実装し、hunk前後・重複・追加・削除と空白・EOL無視設定を処理する | T201、T202 | 連続commitと複数hunkで未変更行を維持し変更行だけを解除する。空白・EOLは既定値`false`で変更扱い、設定`true`でのみ無視される。AC-07、AC-08を満たす |
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
-| T206 | 進行中 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
-| T207 | 未着手 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
+| T206 | 完了 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
+| T207 | 次 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
 
@@ -285,4 +286,4 @@
 
 ## 次回開始時の選択
 
-T206の独立reviewは1回で終了し、3件のfindingを検出した。次は`T206-IFR-R1`〜`R3`を修正し、既存の通常reviewerが確認する。独立reviewは再実施しない。T206完了後は新しいtask lifecycleでT207を開始する。
+T206は独立reviewを1回で終了し、指摘修正後のnormal fix verificationで全findingをclosedした。PR #29を提出済み。次回は新しいtask lifecycleでP2のT207だけを選択する。
