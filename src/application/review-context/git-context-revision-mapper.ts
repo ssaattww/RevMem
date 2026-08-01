@@ -87,6 +87,7 @@ export class GitContextRevisionMapper {
 
     const contextFiles = await this.mapContextFiles(
       input.contextState.files,
+      input.current.repositoryId,
       oldContextRevision,
       newRevision,
       input.current.repositoryRoot,
@@ -96,6 +97,7 @@ export class GitContextRevisionMapper {
     );
     const globalFiles = await this.mapGlobalFiles(
       input.globalState.files,
+      input.current.repositoryId,
       oldGlobalRevision,
       newRevision,
       input.current.repositoryRoot,
@@ -145,6 +147,7 @@ export class GitContextRevisionMapper {
 
   private async mapContextFiles(
     files: Readonly<Record<string, FileReviewState>>,
+    repositoryId: string,
     oldRevision: string,
     newRevision: string,
     repositoryRoot: string,
@@ -186,6 +189,7 @@ export class GitContextRevisionMapper {
     const newFiles = await this.loadNewFileMetadata(
       diff,
       files,
+      repositoryId,
       newRevision,
       repositoryRoot,
       semantics
@@ -221,6 +225,7 @@ export class GitContextRevisionMapper {
 
   private async mapGlobalFiles(
     files: Readonly<Record<string, GlobalFileReviewState>>,
+    repositoryId: string,
     oldRevision: string,
     newRevision: string,
     repositoryRoot: string,
@@ -278,6 +283,7 @@ export class GitContextRevisionMapper {
 
     const mapped = await this.mapContextFiles(
       transitionInput,
+      repositoryId,
       oldRevision,
       newRevision,
       repositoryRoot,
@@ -402,6 +408,7 @@ export class GitContextRevisionMapper {
   private async loadNewFileMetadata(
     diff: string,
     existing: Readonly<Record<string, FileReviewState>>,
+    repositoryId: string,
     newRevision: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics
@@ -439,7 +446,8 @@ export class GitContextRevisionMapper {
       );
       const content = requireFound(textResult, newRevision, filePath);
       result[filePath] = {
-        fileId: preservedDestinationIds.get(filePath) ?? this.createFileId(filePath),
+        fileId: preservedDestinationIds.get(filePath) ??
+          this.createFileId(repositoryId, filePath),
         lineCount: lineCountOf(content),
         contentHash: this.digest(content),
         newText: content
@@ -535,8 +543,10 @@ export class GitContextRevisionMapper {
     return refreshed;
   }
 
-  private createFileId(filePath: string): string {
-    return `repository-file:${this.digest(`repository-file\0${filePath}`)}`;
+  private createFileId(repositoryId: string, filePath: string): string {
+    return `repository-file:${this.digest(
+      ["repository-file", repositoryId, filePath].join("\0")
+    )}`;
   }
 
   private digest(content: string): string {
