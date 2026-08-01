@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 independent review follow-up
 - 次のタスク: なし
-- 実装状態: normal review findingは全件closed。独立レビュー1回目はfrozen HEAD `571978e7aae4031a2b3ae8d9e1a4cb2aa902456e`にHigh `T205-IFR1-P1`と`T205-IFR1-P2`を検出してfail。ユーザー指定により独立レビューは最大2回で、TDD修正待ち
-- ブロッカー: `T205-IFR1-P1`新context初期化のloadGlobal→mapping→saveが非atomicで並行Global commitを消失、`T205-IFR1-P2`stale poll完了がforegroundの新HEADを上書き。Issue #28は本筋外non-blocking held
+- 実装状態: 独立レビュー1回目のHigh `T205-IFR1-P1`と`T205-IFR1-P2`を設計更新後にTDD修正。atomic new-context create/CASと最新Global再planning、root generationとretry前Git freshnessを実装。focused 3/3、T205 28/28、全configured gateがpassし、Sol/high normal fix verification待ち
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。VS Code環境warningはexit 0、Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -136,6 +136,10 @@
 - T205 R7 review follow-upレポート: `reports/issue-1-t205-review-followup-r7-20260801231000.md`
 - T205 R8最終fix verificationレポート: `reports/issue-1-t205-review-r8-20260801234000.md`
 - T205独立レビュー1回目レポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
+- T205 IFR1設計更新レポート: `reports/issue-1-t205-ifr1-design-update-20260801194500.md`
+- T205 IFR1-P1 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-20260801194000.md`
+- T205 IFR1-P2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-20260801201500.md`
+- T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
 - T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -270,4 +274,4 @@
 
 ## 次回開始時の選択
 
-T205の独立レビュー1回目でHigh `T205-IFR1-P1`と`T205-IFR1-P2`が見つかった。次回はGlobal atomic create/CASとpoll/foreground observation generationをRed testから修正し、focused normal fix verification後、予約済みreportで独立レビュー2回目を最終回として実施する。Issue #28は本筋外として別追跡し、T206は開始しない。
+T205のHigh `T205-IFR1-P1`と`T205-IFR1-P2`は設計更新後にidentity/severityを維持してTDD修正済み。次回はSol/high normal reviewerで2件だけをfocused fix verificationし、pass後に予約済みreportで独立レビュー2回目を最終回として実施する。Issue #28は本筋外として別追跡し、T206は開始しない。

@@ -63,6 +63,48 @@ class MultiRootInspector implements GitStateInspectionPort {
   }
 }
 
+const createDeferred = (): {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+} => {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+};
+
+/** A poll completion cannot overwrite a foreground observation registered while its callback was mapping. */
+test("polling discards a stale callback completion after a newer observation", async () => {
+  const inspector = new MutableInspector();
+  const callbackStarted = createDeferred();
+  const releaseCallback = createDeferred();
+  const changes: string[] = [];
+  const monitor = new PollingGitStateMonitor({
+    inspector,
+    onDidChange: async (change) => {
+      changes.push(change.current?.head ?? "missing");
+      callbackStarted.resolve();
+      await releaseCallback.promise;
+    }
+  });
+
+  monitor.observe(rootPath, inspector.current);
+  inspector.current = snapshot(rootPath, newRevision);
+  const polling = monitor.pollNow();
+  await callbackStarted.promise;
+
+  const foregroundRevision = "fedcba9876543210fedcba9876543210fedcba98";
+  monitor.observe(rootPath, snapshot(rootPath, foregroundRevision));
+  inspector.current = snapshot(rootPath, foregroundRevision);
+  releaseCallback.resolve();
+  await polling;
+  await monitor.pollNow();
+
+  assert.deepEqual(changes, [newRevision]);
+  monitor.dispose();
+});
+
 /** Timer-driven failures are reported and the same Git transition remains eligible for a later retry. */
 test("scheduled polling reports and retries change-handler failures", async () => {
   const scheduler = new ManualScheduler();

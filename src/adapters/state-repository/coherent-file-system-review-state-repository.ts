@@ -14,9 +14,11 @@ import type {
   PersistenceFailureNotification,
   PersistenceOperation,
   ReviewStateCommit,
+  ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
+import { loadPersistedOwnerGlobal } from "./owner-global-state-loader";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 const cloneValue = <T>(value: T): T =>
@@ -114,6 +116,55 @@ const requireMatchingIdentity = (
           : "git";
   const target: ReviewStateRepositoryTarget = {
     kind,
+    repositoryId: transaction.repositoryId,
+    contextId: transaction.contextId
+  };
+  requireTargetContextKind(target, contextKind);
+  return target;
+};
+
+const requireMatchingCreateIdentity = (
+  transaction: Readonly<ReviewStateCreateTransactionLike>
+): ReviewStateRepositoryTarget => {
+  if (transaction.expected.contextState !== undefined) {
+    throw new Error("Create transaction must expect an absent context");
+  }
+  const { next } = transaction;
+  if (
+    next.contextState.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION ||
+    next.globalState.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `Transaction snapshots must use schema version ${REVIEW_RANGE_SCHEMA_VERSION}`
+    );
+  }
+  if (
+    next.contextState.repositoryId !== transaction.repositoryId ||
+    next.globalState.repositoryId !== transaction.repositoryId
+  ) {
+    throw new Error("Transaction repositoryId must match all state snapshots");
+  }
+  if (next.contextState.contextId !== transaction.contextId) {
+    throw new Error("Transaction contextId must match the next context snapshot");
+  }
+  const expectedGlobal = transaction.expected.globalState;
+  if (
+    expectedGlobal !== undefined &&
+    (expectedGlobal.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION ||
+      expectedGlobal.repositoryId !== transaction.repositoryId)
+  ) {
+    throw new Error("Create transaction expected Global must match the repository");
+  }
+  const contextKind = next.contextState.kind;
+  const target: ReviewStateRepositoryTarget = {
+    kind:
+      contextKind === "pull-request"
+        ? "pull-request"
+        : contextKind === "workspace"
+          ? "workspace"
+          : contextKind === "external-file"
+            ? "external-file"
+            : "git",
     repositoryId: transaction.repositoryId,
     contextId: transaction.contextId
   };
@@ -289,6 +340,45 @@ export class FileSystemReviewStateRepository {
           current === undefined ||
           !isDeepStrictEqual(current.contextState, expected.contextState) ||
           !isDeepStrictEqual(current.globalState, expected.globalState)
+        ) {
+          throw new StaleReviewStateError(target);
+        }
+
+        const next = transactionPairToCommit(transaction.next);
+        requireTargetContextKind(target, next.contextState.kind);
+        await this.atomicRepository.save(target, next);
+        this.recordRepositoryGlobal(target, next.globalState);
+      } catch (error) {
+        await this.notifyFailure("commit", target, route.statePointerPath, error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Creates a context only when it remains absent and the exact owner-wide
+   * Global snapshot observed for planning remains current.
+   *
+   * @throws Rejects with `StaleReviewStateError` without publishing either
+   * context or Global snapshot when either expectation no longer matches.
+   */
+  public async create(
+    transaction: Readonly<ReviewStateCreateTransactionLike>
+  ): Promise<void> {
+    const target = requireMatchingCreateIdentity(transaction);
+    const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
+
+    await this.serializeWrite(route.rootPath, async () => {
+      try {
+        const reader = new AtomicFileSystemReviewStateRepository({
+          ...this.options,
+          notifyPersistenceFailure: undefined
+        });
+        const currentContext = await reader.load(target);
+        const currentGlobal = await loadPersistedOwnerGlobal(this.options, target);
+        if (
+          currentContext !== undefined ||
+          !isDeepStrictEqual(currentGlobal, transaction.expected.globalState)
         ) {
           throw new StaleReviewStateError(target);
         }

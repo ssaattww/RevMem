@@ -102,6 +102,26 @@ export interface ReviewStateTransactionLike {
   readonly next: ReviewStateTransactionSnapshotPair;
 }
 
+/** Expected state for creating a previously absent context while preserving an owner-wide Global snapshot. */
+export interface ReviewStateCreateExpectedSnapshot {
+  /** The selected context must still be absent when the create transaction commits. */
+  readonly contextState: undefined;
+  /** The complete owner-wide Global snapshot expected at creation time, or `undefined` when the owner has not been initialized. */
+  readonly globalState: PersistenceDeepReadonly<RepositoryGlobalState> | undefined;
+}
+
+/** Atomic create/CAS input for a new context and its paired owner-wide Global snapshot. */
+export interface ReviewStateCreateTransactionLike {
+  /** Repository or standalone-resource identity that must equal every supplied Global and next-context identity. */
+  readonly repositoryId: string;
+  /** Context identity that must be absent before the new context is published. */
+  readonly contextId: string;
+  /** Absence and complete Global snapshot that must still be current. */
+  readonly expected: ReviewStateCreateExpectedSnapshot;
+  /** Complete context and Global snapshots published together only when `expected` matches. */
+  readonly next: ReviewStateTransactionSnapshotPair;
+}
+
 /** Immutable context document selected by a repository-style manifest. */
 export interface RepositoryStateManifestContextReference {
   /** Context identity used as the manifest lookup key; duplicate IDs make a manifest invalid. */

@@ -7,6 +7,7 @@ import type {
 import {
   StaleReviewStateError,
   type ReviewStateCommit,
+  type ReviewStateCreateTransactionLike,
   type ReviewStateRepositoryTarget,
   type ReviewStateTransactionLike
 } from "../state-repository/index";
@@ -52,6 +53,10 @@ interface OwnerGlobalLoader {
   ): Promise<ReviewStateCommit["globalState"] | undefined>;
 }
 
+interface OwnerGlobalCreator {
+  create(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const toSnapshot = (
@@ -81,6 +86,12 @@ const isGlobalLoader = (value: unknown): value is OwnerGlobalLoader =>
   typeof value === "object" &&
   "loadGlobal" in value &&
   typeof value.loadGlobal === "function";
+
+const isGlobalCreator = (value: unknown): value is OwnerGlobalCreator =>
+  value !== null &&
+  typeof value === "object" &&
+  "create" in value &&
+  typeof value.create === "function";
 
 const revisionOf = (commit: ReviewStateCommit): string => {
   if (commit.contextState.kind !== "branch" || commit.contextState.branch === undefined) {
@@ -220,33 +231,33 @@ export class GitContextDocumentReviewStateSessionProvider {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const commit = await this.options.repository.load(target);
-      if (commit === undefined) {
-        if (!initializeMissingContext) {
+      try {
+        if (commit === undefined) {
+          if (!initializeMissingContext) {
+            return;
+          }
+          await this.initializeContext(current, target, descriptor);
           return;
         }
-        await this.initializeContext(current, target, descriptor);
-        return;
-      }
-      if (
-        revisionOf(commit) === current.revisionId &&
-        commit.globalState.currentRevisionId === current.revisionId
-      ) {
-        return;
-      }
-      const next = await this.mapCommit(current, commit, descriptor);
-      const transaction: ReviewStateTransactionLike = {
-        repositoryId: current.repositoryId,
-        contextId: current.contextId,
-        expected: {
-          contextState: clone(commit.contextState),
-          globalState: clone(commit.globalState)
-        },
-        next: {
-          contextState: clone(next.contextState),
-          globalState: clone(next.globalState)
+        if (
+          revisionOf(commit) === current.revisionId &&
+          commit.globalState.currentRevisionId === current.revisionId
+        ) {
+          return;
         }
-      };
-      try {
+        const next = await this.mapCommit(current, commit, descriptor);
+        const transaction: ReviewStateTransactionLike = {
+          repositoryId: current.repositoryId,
+          contextId: current.contextId,
+          expected: {
+            contextState: clone(commit.contextState),
+            globalState: clone(commit.globalState)
+          },
+          next: {
+            contextState: clone(next.contextState),
+            globalState: clone(next.globalState)
+          }
+        };
         await (
           this.options.repository as unknown as {
             commit(value: Readonly<ReviewStateTransactionLike>): Promise<void>;
@@ -257,8 +268,26 @@ export class GitContextDocumentReviewStateSessionProvider {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
           throw error;
         }
+        if (!(await this.isCurrentGitSnapshot(current))) {
+          return;
+        }
       }
     }
+  }
+
+  /** Reinspects Git before retrying a stale persistence mapping so an older poll target cannot roll back a foreground snapshot. */
+  private async isCurrentGitSnapshot(
+    current: ResolvedGitReviewContext
+  ): Promise<boolean> {
+    const inspection = await this.options.gitInspector.inspectRepository(
+      current.repositoryRoot
+    );
+    if (inspection.kind !== "repository") {
+      return false;
+    }
+    const latest = this.resolver.resolve(toSnapshot(inspection.repository));
+    return latest.contextId === current.contextId &&
+      latest.revisionId === current.revisionId;
   }
 
   private async initializeContext(
@@ -286,6 +315,26 @@ export class GitContextDocumentReviewStateSessionProvider {
       initial.globalState.currentRevisionId === current.revisionId
         ? initial
         : await this.mapCommit(current, initial, descriptor);
+    if (isGlobalCreator(this.options.repository)) {
+      await this.options.repository.create({
+        repositoryId: current.repositoryId,
+        contextId: current.contextId,
+        expected: {
+          contextState: undefined,
+          globalState: global === undefined ? undefined : clone(global)
+        },
+        next: {
+          contextState: clone(mapped.contextState),
+          globalState: clone(mapped.globalState)
+        }
+      });
+      return;
+    }
+    if (isGlobalLoader(this.options.repository)) {
+      throw new Error(
+        "Owner-wide Global initialization requires atomic context creation support."
+      );
+    }
     await this.options.repository.save(target, mapped);
   }
 

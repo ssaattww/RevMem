@@ -8,6 +8,11 @@ import type {
 
 const DEFAULT_INTERVAL_MS = 1000;
 
+interface ObservedGitState {
+  readonly generation: number;
+  readonly snapshot: GitReviewContextRepositorySnapshot | undefined;
+}
+
 const cloneSnapshot = (
   snapshot: GitReviewContextRepositorySnapshot
 ): GitReviewContextRepositorySnapshot => ({
@@ -51,10 +56,7 @@ const defaultScheduler: GitStateMonitorScheduler = {
 export class PollingGitStateMonitor {
   private readonly intervalMs: number;
   private readonly scheduler: GitStateMonitorScheduler;
-  private readonly observed = new Map<
-    string,
-    GitReviewContextRepositorySnapshot | undefined
-  >();
+  private readonly observed = new Map<string, ObservedGitState>();
   private schedule: GitStateMonitorSchedule | undefined;
   private activePoll: Promise<void> | undefined;
   private disposed = false;
@@ -68,7 +70,7 @@ export class PollingGitStateMonitor {
     this.scheduler = options.scheduler ?? defaultScheduler;
   }
 
-  /** Registers a repository root and the already inspected baseline snapshot. */
+  /** Registers a repository root and advances its baseline generation with the already inspected snapshot. */
   public observe(
     rootPath: string,
     snapshot: GitReviewContextRepositorySnapshot
@@ -79,7 +81,11 @@ export class PollingGitStateMonitor {
     if (rootPath.trim().length === 0 || rootPath.includes("\0")) {
       throw new TypeError("rootPath must be a non-empty path without null characters.");
     }
-    this.observed.set(rootPath, cloneSnapshot(snapshot));
+    const previous = this.observed.get(rootPath);
+    this.observed.set(rootPath, {
+      generation: (previous?.generation ?? 0) + 1,
+      snapshot: cloneSnapshot(snapshot)
+    });
   }
 
   /** Starts one repeating poll schedule; repeated calls are idempotent. */
@@ -132,8 +138,9 @@ export class PollingGitStateMonitor {
 
   private async pollObserved(): Promise<void> {
     const failures: unknown[] = [];
-    for (const [rootPath, previous] of [...this.observed.entries()]) {
+    for (const [rootPath, observed] of [...this.observed.entries()]) {
       try {
+        const { generation, snapshot: previous } = observed;
         const inspection = await this.options.inspector.inspectRepository(rootPath);
         const current = inspection.kind === "repository"
           ? cloneSnapshot(inspection.repository)
@@ -147,7 +154,14 @@ export class PollingGitStateMonitor {
           ...(current === undefined ? {} : { current: cloneSnapshot(current) })
         };
         await this.options.onDidChange(change);
-        this.observed.set(rootPath, current);
+        const latest = this.observed.get(rootPath);
+        if (latest?.generation !== generation) {
+          continue;
+        }
+        this.observed.set(rootPath, {
+          generation,
+          snapshot: current === undefined ? undefined : cloneSnapshot(current)
+        });
       } catch (error) {
         failures.push(error);
       }

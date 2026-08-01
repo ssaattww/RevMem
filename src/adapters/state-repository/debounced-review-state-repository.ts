@@ -1,5 +1,6 @@
 import type {
   ReviewStateCommit,
+  ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
@@ -13,6 +14,8 @@ export interface ReviewStatePersistenceDelegate {
   ): Promise<ReviewStateCommit["globalState"] | undefined>;
   save(target: ReviewStateRepositoryTarget, commit: ReviewStateCommit): Promise<void>;
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
+  /** Optionally creates an absent context after comparing its owner-wide Global snapshot. */
+  create?(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
 
 /** Timer boundary injected to make debounce and deactivation behavior deterministic in tests. */
@@ -62,7 +65,7 @@ const storageOwnerKey = (target: ReviewStateRepositoryTarget): string =>
     : `${target.kind}\u0000${target.repositoryId}`;
 
 const transactionTarget = (
-  transaction: Readonly<ReviewStateTransactionLike>
+  transaction: Readonly<ReviewStateTransactionLike | ReviewStateCreateTransactionLike>
 ): ReviewStateRepositoryTarget => {
   const contextKind = transaction.next.contextState.kind;
   return {
@@ -194,6 +197,27 @@ export class DebouncedReviewStateRepository {
         storageOwnerKey(transactionTarget(transaction)),
         () => this.options.delegate.commit(transaction)
       );
+    })();
+    return this.trackOperation(operation);
+  }
+
+  /** Flushes pending owner state, then atomically creates a context only when its absence and Global expectation still match. */
+  public create(
+    transaction: Readonly<ReviewStateCreateTransactionLike>
+  ): Promise<void> {
+    this.assertNotDisposed();
+    const operation = (async (): Promise<void> => {
+      await this.flush();
+      const target = transactionTarget(transaction);
+      await this.enqueue(storageOwnerKey(target), () => {
+        const create = this.options.delegate.create;
+        if (create === undefined) {
+          throw new Error(
+            "Review-state persistence delegate does not support atomic context creation."
+          );
+        }
+        return create.call(this.options.delegate, transaction);
+      });
     })();
     return this.trackOperation(operation);
   }

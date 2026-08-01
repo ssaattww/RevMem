@@ -235,16 +235,18 @@ owner作成済み・対象context未作成
 
 新contextを空のcontext stateとして作成する場合、Globalを空で初期化して既存Globalを上書きしてはならない。
 
-1. 同一storage rootのwrite queueを取得する
-2. 対象contextを再読込する
-3. owner-wide Globalをcontextとは独立して再読込する
-4. owner-wide Globalが存在し、現在contextと同じrevisionなら、そのGlobalを新contextの初期snapshotへ継承する
-5. owner-wide Globalが異なるrevisionなら、mappingなしで書き換えずrevision mapping要求として拒否する
-6. context stateと確定したGlobalを同じmanifest-last writeで公開する
+新context初期化の入力は、対象Context ID、現在のGit snapshot、対象contextの不存在期待、およびowner-wide Globalの存在状態を含む完全snapshotとversionの期待値とする。contextの不存在確認、Globalの期待値検証、next contextとnext Globalの公開は、同じatomic create/CASで行う。
+
+1. 同一storage rootのwrite queueを取得し、対象contextとowner-wide Globalを同じplanning開始snapshotとして読む
+2. 対象contextがすでに存在する場合は新規作成を行わず、通常の読み込み規則へ戻す
+3. owner-wide Globalが現在contextと同じrevisionなら、そのGlobalを新contextの初期snapshotへ継承する
+4. owner-wide Globalが異なるrevisionなら、planning開始snapshotだけを入力にGit diff mappingを計画する。mapping結果は新contextとGlobalの完全なnext snapshotへ反映し、mapping中に保存しない
+5. 対象contextがなお存在しないこと、およびowner-wide Globalが期待した存在状態、完全snapshot、versionと一致することを確認する1回のatomic create/CASで、context stateと確定したGlobalを同じmanifest-last writeで公開する
+6. create/CASがstaleなら、contextまたはGlobalのどちらも公開せず`stale`を返す。呼び出し側は最新owner-wide Globalを再読込し、そのsnapshotからmappingを再計画する
 
 新context作成と同時に呼び出し側が非空Globalを明示的に提示する保存処理は、空初期化とは区別する。明示的Global更新は既存の保存契約に従う。
 
-新context初期化、通常save、CAS commitは同一storage rootの同じ直列化境界を通過する。これにより、初期化前のGlobal読込とmanifest置換の間へ同一instanceの別writeが割り込まない。
+新context初期化、通常save、CAS commitは同一storage rootの同じ直列化境界を通過する。直列化だけを根拠に、読込、mapping、保存を別operationとして成功扱いしてはならない。別instanceまたは別contextの更新を検出できる上記CASを必須とする。
 
 ### 6.7 読み込みとvalidation
 
@@ -279,8 +281,9 @@ review operationとowner reconciliationは次のtransaction contractを使用す
 
 ```text
 expected:
-  complete context state
-  complete owner-wide Global state
+  context state: absent | complete context state
+  owner-wide Global state: absent | complete owner-wide Global state
+  owner-wide Global version: absent | expected version
 
 next:
   complete context state
@@ -290,8 +293,10 @@ next:
 committerは次を保証する。
 
 - `expected`が現在値と一致する場合だけ置換する
+- 新context作成ではcontextの不存在とGlobalの存在状態、完全snapshot、versionを同時に検証する
 - contextとGlobalを両方置換するか、どちらも置換しない
 - stale writeを成功扱いしない
+- staleな新context初期化は`stale`として返し、最新Globalから再計画するまで同じmapping結果を再使用しない
 - failure後に部分的なnext stateを公開しない
 - `expected`と`next`のreconciliation metadataを保存前に検証する
 
