@@ -63,6 +63,22 @@ class MultiRootInspector implements GitStateInspectionPort {
   }
 }
 
+class BlockingInspector implements GitStateInspectionPort {
+  public current = snapshot(rootPath, oldRevision);
+  public readonly inspectionStarted = createDeferred();
+  public readonly releaseInspection = createDeferred();
+
+  public async inspectRepository(): Promise<{
+    readonly kind: "repository";
+    readonly repository: GitReviewContextRepositorySnapshot;
+  }> {
+    const inspected = this.current;
+    this.inspectionStarted.resolve();
+    await this.releaseInspection.promise;
+    return { kind: "repository", repository: inspected };
+  }
+}
+
 const createDeferred = (): {
   readonly promise: Promise<void>;
   readonly resolve: () => void;
@@ -102,6 +118,33 @@ test("polling discards a stale callback completion after a newer observation", a
   await monitor.pollNow();
 
   assert.deepEqual(changes, [newRevision]);
+  monitor.dispose();
+});
+
+/** A foreground observation completing during inspection discards the stale poll before its callback. */
+test("polling discards a stale inspection result before invoking its callback", async () => {
+  const inspector = new BlockingInspector();
+  const changes: string[] = [];
+  const monitor = new PollingGitStateMonitor({
+    inspector,
+    onDidChange: (change) => {
+      changes.push(change.current?.head ?? "missing");
+    }
+  });
+
+  monitor.observe(rootPath, inspector.current);
+  inspector.current = snapshot(rootPath, newRevision);
+  const polling = monitor.pollNow();
+  await inspector.inspectionStarted.promise;
+
+  const foregroundRevision = "fedcba9876543210fedcba9876543210fedcba98";
+  monitor.observe(rootPath, snapshot(rootPath, foregroundRevision));
+  inspector.current = snapshot(rootPath, foregroundRevision);
+  inspector.releaseInspection.resolve();
+  await polling;
+  await monitor.pollNow();
+
+  assert.deepEqual(changes, []);
   monitor.dispose();
 });
 

@@ -10,8 +10,8 @@
 - 直近完了タスク: T302 仮想diff URIとrevision content provider
 - 現在のタスク: T205 independent review follow-up
 - 次のタスク: なし
-- 実装状態: High `T205-IFR1-P1`はSol/high focused fix verificationでclosed。High `T205-IFR1-P2`はcallback中generation changeとretry前Git freshnessを満たしたが、inspection中にforeground observeが完了する順序でcallback直前検査がなくopenのまま
-- ブロッカー: `T205-IFR1-P2`のinspection完了後・callback直前generation検査不足。Issue #28は本筋外non-blocking held
+- 実装状態: High `T205-IFR1-P1`はclosed。High `T205-IFR1-P2`の残り兄弟caseをRed test後に修正し、inspection完了後・callback直前にroot generationを再検査してstale callback/baseline更新を破棄。focused 2/2、T205 29/29、lint/diff checkがpassし、Sol/high focused fix verification待ち
+- ブロッカー: なし。Issue #28は本筋外non-blocking held
 - Gitブランチ: `task/t205-branch-context-resolver`
 - Pull Request: #27
 - PR方針: T205の実装、review follow-up、進捗同期、独立最終レビュー証跡をPR #27へ反映し、mergeは利用者が行う
@@ -141,6 +141,7 @@
 - T205 IFR1-P2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-20260801201500.md`
 - T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
 - T205 IFR1 focused fix verificationレポート: `reports/issue-1-t205-ifr1-fix-verification-20260801213000.md`
+- T205 IFR1-P2 R2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-r2-20260801215500.md`
 - T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
@@ -275,4 +276,4 @@
 
 ## 次回開始時の選択
 
-T205のHigh `T205-IFR1-P1`はclosed。次回はHigh `T205-IFR1-P2`を維持し、poll inspection完了後・callback直前にroot generationを再検査してstale callbackを破棄するRed testから追加修正する。focused verification pass後、予約済みreportで独立レビュー2回目を最終回として実施する。
+T205のHigh `T205-IFR1-P1`はclosed。High `T205-IFR1-P2`のinspection中observe兄弟caseはidentity/severityを維持してTDD修正済み。次回はSol/high normal reviewerでこの1件だけをfocused fix verificationし、pass後に独立レビュー2回目を最終回として実施する。
