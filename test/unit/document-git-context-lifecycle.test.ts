@@ -119,21 +119,28 @@ class MutableGitInspector implements DocumentGitInspector {
 }
 
 class RevisionSource implements GitRevisionMappingSource {
+  public diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "index 1111111..2222222 100644",
+    "--- a/src/example.ts",
+    "+++ b/src/example.ts",
+    "@@ -2 +2 @@",
+    "-beta",
+    "+BETA",
+    ""
+  ].join("\n");
+
+  public readonly texts = new Map<string, string>([
+    [`${oldRevision}\0src/example.ts`, "alpha\nbeta\ngamma"],
+    [`${newRevision}\0src/example.ts`, "alpha\nBETA\ngamma"]
+  ]);
+
   public async objectExists(): Promise<boolean> {
     return true;
   }
 
   public async diffRevisions(): Promise<string> {
-    return [
-      "diff --git a/src/example.ts b/src/example.ts",
-      "index 1111111..2222222 100644",
-      "--- a/src/example.ts",
-      "+++ b/src/example.ts",
-      "@@ -2 +2 @@",
-      "-beta",
-      "+BETA",
-      ""
-    ].join("\n");
+    return this.diff;
   }
 
   public async readTextFileAtRevision(
@@ -146,61 +153,84 @@ class RevisionSource implements GitRevisionMappingSource {
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
-    assert.equal(repositoryRelativePath, "src/example.ts");
-    return {
-      kind: "found",
-      content: revision === oldRevision
-        ? "alpha\nbeta\ngamma"
-        : "alpha\nBETA\ngamma"
-    };
+    const content = this.texts.get(`${revision}\0${repositoryRelativePath}`);
+    return content === undefined
+      ? { kind: "missing-file" }
+      : { kind: "found", content };
   }
 }
 
 const descriptor = (
+  repositoryRelativePath: string,
   contentHash: string,
   lineCount = 3
 ): DocumentEditorReviewDescriptor => ({
   documentUri: {
     scheme: "file",
     authority: "",
-    path: "/repo/src/example.ts"
+    path: `/repo/${repositoryRelativePath}`
   },
-  documentFsPath: path.resolve("/repo/src/example.ts"),
+  documentFsPath: path.resolve(`/repo/${repositoryRelativePath}`),
   fileSystemPathSemantics: "posix",
   lineCount,
   contentHash
 });
+
+const createProvider = (
+  stableHash: NodeSha256StableHash,
+  repository: MemoryRepository,
+  inspector: MutableGitInspector,
+  source: RevisionSource,
+  gitStateObserver?: DocumentReviewStateSessionProvider extends never
+    ? never
+    : (rootPath: string, head: string | undefined) => void
+): DocumentReviewStateSessionProvider => {
+  const workspaceProvider = new WorkspaceReviewStateSessionProvider({
+    identityService: new WorkspaceIdentityService(stableHash),
+    repository,
+    now: () => new Date(occurredAt)
+  });
+  return new DocumentReviewStateSessionProvider({
+    gitInspector: inspector,
+    gitRevisionSource: source,
+    ...(gitStateObserver === undefined
+      ? {}
+      : {
+          gitStateObserver: {
+            observe: (rootPath, snapshot) => {
+              gitStateObserver(rootPath, snapshot.head);
+            }
+          }
+        }),
+    repository,
+    workspaceProvider,
+    stableHash,
+    now: () => new Date(occurredAt)
+  });
+};
 
 /** Provider refreshes a moving branch, isolates branch state, and creates a detached-commit context keyed by immutable HEAD. */
 test("document sessions map branch commits and isolate branch and detached contexts", async () => {
   const stableHash = new NodeSha256StableHash();
   const repository = new MemoryRepository();
   const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
   const observed: Array<{ readonly rootPath: string; readonly head?: string }> = [];
-  const workspaceProvider = new WorkspaceReviewStateSessionProvider({
-    identityService: new WorkspaceIdentityService(stableHash),
-    repository,
-    now: () => new Date(occurredAt)
-  });
-  const provider = new DocumentReviewStateSessionProvider({
-    gitInspector: inspector,
-    gitRevisionSource: new RevisionSource(),
-    gitStateObserver: {
-      observe: (rootPath, snapshot) => {
-        observed.push({
-          rootPath,
-          ...(snapshot.head === undefined ? {} : { head: snapshot.head })
-        });
-      }
-    },
-    repository,
-    workspaceProvider,
+  const provider = createProvider(
     stableHash,
-    now: () => new Date(occurredAt)
-  });
+    repository,
+    inspector,
+    source,
+    (rootPath, head) => {
+      observed.push({ rootPath, ...(head === undefined ? {} : { head }) });
+    }
+  );
 
   const initial = await provider.open(
-    descriptor(stableHash.digest("alpha\nbeta\ngamma"))
+    descriptor(
+      "src/example.ts",
+      stableHash.digest("alpha\nbeta\ngamma")
+    )
   );
   const initialContextId = initial.contextState.contextId;
   const reviewed = markReviewedRanges({
@@ -214,7 +244,10 @@ test("document sessions map branch commits and isolate branch and detached conte
 
   inspector.head = newRevision;
   const refreshed = await provider.open(
-    descriptor(stableHash.digest("alpha\nBETA\ngamma"))
+    descriptor(
+      "src/example.ts",
+      stableHash.digest("alpha\nBETA\ngamma")
+    )
   );
   assert.equal(refreshed.contextState.contextId, initialContextId);
   assert.equal(refreshed.contextState.branch?.headRevision, newRevision);
@@ -231,7 +264,10 @@ test("document sessions map branch commits and isolate branch and detached conte
     fullRef: "refs/heads/feature/t205"
   };
   const feature = await provider.open(
-    descriptor(stableHash.digest("alpha\nBETA\ngamma"))
+    descriptor(
+      "src/example.ts",
+      stableHash.digest("alpha\nBETA\ngamma")
+    )
   );
   assert.notEqual(feature.contextState.contextId, initialContextId);
   assert.equal(feature.contextState.branch?.refName, "refs/heads/feature/t205");
@@ -246,7 +282,10 @@ test("document sessions map branch commits and isolate branch and detached conte
 
   inspector.branch = { kind: "detached" };
   const detached = await provider.open(
-    descriptor(stableHash.digest("alpha\nBETA\ngamma"))
+    descriptor(
+      "src/example.ts",
+      stableHash.digest("alpha\nBETA\ngamma")
+    )
   );
   assert.equal(detached.contextState.kind, "branch");
   assert.equal(detached.contextState.branch?.refName, `HEAD@${newRevision}`);
@@ -256,5 +295,61 @@ test("document sessions map branch commits and isolate branch and detached conte
 
   assert.equal(observed.length, 4);
   assert.equal(observed.at(-1)?.head, newRevision);
+  provider.dispose();
+});
+
+/** A unique Git rename keeps one stable file identity through document routing. */
+test("document routing follows the stable file ID after a rename", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/old.ts b/src/new.ts",
+    "similarity index 100%",
+    "rename from src/old.ts",
+    "rename to src/new.ts",
+    ""
+  ].join("\n");
+  source.texts.clear();
+  source.texts.set(`${oldRevision}\0src/old.ts`, "alpha\nbeta");
+  source.texts.set(`${newRevision}\0src/new.ts`, "alpha\nbeta");
+  const provider = createProvider(stableHash, repository, inspector, source);
+
+  const initial = await provider.open(
+    descriptor("src/old.ts", stableHash.digest("alpha\nbeta"), 2)
+  );
+  const reviewed = markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 2 }],
+    occurredAt
+  });
+  await initial.committer.commit(reviewed);
+
+  inspector.head = newRevision;
+  const renamed = await provider.open(
+    descriptor("src/new.ts", stableHash.digest("alpha\nbeta"), 2)
+  );
+
+  assert.equal(renamed.target.fileId, initial.target.fileId);
+  assert.equal(renamed.target.currentPath, "src/new.ts");
+  assert.equal(
+    renamed.contextState.files[initial.target.fileId]?.currentPath,
+    "src/new.ts"
+  );
+  assert.deepEqual(
+    renamed.contextState.files[initial.target.fileId]?.previousPaths,
+    ["src/old.ts"]
+  );
+  assert.deepEqual(
+    renamed.contextState.files[initial.target.fileId]?.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 2 }]
+  );
+  assert.deepEqual(
+    renamed.globalState.files[initial.target.fileId]?.reviewed,
+    [{ startLine: 0, endLineExclusive: 2 }]
+  );
   provider.dispose();
 });
