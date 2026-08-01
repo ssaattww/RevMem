@@ -5,7 +5,6 @@ import {
   markReviewedRanges,
   unmarkFileReviewed,
   unmarkReviewedRanges,
-  type ReviewStateFileTarget,
   type ReviewStateMutationInput,
   type ReviewStateOperation,
   type ReviewStateTransaction,
