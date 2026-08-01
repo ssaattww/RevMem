@@ -69,6 +69,7 @@ const descriptor = (content: string, contentHash: string): DescriptorWithContent
 test("workspace provider remaps reviewed ranges from persisted snapshot after provider restart", async () => {
   const repository = new Repository();
   const storage = new InMemoryNonGitSnapshotStorage();
+  let now = Date.parse("2026-08-01T15:00:00.000Z");
   const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(new NodeSha256StableHash()),
     repository,
@@ -79,7 +80,7 @@ test("workspace provider remaps reviewed ranges from persisted snapshot after pr
       retentionMs: 60_000,
     }),
     resolveContent: (value) => (value as DescriptorWithContent).content,
-    now: () => new Date("2026-08-01T15:00:00.000Z"),
+    now: () => new Date(now++),
   });
 
   const initial = await createProvider().open(descriptor("alpha\nbeta\ngamma", "hash-1"));
