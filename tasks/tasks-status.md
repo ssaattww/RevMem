@@ -7,13 +7,13 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T205 branch context resolver・Git状態監視
-- 現在のタスク: T207 temporary Git repository統合試験
+- 直近完了タスク: T207 temporary Git repository統合試験
+- 現在のタスク: なし
 - 次のタスク: なし（T207完了後に次taskを選択）
-- 実装状態: T206はPR #29へ提出済み。T207独立reviewの2 high findingを修正・focused検証済み。通常reviewerと同じ独立reviewerによる既存finding closure確認待ち
+- 実装状態: T206はPR #29でmerge済み。T207通常・独立reviewの全findingはclosedし、独立再確認は既存P1/P2 closure限定で`pass_with_held`。PR #35へ提出済み
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t207-git-history-integration`
-- Pull Request: 未作成（base=`task/t206-jsonl-history`のstacked PR予定）
+- Pull Request: #35（base=`main`、T206 merge後にrestack済み）
 - PR方針: T207の統合test、必要最小限のproduction fix、通常1名と独立1名の最大2 reviewerによる証跡を別PRへ反映する。独立reviewの広域確認は1回とし、fail時は同じ独立reviewerが既存findingのclosureだけを再確認して新規観点・新規findingを追加しない。mergeは利用者が行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
@@ -159,6 +159,8 @@
 - T207 fix verificationレポート: `reports/issue-1-t207-fix-verification-20260802021500.md`
 - T207独立最終レビューレポート: `reports/issue-1-t207-independent-final-review-20260802024500.md`
 - T207独立review follow-upレポート: `reports/issue-1-t207-independent-review-followup-20260802031000.md`
+- T207独立finding通常verificationレポート: `reports/issue-1-t207-independent-finding-normal-verification-20260802034500.md`
+- T207独立finding closure限定verificationレポート: `reports/issue-1-t207-independent-fix-verification-20260802034530.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -223,7 +225,7 @@
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 完了 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
-| T207 | 進行中 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
+| T207 | 完了 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
 
@@ -292,4 +294,4 @@
 
 ## 次回開始時の選択
 
-T206はPR #29へ提出済み。現在はT206 branchをbaseにした別task lifecycleでP2のT207だけを選択し、temporary Git repositoryの連続操作と再起動後state/history整合を統合testで証明する。
+T206はPR #29でmerge済み。T207は全findingをclosedしPR #35へ提出済み。独立review fail後は同じ独立reviewerが既存findingのclosureだけを再確認し、新規観点・新規findingを追加しない方針を適用した。
