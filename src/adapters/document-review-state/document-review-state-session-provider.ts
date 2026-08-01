@@ -645,13 +645,14 @@ export class DocumentReviewStateSessionProvider {
             globalState: next.globalState
           }
         });
-        const previousRanges = current.contextState.files[mapping.target.fileId]
-          ?.modifiedReviewed ?? current.globalState.files[mapping.target.fileId]?.reviewed ?? [];
-        await this.options.historyRecorder?.recordEditInvalidation(
-          next.contextState,
-          mapping.target,
-          previousRanges
-        );
+        if (contextStale) {
+          await this.options.historyRecorder?.recordEditInvalidation(
+            next.contextState,
+            mapping.target,
+            current.contextState.files[mapping.target.fileId]?.modifiedReviewed ?? [],
+            next.contextState.files[mapping.target.fileId]?.modifiedReviewed ?? []
+          );
+        }
         return next;
       } catch (error) {
         if (!(error instanceof StaleReviewStateError)) {

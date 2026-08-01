@@ -320,7 +320,7 @@ export class WorkspaceReviewStateSessionProvider {
     );
 
     if (contextFileIsStale || globalFileIsStale) {
-      const previousRanges = contextFile?.modifiedReviewed ?? globalFile?.reviewed ?? [];
+      const previousRanges = contextFile?.modifiedReviewed ?? [];
       commit = {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         contextState: {
@@ -335,11 +335,14 @@ export class WorkspaceReviewStateSessionProvider {
         }
       };
       await this.options.repository.save(mapping.repositoryTarget, commit);
-      await this.options.historyRecorder?.recordEditInvalidation(
-        commit.contextState,
-        mapping.fileTarget,
-        previousRanges
-      );
+      if (contextFileIsStale) {
+        await this.options.historyRecorder?.recordEditInvalidation(
+          commit.contextState,
+          mapping.fileTarget,
+          previousRanges,
+          commit.contextState.files[mapping.fileTarget.fileId]?.modifiedReviewed ?? []
+        );
+      }
     }
 
     return {

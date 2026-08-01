@@ -142,7 +142,7 @@ export class ReviewHistoryRecorder {
           before === undefined ? "remapped-by-diff" :
           after === undefined ? "file-deleted" :
             before.currentPath !== after.currentPath ? "file-renamed" : "remapped-by-diff",
-        reason,
+        reason: unresolvedFileIds.includes(fileId) ? "mapping-unresolved" : "git-revision-mapped",
         filePath: after?.currentPath ?? before!.currentPath,
         diffSide: "modified",
         previousRanges: (before?.modifiedReviewed ?? []).map((range) => ({ ...range })),
@@ -158,7 +158,8 @@ export class ReviewHistoryRecorder {
   public async recordEditInvalidation(
     contextState: Readonly<ReviewContextState>,
     target: Readonly<ReviewStateFileTarget>,
-    previousRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
+    previousRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+    nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
   ): Promise<void> {
     await this.options.appender.append(targetFor(contextState), {
       schemaVersion: contextState.schemaVersion,
@@ -173,7 +174,7 @@ export class ReviewHistoryRecorder {
       filePath: target.currentPath,
       diffSide: "modified",
       previousRanges: previousRanges.map((range) => ({ ...range })),
-      nextRanges: []
+      nextRanges: nextRanges.map((range) => ({ ...range }))
     });
   }
 }

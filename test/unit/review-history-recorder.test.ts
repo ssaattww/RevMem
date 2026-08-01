@@ -129,7 +129,9 @@ test("records context creation, affected Git remap/rename/delete, and edited-fil
   await recorder.recordContextCreated(before);
   await recorder.recordRevisionMapping(
     { contextState: before, globalState: global("revision-1") },
-    { contextState: after, globalState: global("revision-2") }
+    { contextState: after, globalState: global("revision-2") },
+    "mapping-unresolved",
+    ["file-a"]
   );
   await recorder.recordEditInvalidation(
     after,
@@ -139,13 +141,14 @@ test("records context creation, affected Git remap/rename/delete, and edited-fil
       revisionId: "revision-2",
       lineCount: 5
     },
-    [{ startLine: 3, endLineExclusive: 4 }]
+    [{ startLine: 3, endLineExclusive: 4 }],
+    []
   );
 
   assert.deepEqual(events.map((event) => event.type), [
     "context-created",
     "context-revision-changed",
-    "remapped-by-diff",
+    "mapping-unresolved",
     "file-renamed",
     "file-deleted",
     "invalidated-by-edit"
@@ -163,7 +166,7 @@ test("records context creation, affected Git remap/rename/delete, and edited-fil
   });
   assert.deepEqual(files, [
     {
-      type: "remapped-by-diff",
+      type: "mapping-unresolved",
       filePath: "src/edited.ts",
       previousRanges: [{ startLine: 0, endLineExclusive: 1 }],
       nextRanges: [{ startLine: 3, endLineExclusive: 4 }]
@@ -182,4 +185,7 @@ test("records context creation, affected Git remap/rename/delete, and edited-fil
     }
   ]);
   assert.equal(events[5]?.reason, "content-hash-mismatch");
+  assert.equal(events[2]?.reason, "mapping-unresolved");
+  assert.equal(events[3]?.reason, "git-revision-mapped");
+  assert.equal(events[4]?.reason, "git-revision-mapped");
 });

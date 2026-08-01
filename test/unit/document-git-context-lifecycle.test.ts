@@ -494,7 +494,13 @@ test("document routing follows the stable file ID after a rename", async () => {
   source.texts.clear();
   source.texts.set(`${oldRevision}\0src/old.ts`, "alpha\nbeta");
   source.texts.set(`${newRevision}\0src/new.ts`, "alpha\nbeta");
-  const provider = createProvider(stableHash, repository, inspector, source);
+  const events: Array<{ readonly type: string; readonly filePath?: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
 
   const initial = await provider.open(
     descriptor("src/old.ts", stableHash.digest("alpha\nbeta"), 2)
@@ -531,6 +537,7 @@ test("document routing follows the stable file ID after a rename", async () => {
     renamed.globalState.files[initial.target.fileId]?.reviewed,
     [{ startLine: 0, endLineExclusive: 2 }]
   );
+  assert.ok(events.some((event) => event.type === "file-renamed"));
   provider.dispose();
 });
 
@@ -808,7 +815,13 @@ test("document routing excludes a binary rename while routing a new text file at
   source.texts.set(`${oldRevision}\0src/x b/y`, "original");
   source.texts.set(`${newRevision}\0z.bin`, "binary\0data");
   source.texts.set(`${newRevision}\0src/a.ts`, "replacement");
-  const provider = createProvider(stableHash, repository, inspector, source);
+  const events: Array<{ readonly type: string; readonly filePath?: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
 
   const original = await provider.open(
     descriptor("src/x b/y", stableHash.digest("original"), 1)
@@ -843,6 +856,8 @@ test("document routing excludes a binary rename while routing a new text file at
     ),
     false
   );
+  assert.ok(events.some((event) => event.type === "mapping-unresolved"));
+  assert.equal(events.some((event) => event.type === "file-deleted" && event.filePath === "src/x b/y"), false);
   provider.dispose();
 });
 

@@ -392,6 +392,25 @@ export class GitContextRevisionMapper {
         unresolvedFileIds.add(file.fileId);
       }
     }
+    let binaryTransitions: readonly GitDiffFile[] = [];
+    try {
+      binaryTransitions = copyAwareParsedFiles(rawDiff);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        throw error;
+      }
+    }
+    for (const file of binaryTransitions) {
+      if (file.oldPath === undefined || file.newPath === undefined ||
+          (!binaryResolution.destinationPaths.has(file.newPath) &&
+           !binaryResolution.unresolvedPaths.has(file.newPath))) {
+        continue;
+      }
+      const sourceId = byPath.get(file.oldPath);
+      if (sourceId !== undefined) {
+        unresolvedFileIds.add(sourceId);
+      }
+    }
     return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort() };
   }
 
