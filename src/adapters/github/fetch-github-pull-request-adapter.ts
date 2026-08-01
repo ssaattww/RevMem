@@ -51,22 +51,47 @@ const toCandidate = (
   };
 };
 
-const nextPageUrl = (response: Response): URL | undefined => {
+type NextPageResult =
+  | { readonly kind: "none" }
+  | { readonly kind: "valid"; readonly url: URL }
+  | { readonly kind: "invalid" };
+
+const nextPageUrl = (
+  response: Response,
+  currentUrl: URL,
+  collectionUrl: URL
+): NextPageResult => {
   const link = response.headers.get("link");
   if (link === null) {
-    return undefined;
+    return { kind: "none" };
   }
   for (const entry of link.split(",")) {
     const match = /^\s*<([^>]+)>\s*;\s*rel="([^"]+)"\s*$/u.exec(entry);
-    if (match?.[2]?.split(/\s+/u).includes("next") === true) {
-      try {
-        return new URL(match[1]!);
-      } catch {
-        return undefined;
-      }
+    if (match?.[2]?.split(/\s+/u).includes("next") !== true) {
+      continue;
     }
+
+    let next: URL;
+    try {
+      next = new URL(match[1]!, currentUrl);
+    } catch {
+      return { kind: "invalid" };
+    }
+
+    if (
+      next.origin !== collectionUrl.origin ||
+      next.protocol !== collectionUrl.protocol ||
+      (next.protocol !== "https:" && next.protocol !== "http:") ||
+      next.username.length > 0 ||
+      next.password.length > 0 ||
+      next.pathname !== collectionUrl.pathname ||
+      next.hash.length > 0
+    ) {
+      return { kind: "invalid" };
+    }
+    return { kind: "valid", url: next };
   }
-  return undefined;
+  return { kind: "none" };
 };
 
 /** Searches GitHub without requiring authentication for public repositories. */
@@ -85,11 +110,12 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     repository: GitHubRepositoryIdentity,
     headSha: string
   ): Promise<GitHubPullRequestSearchResult> {
-    let url = new URL(
+    const collectionUrl = new URL(
       `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/pulls`
     );
-    url.searchParams.set("state", "open");
-    url.searchParams.set("per_page", "100");
+    collectionUrl.searchParams.set("state", "open");
+    collectionUrl.searchParams.set("per_page", "100");
+    let url = new URL(collectionUrl);
 
     const headers: Record<string, string> = {
       accept: "application/vnd.github+json",
@@ -131,11 +157,14 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
         .map(value => toCandidate(value as GitHubPullRequestResponse, headSha))
         .filter((value): value is GitHubPullRequestCandidate => value !== undefined));
 
-      const next = nextPageUrl(response);
-      if (next === undefined) {
+      const next = nextPageUrl(response, url, collectionUrl);
+      if (next.kind === "invalid") {
+        return { kind: "unavailable", reason: "api" };
+      }
+      if (next.kind === "none") {
         break;
       }
-      url = next;
+      url = next.url;
     }
 
     candidates.sort((left, right) => left.number - right.number);
