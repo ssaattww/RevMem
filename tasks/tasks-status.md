@@ -10,7 +10,7 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T207 temporary Git repository統合試験
 - 次のタスク: なし（T207完了後に次taskを選択）
-- 実装状態: T206はPR #29へ提出済み。T207はtemporary Git repositoryの連続操作と再起動後state/history整合をTDD実装し、focused検証済み。通常review待ち
+- 実装状態: T206はPR #29へ提出済み。T207通常reviewの3 findingを一括修正し、T207を含むGit集約testと関連focused検証済み。同じ通常reviewerのfix verification待ち
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t207-git-history-integration`
 - Pull Request: 未作成（base=`task/t206-jsonl-history`のstacked PR予定）
@@ -154,6 +154,8 @@
 - T206独立review follow-up R2レポート: `reports/issue-1-t206-independent-review-followup-r2-20260802003500.md`
 - T206独立finding最終fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-r2-20260802005000.md`
 - T207実装レポート: `reports/issue-1-t207-implementation-20260802011000.md`
+- T207通常レビューレポート: `reports/issue-1-t207-review-20260802013500.md`
+- T207 review follow-upレポート: `reports/issue-1-t207-review-followup-20260802015000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`

@@ -35,6 +35,17 @@ test("unit and focused suites execute the integrated design contract", async () 
   }
 });
 
+test("temporary Git suite executes the T207 history integration scenario", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+
+  assert.match(
+    requireScript(manifest.scripts ?? {}, "test:git"),
+    /test-dist\/test\/integration\/t207-git-history\.integration\.test\.js/u
+  );
+});
+
 test("CI executes positive and negative architecture gates with diagnostic logs", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 

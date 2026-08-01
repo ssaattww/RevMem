@@ -304,11 +304,21 @@ function validateNewFileMetadata(
     if (!Number.isSafeInteger(metadata.lineCount) || metadata.lineCount < 0) {
       throw new RangeError("newFiles lineCount must be a non-negative safe integer.");
     }
+    if (
+      metadata.physicalLineCount !== undefined &&
+      (!Number.isSafeInteger(metadata.physicalLineCount) || metadata.physicalLineCount < 0)
+    ) {
+      throw new RangeError("newFiles physicalLineCount must be a non-negative safe integer.");
+    }
     if (metadata.contentHash !== undefined && metadata.contentHash.length === 0) {
       throw new RangeError("newFiles contentHash must be non-empty when present.");
     }
-    if (metadata.newText !== undefined && textLines(metadata.newText).length !== metadata.lineCount) {
-      throw new RangeError("newFiles newText line count must equal lineCount.");
+    if (
+      metadata.newText !== undefined &&
+      metadata.physicalLineCount !== undefined &&
+      textLines(metadata.newText).length !== metadata.physicalLineCount
+    ) {
+      throw new RangeError("newFiles newText physical line count must equal physicalLineCount.");
     }
   }
 }
@@ -376,7 +386,6 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
     return;
   }
   const parsed = parseZeroContextGitDiff(input.diff);
-  const stateByPath = new Map(Object.values(input.files).map((file) => [file.currentPath, file]));
   for (const file of parsed.files) {
     if (file.oldPath === undefined || file.newPath === undefined) {
       continue;
@@ -391,10 +400,6 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
     const newDocument = parseTextDocumentEvidence(newText);
     const oldLines = oldDocument.lines;
     const newLines = newDocument.lines;
-    const oldState = stateByPath.get(file.oldPath);
-    if (oldState !== undefined && oldLines.length !== oldState.lineCount) {
-      throw new RangeError("oldTexts line count must equal the source file-state lineCount.");
-    }
     for (const hunk of file.hunks) {
       const removed = oldLines.slice(hunk.oldStart, hunk.oldStart + hunk.oldLineCount);
       const added = newLines.slice(hunk.newStart, hunk.newStart + hunk.newLineCount);

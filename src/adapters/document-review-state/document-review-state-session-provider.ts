@@ -535,24 +535,41 @@ export class DocumentReviewStateSessionProvider {
       return mapping;
     }
 
-    const matchingFileIds = new Set<string>();
+    const contextFileIds = new Set<string>();
     for (const [fileId, file] of Object.entries(commit.contextState.files)) {
       if (file.currentPath === mapping.target.currentPath) {
-        matchingFileIds.add(fileId);
+        contextFileIds.add(fileId);
       }
     }
+    if (contextFileIds.size > 1) {
+      throw new Error(
+        "persisted Git review context has conflicting file identities for the current path."
+      );
+    }
+    const contextFileId = contextFileIds.values().next().value as string | undefined;
+    if (contextFileId !== undefined) {
+      return {
+        ...mapping,
+        target: {
+          ...mapping.target,
+          fileId: contextFileId
+        }
+      };
+    }
+
+    const globalFileIds = new Set<string>();
     for (const [fileId, file] of Object.entries(commit.globalState.files)) {
       if (file.currentPath === mapping.target.currentPath) {
-        matchingFileIds.add(fileId);
+        globalFileIds.add(fileId);
       }
     }
 
-    if (matchingFileIds.size > 1) {
+    if (globalFileIds.size > 1) {
       throw new Error(
-        "persisted Git review state has conflicting file identities for the current path."
+        "persisted Git Global state has conflicting file identities for the current path."
       );
     }
-    const fileId = matchingFileIds.values().next().value as string | undefined;
+    const fileId = globalFileIds.values().next().value as string | undefined;
     if (fileId === undefined) {
       return mapping;
     }

@@ -22,14 +22,7 @@ import { createTemporaryGitRepository } from "../support/temporary-git-repositor
 
 const occurredAt = "2026-08-02T02:00:00.000Z";
 
-const lineCountOf = (content: string): number => {
-  if (content.length === 0) {
-    return 0;
-  }
-
-  const lines = content.split(/\r\n|\r|\n/u);
-  return /\r\n|\r|\n$/u.test(content) ? lines.length - 1 : lines.length;
-};
+const lineCountOf = (content: string): number => content.split(/\r\n|\r|\n/u).length;
 
 const descriptorFor = (
   repositoryPath: string,
@@ -82,7 +75,7 @@ const createProvider = (
   return { provider, repository, stableHash, historyRecorder };
 };
 
-test("T207 preserves Git review state and JSONL history through edit, commit, branch, rename, delete, and restart", async () => {
+test("T207 preserves Git state and durable history through edit, commit, branch, rename, copy, delete, and restart", async () => {
   const gitRepository = await createTemporaryGitRepository();
   const storage = await createTemporaryDirectory("review-range-t207-state");
   const storageUris: ReviewStateStorageUris = {
@@ -90,121 +83,269 @@ test("T207 preserves Git review state and JSONL history through edit, commit, br
     storageUri: { fsPath: path.join(storage.path, "workspace") }
   };
   const fixturePath = path.join(gitRepository.path, "fixture.txt");
+  const renamedPath = path.join(gitRepository.path, "renamed.txt");
+  const copyPath = path.join(gitRepository.path, "copy.txt");
+  const noTerminalPath = path.join(gitRepository.path, "no-terminal.txt");
+  const emptyPath = path.join(gitRepository.path, "empty.txt");
   const anchorPath = path.join(gitRepository.path, "anchor.txt");
+  const initialFixture = "stable\nchange\ntail\n";
+  const editedFixture = "stable\nchanged\ntail\n";
+  const noTerminalContent = "no terminal newline";
+  const emptyContent = "";
+  const anchorContent = "anchor\n";
+  const allPhysicalFixtureRanges = [{ startLine: 0, endLineExclusive: 3 }];
+  const mappedFixtureRanges = [
+    { startLine: 0, endLineExclusive: 1 },
+    { startLine: 2, endLineExclusive: 3 }
+  ];
+  const featureFixtureRanges = [{ startLine: 1, endLineExclusive: 2 }];
 
   try {
-    await writeFile(anchorPath, "anchor\n", "utf8");
-    await gitRepository.runGit(["add", "anchor.txt"]);
-    await gitRepository.runGit(["commit", "--message", "add mapping anchor"]);
+    await writeFile(fixturePath, initialFixture, "utf8");
+    await writeFile(anchorPath, anchorContent, "utf8");
+    await writeFile(noTerminalPath, noTerminalContent, "utf8");
+    await writeFile(emptyPath, emptyContent, "utf8");
+    await gitRepository.runGit(["add", "fixture.txt", "anchor.txt", "no-terminal.txt", "empty.txt"]);
+    await gitRepository.runGit(["commit", "--message", "add T207 fixtures"]);
 
     const first = createProvider(storageUris, "first-session");
-    const originalContent = await readFile(fixturePath, "utf8");
     const mainInitial = await first.provider.open(
-      descriptorFor(gitRepository.path, "fixture.txt", originalContent, first.stableHash)
+      descriptorFor(gitRepository.path, "fixture.txt", initialFixture, first.stableHash)
     );
     const initialMark = markReviewedRanges({
       contextState: mainInitial.contextState,
       globalState: mainInitial.globalState,
       target: mainInitial.target,
-      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      intervals: allPhysicalFixtureRanges,
       occurredAt
     });
     await mainInitial.committer.commit(initialMark);
     await first.historyRecorder.recordTransaction(initialMark, "integration-mark");
 
-    const editedContent = "base\nedited\n";
-    await writeFile(fixturePath, editedContent, "utf8");
-    const afterEdit = await first.provider.open(
-      descriptorFor(gitRepository.path, "fixture.txt", editedContent, first.stableHash)
+    const mainNoTerminal = await first.provider.open(
+      descriptorFor(gitRepository.path, "no-terminal.txt", noTerminalContent, first.stableHash)
     );
-    assert.equal(afterEdit.contextState.files[afterEdit.target.fileId], undefined);
-    assert.equal(afterEdit.globalState.files[afterEdit.target.fileId], undefined);
-
-    const editedMark = markReviewedRanges({
-      contextState: afterEdit.contextState,
-      globalState: afterEdit.globalState,
-      target: afterEdit.target,
+    const noTerminalMark = markReviewedRanges({
+      contextState: mainNoTerminal.contextState,
+      globalState: mainNoTerminal.globalState,
+      target: mainNoTerminal.target,
       intervals: [{ startLine: 0, endLineExclusive: 1 }],
       occurredAt
     });
-    await afterEdit.committer.commit(editedMark);
-    await first.historyRecorder.recordTransaction(editedMark, "integration-mark");
+    await mainNoTerminal.committer.commit(noTerminalMark);
+    await first.historyRecorder.recordTransaction(noTerminalMark, "integration-mark");
+
+    const mainEmpty = await first.provider.open(
+      descriptorFor(gitRepository.path, "empty.txt", emptyContent, first.stableHash)
+    );
+    const emptyMark = markReviewedRanges({
+      contextState: mainEmpty.contextState,
+      globalState: mainEmpty.globalState,
+      target: mainEmpty.target,
+      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      occurredAt
+    });
+    await mainEmpty.committer.commit(emptyMark);
+    await first.historyRecorder.recordTransaction(emptyMark, "integration-mark");
+
+    const mainAnchor = await first.provider.open(
+      descriptorFor(gitRepository.path, "anchor.txt", anchorContent, first.stableHash)
+    );
+    const anchorMark = markReviewedRanges({
+      contextState: mainAnchor.contextState,
+      globalState: mainAnchor.globalState,
+      target: mainAnchor.target,
+      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      occurredAt
+    });
+    await mainAnchor.committer.commit(anchorMark);
+    await first.historyRecorder.recordTransaction(anchorMark, "integration-mark");
+
+    await writeFile(fixturePath, editedFixture, "utf8");
     await gitRepository.runGit(["add", "fixture.txt"]);
     await gitRepository.runGit(["commit", "--message", "edit fixture"]);
-    const afterCommit = await first.provider.open(
-      descriptorFor(gitRepository.path, "fixture.txt", editedContent, first.stableHash)
+    const mainAfterCommit = await first.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
     );
     assert.deepEqual(
-      afterCommit.contextState.files[afterCommit.target.fileId]?.modifiedReviewed,
+      mainAfterCommit.contextState.files[mainAfterCommit.target.fileId]?.modifiedReviewed,
+      mappedFixtureRanges
+    );
+    assert.equal(mainAfterCommit.contextState.files[mainAfterCommit.target.fileId]?.lineCount, 4);
+
+    const mainNoTerminalAfterCommit = await first.provider.open(
+      descriptorFor(gitRepository.path, "no-terminal.txt", noTerminalContent, first.stableHash)
+    );
+    assert.deepEqual(
+      mainNoTerminalAfterCommit.contextState.files[mainNoTerminalAfterCommit.target.fileId]?.modifiedReviewed,
       [{ startLine: 0, endLineExclusive: 1 }]
     );
+    assert.equal(mainNoTerminalAfterCommit.contextState.files[mainNoTerminalAfterCommit.target.fileId]?.lineCount, 1);
+
+    const mainEmptyAfterCommit = await first.provider.open(
+      descriptorFor(gitRepository.path, "empty.txt", emptyContent, first.stableHash)
+    );
+    assert.deepEqual(
+      mainEmptyAfterCommit.contextState.files[mainEmptyAfterCommit.target.fileId]?.modifiedReviewed,
+      [{ startLine: 0, endLineExclusive: 1 }]
+    );
+    assert.equal(mainEmptyAfterCommit.contextState.files[mainEmptyAfterCommit.target.fileId]?.lineCount, 1);
+
+    const mainRevision = await gitRepository.runGit(["rev-parse", "HEAD"]);
 
     await gitRepository.runGit(["checkout", "-b", "feature/t207-history"]);
     const featureInitial = await first.provider.open(
-      descriptorFor(gitRepository.path, "fixture.txt", editedContent, first.stableHash)
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
     );
-    assert.notEqual(featureInitial.contextState.contextId, afterCommit.contextState.contextId);
+    assert.notEqual(featureInitial.contextState.contextId, mainAfterCommit.contextState.contextId);
     const featureMark = markReviewedRanges({
       contextState: featureInitial.contextState,
       globalState: featureInitial.globalState,
       target: featureInitial.target,
-      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      intervals: featureFixtureRanges,
       occurredAt
     });
     await featureInitial.committer.commit(featureMark);
     await first.historyRecorder.recordTransaction(featureMark, "integration-mark");
 
-    const renamedPath = path.join(gitRepository.path, "renamed.txt");
+    await gitRepository.runGit(["checkout", "main"]);
+    const restoredMain = await first.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
+    );
+    assert.equal(restoredMain.contextState.contextId, mainAfterCommit.contextState.contextId);
+    assert.deepEqual(
+      restoredMain.contextState.files[restoredMain.target.fileId]?.modifiedReviewed,
+      mappedFixtureRanges
+    );
+
+    await gitRepository.runGit(["checkout", "feature/t207-history"]);
+    const restoredFeature = await first.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
+    );
+    assert.deepEqual(
+      restoredFeature.contextState.files[restoredFeature.target.fileId]?.modifiedReviewed,
+      featureFixtureRanges
+    );
+
     await rename(fixturePath, renamedPath);
     await gitRepository.runGit(["add", "--all"]);
     await gitRepository.runGit(["commit", "--message", "rename fixture"]);
     const afterRename = await first.provider.open(
-      descriptorFor(gitRepository.path, "renamed.txt", editedContent, first.stableHash)
+      descriptorFor(gitRepository.path, "renamed.txt", editedFixture, first.stableHash)
     );
     assert.equal(afterRename.target.fileId, featureInitial.target.fileId);
     assert.deepEqual(
       afterRename.contextState.files[afterRename.target.fileId]?.modifiedReviewed,
-      [{ startLine: 0, endLineExclusive: 1 }]
+      featureFixtureRanges
     );
+    const renameRevision = await gitRepository.runGit(["rev-parse", "HEAD"]);
+
+    await writeFile(copyPath, editedFixture, "utf8");
+    await gitRepository.runGit(["add", "copy.txt"]);
+    await gitRepository.runGit(["commit", "--message", "copy renamed fixture"]);
+    const afterCopy = await first.provider.open(
+      descriptorFor(gitRepository.path, "copy.txt", editedFixture, first.stableHash)
+    );
+    assert.notEqual(afterCopy.target.fileId, afterRename.target.fileId);
+    assert.deepEqual(afterCopy.contextState.files[afterCopy.target.fileId]?.modifiedReviewed, []);
+    const copyRevision = await gitRepository.runGit(["rev-parse", "HEAD"]);
 
     await unlink(renamedPath);
     await gitRepository.runGit(["add", "--all"]);
     await gitRepository.runGit(["commit", "--message", "delete renamed fixture"]);
-    const anchorContent = await readFile(anchorPath, "utf8");
     const afterDelete = await first.provider.open(
-      descriptorFor(gitRepository.path, "anchor.txt", anchorContent, first.stableHash)
+      descriptorFor(gitRepository.path, "copy.txt", editedFixture, first.stableHash)
     );
     assert.equal(afterDelete.contextState.files[afterRename.target.fileId], undefined);
     assert.equal(afterDelete.globalState.files[afterRename.target.fileId], undefined);
+    assert.deepEqual(afterDelete.contextState.files[afterCopy.target.fileId]?.modifiedReviewed, []);
+    const deleteRevision = await gitRepository.runGit(["rev-parse", "HEAD"]);
+
+    await gitRepository.runGit(["checkout", "main"]);
+    const mainBeforeRestart = await first.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
+    );
+    assert.deepEqual(
+      mainBeforeRestart.contextState.files[mainBeforeRestart.target.fileId]?.modifiedReviewed,
+      mappedFixtureRanges
+    );
     first.provider.dispose();
 
     const restarted = createProvider(storageUris, "restart-session");
-    const restartedAnchor = await restarted.provider.open(
-      descriptorFor(gitRepository.path, "anchor.txt", anchorContent, restarted.stableHash)
+    const restartedFixture = await restarted.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, restarted.stableHash)
     );
-    assert.equal(restartedAnchor.contextState.files[afterRename.target.fileId], undefined);
-    assert.equal(restartedAnchor.globalState.files[afterRename.target.fileId], undefined);
+    assert.deepEqual(
+      restartedFixture.contextState.files[restartedFixture.target.fileId]?.modifiedReviewed,
+      mappedFixtureRanges
+    );
+    assert.equal(restartedFixture.contextState.files[restartedFixture.target.fileId]?.lineCount, 4);
+    const restartedNoTerminal = await restarted.provider.open(
+      descriptorFor(gitRepository.path, "no-terminal.txt", noTerminalContent, restarted.stableHash)
+    );
+    assert.deepEqual(
+      restartedNoTerminal.contextState.files[restartedNoTerminal.target.fileId]?.modifiedReviewed,
+      [{ startLine: 0, endLineExclusive: 1 }]
+    );
+    assert.equal(restartedNoTerminal.contextState.files[restartedNoTerminal.target.fileId]?.lineCount, 1);
+    const restartedEmpty = await restarted.provider.open(
+      descriptorFor(gitRepository.path, "empty.txt", emptyContent, restarted.stableHash)
+    );
+    assert.deepEqual(
+      restartedEmpty.contextState.files[restartedEmpty.target.fileId]?.modifiedReviewed,
+      [{ startLine: 0, endLineExclusive: 1 }]
+    );
+    assert.equal(restartedEmpty.contextState.files[restartedEmpty.target.fileId]?.lineCount, 1);
 
-    const historyTargets = [mainInitial, featureInitial].map((session) => ({
+    const historyTarget = {
       kind: "git" as const,
-      repositoryId: session.contextState.repositoryId,
-      contextId: session.contextState.contextId
-    }));
-    const historyEvents = (
-      await Promise.all(historyTargets.map(async (target) => {
-        const route = resolveReviewStateStorageRoute(storageUris, target);
-        const content = await readFile(
-          path.join(route.historyDirectory, "events-2026-08.jsonl"),
-          "utf8"
-        );
-        return content.trimEnd().split("\n").map(parseReviewHistoryEventLine);
-      }))
-    ).flat();
-    assert.ok(historyEvents.some((event) => event.type === "invalidated-by-edit"));
-    assert.ok(historyEvents.some((event) => event.type === "remapped-by-diff"));
-    assert.ok(historyEvents.some((event) => event.type === "file-renamed"));
-    assert.ok(historyEvents.some((event) => event.type === "file-deleted"));
-    assert.ok(historyEvents.every((event) => event.sessionId !== ""));
+      repositoryId: mainInitial.contextState.repositoryId,
+      contextId: mainInitial.contextState.contextId
+    };
+    const historyRoute = resolveReviewStateStorageRoute(storageUris, historyTarget);
+    const historyContent = await readFile(
+      path.join(historyRoute.historyDirectory, "events-2026-08.jsonl"),
+      "utf8"
+    );
+    const historyEvents = historyContent.trimEnd().split("\n").map(parseReviewHistoryEventLine);
+    const hasFileEvent = (
+      type: string,
+      contextId: string,
+      revisionId: string,
+      filePath: string,
+      previousRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      reason: string
+    ): boolean => historyEvents.some((event) =>
+      event.type === type &&
+      "filePath" in event &&
+      event.contextId === contextId &&
+      event.revisionId === revisionId &&
+      event.filePath === filePath &&
+      event.reason === reason &&
+      JSON.stringify(event.previousRanges) === JSON.stringify(previousRanges) &&
+      JSON.stringify(event.nextRanges) === JSON.stringify(nextRanges)
+    );
+    assert.ok(hasFileEvent(
+      "remapped-by-diff", mainAfterCommit.contextState.contextId, mainRevision,
+      "fixture.txt", allPhysicalFixtureRanges, mappedFixtureRanges, "git-revision-mapped"
+    ));
+    assert.ok(hasFileEvent(
+      "marked-reviewed", featureInitial.contextState.contextId, mainRevision,
+      "fixture.txt", [], featureFixtureRanges, "integration-mark"
+    ));
+    assert.ok(hasFileEvent(
+      "file-renamed", featureInitial.contextState.contextId, renameRevision,
+      "renamed.txt", featureFixtureRanges, featureFixtureRanges, "git-revision-mapped"
+    ));
+    assert.ok(hasFileEvent(
+      "remapped-by-diff", featureInitial.contextState.contextId, copyRevision,
+      "copy.txt", [], [], "git-revision-mapped"
+    ));
+    assert.ok(hasFileEvent(
+      "file-deleted", featureInitial.contextState.contextId, deleteRevision,
+      "renamed.txt", featureFixtureRanges, [], "git-revision-mapped"
+    ));
     restarted.provider.dispose();
   } finally {
     await gitRepository.cleanup();

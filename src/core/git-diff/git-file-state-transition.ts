@@ -26,8 +26,10 @@ export interface GitFileTransitionUnresolved {
 export interface GitNewFileStateInput {
   /** Stable ID to use for a genuinely new or unresolved destination file. */
   readonly fileId: string;
-  /** Exact line count in the new revision. */
+  /** VS Code `TextDocument.lineCount` in the new revision. */
   readonly lineCount: number;
+  /** Physical Git text lines used only to validate complete text evidence. */
+  readonly physicalLineCount?: number;
   /** Hash of the complete new content, when available. */
   readonly contentHash?: string;
   /** Complete new text used to prove whitespace/EOL equivalence. */
