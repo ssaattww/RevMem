@@ -131,21 +131,36 @@ export class PollingGitStateMonitor {
   }
 
   private async pollObserved(): Promise<void> {
+    const failures: unknown[] = [];
     for (const [rootPath, previous] of [...this.observed.entries()]) {
-      const inspection = await this.options.inspector.inspectRepository(rootPath);
-      const current = inspection.kind === "repository"
-        ? cloneSnapshot(inspection.repository)
-        : undefined;
-      if (fingerprint(previous) === fingerprint(current)) {
-        continue;
+      try {
+        const inspection = await this.options.inspector.inspectRepository(rootPath);
+        const current = inspection.kind === "repository"
+          ? cloneSnapshot(inspection.repository)
+          : undefined;
+        if (fingerprint(previous) === fingerprint(current)) {
+          continue;
+        }
+        const change: GitStateChange = {
+          rootPath,
+          ...(previous === undefined ? {} : { previous: cloneSnapshot(previous) }),
+          ...(current === undefined ? {} : { current: cloneSnapshot(current) })
+        };
+        await this.options.onDidChange(change);
+        this.observed.set(rootPath, current);
+      } catch (error) {
+        failures.push(error);
       }
-      const change: GitStateChange = {
-        rootPath,
-        ...(previous === undefined ? {} : { previous: cloneSnapshot(previous) }),
-        ...(current === undefined ? {} : { current: cloneSnapshot(current) })
-      };
-      await this.options.onDidChange(change);
-      this.observed.set(rootPath, current);
+    }
+
+    if (failures.length === 1) {
+      throw failures[0];
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        "Git state polling failed for multiple repository roots."
+      );
     }
   }
 }
