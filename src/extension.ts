@@ -64,6 +64,7 @@ interface ReviewRangeExtensionTestApi {
 
 interface ActiveExtensionRuntime {
   readonly persistence: DebouncedReviewStateRepository;
+  readonly documentSessionProvider: DocumentReviewStateSessionProvider;
   readonly decorationController: NormalEditorDecorationController<
     vscode.TextEditor,
     vscode.TextEditorDecorationType
@@ -410,11 +411,13 @@ export function activate(
   );
   context.subscriptions.push(
     fileExclusionConfigurationController,
+    documentSessionProvider,
     decorationController,
     ...registrations
   );
   activeRuntime = {
     persistence: repository,
+    documentSessionProvider,
     decorationController,
     fileExclusionConfigurationController
   };
@@ -448,5 +451,6 @@ export async function deactivate(): Promise<void> {
 
   runtime.fileExclusionConfigurationController.dispose();
   runtime.decorationController.dispose();
+  runtime.documentSessionProvider.dispose();
   await runtime.persistence.dispose();
 }

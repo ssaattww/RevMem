@@ -77,6 +77,33 @@ const reviewableDiff = (diff: string): string => {
     .join("\n");
 };
 
+/** Returns paths in Git-declared binary sections so they cannot inherit line-review state. */
+const binaryDiffPaths = (diff: string): ReadonlySet<string> => {
+  const paths = new Set<string>();
+  let headerPaths: readonly string[] = [];
+  let binary = false;
+  const addPaths = (): void => {
+    if (binary) {
+      for (const path of headerPaths) {
+        paths.add(path);
+      }
+    }
+  };
+
+  for (const line of diff.split(/\r?\n/u)) {
+    if (line.startsWith("diff --git ")) {
+      addPaths();
+      binary = false;
+      const match = /^diff --git a\/(.+) b\/(.+)$/u.exec(line);
+      headerPaths = match === null ? [] : [match[1] as string, match[2] as string];
+    } else if (line.startsWith("Binary files ") || line === "GIT binary patch") {
+      binary = true;
+    }
+  }
+  addPaths();
+  return paths;
+};
+
 const copyAwareParsedFiles = (diff: string): readonly GitDiffFile[] =>
   parseZeroContextGitDiff(
     diff
@@ -205,6 +232,7 @@ export class GitContextRevisionMapper {
       newRevision
     );
     const diff = reviewableDiff(rawDiff);
+    const binaryPaths = binaryDiffPaths(rawDiff);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
@@ -246,7 +274,8 @@ export class GitContextRevisionMapper {
       newRevision,
       repositoryRoot,
       semantics,
-      occurredAt
+      occurredAt,
+      binaryPaths
     );
   }
 
@@ -460,6 +489,7 @@ export class GitContextRevisionMapper {
     }
 
     const result: Record<string, GitNewFileStateInput> = {};
+    const occupiedFileIds = new Set(Object.keys(existing));
     const destinationPaths = unique([
       ...parsedFiles.map((file) => file.newPath),
       ...copyAwareFiles.map((file) => file.newPath)
@@ -474,11 +504,12 @@ export class GitContextRevisionMapper {
       const content = requireFound(textResult, newRevision, filePath);
       result[filePath] = {
         fileId: preservedDestinationIds.get(filePath) ??
-          this.createFileId(repositoryId, filePath),
+          this.createUnoccupiedFileId(repositoryId, filePath, occupiedFileIds),
         lineCount: lineCountOf(content),
         contentHash: this.digest(content),
         newText: content
       };
+      occupiedFileIds.add(result[filePath].fileId);
     }
     return result;
   }
@@ -545,10 +576,14 @@ export class GitContextRevisionMapper {
     newRevision: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
-    occurredAt: string
+    occurredAt: string,
+    binaryPaths: ReadonlySet<string> = new Set()
   ): Promise<Record<string, FileReviewState>> {
     const refreshed: Record<string, FileReviewState> = {};
     for (const file of Object.values(files)) {
+      if (binaryPaths.has(file.currentPath)) {
+        continue;
+      }
       const result = await this.options.source.readTextFileAtRevision(
         repositoryRoot,
         newRevision,
@@ -574,6 +609,26 @@ export class GitContextRevisionMapper {
     return `repository-file:${this.digest(
       ["repository-file", repositoryId, filePath].join("\0")
     )}`;
+  }
+
+  /** Derives a deterministic new-file ID without replacing a retained stable identity. */
+  private createUnoccupiedFileId(
+    repositoryId: string,
+    filePath: string,
+    occupiedFileIds: ReadonlySet<string>
+  ): string {
+    const canonical = this.createFileId(repositoryId, filePath);
+    if (!occupiedFileIds.has(canonical)) {
+      return canonical;
+    }
+    for (let discriminator = 1; ; discriminator += 1) {
+      const candidate = `repository-file:${this.digest(
+        ["repository-file", repositoryId, filePath, String(discriminator)].join("\0")
+      )}`;
+      if (!occupiedFileIds.has(candidate)) {
+        return candidate;
+      }
+    }
   }
 
   private digest(content: string): string {

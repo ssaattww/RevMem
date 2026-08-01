@@ -158,3 +158,127 @@ test("revision mapping ignores binary diff sections and maps text state", async 
     ]
   );
 });
+
+class ExistingBinaryRevisionSource implements GitRevisionMappingSource {
+  public constructor(private readonly binarySection: string) {}
+
+  public async objectExists(): Promise<boolean> {
+    return true;
+  }
+
+  public async diffRevisions(): Promise<string> {
+    return this.binarySection;
+  }
+
+  public async readTextFileAtRevision(
+    _repositoryRoot: string,
+    revision: string,
+    repositoryRelativePath: string
+  ): Promise<
+    | { readonly kind: "found"; readonly content: string }
+    | { readonly kind: "missing-revision" }
+    | { readonly kind: "missing-file" }
+    | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
+  > {
+    if (repositoryRelativePath !== "assets/payload.bin") {
+      return { kind: "missing-file" };
+    }
+    return {
+      kind: "found",
+      content: revision === oldRevision ? "alpha\nbeta" : "alpha\0beta"
+    };
+  }
+}
+
+/** Git-declared binary paths are excluded even when their blob can be decoded as UTF-8. */
+for (const [label, binarySection] of [
+  [
+    "NUL-containing UTF-8",
+    [
+      "diff --git a/assets/payload.bin b/assets/payload.bin",
+      "index 1111111..2222222 100644",
+      "Binary files a/assets/payload.bin and b/assets/payload.bin differ",
+      ""
+    ].join("\n")
+  ],
+  [
+    "attribute-driven binary",
+    [
+      "diff --git a/assets/payload.bin b/assets/payload.bin",
+      "index 1111111..2222222 100644",
+      "GIT binary patch",
+      "literal 10",
+      "",
+      ""
+    ].join("\n")
+  ]
+] as const) {
+  test(`revision mapping excludes existing ${label} files from reviewed state`, async () => {
+    const resolver = new GitReviewContextResolver({ stableHash, now: () => new Date(occurredAt) });
+    const current = resolver.resolve({
+      repositoryId,
+      rootPath: "/repo",
+      branch: { kind: "branch", fullRef: "refs/heads/main" },
+      head: newRevision
+    });
+    const fileId = `repository-file:${stableHash.digest(
+      ["repository-file", repositoryId, "assets/payload.bin"].join("\0")
+    )}`;
+    const contextState: ReviewContextState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextId: current.contextId,
+      kind: "branch",
+      repositoryId,
+      displayName: "refs/heads/main",
+      branch: { refName: "refs/heads/main", headRevision: oldRevision },
+      files: {
+        [fileId]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          fileId,
+          currentPath: "assets/payload.bin",
+          previousPaths: [],
+          revisionId: oldRevision,
+          modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }],
+          originalReviewedByDiff: {},
+          contentHash: stableHash.digest("alpha\nbeta"),
+          lineCount: 2,
+          updatedAt: occurredAt
+        }
+      },
+      createdAt: occurredAt,
+      updatedAt: occurredAt
+    };
+    const globalState: RepositoryGlobalState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      repositoryId,
+      currentRevisionId: oldRevision,
+      files: {
+        [fileId]: {
+          fileId,
+          currentPath: "assets/payload.bin",
+          revisionId: oldRevision,
+          reviewed: [{ startLine: 0, endLineExclusive: 2 }],
+          contentHash: stableHash.digest("alpha\nbeta"),
+          updatedAt: occurredAt
+        }
+      },
+      updatedAt: occurredAt
+    };
+    const mapper = new GitContextRevisionMapper({
+      source: new ExistingBinaryRevisionSource(binarySection),
+      stableHash,
+      now: () => new Date(occurredAt)
+    });
+
+    const result = await mapper.map({
+      current,
+      contextState,
+      globalState,
+      fileSystemPathSemantics: "posix",
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+    });
+
+    assert.deepEqual(result.contextState.files, {});
+    assert.deepEqual(result.globalState.files, {});
+  });
+}

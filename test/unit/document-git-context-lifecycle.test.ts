@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -12,6 +14,8 @@ import {
 import type { LocalGitRepositoryInspection } from "../../src/adapters/local-git/index";
 import type { GitRevisionMappingSource } from "../../src/application/review-context/index";
 import {
+  DebouncedReviewStateRepository,
+  FileSystemReviewStateRepository,
   type ReviewStateCommit,
   type ReviewStateRepositoryTarget,
   type ReviewStateTransactionLike
@@ -109,7 +113,7 @@ class MutableGitInspector implements DocumentGitInspector {
       kind: "repository",
       repository: {
         gitVersion: "2.55.0",
-        rootPath: path.resolve("/repo"),
+        rootPath: "/repo",
         repositoryId,
         branch: clone(this.branch),
         head: this.head
@@ -170,7 +174,7 @@ const descriptor = (
     authority: "",
     path: `/repo/${repositoryRelativePath}`
   },
-  documentFsPath: path.resolve(`/repo/${repositoryRelativePath}`),
+  documentFsPath: `/repo/${repositoryRelativePath}`,
   fileSystemPathSemantics: "posix",
   lineCount,
   contentHash
@@ -178,7 +182,7 @@ const descriptor = (
 
 const createProvider = (
   stableHash: NodeSha256StableHash,
-  repository: MemoryRepository,
+  repository: DocumentReviewStateRepository,
   inspector: MutableGitInspector,
   source: RevisionSource,
   gitStateObserver?: (rootPath: string, head: string | undefined) => void
@@ -348,6 +352,112 @@ test("document routing follows the stable file ID after a rename", async () => {
   assert.deepEqual(
     renamed.globalState.files[initial.target.fileId]?.reviewed,
     [{ startLine: 0, endLineExclusive: 2 }]
+  );
+  provider.dispose();
+});
+
+/** A production persistence composition maps owner-wide Global state before opening a new branch context. */
+test("new branch initialization maps owner-wide Global state through the debounced repository", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t205-global-"));
+  const stableHash = new NodeSha256StableHash();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const repository = new DebouncedReviewStateRepository({
+    delegate: new FileSystemReviewStateRepository({
+      storageUris: { globalStorageUri: { fsPath: path.join(root, "global") } }
+    }),
+    debounceMilliseconds: 0
+  });
+  const provider = createProvider(stableHash, repository, inspector, source);
+
+  try {
+    const main = await provider.open(
+      descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+    );
+    await main.committer.commit(markReviewedRanges({
+      contextState: main.contextState,
+      globalState: main.globalState,
+      target: main.target,
+      intervals: [{ startLine: 0, endLineExclusive: 3 }],
+      occurredAt
+    }));
+
+    inspector.branch = { kind: "branch", fullRef: "refs/heads/feature/t205" };
+    inspector.head = newRevision;
+    const feature = await provider.open(
+      descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))
+    );
+
+    assert.equal(feature.globalState.currentRevisionId, newRevision);
+    assert.deepEqual(
+      feature.globalState.files[main.target.fileId]?.reviewed,
+      [
+        { startLine: 0, endLineExclusive: 1 },
+        { startLine: 2, endLineExclusive: 3 }
+      ]
+    );
+  } finally {
+    provider.dispose();
+    await repository.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/** A renamed file retains its stable ID while a new file at the old path receives a distinct routed identity. */
+test("document routing distinguishes a renamed file from a new file at its old path", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/b.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/b.ts",
+    "diff --git a/src/a.ts b/src/a.ts",
+    "new file mode 100644",
+    "index 0000000..3333333",
+    "--- /dev/null",
+    "+++ b/src/a.ts",
+    "@@ -0,0 +1 @@",
+    "+replacement",
+    ""
+  ].join("\n");
+  source.texts.clear();
+  source.texts.set(`${oldRevision}\0src/a.ts`, "original");
+  source.texts.set(`${newRevision}\0src/b.ts`, "original");
+  source.texts.set(`${newRevision}\0src/a.ts`, "replacement");
+  const provider = createProvider(stableHash, repository, inspector, source);
+
+  const original = await provider.open(
+    descriptor("src/a.ts", stableHash.digest("original"), 1)
+  );
+  await original.committer.commit(markReviewedRanges({
+    contextState: original.contextState,
+    globalState: original.globalState,
+    target: original.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+
+  inspector.head = newRevision;
+  const renamed = await provider.open(
+    descriptor("src/b.ts", stableHash.digest("original"), 1)
+  );
+  const replacement = await provider.open(
+    descriptor("src/a.ts", stableHash.digest("replacement"), 1)
+  );
+
+  assert.equal(renamed.target.fileId, original.target.fileId);
+  assert.notEqual(replacement.target.fileId, original.target.fileId);
+  assert.equal(replacement.target.currentPath, "src/a.ts");
+  assert.equal(
+    replacement.contextState.files[replacement.target.fileId]?.currentPath,
+    "src/a.ts"
+  );
+  assert.deepEqual(
+    replacement.contextState.files[replacement.target.fileId]?.modifiedReviewed,
+    []
   );
   provider.dispose();
 });

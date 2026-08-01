@@ -7,6 +7,10 @@ import type {
 /** Persistence surface wrapped by the lifecycle-aware debounce adapter. */
 export interface ReviewStatePersistenceDelegate {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
+  /** Optionally loads an owner-wide Global snapshot even when the requested context is absent. */
+  loadGlobal?(
+    target: ReviewStateRepositoryTarget
+  ): Promise<ReviewStateCommit["globalState"] | undefined>;
   save(target: ReviewStateRepositoryTarget, commit: ReviewStateCommit): Promise<void>;
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
 }
@@ -115,6 +119,18 @@ export class DebouncedReviewStateRepository {
       return this.enqueue(key, () => this.options.delegate.load(target));
     })();
     return this.trackOperation(operation);
+  }
+
+  /** Loads the owner-wide Global snapshot through the debounce boundary. */
+  public async loadGlobal(
+    target: ReviewStateRepositoryTarget
+  ): Promise<ReviewStateCommit["globalState"] | undefined> {
+    this.assertNotDisposed();
+    await this.flush();
+    const loadGlobal = this.options.delegate.loadGlobal;
+    return loadGlobal === undefined
+      ? undefined
+      : loadGlobal.call(this.options.delegate, target);
   }
 
   /**
