@@ -27,7 +27,6 @@ export interface RepositoryFileEnumerationResult {
 interface GitIgnoreRule {
   readonly pattern: string;
   readonly negated: boolean;
-  readonly directoryOnly: boolean;
   readonly expression: RegExp;
 }
 
@@ -61,7 +60,7 @@ const compileGitIgnoreRule = (rawLine: string): GitIgnoreRule | undefined => {
   }
   const prefix = anchored || line.includes("/") ? "^" : "(?:^|/)";
   const suffix = directoryOnly ? "(?:/.*)?$" : "$";
-  return { pattern: rawLine.trim(), negated, directoryOnly, expression: new RegExp(prefix + source + suffix) };
+  return { pattern: rawLine.trim(), negated, expression: new RegExp(prefix + source + suffix) };
 };
 
 const parseGitIgnore = (content: string): readonly GitIgnoreRule[] =>
@@ -104,7 +103,10 @@ export class NodeRepositoryFileEnumerator {
         excluded.push({ path: repositoryPath, reason: { kind: "gitignore", pattern: gitIgnoreRule.pattern } });
         continue;
       }
-      included.push({ path: repositoryPath, nonEmptyLineCount: NodeRepositoryFileEnumerator.countNonEmptyLines(content.toString("utf8")) });
+      included.push({
+        path: repositoryPath,
+        nonEmptyLineCount: NodeRepositoryFileEnumerator.countNonEmptyLines(content.toString("utf8"))
+      });
     }
 
     return { included, excluded };
@@ -127,8 +129,6 @@ export class NodeRepositoryFileEnumerator {
       const repositoryPath = toRepositoryPath(path.relative(repositoryRoot, absolutePath));
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        const directoryDecision = this.exclusionPolicy.evaluate({ path: `${repositoryPath}/.enumeration-probe`, isBinary: false });
-        if (directoryDecision.excluded) continue;
         result.push(...await this.walk(repositoryRoot, absolutePath));
       } else if (entry.isFile()) {
         result.push(repositoryPath);
