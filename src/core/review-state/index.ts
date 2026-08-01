@@ -2,10 +2,13 @@
 export {
   commitReviewStateTransaction,
   markFileReviewed,
+  markOriginalReviewedRanges,
   markReviewedRanges,
   unmarkFileReviewed,
+  unmarkOriginalReviewedRanges,
   unmarkReviewedRanges,
   type DeepReadonly,
+  type OriginalReviewRangeMutationInput,
   type ReviewRangeMutationInput,
   type ReviewStateFileTarget,
   type ReviewStateMutationInput,
