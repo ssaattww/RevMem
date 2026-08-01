@@ -3,11 +3,12 @@ import test from "node:test";
 
 import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
 import {
-  SnapshotTrackingWorkspaceReviewStateSessionProvider,
+  WorkspaceReviewStateSessionProvider,
   type WorkspaceReviewStateRepository,
 } from "../../src/adapters/workspace-review-state/index";
 import type {
   ReviewStateCommit,
+  ReviewStateRepositoryTarget,
   ReviewStateTransactionLike,
 } from "../../src/adapters/state-repository/index";
 import {
@@ -15,7 +16,11 @@ import {
   NonGitSnapshotTracker,
 } from "../../src/application/non-git-snapshots/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
-import { REVIEW_RANGE_SCHEMA_VERSION } from "../../src/core/contracts/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState,
+} from "../../src/core/contracts/index";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -26,15 +31,15 @@ class Repository implements WorkspaceReviewStateRepository {
     return this.current === undefined ? undefined : clone(this.current);
   }
 
-  public async save(_target: never, commit: ReviewStateCommit): Promise<void> {
+  public async save(_target: ReviewStateRepositoryTarget, commit: ReviewStateCommit): Promise<void> {
     this.current = clone(commit);
   }
 
   public async commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void> {
     this.current = {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-      contextState: clone(transaction.next.contextState),
-      globalState: clone(transaction.next.globalState),
+      contextState: clone(transaction.next.contextState) as ReviewContextState,
+      globalState: clone(transaction.next.globalState) as RepositoryGlobalState,
     };
   }
 }
@@ -47,31 +52,20 @@ const descriptor = (content: string, contentHash: string) => ({
   workspaceDisplayName: "Workspace",
   lineCount: content.split("\n").length,
   contentHash,
+  content,
 });
 
 test("workspace provider remaps reviewed ranges from persisted snapshot after provider restart", async () => {
   const repository = new Repository();
   const storage = new InMemoryNonGitSnapshotStorage();
-  const contents = new Map([
-    ["hash-1", "alpha\nbeta\ngamma"],
-    ["hash-2", "alpha\ninserted\nbeta\ngamma"],
-  ]);
-  const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
+  const createProvider = () => new WorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(new NodeSha256StableHash()),
     repository,
-    snapshotStorage: storage,
     snapshotTracker: new NonGitSnapshotTracker(storage, {
       maxSnapshots: 16,
       maxCompressedBytes: 1024 * 1024,
       retentionMs: 60_000,
     }),
-    resolveContent: (value) => {
-      const content = contents.get(value.contentHash);
-      if (content === undefined) {
-        throw new Error(`missing fixture content: ${value.contentHash}`);
-      }
-      return content;
-    },
     now: () => new Date("2026-08-01T15:00:00.000Z"),
   });
 
@@ -111,9 +105,8 @@ test("workspace provider remaps reviewed ranges from persisted snapshot after pr
   };
 
   await createProvider().open(descriptor("alpha\nbeta\ngamma", "hash-1"));
-  const mapped = await createProvider().open(
-    descriptor("alpha\ninserted\nbeta\ngamma", "hash-2"),
-  );
+  const restarted = createProvider();
+  const mapped = await restarted.open(descriptor("alpha\ninserted\nbeta\ngamma", "hash-2"));
 
   assert.deepEqual(mapped.contextState.files[mapped.target.fileId]?.modifiedReviewed, [
     { startLine: 0, endLineExclusive: 1 },
