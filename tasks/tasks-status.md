@@ -10,11 +10,11 @@
 - 直近完了タスク: T205 branch context resolver・Git状態監視
 - 現在のタスク: T207 temporary Git repository統合試験
 - 次のタスク: なし（T207完了後に次taskを選択）
-- 実装状態: T206はPR #29へ提出済み。T207通常reviewの3 findingは同じreviewerが全件closedし`pass_with_held`。独立review 1回のpre-freeze待ち
+- 実装状態: T206はPR #29へ提出済み。T207独立reviewの2 high findingを修正・focused検証済み。通常reviewerと同じ独立reviewerによる既存finding closure確認待ち
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
 - Gitブランチ: `task/t207-git-history-integration`
 - Pull Request: 未作成（base=`task/t206-jsonl-history`のstacked PR予定）
-- PR方針: T207の統合test、必要最小限のproduction fix、通常1名と独立1名の最大2 reviewerによる証跡を別PRへ反映する。独立reviewは1回だけ実施し、指摘修正後はnormal reviewer確認のみ行う。mergeは利用者が行う
+- PR方針: T207の統合test、必要最小限のproduction fix、通常1名と独立1名の最大2 reviewerによる証跡を別PRへ反映する。独立reviewの広域確認は1回とし、fail時は同じ独立reviewerが既存findingのclosureだけを再確認して新規観点・新規findingを追加しない。mergeは利用者が行う
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -157,6 +157,8 @@
 - T207通常レビューレポート: `reports/issue-1-t207-review-20260802013500.md`
 - T207 review follow-upレポート: `reports/issue-1-t207-review-followup-20260802015000.md`
 - T207 fix verificationレポート: `reports/issue-1-t207-fix-verification-20260802021500.md`
+- T207独立最終レビューレポート: `reports/issue-1-t207-independent-final-review-20260802024500.md`
+- T207独立review follow-upレポート: `reports/issue-1-t207-independent-review-followup-20260802031000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`

@@ -16,7 +16,10 @@ import {
 import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
 import { parseReviewHistoryEventLine } from "../../src/core/review-history/index";
-import { markReviewedRanges } from "../../src/core/review-state/index";
+import {
+  markReviewedRanges,
+  unmarkReviewedRanges
+} from "../../src/core/review-state/index";
 import { createTemporaryDirectory } from "../support/temporary-directory";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository";
 
@@ -269,6 +272,90 @@ test("T207 preserves Git state and durable history through edit, commit, branch,
       mainBeforeRestart.contextState.files[mainBeforeRestart.target.fileId]?.modifiedReviewed,
       mappedFixtureRanges
     );
+
+    const mainTarget = {
+      kind: "git" as const,
+      repositoryId: mainBeforeRestart.contextState.repositoryId,
+      contextId: mainBeforeRestart.contextState.contextId
+    };
+    const legacyCommit = await first.repository.load(mainTarget);
+    assert.ok(legacyCommit);
+    const contextFixture = legacyCommit.contextState.files[mainBeforeRestart.target.fileId];
+    assert.ok(contextFixture);
+    const canonicalGlobal = {
+      fileId: mainBeforeRestart.target.fileId,
+      currentPath: contextFixture.currentPath,
+      revisionId: contextFixture.revisionId,
+      reviewed: contextFixture.modifiedReviewed,
+      contentHash: contextFixture.contentHash,
+      updatedAt: contextFixture.updatedAt
+    };
+    const legacyGlobalFileId = "legacy-global-fixture-id";
+    const otherGlobalFiles = Object.fromEntries(
+      Object.entries(legacyCommit.globalState.files).filter(
+        ([fileId]) => fileId !== mainBeforeRestart.target.fileId
+      )
+    );
+    await first.repository.commit({
+      repositoryId: mainTarget.repositoryId,
+      contextId: mainTarget.contextId,
+      expected: {
+        contextState: legacyCommit.contextState,
+        globalState: legacyCommit.globalState
+      },
+      next: {
+        contextState: legacyCommit.contextState,
+        globalState: {
+          ...legacyCommit.globalState,
+          files: {
+            ...otherGlobalFiles,
+            [legacyGlobalFileId]: {
+              ...canonicalGlobal,
+              fileId: legacyGlobalFileId
+            }
+          }
+        }
+      }
+    });
+
+    const reconciledMain = await first.provider.open(
+      descriptorFor(gitRepository.path, "fixture.txt", editedFixture, first.stableHash)
+    );
+    const reconciledGlobalFiles = Object.values(reconciledMain.globalState.files).filter(
+      (file) => file.currentPath === "fixture.txt"
+    );
+    assert.deepEqual(reconciledGlobalFiles.map((file) => file.fileId), [reconciledMain.target.fileId]);
+    assert.deepEqual(reconciledGlobalFiles[0]?.reviewed, mappedFixtureRanges);
+
+    const terminalMark = markReviewedRanges({
+      contextState: reconciledMain.contextState,
+      globalState: reconciledMain.globalState,
+      target: reconciledMain.target,
+      intervals: [{ startLine: 3, endLineExclusive: 4 }],
+      occurredAt
+    });
+    await reconciledMain.committer.commit(terminalMark);
+    await first.historyRecorder.recordTransaction(terminalMark, "integration-mark");
+    const terminalUnmark = unmarkReviewedRanges({
+      contextState: terminalMark.next.contextState,
+      globalState: terminalMark.next.globalState,
+      target: reconciledMain.target,
+      intervals: [{ startLine: 3, endLineExclusive: 4 }],
+      occurredAt
+    });
+    await reconciledMain.committer.commit(terminalUnmark);
+    await first.historyRecorder.recordTransaction(terminalUnmark, "integration-unmark");
+    const persistedAfterReconciliation = await first.repository.load(mainTarget);
+    assert.deepEqual(
+      Object.entries(persistedAfterReconciliation?.globalState.files ?? {})
+        .filter(([, file]) => file.currentPath === "fixture.txt")
+        .map(([fileId]) => fileId),
+      [reconciledMain.target.fileId]
+    );
+    assert.deepEqual(
+      persistedAfterReconciliation?.globalState.files[reconciledMain.target.fileId]?.reviewed,
+      mappedFixtureRanges
+    );
     first.provider.dispose();
 
     const restarted = createProvider(storageUris, "restart-session");
@@ -280,6 +367,17 @@ test("T207 preserves Git state and durable history through edit, commit, branch,
       mappedFixtureRanges
     );
     assert.equal(restartedFixture.contextState.files[restartedFixture.target.fileId]?.lineCount, 4);
+    const persistedAfterRestart = await restarted.repository.load(mainTarget);
+    assert.deepEqual(
+      Object.entries(persistedAfterRestart?.globalState.files ?? {})
+        .filter(([, file]) => file.currentPath === "fixture.txt")
+        .map(([fileId]) => fileId),
+      [restartedFixture.target.fileId]
+    );
+    assert.deepEqual(
+      persistedAfterRestart?.globalState.files[restartedFixture.target.fileId]?.reviewed,
+      mappedFixtureRanges
+    );
     const restartedNoTerminal = await restarted.provider.open(
       descriptorFor(gitRepository.path, "no-terminal.txt", noTerminalContent, restarted.stableHash)
     );
@@ -345,6 +443,17 @@ test("T207 preserves Git state and durable history through edit, commit, branch,
     assert.ok(hasFileEvent(
       "file-deleted", featureInitial.contextState.contextId, deleteRevision,
       "renamed.txt", featureFixtureRanges, [], "git-revision-mapped"
+    ));
+    assert.ok(hasFileEvent(
+      "marked-reviewed", mainBeforeRestart.contextState.contextId, mainRevision,
+      "fixture.txt", mappedFixtureRanges,
+      [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 4 }],
+      "integration-mark"
+    ));
+    assert.ok(hasFileEvent(
+      "unmarked-reviewed", mainBeforeRestart.contextState.contextId, mainRevision,
+      "fixture.txt", [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 4 }],
+      mappedFixtureRanges, "integration-unmark"
     ));
     restarted.provider.dispose();
   } finally {

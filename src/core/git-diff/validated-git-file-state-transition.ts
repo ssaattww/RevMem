@@ -393,6 +393,9 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
   if (!input.options.ignoreWhitespaceChanges && !input.options.ignoreEolChanges) {
     return;
   }
+  const sourceStateByPath = new Map(
+    Object.values(input.files).map((file) => [file.currentPath, file])
+  );
   const parsed = parseZeroContextGitDiff(input.diff);
   for (const file of parsed.files) {
     if (file.oldPath === undefined || file.newPath === undefined) {
@@ -403,6 +406,13 @@ function validateFullTextEvidence(input: Readonly<GitFileStateTransitionInput>):
     const newText = newMetadata?.newText;
     if (oldText === undefined || newText === undefined) {
       continue;
+    }
+    const sourceState = sourceStateByPath.get(file.oldPath);
+    if (sourceState === undefined) {
+      throw new RangeError("oldTexts source path must resolve to a file-state.");
+    }
+    if (textDocumentLineCount(oldText) !== sourceState.lineCount) {
+      throw new RangeError("oldTexts text lineCount must equal the source file-state lineCount.");
     }
     const oldDocument = parseTextDocumentEvidence(oldText);
     const newDocument = parseTextDocumentEvidence(newText);

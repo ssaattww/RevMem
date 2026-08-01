@@ -168,7 +168,7 @@ test("rejects unrelated full-text evidence for ignored EOL changes", () => {
     "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-oldValue", "+newValue", ""
   ].join("\n");
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    files: { file: state("file", "old.ts", { lineCount: 2 }) }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
     oldTexts: { "old.ts": "same\r\n" },
     newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "same\n" } }
@@ -182,7 +182,7 @@ test("rejects full-text evidence whose VS Code line count disagrees with metadat
     "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-old", "+new", ""
   ].join("\n");
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts") }, diff, newRevisionId: "new", updatedAt,
+    files: { file: state("file", "old.ts", { lineCount: 2 }) }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "old\n" },
     newFiles: {
@@ -225,6 +225,89 @@ test("accepts matching VS Code and physical line counts for terminal EOL and emp
       "empty-new.ts": { fileId: "file", lineCount: 1, physicalLineCount: 0, newText: "" }
     }
   }));
+});
+
+/** Verifies that full-text source evidence uses the VS Code document line-count contract. */
+test("validates source VS Code line counts for terminal EOL, empty, and non-terminal text", () => {
+  const terminalDiff = [
+    "diff --git a/terminal-old.ts b/terminal-new.ts", "similarity index 100%",
+    "rename from terminal-old.ts", "rename to terminal-new.ts", ""
+  ].join("\n");
+  const emptyDiff = [
+    "diff --git a/empty-old.ts b/empty-new.ts", "similarity index 100%",
+    "rename from empty-old.ts", "rename to empty-new.ts", ""
+  ].join("\n");
+  const noTerminalDiff = [
+    "diff --git a/plain-old.ts b/plain-new.ts", "similarity index 100%",
+    "rename from plain-old.ts", "rename to plain-new.ts", ""
+  ].join("\n");
+
+  for (const fixture of [
+    {
+      diff: terminalDiff, oldPath: "terminal-old.ts", newPath: "terminal-new.ts",
+      text: "line\n", lineCount: 2
+    },
+    {
+      diff: emptyDiff, oldPath: "empty-old.ts", newPath: "empty-new.ts",
+      text: "", lineCount: 1
+    },
+    {
+      diff: noTerminalDiff, oldPath: "plain-old.ts", newPath: "plain-new.ts",
+      text: "line", lineCount: 1
+    }
+  ]) {
+    assert.doesNotThrow(() => applyGitFileStateTransitions({
+      files: {
+        file: state("file", fixture.oldPath, {
+          lineCount: fixture.lineCount,
+          modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }]
+        })
+      },
+      diff: fixture.diff,
+      newRevisionId: "new",
+      updatedAt,
+      options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+      oldTexts: { [fixture.oldPath]: fixture.text },
+      newFiles: {
+        [fixture.newPath]: {
+          fileId: "file",
+          lineCount: fixture.lineCount,
+          newText: fixture.text
+        }
+      }
+    }));
+  }
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: {
+      file: state("file", "stale-old.ts", {
+        lineCount: 2,
+        modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }]
+      })
+    },
+    diff: [
+      "diff --git a/stale-old.ts b/stale-new.ts", "similarity index 100%",
+      "rename from stale-old.ts", "rename to stale-new.ts", ""
+    ].join("\n"),
+    newRevisionId: "new",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "stale-old.ts": "line" },
+    newFiles: { "stale-new.ts": { fileId: "file", lineCount: 1, newText: "line" } }
+  }), /oldTexts.*lineCount/i);
+
+  assert.throws(() => applyGitFileStateTransitions({
+    files: {},
+    diff: [
+      "diff --git a/missing-old.ts b/missing-new.ts", "similarity index 100%",
+      "rename from missing-old.ts", "rename to missing-new.ts", ""
+    ].join("\n"),
+    newRevisionId: "new",
+    updatedAt,
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
+    oldTexts: { "missing-old.ts": "line" },
+    newFiles: { "missing-new.ts": { fileId: "file", lineCount: 1, newText: "line" } }
+  }), /oldTexts.*source path/i);
 });
 
 /** Verifies that returning to a historical path removes it from history and records only the prior current path. */
@@ -302,7 +385,7 @@ test("rejects hunk-after semantic changes hidden by otherwise valid full-text ev
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 4, modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\nconst later = 1;\nconst tail = 1;\n" },
@@ -319,7 +402,7 @@ test("rejects semantic changes hidden between valid full-text evidence hunks", (
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 5, modifiedReviewed: [{ startLine: 0, endLineExclusive: 5 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 6, modifiedReviewed: [{ startLine: 0, endLineExclusive: 5 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const first = 1;\nconst middle = 1;\nconst third = 1;\nconst fourth = 1;\nconst last = 1;\n" },
@@ -335,7 +418,7 @@ test("rejects tail semantic changes hidden by otherwise valid full-text evidence
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\nconst tail = 1;\n" },
@@ -351,7 +434,7 @@ test("rejects hunk-after EOL changes hidden by otherwise valid whitespace eviden
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
@@ -368,7 +451,7 @@ test("rejects EOL changes hidden between valid whitespace evidence hunks", () =>
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 4, modifiedReviewed: [{ startLine: 0, endLineExclusive: 4 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 5, modifiedReviewed: [{ startLine: 0, endLineExclusive: 4 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const first = 1;\r\nconst middle = 1;\r\nconst third = 1;\r\nconst last = 1;\r\n" },
@@ -398,7 +481,7 @@ test("allows hunk-external and terminal EOL changes when EOL changes are ignored
     "--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "-const value = 1;", "+const  value = 1;", ""
   ].join("\n");
   const external = applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
     diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
     oldTexts: { "old.ts": "const value = 1;\r\nconst later = 1;\r\n" },
@@ -461,7 +544,7 @@ test("allows count-changing insertion and deletion boundaries that retain a vali
     oldTexts: { "old.ts": "a\nb" }, newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "a\nx\nb" } }
   }));
   assert.doesNotThrow(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff: deletion, newRevisionId: "new", updatedAt, options,
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff: deletion, newRevisionId: "new", updatedAt, options,
     oldTexts: { "old.ts": "a\nb\n" }, newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "a\n" } }
   }));
 });
@@ -474,7 +557,7 @@ test("rejects unprovable hunk-external EOL changes after a count-changing replac
   ].join("\n");
 
   assert.throws(() => applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff, newRevisionId: "new", updatedAt,
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) }, diff, newRevisionId: "new", updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "a\nb\n" },
     newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "a\nx\nb" } }
@@ -514,10 +597,10 @@ test("rejects EOL changes before EOF insertions when EOL changes are not ignored
   ].join("\n");
   const options = { ignoreWhitespaceChanges: true, ignoreEolChanges: false } as const;
   const cases = [
-    { oldText: "a\r\n", newText: "a\nx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
-    { oldText: "a\n", newText: "a\rx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
-    { oldText: "a\r", newText: "a\r\nx", diff: singleLineInsertion, oldLineCount: 1, lineCount: 2 },
-    { oldText: "a\r\n\r\n", newText: "a\r\n\nx", diff: repeatedTerminalInsertion, oldLineCount: 2, lineCount: 3 }
+    { oldText: "a\r\n", newText: "a\nx", diff: singleLineInsertion, oldLineCount: 2, lineCount: 2 },
+    { oldText: "a\n", newText: "a\rx", diff: singleLineInsertion, oldLineCount: 2, lineCount: 2 },
+    { oldText: "a\r", newText: "a\r\nx", diff: singleLineInsertion, oldLineCount: 2, lineCount: 2 },
+    { oldText: "a\r\n\r\n", newText: "a\r\n\nx", diff: repeatedTerminalInsertion, oldLineCount: 3, lineCount: 3 }
   ] as const;
 
   for (const { oldText, newText, diff, oldLineCount, lineCount } of cases) {

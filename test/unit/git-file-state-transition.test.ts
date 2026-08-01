@@ -203,7 +203,7 @@ test("preserves whitespace-only rename changes only when complete texts prove th
     ""
   ].join("\n");
   const result = applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 1, modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }] }) },
     diff,
     newRevisionId: "new",
     updatedAt,
@@ -232,7 +232,7 @@ test("preserves CRLF to LF rename changes when EOL changes are ignored", () => {
     ""
   ].join("\n");
   const result = applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
     diff,
     newRevisionId: "new",
     updatedAt,
