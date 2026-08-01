@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
 import {
-  WorkspaceReviewStateSessionProvider,
+  SnapshotTrackingWorkspaceReviewStateSessionProvider,
   type WorkspaceReviewStateRepository,
 } from "../../src/adapters/workspace-review-state/index";
 import type {
@@ -44,10 +44,21 @@ class Repository implements WorkspaceReviewStateRepository {
   }
 }
 
-const descriptor = (content: string, contentHash: string) => ({
+interface DescriptorWithContent {
+  readonly workspaceFolderUri: { readonly scheme: string; readonly authority: string; readonly path: string };
+  readonly documentUri: { readonly scheme: string; readonly authority: string; readonly path: string };
+  readonly fileSystemPathSemantics: "posix";
+  readonly relativePath: string;
+  readonly workspaceDisplayName: string;
+  readonly lineCount: number;
+  readonly contentHash: string;
+  readonly content: string;
+}
+
+const descriptor = (content: string, contentHash: string): DescriptorWithContent => ({
   workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" },
   documentUri: { scheme: "file", authority: "", path: "/workspace/src/example.ts" },
-  fileSystemPathSemantics: "posix" as const,
+  fileSystemPathSemantics: "posix",
   relativePath: "src/example.ts",
   workspaceDisplayName: "Workspace",
   lineCount: content.split("\n").length,
@@ -58,14 +69,16 @@ const descriptor = (content: string, contentHash: string) => ({
 test("workspace provider remaps reviewed ranges from persisted snapshot after provider restart", async () => {
   const repository = new Repository();
   const storage = new InMemoryNonGitSnapshotStorage();
-  const createProvider = () => new WorkspaceReviewStateSessionProvider({
+  const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(new NodeSha256StableHash()),
     repository,
+    snapshotStorage: storage,
     snapshotTracker: new NonGitSnapshotTracker(storage, {
       maxSnapshots: 16,
       maxCompressedBytes: 1024 * 1024,
       retentionMs: 60_000,
     }),
+    resolveContent: (value) => (value as DescriptorWithContent).content,
     now: () => new Date("2026-08-01T15:00:00.000Z"),
   });
 
@@ -105,8 +118,7 @@ test("workspace provider remaps reviewed ranges from persisted snapshot after pr
   };
 
   await createProvider().open(descriptor("alpha\nbeta\ngamma", "hash-1"));
-  const restarted = createProvider();
-  const mapped = await restarted.open(descriptor("alpha\ninserted\nbeta\ngamma", "hash-2"));
+  const mapped = await createProvider().open(descriptor("alpha\ninserted\nbeta\ngamma", "hash-2"));
 
   assert.deepEqual(mapped.contextState.files[mapped.target.fileId]?.modifiedReviewed, [
     { startLine: 0, endLineExclusive: 1 },
