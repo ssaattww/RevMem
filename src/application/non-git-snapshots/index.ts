@@ -251,48 +251,64 @@ function countLines(lines: readonly string[]): ReadonlyMap<string, number> {
 }
 
 function uniqueLcsMapping(oldLines: readonly string[], newLines: readonly string[]): ReadonlyMap<number, number> | undefined {
-  const lengths = Array.from({ length: oldLines.length + 1 }, () => new Uint32Array(newLines.length + 1));
-  const counts = Array.from({ length: oldLines.length + 1 }, () => new Uint8Array(newLines.length + 1));
-  for (let oldIndex = oldLines.length; oldIndex >= 0; oldIndex -= 1) {
-    counts[oldIndex]![newLines.length] = 1;
-  }
-  for (let newIndex = newLines.length; newIndex >= 0; newIndex -= 1) {
-    counts[oldLines.length]![newIndex] = 1;
-  }
+  const suffixLengths = Array.from(
+    { length: oldLines.length + 1 },
+    () => new Uint32Array(newLines.length + 1),
+  );
   for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
     for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
-      if (oldLines[oldIndex] === newLines[newIndex]) {
-        lengths[oldIndex]![newIndex] = 1 + lengths[oldIndex + 1]![newIndex + 1]!;
-        counts[oldIndex]![newIndex] = counts[oldIndex + 1]![newIndex + 1]!;
-      } else {
-        const skipOld = lengths[oldIndex + 1]![newIndex]!;
-        const skipNew = lengths[oldIndex]![newIndex + 1]!;
-        lengths[oldIndex]![newIndex] = Math.max(skipOld, skipNew);
-        counts[oldIndex]![newIndex] =
-          skipOld === skipNew
-            ? Math.min(2, counts[oldIndex + 1]![newIndex]! + counts[oldIndex]![newIndex + 1]!)
-            : skipOld > skipNew
-              ? counts[oldIndex + 1]![newIndex]!
-              : counts[oldIndex]![newIndex + 1]!;
+      suffixLengths[oldIndex]![newIndex] = oldLines[oldIndex] === newLines[newIndex]
+        ? 1 + suffixLengths[oldIndex + 1]![newIndex + 1]!
+        : Math.max(
+          suffixLengths[oldIndex + 1]![newIndex]!,
+          suffixLengths[oldIndex]![newIndex + 1]!,
+        );
+    }
+  }
+
+  const prefixLengths = Array.from(
+    { length: oldLines.length + 1 },
+    () => new Uint32Array(newLines.length + 1),
+  );
+  for (let oldIndex = 0; oldIndex < oldLines.length; oldIndex += 1) {
+    for (let newIndex = 0; newIndex < newLines.length; newIndex += 1) {
+      prefixLengths[oldIndex + 1]![newIndex + 1] = oldLines[oldIndex] === newLines[newIndex]
+        ? 1 + prefixLengths[oldIndex]![newIndex]!
+        : Math.max(
+          prefixLengths[oldIndex]![newIndex + 1]!,
+          prefixLengths[oldIndex + 1]![newIndex]!,
+        );
+    }
+  }
+
+  const longestLength = suffixLengths[0]![0]!;
+  const candidates: Array<readonly [number, number]> = [];
+  for (let oldIndex = 0; oldIndex < oldLines.length; oldIndex += 1) {
+    for (let newIndex = 0; newIndex < newLines.length; newIndex += 1) {
+      if (
+        oldLines[oldIndex] === newLines[newIndex] &&
+        prefixLengths[oldIndex]![newIndex]! + 1 +
+          suffixLengths[oldIndex + 1]![newIndex + 1]! === longestLength
+      ) {
+        candidates.push([oldIndex, newIndex]);
       }
     }
   }
-  if (counts[0]![0] !== 1) {
+
+  if (candidates.length !== longestLength) {
     return undefined;
   }
+
   const mapping = new Map<number, number>();
-  let oldIndex = 0;
-  let newIndex = 0;
-  while (oldIndex < oldLines.length && newIndex < newLines.length) {
-    if (oldLines[oldIndex] === newLines[newIndex]) {
-      mapping.set(oldIndex, newIndex);
-      oldIndex += 1;
-      newIndex += 1;
-    } else if (lengths[oldIndex + 1]![newIndex]! > lengths[oldIndex]![newIndex + 1]!) {
-      oldIndex += 1;
-    } else {
-      newIndex += 1;
+  let previousOld = -1;
+  let previousNew = -1;
+  for (const [oldIndex, newIndex] of candidates) {
+    if (oldIndex <= previousOld || newIndex <= previousNew) {
+      return undefined;
     }
+    mapping.set(oldIndex, newIndex);
+    previousOld = oldIndex;
+    previousNew = newIndex;
   }
   return mapping;
 }
