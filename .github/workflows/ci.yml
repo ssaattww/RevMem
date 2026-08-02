@@ -46,6 +46,11 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: T304 PR progress tree tests
+        run: |
+          set -o pipefail
+          npm run compile:test 2>&1 | tee test-output/ci/t304-compile-test.log
+          node --test test-dist/test/unit/pull-request-progress-tree.test.js 2>&1 | tee test-output/ci/test-t304.log
       - name: T503 repository enumeration tests
         run: |
           set -o pipefail
