@@ -19,6 +19,7 @@ interface GitHubPullRequestPayload {
   readonly html_url?: unknown;
   readonly state?: unknown;
   readonly merged_at?: unknown;
+  readonly changed_files?: unknown;
   readonly base?: { readonly sha?: unknown };
   readonly head?: { readonly sha?: unknown };
 }
@@ -117,7 +118,12 @@ const nextPage = (
   return { kind: "none" };
 };
 
-const parseMetadata = (value: unknown): PullRequestRemoteMetadata | undefined => {
+interface ParsedPullRequestMetadata {
+  readonly metadata: PullRequestRemoteMetadata;
+  readonly changedFiles: number;
+}
+
+const parseMetadata = (value: unknown): ParsedPullRequestMetadata | undefined => {
   if (!isObject(value)) return undefined;
   const payload = value as GitHubPullRequestPayload;
   if (
@@ -125,16 +131,20 @@ const parseMetadata = (value: unknown): PullRequestRemoteMetadata | undefined =>
     !isString(payload.title) || !isString(payload.html_url) ||
     (payload.state !== "open" && payload.state !== "closed") ||
     (payload.merged_at !== null && payload.merged_at !== undefined && !isString(payload.merged_at)) ||
+    !isSafeCount(payload.changed_files) ||
     !isObject(payload.base) || !isString(payload.base.sha) ||
     !isObject(payload.head) || !isString(payload.head.sha)
   ) return undefined;
   return {
-    number: payload.number,
-    title: payload.title,
-    url: payload.html_url,
-    state: payload.merged_at === null || payload.merged_at === undefined ? payload.state : "merged",
-    baseSha: payload.base.sha,
-    headSha: payload.head.sha
+    metadata: {
+      number: payload.number,
+      title: payload.title,
+      url: payload.html_url,
+      state: payload.merged_at === null || payload.merged_at === undefined ? payload.state : "merged",
+      baseSha: payload.base.sha,
+      headSha: payload.head.sha
+    },
+    changedFiles: payload.changed_files
   };
 };
 
@@ -204,8 +214,12 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     const root = `${this.apiBaseUrl}/repos/${encodeURIComponent(request.repository.owner)}/${encodeURIComponent(request.repository.repository)}/pulls/${request.number}`;
     const metadataResult = await this.fetchJson(new URL(root));
     if (metadataResult.kind === "unavailable") return metadataResult;
-    const metadata = parseMetadata(metadataResult.payload);
-    if (metadata === undefined) return { kind: "unavailable", reason: "api" };
+    const parsedMetadata = parseMetadata(metadataResult.payload);
+    if (parsedMetadata === undefined) return { kind: "unavailable", reason: "api" };
+    const { metadata, changedFiles } = parsedMetadata;
+    if (changedFiles >= MAX_PULL_REQUEST_FILES) {
+      return { kind: "unavailable", reason: "diff-too-large" };
+    }
 
     const collection = new URL(`${root}/files`);
     collection.searchParams.set("per_page", String(PULL_REQUEST_FILES_PER_PAGE));
@@ -239,6 +253,9 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
         const file = parseFile(value);
         if (file === undefined) return { kind: "unavailable", reason: "api" };
         files.push(file);
+        if (files.length > changedFiles) {
+          return { kind: "unavailable", reason: "api" };
+        }
         if (files.length >= MAX_PULL_REQUEST_FILES) {
           return { kind: "unavailable", reason: "diff-too-large" };
         }
@@ -251,6 +268,9 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
       }
       currentPage = next.page;
       url = next.url;
+    }
+    if (files.length !== changedFiles) {
+      return { kind: "unavailable", reason: "api" };
     }
     return { kind: "available", metadata, files };
   }
