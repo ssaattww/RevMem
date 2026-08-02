@@ -12,8 +12,8 @@
 - 次のタスク: PR #34の既存独立finding closureとexact-head CIを確認後、squash mergeする
 - 実装状態: T503は最新main統合後、T300の明示的なsubtree decisionによる安全なdirectory prune、entry-kindを保持するroot `.gitignore`、CR/LF/CRLF対応の非空行数、locale非依存のpath sort、capability-awareなWindows symlink/junction fixtureを一括修正した。通常reviewは完了済みのため再実施せず、同じ独立reviewerが既存6 findingのclosureだけを確認する。Issue #28は本筋外non-blocking held
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t601-non-git-snapshots`
-- Pull Request: #33（base=`main`）
+- Gitブランチ: `task/t503-repository-file-enumeration`
+- Pull Request: #34（base=`main`）
 - T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
 - T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
