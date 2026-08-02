@@ -35,6 +35,37 @@ test("unit and focused suites execute the integrated design contract", async () 
   }
 });
 
+test("unit, npm test, focused CI execute the T304 tree contract", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+  const treeTest = /test-dist\/test\/unit\/pull-request-progress-tree\.test\.js/u;
+
+  assert.match(
+    requireScript(scripts, "test:unit"),
+    treeTest,
+    "test:unit must execute the T304 tree contract"
+  );
+  assert.match(
+    requireScript(scripts, "test:t304"),
+    treeTest,
+    "test:t304 must execute the T304 tree contract"
+  );
+  assert.match(
+    requireScript(scripts, "test"),
+    /npm run test:unit\b/u,
+    "npm test must include the unit suite containing T304"
+  );
+
+  const workflow = await readFile(workflowPath, "utf8");
+  assert.match(
+    workflow,
+    /- name: T304 PR progress tree tests[\s\S]*?npm run test:t304\b[\s\S]*?tee test-output\/ci\/test-t304\.log/u,
+    "CI must invoke the package-owned T304 focused script and preserve its log"
+  );
+});
+
 test("temporary Git suite executes the T207 history integration scenario", async () => {
   const manifest = JSON.parse(
     await readFile(packageJsonPath, "utf8")
