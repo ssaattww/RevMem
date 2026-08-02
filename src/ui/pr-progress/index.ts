@@ -1,6 +1,8 @@
 /** Public UI model for the PR Progress Tree View. */
 export {
   PullRequestProgressTreeDataProvider,
+  type PullRequestEffectiveFileProgress,
+  type PullRequestEffectiveProgress,
   type PullRequestLineReviewability,
   type PullRequestLineReviewUnsupportedReason,
   type PullRequestProgressTreeAbsentDiffSide,
@@ -12,6 +14,7 @@ export {
   type PullRequestProgressTreeHost,
   type PullRequestProgressTreeNode,
   type PullRequestProgressTreePresentDiffSide,
+  type PullRequestProgressTreeSelectionResult,
   type PullRequestProgressTreeSnapshot,
   type PullRequestProgressTreeSnapshotIdentity
 } from "./pull-request-progress-tree-data-provider";
