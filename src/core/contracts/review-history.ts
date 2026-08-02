@@ -43,8 +43,28 @@ export interface ReviewHistoryEventBase {
   reason: string;
 }
 
+/** Legacy context-only range evidence retained for existing persisted JSONL records. */
+type LegacyFileReviewHistoryRangeEvidence = {
+  /** Omitted by historical records written before Global range evidence was added. */
+  readonly rangeRepresentation?: never;
+  /** Omitted because legacy records only stored Context ranges. */
+  readonly globalPreviousRanges?: never;
+  /** Omitted because legacy records only stored Context ranges. */
+  readonly globalNextRanges?: never;
+};
+
+/** Additive evidence that retains distinct Context and Global before/after ranges. */
+type ContextAndGlobalFileReviewHistoryRangeEvidence = {
+  /** Declares that the existing range fields remain Context evidence and Global evidence follows. */
+  readonly rangeRepresentation: "context-and-global";
+  /** Global ranges before the same committed transition. */
+  readonly globalPreviousRanges: LineInterval[];
+  /** Global ranges after the same committed transition. */
+  readonly globalNextRanges: LineInterval[];
+};
+
 /** File-range fields shared by original and modified history events. */
-interface FileReviewHistoryEventBase extends ReviewHistoryEventBase {
+type FileReviewHistoryEventBase = ReviewHistoryEventBase & {
   /** File-transition event kind. */
   type: FileReviewHistoryEventType;
   /** Canonical file path at the recorded revision. */
@@ -53,23 +73,23 @@ interface FileReviewHistoryEventBase extends ReviewHistoryEventBase {
   previousRanges: LineInterval[];
   /** Ranges after this event. */
   nextRanges: LineInterval[];
-}
+} & (LegacyFileReviewHistoryRangeEvidence | ContextAndGlobalFileReviewHistoryRangeEvidence);
 
 /** History event for mutable modified-side ranges, which intentionally has no original diff identity. */
-export interface ModifiedFileReviewHistoryEvent extends FileReviewHistoryEventBase {
+export type ModifiedFileReviewHistoryEvent = FileReviewHistoryEventBase & {
   /** Identifies the modified-side range set. */
   diffSide: Extract<ReviewDiffSide, "modified">;
   /** Forbidden because modified ranges are not keyed by an immutable comparison. */
   diffId?: never;
-}
+};
 
 /** History event for immutable original-side deletion ranges. */
-export interface OriginalFileReviewHistoryEvent extends FileReviewHistoryEventBase {
+export type OriginalFileReviewHistoryEvent = FileReviewHistoryEventBase & {
   /** Identifies the immutable original-side range set. */
   diffSide: Extract<ReviewDiffSide, "original">;
   /** Canonical non-empty `${baseSha}..${headSha}` comparison identity. */
   diffId: string;
-}
+};
 
 /** Discriminated file history event with side-specific diff identity requirements. */
 export type FileReviewHistoryEvent = ModifiedFileReviewHistoryEvent | OriginalFileReviewHistoryEvent;

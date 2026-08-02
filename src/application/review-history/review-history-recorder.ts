@@ -66,13 +66,17 @@ export class ReviewHistoryRecorder {
     const nextFile = nextContext.files[transaction.fileId];
     if (nextFile === undefined) throw new Error("Committed review-state transaction must retain its affected file for history.");
     const previousFile = transaction.expected.contextState.files[transaction.fileId];
+    const previousGlobalFile = transaction.expected.globalState.files[transaction.fileId];
+    const nextGlobalFile = transaction.next.globalState.files[transaction.fileId];
     const eventType = typeForOperation(transaction.operation);
     const events: ReviewHistoryEvent[] = [];
     const appendFileEvent = (
       diffSide: "modified" | "original",
       previousRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
       nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
-      diffId?: string
+      diffId?: string,
+      globalPreviousRanges?: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      globalNextRanges?: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
     ): void => {
       const common = {
         schemaVersion: nextContext.schemaVersion,
@@ -89,7 +93,15 @@ export class ReviewHistoryRecorder {
         nextRanges: nextRanges.map((range) => ({ ...range }))
       };
       if (diffSide === "original") events.push({ ...common, diffSide, diffId: diffId! });
-      else events.push({ ...common, diffSide });
+      else if (globalPreviousRanges !== undefined && globalNextRanges !== undefined) {
+        events.push({
+          ...common,
+          diffSide,
+          rangeRepresentation: "context-and-global",
+          globalPreviousRanges: globalPreviousRanges.map((range) => ({ ...range })),
+          globalNextRanges: globalNextRanges.map((range) => ({ ...range }))
+        });
+      } else events.push({ ...common, diffSide });
     };
     if (transaction.side === "original") {
       if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
@@ -100,7 +112,14 @@ export class ReviewHistoryRecorder {
         transaction.diffId
       );
     } else {
-      appendFileEvent("modified", previousFile?.modifiedReviewed ?? [], nextFile.modifiedReviewed);
+      appendFileEvent(
+        "modified",
+        previousFile?.modifiedReviewed ?? [],
+        nextFile.modifiedReviewed,
+        undefined,
+        previousGlobalFile?.reviewed ?? [],
+        nextGlobalFile?.reviewed ?? []
+      );
       if (transaction.operation === "mark-file-reviewed" || transaction.operation === "unmark-file-reviewed") {
         const diffIds = new Set([
           ...Object.keys(previousFile?.originalReviewedByDiff ?? {}),
@@ -169,7 +188,10 @@ export class ReviewHistoryRecorder {
         filePath: after?.currentPath ?? before!.currentPath,
         diffSide: "modified",
         previousRanges: (before?.modifiedReviewed ?? []).map((range) => ({ ...range })),
-        nextRanges: (after?.modifiedReviewed ?? []).map((range) => ({ ...range }))
+        nextRanges: (after?.modifiedReviewed ?? []).map((range) => ({ ...range })),
+        rangeRepresentation: "context-and-global",
+        globalPreviousRanges: (previous.globalState.files[fileId]?.reviewed ?? []).map((range) => ({ ...range })),
+        globalNextRanges: (next.globalState.files[fileId]?.reviewed ?? []).map((range) => ({ ...range }))
       });
     }
     for (const event of events) await this.options.appender.append(targetFor(next.contextState), event);

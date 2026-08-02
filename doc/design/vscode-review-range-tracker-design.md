@@ -636,7 +636,9 @@ create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を
 
 履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。1 eventは1行のUTF-8 JSON objectとしてcanonicalにserializeし、改行を含む値や整形済みJSONを許容しない。event schemaの初期versionは既存の`schemaVersion`と同じversionであり、readerは未知version、未知field type、欠落required field、file/context discriminatorとの矛盾、非有限number、範囲外または未正規化intervalを推測・補完せずrejectする。
 
-event共通のrequired fieldは`schemaVersion`、`eventId`、`occurredAt`、`sessionId`、`repositoryId`、`contextId`、`revisionId`、`type`、`reason`である。`eventId`はsession内だけでなく履歴処理全体で一意なopaque ID、`occurredAt`はUTC ISO 8601 timestamp、`reason`は機械可読な遷移原因とする。`type`がfile eventの場合だけ`filePath`、`diffSide`、`previousRanges`、`nextRanges`をrequiredとし、context eventではこれらをnullableにせずfield自体をomitする。file eventのrangeは0始まり半開区間をcanonical orderで保存する。
+event共通のrequired fieldは`schemaVersion`、`eventId`、`occurredAt`、`sessionId`、`repositoryId`、`contextId`、`revisionId`、`type`、`reason`である。`eventId`はsession内だけでなく履歴処理全体で一意なopaque ID、`occurredAt`はUTC ISO 8601 timestamp、`reason`は機械可読な遷移原因とする。`type`がfile eventの場合だけ`filePath`、`diffSide`、`previousRanges`、`nextRanges`をrequiredとし、context eventではこれらをnullableにせずfield自体をomitする。file eventの`previousRanges`と`nextRanges`は常にContext側の0始まり半開区間をcanonical orderで保存する。
+
+ContextとGlobalを同時に更新する新規file eventは、既存range fieldを変更せず、`rangeRepresentation: "context-and-global"`、`globalPreviousRanges`、`globalNextRanges`を追加する。これによりContext/Globalのbefore/afterをlosslessに監査できる。追加fieldのない既存JSONLはContext-onlyのlegacy eventとしてそのままreaderが受理し、schemaVersion、既存fieldの意味、canonical serializationを変更しない。`rangeRepresentation`があるeventは3つの追加fieldをすべて持ち、Global rangeも同じ正規化規則に従わなければならない。
 
 file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`、`marked-file-reviewed`、`unmarked-file-reviewed`、編集結果の`invalidated-by-edit`、Git diff再計算結果の`remapped-by-diff`、renameの`file-renamed`、deleteの`file-deleted`、一意に対応付けられない場合の`mapping-unresolved`である。context event typeは`context-created`と`context-revision-changed`である。各成功したstate transactionまたはcontext初期化・revision mapping結果は、affected fileごとに1 eventをappendする。失敗、cancel、no-op、またはstate commit前の計画はeventをappendしない。state commit後のhistory append失敗はstate rollbackを要求せず、呼び出し側へobservable partial successとしてrejectする。
 
