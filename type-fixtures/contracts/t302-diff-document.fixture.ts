@@ -1,6 +1,8 @@
 import {
   ReviewDiffUriCodec,
   RevisionTextContentProvider,
+  type EmptyReviewDiffDocumentDescriptor,
+  type GitCommitReviewDiffDocumentDescriptor,
   type ReviewDiffDocumentDescriptor,
   type RevisionTextContentSource
 } from "../../src/application/diff-document";
@@ -24,11 +26,18 @@ const descriptor = {
   side: "modified",
   revisionSource: "git-commit",
   revision: "0123456789abcdef0123456789abcdef01234567"
-} satisfies ReviewDiffDocumentDescriptor;
+} satisfies GitCommitReviewDiffDocumentDescriptor;
+const emptyDescriptor = {
+  ...descriptor,
+  side: "original",
+  revisionSource: "empty"
+} satisfies EmptyReviewDiffDocumentDescriptor;
+const descriptorUnion: ReviewDiffDocumentDescriptor = emptyDescriptor;
 
 const source: RevisionTextContentSource = {
   async readTextContent(request) {
-    return request.revision === descriptor.revision
+    const exact: GitCommitReviewDiffDocumentDescriptor = request;
+    return exact.revision === descriptor.revision
       ? { kind: "found", content: "current\n" }
       : { kind: "missing-revision" };
   }
@@ -53,17 +62,26 @@ const explicitBoundaryAdapter = new LocalGitAdapter(
   blobReader
 );
 
+// @ts-expect-error The external content port accepts only immutable Git-commit descriptors.
+source.readTextContent(emptyDescriptor);
+// @ts-expect-error Local Git source must never accept a synthetic empty descriptor.
+localGitSource.readTextContent(emptyDescriptor);
+// @ts-expect-error A Git-commit descriptor must retain the git-commit discriminant.
+const invalidGitDescriptor: GitCommitReviewDiffDocumentDescriptor = emptyDescriptor;
 // A LocalGitAdapter must never invent a second Node runtime policy implicitly.
 // @ts-expect-error The blob reader boundary is mandatory for direct construction.
 new LocalGitAdapter(new NodeGitCommandExecutor());
 
 void [
   codec.encode(descriptor),
+  codec.encode(emptyDescriptor),
+  descriptorUnion,
   applicationProvider,
   uiProvider,
   resolver,
   localGitSource,
   nodeLocalGitAdapter,
   explicitBoundaryAdapter,
-  nodeRuntimeOptions
+  nodeRuntimeOptions,
+  invalidGitDescriptor
 ];
