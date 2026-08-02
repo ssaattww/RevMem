@@ -5,10 +5,16 @@ import {
   PullRequestDiffAcquisitionService,
   type LocalPullRequestDiffPort,
   type PullRequestDiffAcquisitionRequest,
+  type PullRequestDiffUnavailableReason,
   type PullRequestRemoteDataPort,
   type PullRequestRemoteFile
 } from "../../src/application/github-pr-diff/index";
 import { FetchGitHubPullRequestDiffAdapter } from "../../src/adapters/github/index";
+import {
+  LocalGitPullRequestDiffAdapter,
+  type GitCommandExecutor,
+  type GitCommandInvocation
+} from "../../src/adapters/local-git/index";
 
 const BASE_SHA = "1111111111111111111111111111111111111111";
 const HEAD_SHA = "2222222222222222222222222222222222222222";
@@ -43,7 +49,7 @@ const modifiedPatchFile = (patch: string | undefined): PullRequestRemoteFile => 
   ...(patch === undefined ? {} : { patch })
 });
 
-const unavailableLocal = (reason = "missing-revision"): LocalPullRequestDiffPort => ({
+const unavailableLocal = (reason: PullRequestDiffUnavailableReason = "missing-revision"): LocalPullRequestDiffPort => ({
   loadDiff: async () => ({ kind: "unavailable", reason })
 });
 
@@ -81,7 +87,7 @@ test("GitHub diff adapter fetches exact PR metadata and paginated file records",
       }
       const page = url.searchParams.get("page") ?? "1";
       if (url.pathname === "/repos/example/review-range/pulls/42/files" && page === "1") {
-        return new Response(JSON.stringify([{ 
+        return new Response(JSON.stringify([{
           filename: "src/value.ts",
           status: "modified",
           additions: 1,
@@ -96,7 +102,7 @@ test("GitHub diff adapter fetches exact PR metadata and paginated file records",
         });
       }
       if (url.pathname === "/repos/example/review-range/pulls/42/files" && page === "2") {
-        return new Response(JSON.stringify([{ 
+        return new Response(JSON.stringify([{
           filename: "src/new-name.ts",
           previous_filename: "src/old-name.ts",
           status: "renamed",
@@ -298,5 +304,176 @@ test("all failed routes return no snapshot and never infer reviewed changes", as
     { source: "local-git", reason: "git-failure" },
     { source: "github-patch", reason: "missing-patch" },
     { source: "github-content", reason: "network" }
+  ]);
+});
+
+test("GitHub patch parser accepts ordinary context lines while preserving changed coordinates", async () => {
+  const contextual: PullRequestRemoteFile = {
+    oldPath: "src/value.ts",
+    newPath: "src/value.ts",
+    status: "modified",
+    additions: 1,
+    deletions: 1,
+    patch: "@@ -1,3 +1,3 @@\n shared-before\n-old\n+new\n shared-after"
+  };
+  const service = new PullRequestDiffAcquisitionService({
+    local: unavailableLocal(),
+    remote: remoteData([contextual], async () => {
+      throw new Error("complete contextual patch must not use content fallback");
+    })
+  });
+
+  const result = await service.acquire(request);
+
+  assert.equal(result.kind, "acquired");
+  assert.equal(result.source, "github-patch");
+  assert.deepEqual(result.snapshot.files[0]?.hunks[0]?.lines, [
+    { kind: "context", oldLine: 1, newLine: 1, text: "shared-before" },
+    { kind: "deletion", oldLine: 2, text: "old" },
+    { kind: "addition", newLine: 2, text: "new" },
+    { kind: "context", oldLine: 3, newLine: 3, text: "shared-after" }
+  ]);
+});
+
+test("remote metadata from a different comparison is rejected before content reads", async () => {
+  let reads = 0;
+  const remote: PullRequestRemoteDataPort = {
+    fetch: async () => ({
+      kind: "available",
+      metadata: { ...metadata, headSha: "3333333333333333333333333333333333333333" },
+      files: [modifiedPatchFile(undefined)]
+    }),
+    readFile: async () => {
+      reads += 1;
+      return { kind: "found", content: "unexpected" };
+    }
+  };
+  const service = new PullRequestDiffAcquisitionService({ local: unavailableLocal(), remote });
+
+  const result = await service.acquire(request);
+
+  assert.equal(result.kind, "unavailable");
+  assert.equal(reads, 0);
+  assert.deepEqual(result.attempts.slice(-2), [
+    { source: "github-patch", reason: "identity-mismatch" },
+    { source: "github-content", reason: "identity-mismatch" }
+  ]);
+});
+
+test("local Git adapter passes immutable revisions as separate arguments and classifies missing objects", async () => {
+  const invocations: GitCommandInvocation[] = [];
+  const executor: GitCommandExecutor = {
+    execute: async invocation => {
+      invocations.push(invocation);
+      return invocations.length === 1
+        ? { exitCode: 0, stdout: "diff --git a/a.ts b/a.ts\n", stderr: "" }
+        : { exitCode: 128, stdout: "", stderr: "fatal: bad object" };
+    }
+  };
+  const adapter = new LocalGitPullRequestDiffAdapter(executor, "/workspace/repository");
+
+  assert.deepEqual(await adapter.loadDiff(request), {
+    kind: "available",
+    diff: "diff --git a/a.ts b/a.ts\n"
+  });
+  assert.deepEqual(await adapter.loadDiff(request), {
+    kind: "unavailable",
+    reason: "missing-revision"
+  });
+  assert.deepEqual(invocations[0], {
+    cwd: "/workspace/repository",
+    argumentsList: [
+      "diff",
+      "--no-ext-diff",
+      "--no-color",
+      "--unified=0",
+      "--find-renames",
+      "--find-copies",
+      BASE_SHA,
+      HEAD_SHA,
+      "--"
+    ]
+  });
+});
+
+test("invalid revision input is rejected before invoking local Git", async () => {
+  let calls = 0;
+  const adapter = new LocalGitPullRequestDiffAdapter({
+    execute: async () => {
+      calls += 1;
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+  }, "/workspace/repository");
+
+  await assert.rejects(
+    adapter.loadDiff({ ...request, baseSha: "--output=stolen" }),
+    /baseSha and headSha/
+  );
+  assert.equal(calls, 0);
+});
+
+test("GitHub raw-content reads bind the exact immutable ref and classify missing files", async () => {
+  const calls: Array<{ url: string; authorization: string | null; accept: string | null }> = [];
+  const adapter = new FetchGitHubPullRequestDiffAdapter({
+    apiBaseUrl: "https://api.github.test",
+    token: "test-token",
+    fetch: async (input, init) => {
+      const url = new URL(input.toString());
+      const headers = new Headers(init?.headers);
+      calls.push({
+        url: url.toString(),
+        authorization: headers.get("authorization"),
+        accept: headers.get("accept")
+      });
+      return url.pathname.endsWith("/missing.ts")
+        ? new Response(JSON.stringify({ message: "Not Found" }), { status: 404 })
+        : new Response(new TextEncoder().encode("exact-content\n"), { status: 200 });
+    }
+  });
+
+  assert.deepEqual(await adapter.readFile(request.repository, BASE_SHA, "src/value.ts"), {
+    kind: "found",
+    content: "exact-content\n"
+  });
+  assert.deepEqual(await adapter.readFile(request.repository, BASE_SHA, "missing.ts"), {
+    kind: "unavailable",
+    reason: "missing-file"
+  });
+  const first = new URL(calls[0]!.url);
+  assert.equal(first.pathname, "/repos/example/review-range/contents/src/value.ts");
+  assert.equal(first.searchParams.get("ref"), BASE_SHA);
+  assert.equal(calls[0]?.authorization, "Bearer test-token");
+  assert.equal(calls[0]?.accept, "application/vnd.github.raw+json");
+});
+
+test("malformed remote file identity fails closed without reading repository contents", async () => {
+  let reads = 0;
+  const remote: PullRequestRemoteDataPort = {
+    fetch: async () => ({
+      kind: "available",
+      metadata,
+      files: [{
+        oldPath: "../outside.ts",
+        newPath: "../outside.ts",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        patch: "@@ -1 +1 @@\n-old\n+new"
+      }]
+    }),
+    readFile: async () => {
+      reads += 1;
+      return { kind: "found", content: "unexpected" };
+    }
+  };
+  const service = new PullRequestDiffAcquisitionService({ local: unavailableLocal(), remote });
+
+  const result = await service.acquire(request);
+
+  assert.equal(result.kind, "unavailable");
+  assert.equal(reads, 0);
+  assert.deepEqual(result.attempts.slice(-2), [
+    { source: "github-patch", reason: "invalid-data" },
+    { source: "github-content", reason: "invalid-data" }
   ]);
 });
