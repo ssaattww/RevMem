@@ -14,7 +14,7 @@ export interface GlobalUnderstandingFileSnapshot {
   readonly lineCount: number;
   /** Sorted zero-based line indexes whose trimmed content is non-empty. */
   readonly nonEmptyLines: readonly number[];
-  /** Optional content hash used to reject stale Global state. */
+  /** Optional content hash; missing evidence makes matching Global state stale. */
   readonly contentHash?: string;
 }
 
@@ -148,8 +148,8 @@ const isCurrentGlobalFile = (
   if (globalFile.currentPath !== snapshot.path || globalFile.revisionId !== snapshot.revisionId) {
     return false;
   }
-  return snapshot.contentHash === undefined ||
-    globalFile.contentHash === undefined ||
+  return snapshot.contentHash !== undefined &&
+    globalFile.contentHash !== undefined &&
     snapshot.contentHash === globalFile.contentHash;
 };
 
