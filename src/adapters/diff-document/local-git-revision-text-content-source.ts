@@ -1,4 +1,5 @@
 import type {
+  GitCommitReviewDiffDocumentDescriptor,
   ReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
   RevisionTextContentSource
@@ -14,9 +15,7 @@ export interface ReviewDiffRepositoryRootResolver {
 
 /**
  * Supplies immutable diff content from local Git while preserving context isolation.
- *
- * The source never falls back to another context, revision source, or revision.
- * GitHub and snapshot implementations can provide separate application sources later.
+ * Synthetic `empty` descriptors are rejected before repository resolution or Git access.
  */
 export class LocalGitRevisionTextContentSource
   implements RevisionTextContentSource
@@ -28,8 +27,15 @@ export class LocalGitRevisionTextContentSource
 
   /** Resolves the context root and reads the descriptor's exact Git commit and path. */
   public async readTextContent(
-    descriptor: ReviewDiffDocumentDescriptor
+    descriptor: GitCommitReviewDiffDocumentDescriptor
   ): Promise<RevisionTextContentReadResult> {
+    const runtimeDescriptor = descriptor as ReviewDiffDocumentDescriptor;
+    if (runtimeDescriptor.revisionSource !== "git-commit") {
+      throw new TypeError(
+        "Local Git revision content source accepts only git-commit descriptors."
+      );
+    }
+
     const repositoryRoot = await this.repositoryRootResolver.resolveRepositoryRoot(
       descriptor.contextId
     );
