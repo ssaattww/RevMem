@@ -5,6 +5,7 @@ export {
 } from "./contracts";
 export { normalizeGitRemoteUrl } from "./git-remote-normalization";
 export { LocalGitAdapter } from "./local-git-adapter";
+export { LocalGitPullRequestDiffAdapter } from "./local-git-pull-request-diff-adapter";
 export {
   NodeGitBlobReader,
   type NodeGitBlobReaderOptions
