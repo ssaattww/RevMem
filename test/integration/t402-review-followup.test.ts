@@ -43,6 +43,7 @@ const metadataPayload = {
   html_url: "https://github.com/example/review-range/pull/42",
   state: "open",
   merged_at: null,
+  changed_files: 1,
   base: { sha: BASE_SHA },
   head: { sha: HEAD_SHA }
 };
@@ -184,6 +185,7 @@ test("T402-R003 detects a pure copy from an unchanged source with bounded harder
     await runGit(["init", "--initial-branch=main"]);
     await runGit(["config", "user.name", "T402 Test"]);
     await runGit(["config", "user.email", "t402@example.invalid"]);
+    await runGit(["config", "diff.renameLimit", "0"]);
     await writeFile(`${directory.path}/source.txt`, "a\nb\nc\n", "utf8");
     await runGit(["add", "source.txt"]);
     await runGit(["commit", "--message", "base"]);
