@@ -39,6 +39,8 @@ export interface FetchGitHubPullRequestDiffAdapterOptions {
   readonly fetch?: typeof globalThis.fetch;
 }
 
+const MAX_PULL_REQUEST_FILES = 3_000;
+
 type PageLinkResult =
   | { readonly kind: "none" }
   | { readonly kind: "valid"; readonly url: URL }
@@ -202,6 +204,9 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
         const file = parseFile(value);
         if (file === undefined) return { kind: "unavailable", reason: "api" };
         files.push(file);
+        if (files.length >= MAX_PULL_REQUEST_FILES) {
+          return { kind: "unavailable", reason: "diff-too-large" };
+        }
       }
       const next = nextPage(page.response, url, collection);
       if (next.kind === "invalid") return { kind: "unavailable", reason: "api" };
