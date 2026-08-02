@@ -32,9 +32,22 @@ const globalState = (): RepositoryGlobalState => ({
   updatedAt: UPDATED_AT
 });
 
+const addUnchangedGlobalFile = (state: RepositoryGlobalState): void => {
+  state.files["file-2"] = {
+    fileId: "file-2",
+    currentPath: "src/unchanged.ts",
+    revisionId: "old-revision",
+    reviewed: [{ startLine: 0, endLineExclusive: 2 }],
+    contentHash: "unchanged-hash",
+    updatedAt: UPDATED_AT
+  };
+};
+
 test("document edits map Global reviewed ranges and invalidate changed lines", () => {
+  const state = globalState();
+  addUnchangedGlobalFile(state);
   const result = mapRepositoryGlobalStateThroughDocumentChanges({
-    globalState: globalState(),
+    globalState: state,
     fileId: "file-1",
     beforeText: "a\nb\nc\nd",
     changes: [{
@@ -61,6 +74,55 @@ test("document edits map Global reviewed ranges and invalidate changed lines", (
     { startLine: 3, endLineExclusive: 5 }
   ]);
   assert.equal(result.files["file-1"]?.contentHash, "new-hash");
+  assert.equal(result.files["file-2"]?.revisionId, "new-revision");
+  assert.deepEqual(result.files["file-2"]?.reviewed, [
+    { startLine: 0, endLineExclusive: 2 }
+  ]);
+});
+
+test("ordinary modified Git files use interval mapping and advance every retained file revision", () => {
+  const state = globalState();
+  addUnchangedGlobalFile(state);
+  const result = mapRepositoryGlobalStateThroughGitDiff({
+    globalState: state,
+    diff: [
+      "diff --git a/src/example.ts b/src/example.ts",
+      "--- a/src/example.ts",
+      "+++ b/src/example.ts",
+      "@@ -2 +2 @@",
+      "-b",
+      "+changed",
+      ""
+    ].join("\n"),
+    newRevisionId: "new-revision",
+    updatedAt: "2026-08-02T11:01:30.000Z",
+    options: {
+      ignoreWhitespaceChanges: false,
+      ignoreEolChanges: false
+    },
+    oldLineCounts: {
+      "file-1": 4,
+      "file-2": 2
+    },
+    newFiles: {
+      "src/example.ts": {
+        fileId: "file-1",
+        lineCount: 4,
+        contentHash: "new-hash"
+      }
+    }
+  });
+
+  assert.deepEqual(result.files["file-1"]?.reviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+    { startLine: 2, endLineExclusive: 4 }
+  ]);
+  assert.equal(result.files["file-1"]?.revisionId, "new-revision");
+  assert.equal(result.files["file-1"]?.contentHash, "new-hash");
+  assert.equal(result.files["file-2"]?.revisionId, "new-revision");
+  assert.deepEqual(result.files["file-2"]?.reviewed, [
+    { startLine: 0, endLineExclusive: 2 }
+  ]);
 });
 
 test("Git rename keeps the stable Global file ID and maps unchanged ranges", () => {
@@ -154,6 +216,14 @@ const currentDiff = (): PullRequestDiffSnapshot => ({
   }]
 });
 
+const currentGlobalState = (): RepositoryGlobalState => {
+  const global = globalState();
+  global.currentRevisionId = "new-revision";
+  global.files["file-1"]!.revisionId = "new-revision";
+  global.files["file-1"]!.contentHash = "new-hash";
+  return global;
+};
+
 test("current PR unreviewed changed lines suppress Global and other-context decoration", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
@@ -161,16 +231,11 @@ test("current PR unreviewed changed lines suppress Global and other-context deco
     { startLine: 0, endLineExclusive: 4 }
   ];
 
-  const global = globalState();
-  global.currentRevisionId = "new-revision";
-  global.files["file-1"]!.revisionId = "new-revision";
-  global.files["file-1"]!.contentHash = "new-hash";
-
   const model = createNormalEditorDecorationModel({
     contextState: pullRequestContext(),
     otherContextStates: [otherContext],
     currentPullRequestDiff: currentDiff(),
-    globalState: global,
+    globalState: currentGlobalState(),
     target: {
       fileId: "file-1",
       currentPath: "src/example.ts",
@@ -189,6 +254,91 @@ test("current PR unreviewed changed lines suppress Global and other-context deco
     {
       interval: { startLine: 2, endLineExclusive: 4 },
       source: "other-context"
+    }
+  ]);
+});
+
+test("missing or stale current PR diff fails closed for lower-priority layers", () => {
+  const otherContext = pullRequestContext();
+  otherContext.contextId = "other-context";
+  otherContext.files["file-1"]!.modifiedReviewed = [
+    { startLine: 0, endLineExclusive: 4 }
+  ];
+
+  for (const diff of [undefined, { ...currentDiff(), headSha: "stale-head" }]) {
+    const model = createNormalEditorDecorationModel({
+      contextState: pullRequestContext(),
+      otherContextStates: [otherContext],
+      ...(diff === undefined ? {} : { currentPullRequestDiff: diff }),
+      globalState: currentGlobalState(),
+      target: {
+        fileId: "file-1",
+        currentPath: "src/example.ts",
+        revisionId: "new-revision",
+        lineCount: 4,
+        contentHash: "new-hash"
+      },
+      showGlobalReviewed: true
+    });
+
+    assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
+      {
+        interval: { startLine: 1, endLineExclusive: 2 },
+        source: "context"
+      }
+    ]);
+  }
+});
+
+test("other-context intervals split where Global activity changes", () => {
+  const current = pullRequestContext();
+  current.files["file-1"]!.modifiedReviewed = [];
+  const otherContext = pullRequestContext();
+  otherContext.contextId = "other-context";
+  otherContext.files["file-1"]!.modifiedReviewed = [
+    { startLine: 0, endLineExclusive: 4 }
+  ];
+  const global = currentGlobalState();
+  global.files["file-1"]!.reviewed = [
+    { startLine: 1, endLineExclusive: 3 }
+  ];
+  const diff = currentDiff();
+  diff.files = [];
+
+  const model = createNormalEditorDecorationModel({
+    contextState: current,
+    otherContextStates: [otherContext],
+    currentPullRequestDiff: diff,
+    globalState: global,
+    target: {
+      fileId: "file-1",
+      currentPath: "src/example.ts",
+      revisionId: "new-revision",
+      lineCount: 4,
+      contentHash: "new-hash"
+    },
+    showGlobalReviewed: true
+  });
+
+  assert.deepEqual(model.map(({ interval, source, globalActive }) => ({
+    interval,
+    source,
+    globalActive
+  })), [
+    {
+      interval: { startLine: 0, endLineExclusive: 1 },
+      source: "other-context",
+      globalActive: false
+    },
+    {
+      interval: { startLine: 1, endLineExclusive: 3 },
+      source: "other-context",
+      globalActive: true
+    },
+    {
+      interval: { startLine: 3, endLineExclusive: 4 },
+      source: "other-context",
+      globalActive: false
     }
   ]);
 });
