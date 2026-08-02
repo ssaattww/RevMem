@@ -24,12 +24,21 @@ export interface LoadedGlobalUnderstandingFile extends GlobalUnderstandingFileSn
   readonly cacheKey: string;
 }
 
+/** Cooperative bounded-work options for loading one current repository file. */
+export interface GlobalUnderstandingFileLoadOptions {
+  /** Maximum source bytes decoded, scanned, and hashed before yielding. */
+  readonly maxWorkBytes: number;
+  /** Scheduler boundary used between non-final source chunks. */
+  readonly yieldControl: () => void | Promise<void>;
+}
+
 /** Runtime-neutral source used to load one included repository file. */
 export interface GlobalUnderstandingFileSource {
   /** Loads exact current content evidence for the requested revision. */
   readonly load: (
     repositoryPath: string,
-    revisionId: string
+    revisionId: string,
+    options?: GlobalUnderstandingFileLoadOptions
   ) => Promise<LoadedGlobalUnderstandingFile>;
 }
 
@@ -87,7 +96,7 @@ export interface GlobalUnderstandingBackgroundRecalculatorDependencies {
   readonly source: GlobalUnderstandingFileSource;
   /** Exact file progress cache. */
   readonly cache: GlobalUnderstandingProgressCache;
-  /** Cooperative scheduler boundary called between non-final chunks. */
+  /** Cooperative scheduler used within large files and between non-final file chunks. */
   readonly yieldControl: () => void | Promise<void>;
 }
 
@@ -119,11 +128,15 @@ export interface GlobalUnderstandingRecalculationInput {
   readonly configurationKey: string;
   /** Maximum number of files processed before yielding; defaults to 25. */
   readonly chunkSize?: number;
+  /** Maximum source bytes processed before yielding within one file; defaults to 64 KiB. */
+  readonly fileWorkChunkBytes?: number;
   /** Optional progress callback invoked after every chunk, including the final chunk. */
   readonly onProgress?: (
     progress: GlobalUnderstandingRecalculationProgress
   ) => void | Promise<void>;
 }
+
+const DEFAULT_FILE_WORK_CHUNK_BYTES = 64 * 1024;
 
 const requireNonEmptyString = (value: string, label: string): void => {
   if (value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
@@ -132,6 +145,12 @@ const requireNonEmptyString = (value: string, label: string): void => {
 const validateCount = (value: number, label: string): void => {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${label} must be a non-negative integer.`);
+  }
+};
+
+const validatePositiveCount = (value: number, label: string): void => {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${label} must be a positive integer.`);
   }
 };
 
@@ -231,7 +250,7 @@ const validateLoadedFile = (
 };
 
 /**
- * Recalculates Global understanding asynchronously, prioritizing open files and yielding between chunks.
+ * Recalculates Global understanding asynchronously, prioritizing open files and yielding within large files and between file chunks.
  */
 export class GlobalUnderstandingBackgroundRecalculator {
   public constructor(
@@ -244,9 +263,9 @@ export class GlobalUnderstandingBackgroundRecalculator {
   ): Promise<GlobalUnderstandingRecalculationProgress> {
     requireNonEmptyString(input.configurationKey, "configurationKey");
     const chunkSize = input.chunkSize ?? 25;
-    if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
-      throw new RangeError("chunkSize must be a positive integer.");
-    }
+    validatePositiveCount(chunkSize, "chunkSize");
+    const fileWorkChunkBytes = input.fileWorkChunkBytes ?? DEFAULT_FILE_WORK_CHUNK_BYTES;
+    validatePositiveCount(fileWorkChunkBytes, "fileWorkChunkBytes");
 
     const globalByPath = globalFilesByPath(input.globalState);
     const ordered = orderedIncludedFiles(input.included, input.openFilePaths ?? []);
@@ -274,7 +293,11 @@ export class GlobalUnderstandingBackgroundRecalculator {
       for (const included of chunk) {
         const loaded = await this.dependencies.source.load(
           included.path,
-          input.globalState.currentRevisionId
+          input.globalState.currentRevisionId,
+          {
+            maxWorkBytes: fileWorkChunkBytes,
+            yieldControl: this.dependencies.yieldControl
+          }
         );
         validateLoadedFile(included, input.globalState.currentRevisionId, loaded);
         const globalFile = globalByPath.get(included.path);
