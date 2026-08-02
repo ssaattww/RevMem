@@ -1,0 +1,253 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-02T22:00:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #37
+task_id: T502
+branch: task/t502-global-mapping-display-priority
+base_ref: main
+target:
+  current_head: baa116755f28b2f22dc84fd6fdc30dd57635f975
+  reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+  commit_range: 6d1b9705a6969092dfcb2c34128ef37a8ea8a36b..baa116755f28b2f22dc84fd6fdc30dd57635f975
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: PR #37のレビュー指摘へ対応する。
+  - source: pr
+    reference: pullrequestreview-4838462870
+    summary: T502-REV-001から004をfindingごとのTDDで修正し、current HEAD一致CIを確認する。
+development_policy:
+  method: TDD
+  testing_order: findingごとの回帰testを先行しRedを確認後に実装する
+  governing_source: RevMem project instruction and PR review
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t502
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test result
+    - standard output
+    - standard error
+    - source, test, configuration, environment and Git state
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T502 implementation, regression tests, report, handoff and PR metadata/comment
+      reason: review follow-up scope
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: unrelated task implementation and task/phase synchronization
+      reason: outside T502 review follow-up
+scope:
+  - T502-REV-001 ordinary modified file Global interval mapping
+  - T502-REV-002 retained Global file revision coherence
+  - T502-REV-003 missing/stale PR diff fail-closed display
+  - T502-REV-004 other-context Global metadata interval splitting
+non_goals:
+  - T504 Global understanding calculation
+  - T505 Global UI
+  - task and phase status synchronization
+  - merge
+files:
+  changed:
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: T203 mapping and retained file revision coherence
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: fail-closed evidence and exact Global overlap metadata
+    - path: test/unit/global-review-mapping-display-priority.test.ts
+      purpose: finding regressions
+    - path: reports/issue-1-t502-review-followup-20260802220000.md
+      purpose: detailed implementation evidence
+    - path: reports/issue-1-t502-review-followup-handoff-20260802220000.yaml
+      purpose: transportable handoff
+  inspected:
+    - path: reports/issue-1-t502-review-20260802213000.md
+      purpose: authoritative findings
+    - path: .github/workflows/ci.yml
+      purpose: failure diagnostic artifact confirmation
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: dedicated manager responsibility
+    - path_or_area: review report
+      reason: preserve reviewer evidence
+commands:
+  - command: GitHub Actions CI
+    purpose: Red confirmation
+    exit_code: 1
+    result: failed
+    head_sha: 6c7576ef6ba9f8af7999c8a164dcbe5a4ecbff6d
+    evidence: run 30748755739 artifact 8833738404
+  - command: GitHub Actions CI
+    purpose: Green validation
+    exit_code: 0
+    result: passed
+    head_sha: baa116755f28b2f22dc84fd6fdc30dd57635f975
+    evidence: run 30748862936
+tests:
+  - name: T502 review finding regressions
+    phase: red
+    result: failed
+    head_sha: 6c7576ef6ba9f8af7999c8a164dcbe5a4ecbff6d
+    evidence: run 30748755739
+  - name: T502 focused and full validation
+    phase: green
+    result: passed
+    head_sha: baa116755f28b2f22dc84fd6fdc30dd57635f975
+    evidence: run 30748862936
+ci:
+  required: true
+  workflow: CI
+  run_id: 30748862936
+  head_sha: baa116755f28b2f22dc84fd6fdc30dd57635f975
+  conclusion: success
+  artifacts:
+    - id: 8833738404
+      name: ci-failure-diagnostics-30748755739-1
+      purpose: Red finding reproduction diagnostics
+    - id: 8833753460
+      name: ci-failure-diagnostics-30748798525-1
+      purpose: immutable fixture compile failure diagnostics
+implementation:
+  outcome: completed
+  final_head: baa116755f28b2f22dc84fd6fdc30dd57635f975
+  commits:
+    - sha: 6c7576ef6ba9f8af7999c8a164dcbe5a4ecbff6d
+      purpose: finding regression tests
+    - sha: b0c0f3dbf82ddb25e54265b86dd4c53d038c645b
+      purpose: Global modified and retained file mapping
+    - sha: 1de180f2a0d6f782a2cd6712074827f0378f95a0
+      purpose: fail-closed and metadata splitting
+    - sha: baa116755f28b2f22dc84fd6fdc30dd57635f975
+      purpose: immutable test fixture correction
+  addressed_findings:
+    - id: T502-REV-001
+      reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+      disposition: addressed
+      evidence: ordinary modified file regression and T203 mapper integration
+    - id: T502-REV-002
+      reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+      disposition: addressed
+      evidence: retained file revision regression for editor and Git mapping
+    - id: T502-REV-003
+      reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+      disposition: addressed
+      evidence: missing/stale PR diff fail-closed regression
+    - id: T502-REV-004
+      reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+      disposition: addressed
+      evidence: partial Global overlap splitting regression
+  failure_diagnostics:
+    - type: artifact
+      location: artifact 8833738404
+      summary: finding regressions failed before implementation
+    - type: artifact
+      location: artifact 8833753460
+      summary: readonly fixture compile failure
+  blocked_items: []
+  summary:
+    - All four review findings were addressed with regression coverage.
+    - Implementer did not issue a review verdict.
+review:
+  mode: fix_verification
+  reviewed_head: baa116755f28b2f22dc84fd6fdc30dd57635f975
+  reviewer:
+    identity: required normal reviewer
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: unknown
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence: []
+  verdict: incomplete
+  required_coverage: []
+  validation_assessment:
+    - item: implementation CI
+      result: supported
+      evidence: run 30748862936
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Normal reviewer fix verification remains required.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t502-review-followup-20260802220000.md
+    - reports/issue-1-t502-review-followup-handoff-20260802220000.yaml
+  reviewed_head: ff2a138a4c21b864aec0da2a8bb96d5a7a960e37
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed follow-up report and handoff persisted.
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: normal reviewer fix-verification verdict
+    reason: implementation worker cannot review its own changes
+not_applicable:
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - Fix verification has not yet been performed by the normal reviewer.
+source_payloads: []
+extensions: []
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Verify closure of T502-REV-001 through T502-REV-004 against the current implementation HEAD.
+  instructions:
+    - Preserve finding IDs and severities.
+    - Inspect sibling cases and current HEAD matching CI.
+  required_attachments_or_references:
+    - PR #37
+    - reports/issue-1-t502-review-20260802213000.md
+    - reports/issue-1-t502-review-followup-20260802220000.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t502-review-followup-handoff-20260802220000.yaml
+  packet_url: null
+  transport_note: Use PR #37 current HEAD and do not substitute another SHA CI run.

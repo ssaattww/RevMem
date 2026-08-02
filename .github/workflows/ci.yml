@@ -46,6 +46,10 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: T502 Global mapping and display priority tests
+        run: |
+          set -o pipefail
+          npm run test:t502 2>&1 | tee test-output/ci/test-t502.log
       - name: T503 repository enumeration tests
         run: |
           set -o pipefail

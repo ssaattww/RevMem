@@ -1,0 +1,42 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review-follow-up
+  generated_at: 2026-08-02T22:30:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #37
+task_id: T502
+branch: task/t502-global-mapping-display-priority
+base_ref: main
+target:
+  reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  verification_report_head: 2fec60d206e728f64e2418a5d90e5a59e3a7197b
+  implementation_head: bd0c322e268770ae40da5496704ff7323eb9b65d
+finding_dispositions:
+  T502-REV-001: closed
+  T502-REV-002: closed
+  T502-REV-003: addressed-awaiting-verification
+  T502-REV-004: closed
+changes:
+  - Reuse calculatePullRequestDiffProgress as the complete PullRequestDiffSnapshot validator.
+  - Fail closed for lower-priority decorations when statistics, hunks, coordinates, paths, identities, or state are invalid.
+  - Add incomplete-hunk and duplicate-addition-coordinate regressions.
+tdd:
+  red:
+    head: 5e1af9b97a39e4fa1fd2c5af314fd4d95d8a33f8
+    run_id: 30749763351
+    conclusion: failure
+  green:
+    head: bd0c322e268770ae40da5496704ff7323eb9b65d
+    run_id: 30749879026
+    conclusion: success
+diagnostics:
+  - run_id: 30749813082
+    artifact_id: 8834065218
+    cause: Existing valid-case fixture used a noncanonical zero-count insertion anchor.
+    disposition: Fixed the fixture without weakening production validation.
+reports:
+  detailed: reports/issue-1-t502-review-followup-r2-20260802223000.md
+  handoff: reports/issue-1-t502-review-followup-r2-handoff-20260802223000.yaml
+merge_performed: false
+next_action: Same reviewer verifies closure of T502-REV-003 against the final PR HEAD.
