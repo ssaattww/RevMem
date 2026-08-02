@@ -124,6 +124,40 @@ test("successful unmark publishes an empty latest generation for the decoration 
   assert.deepEqual((await createProvider().loadForDecoration(descriptor("alpha\nbeta", "hash-1")))?.contextState.files[current.target.fileId]?.modifiedReviewed ?? [], []);
 });
 
+test("missing, corrupt, and expired latest generations fail closed for decoration and open paths", async () => {
+  for (const scenario of ["missing", "corrupt", "expired"] as const) {
+    const repository = new Repository();
+    const storage = new InMemoryNonGitSnapshotStorage();
+    let now = Date.parse("2026-08-01T15:00:00.000Z");
+    const limits = { maxSnapshots: 16, maxCompressedBytes: 1024 * 1024, retentionMs: scenario === "expired" ? 10 : 60_000 };
+    const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
+      identityService: new WorkspaceIdentityService(new NodeSha256StableHash()), repository,
+      snapshotTracker: new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), limits),
+      resolveContent: (value) => (value as DescriptorWithContent).content,
+      now: () => new Date(now++),
+    });
+    const initial = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+    const marked = markReviewedRanges({ contextState: initial.contextState, globalState: initial.globalState, target: initial.target, intervals: [{ startLine: 0, endLineExclusive: 2 }], occurredAt: "2026-08-01T15:00:00.000Z" });
+    await initial.committer.commit(marked);
+    const latest = await storage.getLatest(initial.contextState.contextId, initial.target.fileId);
+    assert.ok(latest, scenario);
+    if (scenario === "missing") await storage.setLatest(initial.contextState.contextId, initial.target.fileId, undefined);
+    if (scenario === "corrupt") await storage.overwrite(latest, Buffer.from("not-gzip"));
+    if (scenario === "expired") now += 100;
+
+    const decoration = await createProvider().loadForDecoration(descriptor("alpha\nbeta", "hash-1"));
+    assert.deepEqual(decoration?.contextState.files[initial.target.fileId]?.modifiedReviewed ?? [], [], `${scenario} decoration Context`);
+    assert.deepEqual(decoration?.globalState.files[initial.target.fileId]?.reviewed ?? [], [], `${scenario} decoration Global`);
+
+    const opened = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+    assert.deepEqual(opened.contextState.files[opened.target.fileId]?.modifiedReviewed ?? [], [], `${scenario} open Context`);
+    assert.deepEqual(opened.globalState.files[opened.target.fileId]?.reviewed ?? [], [], `${scenario} open Global`);
+    const replacement = await storage.getLatest(opened.contextState.contextId, opened.target.fileId);
+    assert.ok(replacement, `${scenario} replacement generation`);
+    assert.deepEqual(await new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), limits).map(replacement, "alpha\nbeta", now), { status: "mapped", reviewedRanges: [] }, `${scenario} replacement snapshot`);
+  }
+});
+
 test("workspace provider remaps reviewed ranges from persisted snapshot after provider restart", async () => {
   const repository = new Repository();
   const storage = new InMemoryNonGitSnapshotStorage();
@@ -174,6 +208,16 @@ test("workspace provider remaps reviewed ranges from persisted snapshot after pr
       },
     },
   };
+  await new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), {
+    maxSnapshots: 16,
+    maxCompressedBytes: 1024 * 1024,
+    retentionMs: 60_000,
+  }).saveLatest({
+    workspaceContextId: initial.contextState.contextId,
+    fileId: initial.target.fileId,
+    content: "alpha\nbeta\ngamma",
+    reviewedRanges: [{ startLine: 0, endLineExclusive: 3 }],
+  }, now);
 
   await createProvider().open(descriptor("alpha\nbeta\ngamma", "hash-1"));
   const mapped = await createProvider().open(descriptor("alpha\ninserted\nbeta\ngamma", "hash-2"));

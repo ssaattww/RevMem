@@ -1,7 +1,7 @@
 import { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
 import type { WorkspaceIdentityService } from "../../application/workspace-identity/index";
 import type { RepositoryGlobalState, ReviewContextState } from "../../core/contracts/index";
-import { markReviewedRanges, type ReviewStateTransaction } from "../../core/review-state/index";
+import { markReviewedRanges, unmarkFileReviewed, type ReviewStateTransaction } from "../../core/review-state/index";
 import {
   WorkspaceReviewStateSessionProvider,
   type WorkspaceEditorReviewDescriptor,
@@ -50,6 +50,14 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
       : await this.snapshotTracker.map(snapshotId, content, now);
 
     let session = await super.open(descriptor);
+    // The latest pointer is the complete authority for this file.  A persisted
+    // same-content range is not independent evidence and must never survive a
+    // missing, corrupt, expired, or ambiguous latest generation.
+    // Close the pointer before publishing any replacement state. A failure in
+    // either state transition leaves this file fail-closed rather than allowing
+    // the prior generation to be replayed on the next open.
+    await this.snapshotTracker.invalidateLatest(identity.workspaceContextId, identity.fileId);
+    session = await this.clearCurrentEvidence(session, now);
     if (mapped?.status === "mapped" && mapped.reviewedRanges.length > 0) {
       const transaction = markReviewedRanges({
         contextState: session.contextState,
@@ -107,17 +115,19 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
       relativePath: descriptor.relativePath,
     });
     const snapshotId = await this.snapshotTracker.latestSnapshotId(identity.workspaceContextId, identity.fileId);
-    if (snapshotId === undefined) return base;
-    const mapped = await this.snapshotTracker.map(snapshotId, this.resolveContent(descriptor), this.nowMilliseconds());
-    if (mapped.status !== "mapped" || mapped.reviewedRanges.length === 0) return base;
+    const mapped = snapshotId === undefined
+      ? undefined
+      : await this.snapshotTracker.map(snapshotId, this.resolveContent(descriptor), this.nowMilliseconds());
+    const cleared = this.clearDecorationEvidence(base, this.nowMilliseconds());
+    if (mapped?.status !== "mapped" || mapped.reviewedRanges.length === 0) return cleared;
     const transaction = markReviewedRanges({
-      contextState: base.contextState,
-      globalState: base.globalState,
-      target: base.target,
+      contextState: cleared.contextState,
+      globalState: cleared.globalState,
+      target: cleared.target,
       intervals: mapped.reviewedRanges,
       occurredAt: new Date(this.nowMilliseconds()).toISOString(),
     });
-    return { ...base, contextState: clone(transaction.next.contextState) as ReviewContextState, globalState: clone(transaction.next.globalState) as RepositoryGlobalState };
+    return { ...cleared, contextState: clone(transaction.next.contextState) as ReviewContextState, globalState: clone(transaction.next.globalState) as RepositoryGlobalState };
   }
 
   private async saveCurrentSnapshot(
@@ -134,4 +144,32 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     }, now);
   }
 
+  private async clearCurrentEvidence(
+    session: WorkspaceNormalEditorReviewStateSession,
+    now: number,
+  ): Promise<WorkspaceNormalEditorReviewStateSession> {
+    if (!hasReviewedEvidence(session.contextState, session.globalState, session.target.fileId)) return session;
+    const transaction = unmarkFileReviewed({
+      contextState: session.contextState,
+      globalState: session.globalState,
+      target: session.target,
+      occurredAt: new Date(now).toISOString(),
+    });
+    await session.committer.commit(transaction);
+    return { ...session, contextState: clone(transaction.next.contextState) as ReviewContextState, globalState: clone(transaction.next.globalState) as RepositoryGlobalState };
+  }
+
+  private clearDecorationEvidence(
+    state: WorkspaceNormalEditorDecorationState,
+    now: number,
+  ): WorkspaceNormalEditorDecorationState {
+    if (!hasReviewedEvidence(state.contextState, state.globalState, state.target.fileId)) return state;
+    const transaction = unmarkFileReviewed({ contextState: state.contextState, globalState: state.globalState, target: state.target, occurredAt: new Date(now).toISOString() });
+    return { ...state, contextState: clone(transaction.next.contextState) as ReviewContextState, globalState: clone(transaction.next.globalState) as RepositoryGlobalState };
+  }
+
 }
+
+const hasReviewedEvidence = (contextState: ReviewContextState, globalState: RepositoryGlobalState, fileId: string): boolean =>
+  (contextState.files[fileId]?.modifiedReviewed.length ?? 0) > 0 ||
+  (globalState.files[fileId]?.reviewed.length ?? 0) > 0;
