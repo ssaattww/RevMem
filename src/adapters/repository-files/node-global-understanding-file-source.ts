@@ -64,7 +64,7 @@ const analyzeContent = async (
   content: Buffer,
   options: GlobalUnderstandingFileLoadOptions
 ): Promise<AnalyzedContent> => {
-  const decoder = new TextDecoder("utf-8");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const hash = createHash("sha256");
   const nonEmptyLines: number[] = [];
   let lineIndex = 0;
@@ -99,7 +99,11 @@ const analyzeContent = async (
     const end = Math.min(content.length, offset + options.maxWorkBytes);
     const chunk = content.subarray(offset, end);
     hash.update(chunk);
-    consumeDecoded(decoder.decode(chunk, { stream: end < content.length }));
+    try {
+      consumeDecoded(decoder.decode(chunk, { stream: end < content.length }));
+    } catch {
+      throw new TypeError("Included repository file content is not valid UTF-8.");
+    }
     if (end < content.length) await options.yieldControl();
   }
 

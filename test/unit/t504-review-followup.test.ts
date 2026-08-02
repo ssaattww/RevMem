@@ -199,3 +199,30 @@ test("T504-R1-P3 yields while decoding, scanning, and hashing one large final fi
   assert.equal(loaded.nonEmptyLines.at(-1), 31);
   assert.equal(loaded.contentHash?.length, 64);
 });
+
+test("T504-IFR-002 rejects malformed non-NUL UTF-8 from the source and recalculation boundary", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t504-invalid-utf8-"));
+  await writeFile(path.join(root, "invalid.ts"), Buffer.from([0x63, 0x33, 0xc3, 0x28, 0x0a]));
+  const source = new NodeGlobalUnderstandingFileSource(root, "posix");
+
+  await assert.rejects(source.load("invalid.ts", revision), /valid UTF-8/u);
+
+  const recalculator = new GlobalUnderstandingBackgroundRecalculator({
+    source,
+    cache: new InMemoryGlobalUnderstandingProgressCache(),
+    yieldControl: async () => {}
+  });
+  await assert.rejects(recalculator.recalculate({
+    globalState: globalState([
+      globalFile(
+        "invalid",
+        "invalid.ts",
+        [{ startLine: 0, endLineExclusive: 1 }],
+        { contentHash: "unreachable" }
+      )
+    ]),
+    included: [{ path: "invalid.ts", nonEmptyLineCount: 1 }],
+    configurationKey: "config-ifr-002",
+    chunkSize: 1
+  }), /valid UTF-8/u);
+});

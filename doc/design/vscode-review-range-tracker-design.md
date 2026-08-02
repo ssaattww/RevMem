@@ -506,7 +506,7 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 Global集計用のrepository列挙結果は次の3分類を持つ。
 
 - `included`: Global分母候補となるfile。各fileの非空行数だけを分母へ加算する。
-- `excluded`: 実際にfileとして列挙した後、binary、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
+- `excluded`: 実際にfileとして列挙した後、binary、fatal UTF-8 decodeで`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
 - `excludedDirectories`: 共通除外policyまたは`.gitignore`により再帰前にpruneしたdirectory。1 directoryにつき1件だけ保持し、配下fileへ展開・推定しない。
 
 `included`、`excluded`、`excludedDirectories`はlocaleに依存しないrepository-relative pathのcode-unit昇順で、各配列内に重複pathを持たない。pruneしたdirectoryと配下fileはGlobal理解率の分子・分母へ寄与しない。directory件数は列挙診断としてfile除外数とは別に扱い、除外file数へ加算しない。

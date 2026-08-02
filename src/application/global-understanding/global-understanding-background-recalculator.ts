@@ -73,6 +73,13 @@ interface CacheEntry {
   readonly progress: GlobalUnderstandingFileProgress;
 }
 
+interface GlobalUnderstandingCalculationInputSnapshot {
+  readonly repositoryId: string;
+  readonly currentRevisionId: string;
+  readonly globalByPath: ReadonlyMap<string, GlobalFileReviewState>;
+  readonly ordered: readonly IncludedGlobalUnderstandingFile[];
+}
+
 /** In-memory exact-evidence progress cache for one Extension Host process. */
 export class InMemoryGlobalUnderstandingProgressCache
 implements GlobalUnderstandingProgressCache {
@@ -188,6 +195,41 @@ const globalFilesByPath = (
   return files;
 };
 
+const copyGlobalFile = (file: GlobalFileReviewState): GlobalFileReviewState => {
+  const reviewed = Object.freeze(file.reviewed.map((interval) => Object.freeze({
+    startLine: interval.startLine,
+    endLineExclusive: interval.endLineExclusive
+  }))) as unknown as GlobalFileReviewState["reviewed"];
+  return Object.freeze({
+    fileId: file.fileId,
+    currentPath: file.currentPath,
+    revisionId: file.revisionId,
+    reviewed,
+    contentHash: file.contentHash,
+    updatedAt: file.updatedAt
+  }) as GlobalFileReviewState;
+};
+
+const snapshotCalculationInput = (
+  input: GlobalUnderstandingRecalculationInput
+): GlobalUnderstandingCalculationInputSnapshot => {
+  const globalByPath = new Map<string, GlobalFileReviewState>();
+  for (const [repositoryPath, file] of globalFilesByPath(input.globalState)) {
+    globalByPath.set(repositoryPath, copyGlobalFile(file));
+  }
+  const included = Object.freeze(input.included.map((file) => Object.freeze({
+    path: file.path,
+    nonEmptyLineCount: file.nonEmptyLineCount
+  })));
+  const openFilePaths = Object.freeze([...(input.openFilePaths ?? [])]);
+  return Object.freeze({
+    repositoryId: input.globalState.repositoryId,
+    currentRevisionId: input.globalState.currentRevisionId,
+    globalByPath,
+    ordered: Object.freeze(orderedIncludedFiles(included, openFilePaths))
+  });
+};
+
 const orderedIncludedFiles = (
   included: readonly IncludedGlobalUnderstandingFile[],
   openFilePaths: readonly string[]
@@ -264,8 +306,8 @@ export class GlobalUnderstandingBackgroundRecalculator {
       yieldControl: this.dependencies.yieldControl
     };
 
-    const globalByPath = globalFilesByPath(input.globalState);
-    const ordered = orderedIncludedFiles(input.included, input.openFilePaths ?? []);
+    const snapshot = snapshotCalculationInput(input);
+    const { repositoryId, currentRevisionId, globalByPath, ordered } = snapshot;
     const calculated: GlobalUnderstandingFileProgress[] = [];
     let cacheHitCount = 0;
     let calculatedFileCount = 0;
@@ -290,18 +332,18 @@ export class GlobalUnderstandingBackgroundRecalculator {
       for (const included of chunk) {
         const loaded = await this.dependencies.source.load(
           included.path,
-          input.globalState.currentRevisionId,
+          currentRevisionId,
           {
             maxWorkBytes: fileWorkChunkBytes,
             yieldControl: this.dependencies.yieldControl
           }
         );
-        validateLoadedFile(included, input.globalState.currentRevisionId, loaded);
+        validateLoadedFile(included, currentRevisionId, loaded);
         const globalFile = globalByPath.get(included.path);
-        const identity = `${input.globalState.repositoryId}\0${included.path}`;
+        const identity = `${repositoryId}\0${included.path}`;
         const evidenceKey = await buildGlobalUnderstandingEvidenceKey({
-          repositoryId: input.globalState.repositoryId,
-          currentRevisionId: input.globalState.currentRevisionId,
+          repositoryId,
+          currentRevisionId,
           configurationKey: input.configurationKey,
           includedPath: included.path,
           includedNonEmptyLineCount: included.nonEmptyLineCount,

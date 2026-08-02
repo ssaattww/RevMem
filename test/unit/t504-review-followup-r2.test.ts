@@ -103,3 +103,84 @@ test("T504-R2-P2 yields during post-load evidence and interval calculation for o
   assert.equal(result.progress.reviewedNonEmptyLineCount, lineCount / 2);
   assert.equal(result.progress.totalNonEmptyLineCount, lineCount);
 });
+
+test("T504-IFR-001 builds cache evidence and progress from one immutable Global snapshot", async () => {
+  const file = globalFile([{ startLine: 0, endLineExclusive: 1 }]);
+  const state = globalState(file);
+  const loaded: LoadedGlobalUnderstandingFile = {
+    path: "src/large.ts",
+    revisionId: revision,
+    lineCount: 2,
+    nonEmptyLines: [0, 1],
+    contentHash: "large-hash",
+    cacheKey: "large-hash"
+  };
+  const recalculator = new GlobalUnderstandingBackgroundRecalculator({
+    source: { load: async () => loaded },
+    cache: new InMemoryGlobalUnderstandingProgressCache(),
+    yieldControl: async () => {
+      if (file.reviewed[0]?.endLineExclusive === 1) {
+        (file as { reviewed: GlobalFileReviewState["reviewed"] }).reviewed = [
+          { startLine: 0, endLineExclusive: 2 }
+        ];
+      }
+    }
+  });
+  const request = {
+    globalState: state,
+    included: [{ path: "src/large.ts", nonEmptyLineCount: 2 }],
+    configurationKey: "config-ifr-001",
+    chunkSize: 1,
+    calculationWorkChunkItems: 1
+  };
+
+  const first = await recalculator.recalculate(request);
+  (file as { reviewed: GlobalFileReviewState["reviewed"] }).reviewed = [
+    { startLine: 0, endLineExclusive: 1 }
+  ];
+  const second = await recalculator.recalculate(request);
+
+  assert.equal(first.progress.reviewedNonEmptyLineCount, 1);
+  assert.equal(second.progress.reviewedNonEmptyLineCount, 1);
+  assert.equal(second.cacheHitCount, 1);
+});
+
+test("T504-IFR-001 snapshots revision and included counts before a cooperative source yield", async () => {
+  const file = globalFile([{ startLine: 0, endLineExclusive: 1 }]);
+  const state = globalState(file);
+  const included = [{ path: "src/large.ts", nonEmptyLineCount: 1 }];
+  const loaded: LoadedGlobalUnderstandingFile = {
+    path: "src/large.ts",
+    revisionId: revision,
+    lineCount: 1,
+    nonEmptyLines: [0],
+    contentHash: "large-hash",
+    cacheKey: "large-hash"
+  };
+  let requestedRevision = "";
+  const recalculator = new GlobalUnderstandingBackgroundRecalculator({
+    source: {
+      load: async (_path, requested, options) => {
+        requestedRevision = requested;
+        await options?.yieldControl();
+        return loaded;
+      }
+    },
+    cache: new InMemoryGlobalUnderstandingProgressCache(),
+    yieldControl: async () => {
+      (state as { currentRevisionId: string }).currentRevisionId = "newer-revision";
+      (included[0] as { nonEmptyLineCount: number }).nonEmptyLineCount = 0;
+    }
+  });
+
+  const result = await recalculator.recalculate({
+    globalState: state,
+    included,
+    configurationKey: "config-ifr-001-siblings",
+    chunkSize: 1
+  });
+
+  assert.equal(requestedRevision, revision);
+  assert.equal(result.progress.totalNonEmptyLineCount, 1);
+  assert.equal(result.progress.reviewedNonEmptyLineCount, 1);
+});
