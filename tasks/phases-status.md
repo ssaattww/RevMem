@@ -1,6 +1,6 @@
 # Review Range Tracker フェーズ計画
 
-> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通して更新する。
+> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
 ## 計画の前提
 
@@ -8,7 +8,6 @@
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
-- 文書同期だけの変更ではRed/Greenを作らず、既存の文書契約と標準CIで検証する
 - 確実性原則: 対応関係を一意に証明できない範囲は確認済みにしない
 - 恒久設計: task名やPR経緯を設計本文へ入れず、単一の設計書へ機能別に統合する
 
@@ -32,7 +31,7 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T304はmainへ統合済み。T305のActivity Bar・Current Context・Status Barと、T306のExtension Host統合試験が未着手 |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401のPR resolverとT402の3段差分取得fallbackはmainへ統合済み。cache、永続PR layer、UI、障害統合試験が未着手 |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Gitsnapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
 
 ## 現在位置
 
