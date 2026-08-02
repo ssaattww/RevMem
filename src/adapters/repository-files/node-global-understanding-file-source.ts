@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -32,6 +33,25 @@ const resolveLoadOptions = (
     throw new RangeError("maxWorkBytes must be a positive integer.");
   }
   return resolved;
+};
+
+const assertStableRegularFile = (
+  expected: Stats,
+  observed: Stats,
+  canonicalPath: string
+): void => {
+  if (
+    observed.isSymbolicLink() ||
+    !observed.isFile() ||
+    expected.dev !== observed.dev ||
+    expected.ino !== observed.ino ||
+    expected.size !== observed.size ||
+    expected.mtimeMs !== observed.mtimeMs
+  ) {
+    throw new Error(
+      `Included repository file changed while reading or analyzing: ${canonicalPath}`
+    );
+  }
 };
 
 interface AnalyzedContent {
@@ -103,11 +123,11 @@ implements GlobalUnderstandingFileSource {
   }
 
   /**
-   * Reads one canonical included repository file and rejects non-regular entries or observable read races.
+   * Reads one canonical included repository file and rejects non-regular entries or observable races across read and analysis.
    * Decode, line scanning, and hashing are split into bounded byte chunks with cooperative yields.
    *
    * @throws When the path is non-canonical, either validation observes a non-regular entry, the entry metadata
-   * changes during the read, the work budget is invalid, or the filesystem operation fails.
+   * changes before analysis completes, the work budget is invalid, or the filesystem operation fails.
    */
   public async load(
     repositoryPath: string,
@@ -127,26 +147,20 @@ implements GlobalUnderstandingFileSource {
     }
 
     const content = await readFile(absolutePath);
-    const after = await lstat(absolutePath);
-    if (
-      after.isSymbolicLink() ||
-      !after.isFile() ||
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size ||
-      before.mtimeMs !== after.mtimeMs
-    ) {
-      throw new Error(`Included repository file changed while reading: ${canonicalPath}`);
-    }
-
+    assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
     const analyzed = await analyzeContent(content, loadOptions);
+    assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
+
     return {
       path: canonicalPath,
       revisionId,
       lineCount: analyzed.lineCount,
       nonEmptyLines: analyzed.nonEmptyLines,
       contentHash: analyzed.contentHash,
-      cacheKey: analyzed.contentHash
+      cacheKey: analyzed.contentHash,
+      validateCurrent: async () => {
+        assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
+      }
     };
   }
 }
