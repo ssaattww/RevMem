@@ -39,11 +39,13 @@ export interface FetchGitHubPullRequestDiffAdapterOptions {
   readonly fetch?: typeof globalThis.fetch;
 }
 
-const MAX_PULL_REQUEST_FILES = 3_000;
+const PULL_REQUEST_FILES_PER_PAGE = 100;
+const MAX_PULL_REQUEST_PAGES = 30;
+const MAX_PULL_REQUEST_FILES = PULL_REQUEST_FILES_PER_PAGE * MAX_PULL_REQUEST_PAGES;
 
 type PageLinkResult =
   | { readonly kind: "none" }
-  | { readonly kind: "valid"; readonly url: URL }
+  | { readonly kind: "valid"; readonly url: URL; readonly page: number }
   | { readonly kind: "invalid" };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -57,11 +59,9 @@ const statusFrom = (value: unknown): PullRequestRemoteFile["status"] | undefined
   switch (value) {
     case "added": return "added";
     case "removed": return "deleted";
-    case "modified":
-    case "changed": return "modified";
+    case "modified": return "modified";
     case "renamed": return "renamed";
     case "copied": return "copied";
-    case "binary": return "binary";
     default: return undefined;
   }
 };
@@ -73,7 +73,23 @@ const classifyResponse = (response: Response): PullRequestDiffUnavailableReason 
   return response.ok ? undefined : "api";
 };
 
-const nextPage = (response: Response, current: URL, collection: URL): PageLinkResult => {
+const exactPageQuery = (url: URL, expectedPage: number): boolean => {
+  if (
+    url.searchParams.getAll("per_page").length !== 1 ||
+    url.searchParams.getAll("page").length !== 1 ||
+    url.searchParams.get("per_page") !== String(PULL_REQUEST_FILES_PER_PAGE) ||
+    url.searchParams.get("page") !== String(expectedPage)
+  ) return false;
+  return [...url.searchParams.keys()].every(key => key === "per_page" || key === "page") &&
+    [...url.searchParams.keys()].length === 2;
+};
+
+const nextPage = (
+  response: Response,
+  current: URL,
+  collection: URL,
+  currentPage: number
+): PageLinkResult => {
   const link = response.headers.get("link");
   if (link === null) return { kind: "none" };
   for (const entry of link.split(",")) {
@@ -85,6 +101,7 @@ const nextPage = (response: Response, current: URL, collection: URL): PageLinkRe
     } catch {
       return { kind: "invalid" };
     }
+    const expectedPage = currentPage + 1;
     if (
       target.origin !== collection.origin ||
       target.protocol !== collection.protocol ||
@@ -92,9 +109,10 @@ const nextPage = (response: Response, current: URL, collection: URL): PageLinkRe
       target.username.length > 0 ||
       target.password.length > 0 ||
       target.pathname !== collection.pathname ||
-      target.hash.length > 0
+      target.hash.length > 0 ||
+      !exactPageQuery(target, expectedPage)
     ) return { kind: "invalid" };
-    return { kind: "valid", url: target };
+    return { kind: "valid", url: target, page: expectedPage };
   }
   return { kind: "none" };
 };
@@ -190,16 +208,33 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     if (metadata === undefined) return { kind: "unavailable", reason: "api" };
 
     const collection = new URL(`${root}/files`);
-    collection.searchParams.set("per_page", "100");
+    collection.searchParams.set("per_page", String(PULL_REQUEST_FILES_PER_PAGE));
+    collection.searchParams.set("page", "1");
+    let currentPage = 1;
     let url = new URL(collection);
     const visited = new Set<string>();
     const files: PullRequestRemoteFile[] = [];
     while (true) {
-      if (visited.has(url.toString())) return { kind: "unavailable", reason: "api" };
+      if (currentPage > MAX_PULL_REQUEST_PAGES) {
+        return { kind: "unavailable", reason: "diff-too-large" };
+      }
+      if (visited.has(url.toString()) || !exactPageQuery(url, currentPage)) {
+        return { kind: "unavailable", reason: "api" };
+      }
       visited.add(url.toString());
       const page = await this.fetchJson(url);
       if (page.kind === "unavailable") return page;
-      if (!Array.isArray(page.payload)) return { kind: "unavailable", reason: "api" };
+      if (!Array.isArray(page.payload)) {
+        return { kind: "unavailable", reason: "api" };
+      }
+      if (page.payload.length > PULL_REQUEST_FILES_PER_PAGE) {
+        return {
+          kind: "unavailable",
+          reason: files.length + page.payload.length >= MAX_PULL_REQUEST_FILES
+            ? "diff-too-large"
+            : "api"
+        };
+      }
       for (const value of page.payload) {
         const file = parseFile(value);
         if (file === undefined) return { kind: "unavailable", reason: "api" };
@@ -208,9 +243,13 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
           return { kind: "unavailable", reason: "diff-too-large" };
         }
       }
-      const next = nextPage(page.response, url, collection);
+      const next = nextPage(page.response, url, collection, currentPage);
       if (next.kind === "invalid") return { kind: "unavailable", reason: "api" };
       if (next.kind === "none") break;
+      if (page.payload.length === 0) {
+        return { kind: "unavailable", reason: "api" };
+      }
+      currentPage = next.page;
       url = next.url;
     }
     return { kind: "available", metadata, files };
@@ -240,13 +279,14 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     const failure = classifyResponse(response);
     if (failure !== undefined) return { kind: "unavailable", reason: failure };
     const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.includes(0)) return { kind: "binary" };
     try {
       return {
         kind: "found",
         content: new TextDecoder("utf-8", { fatal: true }).decode(bytes)
       };
     } catch {
-      return { kind: "unavailable", reason: "invalid-encoding" };
+      return { kind: "binary" };
     }
   }
 
