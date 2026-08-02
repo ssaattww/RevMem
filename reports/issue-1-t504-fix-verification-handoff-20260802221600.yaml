@@ -1,0 +1,454 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-02T22:16:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #39 / Issue #1"
+task_id: T504
+branch: task/t504-global-understanding-progress
+base_ref: main
+target:
+  current_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  previous_reviewed_head: 562f52259a26afcccbedb0ea1db935f6b6a7c8df
+  commit_range: 562f52259a26afcccbedb0ea1db935f6b6a7c8df..6a93bcd8d36a952279381892db33afaa37411ca5
+  review_report_head: 895ad3787345a6eb6a9791528535e5bfe54c68ff
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "2026-08-02 user request: 再レビュー"
+    summary: 同じnormal reviewerとして初回findingのclosureとfix差分の新規欠陥を確認する。
+  - source: repository_instruction
+    reference: RevMem project instruction
+    summary: GitHub connector、詳細report、PR簡易comment、exact-head CI、merge禁止を要求する。
+  - source: task
+    reference: tasks/tasks-status.md T504
+    summary: Global理解率、cache、chunk処理、open file優先background再計算を実装し、event loopを長時間占有しない。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: certainty-firstとcurrent valid Global non-empty line集計、chunk分割、open-file優先を要求する。
+  - source: initial_review
+    reference: reports/issue-1-t504-review-20260802214103.md
+    summary: T504-R1-P1 high、P2 medium、P3 medium、P4 lowを報告しfailとした。
+  - source: implementation_followup
+    reference: reports/issue-1-t504-review-followup-20260802220352.md
+    summary: 4件へTDD対応し、same normal reviewerのfix verificationへ引き渡した。
+
+development_policy:
+  method: review verification
+  testing_order: implementation fixはRed test先行。reviewerは実装せず、既存findingとsibling defect classを検証する。
+  governing_source: chat-review-worker and review-worker fix verification mode
+validation_plan:
+  commands:
+    - exact-head GitHub Actions CI for bba45947f0af02ec0e447159603958443418f000
+    - exact-head GitHub Actions CI for 94a6a1c2211d3334ee87c003140ffedbf2c857b5
+    - exact-head GitHub Actions CI for 6a93bcd8d36a952279381892db33afaa37411ca5
+  required_failure_diagnostics:
+    - test results
+    - standard output and standard error logs
+    - source and test trees
+    - generated output
+    - environment and Git state
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t504-fix-verification-20260802221600.md
+      reason: detailed fix-verification report
+    - path_or_operation: reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+      reason: schema v3 lossless handoff
+    - path_or_operation: PR #39 conversation comment
+      reason: concise review result and exact-head CI evidence
+  forbidden:
+    - path_or_operation: src/**
+      reason: reviewer must not implement findings
+    - path_or_operation: test/**
+      reason: reviewer must not implement tests
+    - path_or_operation: .github/workflows/**
+      reason: reviewer must not alter workflow
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: manager-only update rule
+    - path_or_operation: merge PR #39
+      reason: merge is reserved for the user
+
+scope:
+  - Verify T504-R1-P1 through T504-R1-P4 against current fix HEAD.
+  - Inspect fix diff and direct dependencies.
+  - Inspect sibling cases of the same certainty and event-loop defect classes.
+  - Validate TDD order and exact-head CI evidence.
+  - Persist detailed report, handoff, and concise PR comment.
+non_goals:
+  - Implement findings.
+  - Independent final review.
+  - T505/T506 UI or activation wiring.
+  - T607 whole-buffer memory benchmark.
+  - Task/phase manager synchronization.
+  - Merge.
+
+files:
+  changed:
+    - path: reports/issue-1-t504-fix-verification-20260802221600.md
+      purpose: detailed fix-verification evidence and verdict
+    - path: reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+      purpose: lossless continuation packet
+  inspected:
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: P1 exact hash fix and post-load interval/intersection work
+    - path: src/application/global-understanding/global-understanding-background-recalculator.ts
+      purpose: P3 work-budget forwarding, cache evidence generation, scheduler boundaries
+    - path: src/application/global-understanding/index.ts
+      purpose: public load-option compatibility
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: P2 empty-file semantics, P3 chunk analysis, observable file race
+    - path: test/unit/t504-review-followup.test.ts
+      purpose: Red/Green coverage for P1/P2/P3
+    - path: .github/workflows/ci.yml
+      purpose: focused follow-up test registration and diagnostic artifact policy
+    - path: reports/issue-1-t504-review-followup-20260802220352.md
+      purpose: implementation-side finding dispositions and TDD evidence
+    - path: reports/issue-1-t504-review-followup-handoff-20260802220352.yaml
+      purpose: P4 schema v3 and legacy v1 source payload preservation
+    - path: src/core/contracts/review-state.ts
+      purpose: optional contentHash and Global state contract
+    - path: src/adapters/repository-files/node-repository-file-enumerator.ts
+      purpose: T503 non-empty denominator semantics
+  intentionally_untouched:
+    - path_or_area: implementation and tests
+      reason: review-only boundary
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: manager-only boundary
+    - path_or_area: T505/T506
+      reason: outside T504 fix-verification scope
+    - path_or_area: merge
+      reason: user responsibility
+
+commands:
+  - command: GitHub compare 59b9694b..bba45947
+    purpose: verify test/workflow-only Red range
+    exit_code: 0
+    result: passed
+    head_sha: bba45947f0af02ec0e447159603958443418f000
+    evidence: only .github/workflows/ci.yml and test/unit/t504-review-followup.test.ts changed
+  - command: GitHub compare bba45947..94a6a1c2
+    purpose: verify production fix range
+    exit_code: 0
+    result: passed
+    head_sha: 94a6a1c2211d3334ee87c003140ffedbf2c857b5
+    evidence: four T504 implementation/public API files changed
+  - command: GitHub compare 94a6a1c2..6a93bcd8
+    purpose: verify post-Green changes are report/handoff only
+    exit_code: 0
+    result: passed
+    head_sha: 6a93bcd8d36a952279381892db33afaa37411ca5
+    evidence: only follow-up report and handoff changed
+
+tests:
+  - name: T504 review follow-up Red suite
+    phase: red
+    result: failed
+    head_sha: bba45947f0af02ec0e447159603958443418f000
+    evidence: exact-head run 30748905133 failure; artifact 8833789513
+  - name: T504 follow-up focused suite
+    phase: verification
+    result: passed
+    head_sha: 94a6a1c2211d3334ee87c003140ffedbf2c857b5
+    evidence: 10 passed, 0 failed in exact-head run 30749051742
+  - name: T504-R2-P1 yield-time file replacement
+    phase: verification
+    result: not_run
+    head_sha: 6a93bcd8d36a952279381892db33afaa37411ca5
+    evidence: no test changes the file from injected in-file yield and expects rejection
+  - name: T504-R2-P2 post-load bounded calculation
+    phase: verification
+    result: not_run
+    head_sha: 6a93bcd8d36a952279381892db33afaa37411ca5
+    evidence: no test observes scheduler checkpoints during evidence/interval/intersection work
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30749281735
+  head_sha: 6a93bcd8d36a952279381892db33afaa37411ca5
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  commits: []
+  addressed_findings:
+    - id: T504-R1-P1
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed
+      evidence: both content hashes must exist and match; one-sided missing tests pass
+    - id: T504-R1-P2
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed
+      evidence: zero-byte Node source returns one logical line and accepts Global [0,1)
+    - id: T504-R1-P3
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed
+      evidence: source decode/scan/hash is byte-chunked with cooperative yield; sibling post-load work is separately reported as R2-P2
+    - id: T504-R1-P4
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed
+      evidence: follow-up handoff uses schema version 3 and preserves full legacy v1 packet
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - This packet is review output; no implementation was performed.
+
+review:
+  mode: fix_verification
+  reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  reviewer:
+    identity: ChatGPT normal review worker for PR #39
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal review worker for PR #39
+      changed: false
+      reason: same chat performed initial review and fix verification
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - reports/issue-1-t504-review-20260802214103.md
+        - reports/issue-1-t504-fix-verification-20260802221600.md
+  verdict: fail
+  required_coverage:
+    - criterion: requirement / design conformance
+      disposition: checked_finding
+      evidence: R2-P1 certainty-first violation and R2-P2 event-loop completion gap
+    - criterion: correctness / edge cases
+      disposition: checked_finding
+      evidence: file mutation during cooperative yield can return stale evidence
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: fix range and report range are limited to T504 and review artifacts
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: Node source race and application/core post-load work inspected with T501/T503 contracts
+    - criterion: API, data, configuration, workflow, compatibility
+      disposition: checked_no_finding
+      evidence: optional load argument remains compatible and CI runs both T504 test files
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: workflow diagnostics are sufficient, but observable R2-P1 race is not rejected
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no credential processing or source-body logging introduced
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: R2-P1 and R2-P2 cases are absent
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: exact-head run 30749281735 succeeded for 6a93bcd8
+    - criterion: report, tracking, documentation accuracy
+      disposition: checked_no_finding
+      evidence: follow-up report preserves fail verdict and schema v3 handoff is complete
+    - criterion: regression and maintainability
+      disposition: checked_finding
+      evidence: current-evidence validation and work-budget responsibility are split across await boundaries
+  validation_assessment:
+    - item: TDD ordering
+      result: supported
+      evidence: test/workflow-only bba45947 precedes production fix 94a6a1c2
+    - item: Existing finding closure P1/P2/P3/P4
+      result: supported
+      evidence: code, tests, report, schema v3 packet, exact-head Green CI
+    - item: R2-P1 fail-closed current evidence
+      result: failed
+      evidence: final metadata check occurs before cooperative analysis yields
+    - item: R2-P2 bounded post-load work
+      result: unsupported
+      evidence: no scheduler boundary in evidenceKey/normalize/count operations
+  reserved_report_paths:
+    - reports/issue-1-t504-fix-verification-20260802221600.md
+    - reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - All four initial findings are closed for their required actions.
+    - Two new required findings were found in changed/sibling areas.
+    - Verdict remains fail and merge is not authorized.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t504-fix-verification-20260802221600.md
+    - reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+  reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed verification report preserves finding continuity and new findings.
+
+findings:
+  - id: T504-R2-P1
+    severity: high
+    origin: introduced_by_fix
+    location: src/adapters/repository-files/node-global-understanding-file-source.ts load()/analyzeContent()
+    description: Metadata is checked before cooperative analysis; a file changed during an injected yield is not revalidated before stale Buffer evidence is returned.
+    impact: A changed current file can be counted as reviewed when its old Buffer hash still matches Global state.
+    evidence: await analyzeContent follows the final lstat and contains yield points; no lstat follows analysis.
+    required_action: Add a Red test that writes during in-file yield, then perform a final metadata check after analysis with no later yield before return.
+  - id: T504-R2-P2
+    severity: medium
+    origin: introduced_by_change
+    location: global-understanding-background-recalculator.ts evidenceKey/file loop and global-understanding-progress.ts normalizeReviewed/countReviewedNonEmptyLines
+    description: Evidence serialization, interval normalization/sort, and non-empty-line intersection remain synchronous and unbounded after source load.
+    impact: One file with many lines or intervals can still monopolize the Extension Host event loop.
+    evidence: No await or scheduler checkpoint exists in those operations; tests only observe source-level yields.
+    required_action: Add Red coverage and make evidence/interval/intersection processing incremental or explicitly bounded by a designed exclusion limit.
+
+held:
+  - item: Whole-buffer memory ceiling and final scale benchmark
+    reason: final memory and quantitative performance work belongs to T607
+    owner: T607
+    remaining_risk: readFile allocates the whole file Buffer
+    verdict_impact: non-blocking held item; not used as fail reason
+unexplored: []
+unknown:
+  - field_or_fact: final handoff commit SHA and matching workflow run
+    reason: cannot exist until this file is persisted; record externally after exact-head CI
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: this is normal fix verification
+  - field_or_area: merge authorization
+    reason: merge remains reserved for the user
+remaining_risks:
+  - R2-P1 can inflate Global understanding during ordinary concurrent editing.
+  - R2-P2 leaves the event-loop requirement structurally incomplete.
+  - Whole-buffer memory remains held for T607.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #39 / Issue #1
+      task_id: T504
+      mode: review
+      branch: task/t504-global-understanding-progress
+      base_ref: main
+      current_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      scope:
+        - Fix verification for T504-R1-P1 through P4
+        - Changed-area and sibling-defect inspection
+      non_goals:
+        - implementation
+        - merge
+      ci:
+        matching_run: 30749281735
+        conclusion: success
+      blocked: []
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      base: 76b49e99453ebcf7ebecb2c141ed24d750736abc
+      commit_range: 562f52259a26afcccbedb0ea1db935f6b6a7c8df..6a93bcd8d36a952279381892db33afaa37411ca5
+      reviewer_identity: ChatGPT normal review worker for PR #39
+      reviewer_continuity: same reviewer and same chat
+      existing_finding_dispositions:
+        T504-R1-P1: closed
+        T504-R1-P2: closed
+        T504-R1-P3: closed_for_original_required_action
+        T504-R1-P4: closed
+      new_findings:
+        - T504-R2-P1 high introduced_by_fix
+        - T504-R2-P2 medium introduced_by_change
+      verdict: fail
+      held:
+        - Whole-buffer memory ceiling and final scale benchmark owned by T607
+      unexplored: []
+      next_action: implementation follow-up and same-reviewer fix verification
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      report_path: reports/issue-1-t504-fix-verification-20260802221600.md
+      verdict: fail
+      finding_ids:
+        - T504-R2-P1
+        - T504-R2-P2
+      concise_pr_comment: pending after persistence and final exact-head CI
+
+extensions:
+  - namespace: revmem.exact_head_policy
+    payload:
+      technical_reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      technical_run_id: 30749281735
+      technical_conclusion: success
+      report_head: 895ad3787345a6eb6a9791528535e5bfe54c68ff
+      final_document_head: unknown until handoff persistence
+      final_document_head_ci: must match final PR HEAD and be recorded in PR comment
+  - namespace: revmem.progress_tracking
+    payload:
+      tasks_status_updated: false
+      phases_status_updated: false
+      reason: manager-only update rule
+
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: review_followup
+  summary: T504-R2-P1 highとT504-R2-P2 mediumをTDDで修正し、same normal reviewerへ戻す。
+  instructions:
+    - Preserve finding IDs and severities.
+    - Add a Red test that mutates the file during Node source in-file yield and requires fail-closed rejection.
+    - Move/add observable metadata validation after cooperative analysis with no later yield before return.
+    - Add Red coverage for post-load evidence/interval/intersection work and introduce bounded scheduler checkpoints or an explicitly designed exclusion cap.
+    - Use only exact-head CI runs and retain failure diagnostics artifact.
+    - Save a detailed follow-up report and schema v3 handoff.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t504-fix-verification-20260802221600.md
+    - reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+    - reports/issue-1-t504-review-followup-20260802220352.md
+    - GitHub Actions run 30749281735
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - edit_workflows
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+  packet_url: null
+  transport_note: The final handoff commit SHA and its exact-head CI are recorded in the PR comment after persistence.

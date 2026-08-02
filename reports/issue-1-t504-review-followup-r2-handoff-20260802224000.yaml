@@ -1,0 +1,340 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-02T22:40:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #39 / Issue #1"
+task_id: T504
+branch: task/t504-global-understanding-progress
+base_ref: main
+target:
+  current_head: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+  reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+  review_artifact_head: 5d812f83c14148cc582f0ee98a4d8b6bd4398010
+  commit_range: 5d812f83c14148cc582f0ee98a4d8b6bd4398010..894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "2026-08-02 user request: レビュー指摘対応"
+    summary: PR #39の最新review findingへ対応し、TDD、report、handoff、PR更新まで完了する。
+  - source: repository_instruction
+    reference: RevMem project instruction
+    summary: GitHub connector、diagnostic artifact、TDD、小さいcommit、詳細report、PR簡易報告、exact-head CIを使用し、mergeしない。
+  - source: task
+    reference: tasks/tasks-status.md T504
+    summary: Global理解率calculator、cache、chunk処理、open file優先background再計算を実装し、event loopを長時間占有しない。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: certainty-first、current valid Global非空行だけの集計、cache、chunk分割、open file優先を要求する。
+  - source: review
+    reference: reports/issue-1-t504-fix-verification-20260802221600.md
+    summary: 既存R1 findingを閉じ、新規T504-R2-P1 highとT504-R2-P2 mediumをrequired findingとして報告した。
+  - source: review_handoff
+    reference: reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+    summary: reviewed HEAD、finding continuity、closure-only verificationへの引き継ぎを保持する。
+
+development_policy:
+  method: TDD
+  testing_order: R2-P1/P2のtest-only HEADでexact-head CI failureを確認後、production fixを論理単位で実装し、technical HEAD一致CIを実行する。
+  governing_source: RevMem project instruction and implementation-worker review-follow-up mode
+
+validation_plan:
+  commands:
+    - npm ci
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - node --test test-dist/test/unit/repository-file-enumerator.test.js
+    - node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test and compile results
+    - standard output and standard error logs
+    - source, test and tool trees
+    - generated output
+    - environment, Git status, SHA and ref
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+
+write_boundary:
+  allowed:
+    - path_or_operation: src/adapters/repository-files/node-global-understanding-file-source.ts
+      reason: T504-R2-P1 observable file race rejection
+    - path_or_operation: src/application/global-understanding/**
+      reason: T504-R2-P2 bounded post-load evidence and interval work
+    - path_or_operation: test/unit/t504-review-followup-r2.test.ts
+      reason: R2 finding Red and regression tests
+    - path_or_operation: .github/workflows/ci.yml
+      reason: R2 testsをT504 focused diagnostic CIへ接続
+    - path_or_operation: reports/issue-1-t504-review-followup-r2-*
+      reason: detailed report and schema v3 handoff
+    - path_or_operation: PR #39 body and conversation comment
+      reason: 修正内容とvalidation evidenceの同期
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: manager-only update rule
+    - path_or_operation: tasks/phases-status.md
+      reason: manager-only update rule
+    - path_or_operation: merge PR #39
+      reason: mergeは利用者が実施する
+    - path_or_operation: T505/T506 implementation
+      reason: T504 review follow-up範囲外
+
+scope:
+  - T504-R2-P1 analysisおよびpost-load work中のobservable file race rejection
+  - T504-R2-P2 cache evidence、interval normalize/sort/merge、line intersectionのbounded scheduler checkpoints
+  - exact cache semanticsの維持
+  - exact-head Red/Green CIとdurable evidence
+
+non_goals:
+  - T505 Global Understanding View
+  - T506 multi-context activation integration
+  - T607 whole-buffer memory ceiling and quantitative scale benchmark
+  - task and phase manager tracking updates
+  - review verdict generation
+  - merge
+
+files:
+  changed:
+    - path: test/unit/t504-review-followup-r2.test.ts
+      purpose: R2-P1/P2のtest-first reproductionとregression
+    - path: .github/workflows/ci.yml
+      purpose: R2 testをT504 focused stepへ接続
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: cooperative analysis後のmetadata再検証とpost-load final validator
+    - path: src/application/global-understanding/cooperative-global-understanding-calculation.ts
+      purpose: bounded evidence build/compare、interval sort/merge、line intersection
+    - path: src/application/global-understanding/global-understanding-background-recalculator.ts
+      purpose: cooperative cache/calculationとfinal validationの統合
+    - path: src/application/global-understanding/index.ts
+      purpose: cooperative work/evidence public contract
+    - path: reports/issue-1-t504-review-followup-r2-20260802224000.md
+      purpose: R2 finding対応とRed/Green evidenceの詳細記録
+    - path: reports/issue-1-t504-review-followup-r2-handoff-20260802224000.yaml
+      purpose: schema version 3 handoff
+  inspected:
+    - path: reports/issue-1-t504-fix-verification-20260802221600.md
+      purpose: finding ID、severity、origin、required actionを固定
+    - path: reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml
+      purpose: reviewer continuityとreviewed HEADを確認
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: existing synchronous public semanticsと計算不変条件を確認
+    - path: src/core/contracts/review-state.ts
+      purpose: Global file stateとinterval contractを確認
+    - path: .github/workflows/ci.yml
+      purpose: failure diagnostic coverageを確認
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: manager-only update rule
+    - path_or_area: tasks/phases-status.md
+      reason: manager-only update rule
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: existing chunk/certainty requirementsを実装で満たし、product requirement変更はない
+    - path_or_area: T505/T506 UI and activation wiring
+      reason: review follow-up範囲外
+    - path_or_area: merge
+      reason: 利用者専用
+
+commands:
+  - command: npm run build
+    purpose: production TypeScript compile
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: GitHub Actions run 30750310907 job 91503065170
+  - command: npm run typecheck:contracts
+    purpose: public contract typecheck
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: GitHub Actions run 30750310907
+  - command: npm run validate:architecture
+    purpose: layer dependency validation
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: Architecture validation passed in run 30750310907
+  - command: npm run validate:architecture:negative
+    purpose: negative architecture fixture
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: Expected 11 violations matched in run 30750310907
+  - command: npm run lint
+    purpose: ESLint
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: GitHub Actions run 30750310907
+  - command: npm run test:unit
+    purpose: repository unit regression suite
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: 387 passed, 0 failed in run 30750310907
+  - command: node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js
+    purpose: T504 focused and all review finding regressions
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: 12 passed, 0 failed in run 30750310907
+  - command: npm run test:git
+    purpose: Git integration regression
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: 36 passed, 0 failed in run 30750310907
+  - command: npm run test:github
+    purpose: GitHub mock regression
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: 13 passed, 0 failed in run 30750310907
+  - command: xvfb-run -a npm run test:vscode
+    purpose: VS Code Extension Host regression
+    exit_code: 0
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: Extension Host exit code 0 in run 30750310907
+
+tests:
+  - name: T504 R2 review follow-up Red suite
+    phase: red
+    result: failed
+    head_sha: 9cb0c9783bd725c045b099f42b3be933490a260f
+    evidence: Run 30750154452 failed exactly R2-P1 and R2-P2; artifact 8834171645
+  - name: T504-R2-P1 analysis race
+    phase: verification
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: File rewrite during first cooperative analysis yield is rejected
+  - name: T504-R2-P2 post-load bounded work
+    phase: verification
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: Single final file with 256 non-empty lines and 128 fragmented intervals yields and returns 128/256
+  - name: T504 focused suite
+    phase: regression
+    result: passed
+    head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+    evidence: 12 passed, 0 failed
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30750310907
+  job_id: 91503065170
+  head_sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  technical_final_head: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+  commits:
+    - sha: 1dc4bf3e6a48f37f94bf6f76d4ff01e8f330c000
+      purpose: R2-P1/P2 test-first reproduction
+    - sha: 9cb0c9783bd725c045b099f42b3be933490a260f
+      purpose: R2 testsをT504 focused diagnostic CIへ接続
+    - sha: adddec9a7c4e5fe24213bacdf7bc96932fd6ac5d
+      purpose: analysis後のfile再検証とpost-load final validator
+    - sha: 68a9426ba7d9fc379bb299d45557328ea54d76be
+      purpose: cooperative evidence and interval calculation module
+    - sha: 1b169136a9cb2caa9500b0d02e97ae675970bd59
+      purpose: recalculator/cacheへbounded processingを接続
+    - sha: 894a5cfb8a5c3509f2df75228ef9d29f998c26e9
+      purpose: public application contractを同期
+  addressed_findings:
+    - id: T504-R2-P1
+      severity: high
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed_pending_verification
+      evidence: Analysis後とpost-load cooperative work後にmetadataを検証し、race testとexact-head CIが成功した。
+    - id: T504-R2-P2
+      severity: medium
+      reviewed_head: 6a93bcd8d36a952279381892db33afaa37411ca5
+      disposition: addressed_pending_verification
+      evidence: Evidence build/compare、interval validate/sort/merge、line intersectionをbounded item処理へ変更し、single-file regressionとexact-head CIが成功した。
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8834171645
+      summary: Red run diagnostic bundle with R2 focused failures, source, tests, generated output, environment and Git context.
+
+held:
+  - item: whole-buffer memory ceiling and quantitative large-repository benchmark
+    owner: T607
+    reason: readFileによるmemory ceilingと定量性能目標はT607の責務
+    verdict_impact: none for R2 closure after bounded CPU work is verified
+
+unknowns:
+  - item: adversarial metadata restoration
+    detail: device/inode/size/mtimeを変更後に完全に元へ戻す敵対的変更はmetadata comparisonだけでは証明できない。
+    handling: 通常のobservable editor/file changesはfail-closedにし、この限界をreportへ明記する。
+
+next_action:
+  - Report/handoff追加後のPR current HEADと完全一致するworkflow runを確認する。
+  - PR bodyとconversation commentへR2対応とfinal exact-head CIを同期する。
+  - 同じnormal reviewerがT504-R2-P1/P2のclosureだけをfix verificationする。
+  - Mergeは利用者が実施する。
+
+review_verdict:
+  generated: false
+  reason: implementation workerはreview verdictを変更しない。
+
+merge_performed: false
+
+source_payloads:
+  user_request: |-
+    レビュー指摘対応
+  review_submission: |-
+    T504 fix verification結果: **fail / changes required**
+
+    初回findingのclosure:
+    - `T504-R1-P1` high: closed
+    - `T504-R1-P2` medium: closed
+    - `T504-R1-P3` medium: 初回required actionはclosed
+    - `T504-R1-P4` low: closed
+
+    新規required findings:
+    - `T504-R2-P1` **high**: Node sourceは2回目の`lstat()`後にcooperative analysisをyieldするが、analysis後にfileを再検証しない。yield中にfileが変更されると古いBuffer/hashをcurrent evidenceとして返し、変更済みfileをreviewed算入できる。
+    - `T504-R2-P2` **medium**: source後のinterval evidence生成、interval正規化/sort、全non-empty line intersectionは単一file単位で同期実行され、`fileWorkChunkBytes`やscheduler checkpointで制限されない。
+
+    Technical reviewed HEAD: `6a93bcd8d36a952279381892db33afaa37411ca5`
+    - HEAD一致CI run `30749281735`: success
+
+    Review artifact final HEAD: `5d812f83c14148cc582f0ee98a4d8b6bd4398010`
+    - HEAD一致CI run `30749881552`: success
+
+    別SHAのrunは代用していません。
+
+    詳細report:
+    - `reports/issue-1-t504-fix-verification-20260802221600.md`
+
+    Schema v3 handoff:
+    - `reports/issue-1-t504-fix-verification-handoff-20260802221600.yaml`
+
+    R2-P1/P2はfinding IDとseverityを保持してTDD修正し、新しいtechnical HEAD一致CI後に同じnormal reviewerへ戻してください。mergeは実施していません。
+  implementation_worker: |-
+    R2-P1/P2のRed testを先に追加し、HEAD 9cb0c9783bd725c045b099f42b3be933490a260fのrun 30750154452で2件のfailureとartifact 8834171645を確認した。Node sourceへanalysis後およびpost-load work後のmetadata validationを追加した。post-load evidence、cache comparison、interval validation/sort/merge、non-empty line intersectionをitem-budgeted cooperative application処理へ変更した。Technical HEAD 894a5cfb8a5c3509f2df75228ef9d29f998c26e9のrun 30750310907でfocused 12/12と全CI成功を確認した。review verdictとmergeは実施していない。
+  report_writer: |-
+    詳細証跡はreports/issue-1-t504-review-followup-r2-20260802224000.mdへ保存した。finding continuity、diagnostic workflow、Red artifact、implementation commits、exact-head Green CI、held/unknown、next actionを記録した。

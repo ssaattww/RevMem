@@ -139,6 +139,19 @@ test("counts CRLF, LF, CR, mixed separators, trailing separators, and empty line
   assert.equal(NodeRepositoryFileEnumerator.countNonEmptyLines("\n  \n// comment\n# comment\ncode\n"), 3);
 });
 
+test("excludes malformed non-NUL UTF-8 bytes from the T503 included boundary", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t503-invalid-utf8-"));
+  await writeFile(path.join(root, "invalid.ts"), Buffer.from([0x63, 0x33, 0xc3, 0x28, 0x0a]));
+
+  const result = await enumerate().enumerate(root);
+
+  assert.deepEqual(result.included, []);
+  assert.deepEqual(result.excluded, [{
+    path: "invalid.ts",
+    reason: { kind: "invalid-encoding", encoding: "utf-8" }
+  }]);
+});
+
 test("sorts canonical-equivalent Unicode paths with a locale-independent total order", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t503-unicode-sort-"));
   const composed = "\u00e9.ts";

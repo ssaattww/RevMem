@@ -1,0 +1,135 @@
+schema_version: 1
+handoff:
+  summary: >-
+    T504のrepository・file別Global理解率calculator、exact-evidence cache、chunk処理、
+    open file優先background再計算、Node current-file source、focused CIをTDDで実装した。
+  work_type: implementation
+  target:
+    repository: ssaattww/RevMem
+    issue: 1
+    task: T504
+    branch: task/t504-global-understanding-progress
+    pull_request: 39
+    base_branch: main
+    base_sha: 76b49e99453ebcf7ebecb2c141ed24d750736abc
+    technical_implementation_head: acb4ba7037029885a732535b71b24eb5eea7ae83
+  acceptance:
+    scope:
+      - repository別・file別Global理解率calculator
+      - includedのcurrent valid reviewed non-empty line集計
+      - exact file evidence progress cache
+      - open file優先background再計算
+      - chunk progressとcooperative yield
+      - configuration変更時の再計算
+      - Node filesystem current-file source
+      - T504 focused CI
+    non_goals:
+      - T505 UI表示
+      - T506設定UX
+      - Extension activationへの最終wiring
+      - task/phase trackingの直接更新
+      - review判定
+      - merge
+  requirements:
+    design: doc/design/vscode-review-range-tracker-design.md rev4
+    task_definition: tasks/tasks-status.md T504
+    dependencies:
+      - T501 Repository Global State
+      - T503 Repository file enumeration
+    invariants:
+      - includedだけが分母へ寄与する
+      - excludedとexcludedDirectoriesは寄与しない
+      - current revision/path/content evidenceが一致しないGlobal stateは分子へ寄与しない
+      - PR進捗へGlobal理解率を混入しない
+      - path順序はlocale非依存で決定的にする
+      - chunk間でevent loopへ制御を返す
+  evidence:
+    diagnostic_workflow:
+      existed_before_work: true
+      captures:
+        - test results
+        - stdout and stderr logs
+        - generated output
+        - source and test trees
+        - environment and git context
+    red:
+      commit: 3e28e60c23230d8c9b9ff68410ebc770b5ea9d04
+      workflow_run: 30746928013
+      job: 91493989934
+      conclusion: failure
+      failure: compile:test rejected missing T504 modules before implementation
+      artifact:
+        id: 8833176909
+        name: ci-failure-diagnostics-30746928013-1
+    green:
+      technical_implementation_head: acb4ba7037029885a732535b71b24eb5eea7ae83
+      workflow_run: 30747320793
+      job: 91495013148
+      conclusion: success
+      results:
+        build: success
+        contract_typecheck: success
+        architecture_positive: success
+        architecture_negative: expected 11 findings matched
+        lint: success
+        unit: 387 passed, 0 failed
+        t503_focused: 6 passed, 0 failed, 1 capability-based skipped
+        t504_focused: 6 passed, 0 failed
+        git_integration: 36 passed, 0 failed
+        github_mock: 13 passed, 0 failed
+        vscode_extension_host: exit code 0
+  changed_files:
+    - .github/workflows/ci.yml
+    - src/adapters/repository-files/node-global-understanding-file-source.ts
+    - src/application/global-understanding/global-understanding-background-recalculator.ts
+    - src/application/global-understanding/index.ts
+    - src/core/global-understanding/global-understanding-progress.ts
+    - src/core/global-understanding/index.ts
+    - test/unit/global-understanding-progress.test.ts
+    - reports/issue-1-t504-implementation-20260802211500.md
+    - reports/issue-1-t504-handoff-20260802211500.yaml
+  intentionally_untouched:
+    - path: tasks/tasks-status.md
+      reason: manager-only update rule; hand off to authorized progress sync
+    - path: tasks/phases-status.md
+      reason: manager-only update rule; hand off to authorized progress sync
+    - path: doc/design/vscode-review-range-tracker-design.md
+      reason: rev4 already defines the implemented contract; no product requirement changed
+    - area: T505/T506 UI and configuration UX
+      reason: outside T504 core scope
+    - area: merge
+      reason: reserved for the user
+  risks:
+    - Caller must provide canonical configurationKey, open file paths, and recalculation triggers.
+    - Cache is process-local and current source evidence is read before an exact cache hit can be used.
+    - Filesystem race detection covers changes observable through before/after metadata.
+    - npm ci reports one pre-existing high severity dependency vulnerability; T504 adds no dependency.
+  reports:
+    implementation: reports/issue-1-t504-implementation-20260802211500.md
+    handoff: reports/issue-1-t504-handoff-20260802211500.yaml
+  next_action:
+    - Verify the documentation HEAD with a workflow run whose head SHA exactly matches the PR current HEAD.
+    - Perform normal and independent review without treating this handoff as a review verdict.
+    - Run authorized progress synchronization for task and phase files.
+    - Leave merge to the user.
+  merge_performed: false
+  source_payloads:
+    work_context_manager: |-
+      Repository ssaattww/RevMem, Issue #1, task T504, branch
+      task/t504-global-understanding-progress, PR #39, base main at
+      76b49e99453ebcf7ebecb2c141ed24d750736abc. Scope is the Global understanding
+      calculation core after T501 and T503. Task and phase tracking files are manager-only.
+    implementation_worker: |-
+      Implemented pure file/repository calculators, fail-closed stale/missing handling,
+      deterministic aggregate ordering, exact-evidence memory cache, included-only background
+      recalculation, open-file priority, chunk progress/yield, configuration invalidation, and
+      a Node filesystem source with canonical path validation, logical EOL handling, SHA-256
+      evidence, and observable read-race rejection. Added six focused tests first and confirmed
+      the Red run 30746928013 for commit 3e28e60c23230d8c9b9ff68410ebc770b5ea9d04.
+      Confirmed technical implementation HEAD acb4ba7037029885a732535b71b24eb5eea7ae83
+      with exact matching successful run 30747320793. No review verdict and no merge were produced.
+    report_writer: |-
+      Detailed implementation evidence is stored at
+      reports/issue-1-t504-implementation-20260802211500.md. The report records scope,
+      non-goals, requirements, diagnostic artifact precheck, Red/Green evidence, layer-level
+      changes, validation counts, intentionally untouched areas, risks, and next actions.
