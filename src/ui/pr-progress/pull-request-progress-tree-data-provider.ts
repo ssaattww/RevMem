@@ -190,7 +190,10 @@ const validateRepositoryPath = (
   try {
     return requireCanonicalRepositoryRelativePath(value, semantics, label);
   } catch (error) {
-    throw new RangeError(error instanceof Error ? error.message : String(error));
+    throw new RangeError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error }
+    );
   }
 };
 
