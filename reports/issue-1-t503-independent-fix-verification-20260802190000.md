@@ -7,21 +7,23 @@
 - Task: T503 repository file列挙・gitignore・空行判定
 - Mode: closure-only fix verification by the same independent reviewer
 - Previous reviewed implementation HEAD: `c0215bb3d715b152946c0e3eccae67a01ccc1985`
-- Technical closure HEAD: `09471d2dbd6ec513318cf05bb0612697c1fa98e9`
+- Previous closure-check HEAD: `09471d2dbd6ec513318cf05bb0612697c1fa98e9`
+- Technical closure HEAD: `40e04ea2fbdd373d5d5aef4fb253f2794f250b10`
 - Latest-main merge commit: `d8dc521`
-- Finding-fix range: `d8dc521..09471d2dbd6ec513318cf05bb0612697c1fa98e9`
+- Initial finding-fix range: `d8dc521..09471d2dbd6ec513318cf05bb0612697c1fa98e9`
+- Final tracking-closure range: `09471d2dbd6ec513318cf05bb0612697c1fa98e9..40e04ea2fbdd373d5d5aef4fb253f2794f250b10`
 - Allowed finding identities: `T503-IR-001`, `T503-IFR-001`, `T503-IFR-002`, `T503-IFR-003`, `T503-IFR-004`, `T503-IFR-005`
 - New review perspectives and new finding identifiers: prohibited and not performed
 - Reviewer continuity: initial independent final reviewerと同一reviewer。実装・fixには関与していない
 - Report path: `reports/issue-1-t503-independent-fix-verification-20260802190000.md`
-- Verdict: `fail`
-- Report attestation allowed: `false`
+- Verdict: `pass`
+- Report attestation allowed: `true`（callerによるallowlist検証を条件とする）
 
-技術的verdictは`09471d2dbd6ec513318cf05bb0612697c1fa98e9`にだけ適用する。latest-main merge由来の広い差分は新規reviewせず、fix commitの8 pathと既存6 findingの直接影響・既存sibling regressionだけを確認した。
+技術的verdictは`40e04ea2fbdd373d5d5aef4fb253f2794f250b10`にだけ適用する。最終再確認は`T503-IFR-003`の残件だった`tasks/tasks-status.md`のbranch / PR 2行だけに限定した。既にPASSの他5件は前回結果を保持し、再検証していない。新規観点・新規findingは追加していない。
 
 ## Inspected closure scope
 
-Finding-fix commit `09471d2`の次の8 pathを、既存findingとの対応だけに限定して確認した。
+初回closure確認ではfinding-fix commit `09471d2`の次の8 pathを、既存findingとの対応だけに限定して確認した。
 
 1. `doc/design/vscode-review-range-tracker-design.md`
 2. `reports/issue-1-t503-independent-final-review-20260802093030.md`
@@ -34,22 +36,29 @@ Finding-fix commit `09471d2`の次の8 pathを、既存findingとの対応だけ
 
 PR comment誤記の外部訂正として `https://github.com/ssaattww/RevMem/pull/34#issuecomment-5154296623` も確認した。
 
+最終再確認では`09471d2..40e04ea`のうち、既存finding `T503-IFR-003`の残件を修正する次の2行だけを確認した。
+
+- `tasks/tasks-status.md:15`: `Gitブランチ: task/t503-repository-file-enumeration`
+- `tasks/tasks-status.md:16`: `Pull Request: #34 (base=main)`
+
+同rangeに含まれる本reportのrepository追加は前回review結果の永続化であり、finding観点として再レビューしていない。
+
 ## Exact-head CI
 
-- Pull request run `30726137363`
-  - `headSha`: `09471d2dbd6ec513318cf05bb0612697c1fa98e9`
-  - job `build-and-lint` / `91438106714`: `success`
+- Pull request run `30726329012`
+  - `headSha`: `40e04ea2fbdd373d5d5aef4fb253f2794f250b10`
+  - job `build-and-lint` / `91438623922`: `success`
   - workflow conclusion: `success`
-- Push run `30726136227`
-  - `headSha`: `09471d2dbd6ec513318cf05bb0612697c1fa98e9`
-  - job `build-and-lint` / `91438103838`: `success`
+- Push run `30726327495`
+  - `headSha`: `40e04ea2fbdd373d5d5aef4fb253f2794f250b10`
+  - job `build-and-lint` / `91438619649`: `success`
   - workflow conclusion: `success`
 
 両jobはbuild、contract typecheck、architecture positive/negative、lint、unit、T503 focused、Git、GitHub、Extension Hostを含めてsuccessである。
 
 ## Focused validation
 
-既存6 findingの回帰をまとめ、追加compileを繰り返さず1回で実行した。
+前回closure確認では既存6 findingの回帰をまとめ、追加compileを繰り返さず1回で実行した。
 
 ```text
 npm run compile:test
@@ -69,6 +78,8 @@ Result: `33/33 pass`、fail 0、skip 0。
 - T300 shared policyの既存file decision regression
 
 `git diff --check d8dc521..09471d2...`もpassした。
+
+最終再確認では対象がtracking 2行だけのためfocused testを再実行していない。既存5件のPASSと上記33/33 evidenceを保持し、current HEAD一致CI 2本の全gate successを確認した。`git diff --check 09471d2..40e04ea -- tasks/tasks-status.md`はpassした。
 
 ## Finding closure results
 
@@ -101,7 +112,7 @@ Result: `33/33 pass`、fail 0、skip 0。
   - LF、CRLF、lone CR、mixed EOL、trailing separator、empty/whitespace-onlyのtestがpassした。
 - Closure: `"a\rb\r"`を2非空行として扱うためclosed。
 
-### T503-IFR-003 — medium — FAIL
+### T503-IFR-003 — medium — PASS
 
 - Source severity: medium（preserved、reclassificationなし）
 - Origin: pre-freeze task tracking omission
@@ -111,12 +122,12 @@ Result: `33/33 pass`、fail 0、skip 0。
   - 同fileのT503行は`完了（PR #34 closure待ち）`となり、終了条件も6 findingの契約へ同期した。
   - `tasks/tasks-status.md:182-183`にT503 independent final report / follow-up reportを追加した。
   - PR comment `#issuecomment-5154296623`は正しいR4 path `reports/issue-1-t503-review-followup-r4-20260802065500.md`を明示し、誤った`...070000.md`を訂正した。
-- Unresolved evidence:
-  - 同じ「現在位置」の`tasks/tasks-status.md:15`はなお `Gitブランチ: task/t601-non-git-snapshots`。
-  - `tasks/tasks-status.md:16`はなお `Pull Request: #33 (base=main)`。
-  - 直上では現在taskをPR #34 T503と記録しているため、branch / PR identityが同一section内で矛盾する。
-- Impact: authoritative trackingからcurrent work identityを一意に復元できず、既存findingが要求したpre-freeze current-position同期は未完了。
-- Required action: `tasks/tasks-status.md`の`Gitブランチ`を`task/t503-repository-file-enumeration`、`Pull Request`を#34へ同期する。そのtracking-only fix後、本reviewerは`T503-IFR-003`のこの残件だけをclosure確認する。新規観点・新規findingは追加しない。
+- Final closure evidence:
+  - `tasks/tasks-status.md:15`は`Gitブランチ: task/t503-repository-file-enumeration`へ同期された。
+  - `tasks/tasks-status.md:16`は`Pull Request: #34 (base=main)`へ同期された。
+  - 直上のcurrent task / next action / implementation stateとbranch / PR identityが一致する。
+  - tracking-only deltaの`diff --check`とcurrent HEAD一致CI 2本がsuccessした。
+- Closure: status、現在位置、branch、PR、report参照、次回action、PR comment訂正がすべて一致したためclosed。
 
 ### T503-IFR-004 — low — PASS
 
@@ -144,7 +155,7 @@ Result: `33/33 pass`、fail 0、skip 0。
 | `T503-IR-001` | high | PASS / closed |
 | `T503-IFR-001` | high | PASS / closed |
 | `T503-IFR-002` | medium | PASS / closed |
-| `T503-IFR-003` | medium | FAIL / tracking identity 2行が未同期 |
+| `T503-IFR-003` | medium | PASS / closed |
 | `T503-IFR-004` | low | PASS / closed |
 | `T503-IFR-005` | low | PASS / closed |
 
@@ -154,27 +165,32 @@ Severity reclassificationおよびerratumはない。
 
 | Criterion | Disposition | Closure-only evidence |
 | --- | --- | --- |
-| Requirement/design conformance | `checked_finding` | `T503-IFR-003`のcurrent branch / PR trackingだけ未完了 |
+| Requirement/design conformance | `checked_no_finding` | `T503-IFR-003`のcurrent branch / PR trackingを最終同期 |
 | Correctness and existing sibling cases | `checked_no_finding` | 5 code/test findingのregressionがfocused runでpass |
 | Scope discipline | `checked_no_finding` | fix commit 8 pathと既存6 findingだけを確認、新規観点なし |
-| Changed files/direct dependencies | `checked_finding` | policy、enumerator、test、design、trackingをfinding別に確認。tracking残件あり |
+| Changed files/direct dependencies | `checked_no_finding` | 最終再確認はtracking 2行だけ。既存5件のPASSは保持 |
 | API/data/config/workflow compatibility | `checked_no_finding` | explicit directory decisionをbarrel exportしT300 file decision regressionもpass |
 | Error handling/failure diagnostics | `checked_no_finding` | Windows symlink capability failureを限定処理しunexpected errorは再throw |
 | Security/secret handling | `checked_no_finding` | junction/symlink非追跡の既存finding回帰のみ確認 |
-| Tests and validation adequacy | `checked_no_finding` | local 33/33とexact-head CI 2件success |
-| Current-HEAD CI | `checked_no_finding` | run `30726137363`、`30726136227`がtarget SHA一致 |
-| Report/tracking/documentation accuracy | `checked_finding` | comment訂正・report参照はpass、branch/PR trackingはfail |
+| Tests and validation adequacy | `checked_no_finding` | prior local 33/33を保持し、current exact-head CI 2件success |
+| Current-HEAD CI | `checked_no_finding` | run `30726329012`、`30726327495`がtarget SHA一致 |
+| Report/tracking/documentation accuracy | `checked_no_finding` | comment、report参照、branch、PR trackingが一致 |
 | Regression/maintainability risk | `checked_no_finding` | 既存findingの直接sibling testはpass。新規観点は評価していない |
 
 Markdown focused/full wording lintはrepositoryに`tools/lint/`、`lint:md`、`cspell.config.jsonc`がないため`unsupported`。本reportのinline codeはfinding ID、SHA、path、command、API名等に限定し、prose lint回避には使用していない。
 
 ## Verdict, next action, and persistence
 
-- Verdict: `fail`
-- Reason: 既存required finding `T503-IFR-003` mediumに未解決のtracking identity 2行が残る。
-- Next action: 上記2行だけを同期し、current-HEAD evidence確定後、同じreviewerが`T503-IFR-003`の残件だけを再確認する。
-- Persistence mode: repository file。これはfail closure reportであり、passing administrative attestationではない。
-- `report_attestation_allowed: false`
+- Verdict: `pass`
+- Reason: `T503-IFR-003`の残件2行がclosedし、既存6 findingはすべてPASSである。
+- Next action: callerが下記attestation allowlistを検証して本reportだけを1 administrative commitとして永続化し、attestation SHAを外部記録する。
+- Persistence mode: `report_attestation_commit`。
+- `report_attestation_allowed: true`
 - Report attestation head: `null`
+- Technical verdict applies to reviewed implementation HEAD `40e04ea2fbdd373d5d5aef4fb253f2794f250b10`。
+- 本reportは事前予約済みpath `reports/issue-1-t503-independent-fix-verification-20260802190000.md`だけを変更する1 administrative attestation commitを意図する。
+- Callerはattestation commitのfirst parentが上記technical closure HEADであり、diffが本report pathだけで、他のimplementation、design、Skill、workflow、configuration、tracking、feedback、handoff、product pathを変更しないことを検証する。
+- Attestation SHAはcommit後にPR metadata/comment等の外部参照へ記録する。本report本文には未知のattestation SHAを記載しない。
+- Attestation後の追加Git commitはcompletionを無効にし、新しいreview lifecycleを必要とする。
 - 本reviewでは実装、commit、push、PR comment、mergeを行っていない。
 - Mergeは許可しない。
