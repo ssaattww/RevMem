@@ -28,6 +28,11 @@ type EditOperation =
   | { readonly kind: "deletion"; readonly line: TextLine }
   | { readonly kind: "addition"; readonly line: TextLine };
 
+interface LineMatch {
+  readonly oldIndex: number;
+  readonly newIndex: number;
+}
+
 const textLines = (content: string): readonly TextLine[] => {
   const result: TextLine[] = [];
   let start = 0;
@@ -46,53 +51,102 @@ const textLines = (content: string): readonly TextLine[] => {
 const lineEqual = (left: TextLine, right: TextLine): boolean =>
   left.text === right.text && left.ending === right.ending;
 
+class AmbiguousDiffError extends Error {}
+class DiffTooLargeError extends Error {}
+
+const uniqueMatches = (
+  oldLines: readonly TextLine[],
+  newLines: readonly TextLine[]
+): readonly LineMatch[] | undefined => {
+  const cells = (oldLines.length + 1) * (newLines.length + 1);
+  if (cells > MAX_DIFF_MATRIX_CELLS) return undefined;
+
+  const width = newLines.length + 1;
+  const suffix = new Uint32Array(cells);
+  for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
+    for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
+      const offset = oldIndex * width + newIndex;
+      suffix[offset] = lineEqual(oldLines[oldIndex]!, newLines[newIndex]!)
+        ? suffix[(oldIndex + 1) * width + newIndex + 1]! + 1
+        : Math.max(
+            suffix[(oldIndex + 1) * width + newIndex]!,
+            suffix[oldIndex * width + newIndex + 1]!
+          );
+    }
+  }
+
+  const longest = suffix[0]!;
+  if (longest === 0) return [];
+
+  const prefix = new Uint32Array(cells);
+  for (let oldIndex = 0; oldIndex < oldLines.length; oldIndex += 1) {
+    for (let newIndex = 0; newIndex < newLines.length; newIndex += 1) {
+      const offset = (oldIndex + 1) * width + newIndex + 1;
+      prefix[offset] = lineEqual(oldLines[oldIndex]!, newLines[newIndex]!)
+        ? prefix[oldIndex * width + newIndex]! + 1
+        : Math.max(
+            prefix[oldIndex * width + newIndex + 1]!,
+            prefix[(oldIndex + 1) * width + newIndex]!
+          );
+    }
+  }
+
+  const matches: Array<LineMatch | undefined> = Array.from({ length: longest });
+  for (let oldIndex = 0; oldIndex < oldLines.length; oldIndex += 1) {
+    for (let newIndex = 0; newIndex < newLines.length; newIndex += 1) {
+      if (!lineEqual(oldLines[oldIndex]!, newLines[newIndex]!)) continue;
+      const before = prefix[oldIndex * width + newIndex]!;
+      const after = suffix[(oldIndex + 1) * width + newIndex + 1]!;
+      if (before + 1 + after !== longest) continue;
+      const existing = matches[before];
+      if (existing !== undefined &&
+          (existing.oldIndex !== oldIndex || existing.newIndex !== newIndex)) {
+        throw new AmbiguousDiffError("Content has multiple optimal line alignments.");
+      }
+      matches[before] = { oldIndex, newIndex };
+    }
+  }
+
+  if (matches.some(match => match === undefined)) {
+    throw new AmbiguousDiffError("Content alignment cannot be proven unique.");
+  }
+  return matches as readonly LineMatch[];
+};
+
 const editOperations = (
   oldLines: readonly TextLine[],
   newLines: readonly TextLine[]
 ): readonly EditOperation[] | undefined => {
-  if ((oldLines.length + 1) * (newLines.length + 1) > MAX_DIFF_MATRIX_CELLS) {
-    return undefined;
-  }
-  const width = newLines.length + 1;
-  const matrix = new Uint32Array((oldLines.length + 1) * width);
-  for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
-    for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
-      const offset = oldIndex * width + newIndex;
-      matrix[offset] = lineEqual(oldLines[oldIndex]!, newLines[newIndex]!)
-        ? matrix[(oldIndex + 1) * width + newIndex + 1]! + 1
-        : Math.max(
-            matrix[(oldIndex + 1) * width + newIndex]!,
-            matrix[oldIndex * width + newIndex + 1]!
-          );
-    }
-  }
+  const matches = uniqueMatches(oldLines, newLines);
+  if (matches === undefined) return undefined;
+
   const operations: EditOperation[] = [];
   let oldIndex = 0;
   let newIndex = 0;
-  while (oldIndex < oldLines.length || newIndex < newLines.length) {
-    if (
-      oldIndex < oldLines.length && newIndex < newLines.length &&
-      lineEqual(oldLines[oldIndex]!, newLines[newIndex]!)
-    ) {
-      operations.push({
-        kind: "equal",
-        oldLine: oldLines[oldIndex]!,
-        newLine: newLines[newIndex]!
-      });
-      oldIndex += 1;
-      newIndex += 1;
-    } else if (
-      newIndex >= newLines.length ||
-      (oldIndex < oldLines.length &&
-        matrix[(oldIndex + 1) * width + newIndex]! >=
-          matrix[oldIndex * width + newIndex + 1]!)
-    ) {
+  for (const match of matches) {
+    while (oldIndex < match.oldIndex) {
       operations.push({ kind: "deletion", line: oldLines[oldIndex]! });
       oldIndex += 1;
-    } else {
+    }
+    while (newIndex < match.newIndex) {
       operations.push({ kind: "addition", line: newLines[newIndex]! });
       newIndex += 1;
     }
+    operations.push({
+      kind: "equal",
+      oldLine: oldLines[oldIndex]!,
+      newLine: newLines[newIndex]!
+    });
+    oldIndex += 1;
+    newIndex += 1;
+  }
+  while (oldIndex < oldLines.length) {
+    operations.push({ kind: "deletion", line: oldLines[oldIndex]! });
+    oldIndex += 1;
+  }
+  while (newIndex < newLines.length) {
+    operations.push({ kind: "addition", line: newLines[newIndex]! });
+    newIndex += 1;
   }
   return operations;
 };
@@ -163,14 +217,30 @@ const completeAddedOrDeleted = (
   return true;
 };
 
+export type PullRequestFileContent =
+  | { readonly kind: "text"; readonly content: string }
+  | { readonly kind: "binary" };
+
 export interface PullRequestFileContents {
-  readonly oldContent?: string;
-  readonly newContent?: string;
+  readonly oldContent?: PullRequestFileContent;
+  readonly newContent?: PullRequestFileContent;
 }
 
-class DiffTooLargeError extends Error {}
+const binaryFileChange = (
+  fileId: string,
+  oldPath: string | undefined,
+  newPath: string | undefined
+): PullRequestFileChange => ({
+  fileId,
+  ...(oldPath === undefined ? {} : { oldPath }),
+  ...(newPath === undefined ? {} : { newPath }),
+  status: "binary",
+  additions: 0,
+  deletions: 0,
+  hunks: []
+});
 
-/** Rebuilds every file diff from exact base/head text while checking API statistics. */
+/** Rebuilds every file diff from exact base/head content while checking API statistics. */
 export const buildSnapshotFromFileContents = (
   request: PullRequestDiffAcquisitionRequest,
   remoteFiles: readonly PullRequestRemoteFile[],
@@ -190,15 +260,7 @@ export const buildSnapshotFromFileContents = (
       }
       const content = contents[index]!;
       if (remote.status === "binary") {
-        return {
-          fileId,
-          ...(oldPath === undefined ? {} : { oldPath }),
-          ...(newPath === undefined ? {} : { newPath }),
-          status: "binary",
-          additions: 0,
-          deletions: 0,
-          hunks: []
-        };
+        return binaryFileChange(fileId, oldPath, newPath);
       }
       if (
         (oldPath === undefined) !== (content.oldContent === undefined) ||
@@ -206,7 +268,21 @@ export const buildSnapshotFromFileContents = (
       ) {
         throw new RangeError("Content presence does not match file status.");
       }
-      const hunks = hunksFromContents(content.oldContent ?? "", content.newContent ?? "");
+
+      const evidence = [content.oldContent, content.newContent].filter(
+        (value): value is PullRequestFileContent => value !== undefined
+      );
+      const binaryCount = evidence.filter(value => value.kind === "binary").length;
+      if (binaryCount > 0) {
+        if (binaryCount !== evidence.length || remote.additions !== 0 || remote.deletions !== 0) {
+          throw new RangeError("Mixed text/binary evidence or binary line statistics are ambiguous.");
+        }
+        return binaryFileChange(fileId, oldPath, newPath);
+      }
+
+      const oldContent = content.oldContent?.kind === "text" ? content.oldContent.content : "";
+      const newContent = content.newContent?.kind === "text" ? content.newContent.content : "";
+      const hunks = hunksFromContents(oldContent, newContent);
       if (hunks === undefined) throw new DiffTooLargeError();
       const additions = hunks.reduce(
         (sum, hunk) => sum + hunk.lines.filter(line => line.kind === "addition").length,
@@ -218,6 +294,9 @@ export const buildSnapshotFromFileContents = (
       );
       if (additions !== remote.additions || deletions !== remote.deletions) {
         throw new RangeError("Content diff statistics do not match the GitHub file record.");
+      }
+      if (remote.status === "modified" && additions === 0 && deletions === 0) {
+        throw new RangeError("Patchless zero-stat modified file is a mode or type ambiguity.");
       }
       if (!completeAddedOrDeleted(remote.status, additions, deletions, hunks)) {
         throw new RangeError("Added/deleted content diff is incomplete.");
