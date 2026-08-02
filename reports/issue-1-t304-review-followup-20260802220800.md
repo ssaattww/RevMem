@@ -1,5 +1,11 @@
 # T304 初回レビュー指摘対応レポート
 
+## 訂正追記（2026-08-02 22:45 JST）
+
+本reportはHEAD `e43069a967f6f5179d7a5894b897d05adc3f7f75`時点の初回対応証跡である。後続fix verification `reports/issue-1-t304-fix-verification-20260802221700.md`により、`T304-R1-P1`と`T304-R1-P2`はこの時点では**partial / open**と判定された。下部の`addressed`記述は当時のimplementation worker判断であり、review closureを示さない。
+
+残存部分は`reports/issue-1-t304-review-followup-r2-20260802224500.md`で追加修正した。履歴証拠を保持するため本文は削除せず、本訂正を優先する。
+
 ## 対象
 
 - Repository: `ssaattww/RevMem`
@@ -121,13 +127,13 @@ reviewability mapはPR progress file IDに対して完全一致を要求する�
 - 本report
 - review follow-up handoff
 
-## Finding disposition
+## Finding disposition（当時のimplementation判断）
 
 | Finding | 対応 | 状態 |
 |---|---|---|
-| T304-R1-P1 | identity-bound snapshot、immutable diff target、stale node拒否を追加 | addressed。初回reviewerのclosure確認待ち |
-| T304-R1-P2 | binary・invalid encoding・unsupported encodingの分類と理由を追加 | addressed。初回reviewerのclosure確認待ち |
-| T304-R1-P3 | standard/focused test discoveryとCI contractを追加 | addressed。初回reviewerのclosure確認待ち |
+| T304-R1-P1 | identity-bound snapshot、immutable diff target、stale node拒否を追加 | partial。fix verificationで不存在sideがopenと判定され、R2で追加対応 |
+| T304-R1-P2 | binary・invalid encoding・unsupported encodingの分類と理由を追加 | partial。fix verificationでraw T301 resultとの不整合がopenと判定され、R2で追加対応 |
+| T304-R1-P3 | standard/focused test discoveryとCI contractを追加 | addressed。fix verificationでclosed |
 
 ## 対象外
 
