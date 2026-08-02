@@ -4,6 +4,8 @@ import type {
 } from "../../core/contracts/index";
 import {
   applyGitFileStateTransitions,
+  mapReviewedIntervalsAcrossDiff,
+  parseZeroContextGitDiff,
   type GitFileStateTransitionInput,
   type GitNewFileStateInput
 } from "../../core/git-diff/index";
@@ -56,6 +58,19 @@ const cloneGlobalState = (
   )
 });
 
+const advanceRetainedFileRevisions = (
+  state: RepositoryGlobalState,
+  newRevisionId: string
+): void => {
+  for (const [fileId, file] of Object.entries(state.files)) {
+    state.files[fileId] = {
+      ...file,
+      revisionId: newRevisionId,
+      reviewed: file.reviewed.map((interval) => ({ ...interval }))
+    };
+  }
+};
+
 /**
  * Maps one Global file through a VS Code-compatible document change transaction.
  * Changed old lines and inserted lines become unreviewed; unchanged suffixes shift.
@@ -80,6 +95,7 @@ export function mapRepositoryGlobalStateThroughDocumentChanges(
   const result = cloneGlobalState(input.globalState);
   result.currentRevisionId = input.newRevisionId;
   result.updatedAt = input.updatedAt;
+  advanceRetainedFileRevisions(result, input.newRevisionId);
   result.files[input.fileId] = {
     ...cloneGlobalFile(file),
     revisionId: input.newRevisionId,
@@ -111,9 +127,10 @@ const inferredLineCount = (
 };
 
 /**
- * Maps the owner-wide Global snapshot through the same conservative Git transition
- * engine used by context state. Stable rename IDs are retained; add, copy, delete,
- * ambiguous mapping, and changed hunks never manufacture reviewed ranges.
+ * Maps the owner-wide Global snapshot through conservative file transitions and
+ * T203 interval mapping. Every retained file is advanced to the snapshot revision;
+ * ordinary modified files invalidate only changed lines, while rename/add/copy/delete
+ * semantics remain owned by the T204 transition engine.
  */
 export function mapRepositoryGlobalStateThroughGitDiff(
   input: MapRepositoryGlobalStateThroughGitDiffInput
@@ -146,6 +163,51 @@ export function mapRepositoryGlobalStateThroughGitDiff(
     ...(input.newFiles === undefined ? {} : { newFiles: input.newFiles })
   });
 
+  const parsed = parseZeroContextGitDiff(input.diff);
+  const originalByPath = new Map(
+    Object.values(input.globalState.files).map((file) => [file.currentPath, file])
+  );
+  for (const diffFile of parsed.files) {
+    if (
+      diffFile.isRename ||
+      diffFile.oldPath === undefined ||
+      diffFile.newPath === undefined ||
+      diffFile.oldPath !== diffFile.newPath
+    ) {
+      continue;
+    }
+    const original = originalByPath.get(diffFile.oldPath);
+    if (original === undefined) {
+      continue;
+    }
+    const transitionedFile = transitioned.files[original.fileId];
+    if (transitionedFile === undefined) {
+      continue;
+    }
+    const mapped = mapReviewedIntervalsAcrossDiff({
+      reviewed: original.reviewed,
+      diff: input.diff,
+      oldPath: diffFile.oldPath,
+      newPath: diffFile.newPath,
+      ...(input.oldTexts?.[diffFile.oldPath] === undefined
+        ? {}
+        : { oldText: input.oldTexts[diffFile.oldPath] }),
+      ...(input.newFiles?.[diffFile.newPath]?.newText === undefined
+        ? {}
+        : { newText: input.newFiles[diffFile.newPath]?.newText }),
+      options: input.options
+    });
+    transitioned.files[original.fileId] = {
+      ...transitionedFile,
+      revisionId: input.newRevisionId,
+      modifiedReviewed: mapped.reviewed,
+      ...(input.newFiles?.[diffFile.newPath]?.contentHash === undefined
+        ? { contentHash: undefined }
+        : { contentHash: input.newFiles[diffFile.newPath]?.contentHash }),
+      updatedAt: input.updatedAt
+    };
+  }
+
   return {
     schemaVersion: input.globalState.schemaVersion,
     repositoryId: input.globalState.repositoryId,
@@ -156,7 +218,7 @@ export function mapRepositoryGlobalStateThroughGitDiff(
         {
           fileId,
           currentPath: file.currentPath,
-          revisionId: file.revisionId,
+          revisionId: input.newRevisionId,
           reviewed: file.modifiedReviewed.map((interval) => ({ ...interval })),
           ...(file.contentHash === undefined ? {} : { contentHash: file.contentHash }),
           updatedAt: file.updatedAt
