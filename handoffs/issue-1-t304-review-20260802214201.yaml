@@ -1,0 +1,420 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial review
+  generated_at: "2026-08-02T21:42:01+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+target:
+  current_head: 8d39be3e8c94cc92c7af761ed0aada7f186cb4b8
+  reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  commit_range: 76b49e99453ebcf7ebecb2c141ed24d750736abc..1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "t304 レビュー / project instruction"
+    summary: Review T304 using uploaded skills, GitHub connector, exact-head CI, repository report, PR summary, and no merge.
+  - source: task
+    reference: tasks/tasks-status.md T304
+    summary: Classify PR progress into five groups, sort by remaining lines then path, retain per-file metrics and reasons, and open the selected file diff.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 11.1-11.2 and 16.3
+    summary: Preserve identity-bound PR diff context, show rename-only separately, classify binary and encoding-unsupported files as line-review unsupported with reasons, and open the exact context diff.
+  - source: repository_instruction
+    reference: RevMem project instruction
+    summary: Use only workflow runs whose head SHA equals the target HEAD, preserve diagnostic artifacts, save a detailed report, post a concise PR result, and do not merge.
+
+development_policy:
+  method: review_only
+  testing_order: inspect existing TDD evidence and current exact-head validation; do not implement fixes
+  governing_source: chat-review-worker and review-worker skills
+
+validation_plan:
+  commands:
+    - inspect PR #38 metadata, complete changed-file list, diff, reports, and comments
+    - inspect tasks/tasks-status.md T304 and design sections 11.1-11.2 and 16.3
+    - inspect T300, T301, and T303 direct contracts
+    - confirm failure-diagnostics workflow and TDD Red artifact
+    - confirm workflow run associated with reviewed implementation HEAD only
+  required_failure_diagnostics:
+    - merged standard output and standard error logs under test-output/ci
+    - environment and Git status
+    - generated output listing
+    - source, test, tools, type fixtures, package/configuration, and workflow payload
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - read_pr
+  - read_issue
+  - read_workflow_runs
+  - write_review_report
+  - write_handoff
+  - comment_pr
+  - submit_pr_review
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t304-review-20260802213932.md
+      reason: Required durable initial review report.
+    - path_or_operation: handoffs/issue-1-t304-review-20260802214201.yaml
+      reason: Required cross-chat review handoff.
+    - path_or_operation: PR #38 review/comment
+      reason: Required concise review result.
+  forbidden:
+    - path_or_operation: source, test, workflow, package, design, and tracking implementation edits
+      reason: Normal reviewer must not implement review fixes.
+    - path_or_operation: merge PR #38
+      reason: Merge is reserved for the user.
+
+scope:
+  - Full normal review of PR #38 at frozen implementation HEAD 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8.
+  - Requirements, correctness, dependencies, API/data/workflow effects, tests, diagnostics, CI, and evidence consistency.
+  - Exact-head CI and TDD evidence verification.
+non_goals:
+  - Implementing T304 fixes.
+  - Performing independent final review before normal findings are closed.
+  - T305 concrete VS Code TreeItem and event wiring.
+  - T306 Extension Host end-to-end UI scenarios.
+  - T402 PR metadata and diff acquisition implementation.
+  - Merging PR #38.
+
+files:
+  changed:
+    - path: .github/workflows/ci.yml
+      purpose: Adds direct T304 focused CI execution and diagnostic logs.
+    - path: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      purpose: Implements five-category projection, validation, sorting, and selection delegation.
+    - path: src/ui/pr-progress/index.ts
+      purpose: Exports the PR progress UI contract.
+    - path: test/unit/pull-request-progress-tree.test.ts
+      purpose: Covers basic categories, metrics, sorting, selection, and one invalid input.
+    - path: reports/issue-1-t304-implementation-20260802210612.md
+      purpose: Implementation evidence.
+    - path: handoffs/issue-1-t304-implementation-20260802210800.yaml
+      purpose: Implementation handoff.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve T304 scope, dependencies, acceptance criteria, and tracking rule.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Resolve PR progress identity, classification, reason, sorting, and diff-selection requirements.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Inspect progress snapshot and result identity contract.
+    - path: src/core/contracts/review-state.ts
+      purpose: Inspect PR file statuses and diff data model.
+    - path: src/core/file-exclusion/review-file-exclusion-policy.ts
+      purpose: Inspect available exclusion and unsupported reasons.
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: Inspect exact immutable diff-opening requirements.
+    - path: package.json
+      purpose: Inspect standard and focused test discovery.
+    - path: test/unit/ci-workflow-contract.test.ts
+      purpose: Inspect existing test-discovery contract coverage.
+    - path: src/ui/index.ts
+      purpose: Inspect UI barrel exposure.
+    - path: src/extension.ts
+      purpose: Confirm concrete runtime wiring remains outside T304.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm failure diagnostics and exact test commands.
+    - path: reports/issue-1-t303-independent-final-review-20260802090000.md
+      purpose: Align repository review-report depth and dependency-review expectations.
+  intentionally_untouched:
+    - path_or_area: source, test, workflow, package, design, and task tracking files
+      reason: Review-only boundary.
+
+commands:
+  - command: GitHub fetch PR #38 and list all changed files
+    purpose: Freeze exact review target and complete change set.
+    exit_code: 0
+    result: passed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: PR open, base SHA 76b49e99453ebcf7ebecb2c141ed24d750736abc, six changed files.
+  - command: GitHub fetch_commit_workflow_runs for reviewed HEAD
+    purpose: Enforce exact-head CI assessment.
+    exit_code: 0
+    result: passed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: Run 30747200125 was completed successfully for the exact reviewed HEAD.
+  - command: GitHub fetch_workflow_run_jobs for run 30747200125
+    purpose: Verify every required CI step.
+    exit_code: 0
+    result: passed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: Job 91494701468 passed build, contracts, architecture, lint, unit, focused, integration, and Extension Host steps.
+  - command: GitHub fetch_workflow_run_artifacts for TDD Red run 30746824422
+    purpose: Verify diagnostic artifact identity and contents contract.
+    exit_code: 0
+    result: passed
+    head_sha: 89e2ee2de141ef9a4373f59e286dc9542500ef5c
+    evidence: Artifact 8833148861, ci-failure-diagnostics-30746824422-1, exact Red HEAD, not expired.
+
+tests:
+  - name: reviewed implementation exact-head CI
+    phase: review_validation
+    result: passed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: Run 30747200125, job 91494701468, conclusion success.
+  - name: T304 focused workflow step
+    phase: review_validation
+    result: passed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: T304 PR progress tree tests step succeeded in run 30747200125.
+  - name: standard npm test discovery
+    phase: static_assessment
+    result: failed
+    head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    evidence: package.json test:unit and test omit pull-request-progress-tree.test.js; no test:t304 script exists.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30747200125
+  job_id: 91494701468
+  head_sha: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  artifacts:
+    - id: 8833148861
+      name: ci-failure-diagnostics-30746824422-1
+      purpose: Exact-head TDD Red logs, merged stdout/stderr, environment, generated files, source, tests, and configuration.
+
+implementation:
+  outcome: reviewed_only
+  final_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  commits: []
+  addressed_findings: []
+  failure_diagnostics:
+    - type: workflow
+      location: .github/workflows/ci.yml
+      summary: Existing workflow captures required diagnostic context; no diagnostic-workflow finding.
+    - type: artifact
+      location: GitHub Actions artifact 8833148861
+      summary: TDD Red failure evidence is available and matches the Red HEAD.
+  blocked_items: []
+  summary:
+    - No implementation changes were made by the reviewer.
+
+review:
+  mode: initial_review
+  reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  reviewer:
+    identity: chat-review-worker-t304-r1
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: initial normal review
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - This chat began after the implementation worker completed PR #38 and requested normal review.
+  verdict: fail
+  required_coverage:
+    - item: requirement and design conformance
+      result: checked_finding
+      evidence: Findings T304-R1-P1 and T304-R1-P2.
+    - item: correctness and edge cases
+      result: checked_finding
+      evidence: Stale/context-mismatched selection and encoding-unsupported files are not safely represented.
+    - item: scope discipline and unrelated changes
+      result: checked_no_finding
+      evidence: Six changed files are within implementation, test, workflow, report, and handoff scope.
+    - item: changed files and direct dependencies
+      result: checked_finding
+      evidence: T301 result contract, T303 open input, and package test discovery expose gaps.
+    - item: API, data, configuration, workflow, and compatibility effects
+      result: checked_finding
+      evidence: Findings T304-R1-P1, T304-R1-P2, and T304-R1-P3.
+    - item: error handling and failure diagnostics
+      result: checked_no_finding
+      evidence: Existing workflow preserves required failure context.
+    - item: security and secret handling
+      result: not_applicable
+      evidence: No credential or security-sensitive behavior is introduced.
+    - item: tests and validation adequacy
+      result: checked_finding
+      evidence: Missing stale-context and encoding cases; standard npm test omits the new suite.
+    - item: current-head CI evidence
+      result: checked_no_finding
+      evidence: Exact reviewed HEAD run 30747200125 succeeded; no different SHA was substituted.
+    - item: report, tracking, and documentation accuracy
+      result: checked_finding
+      evidence: Implementation report incorrectly treats required encoding-unsupported classification as a nonblocking future possibility.
+    - item: regression and maintainability risks
+      result: checked_finding
+      evidence: Mutable out-of-band context lookup and workflow-only test discovery create regression risk.
+  validation_assessment:
+    - item: exact-head workflow
+      result: passed
+      evidence: Run 30747200125 and job 91494701468 match reviewed HEAD.
+    - item: TDD Red diagnostics
+      result: passed
+      evidence: Run 30746824422 and artifact 8833148861 match Red HEAD.
+    - item: acceptance completeness
+      result: failed
+      evidence: Two high-severity requirements and one medium test-discovery requirement remain open.
+  reserved_report_paths:
+    - reports/issue-1-t304-review-20260802213932.md
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+    allowed_paths:
+      - reports/issue-1-t304-review-20260802213932.md
+      - handoffs/issue-1-t304-review-20260802214201.yaml
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+      - implementation_source
+      - implementation_test
+      - workflow
+      - package_manifest
+      - design
+      - task_tracking
+    no_later_commits_required: false
+    validation_status: normal_review_evidence
+    validation_evidence:
+      - Report commit 8d39be3e8c94cc92c7af761ed0aada7f186cb4b8 contains only the normal review report.
+  summary:
+    - Initial normal review failed with two high-severity and one medium-severity open findings.
+
+report:
+  report_type: normal_review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t304-review-20260802213932.md
+  reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Full review evidence, findings, CI assessment, coverage dispositions, held items, and verdict were persisted.
+
+findings:
+  - id: T304-R1-P1
+    severity: high
+    status: open
+    origin: introduced_by_change
+    location:
+      - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      - src/core/pr-progress/pr-diff-progress.ts
+      - src/ui/diff-editor/review-diff-editor-controller.ts
+    description: File selection passes only PullRequestDiffFileProgress, which lacks context ID, base/head immutable revisions, filesystem semantics, and snapshot identity; stale or foreign nodes cannot be rejected.
+    impact: The host may combine an old file record with a mutable current context and open a different PR context or revision than the node represents.
+    required_action: Carry an immutable identity-bound open target or equivalent resolver token and reject stale/foreign nodes; add two-context, head-update, stale-node, and rename/add/delete tests.
+  - id: T304-R1-P2
+    severity: high
+    status: open
+    origin: coverage_miss
+    location:
+      - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      - src/core/pr-progress/pr-diff-progress.ts
+      - reports/issue-1-t304-implementation-20260802210612.md
+    description: The design requires encoding-unsupported files in the line-review-unsupported category with a reason, but the current contract supports only binary/default-glob/user-glob reasons.
+    impact: Required invalid-encoding or decoder-unsupported files cannot be represented or displayed, and T304's public contract would need a breaking follow-up change.
+    required_action: Define a line-review-unavailability contract for binary and encoding/decoder unsupported cases, require a reason, and add focused tests; otherwise update the authoritative design and task before deferring.
+  - id: T304-R1-P3
+    severity: medium
+    status: open
+    origin: introduced_by_change
+    location:
+      - package.json
+      - .github/workflows/ci.yml
+      - test/unit/pull-request-progress-tree.test.ts
+    description: The T304 test is executed only by a raw workflow command; test:unit, npm test, and a focused test:t304 package script omit it.
+    impact: Standard local and reusable validation can pass while T304 regressions remain undetected, and a workflow edit can silently remove the only execution path.
+    required_action: Register the suite in test:unit, add test:t304, invoke it from CI, and add a discovery contract test.
+
+held:
+  - item: task tracking synchronization
+    reason: tasks/tasks-status.md may only be changed through an unavailable designated progress-management skill.
+    owner: progress management worker
+    remaining_risk: T304 remains marked unstarted until an authorized worker synchronizes it.
+    verdict_impact: separate from the technical fail verdict; required after fixes.
+  - item: concrete VS Code TreeItem, refresh event, Activity Bar, and Status Bar wiring
+    reason: Accepted T305/T306 scope.
+    owner: T305/T306
+    remaining_risk: Extension Host behavior remains unverified until later tasks.
+    verdict_impact: none beyond requiring T304's platform-neutral contract to be identity-safe.
+unexplored:
+  - area: Concrete VS Code TreeItem command object lifetime and event disposal
+    blocker: T305 is not implemented.
+    remaining_risk: Runtime stale-node paths need later Extension Host coverage.
+    verdict_impact: T304-R1-P1 remains statically established.
+unknown:
+  - field_or_fact: final administrative PR HEAD and exact-head CI after report and handoff persistence
+    reason: The commits do not exist until the report and handoff files are written; verify them after this handoff commit.
+not_applicable:
+  - field_or_area: Markdown lint
+    reason: No repository-local Markdown lint command exists; TypeScript lint was not used as a substitute.
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+remaining_risks:
+  - Fixes must be implemented with test-first evidence and validated on a new exact HEAD.
+  - The same normal reviewer should verify only closure of T304-R1-P1 through T304-R1-P3 before independent final review.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #38
+      task_id: T304
+      mode: initial_review
+      branch: task/t304-pr-progress-tree
+      base_ref: main
+      current_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+      reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+      ci:
+        matching_run: "30747200125"
+        conclusion: success
+      blocked: []
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: initial_review
+      verdict: fail
+      reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+      findings:
+        - T304-R1-P1
+        - T304-R1-P2
+        - T304-R1-P3
+      next_required_action: Implement all three findings with tests, push, and return to this normal reviewer for closure verification.
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: normal_review_report
+      complete_body_path: reports/issue-1-t304-review-20260802213932.md
+      target_identity:
+        branch: task/t304-pr-progress-tree
+        base_ref: main
+        reviewed_implementation_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t304-review-20260802213932.md
+          - handoffs/issue-1-t304-review-20260802214201.yaml
+        report_attestation_head: null
+      unresolved_discrepancies:
+        - Implementation report defers encoding-unsupported classification despite the current design requirement.
+
+extensions:
+  - namespace: chatgpt.review.next_action
+    payload:
+      action: implementation_followup
+      required_findings:
+        - T304-R1-P1
+        - T304-R1-P2
+        - T304-R1-P3
+      return_to_reviewer: chat-review-worker-t304-r1
+      independent_review_allowed: false
+      merge_allowed: false
