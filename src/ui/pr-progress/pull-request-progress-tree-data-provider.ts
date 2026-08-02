@@ -29,24 +29,18 @@ export type PullRequestLineReviewability =
 
 /** Immutable identity shared by rendered nodes and their exact diff-open targets. */
 export interface PullRequestProgressTreeSnapshotIdentity {
-  /** Opaque identity of this exact rendered snapshot generation. */
   readonly snapshotId: string;
-  /** Stable pull-request review-context identity. */
   readonly contextId: string;
-  /** Full immutable base commit object ID. */
   readonly baseSha: string;
-  /** Full immutable head commit object ID. */
   readonly headSha: string;
-  /** Canonical original-side state key, exactly `${baseSha}..${headSha}`. */
   readonly originalDiffId: string;
-  /** Filesystem semantics needed to encode both virtual diff documents. */
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
 }
 
 /** Complete identity-bound input rendered by the PR Progress Tree. */
 export interface PullRequestProgressTreeSnapshot
   extends PullRequestProgressTreeSnapshotIdentity {
-  /** Validated T301 progress result for the same PR comparison. */
+  /** Raw validated T301 progress result for the same PR comparison. */
   readonly progress: PullRequestDiffProgress;
   /** Exhaustive line-review availability keyed by every progress file ID. */
   readonly lineReviewabilityByFileId: Readonly<
@@ -54,73 +48,64 @@ export interface PullRequestProgressTreeSnapshot
   >;
 }
 
-/** One immutable side of a selected PR diff. */
-export interface PullRequestProgressTreeDiffSide {
-  /** Repository-relative path for this side. */
+/** One immutable present side of a selected PR diff. */
+export interface PullRequestProgressTreePresentDiffSide {
+  readonly kind: "present";
   readonly filePath: string;
-  /** Full immutable commit object ID for this side. */
   readonly revision: string;
 }
+
+/** One immutable empty side for a file absent at the selected revision. */
+export interface PullRequestProgressTreeAbsentDiffSide {
+  readonly kind: "absent";
+  readonly filePath: string;
+  readonly revision: string;
+}
+
+/** One immutable present or absent side of a selected PR diff. */
+export type PullRequestProgressTreeDiffSide =
+  | PullRequestProgressTreePresentDiffSide
+  | PullRequestProgressTreeAbsentDiffSide;
 
 /** Exact immutable diff target passed to the concrete UI host. */
 export interface PullRequestProgressTreeDiffTarget
   extends PullRequestProgressTreeSnapshotIdentity {
-  /** Exact progress record represented by the selected node. */
   readonly file: PullRequestDiffFileProgress;
-  /** Base/original virtual-document target. */
   readonly original: PullRequestProgressTreeDiffSide;
-  /** Head/modified virtual-document target. */
   readonly modified: PullRequestProgressTreeDiffSide;
 }
 
 /** One root node in the PR Progress Tree. */
 export interface PullRequestProgressTreeCategoryNode {
-  /** Discriminant for root/category nodes. */
   readonly kind: "category";
-  /** Stable category identity. */
   readonly category: PullRequestProgressTreeCategory;
-  /** User-visible category label. */
   readonly label: string;
-  /** Number of file children currently classified under this root. */
   readonly fileCount: number;
 }
 
 /** One changed-file node in the PR Progress Tree. */
 export interface PullRequestProgressTreeFileNode {
-  /** Discriminant for changed-file nodes. */
   readonly kind: "file";
-  /** Stable root category containing this file. */
   readonly category: PullRequestProgressTreeCategory;
-  /** Canonical repository-relative display path. */
   readonly path: string;
-  /** Reviewed changed-line count. */
   readonly reviewedLineCount: number;
-  /** Total reviewable changed-line count. */
   readonly totalLineCount: number;
-  /** Remaining reviewable changed-line count. */
   readonly unreviewedLineCount: number;
-  /** Progress ratio in the inclusive range `0..1`. */
   readonly progress: number;
-  /** Addition statistic retained from the exact diff snapshot. */
   readonly additions: number;
-  /** Deletion statistic retained from the exact diff snapshot. */
   readonly deletions: number;
-  /** User-visible reason for exclusion or line-review unavailability. */
   readonly reason?: string;
-  /** Exact source record used to render this node. */
+  /** Raw authoritative T301 record before line-reviewability projection. */
   readonly source: PullRequestDiffFileProgress;
-  /** Identity-bound target used when opening this file's diff. */
   readonly openTarget: PullRequestProgressTreeDiffTarget;
 }
 
-/** Node union returned by the PR Progress Tree provider. */
 export type PullRequestProgressTreeNode =
   | PullRequestProgressTreeCategoryNode
   | PullRequestProgressTreeFileNode;
 
 /** Host boundary used when the user selects one changed-file node. */
 export interface PullRequestProgressTreeHost {
-  /** Opens the exact immutable diff represented by the selected current node. */
   openDiff(target: PullRequestProgressTreeDiffTarget): Promise<void>;
 }
 
@@ -138,30 +123,24 @@ const CATEGORY_DEFINITIONS = Object.freeze([
 ] satisfies readonly CategoryDefinition[]);
 const FULL_COMMIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
-const compareCodeUnits = (left: string, right: string): number => {
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
-};
-
 const ratio = (reviewed: number, total: number): number =>
   total === 0 ? 1 : reviewed / total;
-
 const ratiosEqual = (left: number, right: number): boolean =>
   Math.abs(left - right) <= Number.EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
+const compareCodeUnits = (left: string, right: string): number =>
+  left === right ? 0 : left < right ? -1 : 1;
 
 const validateCount = (value: number, label: string): void => {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${label} must be a non-negative safe integer.`);
   }
 };
-
 const validateNonEmpty = (value: string, label: string): string => {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new RangeError(`${label} must not be empty.`);
   }
   return value;
 };
-
 const validateCommitObjectId = (value: string, label: string): void => {
   if (!FULL_COMMIT_OBJECT_ID.test(value)) {
     throw new RangeError(`${label} must be a full lowercase commit object ID.`);
@@ -189,25 +168,18 @@ const validateSnapshotIdentity = (
 
 const formatExclusionReason = (reason: ReviewFileExclusionReason): string => {
   switch (reason.kind) {
-    case "binary":
-      return "バイナリファイル";
-    case "default-glob":
-      return `既定除外: ${reason.pattern}`;
-    case "user-glob":
-      return `ユーザー除外: ${reason.pattern}`;
+    case "binary": return "バイナリファイル";
+    case "default-glob": return `既定除外: ${reason.pattern}`;
+    case "user-glob": return `ユーザー除外: ${reason.pattern}`;
   }
 };
-
 const formatUnsupportedReason = (
   reason: PullRequestLineReviewUnsupportedReason
 ): string => {
   switch (reason.kind) {
-    case "binary":
-      return "バイナリファイル";
-    case "invalid-encoding":
-      return `不正な文字エンコーディング: ${reason.encoding}`;
-    case "unsupported-encoding":
-      return `未対応エンコーディング: ${reason.encoding}`;
+    case "binary": return "バイナリファイル";
+    case "invalid-encoding": return `不正な文字エンコーディング: ${reason.encoding}`;
+    case "unsupported-encoding": return `未対応エンコーディング: ${reason.encoding}`;
   }
 };
 
@@ -226,8 +198,7 @@ const validateFile = (file: PullRequestDiffFileProgress): void => {
   if (!Number.isFinite(file.progress) || file.progress < 0 || file.progress > 1) {
     throw new RangeError(`PR progress ratio must be in 0..1 for ${file.fileId}.`);
   }
-  const expectedProgress = ratio(file.reviewedLineCount, file.totalLineCount);
-  if (!ratiosEqual(file.progress, expectedProgress)) {
+  if (!ratiosEqual(file.progress, ratio(file.reviewedLineCount, file.totalLineCount))) {
     throw new RangeError(`PR progress ratio does not match counts for ${file.fileId}.`);
   }
   if (file.excluded !== (file.exclusionReason !== undefined)) {
@@ -242,27 +213,19 @@ const validateReviewability = (
   if (reviewability === undefined) {
     throw new RangeError(`PR progress line reviewability is missing for ${file.fileId}.`);
   }
-  const binaryFile =
-    file.status === "binary" || file.exclusionReason?.kind === "binary";
-
+  const binaryFile = file.status === "binary" || file.exclusionReason?.kind === "binary";
   switch ((reviewability as { readonly kind: unknown }).kind) {
     case "reviewable":
-      if (binaryFile) {
-        throw new RangeError(`Binary file must be line-review unsupported: ${file.fileId}.`);
-      }
+      if (binaryFile) throw new RangeError(`Binary file must be line-review unsupported: ${file.fileId}.`);
       return reviewability;
     case "unsupported": {
-      const reason = (reviewability as {
-        readonly reason?: PullRequestLineReviewUnsupportedReason;
-      }).reason;
+      const reason = (reviewability as { readonly reason?: PullRequestLineReviewUnsupportedReason }).reason;
       if (reason === undefined) {
         throw new RangeError(`Line-review unsupported reason is missing for ${file.fileId}.`);
       }
       switch ((reason as { readonly kind: unknown }).kind) {
         case "binary":
-          if (!binaryFile) {
-            throw new RangeError(`Binary line-review reason does not match ${file.fileId}.`);
-          }
+          if (!binaryFile) throw new RangeError(`Binary line-review reason does not match ${file.fileId}.`);
           break;
         case "invalid-encoding":
         case "unsupported-encoding":
@@ -277,21 +240,19 @@ const validateReviewability = (
         default:
           throw new RangeError(`Unknown line-review unsupported reason for ${file.fileId}.`);
       }
-      if (
-        file.reviewedLineCount !== 0 ||
-        file.totalLineCount !== 0 ||
-        !ratiosEqual(file.progress, 1)
-      ) {
-        throw new RangeError(
-          `Line-review unsupported file must have zero line counts and progress 1: ${file.fileId}.`
-        );
-      }
       return reviewability;
     }
     default:
       throw new RangeError(`Unknown line reviewability for ${file.fileId}.`);
   }
 };
+
+const projectFileProgress = (
+  file: PullRequestDiffFileProgress,
+  reviewability: PullRequestLineReviewability
+): PullRequestDiffFileProgress => reviewability.kind === "unsupported"
+  ? { ...file, reviewedLineCount: 0, totalLineCount: 0, progress: 1 }
+  : { ...file };
 
 const categoryFor = (
   file: PullRequestDiffFileProgress,
@@ -303,18 +264,20 @@ const categoryFor = (
   if (file.reviewedLineCount < file.totalLineCount) return "unreviewed";
   return "completed";
 };
-
 const reasonFor = (
   file: PullRequestDiffFileProgress,
   reviewability: PullRequestLineReviewability
-): string | undefined => {
-  if (reviewability.kind === "unsupported") {
-    return formatUnsupportedReason(reviewability.reason);
-  }
-  return file.exclusionReason === undefined
+): string | undefined => reviewability.kind === "unsupported"
+  ? formatUnsupportedReason(reviewability.reason)
+  : file.exclusionReason === undefined
     ? undefined
     : formatExclusionReason(file.exclusionReason);
-};
+
+const side = (
+  kind: "present" | "absent",
+  filePath: string,
+  revision: string
+): PullRequestProgressTreeDiffSide => ({ kind, filePath, revision });
 
 const createOpenTarget = (
   identity: PullRequestProgressTreeSnapshotIdentity,
@@ -329,31 +292,32 @@ const createOpenTarget = (
     headSha: identity.headSha,
     originalDiffId: identity.originalDiffId,
     fileSystemPathSemantics: identity.fileSystemPathSemantics,
-    file,
-    original: { filePath: originalPath, revision: identity.baseSha },
-    modified: { filePath: modifiedPath, revision: identity.headSha }
+    file: { ...file },
+    original: side(file.oldPath === undefined ? "absent" : "present", originalPath, identity.baseSha),
+    modified: side(file.newPath === undefined ? "absent" : "present", modifiedPath, identity.headSha)
   };
 };
 
 const toFileNode = (
   identity: PullRequestProgressTreeSnapshotIdentity,
-  file: PullRequestDiffFileProgress,
+  rawFile: PullRequestDiffFileProgress,
+  effectiveFile: PullRequestDiffFileProgress,
   reviewability: PullRequestLineReviewability
 ): PullRequestProgressTreeFileNode => {
-  const reason = reasonFor(file, reviewability);
+  const reason = reasonFor(rawFile, reviewability);
   return {
     kind: "file",
-    category: categoryFor(file, reviewability),
-    path: file.path,
-    reviewedLineCount: file.reviewedLineCount,
-    totalLineCount: file.totalLineCount,
-    unreviewedLineCount: file.totalLineCount - file.reviewedLineCount,
-    progress: file.progress,
-    additions: file.additions,
-    deletions: file.deletions,
+    category: categoryFor(effectiveFile, reviewability),
+    path: effectiveFile.path,
+    reviewedLineCount: effectiveFile.reviewedLineCount,
+    totalLineCount: effectiveFile.totalLineCount,
+    unreviewedLineCount: effectiveFile.totalLineCount - effectiveFile.reviewedLineCount,
+    progress: effectiveFile.progress,
+    additions: effectiveFile.additions,
+    deletions: effectiveFile.deletions,
     ...(reason === undefined ? {} : { reason }),
-    source: file,
-    openTarget: createOpenTarget(identity, file)
+    source: { ...rawFile },
+    openTarget: createOpenTarget(identity, rawFile)
   };
 };
 
@@ -361,28 +325,30 @@ const compareFileNodes = (
   left: PullRequestProgressTreeFileNode,
   right: PullRequestProgressTreeFileNode
 ): number =>
-  right.unreviewedLineCount - left.unreviewedLineCount ||
-  compareCodeUnits(left.path, right.path);
+  right.unreviewedLineCount - left.unreviewedLineCount || compareCodeUnits(left.path, right.path);
 
-/**
- * Stores one exact identity-bound PR progress snapshot as five deterministic Tree View categories.
- * The provider is platform-neutral; T305 supplies the concrete VS Code Tree View host and refresh wiring.
- */
+const EMPTY_EFFECTIVE_PROGRESS: PullRequestDiffProgress = Object.freeze({
+  reviewedLineCount: 0,
+  totalLineCount: 0,
+  progress: 1,
+  files: Object.freeze([])
+});
+
+/** Stores one exact identity-bound PR progress snapshot as five deterministic categories. */
 export class PullRequestProgressTreeDataProvider {
   private readonly filesByCategory = new Map<
     PullRequestProgressTreeCategory,
     readonly PullRequestProgressTreeFileNode[]
   >();
   private currentFileNodes = new Set<PullRequestProgressTreeFileNode>();
+  private effectiveProgress: PullRequestDiffProgress = EMPTY_EFFECTIVE_PROGRESS;
 
-  /** Creates an empty provider connected to the immutable diff-opening host boundary. */
   public constructor(private readonly host: PullRequestProgressTreeHost) {
     this.clear();
   }
 
   /**
-   * Atomically replaces the rendered snapshot after validating identity, availability, file, and aggregate invariants.
-   * @throws {RangeError} When snapshot identity, line reviewability, counts, ratios, exclusions, or duplicates are inconsistent.
+   * Validates one raw T301 result and projects line-review unsupported files out of the effective denominator.
    */
   public replaceSnapshot(snapshot: PullRequestProgressTreeSnapshot): void {
     validateSnapshotIdentity(snapshot);
@@ -397,11 +363,7 @@ export class PullRequestProgressTreeDataProvider {
     }
 
     const rawReviewability = snapshot.lineReviewabilityByFileId as unknown;
-    if (
-      typeof rawReviewability !== "object" ||
-      rawReviewability === null ||
-      Array.isArray(rawReviewability)
-    ) {
+    if (typeof rawReviewability !== "object" || rawReviewability === null || Array.isArray(rawReviewability)) {
       throw new RangeError("PR progress line reviewability must be a file-ID record.");
     }
     const reviewabilityByFileId = rawReviewability as Readonly<
@@ -411,30 +373,35 @@ export class PullRequestProgressTreeDataProvider {
     const seenPaths = new Set<string>();
     const next = new Map<PullRequestProgressTreeCategory, PullRequestProgressTreeFileNode[]>();
     const nextCurrentFileNodes = new Set<PullRequestProgressTreeFileNode>();
+    const effectiveFiles: PullRequestDiffFileProgress[] = [];
     for (const { category } of CATEGORY_DEFINITIONS) next.set(category, []);
 
-    let aggregateReviewed = 0;
-    let aggregateTotal = 0;
-    for (const file of progress.files) {
-      validateFile(file);
-      if (seenFileIds.has(file.fileId)) {
-        throw new RangeError(`Duplicate PR progress fileId: ${file.fileId}`);
+    let rawReviewed = 0;
+    let rawTotal = 0;
+    let effectiveReviewed = 0;
+    let effectiveTotal = 0;
+    for (const rawFile of progress.files) {
+      validateFile(rawFile);
+      if (seenFileIds.has(rawFile.fileId)) {
+        throw new RangeError(`Duplicate PR progress fileId: ${rawFile.fileId}`);
       }
-      if (seenPaths.has(file.path)) {
-        throw new RangeError(`Duplicate PR progress path: ${file.path}`);
+      if (seenPaths.has(rawFile.path)) {
+        throw new RangeError(`Duplicate PR progress path: ${rawFile.path}`);
       }
-      if (!Object.prototype.hasOwnProperty.call(reviewabilityByFileId, file.fileId)) {
-        throw new RangeError(`PR progress line reviewability is missing for ${file.fileId}.`);
+      if (!Object.prototype.hasOwnProperty.call(reviewabilityByFileId, rawFile.fileId)) {
+        throw new RangeError(`PR progress line reviewability is missing for ${rawFile.fileId}.`);
       }
-      seenFileIds.add(file.fileId);
-      seenPaths.add(file.path);
-      aggregateReviewed += file.reviewedLineCount;
-      aggregateTotal += file.totalLineCount;
-      const reviewability = validateReviewability(
-        file,
-        reviewabilityByFileId[file.fileId]
-      );
-      const node = toFileNode(snapshot, file, reviewability);
+      seenFileIds.add(rawFile.fileId);
+      seenPaths.add(rawFile.path);
+      rawReviewed += rawFile.reviewedLineCount;
+      rawTotal += rawFile.totalLineCount;
+
+      const reviewability = validateReviewability(rawFile, reviewabilityByFileId[rawFile.fileId]);
+      const effectiveFile = projectFileProgress(rawFile, reviewability);
+      effectiveFiles.push(effectiveFile);
+      effectiveReviewed += effectiveFile.reviewedLineCount;
+      effectiveTotal += effectiveFile.totalLineCount;
+      const node = toFileNode(snapshot, rawFile, effectiveFile, reviewability);
       next.get(node.category)!.push(node);
       nextCurrentFileNodes.add(node);
     }
@@ -444,22 +411,31 @@ export class PullRequestProgressTreeDataProvider {
         throw new RangeError(`PR progress line reviewability references unknown file ${fileId}.`);
       }
     }
-    if (
-      aggregateReviewed !== progress.reviewedLineCount ||
-      aggregateTotal !== progress.totalLineCount
-    ) {
+    if (rawReviewed !== progress.reviewedLineCount || rawTotal !== progress.totalLineCount) {
       throw new RangeError("PR aggregate counts do not match file progress records.");
     }
-    const expectedProgress = ratio(aggregateReviewed, aggregateTotal);
-    if (!ratiosEqual(progress.progress, expectedProgress)) {
+    if (!ratiosEqual(progress.progress, ratio(rawReviewed, rawTotal))) {
       throw new RangeError("PR aggregate progress does not match aggregate counts.");
     }
 
     for (const { category } of CATEGORY_DEFINITIONS) {
-      const sorted = [...next.get(category)!].sort(compareFileNodes);
-      this.filesByCategory.set(category, Object.freeze(sorted));
+      this.filesByCategory.set(category, Object.freeze([...next.get(category)!].sort(compareFileNodes)));
     }
     this.currentFileNodes = nextCurrentFileNodes;
+    this.effectiveProgress = Object.freeze({
+      reviewedLineCount: effectiveReviewed,
+      totalLineCount: effectiveTotal,
+      progress: ratio(effectiveReviewed, effectiveTotal),
+      files: Object.freeze(effectiveFiles)
+    });
+  }
+
+  /** Returns the authoritative effective progress after line-reviewability projection. */
+  public getEffectiveProgress(): PullRequestDiffProgress {
+    return {
+      ...this.effectiveProgress,
+      files: this.effectiveProgress.files.map((file) => ({ ...file }))
+    };
   }
 
   /** Removes all file children and invalidates every previously returned file node. */
@@ -468,9 +444,9 @@ export class PullRequestProgressTreeDataProvider {
       this.filesByCategory.set(category, Object.freeze([]));
     }
     this.currentFileNodes = new Set<PullRequestProgressTreeFileNode>();
+    this.effectiveProgress = EMPTY_EFFECTIVE_PROGRESS;
   }
 
-  /** Returns root categories or the selected category's sorted file children. */
   public getChildren(
     element?: PullRequestProgressTreeNode
   ): readonly PullRequestProgressTreeNode[] {
@@ -486,10 +462,7 @@ export class PullRequestProgressTreeDataProvider {
     return this.filesByCategory.get(element.category) ?? [];
   }
 
-  /**
-   * Opens the exact immutable diff represented by a selected current node.
-   * @throws {RangeError} When the node was returned by an older snapshot or another provider.
-   */
+  /** Opens only a node produced by the current snapshot generation. */
   public async select(node: PullRequestProgressTreeFileNode): Promise<void> {
     if (!this.currentFileNodes.has(node)) {
       throw new RangeError("Selected PR progress node is stale and does not belong to the current snapshot.");
