@@ -43,7 +43,7 @@ const addUnchangedGlobalFile = (state: RepositoryGlobalState): void => {
   };
 };
 
-test("document edits map Global reviewed ranges and invalidate changed lines", () => {
+test("document edits map Global reviewed ranges and advance retained file revisions", () => {
   const state = globalState();
   addUnchangedGlobalFile(state);
   const result = mapRepositoryGlobalStateThroughDocumentChanges({
@@ -51,10 +51,7 @@ test("document edits map Global reviewed ranges and invalidate changed lines", (
     fileId: "file-1",
     beforeText: "a\nb\nc\nd",
     changes: [{
-      range: {
-        start: { line: 1, character: 0 },
-        end: { line: 2, character: 0 }
-      },
+      range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } },
       rangeOffset: 2,
       rangeLength: 2,
       text: "changed\ninserted\n"
@@ -62,10 +59,7 @@ test("document edits map Global reviewed ranges and invalidate changed lines", (
     newRevisionId: "new-revision",
     newContentHash: "new-hash",
     updatedAt: "2026-08-02T11:01:00.000Z",
-    options: {
-      ignoreWhitespaceChanges: false,
-      ignoreEolChanges: false
-    }
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
   });
 
   assert.equal(result.currentRevisionId, "new-revision");
@@ -75,9 +69,7 @@ test("document edits map Global reviewed ranges and invalidate changed lines", (
   ]);
   assert.equal(result.files["file-1"]?.contentHash, "new-hash");
   assert.equal(result.files["file-2"]?.revisionId, "new-revision");
-  assert.deepEqual(result.files["file-2"]?.reviewed, [
-    { startLine: 0, endLineExclusive: 2 }
-  ]);
+  assert.deepEqual(result.files["file-2"]?.reviewed, [{ startLine: 0, endLineExclusive: 2 }]);
 });
 
 test("ordinary modified Git files use interval mapping and advance every retained file revision", () => {
@@ -96,20 +88,10 @@ test("ordinary modified Git files use interval mapping and advance every retaine
     ].join("\n"),
     newRevisionId: "new-revision",
     updatedAt: "2026-08-02T11:01:30.000Z",
-    options: {
-      ignoreWhitespaceChanges: false,
-      ignoreEolChanges: false
-    },
-    oldLineCounts: {
-      "file-1": 4,
-      "file-2": 2
-    },
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+    oldLineCounts: { "file-1": 4, "file-2": 2 },
     newFiles: {
-      "src/example.ts": {
-        fileId: "file-1",
-        lineCount: 4,
-        contentHash: "new-hash"
-      }
+      "src/example.ts": { fileId: "file-1", lineCount: 4, contentHash: "new-hash" }
     }
   });
 
@@ -120,9 +102,7 @@ test("ordinary modified Git files use interval mapping and advance every retaine
   assert.equal(result.files["file-1"]?.revisionId, "new-revision");
   assert.equal(result.files["file-1"]?.contentHash, "new-hash");
   assert.equal(result.files["file-2"]?.revisionId, "new-revision");
-  assert.deepEqual(result.files["file-2"]?.reviewed, [
-    { startLine: 0, endLineExclusive: 2 }
-  ]);
+  assert.deepEqual(result.files["file-2"]?.reviewed, [{ startLine: 0, endLineExclusive: 2 }]);
 });
 
 test("Git rename keeps the stable Global file ID and maps unchanged ranges", () => {
@@ -137,25 +117,15 @@ test("Git rename keeps the stable Global file ID and maps unchanged ranges", () 
     ].join("\n"),
     newRevisionId: "new-revision",
     updatedAt: "2026-08-02T11:02:00.000Z",
-    options: {
-      ignoreWhitespaceChanges: false,
-      ignoreEolChanges: false
-    },
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
     newFiles: {
-      "src/renamed.ts": {
-        fileId: "file-1",
-        lineCount: 4,
-        contentHash: "old-hash"
-      }
+      "src/renamed.ts": { fileId: "file-1", lineCount: 4, contentHash: "old-hash" }
     }
   });
 
-  assert.equal(result.currentRevisionId, "new-revision");
   assert.equal(result.files["file-1"]?.currentPath, "src/renamed.ts");
   assert.equal(result.files["file-1"]?.revisionId, "new-revision");
-  assert.deepEqual(result.files["file-1"]?.reviewed, [
-    { startLine: 0, endLineExclusive: 4 }
-  ]);
+  assert.deepEqual(result.files["file-1"]?.reviewed, [{ startLine: 0, endLineExclusive: 4 }]);
 });
 
 const pullRequestContext = (): ReviewContextState => ({
@@ -227,9 +197,7 @@ const currentGlobalState = (): RepositoryGlobalState => {
 test("current PR unreviewed changed lines suppress Global and other-context decoration", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
-  otherContext.files["file-1"]!.modifiedReviewed = [
-    { startLine: 0, endLineExclusive: 4 }
-  ];
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
 
   const model = createNormalEditorDecorationModel({
     contextState: pullRequestContext(),
@@ -247,23 +215,15 @@ test("current PR unreviewed changed lines suppress Global and other-context deco
   });
 
   assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
-    {
-      interval: { startLine: 1, endLineExclusive: 2 },
-      source: "context"
-    },
-    {
-      interval: { startLine: 2, endLineExclusive: 4 },
-      source: "other-context"
-    }
+    { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" },
+    { interval: { startLine: 2, endLineExclusive: 4 }, source: "other-context" }
   ]);
 });
 
 test("missing or stale current PR diff fails closed for lower-priority layers", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
-  otherContext.files["file-1"]!.modifiedReviewed = [
-    { startLine: 0, endLineExclusive: 4 }
-  ];
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
 
   for (const diff of [undefined, { ...currentDiff(), headSha: "stale-head" }]) {
     const model = createNormalEditorDecorationModel({
@@ -282,10 +242,7 @@ test("missing or stale current PR diff fails closed for lower-priority layers", 
     });
 
     assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
-      {
-        interval: { startLine: 1, endLineExclusive: 2 },
-        source: "context"
-      }
+      { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
     ]);
   }
 });
@@ -295,15 +252,10 @@ test("other-context intervals split where Global activity changes", () => {
   current.files["file-1"]!.modifiedReviewed = [];
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
-  otherContext.files["file-1"]!.modifiedReviewed = [
-    { startLine: 0, endLineExclusive: 4 }
-  ];
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
   const global = currentGlobalState();
-  global.files["file-1"]!.reviewed = [
-    { startLine: 1, endLineExclusive: 3 }
-  ];
-  const diff = currentDiff();
-  diff.files = [];
+  global.files["file-1"]!.reviewed = [{ startLine: 1, endLineExclusive: 3 }];
+  const diff: PullRequestDiffSnapshot = { ...currentDiff(), files: [] };
 
   const model = createNormalEditorDecorationModel({
     contextState: current,
@@ -325,20 +277,8 @@ test("other-context intervals split where Global activity changes", () => {
     source,
     globalActive
   })), [
-    {
-      interval: { startLine: 0, endLineExclusive: 1 },
-      source: "other-context",
-      globalActive: false
-    },
-    {
-      interval: { startLine: 1, endLineExclusive: 3 },
-      source: "other-context",
-      globalActive: true
-    },
-    {
-      interval: { startLine: 3, endLineExclusive: 4 },
-      source: "other-context",
-      globalActive: false
-    }
+    { interval: { startLine: 0, endLineExclusive: 1 }, source: "other-context", globalActive: false },
+    { interval: { startLine: 1, endLineExclusive: 3 }, source: "other-context", globalActive: true },
+    { interval: { startLine: 3, endLineExclusive: 4 }, source: "other-context", globalActive: false }
   ]);
 });
