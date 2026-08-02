@@ -243,7 +243,7 @@ test("T402-R004 rejects page jumps and per-page changes in GitHub pagination lin
         }
         return new Response(JSON.stringify([]), {
           status: 200,
-          headers: { link: `<${next}>; rel=\"next\"` }
+          headers: { link: `<${next}>; rel="next"` }
         });
       }
     });
@@ -270,7 +270,7 @@ test("T402-R004 rejects an empty-page next chain before it can issue unbounded r
       return new Response(JSON.stringify([]), {
         status: 200,
         headers: {
-          link: `<https://api.github.test/repos/example/review-range/pulls/42/files?per_page=100&page=${nextPage}>; rel=\"next\"`
+          link: `<https://api.github.test/repos/example/review-range/pulls/42/files?per_page=100&page=${nextPage}>; rel="next"`
         }
       });
     }
