@@ -1,0 +1,232 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-03T05:00:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #40
+task_id: T402
+branch: task/t402-pr-diff-acquisition
+base_ref: main
+target:
+  current_head: 2c0fbbbe2d382575bf59ffc4b5a7ebe6598ee5b7
+  reviewed_head: 6f958d370d7311e0115749c5cdbc30abe378f908
+  commit_range: e935770013ea63ea7db489b28254f060b0e742f7..6f958d370d7311e0115749c5cdbc30abe378f908
+
+authoritative_requirements:
+  - source: previous_review
+    reference: reports/issue-1-t402-fix-verification-20260802230000.md
+    summary: Verify only residual T402-R003 and T402-R004 closure with the same reviewer, preserve finding identities and severities, and do not add new normal-review findings.
+  - source: implementation_handoff
+    reference: reports/issue-1-t402-fix-verification-followup-handoff-20260802233000.yaml
+    summary: Both Git passes must have an explicit non-zero candidate limit and GitHub file-list termination must be checked against changed_files.
+  - source: user_instruction
+    reference: project instruction
+    summary: Use the GitHub connector, persist a detailed report and handoff, comment on the PR, use only current-HEAD-matching CI, and do not merge.
+
+development_policy:
+  method: review_only
+  testing_order: Verify test-first residual failures, inspect the exact fixes, validate permanent regression coverage, then check exact-head full CI.
+  governing_source: RevMem project instruction and uploaded review-worker Skills
+
+scope:
+  - Closure verification for T402-R003 and T402-R004 only.
+  - Confirm T402-R001 and T402-R002 remain closed without reopening normal-review scope.
+  - Inspect residual code/test/report/handoff changes and exact-head CI evidence.
+non_goals:
+  - New broad review findings.
+  - Product-code or test changes by the reviewer.
+  - T403-T405 implementation, task tracking, merge, or release.
+
+files:
+  changed:
+    - path: reports/issue-1-t402-fix-verification-r2-20260803050000.md
+      purpose: Detailed final closure verification report.
+    - path: reports/issue-1-t402-fix-verification-r2-handoff-20260803050000.yaml
+      purpose: Lossless final normal-review handoff.
+  inspected:
+    - path: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      purpose: Verify explicit -l1000 on ordinary and harder copy-detection passes.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Verify changed_files parsing, endpoint cap, over-count, and termination equality checks.
+    - path: test/integration/t402-pr-diff-boundary.test.ts
+      purpose: Verify ordinary-pass candidate limit and missing-Link partial-list regression.
+    - path: test/integration/t402-pr-diff-acquisition.test.ts
+      purpose: Verify metadata fixture and command-contract synchronization.
+    - path: test/integration/t402-review-followup.test.ts
+      purpose: Verify pure-copy behavior with diff.renameLimit=0.
+    - path: reports/issue-1-t402-fix-verification-followup-20260802233000.md
+      purpose: Verify residual implementation claims and TDD evidence.
+    - path: reports/issue-1-t402-fix-verification-followup-handoff-20260802233000.yaml
+      purpose: Verify implementation scope and exact-head handoff.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm existing failure diagnostics policy remained applicable.
+  intentionally_untouched:
+    - path_or_area: source and tests
+      reason: Reviewer performs verification only.
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill-only update rule.
+    - path_or_area: T403-T405
+      reason: Outside T402 review closure scope.
+    - path_or_area: merge
+      reason: Reserved for the user.
+
+commands:
+  - command: GitHub connector compare e935770013ea63ea7db489b28254f060b0e742f7..6f958d370d7311e0115749c5cdbc30abe378f908
+    purpose: Resolve the exact residual fix range and changed paths.
+    exit_code: unknown
+    result: passed
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    evidence: Eight commits ahead, seven changed paths, no unrelated product scope.
+  - command: Inspect Red artifact 8834702941
+    purpose: Verify the residual findings failed before implementation and required diagnostics were retained.
+    exit_code: 0
+    result: passed
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    evidence: test-github.log showed 36 tests, 34 pass, and exactly two failures for missing ordinary -l1000 and missing-Link changed_files mismatch.
+  - command: GitHub connector fetch workflow run for verification target HEAD
+    purpose: Enforce exact-head CI evidence.
+    exit_code: unknown
+    result: passed
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    evidence: Run 30752236052 completed successfully.
+
+tests:
+  - name: ordinary Git pass includes explicit -l1000
+    phase: red
+    result: failed
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    evidence: Red run actual invocation omitted -l1000.
+  - name: ordinary Git pass includes explicit -l1000
+    phase: verification
+    result: passed
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    evidence: Registered boundary test and exact-head CI succeeded.
+  - name: diff.renameLimit=0 does not remove the adapter CLI bound
+    phase: verification
+    result: passed
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    evidence: Temporary Git pure-copy integration succeeded with repository renameLimit configured as unlimited.
+  - name: missing Link cannot hide changed files
+    phase: red
+    result: failed
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    evidence: Red run accepted one file despite metadata changed_files=2.
+  - name: file-list count must equal changed_files
+    phase: verification
+    result: passed
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    evidence: Missing-Link under-count, over-count, pagination, and 3000-cap checks passed in exact-head CI.
+
+ci:
+  required: true
+  red:
+    workflow: CI
+    run_id: 30751880349
+    job_id: 91507237834
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    conclusion: failure
+    artifact:
+      id: 8834702941
+      name: ci-failure-diagnostics-30751880349-1
+      purpose: Residual finding stdout/stderr, test results, generated output, source, tests, tools, configuration, environment, and Git status.
+  verification_target:
+    workflow: CI
+    run_id: 30752236052
+    job_id: 91508195133
+    head_sha: 6f958d370d7311e0115749c5cdbc30abe378f908
+    conclusion: success
+    successful_gates:
+      - build
+      - contract_typecheck
+      - architecture_positive
+      - architecture_negative
+      - lint
+      - unit
+      - t503
+      - git_integration
+      - github_integration
+      - vscode_extension_host
+  final_after_report:
+    workflow: CI
+    run_id: null
+    job_id: null
+    head_sha: null
+    conclusion: pending
+    note: Resolve the final current HEAD after this handoff commit and use only its matching run.
+
+review:
+  mode: fix_verification
+  reviewed_head: 6f958d370d7311e0115749c5cdbc30abe378f908
+  reviewer:
+    identity: Same ChatGPT normal reviewer from the initial T402 review and first fix verification
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: Same ChatGPT review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - This chat created only review report and handoff files.
+        - Product code and tests were inspected but not modified.
+  verdict: pass
+  findings:
+    - id: T402-R001
+      severity: high
+      disposition: addressed
+      closure_round: previous_verification
+    - id: T402-R002
+      severity: high
+      disposition: addressed
+      closure_round: previous_verification
+    - id: T402-R003
+      severity: medium
+      disposition: addressed
+      closure_round: fix_verification_r2
+      evidence: Both Git passes have explicit -l1000 and fail closed if detection is skipped.
+    - id: T402-R004
+      severity: high
+      disposition: addressed
+      closure_round: fix_verification_r2
+      evidence: Pull Request changed_files is mandatory and must exactly equal the fetched file count.
+  unresolved_findings: []
+  summary:
+    - All four initial T402 findings are closed.
+    - Technical verdict is pass at reviewed HEAD 6f958d370d7311e0115749c5cdbc30abe378f908.
+
+report:
+  report_type: fix_verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t402-fix-verification-r2-20260803050000.md
+    - reports/issue-1-t402-fix-verification-r2-handoff-20260803050000.yaml
+  reviewed_head: 6f958d370d7311e0115749c5cdbc30abe378f908
+  pr_comments: []
+
+extensions:
+  - namespace: revmem
+    payload:
+      task_tracking_update_performed: false
+      merge_performed: false
+      all_normal_review_findings_closed: true
+
+next_action:
+  type: independent_final_review
+  target_skill: independent-final-review-worker
+  summary: Normal review findings are fully closed; proceed to independent final review and user merge decision.
+  instructions:
+    - Resolve the actual final current HEAD after this handoff commit.
+    - Use only a workflow run whose head SHA exactly matches that current HEAD.
+    - Do not reopen normal-review findings unless a direct regression is observed.
+    - Do not merge.
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t402-fix-verification-r2-handoff-20260803050000.yaml
+  transport_note: Final current HEAD and matching CI must be resolved after this handoff commit. No merge was performed.

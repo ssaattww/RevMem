@@ -1,0 +1,192 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-02T23:30:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #40
+task_id: T402
+branch: task/t402-pr-diff-acquisition
+base_ref: main
+target:
+  current_head: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+  reviewed_head: b908472c33b16a2001e005de2fde67ee4744bd50
+  commit_range: e935770013ea63ea7db489b28254f060b0e742f7..59e1862eb81f2372e3f08565b94c22d6ec436cf4
+
+authoritative_requirements:
+  - source: review
+    reference: reports/issue-1-t402-fix-verification-20260802230000.md
+    summary: Add an explicit non-zero rename/copy limit to the ordinary Git pass and validate the fetched GitHub file count against pull-request changed_files metadata.
+  - source: user_instruction
+    reference: project instruction
+    summary: Use the GitHub connector, TDD, diagnostic artifacts, small commits, repository reports, a concise PR comment, exact-head CI, no task tracking edits, and no merge.
+
+development_policy:
+  method: TDD
+  testing_order: Add residual finding regressions, verify exact-head failure and artifact, implement, then verify exact-head full CI.
+  governing_source: RevMem project instruction and uploaded implementation-worker Skills
+
+scope:
+  - Bound both ordinary and harder Git rename/copy detection passes with -l1000.
+  - Reject GitHub partial file lists by parsing and checking changed_files.
+  - Preserve the existing 3000-file fail-closed policy.
+non_goals:
+  - Reopen T402-R001 or T402-R002, which the same reviewer already closed.
+  - Implement T403 cache, T404 persistence, or T405 UI.
+  - Update task tracking or merge the pull request.
+
+findings:
+  - id: T402-R003
+    severity: medium
+    previous_disposition: partial
+    implementation_disposition: addressed_pending_verification
+    changes:
+      - Ordinary --find-renames/--find-copies pass includes -l1000.
+      - Harder --find-copies-harder pass includes the same -l1000.
+      - Integration coverage runs with repository diff.renameLimit=0.
+  - id: T402-R004
+    severity: high
+    previous_disposition: partial
+    implementation_disposition: addressed_pending_verification
+    changes:
+      - Pull Request changed_files is required as a non-negative safe integer.
+      - changed_files at or above the 3000-file endpoint cap is rejected.
+      - Fetched file count must exactly equal changed_files at pagination termination.
+      - Over-count and under-count evidence fail closed.
+
+files:
+  changed:
+    - path: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      purpose: Apply a fixed non-zero rename/copy candidate limit to every local diff pass.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Parse changed_files and validate file-list completeness.
+    - path: test/integration/t402-pr-diff-boundary.test.ts
+      purpose: Reproduce and lock ordinary-pass bounds and missing-Link partial-list rejection.
+    - path: test/integration/t402-pr-diff-acquisition.test.ts
+      purpose: Synchronize Git invocation and GitHub metadata fixtures.
+    - path: test/integration/t402-review-followup.test.ts
+      purpose: Prove CLI bounds remain active when diff.renameLimit is configured as unlimited.
+    - path: reports/issue-1-t402-fix-verification-followup-20260802233000.md
+      purpose: Detailed residual finding response report.
+    - path: reports/issue-1-t402-fix-verification-followup-handoff-20260802233000.yaml
+      purpose: Lossless handoff to the same reviewer.
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing workflow already stores all required failure diagnostics.
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill-only update rule.
+    - path_or_area: T402-R001 and T402-R002
+      reason: Already verified as addressed.
+    - path_or_area: T403-T405 and merge
+      reason: Outside the review follow-up scope.
+
+tests:
+  - name: ordinary Git rename/copy pass has explicit -l1000
+    phase: red
+    result: failed
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    evidence: Exact-head CI showed the actual ordinary invocation omitted -l1000.
+  - name: missing Link cannot hide changed files
+    phase: red
+    result: failed
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    evidence: Exact-head CI showed a one-file response was accepted despite changed_files=2.
+  - name: repository diff.renameLimit=0 cannot remove the adapter CLI limit
+    phase: green
+    result: passed
+    head_sha: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+    evidence: Temporary Git pure-copy integration passed with the repository setting configured as unlimited.
+  - name: GitHub file count equals changed_files
+    phase: green
+    result: passed
+    head_sha: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+    evidence: Missing-Link partial-list regression and existing pagination regressions passed.
+
+ci:
+  required: true
+  red:
+    workflow: CI
+    run_id: 30751880349
+    job_id: 91507237834
+    head_sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+    conclusion: failure
+    artifact:
+      id: 8834702941
+      name: ci-failure-diagnostics-30751880349-1
+      purpose: Test logs, stdout/stderr, generated output, source, tests, tools, configuration, environment, and Git status for the two residual findings.
+  green_before_report:
+    workflow: CI
+    run_id: 30752113658
+    job_id: 91507861795
+    head_sha: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+    conclusion: success
+    successful_gates:
+      - build
+      - contract_typecheck
+      - architecture_positive
+      - architecture_negative
+      - lint
+      - unit
+      - t503
+      - git_integration
+      - github_integration
+      - vscode_extension_host
+  final_after_report:
+    workflow: CI
+    run_id: null
+    job_id: null
+    head_sha: null
+    conclusion: pending
+    note: Resolve the final current HEAD after report and handoff commits and use only its matching run.
+
+implementation:
+  outcome: completed_pending_final_exact_head_ci
+  implementation_head_before_report: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+  commits:
+    - sha: a115778a3d95702921e41a23b87eb2b7680329fd
+      purpose: Add the ordinary Git pass limit expectation.
+    - sha: 697205545d90ad7dcd8c0f77b2dcbf35cd98a38c
+      purpose: Add the changed_files partial-list Red regression.
+    - sha: e4ab538a6b7249fcd70faa41f456802a46355ac5
+      purpose: Add -l1000 to both Git diff passes.
+    - sha: 9db6c90f9cff68b898d4c6093a6a3d1fb8867d73
+      purpose: Parse and validate changed_files.
+    - sha: 4a57acbf435c4e581ec9869471e5835e348fc78b
+      purpose: Synchronize acquisition test fixtures and invocation contract.
+    - sha: 59e1862eb81f2372e3f08565b94c22d6ec436cf4
+      purpose: Prove the CLI limit under diff.renameLimit=0.
+  blocked_items: []
+
+report:
+  report_type: review_followup_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t402-fix-verification-followup-20260802233000.md
+    - reports/issue-1-t402-fix-verification-followup-handoff-20260802233000.yaml
+
+extensions:
+  - namespace: revmem
+    payload:
+      task_tracking_update_performed: false
+      task_tracking_reason: Dedicated task/progress Skill-only repository rule.
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: The same initial reviewer should verify closure of residual T402-R003 and T402-R004 at the immutable final current HEAD.
+  instructions:
+    - Resolve PR #40 current HEAD after the report and handoff commits.
+    - Use only workflow runs whose head SHA exactly matches that current HEAD.
+    - Verify both ordinary and harder Git passes retain a non-zero explicit limit.
+    - Verify changed_files prevents missing-Link and other partial file-list acceptance.
+    - Keep T402-R001 and T402-R002 closed unless a regression is directly observed.
+    - Persist the verification report and concise PR result; do not merge.
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t402-fix-verification-followup-handoff-20260802233000.yaml
+  transport_note: Resolve the actual final HEAD and matching CI after this handoff commit. No merge was performed.

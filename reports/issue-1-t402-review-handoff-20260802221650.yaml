@@ -1,0 +1,521 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-08-02T22:16:50+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #40
+task_id: T402
+branch: task/t402-pr-diff-acquisition
+base_ref: main
+target:
+  current_head: 3d27c5a6a79a59c4941a5b54c5d3c309318d85a7
+  reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  commit_range: 76b49e99453ebcf7ebecb2c141ed24d750736abc..4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use uploaded Skills and GitHub connector, perform review, persist detailed report and handoff, post concise PR result, use only current-HEAD-matching CI, and do not merge.
+  - source: task
+    reference: tasks/tasks-status.md T402
+    summary: Acquire one complete PR diff through local Git, GitHub patches, and exact base/head contents; mock route success, missing/incomplete patches, and total failure without inferring reviewed state.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: Preserve exact PR/base/head identity, use certainty-first failure handling, and exclude binary from line-level review progress.
+  - source: skill
+    reference: chat-review-worker -> work-context-manager -> review-worker -> report-writer -> chat-handoff-manager
+    summary: Review every changed file and direct dependency, record complete coverage dispositions and findings, persist report and lossless handoff, and keep verdict tied to the exact reviewed implementation HEAD.
+
+development_policy:
+  method: TDD for implementation fixes; review-only for this chat
+  testing_order: Implementation chat must add failing reproduction tests before each fix, then validate focused and full exact-head CI.
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t402
+    - npm run test:github
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test-output/ci command logs containing standard output and standard error
+    - test/build results and failure assertions
+    - environment and Git status
+    - generated dist and test-dist output
+    - source, tests, tools, package/configuration files, and workflow definition
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t402-review-20260802221650.md
+      reason: Required detailed initial review report.
+    - path_or_operation: reports/issue-1-t402-review-handoff-20260802221650.yaml
+      reason: Required lossless normal-review handoff.
+    - path_or_operation: PR #40 review/comment
+      reason: Required concise review result and implementation handback.
+  forbidden:
+    - path_or_operation: source, tests, design, configuration, workflow, package scripts, or task tracking
+      reason: Normal reviewer reports findings but does not implement fixes.
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+
+scope:
+  - Initial normal review of T402 PR #40 at immutable implementation HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae.
+  - Full diff, all 20 changed files, direct dependencies, tests, workflow diagnostics, reports, handoff, and exact-head CI evidence.
+  - Three acquisition routes and fail-closed completeness guarantees.
+non_goals:
+  - Implement or amend findings in this reviewer chat.
+  - T403 cache, T404 persistent PR layer, T405 UI/runtime composition.
+  - Task-status update, merge, or release.
+
+files:
+  changed:
+    - path: reports/issue-1-t402-review-20260802221650.md
+      purpose: Detailed review evidence and verdict.
+    - path: reports/issue-1-t402-review-handoff-20260802221650.yaml
+      purpose: Lossless transfer to implementation and later fix verification.
+  inspected:
+    - path: package.json
+      purpose: T402 test registration and full gate composition.
+    - path: src/application/github-pr-diff/**
+      purpose: Contracts, request validation, orchestration, patch/content/local builders, and snapshot invariants.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Metadata, status conversion, pagination, file records, immutable content, and token boundary.
+    - path: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      purpose: Commit verification and Git diff command semantics.
+    - path: src/adapters/github/index.ts
+      purpose: Public export impact.
+    - path: src/adapters/local-git/index.ts
+      purpose: Public export impact.
+    - path: test/integration/t402-pr-diff-acquisition.test.ts
+      purpose: Main route and failure coverage.
+    - path: test/integration/t402-pr-diff-boundary.test.ts
+      purpose: Commit-object and 3000-file boundary coverage.
+    - path: type-fixtures/contracts/t402-pr-diff-acquisition.fixture.ts
+      purpose: Public contract type coverage.
+    - path: type-fixtures/contracts/tsconfig.json
+      purpose: Fixture registration.
+    - path: src/core/git-diff/git-diff-interval-mapping.ts
+      purpose: T203 Git parser and copy/rename metadata behavior.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: T301 changed-coordinate and binary exclusion consumers.
+    - path: test/unit/pr-diff-progress.test.ts
+      purpose: Binary exclusion and progress invariants.
+    - path: src/application/github-pr-context/contracts.ts
+      purpose: T401 repository identity contract.
+    - path: src/adapters/github/git-remote.ts
+      purpose: Canonical GitHub authority/API mapping dependency.
+    - path: .github/workflows/ci.yml
+      purpose: Required failure-diagnostic artifact coverage.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Certainty, fallback, binary, progress, and test requirements.
+    - path: tasks/tasks-status.md
+      purpose: T402 accepted scope and exit condition.
+    - path: reports/issue-1-t402-implementation-20260802215000.md
+      purpose: TDD, implementation, validation, and claimed remaining risks.
+    - path: reports/issue-1-t402-handoff-20260802215000.yaml
+      purpose: Implementation evidence and claimed bounded behavior.
+  intentionally_untouched:
+    - path_or_area: source and tests
+      reason: Review-worker must not implement findings.
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill owns tracking updates.
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing workflow already stores required diagnostics.
+    - path_or_area: T403-T405
+      reason: Outside T402 accepted scope.
+    - path_or_area: merge
+      reason: Reserved for the user.
+
+commands:
+  - command: GitHub connector fetch PR #40 and full patch
+    purpose: Resolve current PR identity, complete changed-file set, and immutable reviewed HEAD.
+    exit_code: unknown
+    result: passed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: PR #40 remained open, base main, current implementation HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae.
+  - command: GitHub connector fetch workflow runs for reviewed HEAD
+    purpose: Enforce exact-head CI evidence.
+    exit_code: unknown
+    result: passed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: CI run 30748769085, job 91498927284, conclusion success.
+  - command: Inspect failure diagnostic artifacts 8833199337 and 8833602975
+    purpose: Verify TDD Red failures and mandated stdout/stderr/log/source/config evidence.
+    exit_code: 0
+    result: passed
+    head_sha: unknown
+    evidence: Both archives contained test-output/ci logs and full diagnostic context; initial compile failure and three boundary failures matched the implementation report.
+  - command: git diff --no-index --no-color --unified=0 old.txt new.txt plus exact T402 LCS reproduction
+    purpose: Compare Git changed coordinates with content fallback on repeated lines.
+    exit_code: 0
+    result: passed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: old a\n -> new b\na\na\n; Git additions at lines 1,2 while T402 LCS additions at lines 1,3.
+  - command: Temporary Git repository copy reproduction
+    purpose: Verify current local command behavior for a pure copy from an unchanged source.
+    exit_code: 0
+    result: passed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: --find-copies emitted a new file with 3 additions; --find-copies-harder emitted copy from/to with no hunks.
+
+tests:
+  - name: Existing T402 acquisition tests
+    phase: verification
+    result: passed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: Exact-head CI run 30748769085 passed the registered T402 suites.
+  - name: Repeated-line Git-coordinate case
+    phase: verification
+    result: failed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: Static execution of the exact LCS tie-break produced coordinates different from Git while preserving additions/deletions statistics.
+  - name: Pure-copy classification case
+    phase: verification
+    result: failed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: Current Git arguments classify an unchanged-source copy as added.
+  - name: GitHub standard status and pagination adversarial cases
+    phase: verification
+    result: failed
+    head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    evidence: Code inspection proves changed is collapsed to modified, binary relies on a non-standard status, and unique empty next pages have no request bound.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30748769085
+  head_sha: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  conclusion: success
+  artifacts:
+    - id: 8833199337
+      name: ci-failure-diagnostics-30747002998-1
+      purpose: Initial Red compile failure with command logs, stdout/stderr, environment, source, tests, generated output, and configuration.
+    - id: 8833602975
+      name: ci-failure-diagnostics-30748311594-1
+      purpose: Boundary Red failures for commit verification and 3000-file cap with full diagnostics.
+
+implementation:
+  outcome: not_applicable
+  final_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - This reviewer did not implement or modify product code.
+
+review:
+  mode: initial_review
+  reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  reviewer:
+    identity: ChatGPT normal reviewer in the T402 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - This chat was opened for T402 review and did not perform the T402 implementation.
+        - Repository writes were limited to review report and handoff.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T402-R001, R002, and R004 violate complete/certain PR diff and binary exclusion requirements.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Repeated lines, standard GitHub statuses, pure copies, and malformed pagination expose four defects.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: T403-T405, task tracking, and workflow were not broadened.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: All 20 files and T203/T301/T401 dependencies were inspected; T301 progress is affected by all four findings.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: GitHub status and pagination contracts are incomplete; workflow and fixture registration are otherwise coherent.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: Pagination lacks a request bound; CI failure artifacts themselves satisfy diagnostics requirements.
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: Token is not persisted or logged and is only placed in Authorization headers.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: Existing 15 tests omit all four reproduction classes.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30748769085 matches reviewed HEAD exactly and succeeded.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: Binary handling and bounded pagination claims are not supported by the implementation.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: Different fallback routes can produce different status and changed-coordinate semantics.
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: Run 30748769085 / job 91498927284 matched 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae and succeeded.
+    - item: TDD Red evidence and diagnostics
+      result: supported
+      evidence: Artifacts 8833199337 and 8833602975 were downloaded and inspected.
+    - item: T402 correctness at omitted boundaries
+      result: failed
+      evidence: T402-R001 through T402-R004 are reproducible from current code.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Verdict fail with four required findings: three high and one medium.
+    - Technical verdict is bound to implementation HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae.
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t402-review-20260802221650.md
+    - reports/issue-1-t402-review-handoff-20260802221650.yaml
+  reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed report persisted at commit 3d27c5a6a79a59c4941a5b54c5d3c309318d85a7 before this handoff.
+    - Concise PR review must request changes and point implementation back to T402-R001 through R004.
+
+findings:
+  - id: T402-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/application/github-pr-diff/content-diff-builder.ts editOperations / hunksFromContents
+    description: Independent LCS alignment can produce changed coordinates different from Git/GitHub while additions/deletions statistics still match.
+    impact: PR progress can mark the wrong lines reviewed or leave actual changed lines unreviewed.
+    evidence: old a\n, new b\na\na\n gives Git additions at 1,2 and T402 additions at 1,3; both count two additions.
+    required_action: Use Git-compatible coordinates or fail closed on ambiguous alignment; add the repeated-line fixture test-first.
+  - id: T402-R002
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/fetch-github-pull-request-diff-adapter.ts statusFrom / parseFile and github-patch-diff-builder.ts zero-change branch
+    description: GitHub changed is collapsed to modified, binary relies on a non-standard status, and patchless zero-stat records are accepted without classification evidence.
+    impact: Binary exclusion and type-change semantics are bypassed, producing incorrect progress categories and unsupported diff documents.
+    evidence: Official PatchStatus defines CHANGED as type change and has no BINARY; current zero-change branch returns success without content fallback.
+    required_action: Model or reject type change, classify binary through trusted evidence or fail closed, and test standard status/binary behavior.
+  - id: T402-R003
+    severity: medium
+    origin: introduced_by_change
+    location: src/adapters/local-git/local-git-pull-request-diff-adapter.ts Git diff arguments
+    description: --find-copies does not inspect unmodified files as copy sources without --find-copies-harder.
+    impact: Pure copies are classified as added and all copied lines inflate PR review progress.
+    evidence: Temporary repository reproduction emitted 3 added lines with current command and copy metadata with --find-copies-harder.
+    required_action: Define bounded pure-copy semantics and add a real temporary-repository TDD case before changing Git options.
+  - id: T402-R004
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/fetch-github-pull-request-diff-adapter.ts nextPage and files loop
+    description: Pagination accepts arbitrary same-path query transitions and has no request/page bound when file count does not grow.
+    impact: Empty unique next pages can loop forever, and page jumps can omit changed files while returning a complete result.
+    evidence: Loop termination uses only exact URL repetition and 3000 accumulated files; page/per_page sequence is not validated.
+    required_action: Enforce monotonic fixed pagination and an explicit maximum request count; reject empty-next, page jumps, regressions, and query mutation with tests.
+
+held: []
+unexplored:
+  - area: Live GitHub Enterprise and live binary pull-request end-to-end execution
+    blocker: No dedicated external test repository/server was used in this review.
+    remaining_risk: Runtime-specific response and authentication behavior remains for later composition validation.
+    verdict_impact: Does not block the four static/reproduced findings.
+unknown: []
+not_applicable:
+  - field_or_area: implementation changes in reviewer chat
+    reason: Review-only boundary.
+  - field_or_area: independent final review attestation
+    reason: This is an initial normal review with fail verdict.
+remaining_risks:
+  - Content fallback byte-size limits for huge few-line files require follow-up evaluation.
+  - Repository host to apiBaseUrl/token authority binding requires explicit runtime composition validation.
+  - Git copy/rename performance and deterministic config bounds require design during R003 correction.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #40
+      task_id: T402
+      mode: review
+      branch: task/t402-pr-diff-acquisition
+      base_ref: main
+      current_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+      reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+      scope:
+        - Three-route immutable PR diff acquisition and complete fail-closed snapshot evidence.
+      non_goals:
+        - T403-T405, implementation fixes, tracking, merge, release.
+      authoritative_requirements:
+        - source: tasks/tasks-status.md T402
+          reference: T402 row
+          summary: local Git, GitHub patch, content fallback; no inference on total failure.
+        - source: design rev4
+          reference: sections 2, 12, 14, 20
+          summary: certainty-first, binary excluded, ordered fallback, unit/integration coverage.
+      write_boundary:
+        allowed:
+          - review report, handoff, and PR comment
+        forbidden:
+          - product code, tests, config, workflow, tracking, merge
+      development_policy:
+        method: TDD for implementation; review-only here
+        testing_order: Red before fixes, then exact-head Green and regression.
+      validation:
+        commands:
+          - exact-head CI run 30748769085
+          - artifact inspection
+          - repeated-line and pure-copy reproductions
+        required_failure_diagnostics:
+          - stdout, stderr, test results, environment, source, tests, tools, config
+      ci:
+        matching_run: 30748769085
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - Huge few-line content byte size and runtime host binding.
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: initial_review
+      reviewed_implementation_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+      verdict: fail
+      findings:
+        - id: T402-R001
+          severity: high
+          disposition: required_fix
+        - id: T402-R002
+          severity: high
+          disposition: required_fix
+        - id: T402-R003
+          severity: medium
+          disposition: required_fix
+        - id: T402-R004
+          severity: high
+          disposition: required_fix
+      coverage:
+        requirement_design: checked_finding
+        correctness_edge_cases: checked_finding
+        scope_discipline: checked_no_finding
+        changed_files_dependencies: checked_finding
+        api_data_workflow_compatibility: checked_finding
+        error_diagnostics: checked_finding
+        security_secrets: checked_no_finding
+        tests_validation: checked_finding
+        current_head_ci: checked_no_finding
+        report_tracking_accuracy: checked_finding
+        regression_maintainability: checked_finding
+      held: []
+      unexplored:
+        - Live Enterprise and binary PR end-to-end execution.
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: review_report
+      target_identity:
+        branch: task/t402-pr-diff-acquisition
+        base_ref: main
+        current_head: 3d27c5a6a79a59c4941a5b54c5d3c309318d85a7
+        reviewed_implementation_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t402-review-20260802221650.md
+          - reports/issue-1-t402-review-handoff-20260802221650.yaml
+        report_attestation_head: null
+      severity_records:
+        - finding_id: T402-R001
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T402-R002
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T402-R003
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T402-R004
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+      unresolved_discrepancies: []
+extensions: []
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_fix
+  summary: Fix T402-R001 through T402-R004 with TDD, update implementation evidence, and return to this normal review chat for fix verification.
+  instructions:
+    - Add failing tests for repeated-line Git-compatible coordinates, standard changed/binary classification, pure copy, and bounded strict pagination.
+    - Implement the smallest coherent fixes without changing T403-T405 or unrelated areas.
+    - Preserve diagnostic artifacts on Red CI failures.
+    - Update implementation report and handoff with exact finding IDs and evidence.
+    - Confirm the PR current HEAD and use only a workflow run whose head_sha exactly matches it.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t402-review-20260802221650.md
+    - reports/issue-1-t402-review-handoff-20260802221650.yaml
+    - PR #40
+    - reviewed implementation HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t402-review-handoff-20260802221650.yaml
+  packet_url: null
+  transport_note: Normal-review handoff is committed on the PR branch. Technical verdict remains bound to reviewed implementation HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae; later product changes require fix verification.
