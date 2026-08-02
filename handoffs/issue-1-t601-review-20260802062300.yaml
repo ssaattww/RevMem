@@ -1,0 +1,227 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-08-02T06:23:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #33
+task_id: T601
+branch: task/t601-non-git-snapshots
+base_ref: main
+target:
+  current_head: fb38ef6256f72b7cfc7e0a4d427d4f9f06108463
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  commit_range: ec1ce78ab35867397c33d711095424e3eedd6e2c..0e3440fa0a4e015463adb56d338488c53291a4c1
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use uploaded skills and GitHub connector; persist detailed report and concise PR comment; do not merge.
+  - source: task
+    reference: T601 / AC-13
+    summary: Track reviewed ranges in non-Git workspaces using compressed snapshots and conservative line mapping.
+development_policy:
+  method: TDD
+  testing_order: Red before implementation, then focused and full validation
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t601
+    - npm run test:unit
+    - full GitHub Actions CI
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - failure investigation logs
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: review report and handoff
+      reason: normal review evidence
+  forbidden:
+    - path_or_operation: implementation changes
+      reason: reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user performs merge
+scope:
+  - T601 implementation diff
+  - direct dependencies
+  - tests and current-HEAD CI evidence
+non_goals:
+  - implementing the fix
+  - merge
+files:
+  changed:
+    - path: reports/issue-1-t601-review-20260802062300.md
+      purpose: detailed initial review report
+    - path: handoffs/issue-1-t601-review-20260802062300.yaml
+      purpose: lossless review handoff
+  inspected:
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: snapshot and LCS mapping core
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: workspace integration
+    - path: test/unit/non-git-snapshot-tracker.test.ts
+      purpose: core coverage
+    - path: test/unit/workspace-non-git-snapshot-tracking.test.ts
+      purpose: provider restart coverage
+    - path: src/adapters/workspace-review-state/workspace-review-state-session-provider.ts
+      purpose: stale state invalidation dependency
+  intentionally_untouched:
+    - path_or_area: implementation and tests
+      reason: reviewer boundary
+commands:
+  - command: GitHub Actions CI run 30705518670
+    purpose: current implementation HEAD validation
+    exit_code: 0
+    result: passed
+    head_sha: 0e3440fa0a4e015463adb56d338488c53291a4c1
+    evidence: workflow completed successfully and head SHA matched reviewed implementation HEAD
+tests:
+  - name: Full CI
+    phase: verification
+    result: passed
+    head_sha: 0e3440fa0a4e015463adb56d338488c53291a4c1
+    evidence: run 30705518670
+ci:
+  required: true
+  workflow: CI
+  run_id: 30705518670
+  head_sha: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary: []
+review:
+  mode: initial_review
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  reviewer:
+    identity: ChatGPT normal reviewer in this chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - This chat did not implement T601.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: ambiguous equal-multiplicity duplicate mapping can be accepted
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: multiple optimal LCS paths are undercounted in equal branch
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: changes limited to T601 implementation, tests, report, and handoff
+    - criterion: tests and validation
+      disposition: checked_finding
+      evidence: no test covers equal-multiplicity duplicate reordering
+    - criterion: current-HEAD CI
+      disposition: checked_no_finding
+      evidence: run 30705518670 matched reviewed implementation HEAD and succeeded
+  validation_assessment:
+    - item: CI
+      result: supported
+      evidence: matching run 30705518670 succeeded
+    - item: ambiguity coverage
+      result: unsupported
+      evidence: missing regression case for equal duplicate multiplicity
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - One required high-severity correctness finding was identified.
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t601-review-20260802062300.md
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed review report persisted.
+findings:
+  - id: T601-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/application/non-git-snapshots/index.ts uniqueLcsMapping
+    description: Equal-line branch undercounts alternative optimal LCS paths, so equal-multiplicity duplicate reordering can be treated as uniquely mapped.
+    impact: Uncertain lines can be displayed as reviewed, violating the conservative certainty requirement.
+    evidence: old A/X/A and new A/A/X have at least two optimal LCS mappings, but the equal branch only propagates diagonal count.
+    required_action: Add a Red regression test, fix uniqueness counting or conservatively reject, then rerun focused/unit/current-HEAD CI.
+held: []
+unexplored:
+  - area: large-document LCS resource limits
+    blocker: no explicit performance threshold or large-document validation in T601
+    remaining_risk: O(n*m) memory and time can affect Extension Host responsiveness
+    verdict_impact: non-blocking for this review because T601-R001 already fails the verdict
+unknown: []
+not_applicable:
+  - field_or_area: report attestation
+    reason: normal review, not independent final review
+remaining_risks:
+  - Large-document LCS resource consumption remains unvalidated.
+  - Production restart-persistent snapshot storage wiring remains a documented implementation risk.
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/issue-1-t601-review-20260802062300.md
+extensions: []
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: fix verification preparation
+  summary: Fix T601-R001 with TDD and return to the same normal reviewer for verification.
+  instructions:
+    - Add an equal-multiplicity duplicate-reordering regression test first and confirm failure.
+    - Correct or conservatively replace LCS uniqueness detection.
+    - Preserve finding ID T601-R001 and severity high.
+    - Run focused tests, unit suite, and only accept CI whose head SHA matches the new PR current HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #33
+    - reports/issue-1-t601-review-20260802062300.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t601-review-20260802062300.yaml
+  packet_url: null
+  transport_note: Continue in the implementation chat; current permissions do not transfer automatically.

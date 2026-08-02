@@ -29,9 +29,9 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorで確認・解除・装飾・永続化・restart復元・VSIX配布が動く |
 | P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | edit、commit、branch、renameに追従し、変更部分だけ未確認になる |
 | P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両side、変更行進捗、除外・未確認file一覧が動く |
-| P4 | 未着手 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
-| P5 | 未着手 | Global確認済みと理解率 | T501〜T506 | P2、P4 | Global同期、表示優先順位、非空行集計、除外設定が動く |
-| P6 | 未着手 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | Gitなし、履歴改変、移行、排他、障害、性能を含む全受け入れ条件を満たす |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
+| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501のGlobal同期とlossless履歴証跡は独立review全4 findingをclosed、exact-head CI成功済み。表示優先順位、非空行集計、除外設定を進める |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はPR #33でpersistent snapshot、最新generation integrity、EOL mapping、Extension Host restartを実装し、独立review全6 findingをclosed、exact-head CI成功済み。履歴改変、移行、排他、障害、性能を含む残りの受け入れ条件を進める |
 
 ## P0 開発基盤
 
@@ -101,6 +101,7 @@ Lを超える見込みになった場合は再分解する。
 - T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent provider、Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済みである
 - T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
 - T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
+- T303はPR #30でimplementation・通常review evidenceを復元し、timestamp-only no-op、whole-file回帰、canonical original diff ID、public JSDoc、consumer contract fixtureを修正した。同じ独立reviewerのclosure限定R2で全5 findingをclosed、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した
 - T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント
@@ -118,6 +119,10 @@ Lを超える見込みになった場合は再分解する。
 ### 目的
 
 GitHub接続を追加しつつ、認証・network・API障害がローカルレビューを停止させない構成にする。
+
+### 現在の進捗
+
+- T401はPR #31で実装・通常reviewを完了した。独立reviewの`T401-IFR2-P1`〜`P7`に対して、configured Enterprise authorityへのtoken binding、T202 canonical remote identity共有、malformed/cyclic paginationのunavailable分類、network/API/shapeからbranch fallbackまでの受入matrix、public barrel consumer fixture、tracking同期を一括で実装した。同じ独立reviewerのclosure限定確認で全7件addressed、openなし、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した。
 
 ### 終了チェックポイント
 

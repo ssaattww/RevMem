@@ -1,0 +1,17 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue_or_pr: "PR #30"
+task_id: T303
+mode: initial_review
+review:
+  reviewed_head: d942ce2469d490e3dcbf42f8e9d02a4a7222cdb0
+  findings:
+    - id: T303-R1-P1
+      severity: high
+    - id: T303-R1-P2
+      severity: medium
+    - id: T303-R1-P3
+      severity: medium
+next_action:
+  type: implementation
+  summary: Address the three recorded findings without merging.

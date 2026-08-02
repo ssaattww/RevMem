@@ -1,6 +1,6 @@
 import type {
   ReviewHistoryEvent,
-  ReviewHistoryEventType,
+  FileReviewHistoryEventType,
   ReviewContextState,
   RepositoryGlobalState
 } from "../../core/contracts/index";
@@ -9,26 +9,24 @@ import type {
   ReviewStateTransaction
 } from "../../core/review-state/index";
 
-/** Storage identity needed by an append-only history persistence boundary. */
+/** Storage identity selected from a committed review context. */
 export interface ReviewHistoryStorageTarget {
-  /** Owner kind selected from the already-resolved review context. */
+  /** Backing storage category. */
   readonly kind: "git" | "pull-request" | "workspace" | "external-file";
-  /** Stable owner identity used by the common storage router. */
+  /** Repository that owns the event stream. */
   readonly repositoryId: string;
-  /** Stable review-context identity used by the common storage router. */
+  /** Context that owns the event stream. */
   readonly contextId: string;
 }
 
-/** Inputs required to create ordered, session-scoped review-history events. */
+/** Dependencies for recording canonical events after state persistence succeeds. */
 export interface ReviewHistoryRecorderOptions {
-  /** Stable identifier for the currently active extension session. */
+  /** Stable identity for events created by this recorder instance. */
   readonly sessionId: string;
-  /** Opaque event ID source; callers provide a collision-resistant implementation. */
+  /** Creates a new unique event identity for every append. */
   readonly createEventId: () => string;
-  /** Persistence boundary that validates and appends canonical JSONL. */
-  readonly appender: {
-    append(target: ReviewHistoryStorageTarget, event: ReviewHistoryEvent): Promise<void>;
-  };
+  /** Append-only persistence port. */
+  readonly appender: { append(target: ReviewHistoryStorageTarget, event: ReviewHistoryEvent): Promise<void> };
 }
 
 const targetFor = (state: Readonly<{
@@ -41,53 +39,108 @@ const targetFor = (state: Readonly<{
   contextId: state.contextId
 });
 
-const typeForOperation = (operation: ReviewStateTransaction["operation"]): ReviewHistoryEventType => {
+const typeForOperation = (operation: ReviewStateTransaction["operation"]): FileReviewHistoryEventType => {
   switch (operation) {
-    case "mark-ranges-reviewed": return "marked-reviewed";
-    case "unmark-ranges-reviewed": return "unmarked-reviewed";
+    case "mark-ranges-reviewed":
+    case "mark-original-ranges-reviewed": return "marked-reviewed";
+    case "unmark-ranges-reviewed":
+    case "unmark-original-ranges-reviewed": return "unmarked-reviewed";
     case "mark-file-reviewed": return "marked-file-reviewed";
     case "unmark-file-reviewed": return "unmarked-file-reviewed";
   }
 };
 
-/** Converts committed state transactions into auditable append-only history events. */
+/** Records state and lifecycle transitions in canonical append-only history order. */
 export class ReviewHistoryRecorder {
+  /** Creates a recorder that appends only after the state transaction has committed. */
   public constructor(private readonly options: ReviewHistoryRecorderOptions) {}
 
-  /** Appends the one file event represented by an already-successful user state transaction. */
-  public async recordTransaction(
-    transaction: Readonly<ReviewStateTransaction>,
-    reason: string
-  ): Promise<void> {
+  /**
+   * Records the modified and, when applicable, original-side ranges changed by one already committed transaction.
+   * @returns A promise that resolves after every affected event is appended in modified-then-sorted-original order.
+   * @throws {Error} When the committed next state omits the affected file or an original transaction lacks its diff ID.
+   * Appender failures propagate; this method never hides a post-commit history failure.
+   */
+  public async recordTransaction(transaction: Readonly<ReviewStateTransaction>, reason: string): Promise<void> {
     const nextContext = transaction.next.contextState;
     const nextFile = nextContext.files[transaction.fileId];
-    if (nextFile === undefined) {
-      throw new Error("Committed review-state transaction must retain its affected file for history.");
-    }
+    if (nextFile === undefined) throw new Error("Committed review-state transaction must retain its affected file for history.");
     const previousFile = transaction.expected.contextState.files[transaction.fileId];
-    const event: ReviewHistoryEvent = {
-      schemaVersion: nextContext.schemaVersion,
-      eventId: this.options.createEventId(),
-      occurredAt: nextContext.updatedAt,
-      sessionId: this.options.sessionId,
-      repositoryId: transaction.repositoryId,
-      contextId: transaction.contextId,
-      revisionId: nextFile.revisionId,
-      type: typeForOperation(transaction.operation),
-      reason,
-      filePath: nextFile.currentPath,
-      diffSide: "modified",
-      previousRanges: (previousFile?.modifiedReviewed ?? []).map((range) => ({ ...range })),
-      nextRanges: nextFile.modifiedReviewed.map((range) => ({ ...range }))
+    const previousGlobalFile = transaction.expected.globalState.files[transaction.fileId];
+    const nextGlobalFile = transaction.next.globalState.files[transaction.fileId];
+    const eventType = typeForOperation(transaction.operation);
+    const events: ReviewHistoryEvent[] = [];
+    const appendFileEvent = (
+      diffSide: "modified" | "original",
+      previousRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      diffId?: string,
+      globalPreviousRanges?: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
+      globalNextRanges?: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
+    ): void => {
+      const common = {
+        schemaVersion: nextContext.schemaVersion,
+        eventId: this.options.createEventId(),
+        occurredAt: nextContext.updatedAt,
+        sessionId: this.options.sessionId,
+        repositoryId: transaction.repositoryId,
+        contextId: transaction.contextId,
+        revisionId: nextFile.revisionId,
+        type: eventType,
+        reason,
+        filePath: nextFile.currentPath,
+        previousRanges: previousRanges.map((range) => ({ ...range })),
+        nextRanges: nextRanges.map((range) => ({ ...range }))
+      };
+      if (diffSide === "original") events.push({ ...common, diffSide, diffId: diffId! });
+      else if (globalPreviousRanges !== undefined && globalNextRanges !== undefined) {
+        events.push({
+          ...common,
+          diffSide,
+          rangeRepresentation: "context-and-global",
+          globalPreviousRanges: globalPreviousRanges.map((range) => ({ ...range })),
+          globalNextRanges: globalNextRanges.map((range) => ({ ...range }))
+        });
+      } else events.push({ ...common, diffSide });
     };
-    await this.options.appender.append(targetFor(nextContext), event);
+    if (transaction.side === "original") {
+      if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
+      appendFileEvent(
+        "original",
+        previousFile?.originalReviewedByDiff[transaction.diffId] ?? [],
+        nextFile.originalReviewedByDiff[transaction.diffId] ?? [],
+        transaction.diffId
+      );
+    } else {
+      appendFileEvent(
+        "modified",
+        previousFile?.modifiedReviewed ?? [],
+        nextFile.modifiedReviewed,
+        undefined,
+        previousGlobalFile?.reviewed ?? [],
+        nextGlobalFile?.reviewed ?? []
+      );
+      if (transaction.operation === "mark-file-reviewed" || transaction.operation === "unmark-file-reviewed") {
+        const diffIds = new Set([
+          ...Object.keys(previousFile?.originalReviewedByDiff ?? {}),
+          ...Object.keys(nextFile.originalReviewedByDiff)
+        ]);
+        for (const diffId of [...diffIds].sort()) {
+          const before = previousFile?.originalReviewedByDiff[diffId] ?? [];
+          const after = nextFile.originalReviewedByDiff[diffId] ?? [];
+          if (JSON.stringify(before) !== JSON.stringify(after)) appendFileEvent("original", before, after, diffId);
+        }
+      }
+    }
+    for (const event of events) await this.options.appender.append(targetFor(nextContext), event);
   }
 
-  /** Appends a context event after an initial context snapshot becomes durable. */
-  public async recordContextCreated(
-    contextState: Readonly<ReviewContextState>,
-    reason = "context-initialized"
-  ): Promise<void> {
+  /**
+   * Appends the lifecycle event for a newly created review context.
+   * @returns A promise that resolves after the append succeeds.
+   * @throws {Error} When the context lacks the revision required by its kind or the appender rejects.
+   */
+  public async recordContextCreated(contextState: Readonly<ReviewContextState>, reason = "context-initialized"): Promise<void> {
     await this.options.appender.append(targetFor(contextState), {
       schemaVersion: contextState.schemaVersion,
       eventId: this.options.createEventId(),
@@ -101,7 +154,11 @@ export class ReviewHistoryRecorder {
     });
   }
 
-  /** Appends one context and one affected-file event after a durable Git revision mapping. */
+  /**
+   * Appends context and per-file events for a revision mapping, including unresolved files.
+   * @returns A promise that resolves after the ordered lifecycle and file events append.
+   * @throws {Error} When the next context lacks its kind-specific revision or an append fails; failures propagate.
+   */
   public async recordRevisionMapping(
     previous: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
     next: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
@@ -111,50 +168,40 @@ export class ReviewHistoryRecorder {
     const nextRevision = revisionOf(next.contextState);
     const events: ReviewHistoryEvent[] = [{
       schemaVersion: next.contextState.schemaVersion,
-      eventId: this.options.createEventId(),
-      occurredAt: next.contextState.updatedAt,
-      sessionId: this.options.sessionId,
-      repositoryId: next.contextState.repositoryId,
-      contextId: next.contextState.contextId,
-      revisionId: nextRevision,
-      type: "context-revision-changed",
-      reason
+      eventId: this.options.createEventId(), occurredAt: next.contextState.updatedAt,
+      sessionId: this.options.sessionId, repositoryId: next.contextState.repositoryId,
+      contextId: next.contextState.contextId, revisionId: nextRevision,
+      type: "context-revision-changed", reason
     }];
-    const fileIds = new Set([
-      ...Object.keys(previous.contextState.files),
-      ...Object.keys(next.contextState.files)
-    ]);
+    const fileIds = new Set([...Object.keys(previous.contextState.files), ...Object.keys(next.contextState.files)]);
     for (const fileId of [...fileIds].sort()) {
       const before = previous.contextState.files[fileId];
       const after = next.contextState.files[fileId];
-      if (before === undefined && after === undefined) {
-        continue;
-      }
+      if (before === undefined && after === undefined) continue;
       events.push({
         schemaVersion: next.contextState.schemaVersion,
-        eventId: this.options.createEventId(),
-        occurredAt: next.contextState.updatedAt,
-        sessionId: this.options.sessionId,
-        repositoryId: next.contextState.repositoryId,
-        contextId: next.contextState.contextId,
-        revisionId: nextRevision,
-        type: unresolvedFileIds.includes(fileId) ? "mapping-unresolved" :
-          before === undefined ? "remapped-by-diff" :
-          after === undefined ? "file-deleted" :
-            before.currentPath !== after.currentPath ? "file-renamed" : "remapped-by-diff",
+        eventId: this.options.createEventId(), occurredAt: next.contextState.updatedAt,
+        sessionId: this.options.sessionId, repositoryId: next.contextState.repositoryId,
+        contextId: next.contextState.contextId, revisionId: nextRevision,
+        type: unresolvedFileIds.includes(fileId) ? "mapping-unresolved" : before === undefined ? "remapped-by-diff" : after === undefined ? "file-deleted" : before.currentPath !== after.currentPath ? "file-renamed" : "remapped-by-diff",
         reason: unresolvedFileIds.includes(fileId) ? "mapping-unresolved" : "git-revision-mapped",
         filePath: after?.currentPath ?? before!.currentPath,
         diffSide: "modified",
         previousRanges: (before?.modifiedReviewed ?? []).map((range) => ({ ...range })),
-        nextRanges: (after?.modifiedReviewed ?? []).map((range) => ({ ...range }))
+        nextRanges: (after?.modifiedReviewed ?? []).map((range) => ({ ...range })),
+        rangeRepresentation: "context-and-global",
+        globalPreviousRanges: (previous.globalState.files[fileId]?.reviewed ?? []).map((range) => ({ ...range })),
+        globalNextRanges: (next.globalState.files[fileId]?.reviewed ?? []).map((range) => ({ ...range }))
       });
     }
-    for (const event of events) {
-      await this.options.appender.append(targetFor(next.contextState), event);
-    }
+    for (const event of events) await this.options.appender.append(targetFor(next.contextState), event);
   }
 
-  /** Appends a file event after a stale edited document has been conservatively invalidated. */
+  /**
+   * Appends the modified-side range transition caused by content invalidation.
+   * @returns A promise that resolves after the invalidation event is persisted.
+   * @throws {Error} When the history appender rejects; the persistence failure propagates to the caller.
+   */
   public async recordEditInvalidation(
     contextState: Readonly<ReviewContextState>,
     target: Readonly<ReviewStateFileTarget>,
@@ -162,17 +209,11 @@ export class ReviewHistoryRecorder {
     nextRanges: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
   ): Promise<void> {
     await this.options.appender.append(targetFor(contextState), {
-      schemaVersion: contextState.schemaVersion,
-      eventId: this.options.createEventId(),
-      occurredAt: contextState.updatedAt,
-      sessionId: this.options.sessionId,
-      repositoryId: contextState.repositoryId,
-      contextId: contextState.contextId,
-      revisionId: target.revisionId,
-      type: "invalidated-by-edit",
-      reason: "content-hash-mismatch",
-      filePath: target.currentPath,
-      diffSide: "modified",
+      schemaVersion: contextState.schemaVersion, eventId: this.options.createEventId(),
+      occurredAt: contextState.updatedAt, sessionId: this.options.sessionId,
+      repositoryId: contextState.repositoryId, contextId: contextState.contextId,
+      revisionId: target.revisionId, type: "invalidated-by-edit", reason: "content-hash-mismatch",
+      filePath: target.currentPath, diffSide: "modified",
       previousRanges: previousRanges.map((range) => ({ ...range })),
       nextRanges: nextRanges.map((range) => ({ ...range }))
     });
@@ -181,25 +222,17 @@ export class ReviewHistoryRecorder {
 
 const revisionOf = (state: Readonly<ReviewContextState>): string => {
   if (state.kind === "branch") {
-    if (state.branch === undefined) {
-      throw new Error("Branch review context must include a revision for history.");
-    }
+    if (state.branch === undefined) throw new Error("Branch review context must include a revision for history.");
     return state.branch.headRevision;
   }
   if (state.kind === "pull-request") {
-    if (state.pullRequest === undefined) {
-      throw new Error("Pull-request review context must include a revision for history.");
-    }
+    if (state.pullRequest === undefined) throw new Error("Pull-request review context must include a revision for history.");
     return state.pullRequest.headSha;
   }
   if (state.kind === "workspace") {
-    if (state.workspace === undefined) {
-      throw new Error("Workspace review context must include a revision for history.");
-    }
+    if (state.workspace === undefined) throw new Error("Workspace review context must include a revision for history.");
     return state.workspace.snapshotRevision;
   }
-  if (state.externalFile === undefined) {
-    throw new Error("External-file review context must include a revision for history.");
-  }
+  if (state.externalFile === undefined) throw new Error("External-file review context must include a revision for history.");
   return state.externalFile.snapshotRevision;
 };

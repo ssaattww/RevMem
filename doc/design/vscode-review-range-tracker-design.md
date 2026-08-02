@@ -148,7 +148,7 @@ branch名は完全な`refs/heads/...`を使用する。detached HEADはcommit ob
 Workspace URI hash + workspace-folder-relative path
 ```
 
-Git diffの代わりに保存済みsnapshotと現在内容の行差分を使用する。Global確認済みはそのワークスペース内だけで有効とする。
+Git diffの代わりに保存済みsnapshotと現在内容の行差分を使用する。snapshotはworkspace/fileごとのauthoritative latest-generation pointerで選択し、過去entryの探索やfallbackを行わない。pointerがmissing、破損、期限切れ、または最新保存に失敗した場合は当該fileを未確認とする。Global確認済みはそのワークスペース内だけで有効とする。
 
 ### 6.4 Repository ID
 
@@ -394,7 +394,7 @@ SHAが変わっただけで全解除しない。
 
 ### 10.5 空白・改行
 
-既定ではインデント、空白数、tab/space、CRLF/LF、末尾改行も変更として扱う。設定で明示した場合だけ該当差分を無視する。
+既定ではインデント、空白数、tab/space、CRLF/LF/CR、末尾改行、空fileの終端状態も変更として扱う。行mappingの証拠は各行の本文だけでなく行終端を含み、設定で明示した場合だけ該当差分を無視する。
 
 ## 11. PR進捗とGlobal理解率
 
@@ -558,7 +558,7 @@ repository列挙では、除外directoryを再帰前にpruneする。pruneした
 | `ui` | `core`, `application`, `ui` |
 <!-- architecture-layer-contract:end -->
 
-UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。adapters層はapplication/core contractを実装する。
+UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。snapshot圧縮、SHA-256、binary buffer、filesystem I/Oはapplication層へ持ち込まずadapterが実装する。adapters層はapplication/core contractを実装する。
 
 ### 13.2 Composition Root
 
@@ -578,7 +578,7 @@ Runtime Adapters
   -> Application/Core contracts
 ```
 
-Composition RootはLocal Git、GitHub、snapshot、storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
+Composition RootはLocal Git、GitHub、snapshot codec、local extension snapshot storage、state storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
 
 ### 13.3 主要コンポーネント
 
@@ -646,7 +646,9 @@ create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を
 
 履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。1 eventは1行のUTF-8 JSON objectとしてcanonicalにserializeし、改行を含む値や整形済みJSONを許容しない。event schemaの初期versionは既存の`schemaVersion`と同じversionであり、readerは未知version、未知field type、欠落required field、file/context discriminatorとの矛盾、非有限number、範囲外または未正規化intervalを推測・補完せずrejectする。
 
-event共通のrequired fieldは`schemaVersion`、`eventId`、`occurredAt`、`sessionId`、`repositoryId`、`contextId`、`revisionId`、`type`、`reason`である。`eventId`はsession内だけでなく履歴処理全体で一意なopaque ID、`occurredAt`はUTC ISO 8601 timestamp、`reason`は機械可読な遷移原因とする。`type`がfile eventの場合だけ`filePath`、`diffSide`、`previousRanges`、`nextRanges`をrequiredとし、context eventではこれらをnullableにせずfield自体をomitする。file eventのrangeは0始まり半開区間をcanonical orderで保存する。
+event共通のrequired fieldは`schemaVersion`、`eventId`、`occurredAt`、`sessionId`、`repositoryId`、`contextId`、`revisionId`、`type`、`reason`である。`eventId`はsession内だけでなく履歴処理全体で一意なopaque ID、`occurredAt`はUTC ISO 8601 timestamp、`reason`は機械可読な遷移原因とする。`type`がfile eventの場合だけ`filePath`、`diffSide`、`previousRanges`、`nextRanges`をrequiredとし、context eventではこれらをnullableにせずfield自体をomitする。file eventの`previousRanges`と`nextRanges`は常にContext側の0始まり半開区間をcanonical orderで保存する。
+
+ContextとGlobalを同時に更新する新規file eventは、既存range fieldを変更せず、`rangeRepresentation: "context-and-global"`、`globalPreviousRanges`、`globalNextRanges`を追加する。これによりContext/Globalのbefore/afterをlosslessに監査できる。追加fieldのない既存JSONLはContext-onlyのlegacy eventとしてそのままreaderが受理し、schemaVersion、既存fieldの意味、canonical serializationを変更しない。`rangeRepresentation`があるeventは3つの追加fieldをすべて持ち、Global rangeも同じ正規化規則に従わなければならない。
 
 file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`、`marked-file-reviewed`、`unmarked-file-reviewed`、編集結果の`invalidated-by-edit`、Git diff再計算結果の`remapped-by-diff`、renameの`file-renamed`、deleteの`file-deleted`、一意に対応付けられない場合の`mapping-unresolved`である。context event typeは`context-created`と`context-revision-changed`である。各成功したstate transactionまたはcontext初期化・revision mapping結果は、affected fileごとに1 eventをappendする。失敗、cancel、no-op、またはstate commit前の計画はeventをappendしない。state commit後のhistory append失敗はstate rollbackを要求せず、呼び出し側へobservable partial successとしてrejectする。
 

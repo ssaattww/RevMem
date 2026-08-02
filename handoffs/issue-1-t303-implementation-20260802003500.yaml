@@ -1,0 +1,18 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue_or_pr: "PR #30"
+task_id: T303
+branch: task/t303-diff-editor-commands
+mode: initial implementation
+implementation:
+  outcome: completed
+  final_head: d0a0a97708b1c28bcda79546aebcfcd5bf997f7e
+  summary:
+    - original-side deletion ranges persist by diff identity without Global mutation
+    - diff commands support both sides and whole-file mark/unmark
+    - immutable original and modified URIs open in canonical order
+review:
+  mode: not_applicable
+next_action:
+  type: review
+  summary: Verify T303 implementation on the PR head; do not merge.

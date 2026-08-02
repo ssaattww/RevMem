@@ -17,6 +17,7 @@ import {
   type WorkspaceNormalEditorDecorationState,
   WorkspaceReviewStateSessionProvider
 } from "../workspace-review-state/index";
+import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "../workspace-review-state/index";
 import type {
   LineInterval,
   OwnerReconciliationSourceSnapshot,
@@ -212,6 +213,22 @@ export class DocumentReviewStateSessionProvider {
     });
     const opened = await baseProvider.open(descriptor);
     const persisted = await repository.load(this.repositoryTarget(opened));
+    const snapshotWorkspaceProvider = this.options.workspaceProvider instanceof SnapshotTrackingWorkspaceReviewStateSessionProvider
+      ? this.options.workspaceProvider
+      : undefined;
+    const workspaceSnapshotCommitter = opened.owner === "workspace" && descriptor.workspace !== undefined && snapshotWorkspaceProvider !== undefined
+      ? {
+          commit: async (transaction: Readonly<ReviewStateTransaction>) => snapshotWorkspaceProvider.commitWithSnapshot({
+            workspaceFolderUri: descriptor.workspace!.workspaceFolderUri,
+            documentUri: descriptor.documentUri,
+            fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
+            relativePath: descriptor.workspace!.relativePath,
+            workspaceDisplayName: descriptor.workspace!.displayName,
+            lineCount: descriptor.lineCount,
+            contentHash: descriptor.contentHash
+          }, transaction, () => this.options.repository.commit(transaction))
+        }
+      : this.options.repository;
     const target: DocumentNormalEditorReviewStateSession = {
       ...opened,
       ...(persisted === undefined
@@ -220,7 +237,7 @@ export class DocumentReviewStateSessionProvider {
             contextState: clone(persisted.contextState),
             globalState: clone(persisted.globalState)
           }),
-      committer: this.options.repository
+      committer: workspaceSnapshotCommitter
     };
     const sources = await this.lowerSources(
       target.owner,
@@ -254,10 +271,7 @@ export class DocumentReviewStateSessionProvider {
     const delegate = this.options.workspaceProvider;
     const cache = new Map<string, WorkspaceNormalEditorDecorationState | undefined>();
     return {
-      open: async (descriptor: WorkspaceEditorReviewDescriptor) => ({
-        ...(await delegate.open(descriptor)),
-        committer: repository
-      }),
+      open: async (descriptor: WorkspaceEditorReviewDescriptor) => ({ ...(await delegate.open(descriptor)), committer: repository }),
       loadForDecoration: async (descriptor: WorkspaceEditorReviewDescriptor) => {
         const key = JSON.stringify(descriptor);
         if (!cache.has(key)) {
@@ -336,26 +350,28 @@ export class DocumentReviewStateSessionProvider {
     if (!plan.changed) {
       return target;
     }
-    const transaction: ReviewStateTransaction = {
-      operation: promotion?.operation ?? "mark-ranges-reviewed",
+    const snapshots = {
       repositoryId: target.contextState.repositoryId,
       contextId: target.contextState.contextId,
       fileId: target.target.fileId,
       expected: {
-        contextState: clone(target.contextState),
-        globalState: clone(target.globalState)
+        contextState: clone<ReviewContextState>(target.contextState),
+        globalState: clone<RepositoryGlobalState>(target.globalState)
       },
       next: {
-        contextState: clone(plan.contextState),
-        globalState: clone(plan.globalState)
+        contextState: clone<ReviewContextState>(plan.contextState),
+        globalState: clone<RepositoryGlobalState>(plan.globalState)
       }
     };
-    await this.options.repository.commit(transaction);
+    const transaction: ReviewStateTransaction = promotion?.side === "original"
+      ? { ...snapshots, operation: promotion.operation, side: "original", diffId: promotion.diffId }
+      : { ...snapshots, operation: promotion?.operation ?? "mark-ranges-reviewed" };
+    await target.committer.commit(transaction);
     return {
       ...target,
       contextState: clone(plan.contextState),
       globalState: clone(plan.globalState),
-      committer: this.options.repository
+      committer: target.committer
     };
   }
 

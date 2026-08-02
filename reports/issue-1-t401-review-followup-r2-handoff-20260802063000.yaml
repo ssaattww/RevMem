@@ -1,0 +1,87 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-02T06:30:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #31
+task_id: T401
+branch: task/t401-github-pr-context-resolver
+base_ref: main
+source_review:
+  report: reports/issue-1-t401-review-r2-20260802062000.md
+  handoff: reports/issue-1-t401-review-r2-handoff-20260802062000.yaml
+  reviewed_implementation_head: be0c324721aa3b69c0807992fb679c9b69613c57
+  finding:
+    id: T401-R003
+    severity: high
+    status: addressed
+    summary: Reject pagination links that can forward authentication to another origin or unrelated API path.
+
+implementation:
+  start_head: 9444bff29c92976c5abf2a07aa89a147b66b7c8f
+  red_head: b39f5ddecea35ee21276b8d77e843c2b3f2e23c0
+  green_head: b046ab21395543199c227242185448bc170182f0
+  final_head: pending_report_handoff_commit
+  changed_files:
+    - test/integration/mock-github.test.ts
+    - src/adapters/github/fetch-github-pull-request-adapter.ts
+    - reports/issue-1-t401-review-followup-r2-20260802063000.md
+    - reports/issue-1-t401-review-followup-r2-handoff-20260802063000.yaml
+  behavior:
+    - Resolve relative next links against the current page URL.
+    - Require the next URL to retain the original API collection origin and protocol.
+    - Allow only HTTP or HTTPS pagination URLs.
+    - Reject username, password, fragments, and a pathname different from the original pull-request collection path.
+    - Return unavailable/api for an invalid next link so branch review remains available without leaking credentials.
+    - Preserve pagination loop detection.
+
+validation:
+  red:
+    run_id: 30719175623
+    head_sha: b39f5ddecea35ee21276b8d77e843c2b3f2e23c0
+    conclusion: failure
+    failed_gate: Mock GitHub integration tests
+    artifact:
+      id: 8824303685
+      name: ci-failure-diagnostics-30719175623-1
+  green:
+    run_id: 30719218852
+    head_sha: b046ab21395543199c227242185448bc170182f0
+    conclusion: success
+    gates:
+      - build
+      - contract_typecheck
+      - architecture_positive
+      - architecture_negative
+      - lint
+      - unit
+      - git_integration
+      - mock_github_integration
+      - vscode_extension_host
+  final_exact_head_ci:
+    required: true
+    head_sha: resolve_current_pr_head_after_handoff_commit
+    run_id: resolve_matching_run_only
+    note: Do not substitute a workflow run whose head SHA differs from the PR current HEAD.
+
+review_request:
+  mode: fix_verification
+  reviewer_continuity: same normal reviewer that produced T401-R003
+  verify:
+    - The cross-origin regression fails before the production fix and succeeds after it.
+    - Authorization is never sent to a cross-origin or different-path pagination target.
+    - Valid same-origin same-collection pagination remains functional.
+    - Invalid next links return unavailable/api rather than silent not-found.
+    - Current PR HEAD and CI run head SHA are identical.
+  expected_disposition:
+    T401-R001: addressed
+    T401-R002: addressed
+    T401-R003: addressed
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t401-review-followup-r2-handoff-20260802063000.yaml
+  pr_number: 31
+  merge_performed: false

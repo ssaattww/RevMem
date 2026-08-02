@@ -1,0 +1,223 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-02T06:32:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #33
+task_id: T601
+branch: task/t601-non-git-snapshots
+base_ref: main
+target:
+  current_head: 5a91656fb5e55365fdc123e51de524adf41b5850
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  commit_range: 0e3440fa0a4e015463adb56d338488c53291a4c1..5a91656fb5e55365fdc123e51de524adf41b5850
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: PR #33のレビュー指摘へ対応する。
+  - source: pr
+    reference: T601-R001
+    summary: 重複行の複数最長LCSを曖昧として未確認化する。
+development_policy:
+  method: TDD
+  testing_order: failing regression test before implementation
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t601
+    - npm run test:unit
+    - npm test
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - investigation logs
+blocked:
+  - item: current HEAD matching CI verification
+    reason: matching workflow run was not present at handoff creation time
+    required_input_or_decision: wait for or trigger a workflow run associated with the final HEAD
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/non-git-snapshots/index.ts
+      reason: direct implementation location for T601-R001
+    - path_or_operation: test/unit/non-git-snapshot-tracker.test.ts
+      reason: regression coverage for T601-R001
+    - path_or_operation: reports/issue-1-t601-review-followup-20260802063000.md
+      reason: required detailed report
+    - path_or_operation: handoffs/issue-1-t601-review-followup-20260802063200.yaml
+      reason: required handoff
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: unrelated implementation or design
+      reason: outside review finding scope
+scope:
+  - Fix T601-R001 LCS uniqueness defect.
+  - Add regression tests for duplicate-line reorder ambiguity.
+non_goals:
+  - Redesign snapshot persistence.
+  - Change Git routing or workspace ownership.
+files:
+  changed:
+    - path: test/unit/non-git-snapshot-tracker.test.ts
+      purpose: add duplicate reorder and hidden alternate LCS regression tests
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: replace incomplete LCS path counting with prefix/suffix candidate uniqueness validation
+    - path: reports/issue-1-t601-review-followup-20260802063000.md
+      purpose: detailed follow-up report
+    - path: handoffs/issue-1-t601-review-followup-20260802063200.yaml
+      purpose: transportable continuation state
+  inspected:
+    - path: reports/issue-1-t601-review-20260802062300.md
+      purpose: source review finding
+  intentionally_untouched:
+    - path_or_area: CI workflow
+      reason: existing failure diagnostics already satisfy policy
+commands: []
+tests:
+  - name: duplicate-line reorder with unchanged multiplicity remains ambiguous
+    phase: red
+    result: not_run
+    head_sha: 72b8f1e507abed1c715796bb5e0c4dd9be67773e
+    evidence: no matching workflow run was present
+  - name: equal diagonal does not hide an alternate longest duplicate mapping
+    phase: red
+    result: not_run
+    head_sha: a32dbe30ac5d9ddb72df1daad265487f30a35d63
+    evidence: no matching workflow run was present
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 5a91656fb5e55365fdc123e51de524adf41b5850
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 8ea9c993e871d1268377c10e5441e2a76e34ea66
+  commits:
+    - sha: 72b8f1e507abed1c715796bb5e0c4dd9be67773e
+      purpose: add reviewer example regression
+    - sha: a32dbe30ac5d9ddb72df1daad265487f30a35d63
+      purpose: add actual hidden alternate LCS regression
+    - sha: 8ea9c993e871d1268377c10e5441e2a76e34ea66
+      purpose: correct LCS uniqueness detection
+  addressed_findings:
+    - id: T601-R001
+      reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+      disposition: addressed
+      evidence: prefix/suffix LCS candidate enumeration and two duplicate reorder regression tests
+  failure_diagnostics: []
+  blocked_items:
+    - item: current HEAD CI
+      reason: no matching run present
+      required_input_or_decision: verify a future matching run; do not substitute another SHA
+  summary:
+    - Multiple longest mappings are now classified ambiguous.
+    - Uncertain duplicate lines no longer inherit reviewed evidence.
+review:
+  mode: not_applicable
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  reviewer:
+    identity: same normal reviewer requested by source review
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same normal reviewer
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence:
+        - source review requests same normal reviewer for fix verification
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary: []
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t601-review-followup-20260802063000.md
+  reviewed_head: 0e3440fa0a4e015463adb56d338488c53291a4c1
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed review follow-up evidence persisted.
+findings:
+  - id: T601-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/application/non-git-snapshots/index.ts uniqueLcsMapping
+    description: Equal diagonal transitions could hide another longest line mapping.
+    impact: Ambiguous duplicate lines could be inherited as reviewed.
+    evidence: old A/A/B/B and new A/B/B/A has two longest mappings while the prior algorithm reported one.
+    required_action: Treat every alternative longest mapping as ambiguous.
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final current-HEAD CI result
+    reason: no matching workflow run existed at packet generation
+not_applicable:
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - Final HEAD must receive a matching successful CI run before completion can be claimed.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: review follow-up
+      finding: T601-R001
+      outcome: completed
+      final_implementation_head: 8ea9c993e871d1268377c10e5441e2a76e34ea66
+      matching_ci: absent
+extensions: []
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Verify T601-R001 at the final implementation HEAD after matching CI evidence exists.
+  instructions:
+    - Use the same normal reviewer as the initial review.
+    - Verify both regression cases and the prefix/suffix candidate uniqueness logic.
+    - Use only a workflow run whose head SHA matches the target HEAD.
+  required_attachments_or_references:
+    - reports/issue-1-t601-review-followup-20260802063000.md
+    - reports/issue-1-t601-review-20260802062300.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t601-review-followup-20260802063200.yaml
+  packet_url: null
+  transport_note: Continue from repository evidence without relying on chat memory.

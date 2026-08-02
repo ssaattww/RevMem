@@ -1,0 +1,289 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-01T23:56:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #32
+task_id: T501
+branch: task/t501-global-state-repository
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: 04675c68f648859ae90d483d138d950bc15527d4
+  commit_range: 04675c68f648859ae90d483d138d950bc15527d4..current
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: PR #32のレビュー指摘へ対応する。
+  - source: report
+    reference: reports/issue-1-t501-review-20260801234800.md
+    summary: T501-R1-P1 mediumをTDDで修正し、同じnormal reviewerのfix verificationへ渡す。
+  - source: repository_instruction
+    reference: project instruction
+    summary: TDD、診断artifact、細かなcommit/push、詳細report、PR簡易comment、exact HEAD CI、merge禁止。
+
+development_policy:
+  method: TDD
+  testing_order: failing regression tests before implementation
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output and standard error logs
+    - source, test, configuration and generated files
+    - environment and Git state
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: test/unit/repository-global-state-repository.test.ts
+      reason: T501-R1-P1 regression tests
+    - path_or_operation: src/application/repository-global-state/repository-global-state-repository.ts
+      reason: T501-R1-P1 implementation fix
+    - path_or_operation: reports/issue-1-t501-review-followup-20260801235600.md
+      reason: detailed follow-up report
+    - path_or_operation: reports/issue-1-t501-review-followup-handoff-20260801235600.yaml
+      reason: continuation handoff
+    - path_or_operation: PR #32 comment/update
+      reason: concise result and CI evidence
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: progress sync waits for review completion
+    - path_or_operation: T502 and later implementation
+      reason: outside finding scope
+scope:
+  - Address T501-R1-P1 while preserving finding identity and medium severity.
+  - Persist metadata changes and newly created file entries even when ranges are equal.
+  - Preserve timestamp-only semantic no-op behavior.
+non_goals:
+  - Independent review verdict
+  - Global mapping, display priority, understanding calculator or UI
+  - Task or phase completion synchronization
+  - Merge
+files:
+  changed:
+    - path: test/unit/repository-global-state-repository.test.ts
+      purpose: Added metadata-difference and missing-entry regression tests.
+    - path: src/application/repository-global-state/repository-global-state-repository.ts
+      purpose: Compare complete persisted target-file state except timestamps.
+    - path: reports/issue-1-t501-review-followup-20260801235600.md
+      purpose: Detailed review follow-up evidence.
+    - path: reports/issue-1-t501-review-followup-handoff-20260801235600.yaml
+      purpose: Lossless continuation packet.
+  inspected:
+    - path: reports/issue-1-t501-review-20260801234800.md
+      purpose: Source finding identity, severity and required action.
+    - path: .github/workflows/ci.yml
+      purpose: Failure diagnostic artifact coverage.
+    - path: src/core/review-state/review-state-service.ts
+      purpose: Transaction metadata written by the core service.
+  intentionally_untouched:
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: No permanent requirement change.
+    - path_or_area: tasks tracking
+      reason: Review is not yet verified.
+commands:
+  - command: GitHub Actions CI
+    purpose: Red verification
+    exit_code: 1
+    result: failed
+    head_sha: deccbfe4cedc7485034988b2e9028487f5a21dd6
+    evidence: run 30704930163, artifact 8820018482
+  - command: GitHub Actions CI
+    purpose: Diagnose initial implementation compile failure
+    exit_code: 1
+    result: failed
+    head_sha: e57314565bf00a46e47fa689b9b5314e8892bd39
+    evidence: run 30705100120, artifact 8820067379
+  - command: GitHub Actions CI
+    purpose: Green implementation verification
+    exit_code: 0
+    result: passed
+    head_sha: 6920ffb42fcec7084000d2f80d97e8d04e9eff09
+    evidence: run 30705148733 success
+tests:
+  - name: range equality does not suppress current file metadata updates
+    phase: red
+    result: failed
+    head_sha: deccbfe4cedc7485034988b2e9028487f5a21dd6
+    evidence: Unit failure in run 30704930163
+  - name: empty file operation persists newly created context and Global file entries
+    phase: red
+    result: failed
+    head_sha: deccbfe4cedc7485034988b2e9028487f5a21dd6
+    evidence: Unit failure in run 30704930163
+  - name: T501 focused tests within unit suite
+    phase: green
+    result: passed
+    head_sha: 6920ffb42fcec7084000d2f80d97e8d04e9eff09
+    evidence: Unit tests success in run 30705148733
+ci:
+  required: true
+  workflow: CI
+  run_id: 30705148733
+  head_sha: 6920ffb42fcec7084000d2f80d97e8d04e9eff09
+  conclusion: success
+  artifacts:
+    - id: 8820018482
+      name: ci-failure-diagnostics-30704930163-1
+      purpose: Red test evidence and diagnostics
+    - id: 8820067379
+      name: ci-failure-diagnostics-30705100120-1
+      purpose: Readonly TypeScript build failure diagnostics
+implementation:
+  outcome: completed
+  final_head: 6920ffb42fcec7084000d2f80d97e8d04e9eff09
+  commits:
+    - sha: deccbfe4cedc7485034988b2e9028487f5a21dd6
+      purpose: Add failing metadata and missing-entry regression tests.
+    - sha: e57314565bf00a46e47fa689b9b5314e8892bd39
+      purpose: Include persisted metadata in semantic change comparison.
+    - sha: 6920ffb42fcec7084000d2f80d97e8d04e9eff09
+      purpose: Use readonly transaction snapshot types.
+  addressed_findings:
+    - id: T501-R1-P1
+      reviewed_head: 04675c68f648859ae90d483d138d950bc15527d4
+      disposition: addressed
+      evidence: Red tests fail at deccbfe, metadata comparison implemented, exact-head run 30705148733 succeeds.
+  failure_diagnostics:
+    - type: artifact
+      location: artifact 8820018482
+      summary: Red tests prove range-only no-op defect.
+    - type: artifact
+      location: artifact 8820067379
+      summary: TypeScript readonly mismatch diagnosed and corrected.
+  blocked_items: []
+  summary:
+    - Complete Context and Global target-file persisted metadata is compared.
+    - updatedAt-only differences remain no-op.
+    - Missing file entries are treated as semantic changes.
+review:
+  mode: fix_verification
+  reviewed_head: 04675c68f648859ae90d483d138d950bc15527d4
+  reviewer:
+    identity: same normal reviewer from initial T501 review required
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT review worker
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence:
+        - Source report reserves same normal reviewer for fix verification.
+  verdict: incomplete
+  required_coverage:
+    - criterion: T501-R1-P1 metadata and missing-entry fix
+      disposition: unexplored
+      evidence: Implementation worker cannot issue its own fix-verification verdict.
+  validation_assessment:
+    - item: exact implementation HEAD CI
+      result: supported
+      evidence: run 30705148733 matches 6920ffb and succeeded.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Same normal reviewer must verify the fix at the final implementation HEAD.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t501-review-followup-20260801235600.md
+    - reports/issue-1-t501-review-followup-handoff-20260801235600.yaml
+  reviewed_head: 04675c68f648859ae90d483d138d950bc15527d4
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed review follow-up report and handoff persisted.
+findings:
+  - id: T501-R1-P1
+    severity: medium
+    origin: introduced_by_change
+    location: src/application/repository-global-state/repository-global-state-repository.ts hasSemanticChange/apply
+    description: Range-only semantic comparison discarded persisted metadata changes and missing file-entry creation.
+    impact: Canonical path and other metadata could remain stale; an empty file entry could remain absent.
+    evidence: Source review report and Red run 30704930163.
+    required_action: Include persisted metadata differences or enforce metadata identity; add Red tests for metadata difference and missing entry.
+held: []
+unexplored:
+  - area: fix verification
+    blocker: Must be performed by the same normal reviewer, not the implementation worker.
+    remaining_risk: Regression or incomplete sibling coverage could remain.
+    verdict_impact: Review completion remains pending.
+unknown:
+  - field_or_fact: final PR HEAD and matching CI after report/handoff commits
+    reason: These commits are created after this packet content is generated.
+not_applicable:
+  - field_or_area: merge
+    reason: User performs merge.
+remaining_risks:
+  - Final report/handoff HEAD requires exact matching CI.
+  - Same normal reviewer fix verification remains required.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/issue-1-t501-review-followup-20260801235600.md
+extensions: []
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix verification
+  summary: Verify T501-R1-P1 at the final implementation/report HEAD using the same normal reviewer identity.
+  instructions:
+    - Preserve finding ID T501-R1-P1 and source severity medium.
+    - Review the Red tests, metadata comparison, sibling metadata fields and timestamp-only no-op behavior.
+    - Use only CI whose head SHA matches the target HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t501-review-20260801234800.md
+    - reports/issue-1-t501-review-followup-20260801235600.md
+    - reports/issue-1-t501-review-followup-handoff-20260801235600.yaml
+    - PR #32
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t501-review-followup-handoff-20260801235600.yaml
+  packet_url: null
+  transport_note: Final current HEAD and exact matching CI must be recorded in the PR comment after this commit.
