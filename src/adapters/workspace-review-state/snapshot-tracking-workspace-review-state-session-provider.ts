@@ -1,10 +1,7 @@
-import {
-  type NonGitSnapshotStorage,
-  NonGitSnapshotTracker,
-} from "../../application/non-git-snapshots/index";
+import { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
 import type { WorkspaceIdentityService } from "../../application/workspace-identity/index";
 import type { RepositoryGlobalState, ReviewContextState } from "../../core/contracts/index";
-import { markReviewedRanges } from "../../core/review-state/index";
+import { markReviewedRanges, type ReviewStateTransaction } from "../../core/review-state/index";
 import {
   WorkspaceReviewStateSessionProvider,
   type WorkspaceEditorReviewDescriptor,
@@ -16,7 +13,6 @@ import {
 export interface SnapshotTrackingWorkspaceReviewStateSessionProviderOptions
   extends WorkspaceReviewStateSessionProviderOptions {
   readonly snapshotTracker: NonGitSnapshotTracker;
-  readonly snapshotStorage: NonGitSnapshotStorage;
   readonly resolveContent: (descriptor: WorkspaceEditorReviewDescriptor) => string;
 }
 
@@ -26,7 +22,6 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
   extends WorkspaceReviewStateSessionProvider {
   private readonly identityService: WorkspaceIdentityService;
   private readonly snapshotTracker: NonGitSnapshotTracker;
-  private readonly snapshotStorage: NonGitSnapshotStorage;
   private readonly resolveContent: (descriptor: WorkspaceEditorReviewDescriptor) => string;
   private readonly nowMilliseconds: () => number;
 
@@ -34,7 +29,6 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     super(options);
     this.identityService = options.identityService;
     this.snapshotTracker = options.snapshotTracker;
-    this.snapshotStorage = options.snapshotStorage;
     this.resolveContent = options.resolveContent;
     this.nowMilliseconds = () => (options.now?.() ?? new Date()).getTime();
   }
@@ -50,7 +44,7 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
       relativePath: descriptor.relativePath,
     });
     const now = this.nowMilliseconds();
-    const snapshotId = await this.findLatestSnapshot(identity.workspaceContextId, identity.fileId, now);
+    const snapshotId = await this.snapshotTracker.latestSnapshotId(identity.workspaceContextId, identity.fileId);
     const mapped = snapshotId === undefined
       ? undefined
       : await this.snapshotTracker.map(snapshotId, content, now);
@@ -77,28 +71,53 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     return {
       ...session,
       committer: {
-        commit: async (transaction) => {
-          await delegate.commit(transaction);
-          await this.snapshotTracker.save({
-            workspaceContextId: identity.workspaceContextId,
-            fileId: identity.fileId,
-            content,
-            reviewedRanges:
-              transaction.next.contextState.files[identity.fileId]?.modifiedReviewed ?? [],
-          }, this.nowMilliseconds());
-        },
+        commit: async (transaction) => this.commitWithSnapshot(descriptor, transaction, () => delegate.commit(transaction)),
       },
     };
+  }
+
+  /** Preserves generation safety when a document-owner adapter wraps this provider's committer. */
+  public async commitWithSnapshot(
+    descriptor: WorkspaceEditorReviewDescriptor,
+    transaction: Readonly<ReviewStateTransaction>,
+    commitState: () => Promise<void>,
+  ): Promise<void> {
+    const identity = this.identityService.resolve({ workspaceFolderUri: descriptor.workspaceFolderUri, documentUri: descriptor.documentUri, fileSystemPathSemantics: descriptor.fileSystemPathSemantics, relativePath: descriptor.relativePath });
+    // Once state advances, an older generation must never be eligible if writing
+    // the replacement snapshot fails. This deliberately favours unreviewed UI.
+    await this.snapshotTracker.invalidateLatest(identity.workspaceContextId, identity.fileId);
+    await commitState();
+    await this.snapshotTracker.saveLatest({
+      workspaceContextId: identity.workspaceContextId,
+      fileId: identity.fileId,
+      content: this.resolveContent(descriptor),
+      reviewedRanges: transaction.next.contextState.files[identity.fileId]?.modifiedReviewed ?? [],
+    }, this.nowMilliseconds());
   }
 
   public override async loadForDecoration(
     descriptor: WorkspaceEditorReviewDescriptor,
   ): Promise<WorkspaceNormalEditorDecorationState | undefined> {
     const base = await super.loadForDecoration(descriptor);
-    if (base !== undefined) {
-      return base;
-    }
-    return undefined;
+    if (base === undefined) return undefined;
+    const identity = this.identityService.resolve({
+      workspaceFolderUri: descriptor.workspaceFolderUri,
+      documentUri: descriptor.documentUri,
+      fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
+      relativePath: descriptor.relativePath,
+    });
+    const snapshotId = await this.snapshotTracker.latestSnapshotId(identity.workspaceContextId, identity.fileId);
+    if (snapshotId === undefined) return base;
+    const mapped = await this.snapshotTracker.map(snapshotId, this.resolveContent(descriptor), this.nowMilliseconds());
+    if (mapped.status !== "mapped" || mapped.reviewedRanges.length === 0) return base;
+    const transaction = markReviewedRanges({
+      contextState: base.contextState,
+      globalState: base.globalState,
+      target: base.target,
+      intervals: mapped.reviewedRanges,
+      occurredAt: new Date(this.nowMilliseconds()).toISOString(),
+    });
+    return { ...base, contextState: clone(transaction.next.contextState) as ReviewContextState, globalState: clone(transaction.next.globalState) as RepositoryGlobalState };
   }
 
   private async saveCurrentSnapshot(
@@ -106,7 +125,7 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     content: string,
     now: number,
   ): Promise<void> {
-    await this.snapshotTracker.save({
+    await this.snapshotTracker.saveLatest({
       workspaceContextId: session.contextState.contextId,
       fileId: session.target.fileId,
       content,
@@ -115,21 +134,4 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     }, now);
   }
 
-  private async findLatestSnapshot(
-    workspaceContextId: string,
-    fileId: string,
-    now: number,
-  ): Promise<string | undefined> {
-    const entries = [...this.snapshotStorage.entries()].sort(
-      ([leftId, left], [rightId, right]) =>
-        right.createdAt - left.createdAt || rightId.localeCompare(leftId),
-    );
-    for (const [snapshotId] of entries) {
-      const state = await this.snapshotTracker.restore(snapshotId, now);
-      if (state?.workspaceContextId === workspaceContextId && state.fileId === fileId) {
-        return snapshotId;
-      }
-    }
-    return undefined;
-  }
 }

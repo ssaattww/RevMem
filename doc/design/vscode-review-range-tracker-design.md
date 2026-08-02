@@ -148,7 +148,7 @@ branch名は完全な`refs/heads/...`を使用する。detached HEADはcommit ob
 Workspace URI hash + workspace-folder-relative path
 ```
 
-Git diffの代わりに保存済みsnapshotと現在内容の行差分を使用する。Global確認済みはそのワークスペース内だけで有効とする。
+Git diffの代わりに保存済みsnapshotと現在内容の行差分を使用する。snapshotはworkspace/fileごとのauthoritative latest-generation pointerで選択し、過去entryの探索やfallbackを行わない。pointerがmissing、破損、期限切れ、または最新保存に失敗した場合は当該fileを未確認とする。Global確認済みはそのワークスペース内だけで有効とする。
 
 ### 6.4 Repository ID
 
@@ -394,7 +394,7 @@ SHAが変わっただけで全解除しない。
 
 ### 10.5 空白・改行
 
-既定ではインデント、空白数、tab/space、CRLF/LF、末尾改行も変更として扱う。設定で明示した場合だけ該当差分を無視する。
+既定ではインデント、空白数、tab/space、CRLF/LF/CR、末尾改行、空fileの終端状態も変更として扱う。行mappingの証拠は各行の本文だけでなく行終端を含み、設定で明示した場合だけ該当差分を無視する。
 
 ## 11. PR進捗とGlobal理解率
 
@@ -548,7 +548,7 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 | `ui` | `core`, `application`, `ui` |
 <!-- architecture-layer-contract:end -->
 
-UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。adapters層はapplication/core contractを実装する。
+UI層はapplication serviceまたはapplication portへ依存し、adapters層を直接importしない。application層はruntime技術を知らず、portとuse caseを定義する。snapshot圧縮、SHA-256、binary buffer、filesystem I/Oはapplication層へ持ち込まずadapterが実装する。adapters層はapplication/core contractを実装する。
 
 ### 13.2 Composition Root
 
@@ -568,7 +568,7 @@ Runtime Adapters
   -> Application/Core contracts
 ```
 
-Composition RootはLocal Git、GitHub、snapshot、storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
+Composition RootはLocal Git、GitHub、snapshot codec、local extension snapshot storage、state storage等のruntime adapterを生成してapplication portへ注入し、そのapplication serviceをUIへ渡す。UI command、Tree View、TextDocumentContentProviderがLocal GitやGitHub adapterを直接生成・参照することを禁止する。
 
 ### 13.3 主要コンポーネント
 

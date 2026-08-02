@@ -31,7 +31,7 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両side、変更行進捗、除外・未確認file一覧が動く |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501のGlobal同期とlossless履歴証跡は独立review全4 findingをclosed、exact-head CI成功済み。表示優先順位、非空行集計、除外設定を進める |
-| P6 | 未着手 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | Gitなし、履歴改変、移行、排他、障害、性能を含む全受け入れ条件を満たす |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はPR #33でpersistent snapshot、最新generation integrity、EOL mapping、Extension Host restartを実装済み。既存独立finding closureとCIを残し、Gitなし、履歴改変、移行、排他、障害、性能を含む全受け入れ条件を満たす |
 
 ## P0 開発基盤
 

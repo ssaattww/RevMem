@@ -15,7 +15,9 @@ import {
   InMemoryNonGitSnapshotStorage,
   NonGitSnapshotTracker,
 } from "../../src/application/non-git-snapshots/index";
+import { NodeNonGitSnapshotCodec } from "../../src/adapters/non-git-snapshots/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
+import { markReviewedRanges, unmarkReviewedRanges } from "../../src/core/review-state/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -44,6 +46,17 @@ class Repository implements WorkspaceReviewStateRepository {
   }
 }
 
+class FailingPublishStorage extends InMemoryNonGitSnapshotStorage {
+  public failNextPublish = false;
+  public override async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
+    if (snapshotId !== undefined && this.failNextPublish) {
+      this.failNextPublish = false;
+      throw new Error("simulated snapshot publish failure");
+    }
+    await super.setLatest(workspaceContextId, fileId, snapshotId);
+  }
+}
+
 interface DescriptorWithContent {
   readonly workspaceFolderUri: { readonly scheme: string; readonly authority: string; readonly path: string };
   readonly documentUri: { readonly scheme: string; readonly authority: string; readonly path: string };
@@ -66,6 +79,51 @@ const descriptor = (content: string, contentHash: string): DescriptorWithContent
   content,
 });
 
+test("latest generation is authoritative when a post-unmark snapshot publish fails", async () => {
+  const repository = new Repository();
+  const storage = new FailingPublishStorage();
+  let now = Date.parse("2026-08-01T15:00:00.000Z");
+  const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
+    identityService: new WorkspaceIdentityService(new NodeSha256StableHash()), repository,
+    snapshotTracker: new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), { maxSnapshots: 16, maxCompressedBytes: 1024 * 1024, retentionMs: 60_000 }),
+    resolveContent: (value) => (value as DescriptorWithContent).content,
+    now: () => new Date(now++),
+  });
+  const initial = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+  const marked = markReviewedRanges({ contextState: initial.contextState, globalState: initial.globalState, target: initial.target, intervals: [{ startLine: 0, endLineExclusive: 2 }], occurredAt: "2026-08-01T15:00:00.000Z" });
+  await initial.committer.commit(marked);
+  const current = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+  const unmarked = unmarkReviewedRanges({ contextState: current.contextState, globalState: current.globalState, target: current.target, intervals: [{ startLine: 0, endLineExclusive: 2 }], occurredAt: "2026-08-01T15:00:01.000Z" });
+  storage.failNextPublish = true;
+  await assert.rejects(current.committer.commit(unmarked), /publish failure/);
+  assert.equal(await storage.getLatest(current.contextState.contextId, current.target.fileId), undefined);
+  const afterFailure = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+  assert.deepEqual(afterFailure.contextState.files[afterFailure.target.fileId]?.modifiedReviewed ?? [], []);
+});
+
+test("successful unmark publishes an empty latest generation for the decoration read path", async () => {
+  const repository = new Repository();
+  const storage = new InMemoryNonGitSnapshotStorage();
+  let now = Date.parse("2026-08-01T15:00:00.000Z");
+  const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
+    identityService: new WorkspaceIdentityService(new NodeSha256StableHash()), repository,
+    snapshotTracker: new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), { maxSnapshots: 16, maxCompressedBytes: 1024 * 1024, retentionMs: 60_000 }),
+    resolveContent: (value) => (value as DescriptorWithContent).content,
+    now: () => new Date(now++),
+  });
+  const initial = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+  const marked = markReviewedRanges({ contextState: initial.contextState, globalState: initial.globalState, target: initial.target, intervals: [{ startLine: 0, endLineExclusive: 2 }], occurredAt: "2026-08-01T15:00:00.000Z" });
+  await initial.committer.commit(marked);
+  const current = await createProvider().open(descriptor("alpha\nbeta", "hash-1"));
+  const unmarked = unmarkReviewedRanges({ contextState: current.contextState, globalState: current.globalState, target: current.target, intervals: [{ startLine: 0, endLineExclusive: 2 }], occurredAt: "2026-08-01T15:00:01.000Z" });
+  await current.committer.commit(unmarked);
+  const snapshotId = await storage.getLatest(current.contextState.contextId, current.target.fileId);
+  assert.ok(snapshotId);
+  const mapped = await new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), { maxSnapshots: 16, maxCompressedBytes: 1024 * 1024, retentionMs: 60_000 }).map(snapshotId, "alpha\nbeta", now);
+  assert.deepEqual(mapped, { status: "mapped", reviewedRanges: [] });
+  assert.deepEqual((await createProvider().loadForDecoration(descriptor("alpha\nbeta", "hash-1")))?.contextState.files[current.target.fileId]?.modifiedReviewed ?? [], []);
+});
+
 test("workspace provider remaps reviewed ranges from persisted snapshot after provider restart", async () => {
   const repository = new Repository();
   const storage = new InMemoryNonGitSnapshotStorage();
@@ -73,8 +131,7 @@ test("workspace provider remaps reviewed ranges from persisted snapshot after pr
   const createProvider = () => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(new NodeSha256StableHash()),
     repository,
-    snapshotStorage: storage,
-    snapshotTracker: new NonGitSnapshotTracker(storage, {
+    snapshotTracker: new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), {
       maxSnapshots: 16,
       maxCompressedBytes: 1024 * 1024,
       retentionMs: 60_000,
