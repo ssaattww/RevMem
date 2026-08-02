@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  ReviewDiffUriCodec,
+  RevisionTextContentProvider,
+  type ReviewDiffDocumentDescriptor,
+  type RevisionTextContentReadResult,
+  type RevisionTextContentSource
+} from "../../src/application/diff-document/index";
 import type { PullRequestDiffFileProgress, PullRequestDiffProgress } from "../../src/core/pr-progress/index";
+import { ReviewDiffEditorController } from "../../src/ui/diff-editor/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestLineReviewability,
@@ -91,6 +99,23 @@ const files = (
     return node as PullRequestProgressTreeFileNode;
   });
 
+class RecordingContentSource implements RevisionTextContentSource {
+  public readonly requests: ReviewDiffDocumentDescriptor[] = [];
+
+  public async readTextContent(
+    descriptor: ReviewDiffDocumentDescriptor
+  ): Promise<RevisionTextContentReadResult> {
+    this.requests.push({ ...descriptor });
+    if (descriptor.filePath === "src/added.ts" && descriptor.side === "modified") {
+      return { kind: "found", content: "added\n" };
+    }
+    if (descriptor.filePath === "src/deleted.ts" && descriptor.side === "original") {
+      return { kind: "found", content: "deleted\n" };
+    }
+    throw new Error(`Unexpected non-empty content request: ${descriptor.side} ${descriptor.filePath}`);
+  }
+}
+
 test("classifies every PR progress file and retains counts and reasons", () => {
   const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
   const changedFiles = [
@@ -164,42 +189,63 @@ test("classifies every PR progress file and retains counts and reasons", () => {
   assert.equal(files(provider, roots[4]!)[0]!.reason, "バイナリファイル");
 });
 
-test("classifies invalid and unsupported encodings with required reasons", () => {
+test("projects nonzero encoding-unsupported changes out of the effective PR denominator", () => {
   const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
   const invalidUtf8 = progressFile("invalid", "data/invalid.txt", {
-    additions: 0,
-    deletions: 0,
-    totalLineCount: 0,
-    progress: 1
+    additions: 2,
+    deletions: 1,
+    reviewedLineCount: 1,
+    totalLineCount: 3,
+    progress: 1 / 3
   });
-  const unsupported = progressFile("unsupported", "data/legacy.txt", {
-    additions: 0,
-    deletions: 0,
-    totalLineCount: 0,
-    progress: 1
+  const reviewable = progressFile("reviewable", "src/reviewable.ts", {
+    additions: 1,
+    deletions: 1,
+    reviewedLineCount: 1,
+    totalLineCount: 2,
+    progress: 0.5
   });
 
-  provider.replaceSnapshot(snapshot([invalidUtf8, unsupported], {
+  provider.replaceSnapshot(snapshot([invalidUtf8, reviewable], {
     lineReviewabilityByFileId: {
       invalid: {
         kind: "unsupported",
         reason: { kind: "invalid-encoding", encoding: "UTF-8" }
       },
-      unsupported: {
-        kind: "unsupported",
-        reason: { kind: "unsupported-encoding", encoding: "Shift_JIS" }
-      }
+      reviewable: { kind: "reviewable" }
     }
   }));
 
-  const unsupportedFiles = files(provider, categories(provider)[4]!);
+  const unsupportedNode = files(provider, categories(provider)[4]!)[0]!;
   assert.deepEqual(
-    unsupportedFiles.map(({ path, reason }) => ({ path, reason })),
-    [
-      { path: "data/invalid.txt", reason: "不正な文字エンコーディング: UTF-8" },
-      { path: "data/legacy.txt", reason: "未対応エンコーディング: Shift_JIS" }
-    ]
+    {
+      path: unsupportedNode.path,
+      reason: unsupportedNode.reason,
+      additions: unsupportedNode.additions,
+      deletions: unsupportedNode.deletions,
+      reviewed: unsupportedNode.reviewedLineCount,
+      total: unsupportedNode.totalLineCount,
+      progress: unsupportedNode.progress
+    },
+    {
+      path: "data/invalid.txt",
+      reason: "不正な文字エンコーディング: UTF-8",
+      additions: 2,
+      deletions: 1,
+      reviewed: 0,
+      total: 0,
+      progress: 1
+    }
   );
+  assert.deepEqual(provider.getEffectiveProgress(), {
+    reviewedLineCount: 1,
+    totalLineCount: 2,
+    progress: 0.5,
+    files: [
+      { ...invalidUtf8, reviewedLineCount: 0, totalLineCount: 0, progress: 1 },
+      reviewable
+    ]
+  });
 });
 
 test("sorts files by remaining line count descending and path ascending", () => {
@@ -252,13 +298,34 @@ test("selection carries immutable context and revision identity", async () => {
     originalDiffId: `${BASE_SHA}..${HEAD_SHA}`,
     fileSystemPathSemantics: "windows",
     file: renamed,
-    original: { filePath: "src/old.ts", revision: BASE_SHA },
-    modified: { filePath: "src/new.ts", revision: HEAD_SHA }
+    original: { kind: "present", filePath: "src/old.ts", revision: BASE_SHA },
+    modified: { kind: "present", filePath: "src/new.ts", revision: HEAD_SHA }
   }]);
 });
 
-test("selection supports added and deleted paths without losing immutable sides", async () => {
-  const opened: PullRequestProgressTreeDiffTarget[] = [];
+test("added and deleted selections open immutable empty missing sides through T303 and T302", async () => {
+  const codec = new ReviewDiffUriCodec();
+  const source = new RecordingContentSource();
+  const contentProvider = new RevisionTextContentProvider(codec, source);
+  const openedContents: Array<readonly [string, string]> = [];
+  const editorController = new ReviewDiffEditorController(codec, {
+    parseUri: (value) => value,
+    openDiff: async (original, modified) => {
+      openedContents.push([
+        await contentProvider.provideTextDocumentContent(original),
+        await contentProvider.provideTextDocumentContent(modified)
+      ]);
+    }
+  });
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async (target) => editorController.openReviewDiff({
+      contextId: target.contextId,
+      fileSystemPathSemantics: target.fileSystemPathSemantics,
+      original: target.original,
+      modified: target.modified,
+      title: target.file.path
+    })
+  });
   const added = progressFile("added", "src/added.ts", {
     oldPath: undefined,
     newPath: "src/added.ts",
@@ -269,25 +336,36 @@ test("selection supports added and deleted paths without losing immutable sides"
     newPath: undefined,
     status: "deleted"
   });
-  const provider = new PullRequestProgressTreeDataProvider({
-    openDiff: async (target) => {
-      opened.push(target);
-    }
-  });
   provider.replaceSnapshot(snapshot([added, deleted]));
 
   const unreviewed = files(provider, categories(provider)[0]!);
   for (const node of unreviewed) await provider.select(node);
 
   assert.deepEqual(
-    opened.map(({ file, original, modified }) => ({
-      fileId: file.fileId,
-      originalPath: original.filePath,
-      modifiedPath: modified.filePath
+    unreviewed.map(({ openTarget }) => ({
+      fileId: openTarget.file.fileId,
+      original: openTarget.original,
+      modified: openTarget.modified
     })),
     [
-      { fileId: "added", originalPath: "src/added.ts", modifiedPath: "src/added.ts" },
-      { fileId: "deleted", originalPath: "src/deleted.ts", modifiedPath: "src/deleted.ts" }
+      {
+        fileId: "added",
+        original: { kind: "absent", filePath: "src/added.ts", revision: BASE_SHA },
+        modified: { kind: "present", filePath: "src/added.ts", revision: HEAD_SHA }
+      },
+      {
+        fileId: "deleted",
+        original: { kind: "present", filePath: "src/deleted.ts", revision: BASE_SHA },
+        modified: { kind: "absent", filePath: "src/deleted.ts", revision: HEAD_SHA }
+      }
+    ]
+  );
+  assert.deepEqual(openedContents, [["", "added\n"], ["deleted\n", ""]]);
+  assert.deepEqual(
+    source.requests.map(({ revisionSource, side, filePath }) => ({ revisionSource, side, filePath })),
+    [
+      { revisionSource: "git-commit", side: "modified", filePath: "src/added.ts" },
+      { revisionSource: "git-commit", side: "original", filePath: "src/deleted.ts" }
     ]
   );
 });
@@ -345,17 +423,6 @@ test("rejects missing or inconsistent line-review availability", () => {
       }
     })),
     /encoding|reason/i
-  );
-  assert.throws(
-    () => provider.replaceSnapshot(snapshot([source], {
-      lineReviewabilityByFileId: {
-        a: {
-          kind: "unsupported",
-          reason: { kind: "invalid-encoding", encoding: "UTF-8" }
-        }
-      }
-    })),
-    /zero|line count|unsupported/i
   );
   assert.throws(
     () => provider.replaceSnapshot(snapshot([source], {
