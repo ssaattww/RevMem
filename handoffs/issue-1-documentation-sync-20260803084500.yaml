@@ -1,0 +1,270 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: 2026-08-03T08:45:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #41
+task_id: documentation-sync
+branch: agent/sync-readme-status
+base_ref: main
+target:
+  current_head: ee93855b69110ae25ae20581aab12c9886a43068
+  reviewed_head: null
+  commit_range: cb75305898627b3e69d248b931afba4a85fd8ef8..0829b92bea2c275263fb12cac439e36452180122
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Update the RevMem documentation, including tasks/tasks-status.md.
+  - source: user_instruction
+    reference: current chat interruption
+    summary: Do not use TDD for this documentation-only synchronization.
+  - source: project_instruction
+    reference: RevMem project instructions
+    summary: Use uploaded worker skills and GitHub connector, preserve diagnostics, write a detailed repository report and concise PR comment, update the PR, and do not merge.
+  - source: repository_state
+    reference: main cb75305898627b3e69d248b931afba4a85fd8ef8
+    summary: PRs #34, #37, #38, #39, and #40 are merged and their task status must no longer be recorded as awaiting review or integration.
+development_policy:
+  method: validation-only documentation synchronization
+  testing_order: inspect implementation and merged PR evidence, edit documentation, run existing exact-head CI
+  governing_source: user explicit instruction and repository standard CI
+validation_plan:
+  commands:
+    - existing README contract test through npm run test:unit
+    - full GitHub Actions CI
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source, test, generated files, environment and Git state artifact
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: README.md
+      reason: requested user-facing documentation synchronization
+    - path_or_operation: tasks/tasks-status.md
+      reason: explicitly requested status synchronization
+    - path_or_operation: tasks/phases-status.md
+      reason: required consistency with tasks/tasks-status.md
+    - path_or_operation: reports/issue-1-documentation-sync-20260803084500.md
+      reason: required detailed implementation report
+    - path_or_operation: handoffs/issue-1-documentation-sync-20260803084500.yaml
+      reason: required transportable handoff
+    - path_or_operation: PR #41 metadata and comment
+      reason: required PR update and concise report
+  forbidden:
+    - path_or_operation: product code, tests, workflows, and design specification
+      reason: outside documentation synchronization scope
+    - path_or_operation: choose T305 or T403 as the next task
+      reason: user did not select the priority
+    - path_or_operation: merge
+      reason: user performs merge
+scope:
+  - synchronize README capabilities, settings, and limitations with current main runtime
+  - synchronize tasks/tasks-status.md with merged task state
+  - synchronize tasks/phases-status.md with the same merged state
+  - preserve historical report indexes and existing update governance
+  - create and update draft PR #41
+non_goals:
+  - product implementation
+  - new tests or TDD evidence
+  - workflow changes
+  - design changes
+  - task prioritization
+  - merge
+files:
+  changed:
+    - path: README.md
+      purpose: document current runtime capabilities, internal-only components, settings, and limitations
+    - path: tasks/tasks-status.md
+      purpose: mark P2 and merged tasks complete and clear stale active-task state
+    - path: tasks/phases-status.md
+      purpose: summarize current phase completion and remaining tasks
+    - path: reports/issue-1-documentation-sync-20260803084500.md
+      purpose: detailed implementation and exact-head CI evidence
+  inspected:
+    - path: package.json
+      purpose: manifest commands, settings, runtime and validation scripts
+    - path: src/extension.ts
+      purpose: determine current Extension runtime wiring
+    - path: src/adapters/document-review-state/
+      purpose: verify Git context and revision mapping wiring
+    - path: src/adapters/workspace-review-state/
+      purpose: verify non-Git snapshot tracking wiring
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: verify JSON Lines history persistence
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: confirm design remains current and need not be changed
+    - path: .github/workflows/ci.yml
+      purpose: verify exact-head validation and failure diagnostic artifact coverage
+  intentionally_untouched:
+    - path_or_area: src/, test/, package.json, and workflows
+      reason: documentation-only scope
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: existing design already represents the implemented and pending boundaries
+    - path_or_area: T305 versus T403 priority
+      reason: requires a later task selection
+commands:
+  - command: GitHub Actions CI run 30772492168
+    purpose: full validation of documentation implementation HEAD
+    exit_code: 0
+    result: passed
+    head_sha: 0829b92bea2c275263fb12cac439e36452180122
+    evidence: job 91561953318; all build, typecheck, architecture, lint, unit, focused, integration and Extension Host steps passed
+tests:
+  - name: documentation implementation exact-head CI
+    phase: verification
+    result: passed
+    head_sha: 0829b92bea2c275263fb12cac439e36452180122
+    evidence: run 30772492168, job 91561953318
+  - name: TDD Red/Green sequence
+    phase: not_applicable
+    result: not_run
+    head_sha: 0829b92bea2c275263fb12cac439e36452180122
+    evidence: user explicitly instructed that this documentation synchronization must not use TDD
+ci:
+  required: true
+  workflow: CI
+  run_id: 30772492168
+  head_sha: 0829b92bea2c275263fb12cac439e36452180122
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 0829b92bea2c275263fb12cac439e36452180122
+  commits:
+    - sha: 7b3095809722246bc7a43a3cbdad5ad4e75c3f0f
+      purpose: synchronize README capabilities and limitations
+    - sha: 6f0bcc38e7ce4cb22f8d3c54a82d4ae0afe3fcce
+      purpose: synchronize phase status
+    - sha: 71f4a26aa4de52a83bfbd18b9da065dfb85fa145
+      purpose: synchronize task status
+    - sha: f390bea88d3dfc8841669509864391334fde2da7
+      purpose: restore historical report index removed by the initial rewrite
+    - sha: 70687267f7d310fa2e8c1195d6862bd8230fa15b
+      purpose: preserve existing progress-document update governance
+    - sha: 0829b92bea2c275263fb12cac439e36452180122
+      purpose: correct non-Git snapshot wording
+  addressed_findings: []
+  failure_diagnostics:
+    - type: other
+      location: PR #41 diff inspection
+      summary: an unintended deletion of historical report references was detected before completion and restored
+  blocked_items: []
+  summary:
+    - README now distinguishes usable runtime features from internal components not yet connected to UI
+    - tasks and phases now match current main merged state
+    - historical report references and governance wording are preserved
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation worker does not issue an independent review verdict
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-documentation-sync-20260803084500.md
+  reviewed_head: null
+  attestation_head: ee93855b69110ae25ae20581aab12c9886a43068
+  pr_comments: []
+  summary:
+    - detailed documentation synchronization and exact-head CI evidence persisted
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final report-and-handoff administrative HEAD CI
+    reason: this handoff file is itself the final administrative commit input and its exact SHA is verified after persistence
+not_applicable:
+  - field_or_area: TDD Red/Green evidence
+    reason: user explicitly excluded TDD for this documentation-only change
+  - field_or_area: independent final review verdict
+    reason: implementation stage
+remaining_risks:
+  - README must be resynchronized when T305, T403, or later runtime wiring changes user-visible behavior
+  - next task priority between T305 and T403 remains undecided
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: Repository ssaattww/RevMem, PR #41, base cb75305898627b3e69d248b931afba4a85fd8ef8, documentation-only scope, no TDD, no merge.
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: See reports/issue-1-documentation-sync-20260803084500.md
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: Detailed report persisted at reports/issue-1-documentation-sync-20260803084500.md.
+extensions:
+  - namespace: chatgpt_runtime
+    payload:
+      connector: GitHub
+      pull_request: 41
+      implementation_head: 0829b92bea2c275263fb12cac439e36452180122
+      implementation_ci_run: 30772492168
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Review PR #41 after its final report-and-handoff HEAD has a matching successful CI run.
+  instructions:
+    - Review README claims against package.json and src/extension.ts runtime wiring.
+    - Verify tasks/tasks-status.md and tasks/phases-status.md against current main merged PRs.
+    - Confirm historical report indexes were preserved.
+    - Use only CI whose head SHA matches PR #41 current HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #41
+    - reports/issue-1-documentation-sync-20260803084500.md
+    - handoffs/issue-1-documentation-sync-20260803084500.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-documentation-sync-20260803084500.yaml
+  packet_url: null
+  transport_note: Continue from draft PR #41; no merge permission is conveyed.
