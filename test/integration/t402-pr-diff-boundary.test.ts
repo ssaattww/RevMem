@@ -107,3 +107,36 @@ test("GitHub files acquisition rejects the 3000-file endpoint cap as incomplete"
   assert.equal(result.kind, "unavailable");
   if (result.kind === "unavailable") assert.equal(result.reason, "diff-too-large");
 });
+
+test("GitHub files acquisition rejects a missing Link when changed_files proves the list is partial", async () => {
+  const adapter = new FetchGitHubPullRequestDiffAdapter({
+    apiBaseUrl: "https://api.github.test",
+    fetch: async input => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/repos/example/review-range/pulls/42") {
+        return new Response(JSON.stringify({
+          number: 42,
+          title: "T402",
+          html_url: "https://github.test/example/review-range/pull/42",
+          state: "open",
+          merged_at: null,
+          changed_files: 2,
+          base: { sha: BASE_SHA },
+          head: { sha: HEAD_SHA }
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify([{
+        filename: "src/only-one.ts",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        patch: "@@ -1 +1 @@\n-old\n+new"
+      }]), { status: 200 });
+    }
+  });
+
+  assert.deepEqual(await adapter.fetch(request), {
+    kind: "unavailable",
+    reason: "api"
+  });
+});
