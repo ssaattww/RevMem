@@ -8,10 +8,10 @@ import {
 } from "../../src/application/global-review-mapping/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
-  type PullRequestDiffSnapshot,
   type RepositoryGlobalState,
   type ReviewContextState
 } from "../../src/core/contracts/index";
+import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 
 const UPDATED_AT = "2026-08-02T11:00:00.000Z";
 
