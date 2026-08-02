@@ -1,0 +1,318 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: "2026-08-03T06:12:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+current_head_at_review_start: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+reviewed_implementation_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+source_review_evidence_head: 7f2cb2b93e58376d8be4975fe464eebedd909e50
+reviewed_range: 7f2cb2b93e58376d8be4975fe464eebedd909e50..7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+
+scope:
+  - Verify closure of T304-R4-P1, T304-R4-P2, and T304-R4-P3.
+  - Inspect the R4 fix diff, direct dependencies, tests, reports, and exact-head CI.
+  - Inspect newly changed areas and sibling cases for additional defects.
+non_goals:
+  - Implementing findings.
+  - T305 concrete Activity Bar, TreeItem/event, Current Context, and Status Bar wiring.
+  - T306 end-to-end Extension Host UI acceptance scenarios.
+  - T402 PR metadata/diff acquisition, encoding detection source, cache, and refresh source.
+  - Merge.
+
+authoritative_requirements:
+  - source: tasks/tasks-status.md
+    reference: T304
+    summary: Five PR progress categories, deterministic sort, exact file metrics and reasons, and selection that opens the context diff.
+  - source: doc/design/vscode-review-range-tracker-design.md
+    reference: sections 7, 8, 11.2, 16.3, 20, 21
+    summary: Canonical filesystem-aware paths, identity-bound diff documents, raw/effective progress separation, and unsupported selection behavior.
+  - source: reports/issue-1-t304-fix-verification-r3-20260803045900.md
+    reference: T304-R4-P1 through T304-R4-P3
+    summary: Plain enumerable effective DTO, POSIX whitespace path support, and unknown side-kind rejection.
+
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t304-fix-verification-r4-20260803061000.md
+      reason: Detailed normal-review verification report.
+    - path_or_operation: handoffs/issue-1-t304-fix-verification-r4-20260803061200.yaml
+      reason: Lossless handoff to an independent final reviewer.
+    - path_or_operation: PR #38 review comment
+      reason: Concise verification result.
+  forbidden:
+    - path_or_operation: source, tests, design, configuration, workflow, or tracking edits
+      reason: Reviewer must not implement fixes.
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+
+development_policy:
+  method: TDD for RevMem implementation work
+  testing_order: Tests first, verify Red with diagnostic artifact, then implementation and exact-head Green
+
+files:
+  changed:
+    - path: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      purpose: Plain effective DTO and canonical path validation.
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: Runtime side-kind validation.
+    - path: test/unit/t304-review-followup-r3.test.ts
+      purpose: R4 spread/JSON/path/side-kind regression tests.
+    - path: test/unit/pull-request-progress-tree.test.ts
+      purpose: Effective DTO expectation update.
+    - path: reports/issue-1-t304-review-followup-r4-20260803055200.md
+      purpose: R4 implementation evidence.
+    - path: handoffs/issue-1-t304-review-followup-r4-20260803055400.yaml
+      purpose: R4 implementation handoff.
+  inspected:
+    - path: src/application/repository-path/repository-relative-path.ts
+      purpose: Canonical POSIX/Windows path rules.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Raw T301 progress producer contract.
+    - path: src/core/file-exclusion/review-file-exclusion-policy.ts
+      purpose: Canonical raw path output and exclusion reasons.
+    - path: src/application/diff-document/review-diff-uri-codec.ts
+      purpose: Descriptor validation after side-kind validation.
+    - path: package.json
+      purpose: Standard and focused test discovery.
+    - path: .github/workflows/ci.yml
+      purpose: Exact-head CI and failure diagnostic artifact policy.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Repository requires an unavailable progress-management skill; direct editing is prohibited.
+    - path_or_area: T305/T306 concrete UI implementation
+      reason: Accepted later-task scope.
+
+commands:
+  - command: GitHub compare 7f2cb2b93e58376d8be4975fe464eebedd909e50..7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+    purpose: Resolve the R4 fix range and changed-file set.
+    exit_code: unknown
+    result: passed
+    head_sha: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+    evidence: 9 commits; source 2, tests 2, evidence 2.
+  - command: GitHub exact-head workflow lookup
+    purpose: Verify current reviewed implementation CI.
+    exit_code: unknown
+    result: passed
+    head_sha: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+    evidence: run 30766637445, job 91546419859, success.
+
+tests:
+  - name: R4 Red regression scenarios
+    phase: red
+    result: failed
+    head_sha: b2f6a7137c98afffa2ea43e3bfa5e4e3665c886e
+    evidence: run 30766227561, job 91545342170, diagnostic artifact 8839022955.
+  - name: R4 technical Green
+    phase: green
+    result: passed
+    head_sha: ad40ae8db02d4750221b8cca644d223f6447a560
+    evidence: run 30766516189, job 91546099726.
+  - name: Final reviewed implementation suite
+    phase: verification
+    result: passed
+    head_sha: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+    evidence: run 30766637445, job 91546419859, all steps success.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30766637445
+  head_sha: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+  conclusion: success
+  artifacts: []
+
+review:
+  mode: fix_verification
+  reviewed_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+  reviewer:
+    identity: ChatGPT normal review worker in the continuing T304 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal review worker in the same chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat produced the initial and subsequent normal-review findings.
+        - This chat made no production, test, design, or workflow implementation changes.
+  verdict: pass_with_held
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: Canonical path, plain DTO, and known side contracts match accepted design.
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: Spread, JSON, nested detach, POSIX/Windows whitespace path, and both invalid-side positions tested.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: R4 fix is limited to two source files, two tests, and evidence files.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: Shared path validator, T301 producer, exclusion policy, URI codec, and test discovery inspected.
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_no_finding
+      evidence: Effective DTO runtime shape matches its public type and existing present callers remain compatible.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Unknown kinds fail before side effects, path errors preserve cause, and Red artifact exists.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No credential, network, or secret handling changes.
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: Standard and T304-focused suites cover all three findings and sibling sides.
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: Exact reviewed HEAD run 30766637445 is successful.
+    - criterion: report tracking documentation accuracy
+      disposition: held
+      evidence: Report, handoff, and PR body are accurate; task table remains unsynchronized due unavailable manager skill.
+    - criterion: regression and maintainability risks
+      disposition: checked_no_finding
+      evidence: Hidden properties and local path rules were replaced by plain DTOs and shared validators.
+  validation_assessment:
+    - item: TDD Red evidence
+      result: supported
+      evidence: Exact Red HEAD and non-expired artifact match.
+    - item: Final reviewed implementation CI
+      result: supported
+      evidence: Exact-head run 30766637445, job 91546419859, all steps success.
+    - item: Implementation report accuracy
+      result: supported
+      evidence: R4 report claims match source, tests, commits, and CI.
+  reserved_report_paths:
+    - reports/issue-1-t304-independent-final-review-20260803063000.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T304-R4-P1, T304-R4-P2, and T304-R4-P3 are closed.
+    - No new required finding was identified.
+    - Normal review is complete with task tracking held.
+
+findings: []
+
+held:
+  - item: tasks/tasks-status.md T304 status sync
+    reason: The repository-required progress-management skill is unavailable and direct editing is prohibited.
+    owner: repository progress-management workflow / user
+    remaining_risk: The task table continues to show T304 as not started.
+    verdict_impact: Non-blocking held item; does not invalidate technical acceptance.
+
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: Security and secret handling
+    reason: No credential, network, or secret-processing change exists in R4.
+remaining_risks:
+  - Concrete VS Code Tree View wiring and end-to-end UI acceptance remain owned by T305/T306.
+  - Task tracking remains stale until the repository progress-management workflow updates it.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t304-fix-verification-r4-20260803061000.md
+  reviewed_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed R4 verification report persisted.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #38
+      task_id: T304
+      mode: review
+      branch: task/t304-pr-progress-tree
+      base_ref: main
+      current_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+      reviewed_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+      scope:
+        - R4 finding closure and new-defect inspection.
+      non_goals:
+        - T305/T306/T402 and merge.
+      ci:
+        matching_run: "30766637445"
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - Task tracking remains held.
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 7f11181aa2cdf1f02b4b6f87240f46c2a8c4d2ae
+      finding_dispositions:
+        - id: T304-R4-P1
+          source_severity: medium
+          disposition: closed
+        - id: T304-R4-P2
+          source_severity: medium
+          disposition: closed
+        - id: T304-R4-P3
+          source_severity: medium
+          disposition: closed
+      new_findings: []
+      verdict: pass_with_held
+      held:
+        - tasks/tasks-status.md sync
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: Detailed report persisted at reports/issue-1-t304-fix-verification-r4-20260803061000.md.
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: Start a fresh independent-final-review chat after freezing the post-normal-review PR HEAD.
+  instructions:
+    - Use a fresh chat that did not implement T304, implement review fixes, or serve as normal reviewer.
+    - Freeze the PR HEAD after this report and handoff commit and verify no later implementation/non-final evidence commit exists.
+    - Reserve and use reports/issue-1-t304-independent-final-review-20260803063000.md for the final review report.
+    - Review the complete PR independently rather than relying only on prior closure conclusions.
+    - If final review passes, persist at most one report-attestation commit changing only the reserved report path.
+    - Do not commit a handoff after a passing final-review attestation head.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t304-fix-verification-r4-20260803061000.md
+    - reports/issue-1-t304-review-followup-r4-20260803055200.md
+    - handoffs/issue-1-t304-fix-verification-r4-20260803061200.yaml
+    - handoffs/issue-1-t304-review-followup-r4-20260803055400.yaml
+    - PR #38
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t304-fix-verification-r4-20260803061200.yaml
+  packet_url: null
+  transport_note: Normal review handoff is committed before independent final review. No merge was performed.
