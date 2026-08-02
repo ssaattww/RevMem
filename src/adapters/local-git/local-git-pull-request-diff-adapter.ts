@@ -7,8 +7,10 @@ import type {
 import {
   GitExecutableNotFoundError,
   type GitCommandExecutor,
-  type GitCommandInvocation
+  type GitCommandResult
 } from "./contracts";
+
+const MAX_RENAME_COPY_CANDIDATES = 1_000;
 
 const requireRoot = (value: string): string => {
   if (value.trim().length === 0 || value.includes("\0")) {
@@ -19,6 +21,11 @@ const requireRoot = (value: string): string => {
 
 const missingRevision = (stderr: string): boolean =>
   /(?:bad object|unknown revision|invalid object name|ambiguous argument|not a valid object name)/iu.test(stderr);
+
+const skippedRenameOrCopyDetection = (diagnostic: string): boolean =>
+  /(?:exhaustive rename detection was skipped|too many files.*rename detection)/iu.test(diagnostic);
+
+const containsAddedFile = (diff: string): boolean => /^new file mode /mu.test(diff);
 
 /** Local immutable base/head Git implementation of the first T402 route. */
 export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort {
@@ -40,32 +47,54 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
           return { kind: "unavailable", reason: unavailable };
         }
       }
-      const invocation: GitCommandInvocation = {
-        cwd: this.repositoryRoot,
-        argumentsList: [
-          "diff",
-          "--no-ext-diff",
-          "--no-color",
-          "--unified=0",
-          "--find-renames",
-          "--find-copies",
-          request.baseSha,
-          request.headSha,
-          "--"
-        ]
-      };
-      const result = await this.commandExecutor.execute(invocation);
-      if (result.exitCode === 0) return { kind: "available", diff: result.stdout };
-      if (missingRevision(`${result.stdout}\n${result.stderr}`)) {
-        return { kind: "unavailable", reason: "missing-revision" };
+
+      const ordinary = await this.executeDiff(request, false);
+      const ordinaryFailure = this.classifyDiffFailure(ordinary);
+      if (ordinaryFailure !== undefined) return { kind: "unavailable", reason: ordinaryFailure };
+      if (!containsAddedFile(ordinary.stdout)) {
+        return { kind: "available", diff: ordinary.stdout };
       }
-      return { kind: "unavailable", reason: "git-failure" };
+
+      const exhaustive = await this.executeDiff(request, true);
+      const exhaustiveFailure = this.classifyDiffFailure(exhaustive);
+      if (exhaustiveFailure !== undefined) return { kind: "unavailable", reason: exhaustiveFailure };
+      return { kind: "available", diff: exhaustive.stdout };
     } catch (error) {
       return {
         kind: "unavailable",
         reason: error instanceof GitExecutableNotFoundError ? "git-unavailable" : "git-failure"
       };
     }
+  }
+
+  private executeDiff(
+    request: PullRequestDiffAcquisitionRequest,
+    exhaustiveCopies: boolean
+  ): Promise<GitCommandResult> {
+    const copyArguments = exhaustiveCopies
+      ? ["--find-copies-harder", `-l${MAX_RENAME_COPY_CANDIDATES}`]
+      : ["--find-copies"];
+    return this.commandExecutor.execute({
+      cwd: this.repositoryRoot,
+      argumentsList: [
+        "diff",
+        "--no-ext-diff",
+        "--no-color",
+        "--unified=0",
+        "--find-renames",
+        ...copyArguments,
+        request.baseSha,
+        request.headSha,
+        "--"
+      ]
+    });
+  }
+
+  private classifyDiffFailure(result: GitCommandResult): PullRequestDiffUnavailableReason | undefined {
+    const diagnostic = `${result.stdout}\n${result.stderr}`;
+    if (skippedRenameOrCopyDetection(diagnostic)) return "diff-too-large";
+    if (result.exitCode === 0) return undefined;
+    return missingRevision(diagnostic) ? "missing-revision" : "git-failure";
   }
 
   private async verifyCommitObject(
