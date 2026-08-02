@@ -4,11 +4,17 @@ import type {
 } from "../../core/contracts/index";
 import {
   aggregateRepositoryGlobalUnderstandingProgress,
-  calculateGlobalUnderstandingFileProgress,
   type GlobalUnderstandingFileProgress,
   type GlobalUnderstandingFileSnapshot,
   type RepositoryGlobalUnderstandingProgress
 } from "../../core/global-understanding/index";
+import {
+  buildGlobalUnderstandingEvidenceKey,
+  calculateGlobalUnderstandingFileProgressCooperatively,
+  globalUnderstandingEvidenceKeysEqual,
+  type GlobalUnderstandingCalculationWorkOptions,
+  type GlobalUnderstandingEvidenceKey
+} from "./cooperative-global-understanding-calculation";
 
 /** One T503-included file and its authoritative non-empty denominator count. */
 export interface IncludedGlobalUnderstandingFile {
@@ -22,6 +28,8 @@ export interface IncludedGlobalUnderstandingFile {
 export interface LoadedGlobalUnderstandingFile extends GlobalUnderstandingFileSnapshot {
   /** Changes whenever the source evidence used by the calculator changes. */
   readonly cacheKey: string;
+  /** Optional final validation used after cooperative post-load work before publishing the result. */
+  readonly validateCurrent?: () => Promise<void>;
 }
 
 /** Cooperative bounded-work options for loading one current repository file. */
@@ -44,15 +52,16 @@ export interface GlobalUnderstandingFileSource {
 
 /** Cache boundary for exact file-level Global progress evidence. */
 export interface GlobalUnderstandingProgressCache {
-  /** Returns a cached result only when the evidence key is identical. */
+  /** Returns a cached result only when every bounded evidence part is identical. */
   readonly get: (
     identity: string,
-    evidenceKey: string
-  ) => GlobalUnderstandingFileProgress | undefined;
-  /** Replaces the latest evidence and result for one repository-file identity. */
+    evidenceKey: GlobalUnderstandingEvidenceKey,
+    workOptions: GlobalUnderstandingCalculationWorkOptions
+  ) => Promise<GlobalUnderstandingFileProgress | undefined>;
+  /** Replaces the latest exact evidence and result for one repository-file identity. */
   readonly set: (
     identity: string,
-    evidenceKey: string,
+    evidenceKey: GlobalUnderstandingEvidenceKey,
     progress: GlobalUnderstandingFileProgress
   ) => void;
   /** Clears every cached file result. */
@@ -60,7 +69,7 @@ export interface GlobalUnderstandingProgressCache {
 }
 
 interface CacheEntry {
-  readonly evidenceKey: string;
+  readonly evidenceKey: GlobalUnderstandingEvidenceKey;
   readonly progress: GlobalUnderstandingFileProgress;
 }
 
@@ -69,17 +78,23 @@ export class InMemoryGlobalUnderstandingProgressCache
 implements GlobalUnderstandingProgressCache {
   private readonly entries = new Map<string, CacheEntry>();
 
-  public get(
+  public async get(
     identity: string,
-    evidenceKey: string
-  ): GlobalUnderstandingFileProgress | undefined {
+    evidenceKey: GlobalUnderstandingEvidenceKey,
+    workOptions: GlobalUnderstandingCalculationWorkOptions
+  ): Promise<GlobalUnderstandingFileProgress | undefined> {
     const entry = this.entries.get(identity);
-    return entry?.evidenceKey === evidenceKey ? entry.progress : undefined;
+    if (entry === undefined) return undefined;
+    return await globalUnderstandingEvidenceKeysEqual(
+      entry.evidenceKey,
+      evidenceKey,
+      workOptions
+    ) ? entry.progress : undefined;
   }
 
   public set(
     identity: string,
-    evidenceKey: string,
+    evidenceKey: GlobalUnderstandingEvidenceKey,
     progress: GlobalUnderstandingFileProgress
   ): void {
     this.entries.set(identity, { evidenceKey, progress });
@@ -96,7 +111,7 @@ export interface GlobalUnderstandingBackgroundRecalculatorDependencies {
   readonly source: GlobalUnderstandingFileSource;
   /** Exact file progress cache. */
   readonly cache: GlobalUnderstandingProgressCache;
-  /** Cooperative scheduler used within large files and between non-final file chunks. */
+  /** Cooperative scheduler used within source, post-load calculation, and between file chunks. */
   readonly yieldControl: () => void | Promise<void>;
 }
 
@@ -130,6 +145,8 @@ export interface GlobalUnderstandingRecalculationInput {
   readonly chunkSize?: number;
   /** Maximum source bytes processed before yielding within one file; defaults to 64 KiB. */
   readonly fileWorkChunkBytes?: number;
+  /** Maximum post-load evidence, interval, or line items processed before yielding; defaults to 4096. */
+  readonly calculationWorkChunkItems?: number;
   /** Optional progress callback invoked after every chunk, including the final chunk. */
   readonly onProgress?: (
     progress: GlobalUnderstandingRecalculationProgress
@@ -137,6 +154,7 @@ export interface GlobalUnderstandingRecalculationInput {
 }
 
 const DEFAULT_FILE_WORK_CHUNK_BYTES = 64 * 1024;
+const DEFAULT_CALCULATION_WORK_CHUNK_ITEMS = 4096;
 
 const requireNonEmptyString = (value: string, label: string): void => {
   if (value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
@@ -202,34 +220,6 @@ const orderedIncludedFiles = (
   return ordered;
 };
 
-const intervalEvidence = (
-  file: GlobalFileReviewState | undefined
-): readonly (string | number | null)[] | null => file === undefined ? null : [
-  file.fileId,
-  file.currentPath,
-  file.revisionId,
-  file.contentHash ?? null,
-  ...file.reviewed.flatMap((interval) => [interval.startLine, interval.endLineExclusive])
-];
-
-const evidenceKey = (
-  state: RepositoryGlobalState,
-  configurationKey: string,
-  included: IncludedGlobalUnderstandingFile,
-  loaded: LoadedGlobalUnderstandingFile,
-  globalFile: GlobalFileReviewState | undefined
-): string => JSON.stringify([
-  state.repositoryId,
-  state.currentRevisionId,
-  configurationKey,
-  included.path,
-  included.nonEmptyLineCount,
-  loaded.cacheKey,
-  loaded.contentHash ?? null,
-  loaded.lineCount,
-  intervalEvidence(globalFile)
-]);
-
 const validateLoadedFile = (
   included: IncludedGlobalUnderstandingFile,
   revisionId: string,
@@ -250,7 +240,7 @@ const validateLoadedFile = (
 };
 
 /**
- * Recalculates Global understanding asynchronously, prioritizing open files and yielding within large files and between file chunks.
+ * Recalculates Global understanding asynchronously, prioritizing open files and yielding within source, post-load calculation, and between file chunks.
  */
 export class GlobalUnderstandingBackgroundRecalculator {
   public constructor(
@@ -266,6 +256,13 @@ export class GlobalUnderstandingBackgroundRecalculator {
     validatePositiveCount(chunkSize, "chunkSize");
     const fileWorkChunkBytes = input.fileWorkChunkBytes ?? DEFAULT_FILE_WORK_CHUNK_BYTES;
     validatePositiveCount(fileWorkChunkBytes, "fileWorkChunkBytes");
+    const calculationWorkChunkItems = input.calculationWorkChunkItems ??
+      DEFAULT_CALCULATION_WORK_CHUNK_ITEMS;
+    validatePositiveCount(calculationWorkChunkItems, "calculationWorkChunkItems");
+    const calculationWorkOptions: GlobalUnderstandingCalculationWorkOptions = {
+      maxWorkItems: calculationWorkChunkItems,
+      yieldControl: this.dependencies.yieldControl
+    };
 
     const globalByPath = globalFilesByPath(input.globalState);
     const ordered = orderedIncludedFiles(input.included, input.openFilePaths ?? []);
@@ -302,25 +299,34 @@ export class GlobalUnderstandingBackgroundRecalculator {
         validateLoadedFile(included, input.globalState.currentRevisionId, loaded);
         const globalFile = globalByPath.get(included.path);
         const identity = `${input.globalState.repositoryId}\0${included.path}`;
-        const key = evidenceKey(
-          input.globalState,
-          input.configurationKey,
-          included,
+        const evidenceKey = await buildGlobalUnderstandingEvidenceKey({
+          repositoryId: input.globalState.repositoryId,
+          currentRevisionId: input.globalState.currentRevisionId,
+          configurationKey: input.configurationKey,
+          includedPath: included.path,
+          includedNonEmptyLineCount: included.nonEmptyLineCount,
           loaded,
           globalFile
+        }, calculationWorkOptions);
+        const cached = await this.dependencies.cache.get(
+          identity,
+          evidenceKey,
+          calculationWorkOptions
         );
-        const cached = this.dependencies.cache.get(identity, key);
         if (cached !== undefined) {
+          await loaded.validateCurrent?.();
           calculated.push(cached);
           cacheHitCount += 1;
           continue;
         }
 
-        const progress = calculateGlobalUnderstandingFileProgress({
-          snapshot: loaded,
-          globalFile
-        });
-        this.dependencies.cache.set(identity, key, progress);
+        const progress = await calculateGlobalUnderstandingFileProgressCooperatively(
+          loaded,
+          globalFile,
+          calculationWorkOptions
+        );
+        await loaded.validateCurrent?.();
+        this.dependencies.cache.set(identity, evidenceKey, progress);
         calculated.push(progress);
         calculatedFileCount += 1;
       }
