@@ -93,7 +93,7 @@ const onlyFileNode = (
 };
 
 test("line-review unsupported selections return a typed unavailable result without opening text diff", async () => {
-  const cases: readonly Array<{
+  const cases: ReadonlyArray<{
     readonly file: PullRequestDiffFileProgress;
     readonly reason: PullRequestLineReviewUnsupportedReason;
   }> = [
