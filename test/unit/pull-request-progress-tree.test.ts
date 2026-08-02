@@ -4,9 +4,15 @@ import test from "node:test";
 import type { PullRequestDiffFileProgress, PullRequestDiffProgress } from "../../src/core/pr-progress/index";
 import {
   PullRequestProgressTreeDataProvider,
+  type PullRequestLineReviewability,
   type PullRequestProgressTreeCategoryNode,
-  type PullRequestProgressTreeFileNode
+  type PullRequestProgressTreeDiffTarget,
+  type PullRequestProgressTreeFileNode,
+  type PullRequestProgressTreeSnapshot
 } from "../../src/ui/pr-progress/index";
+
+const BASE_SHA = "a".repeat(40);
+const HEAD_SHA = "b".repeat(40);
 
 const progressFile = (
   fileId: string,
@@ -39,6 +45,35 @@ const progress = (files: readonly PullRequestDiffFileProgress[]): PullRequestDif
   };
 };
 
+const defaultReviewability = (
+  files: readonly PullRequestDiffFileProgress[]
+): Readonly<Record<string, PullRequestLineReviewability>> =>
+  Object.fromEntries(files.map((file) => [
+    file.fileId,
+    file.status === "binary"
+      ? { kind: "unsupported", reason: { kind: "binary" } }
+      : { kind: "reviewable" }
+  ]));
+
+const snapshot = (
+  files: readonly PullRequestDiffFileProgress[],
+  options: Partial<Omit<PullRequestProgressTreeSnapshot, "progress">> = {}
+): PullRequestProgressTreeSnapshot => {
+  const baseSha = options.baseSha ?? BASE_SHA;
+  const headSha = options.headSha ?? HEAD_SHA;
+  return {
+    snapshotId: "snapshot-1",
+    contextId: "github.com/ssaattww/RevMem#38",
+    baseSha,
+    headSha,
+    originalDiffId: `${baseSha}..${headSha}`,
+    fileSystemPathSemantics: "posix",
+    lineReviewabilityByFileId: defaultReviewability(files),
+    ...options,
+    progress: progress(files)
+  };
+};
+
 const categories = (
   provider: PullRequestProgressTreeDataProvider
 ): readonly PullRequestProgressTreeCategoryNode[] =>
@@ -58,7 +93,7 @@ const files = (
 
 test("classifies every PR progress file and retains counts and reasons", () => {
   const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
-  provider.replaceProgress(progress([
+  const changedFiles = [
     progressFile("pending", "src/pending.ts", { reviewedLineCount: 1, totalLineCount: 3, progress: 1 / 3 }),
     progressFile("done", "src/done.ts", { reviewedLineCount: 3, totalLineCount: 3, progress: 1 }),
     progressFile("excluded", "generated/a.ts", {
@@ -87,7 +122,9 @@ test("classifies every PR progress file and retains counts and reasons", () => {
       excluded: true,
       exclusionReason: { kind: "binary" }
     })
-  ]));
+  ] as const;
+
+  provider.replaceSnapshot(snapshot(changedFiles));
 
   const roots = categories(provider);
   assert.deepEqual(
@@ -127,13 +164,53 @@ test("classifies every PR progress file and retains counts and reasons", () => {
   assert.equal(files(provider, roots[4]!)[0]!.reason, "バイナリファイル");
 });
 
+test("classifies invalid and unsupported encodings with required reasons", () => {
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const invalidUtf8 = progressFile("invalid", "data/invalid.txt", {
+    additions: 0,
+    deletions: 0,
+    totalLineCount: 0,
+    progress: 1
+  });
+  const unsupported = progressFile("unsupported", "data/legacy.txt", {
+    additions: 0,
+    deletions: 0,
+    totalLineCount: 0,
+    progress: 1
+  });
+
+  provider.replaceSnapshot(snapshot([invalidUtf8, unsupported], {
+    lineReviewabilityByFileId: {
+      invalid: {
+        kind: "unsupported",
+        reason: { kind: "invalid-encoding", encoding: "UTF-8" }
+      },
+      unsupported: {
+        kind: "unsupported",
+        reason: { kind: "unsupported-encoding", encoding: "Shift_JIS" }
+      }
+    }
+  }));
+
+  const unsupportedFiles = files(provider, categories(provider)[4]!);
+  assert.deepEqual(
+    unsupportedFiles.map(({ path, reason }) => ({ path, reason })),
+    [
+      { path: "data/invalid.txt", reason: "不正な文字エンコーディング: UTF-8" },
+      { path: "data/legacy.txt", reason: "未対応エンコーディング: Shift_JIS" }
+    ]
+  );
+});
+
 test("sorts files by remaining line count descending and path ascending", () => {
   const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
-  provider.replaceProgress(progress([
+  const changedFiles = [
     progressFile("b", "src/b.ts", { reviewedLineCount: 1, totalLineCount: 5, progress: 0.2 }),
     progressFile("a", "src/a.ts", { reviewedLineCount: 0, totalLineCount: 4, progress: 0 }),
     progressFile("z", "src/z.ts", { reviewedLineCount: 1, totalLineCount: 6, progress: 1 / 6 })
-  ]));
+  ];
+
+  provider.replaceSnapshot(snapshot(changedFiles));
 
   const unreviewed = categories(provider)[0]!;
   assert.deepEqual(
@@ -146,24 +223,152 @@ test("sorts files by remaining line count descending and path ascending", () => 
   );
 });
 
-test("selecting a file delegates diff opening with the original progress record", async () => {
-  const opened: PullRequestDiffFileProgress[] = [];
-  const source = progressFile("pending", "src/pending.ts");
+test("selection carries immutable context and revision identity", async () => {
+  const opened: PullRequestProgressTreeDiffTarget[] = [];
+  const renamed = progressFile("rename", "src/new.ts", {
+    oldPath: "src/old.ts",
+    newPath: "src/new.ts",
+    status: "renamed"
+  });
   const provider = new PullRequestProgressTreeDataProvider({
-    openDiff: async (file) => {
-      opened.push(file);
+    openDiff: async (target) => {
+      opened.push(target);
     }
   });
-  provider.replaceProgress(progress([source]));
+  provider.replaceSnapshot(snapshot([renamed], {
+    snapshotId: "snapshot-renamed",
+    contextId: "github.com/ssaattww/RevMem#38",
+    fileSystemPathSemantics: "windows"
+  }));
 
-  const pending = files(provider, categories(provider)[0]!)[0]!;
-  await provider.select(pending);
+  const node = files(provider, categories(provider)[0]!)[0]!;
+  await provider.select(node);
 
-  assert.equal(opened.length, 1);
-  assert.equal(opened[0], source);
+  assert.deepEqual(opened, [{
+    snapshotId: "snapshot-renamed",
+    contextId: "github.com/ssaattww/RevMem#38",
+    baseSha: BASE_SHA,
+    headSha: HEAD_SHA,
+    originalDiffId: `${BASE_SHA}..${HEAD_SHA}`,
+    fileSystemPathSemantics: "windows",
+    file: renamed,
+    original: { filePath: "src/old.ts", revision: BASE_SHA },
+    modified: { filePath: "src/new.ts", revision: HEAD_SHA }
+  }]);
 });
 
-test("rejects inconsistent progress records before rendering", () => {
+test("selection supports added and deleted paths without losing immutable sides", async () => {
+  const opened: PullRequestProgressTreeDiffTarget[] = [];
+  const added = progressFile("added", "src/added.ts", {
+    oldPath: undefined,
+    newPath: "src/added.ts",
+    status: "added"
+  });
+  const deleted = progressFile("deleted", "src/deleted.ts", {
+    oldPath: "src/deleted.ts",
+    newPath: undefined,
+    status: "deleted"
+  });
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async (target) => {
+      opened.push(target);
+    }
+  });
+  provider.replaceSnapshot(snapshot([added, deleted]));
+
+  const unreviewed = files(provider, categories(provider)[0]!);
+  for (const node of unreviewed) await provider.select(node);
+
+  assert.deepEqual(
+    opened.map(({ file, original, modified }) => ({
+      fileId: file.fileId,
+      originalPath: original.filePath,
+      modifiedPath: modified.filePath
+    })),
+    [
+      { fileId: "added", originalPath: "src/added.ts", modifiedPath: "src/added.ts" },
+      { fileId: "deleted", originalPath: "src/deleted.ts", modifiedPath: "src/deleted.ts" }
+    ]
+  );
+});
+
+test("rejects stale nodes after revision or context refresh", async () => {
+  const opened: PullRequestProgressTreeDiffTarget[] = [];
+  const source = progressFile("same", "src/same.ts");
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async (target) => {
+      opened.push(target);
+    }
+  });
+
+  provider.replaceSnapshot(snapshot([source], {
+    snapshotId: "snapshot-head-1",
+    contextId: "context-a"
+  }));
+  const staleByRevision = files(provider, categories(provider)[0]!)[0]!;
+
+  const nextHead = "c".repeat(40);
+  provider.replaceSnapshot(snapshot([source], {
+    snapshotId: "snapshot-head-2",
+    contextId: "context-a",
+    headSha: nextHead,
+    originalDiffId: `${BASE_SHA}..${nextHead}`
+  }));
+  await assert.rejects(provider.select(staleByRevision), /stale|current snapshot/i);
+
+  const staleByContext = files(provider, categories(provider)[0]!)[0]!;
+  provider.replaceSnapshot(snapshot([source], {
+    snapshotId: "snapshot-context-b",
+    contextId: "context-b",
+    headSha: nextHead,
+    originalDiffId: `${BASE_SHA}..${nextHead}`
+  }));
+  await assert.rejects(provider.select(staleByContext), /stale|current snapshot/i);
+  assert.equal(opened.length, 0);
+});
+
+test("rejects missing or inconsistent line-review availability", () => {
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const source = progressFile("a", "src/a.ts");
+
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([source], { lineReviewabilityByFileId: {} })),
+    /line reviewability|missing/i
+  );
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([source], {
+      lineReviewabilityByFileId: {
+        a: {
+          kind: "unsupported",
+          reason: { kind: "unsupported-encoding", encoding: "" }
+        }
+      }
+    })),
+    /encoding|reason/i
+  );
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([source], {
+      lineReviewabilityByFileId: {
+        a: {
+          kind: "unsupported",
+          reason: { kind: "invalid-encoding", encoding: "UTF-8" }
+        }
+      }
+    })),
+    /zero|line count|unsupported/i
+  );
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([source], {
+      lineReviewabilityByFileId: {
+        a: { kind: "reviewable" },
+        foreign: { kind: "reviewable" }
+      }
+    })),
+    /unknown|foreign/i
+  );
+});
+
+test("rejects inconsistent snapshot and progress records before rendering", () => {
   const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
   const invalid = progressFile("invalid", "src/invalid.ts", {
     reviewedLineCount: 4,
@@ -171,5 +376,14 @@ test("rejects inconsistent progress records before rendering", () => {
     progress: 4 / 3
   });
 
-  assert.throws(() => provider.replaceProgress(progress([invalid])), /reviewedLineCount|progress/i);
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([invalid])),
+    /reviewedLineCount|progress/i
+  );
+  assert.throws(
+    () => provider.replaceSnapshot(snapshot([progressFile("a", "src/a.ts")], {
+      originalDiffId: "other"
+    })),
+    /originalDiffId|snapshot/i
+  );
 });
