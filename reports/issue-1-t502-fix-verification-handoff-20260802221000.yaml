@@ -1,0 +1,311 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-02T22:10:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #37
+task_id: T502
+branch: task/t502-global-mapping-display-priority
+base_ref: main
+target:
+  current_head: a64d3e6d036448bdc9fbfa028ab9f8c7ab584377
+  reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  commit_range: 6d1b9705a6969092dfcb2c34128ef37a8ea8a36b..5d938ada02de96a822968a1c467ad23df2c2ec4a
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T502の再レビューを実施する。
+  - source: report
+    reference: reports/issue-1-t502-review-20260802213000.md
+    summary: T502-REV-001から004をsource findingとしてseverityを維持してfix verificationする。
+  - source: task
+    reference: tasks/tasks-status.md T502
+    summary: Git diffによるGlobal mappingと現在PR未確認変更を最優先するfail-closed表示を実装する。
+development_policy:
+  method: TDD
+  testing_order: finding regressionを先行してRed確認後に修正する
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t502
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test result
+    - standard output
+    - standard error
+    - source, test, configuration, environment and Git state
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t502-fix-verification-20260802221000.md
+      reason: detailed fix-verification evidence
+    - path_or_operation: reports/issue-1-t502-fix-verification-handoff-20260802221000.yaml
+      reason: lossless handoff
+    - path_or_operation: PR #37 review comment
+      reason: concise verification result
+  forbidden:
+    - path_or_operation: implementation, test, design, workflow, configuration and tracking files
+      reason: reviewer must not implement fixes
+    - path_or_operation: merge
+      reason: user performs merge
+scope:
+  - Verify T502-REV-001 ordinary modified Global mapping
+  - Verify T502-REV-002 retained Global revision coherence
+  - Verify T502-REV-003 complete and validated PR diff fail-closed evidence
+  - Verify T502-REV-004 other-context Global metadata splitting
+non_goals:
+  - New broad review findings
+  - T504 Global understanding calculation
+  - T505 Global UI
+  - task and phase synchronization
+  - merge
+files:
+  changed:
+    - path: reports/issue-1-t502-fix-verification-20260802221000.md
+      purpose: detailed fix-verification report
+    - path: reports/issue-1-t502-fix-verification-handoff-20260802221000.yaml
+      purpose: transportable verification state
+  inspected:
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: T502-REV-001 and T502-REV-002 fixes
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: T502-REV-003 and T502-REV-004 fixes
+    - path: test/unit/global-review-mapping-display-priority.test.ts
+      purpose: finding regression evidence
+    - path: src/core/git-diff/git-diff-interval-mapping.ts
+      purpose: T203 mapping contract
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: complete PullRequestDiffSnapshot validation contract
+    - path: reports/issue-1-t502-review-followup-20260802220000.md
+      purpose: implementation follow-up claims
+    - path: reports/issue-1-t502-review-followup-handoff-20260802220000.yaml
+      purpose: implementation handoff evidence
+  intentionally_untouched:
+    - path_or_area: product and test files
+      reason: fix-verification reviewer does not implement
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: dedicated manager responsibility
+commands:
+  - command: GitHub Actions CI
+    purpose: reviewed implementation HEAD validation
+    exit_code: 0
+    result: passed
+    head_sha: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+    evidence: run 30748956980
+  - command: GitHub compare
+    purpose: enumerate fix range
+    exit_code: 0
+    result: passed
+    head_sha: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+    evidence: 6 commits and 5 changed paths after review report commit
+tests:
+  - name: T502 review finding regressions
+    phase: red
+    result: failed
+    head_sha: 6c7576ef6ba9f8af7999c8a164dcbe5a4ecbff6d
+    evidence: run 30748755739 artifact 8833738404
+  - name: T502 focused and full validation
+    phase: green
+    result: passed
+    head_sha: baa116755f28b2f22dc84fd6fdc30dd57635f975
+    evidence: run 30748862936
+  - name: current reviewed implementation validation
+    phase: verification
+    result: passed
+    head_sha: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+    evidence: run 30748956980
+ci:
+  required: true
+  workflow: CI
+  run_id: 30748956980
+  head_sha: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  conclusion: success
+  artifacts:
+    - id: 8833738404
+      name: ci-failure-diagnostics-30748755739-1
+      purpose: Red finding reproduction diagnostics
+    - id: 8833753460
+      name: ci-failure-diagnostics-30748798525-1
+      purpose: intermediate immutable fixture failure diagnostics
+implementation:
+  outcome: partial
+  final_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  commits: []
+  addressed_findings:
+    - id: T502-REV-001
+      reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      disposition: addressed
+      evidence: ordinary modified file is mapped through T203 and regression test passes
+    - id: T502-REV-002
+      reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      disposition: addressed
+      evidence: all retained file revisions advance in editor and Git mapping fixtures
+    - id: T502-REV-003
+      reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      disposition: partial
+      evidence: missing/stale identity fails closed, but malformed or incomplete matching snapshot is accepted as certain
+    - id: T502-REV-004
+      reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      disposition: addressed
+      evidence: other-context intervals split at Global overlap boundaries
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Three of four source findings are closed.
+    - T502-REV-003 remains open because complete PullRequestDiffSnapshot validation is absent.
+review:
+  mode: fix_verification
+  reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  reviewer:
+    identity: same normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Initial T502 review was performed in this chat against ff2a138a4c21b864aec0da2a8bb96d5a7a960e37.
+        - This chat made no product or test changes during fix verification.
+  verdict: fail
+  required_coverage:
+    - criterion: source finding identity and severity continuity
+      disposition: checked_no_finding
+      evidence: T502-REV-001 to 004 and source severities preserved
+    - criterion: T502-REV-001 closure
+      disposition: checked_no_finding
+      evidence: closed
+    - criterion: T502-REV-002 closure
+      disposition: checked_no_finding
+      evidence: closed
+    - criterion: T502-REV-003 closure
+      disposition: checked_finding
+      evidence: incomplete matching snapshots fail open
+    - criterion: T502-REV-004 closure
+      disposition: checked_no_finding
+      evidence: closed
+    - criterion: current-head CI
+      disposition: checked_no_finding
+      evidence: run 30748956980 success for exact reviewed HEAD
+    - criterion: report and handoff accuracy
+      disposition: checked_finding
+      evidence: implementation follow-up incorrectly marked T502-REV-003 fully addressed
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: run 30748956980
+    - item: T502 focused tests
+      result: failed
+      evidence: tests do not cover malformed and incomplete PullRequestDiffSnapshot
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T502-REV-001, T502-REV-002 and T502-REV-004 are closed.
+    - T502-REV-003 remains high and open.
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t502-fix-verification-20260802221000.md
+    - reports/issue-1-t502-fix-verification-handoff-20260802221000.yaml
+  reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed verification evidence persisted.
+findings:
+  - id: T502-REV-003
+    severity: high
+    origin: introduced_by_change
+    location: src/application/editor-decoration/normal-editor-decoration-model.ts currentPullRequestChangedIntervals
+    description: Identity-matching PullRequestDiffSnapshot is treated as certain without complete structure and statistics validation.
+    impact: Incomplete patch evidence can be interpreted as no PR changes and allow Global or other-context-only decoration on current PR changed lines.
+    evidence: A modified file with matching identity, additions greater than zero and empty hunks returns certain true with empty intervals; malformed and incomplete cases are absent from tests.
+    required_action: Reuse or expose T301-equivalent complete snapshot validation and add malformed or incomplete fail-closed regressions.
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - Current PR lower-priority decoration remains unsafe when diff identity matches but patch structure is incomplete or malformed.
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      verdict: fail
+      closed_findings:
+        - T502-REV-001
+        - T502-REV-002
+        - T502-REV-004
+      open_findings:
+        - T502-REV-003
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      path: reports/issue-1-t502-fix-verification-20260802221000.md
+      reviewed_implementation_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+extensions: []
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: Close T502-REV-003 by requiring complete and validated PR diff evidence.
+  instructions:
+    - Preserve T502-REV-003 identity and high severity.
+    - Add failing tests for originalDiffId mismatch, statistics mismatch, missing hunks, invalid coordinates and duplicate identity or path.
+    - Reuse a shared validator or introduce an explicit validated-snapshot boundary before lower-priority decoration.
+    - Confirm only a workflow run whose head SHA equals the new current PR HEAD.
+    - Return to this normal review chat for closure-only verification.
+  required_attachments_or_references:
+    - PR #37
+    - reports/issue-1-t502-review-20260802213000.md
+    - reports/issue-1-t502-fix-verification-20260802221000.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t502-fix-verification-handoff-20260802221000.yaml
+  packet_url: null
+  transport_note: Technical verdict applies to reviewed implementation HEAD 5d938ada02de96a822968a1c467ad23df2c2ec4a. Report and handoff commits are administrative and do not close T502-REV-003.
