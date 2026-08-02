@@ -50,6 +50,7 @@ test("local Git adapter verifies both revisions as commit objects before diffing
       "--unified=0",
       "--find-renames",
       "--find-copies",
+      "-l1000",
       BASE_SHA,
       HEAD_SHA,
       "--"
@@ -87,6 +88,7 @@ test("GitHub files acquisition rejects the 3000-file endpoint cap as incomplete"
           html_url: "https://github.test/example/review-range/pull/42",
           state: "open",
           merged_at: null,
+          changed_files: 3000,
           base: { sha: BASE_SHA },
           head: { sha: HEAD_SHA }
         }), { status: 200 });
