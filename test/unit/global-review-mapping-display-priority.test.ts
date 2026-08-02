@@ -174,7 +174,7 @@ const currentDiff = (): PullRequestDiffSnapshot => ({
     additions: 2,
     deletions: 0,
     hunks: [{
-      oldStart: 1,
+      oldStart: 0,
       oldCount: 0,
       newStart: 1,
       newCount: 2,
