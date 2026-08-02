@@ -81,6 +81,7 @@ test("GitHub diff adapter fetches exact PR metadata and paginated file records",
           html_url: "https://github.test/example/review-range/pull/42",
           state: "closed",
           merged_at: "2026-08-02T00:00:00Z",
+          changed_files: 2,
           base: { sha: BASE_SHA },
           head: { sha: HEAD_SHA }
         }), { status: 200, headers: { "content-type": "application/json" } });
@@ -397,6 +398,7 @@ test("local Git adapter passes immutable revisions as separate arguments and cla
       "--unified=0",
       "--find-renames",
       "--find-copies",
+      "-l1000",
       BASE_SHA,
       HEAD_SHA,
       "--"
