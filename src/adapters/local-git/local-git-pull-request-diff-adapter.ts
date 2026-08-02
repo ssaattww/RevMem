@@ -79,6 +79,7 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
       argumentsList: [
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-color",
         "--unified=0",
         "--find-renames",

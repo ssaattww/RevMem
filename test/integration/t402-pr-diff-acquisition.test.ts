@@ -394,6 +394,7 @@ test("local Git adapter passes immutable revisions as separate arguments and cla
     [
       "diff",
       "--no-ext-diff",
+      "--no-textconv",
       "--no-color",
       "--unified=0",
       "--find-renames",

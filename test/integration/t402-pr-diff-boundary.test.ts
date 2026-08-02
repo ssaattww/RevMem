@@ -46,6 +46,7 @@ test("local Git adapter verifies both revisions as commit objects before diffing
     [
       "diff",
       "--no-ext-diff",
+      "--no-textconv",
       "--no-color",
       "--unified=0",
       "--find-renames",

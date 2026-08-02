@@ -171,6 +171,83 @@ test("T402-R002 classifies patchless binary content and reaches the shared binar
   assert.deepEqual(progress.files[0]?.exclusionReason, { kind: "binary" });
 });
 
+test("T402-IFR-P2 classifies every patchless zero-stat status from immutable binary content", async () => {
+  const cases: ReadonlyArray<{
+    readonly status: PullRequestRemoteFile["status"];
+    readonly oldPath?: string;
+    readonly newPath?: string;
+  }> = [
+    { status: "added", newPath: "assets/added.bin" },
+    { status: "deleted", oldPath: "assets/deleted.bin" },
+    { status: "renamed", oldPath: "assets/old.bin", newPath: "assets/renamed.bin" },
+    { status: "copied", oldPath: "assets/source.bin", newPath: "assets/copied.bin" }
+  ];
+
+  for (const item of cases) {
+    const reads: Array<{ readonly revision: string; readonly path: string }> = [];
+    const remote: PullRequestRemoteDataPort = {
+      fetch: async () => ({
+        kind: "available",
+        metadata: remoteMetadata,
+        files: [{ ...item, additions: 0, deletions: 0 }]
+      }),
+      readFile: async (_repository, revision, path) => {
+        reads.push({ revision, path });
+        return { kind: "binary" };
+      }
+    };
+    const service = new PullRequestDiffAcquisitionService({
+      local: unavailableLocal(),
+      remote
+    });
+
+    const result = await service.acquire(request);
+
+    assert.equal(result.kind, "acquired", item.status);
+    assert.equal(result.source, "github-content", item.status);
+    assert.equal(result.snapshot.files[0]?.status, "binary", item.status);
+    assert.equal(reads.length, item.status === "added" || item.status === "deleted" ? 1 : 2, item.status);
+    const progress = calculatePullRequestDiffProgress({
+      diff: result.snapshot,
+      reviewContext: reviewContext(),
+      exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] })
+    });
+    assert.deepEqual(progress.files[0]?.exclusionReason, { kind: "binary" }, item.status);
+  }
+});
+
+test("T402-IFR-P2 retains patchless empty-text and rename-only content through fallback", async () => {
+  const cases: ReadonlyArray<{
+    readonly status: PullRequestRemoteFile["status"];
+    readonly oldPath?: string;
+    readonly newPath?: string;
+  }> = [
+    { status: "added", newPath: "docs/empty.txt" },
+    { status: "renamed", oldPath: "docs/old.txt", newPath: "docs/new.txt" }
+  ];
+
+  for (const item of cases) {
+    const service = new PullRequestDiffAcquisitionService({
+      local: unavailableLocal(),
+      remote: {
+        fetch: async () => ({
+          kind: "available",
+          metadata: remoteMetadata,
+          files: [{ ...item, additions: 0, deletions: 0 }]
+        }),
+        readFile: async () => ({ kind: "found", content: "" })
+      }
+    });
+
+    const result = await service.acquire(request);
+
+    assert.equal(result.kind, "acquired", item.status);
+    assert.equal(result.source, "github-content", item.status);
+    assert.equal(result.snapshot.files[0]?.status, item.status, item.status);
+    assert.deepEqual(result.snapshot.files[0]?.hunks, [], item.status);
+  }
+});
+
 test("T402-R003 detects a pure copy from an unchanged source with bounded harder copy detection", async () => {
   const directory = await createTemporaryDirectory("t402-pure-copy");
   const runGit = async (argumentsList: readonly string[]): Promise<string> => {
@@ -223,6 +300,62 @@ test("T402-R003 detects a pure copy from an unchanged source with bounded harder
       additions: 0,
       deletions: 0,
       hunks: []
+    }]);
+  } finally {
+    await directory.cleanup();
+  }
+});
+
+test("T402-IFR-P1 acquires raw blob coordinates when repository textconv is configured", async () => {
+  const directory = await createTemporaryDirectory("t402-no-textconv");
+  const runGit = async (argumentsList: readonly string[]): Promise<string> => {
+    const { stdout } = await execFileAsync("git", [...argumentsList], {
+      cwd: directory.path,
+      windowsHide: true
+    });
+    return stdout.trim();
+  };
+
+  try {
+    await runGit(["init", "--initial-branch=main"]);
+    await runGit(["config", "user.name", "T402 Test"]);
+    await runGit(["config", "user.email", "t402@example.invalid"]);
+    await runGit(["config", "diff.foo.textconv", "git hash-object"]);
+    await writeFile(`${directory.path}/.gitattributes`, "*.foo diff=foo\n", "utf8");
+    await writeFile(`${directory.path}/value.foo`, "shared\nactual-old\n", "utf8");
+    await runGit(["add", "value.foo"]);
+    await runGit(["commit", "--message", "base"]);
+    const baseSha = await runGit(["rev-parse", "HEAD"]);
+
+    await writeFile(`${directory.path}/value.foo`, "shared\nactual-new\n", "utf8");
+    await runGit(["commit", "--all", "--message", "head"]);
+    const headSha = await runGit(["rev-parse", "HEAD"]);
+
+    const service = new PullRequestDiffAcquisitionService({
+      local: new LocalGitPullRequestDiffAdapter(new NodeGitCommandExecutor(), directory.path),
+      remote: {
+        fetch: async () => {
+          throw new Error("local Git must satisfy the acquisition");
+        },
+        readFile: async () => {
+          throw new Error("local Git must satisfy the acquisition");
+        }
+      }
+    });
+
+    const result = await service.acquire({ ...request, baseSha, headSha });
+
+    assert.equal(result.kind, "acquired");
+    assert.equal(result.source, "local-git");
+    assert.deepEqual(result.snapshot.files[0]?.hunks, [{
+      oldStart: 2,
+      oldCount: 1,
+      newStart: 2,
+      newCount: 1,
+      lines: [
+        { kind: "deletion", oldLine: 2, text: "actual-old" },
+        { kind: "addition", newLine: 2, text: "actual-new" }
+      ]
     }]);
   } finally {
     await directory.cleanup();

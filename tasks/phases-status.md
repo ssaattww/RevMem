@@ -123,6 +123,7 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 ### 現在の進捗
 
 - T401はPR #31で実装・通常reviewを完了した。独立reviewの`T401-IFR2-P1`〜`P7`に対して、configured Enterprise authorityへのtoken binding、T202 canonical remote identity共有、malformed/cyclic paginationのunavailable分類、network/API/shapeからbranch fallbackまでの受入matrix、public barrel consumer fixture、tracking同期を一括で実装した。同じ独立reviewerのclosure限定確認で全7件addressed、openなし、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した。
+- T402はPR #40で実装・通常review・2回のfix verificationを完了後、独立final reviewの`T402-IFR-P1`〜`P3`を受けた。今回のfollow-upでlocal Gitのtextconv無効化、patchless zero-statのadded/deleted/renamed/copied binaryをimmutable contentへ送る分類、T402/P4追跡同期を一括実装した。`reports/issue-1-t402-independent-final-review-20260803062300.md`と`reports/issue-1-t402-independent-review-followup-20260803091500.md`を根拠に、通常fix verification、exact-head CI、fresh independent final reviewを待つ。
 
 ### 終了チェックポイント
 
