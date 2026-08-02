@@ -1,0 +1,274 @@
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
+import {
+  requirePullRequestCommitObjectId,
+  requirePullRequestDiffAcquisitionRequest
+} from "../../application/github-pr-diff/index";
+import type {
+  PullRequestDiffAcquisitionRequest,
+  PullRequestDiffUnavailableReason,
+  PullRequestRemoteDataPort,
+  PullRequestRemoteFile,
+  PullRequestRemoteMetadata,
+  PullRequestRemoteTextReadResult
+} from "../../application/github-pr-diff/index";
+import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
+
+interface GitHubPullRequestPayload {
+  readonly number?: unknown;
+  readonly title?: unknown;
+  readonly html_url?: unknown;
+  readonly state?: unknown;
+  readonly merged_at?: unknown;
+  readonly base?: { readonly sha?: unknown };
+  readonly head?: { readonly sha?: unknown };
+}
+
+interface GitHubPullRequestFilePayload {
+  readonly filename?: unknown;
+  readonly previous_filename?: unknown;
+  readonly status?: unknown;
+  readonly additions?: unknown;
+  readonly deletions?: unknown;
+  readonly patch?: unknown;
+}
+
+/** Fetch options for GitHub PR metadata, files, and immutable raw content. */
+export interface FetchGitHubPullRequestDiffAdapterOptions {
+  readonly apiBaseUrl: string;
+  readonly token?: string;
+  readonly fetch?: typeof globalThis.fetch;
+}
+
+type PageLinkResult =
+  | { readonly kind: "none" }
+  | { readonly kind: "valid"; readonly url: URL }
+  | { readonly kind: "invalid" };
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isString = (value: unknown): value is string => typeof value === "string";
+const isSafeCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const statusFrom = (value: unknown): PullRequestRemoteFile["status"] | undefined => {
+  switch (value) {
+    case "added": return "added";
+    case "removed": return "deleted";
+    case "modified":
+    case "changed": return "modified";
+    case "renamed": return "renamed";
+    case "copied": return "copied";
+    case "binary": return "binary";
+    default: return undefined;
+  }
+};
+
+const classifyResponse = (response: Response): PullRequestDiffUnavailableReason | undefined => {
+  if (response.status === 429 || (
+    response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0"
+  )) return "rate-limit";
+  return response.ok ? undefined : "api";
+};
+
+const nextPage = (response: Response, current: URL, collection: URL): PageLinkResult => {
+  const link = response.headers.get("link");
+  if (link === null) return { kind: "none" };
+  for (const entry of link.split(",")) {
+    const match = /^\s*<([^>]+)>\s*;\s*rel="([^"]+)"\s*$/u.exec(entry);
+    if (match?.[2]?.split(/\s+/u).includes("next") !== true) continue;
+    let target: URL;
+    try {
+      target = new URL(match[1]!, current);
+    } catch {
+      return { kind: "invalid" };
+    }
+    if (
+      target.origin !== collection.origin ||
+      target.protocol !== collection.protocol ||
+      (target.protocol !== "https:" && target.protocol !== "http:") ||
+      target.username.length > 0 ||
+      target.password.length > 0 ||
+      target.pathname !== collection.pathname ||
+      target.hash.length > 0
+    ) return { kind: "invalid" };
+    return { kind: "valid", url: target };
+  }
+  return { kind: "none" };
+};
+
+const parseMetadata = (value: unknown): PullRequestRemoteMetadata | undefined => {
+  if (!isObject(value)) return undefined;
+  const payload = value as GitHubPullRequestPayload;
+  if (
+    typeof payload.number !== "number" || !Number.isSafeInteger(payload.number) || payload.number <= 0 ||
+    !isString(payload.title) || !isString(payload.html_url) ||
+    (payload.state !== "open" && payload.state !== "closed") ||
+    (payload.merged_at !== null && payload.merged_at !== undefined && !isString(payload.merged_at)) ||
+    !isObject(payload.base) || !isString(payload.base.sha) ||
+    !isObject(payload.head) || !isString(payload.head.sha)
+  ) return undefined;
+  return {
+    number: payload.number,
+    title: payload.title,
+    url: payload.html_url,
+    state: payload.merged_at === null || payload.merged_at === undefined ? payload.state : "merged",
+    baseSha: payload.base.sha,
+    headSha: payload.head.sha
+  };
+};
+
+const parseFile = (value: unknown): PullRequestRemoteFile | undefined => {
+  if (!isObject(value)) return undefined;
+  const payload = value as GitHubPullRequestFilePayload;
+  const status = statusFrom(payload.status);
+  if (
+    status === undefined || !isString(payload.filename) ||
+    !isSafeCount(payload.additions) || !isSafeCount(payload.deletions) ||
+    (payload.patch !== undefined && !isString(payload.patch))
+  ) return undefined;
+  const newPath = payload.filename;
+  if (status === "added") {
+    return {
+      newPath,
+      status,
+      additions: payload.additions,
+      deletions: payload.deletions,
+      ...(payload.patch === undefined ? {} : { patch: payload.patch })
+    };
+  }
+  if (status === "deleted") {
+    return {
+      oldPath: newPath,
+      status,
+      additions: payload.additions,
+      deletions: payload.deletions,
+      ...(payload.patch === undefined ? {} : { patch: payload.patch })
+    };
+  }
+  if (status === "renamed" || status === "copied") {
+    if (!isString(payload.previous_filename)) return undefined;
+    return {
+      oldPath: payload.previous_filename,
+      newPath,
+      status,
+      additions: payload.additions,
+      deletions: payload.deletions,
+      ...(payload.patch === undefined ? {} : { patch: payload.patch })
+    };
+  }
+  return {
+    oldPath: newPath,
+    newPath,
+    status,
+    additions: payload.additions,
+    deletions: payload.deletions,
+    ...(payload.patch === undefined ? {} : { patch: payload.patch })
+  };
+};
+
+/** GitHub REST implementation of all remote T402 acquisition boundaries. */
+export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataPort {
+  private readonly apiBaseUrl: string;
+  private readonly token: string | undefined;
+  private readonly fetchImplementation: typeof globalThis.fetch;
+
+  public constructor(options: FetchGitHubPullRequestDiffAdapterOptions) {
+    this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
+    this.token = options.token;
+    this.fetchImplementation = options.fetch ?? globalThis.fetch;
+  }
+
+  public async fetch(request: PullRequestDiffAcquisitionRequest): ReturnType<PullRequestRemoteDataPort["fetch"]> {
+    requirePullRequestDiffAcquisitionRequest(request);
+    const root = `${this.apiBaseUrl}/repos/${encodeURIComponent(request.repository.owner)}/${encodeURIComponent(request.repository.repository)}/pulls/${request.number}`;
+    const metadataResult = await this.fetchJson(new URL(root));
+    if (metadataResult.kind === "unavailable") return metadataResult;
+    const metadata = parseMetadata(metadataResult.payload);
+    if (metadata === undefined) return { kind: "unavailable", reason: "api" };
+
+    const collection = new URL(`${root}/files`);
+    collection.searchParams.set("per_page", "100");
+    let url = new URL(collection);
+    const visited = new Set<string>();
+    const files: PullRequestRemoteFile[] = [];
+    while (true) {
+      if (visited.has(url.toString())) return { kind: "unavailable", reason: "api" };
+      visited.add(url.toString());
+      const page = await this.fetchJson(url);
+      if (page.kind === "unavailable") return page;
+      if (!Array.isArray(page.payload)) return { kind: "unavailable", reason: "api" };
+      for (const value of page.payload) {
+        const file = parseFile(value);
+        if (file === undefined) return { kind: "unavailable", reason: "api" };
+        files.push(file);
+      }
+      const next = nextPage(page.response, url, collection);
+      if (next.kind === "invalid") return { kind: "unavailable", reason: "api" };
+      if (next.kind === "none") break;
+      url = next.url;
+    }
+    return { kind: "available", metadata, files };
+  }
+
+  public async readFile(
+    repository: GitHubRepositoryIdentity,
+    revision: string,
+    path: string
+  ): Promise<PullRequestRemoteTextReadResult> {
+    const immutableRevision = requirePullRequestCommitObjectId(revision);
+    const canonical = requireCanonicalRepositoryRelativePath(path, "posix", "repositoryRelativePath");
+    const encodedPath = canonical.split("/").map(encodeURIComponent).join("/");
+    const url = new URL(
+      `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/contents/${encodedPath}`
+    );
+    url.searchParams.set("ref", immutableRevision);
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(url, {
+        headers: this.headers("application/vnd.github.raw+json")
+      });
+    } catch {
+      return { kind: "unavailable", reason: "network" };
+    }
+    if (response.status === 404) return { kind: "unavailable", reason: "missing-file" };
+    const failure = classifyResponse(response);
+    if (failure !== undefined) return { kind: "unavailable", reason: failure };
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    try {
+      return {
+        kind: "found",
+        content: new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+      };
+    } catch {
+      return { kind: "unavailable", reason: "invalid-encoding" };
+    }
+  }
+
+  private headers(accept = "application/vnd.github+json"): Record<string, string> {
+    return {
+      accept,
+      "x-github-api-version": "2022-11-28",
+      ...(this.token === undefined || this.token.length === 0 ? {} : { authorization: `Bearer ${this.token}` })
+    };
+  }
+
+  private async fetchJson(url: URL): Promise<
+    | { readonly kind: "available"; readonly payload: unknown; readonly response: Response }
+    | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason }
+  > {
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(url, { headers: this.headers() });
+    } catch {
+      return { kind: "unavailable", reason: "network" };
+    }
+    const failure = classifyResponse(response);
+    if (failure !== undefined) return { kind: "unavailable", reason: failure };
+    try {
+      return { kind: "available", payload: await response.json(), response };
+    } catch {
+      return { kind: "unavailable", reason: "api" };
+    }
+  }
+}
