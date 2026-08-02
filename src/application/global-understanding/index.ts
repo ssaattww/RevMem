@@ -6,6 +6,7 @@ export {
 
 export type {
   GlobalUnderstandingBackgroundRecalculatorDependencies,
+  GlobalUnderstandingFileLoadOptions,
   GlobalUnderstandingFileSource,
   GlobalUnderstandingProgressCache,
   GlobalUnderstandingRecalculationInput,
