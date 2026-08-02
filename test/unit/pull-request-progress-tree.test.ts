@@ -242,8 +242,26 @@ test("projects nonzero encoding-unsupported changes out of the effective PR deno
     totalLineCount: 2,
     progress: 0.5,
     files: [
-      { ...invalidUtf8, reviewedLineCount: 0, totalLineCount: 0, progress: 1 },
-      reviewable
+      {
+        raw: invalidUtf8,
+        reviewability: {
+          kind: "unsupported",
+          reason: { kind: "invalid-encoding", encoding: "UTF-8" }
+        },
+        category: "line-review-unsupported",
+        effectiveReason: "不正な文字エンコーディング: UTF-8",
+        reviewedLineCount: 0,
+        totalLineCount: 0,
+        progress: 1
+      },
+      {
+        raw: reviewable,
+        reviewability: { kind: "reviewable" },
+        category: "unreviewed",
+        reviewedLineCount: 1,
+        totalLineCount: 2,
+        progress: 0.5
+      }
     ]
   });
 });
