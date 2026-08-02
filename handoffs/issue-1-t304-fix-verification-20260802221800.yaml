@@ -1,0 +1,475 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix verification
+  generated_at: "2026-08-02T22:18:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+target:
+  current_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  initial_reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+  previous_review_evidence_head: 73db236bb5a3baee153fe95d53bc0c7fee87443c
+  full_commit_range: 76b49e99453ebcf7ebecb2c141ed24d750736abc..580671ab642cfa43216d06118af7b3b0fb6061c8
+  fix_commit_range: 73db236bb5a3baee153fe95d53bc0c7fee87443c..580671ab642cfa43216d06118af7b3b0fb6061c8
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー"
+    summary: Reuse the same normal reviewer and verify prior findings while reviewing newly changed areas.
+  - source: uploaded_skill
+    reference: chat-review-worker / review-worker fix verification
+    summary: Preserve finding identities and severities, inspect fix diff, direct impact, sibling cases, new areas, exact-head CI, report, and handoff.
+  - source: task
+    reference: tasks/tasks-status.md T304
+    summary: Render five PR progress categories, stable sorting and metrics, reasons, and open the selected file diff.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 11.2, 12, 13.2, 16.3
+    summary: Encoding-unsupported files are non-reviewable, diff targets are identity-bound, and public barrels require consumer type fixtures.
+  - source: project_instruction
+    reference: RevMem project instruction
+    summary: Use GitHub connector, use only CI whose head SHA matches the target, persist detailed report and concise PR comment, do not merge.
+
+development_policy:
+  method: TDD
+  testing_order: Add failing regression first, preserve failure diagnostics, implement, and confirm focused and broad exact-head CI.
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t304
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test result
+    - merged standard output and standard error logs under test-output/ci
+    - environment and Git status
+    - generated outputs
+    - source, test, tools, type fixtures, package/configuration, and workflow payload
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t304-fix-verification-*.md
+      reason: Required detailed fix-verification report.
+    - path_or_operation: handoffs/issue-1-t304-fix-verification-*.yaml
+      reason: Required lossless normal-review handoff.
+    - path_or_operation: PR #38 review comment
+      reason: Required concise review result.
+  forbidden:
+    - path_or_operation: implementation, tests, design, configuration, workflow, or task tracking changes
+      reason: Reviewer must not implement findings.
+    - path_or_operation: merge PR #38
+      reason: Merge is reserved for the user.
+
+scope:
+  - Verify T304-R1-P1, T304-R1-P2, and T304-R1-P3 against the current PR head.
+  - Inspect fix diff and direct T301/T302/T303 impacts.
+  - Inspect newly introduced public API and test-discovery changes.
+non_goals:
+  - Implement findings.
+  - Perform independent final review while normal findings remain open.
+  - Implement T305, T402, or T306.
+  - Merge.
+
+files:
+  changed:
+    - path: .github/workflows/ci.yml
+      purpose: Invoke package-owned T304 focused suite.
+    - path: package.json
+      purpose: Register T304 in standard and focused test scripts.
+    - path: src/ui/pr-progress/index.ts
+      purpose: Export T304 public UI contracts.
+    - path: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      purpose: Add identity-bound snapshot, line reviewability, diff targets, and stale-node rejection.
+    - path: test/unit/ci-workflow-contract.test.ts
+      purpose: Verify test discovery and CI wiring.
+    - path: test/unit/pull-request-progress-tree.test.ts
+      purpose: Verify categories, identity, encoding, stale nodes, and validation.
+    - path: reports/issue-1-t304-review-followup-20260802220800.md
+      purpose: Implementation follow-up evidence.
+    - path: handoffs/issue-1-t304-review-followup-20260802221000.yaml
+      purpose: Implementation handoff evidence.
+  inspected:
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Confirm actual T301 progress producer and aggregate rules.
+    - path: src/core/file-exclusion/review-file-exclusion-policy.ts
+      purpose: Confirm exclusion reasons do not represent encoding unavailability.
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: Confirm both immutable sides are encoded as exact path/revision descriptors.
+    - path: src/application/diff-document/revision-text-content-provider.ts
+      purpose: Confirm missing file is an error, not an empty side.
+    - path: src/adapters/diff-document/local-git-revision-text-content-source.ts
+      purpose: Confirm exact descriptor path is passed to Local Git.
+    - path: src/adapters/local-git/local-git-adapter.ts
+      purpose: Confirm nonexistent path at a commit returns missing-file.
+    - path: type-fixtures/contracts/review-contracts.fixture.ts
+      purpose: Confirm T304 public barrel is not contract-fixtured.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Confirm diff, encoding exclusion, and public barrel requirements.
+    - path: tasks/tasks-status.md
+      purpose: Confirm T304 scope and stale tracking state.
+  intentionally_untouched:
+    - path_or_area: product source and tests
+      reason: Fix verification does not implement changes.
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Repository requires a progress-management skill unavailable in the uploaded skill set.
+
+commands:
+  - command: GitHub compare 73db236bb5a3baee153fe95d53bc0c7fee87443c..580671ab642cfa43216d06118af7b3b0fb6061c8
+    purpose: Resolve the complete fix change set.
+    exit_code: 0
+    result: passed
+    head_sha: 580671ab642cfa43216d06118af7b3b0fb6061c8
+    evidence: 9 commits, 8 changed files, zero divergence from previous review evidence head.
+  - command: GitHub Actions run 30749340434
+    purpose: Validate the exact reviewed PR head.
+    exit_code: 0
+    result: passed
+    head_sha: 580671ab642cfa43216d06118af7b3b0fb6061c8
+    evidence: Job 91500453521 completed successfully across all configured steps.
+
+tests:
+  - name: T304 P3 discovery Red
+    phase: red
+    result: failed
+    head_sha: 851c55a66206ac64a82236fce6efa5f64655f3a5
+    evidence: Run 30748859263; artifact 8833773687.
+  - name: T304 P1/P2 contract Red
+    phase: red
+    result: failed
+    head_sha: c17b97f03af516f0c484356042c91d2ba8bb9c78
+    evidence: Run 30748932987; artifact 8833796187.
+  - name: T304 intermediate boundary correction
+    phase: red
+    result: failed
+    head_sha: 72a16a48070df9d67e79a82c8160a2d4153a9ec3
+    evidence: Run 30749149862; artifact 8833863915.
+  - name: Current unit and focused T304 suites
+    phase: verification
+    result: passed
+    head_sha: 580671ab642cfa43216d06118af7b3b0fb6061c8
+    evidence: Run 30749340434 steps Unit tests and T304 PR progress tree tests.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30749340434
+  job_id: 91500453521
+  head_sha: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  passed_steps:
+    - install_dependencies
+    - build
+    - contract_typecheck
+    - architecture_positive
+    - architecture_negative
+    - lint
+    - unit
+    - t304_focused
+    - t503_focused
+    - git_integration
+    - github_integration
+    - vscode_extension_host
+  artifacts:
+    - id: 8833773687
+      name: ci-failure-diagnostics-30748859263-1
+      purpose: P3 TDD Red diagnostics.
+    - id: 8833796187
+      name: ci-failure-diagnostics-30748932987-1
+      purpose: P1/P2 TDD Red diagnostics.
+    - id: 8833863915
+      name: ci-failure-diagnostics-30749149862-1
+      purpose: Intermediate boundary failure diagnostics.
+
+implementation:
+  outcome: not_applicable
+  final_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  commits: []
+  addressed_findings:
+    - id: T304-R1-P1
+      reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      disposition: partial
+      evidence: Context/revision and stale-node handling are fixed, but added/deleted nonexistent sides are represented as real paths and cannot pass unchanged through T302/T303.
+    - id: T304-R1-P2
+      reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      disposition: partial
+      evidence: Display reasons are modeled, but T301 output cannot satisfy zero-count encoding unsupported contract for changed files.
+    - id: T304-R1-P3
+      reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      disposition: addressed
+      evidence: Standard, focused, npm test, and CI wiring are present and validated.
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer made no implementation changes.
+
+review:
+  mode: fix_verification
+  reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  reviewer:
+    identity: ChatGPT review worker in the original T304 normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT review worker in the original T304 normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Same chat produced reports/issue-1-t304-review-20260802213932.md.
+        - This chat did not perform T304 implementation or review-fix commits.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T304-R1-P1, T304-R1-P2, T304-R2-P1.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Added/deleted absent sides and nonzero encoding-unsupported changes remain invalid.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: Manifest formatting churn was observed, but no unrelated semantic feature change was found.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: T301/T302/T303 and consumer fixture boundaries expose open findings.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: T304 public API lacks fixture coverage; P3 workflow compatibility is closed.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Failure diagnostics are preserved and exact Red artifacts exist.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No credential, network, or secret handling is changed.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: Added/deleted end-to-end, T301 encoding producer, and public fixture tests are missing.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30749340434 matches reviewed head and succeeded.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: Follow-up report/handoff mark P1/P2 addressed despite incomplete closure; task tracking remains held.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: Nonexistent exact sides and synthetic progress expectations shift unresolved contracts to later tasks.
+  validation_assessment:
+    - item: current-head CI
+      result: supported
+      evidence: Run 30749340434, job 91500453521, exact head, success.
+    - item: TDD Red evidence
+      result: supported
+      evidence: Runs 30748859263, 30748932987, and 30749149862 have matching diagnostic artifacts.
+    - item: T304-R1-P1 closure
+      result: failed
+      evidence: Added/deleted exact sides are not representable and content lookup returns missing-file.
+    - item: T304-R1-P2 closure
+      result: failed
+      evidence: T301 output and zero-count encoding unsupported contract are incompatible.
+    - item: T304-R1-P3 closure
+      result: supported
+      evidence: Standard/focused/package/CI discovery is present and passing.
+    - item: T304 public contract verification
+      result: failed
+      evidence: Consumer type fixture does not import or construct T304 exports.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T304-R1-P1 remains open at source severity high.
+    - T304-R1-P2 remains open at source severity high.
+    - T304-R1-P3 is closed at source severity medium.
+    - New medium finding T304-R2-P1 is open.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t304-fix-verification-20260802221700.md
+  reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed finding closure and new public-contract finding were persisted.
+
+findings:
+  - id: T304-R1-P1
+    severity: high
+    origin: introduced_by_change
+    location: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts createOpenTarget; added/deleted selection test; T302/T303 content path
+    description: Added and deleted files fabricate nonexistent immutable sides by falling back to the path that exists only in the opposite revision.
+    impact: Selecting added/deleted files cannot open the exact diff through the current T302/T303 text-content pipeline without ignoring the target contract.
+    evidence: Local Git returns missing-file for absent commit/path; current test only asserts duplicated paths.
+    required_action: Model absent sides or an immutable empty-document source and add an end-to-end added/deleted diff-open regression.
+  - id: T304-R1-P2
+    severity: high
+    origin: coverage_miss
+    location: T304 snapshot/reviewability contract and T301 progress calculator
+    description: Encoding unsupported requires zero line counts while the documented T301 producer returns additions plus deletions for every nonexcluded nonbinary file.
+    impact: Real changed encoding-unsupported files cannot be supplied without provider rejection or bypassing the authoritative calculator.
+    evidence: T301 only zeroes excluded files; encoding reasons are not exclusion reasons; current test uses zero-change synthetic records.
+    required_action: Integrate availability into the producer or define an authoritative projection and test nonzero changed encoding-unsupported files end to end.
+  - id: T304-R2-P1
+    severity: medium
+    origin: coverage_miss
+    location: src/ui/pr-progress/index.ts and type-fixtures/contracts/review-contracts.fixture.ts
+    description: New T304 public exports are not fixed by the repository consumer type fixture.
+    impact: Contract typecheck can succeed while T304 public API becomes incompatible or accepts invalid shapes.
+    evidence: Design 13.2 requires consumer fixtures; no src/ui/pr-progress import exists in the fixture.
+    required_action: Add positive and negative compile-time fixture coverage for T304 public contracts.
+
+held:
+  - item: T304 task tracking sync
+    reason: Required progress-management skill is unavailable in the uploaded skill set; tasks/tasks-status.md remains 未着手.
+    owner: progress management workflow
+    remaining_risk: Repository tracking does not reflect implementation/review state.
+    verdict_impact: Not the reason for fail; implementation findings already block closure.
+  - item: Concrete VS Code Tree wiring and acquisition source
+    reason: T305/T402/T306 accepted ownership.
+    owner: T305/T402/T306
+    remaining_risk: Runtime integration remains unverified.
+    verdict_impact: Deferred implementation is acceptable, but T304 public contracts must be coherent before handoff.
+
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: Markdown lint
+    reason: Repository-local Markdown lint entry point does not exist.
+  - field_or_area: merge result
+    reason: Merge is reserved for the user.
+remaining_risks:
+  - Follow-up implementation may close display tests while leaving T301/T302/T303 integration broken unless end-to-end producer and diff-open tests are added.
+  - T304 public API can regress unnoticed until the consumer fixture is extended.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #38
+      task_id: T304
+      mode: review
+      branch: task/t304-pr-progress-tree
+      base_ref: main
+      current_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      reviewed_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      scope:
+        - Verify prior T304 normal-review findings and newly changed boundaries.
+      non_goals:
+        - Implementation, independent final review, and merge.
+      ci:
+        matching_run: "30749340434"
+        conclusion: success
+      blocked: []
+      remaining_risks:
+        - Added/deleted exact diff and encoding producer contracts remain unresolved.
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      verdict: fail
+      finding_dispositions:
+        - id: T304-R1-P1
+          severity: high
+          disposition: partial_open
+        - id: T304-R1-P2
+          severity: high
+          disposition: partial_open
+        - id: T304-R1-P3
+          severity: medium
+          disposition: addressed_closed
+        - id: T304-R2-P1
+          severity: medium
+          disposition: new_open
+      report_attestation_allowed: false
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      complete_body_path: reports/issue-1-t304-fix-verification-20260802221700.md
+      target_identity:
+        branch: task/t304-pr-progress-tree
+        base_ref: main
+        current_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+        reviewed_implementation_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t304-fix-verification-20260802221700.md
+        report_attestation_head: null
+      unresolved_discrepancies:
+        - Follow-up report and handoff claim P1/P2 addressed, but fix verification keeps them open.
+
+extensions:
+  - namespace: chatgpt.runtime.persistence
+    payload:
+      report_commit: b7deb497234d3108c76b625968979caaf8e0ba66
+      handoff_commit: unknown_until_persisted
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review follow-up
+  summary: Fix two open high findings and one new medium finding before another normal fix verification.
+  instructions:
+    - Model added/deleted absent diff sides without fabricating paths and add an end-to-end diff-open test.
+    - Align encoding unsupported progress with the authoritative T301 producer or projection and test nonzero changes.
+    - Add consumer type fixture coverage for T304 public exports.
+    - Correct follow-up report and handoff dispositions.
+    - Confirm new exact-head CI success and return to the same normal reviewer.
+  required_attachments_or_references:
+    - reports/issue-1-t304-fix-verification-20260802221700.md
+    - reports/issue-1-t304-review-20260802213932.md
+    - reports/issue-1-t304-review-followup-20260802220800.md
+    - PR #38
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t304-fix-verification-20260802221800.yaml
+  packet_url: null
+  transport_note: Use this packet with the detailed verification report; do not proceed to independent final review while findings remain open.
