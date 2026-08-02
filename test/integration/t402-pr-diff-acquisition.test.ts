@@ -362,12 +362,19 @@ test("remote metadata from a different comparison is rejected before content rea
 
 test("local Git adapter passes immutable revisions as separate arguments and classifies missing objects", async () => {
   const invocations: GitCommandInvocation[] = [];
+  let acquisition = 0;
   const executor: GitCommandExecutor = {
     execute: async invocation => {
       invocations.push(invocation);
-      return invocations.length === 1
-        ? { exitCode: 0, stdout: "diff --git a/a.ts b/a.ts\n", stderr: "" }
-        : { exitCode: 128, stdout: "", stderr: "fatal: bad object" };
+      if (invocation.argumentsList[0] === "rev-parse") {
+        const revision = invocation.argumentsList[3]!.replace(/\^\{commit\}$/u, "");
+        if (acquisition === 1 && revision === BASE_SHA) {
+          return { exitCode: 1, stdout: "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: `${revision}\n`, stderr: "" };
+      }
+      acquisition += 1;
+      return { exitCode: 0, stdout: "diff --git a/a.ts b/a.ts\n", stderr: "" };
     }
   };
   const adapter = new LocalGitPullRequestDiffAdapter(executor, "/workspace/repository");
@@ -380,9 +387,10 @@ test("local Git adapter passes immutable revisions as separate arguments and cla
     kind: "unavailable",
     reason: "missing-revision"
   });
-  assert.deepEqual(invocations[0], {
-    cwd: "/workspace/repository",
-    argumentsList: [
+  assert.deepEqual(invocations.map(({ argumentsList }) => argumentsList), [
+    ["rev-parse", "--verify", "--quiet", `${BASE_SHA}^{commit}`],
+    ["rev-parse", "--verify", "--quiet", `${HEAD_SHA}^{commit}`],
+    [
       "diff",
       "--no-ext-diff",
       "--no-color",
@@ -392,8 +400,9 @@ test("local Git adapter passes immutable revisions as separate arguments and cla
       BASE_SHA,
       HEAD_SHA,
       "--"
-    ]
-  });
+    ],
+    ["rev-parse", "--verify", "--quiet", `${BASE_SHA}^{commit}`]
+  ]);
 });
 
 test("invalid revision input is rejected before invoking local Git", async () => {
