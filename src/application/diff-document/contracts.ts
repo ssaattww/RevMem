@@ -2,7 +2,7 @@ import type { ReviewDiffSide } from "../../core/contracts/index";
 import type { FileSystemPathSemantics } from "../workspace-identity/index";
 
 /** Source kind encoded into a virtual diff document revision identity. */
-export type ReviewDiffRevisionSource = "git-commit";
+export type ReviewDiffRevisionSource = "git-commit" | "empty";
 
 /** Complete identity required to reopen one immutable side of a review diff. */
 export interface ReviewDiffDocumentDescriptor {
@@ -14,9 +14,9 @@ export interface ReviewDiffDocumentDescriptor {
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
   /** Original/base or modified/head side shown by the diff editor. */
   readonly side: ReviewDiffSide;
-  /** Immutable source kind. T601 may add a separately versioned snapshot source. */
+  /** Immutable source kind. `empty` represents a file side that does not exist at this revision. */
   readonly revisionSource: ReviewDiffRevisionSource;
-  /** Lowercase full SHA-1 or SHA-256 commit object ID. Moving refs are forbidden. */
+  /** Lowercase full SHA-1 or SHA-256 commit object ID used to isolate this immutable comparison side. */
   readonly revision: string;
 }
 
@@ -64,7 +64,7 @@ export type RevisionTextContentReadResult =
 
 /** Injectable content boundary used by local Git, GitHub, and snapshot implementations. */
 export interface RevisionTextContentSource {
-  /** Reads exact text for the descriptor without substituting another revision. */
+  /** Reads exact text for a `git-commit` descriptor without substituting another revision. */
   readTextContent(
     descriptor: ReviewDiffDocumentDescriptor
   ): Promise<RevisionTextContentReadResult>;
