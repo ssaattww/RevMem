@@ -1,10 +1,15 @@
-import type { PullRequestDiffFileProgress, PullRequestDiffProgress } from "../../src/core/pr-progress";
+import type {
+  PullRequestDiffFileProgress,
+  PullRequestDiffProgress
+} from "../../src/core/pr-progress";
 import {
   PullRequestProgressTreeDataProvider,
+  type PullRequestEffectiveProgress,
   type PullRequestLineReviewability,
   type PullRequestProgressTreeDiffSide,
   type PullRequestProgressTreeDiffTarget,
   type PullRequestProgressTreeHost,
+  type PullRequestProgressTreeSelectionResult,
   type PullRequestProgressTreeSnapshot
 } from "../../src/ui/pr-progress";
 
@@ -72,8 +77,17 @@ const host: PullRequestProgressTreeHost = {
 };
 const provider = new PullRequestProgressTreeDataProvider(host);
 provider.replaceSnapshot(snapshot);
-const effectiveProgress: PullRequestDiffProgress = provider.getEffectiveProgress();
+const effectiveProgress: PullRequestEffectiveProgress = provider.getEffectiveProgress();
+const selectionResult: Promise<PullRequestProgressTreeSelectionResult> = provider.select(
+  provider.getChildren(
+    provider.getChildren().find((node) =>
+      node.kind === "category" && node.category === "line-review-unsupported"
+    )
+  )[0] as never
+);
 
+// @ts-expect-error Effective projection must not be assignable to the raw T301 contract.
+const rawProgress: PullRequestDiffProgress = effectiveProgress;
 // @ts-expect-error Snapshot identity is required for context-isolated selection.
 const missingSnapshotIdentity: PullRequestProgressTreeSnapshot = {
   progress,
@@ -84,12 +98,17 @@ const invalidReviewability: PullRequestLineReviewability = { kind: "future" };
 // @ts-expect-error Unsupported reviewability requires an explicit reason.
 const missingUnsupportedReason: PullRequestLineReviewability = { kind: "unsupported" };
 // @ts-expect-error Absent sides still require immutable path and revision identity.
-const invalidAbsentSide: PullRequestProgressTreeDiffSide = { kind: "absent", revision: baseSha };
+const invalidAbsentSide: PullRequestProgressTreeDiffSide = {
+  kind: "absent",
+  revision: baseSha
+};
 
 void [
   target.original,
   target.modified,
-  effectiveProgress.progress,
+  effectiveProgress.files[0]?.raw.fileId,
+  selectionResult,
+  rawProgress,
   missingSnapshotIdentity,
   invalidReviewability,
   missingUnsupportedReason,
