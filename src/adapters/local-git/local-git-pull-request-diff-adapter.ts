@@ -72,7 +72,7 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
     exhaustiveCopies: boolean
   ): Promise<GitCommandResult> {
     const copyArguments = exhaustiveCopies
-      ? ["--find-copies-harder", `-l${MAX_RENAME_COPY_CANDIDATES}`]
+      ? ["--find-copies-harder"]
       : ["--find-copies"];
     return this.commandExecutor.execute({
       cwd: this.repositoryRoot,
@@ -83,6 +83,7 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
         "--unified=0",
         "--find-renames",
         ...copyArguments,
+        `-l${MAX_RENAME_COPY_CANDIDATES}`,
         request.baseSha,
         request.headSha,
         "--"
