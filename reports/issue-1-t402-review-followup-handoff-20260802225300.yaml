@@ -1,0 +1,172 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-02T22:53:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #40
+task_id: T402
+branch: task/t402-pr-diff-acquisition
+base_ref: main
+
+target:
+  reviewed_implementation_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+  review_report_head: a5137a73841d9940a9fa3e7d3443ac41b20f4e56
+  fixed_implementation_head: 1c37b35a9719d193c372dc32efcf13b10df8cf7d
+  current_head_before_handoff: ed2ddb9106ba588552bf6ddf4d2125dccb693054
+  commit_range: a5137a73841d9940a9fa3e7d3443ac41b20f4e56..ed2ddb9106ba588552bf6ddf4d2125dccb693054
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use GitHub connector, TDD, diagnostic artifacts, small commits, detailed repository report, concise PR comment, PR update, exact-head CI, and no merge.
+  - source: review_report
+    reference: reports/issue-1-t402-review-20260802221650.md
+    summary: Address T402-R001 through T402-R004 against reviewed HEAD 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae.
+  - source: task
+    reference: tasks/tasks-status.md T402
+    summary: Acquire complete PR metadata/files through local Git, GitHub patches, and immutable content fallback without inferring reviewed state from incomplete evidence.
+
+development_policy:
+  method: TDD
+  testing_order: Add finding regressions, confirm behavioral failure on exact-head CI, implement, then validate focused and full CI gates.
+  governing_source: RevMem project instruction and implementation-worker Skills.
+
+findings:
+  - id: T402-R001
+    severity: high
+    disposition: addressed
+    reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    root_cause: Custom LCS accepted one of multiple optimal duplicate-line alignments because additions/deletions counts still matched API statistics.
+    fix: Forward and suffix LCS evidence now proves one unique matching pair at every LCS rank; multiple optimal coordinate mappings fail closed as invalid-data.
+    tests:
+      - T402-R001 rejects content fallback when duplicate lines permit different optimal coordinates
+  - id: T402-R002
+    severity: high
+    disposition: addressed
+    reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    root_cause: GitHub changed was collapsed to modified, nonstandard binary status was expected, and patchless zero-stat modified records were accepted without blob evidence.
+    fix: Reject changed, send zero-stat modified records to content fallback, classify NUL or invalid UTF-8 raw content as binary, reject mixed text/binary and zero-stat text modified ambiguity, and preserve shared binary exclusion.
+    tests:
+      - T402-R002 rejects the GitHub changed status instead of treating a type change as modified
+      - T402-R002 classifies patchless binary content and reaches the shared binary exclusion
+  - id: T402-R003
+    severity: medium
+    disposition: addressed
+    reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    root_cause: Ordinary --find-copies did not consider unchanged source files, so pure copies were classified as added.
+    fix: Run a conditional --find-copies-harder -l1000 second pass only when the ordinary diff contains added files; fail closed when Git skips exhaustive detection.
+    tests:
+      - T402-R003 detects a pure copy from an unchanged source with bounded harder copy detection
+      - T402-R003 fails closed when Git skips exhaustive rename and copy detection
+  - id: T402-R004
+    severity: high
+    disposition: addressed
+    reviewed_head: 4c5f0dd87073ca1de3e4e559b0a07e7f890f7aae
+    root_cause: Pagination validated origin and path but not monotonic page numbers, fixed per_page, request bounds, or empty-page chains.
+    fix: Require page=current+1, per_page=100, exact query keys, maximum 30 pages, maximum 3000 files, and reject empty pages with next links.
+    tests:
+      - T402-R004 rejects page jumps and per-page changes in GitHub pagination links
+      - T402-R004 rejects an empty-page next chain before it can issue unbounded requests
+
+files:
+  changed:
+    - path: test/integration/t402-review-followup.test.ts
+      purpose: Finding and sibling-boundary regressions.
+    - path: package.json
+      purpose: Execute follow-up tests in GitHub and T402 suites.
+    - path: src/application/github-pr-diff/content-diff-builder.ts
+      purpose: Unique alignment proof and binary/text evidence validation.
+    - path: src/application/github-pr-diff/contracts.ts
+      purpose: Binary immutable content result contract.
+    - path: src/application/github-pr-diff/pull-request-diff-acquisition-service.ts
+      purpose: Transport binary evidence into content snapshot construction.
+    - path: src/application/github-pr-diff/github-patch-diff-builder.ts
+      purpose: Route zero-stat modified files to immutable content fallback.
+    - path: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      purpose: Bounded harder copy detection and skip diagnostics.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Status, binary, and pagination hardening.
+    - path: reports/issue-1-t402-review-followup-20260802225300.md
+      purpose: Detailed follow-up report.
+    - path: reports/issue-1-t402-review-followup-handoff-20260802225300.yaml
+      purpose: Lossless fix-verification handoff.
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing failure artifact already captures required logs, outputs, source, tests, generated files, environment, and Git status.
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill-only update rule.
+    - path_or_area: T403-T405
+      reason: Outside review finding scope.
+    - path_or_area: merge
+      reason: Reserved for the user.
+
+validation:
+  red:
+    - head_sha: 05aaf79ade188f717aa43146696604fbed9a9da4
+      run_id: 30750196281
+      artifact_id: 8834183529
+      result: failure
+      purpose: Test-first commit; lint exposed an unnecessary escape in the new test harness before behavioral execution.
+    - head_sha: bdb0f5bb8950a14fdc9c3a9dd8ffd8985aca05d2
+      run_id: 30750255484
+      job_id: 91502914172
+      artifact_id: 8834206749
+      result: failure
+      purpose: Behavioral Red for duplicate alignment, changed/binary classification, pure copy, and empty-page pagination.
+  focused:
+    environment: downloaded behavioral-Red diagnostic artifact with modified outputs transpiled into test-dist
+    results:
+      - name: T402 focused
+        result: passed
+        count: 22/22
+      - name: Mock GitHub plus T402 integration
+        result: passed
+        count: 35/35
+  green:
+    head_sha: 1c37b35a9719d193c372dc32efcf13b10df8cf7d
+    run_id: 30750810988
+    job_id: 91504417280
+    conclusion: success
+    gates:
+      - install
+      - build
+      - contract_typecheck
+      - architecture_positive
+      - architecture_negative
+      - lint
+      - unit
+      - t503
+      - temporary_git
+      - mock_github
+      - vscode_extension_host
+    exact_head_verified: true
+
+report:
+  report_type: review_followup_report
+  path: reports/issue-1-t402-review-followup-20260802225300.md
+  handoff_path: reports/issue-1-t402-review-followup-handoff-20260802225300.yaml
+  final_exact_head_ci_after_report: pending
+
+review:
+  mode: fix_verification_required
+  reviewer_continuity: same initial reviewer
+  scope: Verify closure only for T402-R001 through T402-R004 against the final current HEAD. Do not start a new normal-review perspective.
+  verdict: pending
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  instructions:
+    - Resolve PR #40 current HEAD after report and handoff persistence.
+    - Use only workflow runs whose head SHA exactly matches that current HEAD.
+    - Verify T402-R001 through T402-R004 by identity and severity.
+    - Check the changed implementation and direct dependency impact without reopening a broad independent review.
+    - Persist a fix-verification report and concise PR comment.
+    - Do not merge.
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t402-review-followup-handoff-20260802225300.yaml
