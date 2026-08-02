@@ -51,6 +51,18 @@ export interface OpenReviewDiffInput {
   readonly title: string;
 }
 
+const requireKnownSideKind = (
+  value: ReviewDiffEditorSideInput,
+  label: "original" | "modified"
+): void => {
+  const kind = (value as { readonly kind?: unknown }).kind;
+  if (kind !== undefined && kind !== "present" && kind !== "absent") {
+    throw new TypeError(
+      `${label} diff side kind must be undefined, present, or absent.`
+    );
+  }
+};
+
 /** Encodes both immutable sides and delegates the actual editor opening to the host. */
 export class ReviewDiffEditorController<Uri> {
   /** Creates a controller with the canonical URI codec and platform host boundary. */
@@ -67,6 +79,9 @@ export class ReviewDiffEditorController<Uri> {
     if (input.title.trim().length === 0) {
       throw new TypeError("Diff editor title must be a non-empty string.");
     }
+    requireKnownSideKind(input.original, "original");
+    requireKnownSideKind(input.modified, "modified");
+
     const descriptor = (
       side: "original" | "modified",
       value: ReviewDiffEditorSideInput
