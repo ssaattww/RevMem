@@ -254,6 +254,26 @@ test("a current PR diff that assigns the target path to another file ID fails cl
   ]);
 });
 
+test("a canonical target-path alias assigned to another file ID fails closed", () => {
+  const otherContext = pullRequestContext();
+  otherContext.contextId = "other-context";
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
+  const baseline = currentDiff();
+  const canonicalAlias: PullRequestDiffSnapshot = {
+    ...baseline,
+    files: [{
+      ...baseline.files[0]!,
+      fileId: "different-file-id",
+      newPath: "src//example.ts"
+    }]
+  };
+
+  const model = modelForDiff(canonicalAlias, otherContext);
+  assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
+    { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
+  ]);
+});
+
 test("incomplete or malformed current PR diff fails closed for lower-priority layers", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";

@@ -175,8 +175,9 @@ const currentPullRequestChangedIntervals = (
     return { certain: false, intervals: [] };
   }
 
+  let validatedDiff: ReturnType<typeof calculatePullRequestDiffProgress>;
   try {
-    calculatePullRequestDiffProgress({
+    validatedDiff = calculatePullRequestDiffProgress({
       diff,
       reviewContext: context,
       exclusionPolicy: DIFF_VALIDATION_POLICY
@@ -187,7 +188,11 @@ const currentPullRequestChangedIntervals = (
 
   const file = diff.files.find((candidate) => candidate.fileId === input.target.fileId);
   if (file === undefined) {
-    if (diff.files.some((candidate) => candidate.newPath === input.target.currentPath)) {
+    const targetPath = DIFF_VALIDATION_POLICY.evaluate({
+      path: input.target.currentPath,
+      isBinary: false
+    }).normalizedPath;
+    if (validatedDiff.files.some((candidate) => candidate.path === targetPath)) {
       return { certain: false, intervals: [] };
     }
     return { certain: true, intervals: [] };

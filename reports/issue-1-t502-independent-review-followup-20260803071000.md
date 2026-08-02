@@ -81,3 +81,26 @@ Focused and full Markdown terminology lint are `unsupported`: this repository ha
 No public/protected C# or exported TypeScript surface was added or changed, so no new API documentation obligation was introduced. TypeScript lint, contracts, and architecture gates above provide the applicable coding-standards evidence.
 
 Remaining required workflow is normal fix verification, commit/push by the owning workflow, matching current-head CI, re-freeze, and a fresh independent final review. This report gives implementation evidence only and does not provide an independent-review verdict.
+
+## T502-IFR-001 canonical-path residual follow-up
+
+The same-independent-reviewer closure report `reports/issue-1-t502-independent-fix-verification-20260803075000.md` rejected the first `T502-IFR-001` fix at reviewed fix HEAD `c3143caf4c6cd4c340b8fac17b0095309450f1a6`. The earlier disposition above covered exact raw-path equality only; `T502-IFR-001 high` remained open because `src//example.ts` and `src/example.ts` are equal under the T301 canonical path policy but bypassed the raw comparison. `T502-IFR-002` through `T502-IFR-005` remain closed and were not changed or re-evaluated in this residual follow-up.
+
+The residual implementation retains the validated result from `calculatePullRequestDiffProgress`, which already exposes each candidate's T301-normalized `path`. When the target file ID is absent, the target current path is normalized with the same `ReviewFileExclusionPolicy`, and a matching canonical candidate path now returns `certain: false`. A direct regression using `different-file-id / src//example.ts` against target `file-1 / src/example.ts` verifies that only the current-context decoration remains.
+
+TDD evidence for this residual:
+
+- Red: `npm run test:t502` reproduced lower-priority other-context decoration; 10 passed and the canonical alias regression failed.
+- Green: `npm run test:t502` succeeded, 11/11.
+
+Residual validation:
+
+| Command | Result |
+| --- | --- |
+| `npm run test:t502` | success, 11/11 |
+| `npm run test:t301` | success, 20/20 |
+| `npm run build` | success |
+| `npm run lint` | success |
+| `git diff --check` | success; CRLF conversion warnings only |
+
+The residual changed paths are limited to `src/application/editor-decoration/normal-editor-decoration-model.ts`, `test/unit/global-review-mapping-display-priority.test.ts`, and this evidence update. No current-HEAD CI exists because the residual is uncommitted and unpushed. No commit, push, PR update, merge, new finding, broad review, or independent-review verdict was performed. The next action is closure-only verification of the existing `T502-IFR-001 high` finding against the next immutable fix HEAD.
