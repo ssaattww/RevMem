@@ -63,9 +63,10 @@ export interface LocalPullRequestDiffPort {
   >;
 }
 
-/** Exact immutable text lookup result used by the content fallback. */
+/** Exact immutable content lookup result used by the content fallback. */
 export type PullRequestRemoteTextReadResult =
   | { readonly kind: "found"; readonly content: string }
+  | { readonly kind: "binary" }
   | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason };
 
 /** GitHub metadata, changed-file, and immutable content boundary. */
