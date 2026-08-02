@@ -1,0 +1,331 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-02T22:30:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #37
+task_id: T502
+mode: review
+branch: task/t502-global-mapping-display-priority
+base_ref: main
+current_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+reviewed_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+
+scope:
+  - T502-REV-003 highのclosure verification
+  - current PR diff snapshotのcomplete/validated evidenceとfail-closed表示
+non_goals:
+  - T504 Global理解率
+  - T505 Global UI
+  - task/phase進捗同期
+  - merge
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T502の再レビューを実施する
+  - source: review_report
+    reference: reports/issue-1-t502-review-20260802213000.md
+    summary: T502-REV-003 highはcurrent PR diffの欠落・stale・不完全時にlower-priority layerをfail-closedにする
+  - source: verification_report
+    reference: reports/issue-1-t502-fix-verification-20260802221000.md
+    summary: identity一致だけでなく統計・hunk完全性・座標・重複等のvalidationが必要
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md section 2.1 and 11.4
+    summary: 不確実な証拠を確認済み表示へ使わず、現在PR未確認変更を最優先する
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t502-fix-verification-r2-*
+      reason: normal review verification evidence
+    - path_or_operation: PR #37 review comment
+      reason: concise verification result
+  forbidden:
+    - path_or_operation: product code and tests
+      reason: reviewer does not implement findings
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: dedicated manager responsibility
+    - path_or_operation: merge
+      reason: user performs merge
+
+development_policy:
+  method: TDD required for implementation fixes
+  testing_order: regression Red, implementation, focused and broad Green
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t502
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source/test/config snapshots
+    - environment and Git status
+blocked: []
+
+files:
+  changed:
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: T301 authoritative validator reuse and fail-closed evidence
+    - path: test/unit/global-review-mapping-display-priority.test.ts
+      purpose: incomplete and malformed diff regressions
+    - path: reports/issue-1-t502-review-followup-r2-20260802223000.md
+      purpose: implementation follow-up evidence
+    - path: reports/issue-1-t502-review-followup-r2-handoff-20260802223000.yaml
+      purpose: implementation handoff
+  inspected:
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: authoritative complete snapshot validation contract
+    - path: src/core/file-exclusion/review-file-exclusion-policy.ts
+      purpose: validation policy and exclusion ordering
+    - path: reports/issue-1-t502-review-20260802213000.md
+      purpose: source finding
+    - path: reports/issue-1-t502-fix-verification-20260802221000.md
+      purpose: previous open disposition
+  intentionally_untouched:
+    - path_or_area: product implementation and tests
+      reason: fix verification is review-only
+    - path_or_area: task and phase tracking
+      reason: dedicated manager responsibility
+
+commands:
+  - command: GitHub Actions CI
+    purpose: Red reproduction
+    exit_code: 1
+    result: failed
+    head_sha: 5e1af9b97a39e4fa1fd2c5af314fd4d95d8a33f8
+    evidence: run 30749763351
+  - command: GitHub Actions CI
+    purpose: implementation Green
+    exit_code: 0
+    result: passed
+    head_sha: bd0c322e268770ae40da5496704ff7323eb9b65d
+    evidence: run 30749879026
+  - command: GitHub Actions CI
+    purpose: final reviewed HEAD validation
+    exit_code: 0
+    result: passed
+    head_sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+    evidence: run 30749956160
+
+tests:
+  - name: incomplete PR diff fails closed
+    phase: verification
+    result: passed
+    head_sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+    evidence: additions > 0 with empty hunks regression
+  - name: malformed duplicate addition coordinate fails closed
+    phase: verification
+    result: passed
+    head_sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+    evidence: duplicate coordinate regression
+  - name: T502 focused suite
+    phase: regression
+    result: passed
+    head_sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+    evidence: 7 / 7 in run 30749956160
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30749956160
+  head_sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+  conclusion: success
+  artifacts:
+    - id: 8834065218
+      name: ci-failure-diagnostics-30749813082-1
+      purpose: noncanonical zero-count insertion fixture diagnostics
+
+implementation:
+  outcome: completed
+  final_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+  commits:
+    - sha: 5e1af9b97a39e4fa1fd2c5af314fd4d95d8a33f8
+      purpose: T502-REV-003 regression Red
+    - sha: bd0c322e268770ae40da5496704ff7323eb9b65d
+      purpose: authoritative snapshot validation and fail-closed implementation
+    - sha: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+      purpose: report and handoff completion with exact-head CI
+  addressed_findings:
+    - id: T502-REV-003
+      reviewed_head: 5d938ada02de96a822968a1c467ad23df2c2ec4a
+      disposition: addressed
+      evidence: T301 validator reuse, incomplete/malformed regressions, exact-head CI
+  failure_diagnostics:
+    - type: artifact
+      location: artifact 8834065218
+      summary: existing valid fixture used an invalid zero-count insertion anchor; fixture fixed without weakening validation
+  blocked_items: []
+  summary:
+    - current PR diff snapshot is validated beyond identity before lower-priority decoration is allowed
+    - invalid evidence retains only certain current-context decoration
+
+review:
+  mode: fix_verification
+  reviewed_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+  reviewer:
+    identity: same normal-review ChatGPT chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same normal-review ChatGPT chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - initial review and both fix-verification passes occurred in this chat
+        - no product or test file was changed by the reviewer
+  verdict: pass
+  required_coverage:
+    - criterion: source finding identity and severity continuity
+      disposition: checked_no_finding
+      evidence: T502-REV-003 high preserved
+    - criterion: fix correctness
+      disposition: checked_no_finding
+      evidence: authoritative validator invoked after identity check and exceptions fail closed
+    - criterion: sibling defect cases
+      disposition: checked_no_finding
+      evidence: statistics, hunk, coordinates, duplicates, status/path and state validation inspected
+    - criterion: test adequacy
+      disposition: checked_no_finding
+      evidence: incomplete and duplicate-coordinate regressions plus existing missing/stale cases
+    - criterion: current-head CI
+      disposition: checked_no_finding
+      evidence: run 30749956160 success for reviewed HEAD
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: one product file, one test file, report and handoff
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: pure validation and projection logic
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: run 30749956160 success
+    - item: TDD Red
+      result: supported
+      evidence: run 30749763351 failure before implementation
+    - item: failure diagnostics
+      result: supported
+      evidence: artifact 8834065218
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T502-REV-003 is closed
+    - all normal-review findings T502-REV-001 through T502-REV-004 are closed
+    - T502 is ready for independent final review
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t502-fix-verification-r2-20260802223000.md
+    - reports/issue-1-t502-fix-verification-r2-handoff-20260802223000.yaml
+  reviewed_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed closure evidence persisted
+
+findings: []
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - independent final review remains required before merge readiness is fully established
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #37
+      task_id: T502
+      mode: review
+      branch: task/t502-global-mapping-display-priority
+      current_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+      reviewed_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+      blocked: []
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+      finding: T502-REV-003 high closed
+      verdict: pass
+      findings: []
+      held: []
+      unexplored: []
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      outcome: created
+      path: reports/issue-1-t502-fix-verification-r2-20260802223000.md
+      reviewed_head: 41f3c5f17ed5be890c26b6a2f04aded15d121960
+extensions:
+  - namespace: revmem
+    payload:
+      substituted_ci_runs: false
+      merge_performed: false
+      normal_review_findings_closed: true
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: fresh independent reviewer reviews the frozen final implementation HEAD
+  instructions:
+    - use a fresh chat not involved in implementation, fixes, or normal review
+    - freeze all implementation, report, handoff, workflow, configuration and tracking changes before review
+    - reserve the independent-final-review report path before freezing the reviewed implementation HEAD
+    - use only workflow runs whose head SHA matches the frozen implementation HEAD
+    - do not merge
+  required_attachments_or_references:
+    - PR #37
+    - reports/issue-1-t502-review-20260802213000.md
+    - reports/issue-1-t502-fix-verification-20260802221000.md
+    - reports/issue-1-t502-fix-verification-r2-20260802223000.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t502-fix-verification-r2-handoff-20260802223000.yaml
+  packet_url: null
+  transport_note: no merge performed; independent final review must occur in a fresh chat

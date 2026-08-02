@@ -80,6 +80,22 @@ test("temporary Git suite executes the T207 history integration scenario", async
   );
 });
 
+test("T502 focused coverage is runnable locally and included in the default unit suite", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+
+  assert.match(
+    requireScript(scripts, "test:t502"),
+    /test-dist\/test\/unit\/global-review-mapping-display-priority\.test\.js/u
+  );
+  assert.match(
+    requireScript(scripts, "test:unit"),
+    /test-dist\/test\/unit\/global-review-mapping-display-priority\.test\.js/u
+  );
+});
+
 test("CI executes positive and negative architecture gates with diagnostic logs", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
@@ -89,4 +105,10 @@ test("CI executes positive and negative architecture gates with diagnostic logs"
   assert.match(workflow, /- name: Architecture negative contract/u);
   assert.match(workflow, /npm run validate:architecture:negative\b/u);
   assert.match(workflow, /tee test-output\/ci\/architecture-negative\.log/u);
+});
+
+test("CI executes the canonical T502 focused command", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /npm run test:t502\b/u);
 });

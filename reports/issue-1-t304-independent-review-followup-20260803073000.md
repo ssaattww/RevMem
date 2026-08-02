@@ -8,7 +8,7 @@ This follow-up addresses only `T304-IFR-P1` (high), `T304-IFR-P2` (medium),
 
 - Reviewed implementation HEAD: `4217d3efd3267093de6a31a9cbaab1d364363e22`
 - Working branch: `task/t304-pr-progress-tree`
-- No commit, push, PR update, or merge was performed in this follow-up.
+- The original implementation follow-up performed no commit, push, PR update, or merge.
 - No new product behavior or unrelated cleanup was added.
 
 ## Implemented follow-up
@@ -69,6 +69,21 @@ is invented in this repository report.
   and no `lint:md` script. No whitelist, terminology, or target configuration was changed.
 - `git diff --check` passed. The parent must obtain matching CI for the post-commit HEAD;
   the existing `4217d3e...` CI cannot be reused for this changed tree.
+
+### Pending origin/main integration
+
+The pending merge integrates `origin/main` at
+`d660b5888d567fb8b873bd6a5e7ac85b5942fc49` into T304 HEAD
+`e117515b259da7dd711b301f6808d295e58a35a4`. Conflict resolution retains both the
+T304 and T502 focused scripts, default-suite discovery, CI steps, workflow contract tests,
+and task/phase tracking. No merge commit was created by this executor.
+
+- `npm run test:t502`: 11 passed.
+- `npm run test:t304`: 21 passed, including both T304 and merged workflow contracts.
+- `node --test test-dist/test/unit/ci-workflow-contract.test.js`: 6 passed.
+- `npm run compile:test`, `npm run compile`, and `npm run lint`: passed.
+- `git diff --cached --check` and `git diff --check` passed after staging this report.
+  Matching CI remains unavailable until the parent completes and pushes the merge commit.
 
 ## Held environment items
 
