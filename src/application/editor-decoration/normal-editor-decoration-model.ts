@@ -2,7 +2,6 @@ import type {
   FileReviewState,
   GlobalFileReviewState,
   LineInterval,
-  PullRequestDiffSnapshot,
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
@@ -10,6 +9,7 @@ import {
   normalizeLineIntervals,
   subtractLineIntervals
 } from "../../core/intervals/index";
+import type { PullRequestDiffSnapshot } from "../../core/pr-progress/index";
 import type { ReviewStateFileTarget } from "../../core/review-state/index";
 
 /** State layer that proves one normal-editor range is reviewed. */
