@@ -5,11 +5,15 @@ import type {
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
+import { ReviewFileExclusionPolicy } from "../../core/file-exclusion/index";
 import {
   normalizeLineIntervals,
   subtractLineIntervals
 } from "../../core/intervals/index";
-import type { PullRequestDiffSnapshot } from "../../core/pr-progress/index";
+import {
+  calculatePullRequestDiffProgress,
+  type PullRequestDiffSnapshot
+} from "../../core/pr-progress/index";
 import type { ReviewStateFileTarget } from "../../core/review-state/index";
 
 export type NormalEditorDecorationSource = "context" | "other-context" | "global";
@@ -30,6 +34,8 @@ export interface NormalEditorDecorationModelInput {
   readonly target: Readonly<ReviewStateFileTarget>;
   readonly showGlobalReviewed: boolean;
 }
+
+const DIFF_VALIDATION_POLICY = new ReviewFileExclusionPolicy({ userGlobs: [] });
 
 const contextRevision = (contextState: Readonly<ReviewContextState>): string | undefined =>
   contextState.kind === "pull-request"
@@ -168,6 +174,17 @@ const currentPullRequestChangedIntervals = (
   ) {
     return { certain: false, intervals: [] };
   }
+
+  try {
+    calculatePullRequestDiffProgress({
+      diff,
+      reviewContext: context,
+      exclusionPolicy: DIFF_VALIDATION_POLICY
+    });
+  } catch {
+    return { certain: false, intervals: [] };
+  }
+
   const file = diff.files.find((candidate) => candidate.fileId === input.target.fileId);
   if (file === undefined) {
     return { certain: true, intervals: [] };
