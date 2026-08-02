@@ -53,6 +53,17 @@ export type ReviewFileExclusionDecision =
   /** The candidate is excluded and carries the stable decisive reason. */
   | { readonly excluded: true; readonly normalizedPath: string; readonly reason: ReviewFileExclusionReason };
 
+/** Result of deciding whether every descendant of one repository directory can be excluded before traversal. */
+export type ReviewDirectoryExclusionDecision =
+  /** No policy glob proves that the complete subtree is excluded. */
+  | { readonly excluded: false; readonly normalizedPath: string }
+  /** One explicit recursive policy glob excludes every descendant of the directory. */
+  | {
+    readonly excluded: true;
+    readonly normalizedPath: string;
+    readonly reason: Exclude<ReviewFileExclusionReason, { readonly kind: "binary" }>;
+  };
+
 /** Constructor options for a shared review-file exclusion policy snapshot. Omitted entries use manifest defaults. */
 export interface ReviewFileExclusionPolicyOptions {
   /**
@@ -307,6 +318,14 @@ const firstMatchingGlob = <T extends CompiledGlob>(
 ): T | undefined =>
   globs.find(({ expressions }) => expressions.some((expression) => expression.test(path)));
 
+const firstMatchingSubtreeGlob = <T extends CompiledGlob>(
+  directoryPath: string,
+  globs: readonly T[]
+): T | undefined =>
+  globs.find(({ pattern, expressions }) =>
+    pattern.endsWith("/**") && expressions.some((expression) => expression.test(`${directoryPath}/`))
+  );
+
 const defaultGlobSet = new Set<string>(DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS);
 const alwaysGlobSet = new Set<string>(ALWAYS_REVIEW_FILE_EXCLUDE_GLOBS);
 
@@ -348,6 +367,33 @@ export class ReviewFileExclusionPolicy {
       };
     }
     const effectiveGlob = firstMatchingGlob(normalizedPath, this.effectiveGlobs);
+    if (effectiveGlob !== undefined) {
+      return {
+        excluded: true,
+        normalizedPath,
+        reason: { kind: effectiveGlob.reasonKind, pattern: toCanonicalGlob(effectiveGlob.pattern) }
+      };
+    }
+    return { excluded: false, normalizedPath };
+  }
+
+  /**
+   * Decides whether an explicit recursive glob excludes every descendant of one directory.
+   *
+   * File-oriented glob matches never imply this result: callers must traverse and evaluate concrete files unless
+   * this method returns `excluded: true`.
+   */
+  public evaluateDirectory(directoryPath: string): ReviewDirectoryExclusionDecision {
+    const normalizedPath = normalizeRepositoryRelativePath(directoryPath);
+    const alwaysGlob = firstMatchingSubtreeGlob(normalizedPath, this.alwaysGlobs);
+    if (alwaysGlob !== undefined) {
+      return {
+        excluded: true,
+        normalizedPath,
+        reason: { kind: "default-glob", pattern: toCanonicalGlob(alwaysGlob.pattern) }
+      };
+    }
+    const effectiveGlob = firstMatchingSubtreeGlob(normalizedPath, this.effectiveGlobs);
     if (effectiveGlob !== undefined) {
       return {
         excluded: true,

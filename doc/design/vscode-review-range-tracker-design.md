@@ -503,6 +503,14 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 
 コメント行も非空なら対象とする。PR進捗とは別表示する。確認操作はGlobalへ自動反映し、解除操作は参照数に関係なくGlobalからも解除する。
 
+Global集計用のrepository列挙結果は次の3分類を持つ。
+
+- `included`: Global分母候補となるfile。各fileの非空行数だけを分母へ加算する。
+- `excluded`: 実際にfileとして列挙した後、binary、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
+- `excludedDirectories`: 共通除外policyまたは`.gitignore`により再帰前にpruneしたdirectory。1 directoryにつき1件だけ保持し、配下fileへ展開・推定しない。
+
+`included`、`excluded`、`excludedDirectories`はlocaleに依存しないrepository-relative pathのcode-unit昇順で、各配列内に重複pathを持たない。pruneしたdirectoryと配下fileはGlobal理解率の分子・分母へ寄与しない。directory件数は列挙診断としてfile除外数とは別に扱い、除外file数へ加算しない。
+
 ### 11.4 表示優先順位
 
 1. 現在PRの未確認変更
@@ -528,6 +536,10 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 - `node_modules`
 - `bin`、`obj`、`dist`、`build`
 - repository列挙時に`.gitignore`へ一致するfile
+
+repository列挙では、除外directoryを再帰前にpruneする。共通除外policyによるpruneは、明示的なrecursive globがdirectoryの全descendantを除外すると証明する場合だけ許可し、file-oriented globの一致やsynthetic child名からsubtree除外を推定しない。pruneしたdirectoryは1件のdirectory診断として保持し、その配下fileを個別の除外fileとして数えない。
+
+root `.gitignore`のtrailing `/` ruleはdirectory entryだけへ適用し、同名regular fileを除外しない。negated ruleも同じentry kindで最後の一致を判定する。
 
 `reviewRange.exclude`は有効配列全体を上書きする。空配列ではbinaryと`.git`以外を再包含できる。単一backslashはseparator、二重backslashはliteral backslashとし、canonical snapshotを再投入してもdecisionとreasonが変わらないようにする。
 
@@ -742,8 +754,9 @@ rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「�
 - 対象非空行数
 - fileごとの理解率
 - 除外file数
+- pruneした除外directory数（診断情報）
 
-PR Progressとは別sectionで表示する。
+除外file数は列挙結果の`excluded.length`だけを表示し、`excludedDirectories.length`を加算しない。pruneした除外directory数は別の診断項目として表示する。PR Progressとは別sectionで表示する。
 
 ### 16.6 Editor decoration
 
@@ -860,6 +873,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - edit/Git diff mapping、複数hunk、CRLF/LF、空白設定
 - rename、copy、分割、曖昧候補
 - PR/file進捗、Global混入防止、除外
+- Global列挙結果のfile/directory分離、除外数単位、安定sort、重複path禁止
 - 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
 - POSIX特殊path、Windows禁止path・予約デバイス名
 - missingとfatal failureの分離

@@ -8,12 +8,12 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T601 Gitなしsnapshot追従（独立reviewの全6 findingをclosure済み）
-- 現在のタスク: PR #33 squash merge準備
-- 次のタスク: PR #33をsquash merge後、依存順に次タスクへ進む
-- 実装状態: T601は最新main統合済みのPR #33で、persistent local extension snapshot adapter、authoritative latest-generation pointer、EOL-aware mapping、production composition/read-decoration path、application/runtime adapter境界を一括実装した。同じ独立reviewerのclosure限定R2で全6件closed、`pass_with_held`、exact-head CI成功を確認済み。通常reviewは完了済みのため再実施しない。Issue #28およびWindows temporary-directory cleanupの`EBUSY`は本筋外non-blocking held
+- 現在のタスク: PR #34 T503独立review指摘対応
+- 次のタスク: PR #34の既存独立finding closureとexact-head CIを確認後、squash mergeする
+- 実装状態: T503は最新main統合後、T300の明示的なsubtree decisionによる安全なdirectory prune、entry-kindを保持するroot `.gitignore`、CR/LF/CRLF対応の非空行数、locale非依存のpath sort、capability-awareなWindows symlink/junction fixtureを一括修正した。通常reviewは完了済みのため再実施せず、同じ独立reviewerが既存6 findingのclosureだけを確認する。Issue #28は本筋外non-blocking held
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t601-non-git-snapshots`
-- Pull Request: #33（base=`main`）
+- Gitブランチ: `task/t503-repository-file-enumeration`
+- Pull Request: #34（base=`main`）
 - T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
 - T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
@@ -179,6 +179,8 @@
 - T601独立finding closureレポート: `reports/issue-1-t601-independent-fix-verification-20260802163000.md`
 - T601独立review follow-up R2レポート: `reports/issue-1-t601-independent-review-followup-r2-20260802170000.md`
 - T601独立finding closure R2レポート: `reports/issue-1-t601-independent-fix-verification-r2-20260802173000.md`
+- T503独立最終レビューレポート: `reports/issue-1-t503-independent-final-review-20260802093030.md`
+- T503独立review follow-upレポート: `reports/issue-1-t503-independent-review-followup-20260802181500.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -274,9 +276,9 @@
 | --- | --- | --- | --- | --- | --- |
 | T501 | 完了 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。T501-IFR2-P1〜P4をclosed、exact-head CI成功済み |
 | T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
-| T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
-| T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
-| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数、除外数を表示する。AC-18を満たす |
+| T503 | 完了（PR #34 closure待ち） | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象と除外診断を構築する。既存独立finding 6件を一括修正済み | T300 | `included`へコメント行を含む非空行の分母候補file、`excluded`へ実際に列挙した除外file、`excludedDirectories`へ再帰前にpruneしたdirectoryを1 directoryにつき1件保持する。pruneしたdirectoryを配下fileへ展開・推定せず、3配列をlocale非依存のpath昇順・配列内重複なしで返す。file-oriented user globはsubtree pruneを推定せず、明示的recursive globだけがpruneできる。共通ユーザーglob・binary・`.gitignore`・symbolic linkの理由を保持し、directory-only `.gitignore` ruleはregular fileへ適用しない |
+| T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | `included`の有効なGlobal非空行だけを分子・分母へ数え、`excluded`と`excludedDirectories`は理解率へ寄与させず、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
+| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数を表示する。除外file数は`excluded.length`だけを表示し、`excludedDirectories.length`は加算せず、pruneした除外directory数を別の診断項目として表示する。AC-18を満たす |
 | T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
 
 ## P6 Gitなし対応と堅牢化
@@ -312,4 +314,4 @@
 
 ## 次回開始時の選択
 
-T206はPR #29でmerge済み。T207は全findingをclosedしPR #35へ提出済み。独立review fail後は同じ独立reviewerが既存findingのclosureだけを再確認し、新規観点・新規findingを追加しない方針を適用した。
+T206はPR #29でmerge済み。T207は全findingをclosedしPR #35へ提出済み。T503はPR #34で既存独立finding 6件のfixとfocused validationを完了し、同じ独立reviewerによるclosure限定確認とexact-head CIを待つ。独立review fail後は同じ独立reviewerが既存findingのclosureだけを再確認し、新規観点・新規findingを追加しない方針を適用した。
