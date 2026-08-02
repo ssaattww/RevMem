@@ -194,25 +194,30 @@ const currentGlobalState = (): RepositoryGlobalState => {
   return global;
 };
 
+const modelForDiff = (
+  diff: PullRequestDiffSnapshot | undefined,
+  otherContext: ReviewContextState
+) => createNormalEditorDecorationModel({
+  contextState: pullRequestContext(),
+  otherContextStates: [otherContext],
+  ...(diff === undefined ? {} : { currentPullRequestDiff: diff }),
+  globalState: currentGlobalState(),
+  target: {
+    fileId: "file-1",
+    currentPath: "src/example.ts",
+    revisionId: "new-revision",
+    lineCount: 4,
+    contentHash: "new-hash"
+  },
+  showGlobalReviewed: true
+});
+
 test("current PR unreviewed changed lines suppress Global and other-context decoration", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
   otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
 
-  const model = createNormalEditorDecorationModel({
-    contextState: pullRequestContext(),
-    otherContextStates: [otherContext],
-    currentPullRequestDiff: currentDiff(),
-    globalState: currentGlobalState(),
-    target: {
-      fileId: "file-1",
-      currentPath: "src/example.ts",
-      revisionId: "new-revision",
-      lineCount: 4,
-      contentHash: "new-hash"
-    },
-    showGlobalReviewed: true
-  });
+  const model = modelForDiff(currentDiff(), otherContext);
 
   assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
     { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" },
@@ -226,21 +231,29 @@ test("missing or stale current PR diff fails closed for lower-priority layers", 
   otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
 
   for (const diff of [undefined, { ...currentDiff(), headSha: "stale-head" }]) {
-    const model = createNormalEditorDecorationModel({
-      contextState: pullRequestContext(),
-      otherContextStates: [otherContext],
-      ...(diff === undefined ? {} : { currentPullRequestDiff: diff }),
-      globalState: currentGlobalState(),
-      target: {
-        fileId: "file-1",
-        currentPath: "src/example.ts",
-        revisionId: "new-revision",
-        lineCount: 4,
-        contentHash: "new-hash"
-      },
-      showGlobalReviewed: true
-    });
+    const model = modelForDiff(diff, otherContext);
+    assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
+      { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
+    ]);
+  }
+});
 
+test("incomplete or malformed current PR diff fails closed for lower-priority layers", () => {
+  const otherContext = pullRequestContext();
+  otherContext.contextId = "other-context";
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
+
+  const incomplete = currentDiff();
+  incomplete.files[0]!.hunks = [];
+
+  const duplicateCoordinate = currentDiff();
+  duplicateCoordinate.files[0]!.hunks[0]!.lines = [
+    { kind: "addition", newLine: 1, text: "changed" },
+    { kind: "addition", newLine: 1, text: "duplicate" }
+  ];
+
+  for (const diff of [incomplete, duplicateCoordinate]) {
+    const model = modelForDiff(diff, otherContext);
     assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
       { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
     ]);
