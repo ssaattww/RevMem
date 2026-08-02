@@ -14,3 +14,8 @@ export type {
   IncludedGlobalUnderstandingFile,
   LoadedGlobalUnderstandingFile
 } from "./global-understanding-background-recalculator";
+
+export type {
+  GlobalUnderstandingCalculationWorkOptions,
+  GlobalUnderstandingEvidenceKey
+} from "./cooperative-global-understanding-calculation";
