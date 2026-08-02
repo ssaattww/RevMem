@@ -1,6 +1,6 @@
 # Review Range Tracker タスク状況
 
-> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通して更新する。
+> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
 ## 現在位置
 
@@ -32,6 +32,183 @@
 - T402残存finding follow-upレポート: `reports/issue-1-t402-fix-verification-followup-20260802233000.md`
 - T402独立最終レビューレポート: `reports/issue-1-t402-independent-final-review-20260803062300.md`
 - T402独立review follow-upレポート: `reports/issue-1-t402-independent-review-followup-20260803091500.md`
+- T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
+- T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
+- T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
+- T002初回レビューレポート: `reports/issue-1-t002-review-20260723112423.md`
+- T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
+- T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
+- T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
+- T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
+- T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
+- T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
+- T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
+- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
+- T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
+- T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
+- T101 review follow-upレポート: `reports/issue-1-t101-review-followup-20260723124645.md`
+- T101最終再レビューレポート: `reports/issue-1-t101-review-r3-20260723125125.md`
+- T102実装レポート: `reports/issue-1-t102-implementation-20260723132500.md`
+- T102レビューレポート: `reports/issue-1-t102-review-20260723133000.md`
+- T102初回レビューレポート: `reports/issue-1-t102-review-20260723132249.md`
+- T102 review follow-upレポート: `reports/issue-1-t102-review-followup-20260723133429.md`
+- T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
+- T103実装レポート: `reports/issue-1-t103-implementation-20260723135000.md`
+- T103レビューレポート: `reports/issue-1-t103-review-20260723135500.md`
+- T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260723140033.md`
+- T103 review follow-upレポート: `reports/issue-1-t103-review-followup-20260723140931.md`
+- T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
+- T104実装レポート: `reports/issue-1-t104-implementation-20260723142500.md`
+- T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
+- T104独立再レビューレポート: `reports/issue-1-t104-review-r2-20260723144001.md`
+- T104 review follow-upレポート: `reports/issue-1-t104-review-followup-20260723144622.md`
+- T104再レビューレポート: `reports/issue-1-t104-review-r3-20260723145327.md`
+- T104追加review follow-upレポート: `reports/issue-1-t104-review-followup-r2-20260723145703.md`
+- T104最終再レビューレポート: `reports/issue-1-t104-review-r4-20260723150344.md`
+- T104-2復旧実装レポート: `reports/issue-1-t104-2-implementation-20260724205127.md`
+- T104-2初回レビューレポート: `reports/issue-1-t104-2-review-20260724210309.md`
+- T104-2最終再レビューレポート: `reports/issue-1-t104-2-review-r2-20260724211200.md`
+- T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
+- T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
+- T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
+- T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
+- T107実装レポート: `reports/issue-1-t107-implementation-20260723201924.md`
+- T107レビューレポート: `reports/issue-1-t107-review-20260723201924.md`
+- T108調査レポート: `reports/issue-1-t108-investigation-20260723225437.md`
+- T108実装レポート: `reports/issue-1-t108-implementation-20260723230550.md`
+- T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
+- T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
+- T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
+- T109調査レポート: `reports/issue-1-t109-investigation-20260724201518.md`
+- T109実装レポート: `reports/issue-1-t109-implementation-20260724202210.md`
+- T109要件変更follow-upレポート: `reports/issue-1-t109-requirement-followup-20260724203235.md`
+- T109レビューレポート: `reports/issue-1-t109-review-20260724202930.md`
+- T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
+- T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
+- T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
+- T201 review follow-upレポート: `reports/issue-1-t201-review-followup-20260724194226.md`
+- T201最終再レビューレポート: `reports/issue-1-t201-review-r3-20260724194817.md`
+- T202実装レポート: `reports/issue-1-t202-implementation-20260723143500.md`
+- T202初回レビューレポート: `reports/issue-1-t202-review-20260723144000.md`
+- T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
+- T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
+- T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
+- T300実装レポート: `reports/issue-1-t300-implementation-20260724205000.md`
+- T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
+- T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
+- T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
+- T203実装レポート: `reports/issue-1-t203-implementation-20260724204000.md`
+- T203初回レビューレポート: `reports/issue-1-t203-review-20260724212419.md`
+- T203 review follow-upレポート: `reports/issue-1-t203-review-followup-20260724213540.md`
+- T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
+- T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
+- T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
+- T300 R5レビューレポート: `reports/issue-1-t300-review-r5-20260725074608.md`
+- T300 R5 review follow-upレポート: `reports/issue-1-t300-review-followup-r5-20260725080046.md`
+- T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
+- T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
+- T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
+- T302実装レポート: `reports/issue-1-t302-implementation-20260725102242.md`
+- T302レビューレポート: `reports/issue-1-t302-review-20260725102242.md`
+- T302再レビュー対応レポートR2: `reports/issue-1-t302-review-followup-r2-20260725143000.md`
+- T302最終再レビューレポートR2: `reports/issue-1-t302-review-r2-20260725143500.md`
+- T302レビュー対応レポートR3: `reports/issue-1-t302-review-followup-r3-20260725160000.md`
+- T302最終再レビューレポートR3: `reports/issue-1-t302-review-r3-20260725160500.md`
+- T302レビュー対応レポートR4: `reports/issue-1-t302-review-followup-r4-20260725164000.md`
+- T302最終再レビューレポートR4: `reports/issue-1-t302-review-r4-20260725164500.md`
+- T302レビュー対応レポートR5: `reports/issue-1-t302-review-followup-r5-20260726113000.md`
+- T302最終再レビューレポートR5: `reports/issue-1-t302-review-r5-20260726113500.md`
+- T302 current main統合レポート: `reports/issue-1-t302-main-integration-20260726160000.md`
+- T302 R6レビューレポート: `reports/issue-1-t302-review-r6-20260726160636.md`
+- T302 R6 review follow-upレポート: `reports/issue-1-t302-review-followup-r6-20260726163000.md`
+- T302 R7最終再レビューレポート: `reports/issue-1-t302-review-r7-20260726162652.md`
+- T302進捗同期レポート: `reports/issue-1-t302-progress-sync-20260726162652.md`
+- T204 current main統合レポート: `reports/issue-1-t204-main-integration-20260726131355.md`
+- T204設計更新レポート: `reports/issue-1-t204-design-update-20260726132156.md`
+- T204 R9レビューレポート: `reports/issue-1-t204-review-r9-20260726132635.md`
+- T204 R9 review follow-upレポート: `reports/issue-1-t204-review-followup-r9-20260726133527.md`
+- T204 R10レビューレポート: `reports/issue-1-t204-review-r10-20260726134419.md`
+- T204 R10 review follow-upレポート: `reports/issue-1-t204-review-followup-r10-20260726135004.md`
+- T204 R11レビューレポート: `reports/issue-1-t204-review-r11-20260726135810.md`
+- T204 R11 review follow-upレポート: `reports/issue-1-t204-review-followup-r11-20260726140411.md`
+- T204 R12レビューレポート: `reports/issue-1-t204-review-r12-20260726141246.md`
+- T204 R12 review follow-upレポート: `reports/issue-1-t204-review-followup-r12-20260726143000.md`
+- T204 R13最終再レビューレポート: `reports/issue-1-t204-review-r13-20260726142730.md`
+- T204進捗同期レポート: `reports/issue-1-t204-progress-sync-20260726142730.md`
+- T205実装レポート: `reports/issue-1-t205-implementation-20260801150646.md`
+- T205初回レビューレポート: `reports/issue-1-t205-review-20260801155600.md`
+- T205 review follow-upレポート: `reports/issue-1-t205-review-followup-20260801160638.md`
+- T205 fix verificationレポート: `reports/issue-1-t205-review-r2-20260801164200.md`
+- T205進捗同期レポート: `reports/issue-1-t205-progress-sync-20260801172324.md`
+- T205 R3レビューレポート: `reports/issue-1-t205-review-r3-20260801173000.md`
+- T205 R3 review follow-upレポート: `reports/issue-1-t205-review-followup-r3-20260801180000.md`
+- T205 R4 fix verificationレポート: `reports/issue-1-t205-review-r4-20260801190000.md`
+- T205 R4 review follow-upレポート: `reports/issue-1-t205-review-followup-r4-20260801193000.md`
+- T205 R5 fix verificationレポート: `reports/issue-1-t205-review-r5-20260801202000.md`
+- T205 R5 review follow-upレポート: `reports/issue-1-t205-review-followup-r5-20260801210000.md`
+- T205 R6 fix verificationレポート: `reports/issue-1-t205-review-r6-20260801214000.md`
+- T205 R6 review follow-upレポート: `reports/issue-1-t205-review-followup-r6-20260801221000.md`
+- T205 R7 fix verificationレポート: `reports/issue-1-t205-review-r7-20260801224000.md`
+- T205 R7 review follow-upレポート: `reports/issue-1-t205-review-followup-r7-20260801231000.md`
+- T205 R8最終fix verificationレポート: `reports/issue-1-t205-review-r8-20260801234000.md`
+- T205独立レビュー1回目レポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
+- T205 IFR1設計更新レポート: `reports/issue-1-t205-ifr1-design-update-20260801194500.md`
+- T205 IFR1-P1 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-20260801194000.md`
+- T205 IFR1-P2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-20260801201500.md`
+- T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
+- T205 IFR1 focused fix verificationレポート: `reports/issue-1-t205-ifr1-fix-verification-20260801213000.md`
+- T205 IFR1-P2 R2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-r2-20260801215500.md`
+- T205 IFR1 focused fix verification R2レポート: `reports/issue-1-t205-ifr1-fix-verification-r2-20260801222500.md`
+- T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
+- T206実装レポート: `reports/issue-1-t206-implementation-20260801215844.md`
+- T206初回通常レビューレポート: `reports/issue-1-t206-review-20260801223000.md`
+- T206 review follow-upレポート: `reports/issue-1-t206-review-followup-20260801224500.md`
+- T206 fix verificationレポート: `reports/issue-1-t206-fix-verification-20260801230500.md`
+- T206独立最終レビューレポート: `reports/issue-1-t206-independent-final-review-20260801233000.md`
+- T206独立review follow-upレポート: `reports/issue-1-t206-independent-review-followup-20260801235500.md`
+- T206独立finding fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-20260802002000.md`
+- T206独立review follow-up R2レポート: `reports/issue-1-t206-independent-review-followup-r2-20260802003500.md`
+- T206独立finding最終fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-r2-20260802005000.md`
+- T207実装レポート: `reports/issue-1-t207-implementation-20260802011000.md`
+- T207通常レビューレポート: `reports/issue-1-t207-review-20260802013500.md`
+- T207 review follow-upレポート: `reports/issue-1-t207-review-followup-20260802015000.md`
+- T207 fix verificationレポート: `reports/issue-1-t207-fix-verification-20260802021500.md`
+- T207独立最終レビューレポート: `reports/issue-1-t207-independent-final-review-20260802024500.md`
+- T207独立review follow-upレポート: `reports/issue-1-t207-independent-review-followup-20260802031000.md`
+- T207独立finding通常verificationレポート: `reports/issue-1-t207-independent-finding-normal-verification-20260802034500.md`
+- T207独立finding closure限定verificationレポート: `reports/issue-1-t207-independent-fix-verification-20260802034530.md`
+- T303独立最終レビューレポート: `reports/issue-1-t303-independent-final-review-20260802090000.md`
+- T303独立review follow-upレポート: `reports/issue-1-t303-independent-review-followup-20260802093100.md`
+- T303独立finding fix verificationレポート: `reports/issue-1-t303-independent-fix-verification-20260802103000.md`
+- T303独立review follow-up R2レポート: `reports/issue-1-t303-independent-review-followup-r2-20260802110000.md`
+- T303独立finding closure R2レポート: `reports/issue-1-t303-independent-fix-verification-r2-20260802113000.md`
+- T401独立最終レビューレポート: `reports/issue-1-t401-independent-final-review-20260802090030.md`
+- T401独立review follow-upレポート: `reports/issue-1-t401-independent-review-followup-20260802121500.md`
+- T401独立finding closureレポート: `reports/issue-1-t401-independent-fix-verification-20260802124500.md`
+- T601独立最終レビューレポート: `reports/issue-1-t601-independent-final-review-20260802093000.md`
+- T601独立review follow-upレポート: `reports/issue-1-t601-independent-review-followup-20260802154500.md`
+- T601独立finding closureレポート: `reports/issue-1-t601-independent-fix-verification-20260802163000.md`
+- T601独立review follow-up R2レポート: `reports/issue-1-t601-independent-review-followup-r2-20260802170000.md`
+- T601独立finding closure R2レポート: `reports/issue-1-t601-independent-fix-verification-r2-20260802173000.md`
+- T503独立最終レビューレポート: `reports/issue-1-t503-independent-final-review-20260802093030.md`
+- T503独立review follow-upレポート: `reports/issue-1-t503-independent-review-followup-20260802181500.md`
+- T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
+- T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
+- T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
+- T301初回レビューレポート: `reports/issue-1-t301-review-20260725095025.md`
+- T301 R2レビューレポート: `reports/issue-1-t301-review-r2-20260725101507.md`
+- T301 R3レビューレポート: `reports/issue-1-t301-review-r3-20260725131530.md`
+- T301 R4レビューレポート: `reports/issue-1-t301-review-r4-20260725134500.md`
+- T301 R5レビューレポート: `reports/issue-1-t301-review-r5-20260725151610.md`
+- T301 R6レビューレポート: `reports/issue-1-t301-review-r6-20260725154116.md`
+- T301 R7レビューレポート: `reports/issue-1-t301-review-r7-20260725162649.md`
+- T301 R8レビューレポート: `reports/issue-1-t301-review-r8-20260726145022.md`
+- T301 R8 review follow-upレポート: `reports/issue-1-t301-review-followup-r8-20260726151000.md`
+- T301 R9レビューレポート: `reports/issue-1-t301-review-r9-20260726151101.md`
+- T301 R9 review follow-upレポート: `reports/issue-1-t301-review-followup-r9-20260726152000.md`
+- T301 R10最終再レビューレポート: `reports/issue-1-t301-review-r10-20260726152625.md`
+- T301進捗同期レポート: `reports/issue-1-t301-progress-sync-20260726152625.md`
 - PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureと対象HEAD一致CI成功後に利用者がmergeする
 
 ## 状態と規模
@@ -46,7 +223,7 @@
 | M | 2〜3日程度 |
 | L | 4〜5日程度。超過見込みなら再分解する |
 
-各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。文書同期だけの変更ではRed/Greenを作らず、既存の文書契約と標準CIで検証する。
+各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。
 
 ## P0 開発基盤
 
