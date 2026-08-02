@@ -81,7 +81,7 @@ test("Git rename keeps the stable Global file ID and maps unchanged ranges", () 
     },
     newFiles: {
       "src/renamed.ts": {
-        fileId: "unused-for-stable-rename",
+        fileId: "file-1",
         lineCount: 4,
         contentHash: "old-hash"
       }
