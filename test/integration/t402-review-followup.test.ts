@@ -227,6 +227,27 @@ test("T402-R003 detects a pure copy from an unchanged source with bounded harder
   }
 });
 
+test("T402-R003 fails closed when Git skips exhaustive rename and copy detection", async () => {
+  const adapter = new LocalGitPullRequestDiffAdapter({
+    execute: async invocation => {
+      if (invocation.argumentsList[0] === "rev-parse") {
+        const revision = invocation.argumentsList[3]!.replace(/\^\{commit\}$/u, "");
+        return { exitCode: 0, stdout: `${revision}\n`, stderr: "" };
+      }
+      return {
+        exitCode: 0,
+        stdout: "diff --git a/source.txt b/copied.txt\n",
+        stderr: "warning: exhaustive rename detection was skipped due to too many files.\n"
+      };
+    }
+  }, "/workspace/repository");
+
+  assert.deepEqual(await adapter.loadDiff(request), {
+    kind: "unavailable",
+    reason: "diff-too-large"
+  });
+});
+
 test("T402-R004 rejects page jumps and per-page changes in GitHub pagination links", async () => {
   const invalidLinks = [
     "https://api.github.test/repos/example/review-range/pulls/42/files?per_page=100&page=3",
@@ -234,6 +255,7 @@ test("T402-R004 rejects page jumps and per-page changes in GitHub pagination lin
   ];
 
   for (const next of invalidLinks) {
+    let fileRequests = 0;
     const adapter = new FetchGitHubPullRequestDiffAdapter({
       apiBaseUrl: "https://api.github.test",
       fetch: async input => {
@@ -241,10 +263,11 @@ test("T402-R004 rejects page jumps and per-page changes in GitHub pagination lin
         if (!url.pathname.endsWith("/files")) {
           return new Response(JSON.stringify(metadataPayload), { status: 200 });
         }
-        return new Response(JSON.stringify([]), {
+        fileRequests += 1;
+        return new Response(JSON.stringify([]), fileRequests === 1 ? {
           status: 200,
           headers: { link: `<${next}>; rel="next"` }
-        });
+        } : { status: 200 });
       }
     });
 
@@ -252,6 +275,7 @@ test("T402-R004 rejects page jumps and per-page changes in GitHub pagination lin
       kind: "unavailable",
       reason: "api"
     }, next);
+    assert.equal(fileRequests, 1, next);
   }
 });
 
