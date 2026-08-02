@@ -51,6 +51,7 @@ export interface RepositoryFileEnumerationResult {
 interface GitIgnoreRule {
   readonly pattern: string;
   readonly negated: boolean;
+  readonly directoryOnly: boolean;
   readonly expression: RegExp;
 }
 
@@ -98,10 +99,11 @@ const compileGitIgnoreRule = (rawLine: string): GitIgnoreRule | undefined => {
   if (anchored) line = line.slice(1);
 
   const prefix = anchored || line.includes("/") ? "^" : "(?:^|/)";
-  const suffix = directoryOnly ? "(?:/.*)?$" : "$";
+  const suffix = "$";
   return {
     pattern: rawLine.trim(),
     negated,
+    directoryOnly,
     expression: new RegExp(prefix + compileGitIgnorePattern(line) + suffix)
   };
 };
@@ -109,24 +111,30 @@ const compileGitIgnoreRule = (rawLine: string): GitIgnoreRule | undefined => {
 const parseGitIgnore = (content: string): readonly GitIgnoreRule[] =>
   content.split(/\r?\n/u).map(compileGitIgnoreRule).filter((rule): rule is GitIgnoreRule => rule !== undefined);
 
-const matchingGitIgnoreRule = (repositoryPath: string, rules: readonly GitIgnoreRule[]): GitIgnoreRule | undefined => {
+const matchingGitIgnoreRule = (
+  repositoryPath: string,
+  isDirectory: boolean,
+  rules: readonly GitIgnoreRule[]
+): GitIgnoreRule | undefined => {
   let match: GitIgnoreRule | undefined;
   for (const rule of rules) {
-    if (rule.expression.test(repositoryPath)) match = rule;
+    if ((!rule.directoryOnly || isDirectory) && rule.expression.test(repositoryPath)) match = rule;
   }
   return match?.negated === true ? undefined : match;
 };
 
 const isBinary = (content: Buffer): boolean => content.subarray(0, Math.min(content.length, 8192)).includes(0);
+const compareRepositoryPaths = (left: string, right: string): number =>
+  left === right ? 0 : left < right ? -1 : 1;
 const byRepositoryPath = <T extends { readonly path: string }>(left: T, right: T): number =>
-  left.path.localeCompare(right.path, "en");
+  compareRepositoryPaths(left.path, right.path);
 
 /** Deterministically enumerates repository files for Global-understanding aggregation. */
 export class NodeRepositoryFileEnumerator {
   public constructor(private readonly exclusionPolicy: ReviewFileExclusionPolicy) {}
 
   public static countNonEmptyLines(content: string): number {
-    return content.split(/\r?\n/u).reduce((count, line) => count + (line.trim().length > 0 ? 1 : 0), 0);
+    return content.split(/\r\n|\r|\n/u).reduce((count, line) => count + (line.trim().length > 0 ? 1 : 0), 0);
   }
 
   public async enumerate(repositoryRoot: string): Promise<RepositoryFileEnumerationResult> {
@@ -136,7 +144,7 @@ export class NodeRepositoryFileEnumerator {
     const excluded = [...walked.excluded];
     const excludedDirectories = [...walked.excludedDirectories];
 
-    for (const repositoryPath of walked.files.sort((left, right) => left.localeCompare(right, "en"))) {
+    for (const repositoryPath of walked.files.sort(compareRepositoryPaths)) {
       const absolutePath = path.join(repositoryRoot, ...repositoryPath.split("/"));
       const content = await readFile(absolutePath);
       const decision = this.exclusionPolicy.evaluate({ path: repositoryPath, isBinary: isBinary(content) });
@@ -183,10 +191,9 @@ export class NodeRepositoryFileEnumerator {
         continue;
       }
 
-      const policyDecision = this.exclusionPolicy.evaluate({
-        path: entry.isDirectory() ? `${repositoryPath}/.enumeration-probe` : repositoryPath,
-        isBinary: false
-      });
+      const policyDecision = entry.isDirectory()
+        ? this.exclusionPolicy.evaluateDirectory(repositoryPath)
+        : this.exclusionPolicy.evaluate({ path: repositoryPath, isBinary: false });
       if (policyDecision.excluded) {
         if (entry.isDirectory()) {
           excludedDirectories.push({ path: repositoryPath, reason: policyDecision.reason });
@@ -196,7 +203,7 @@ export class NodeRepositoryFileEnumerator {
         continue;
       }
 
-      const gitIgnoreRule = matchingGitIgnoreRule(repositoryPath, gitIgnoreRules);
+      const gitIgnoreRule = matchingGitIgnoreRule(repositoryPath, entry.isDirectory(), gitIgnoreRules);
       if (gitIgnoreRule !== undefined) {
         const reason = { kind: "gitignore" as const, pattern: gitIgnoreRule.pattern };
         if (entry.isDirectory()) excludedDirectories.push({ path: repositoryPath, reason });

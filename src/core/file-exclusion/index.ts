@@ -6,6 +6,7 @@ export {
   MAX_REVIEW_FILE_EXCLUDE_GLOBS,
   ReviewFileExclusionPolicy,
   type ReviewFileExclusionCandidate,
+  type ReviewDirectoryExclusionDecision,
   type ReviewFileExclusionDecision,
   type ReviewFileExclusionPolicyOptions,
   type ReviewFileExclusionReason
