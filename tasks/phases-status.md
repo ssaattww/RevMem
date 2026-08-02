@@ -31,7 +31,7 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T304はmainへ統合済み。T305のActivity Bar・Current Context・Status Barと、T306のExtension Host統合試験が未着手 |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401のPR resolverとT402の3段差分取得fallbackはmainへ統合済み。cache、永続PR layer、UI、障害統合試験が未着手 |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Gitsnapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
 
 ## 現在位置
 
