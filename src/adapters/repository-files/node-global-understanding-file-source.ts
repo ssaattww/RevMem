@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { LoadedGlobalUnderstandingFile } from "../../application/global-understanding/index";
+import type {
+  GlobalUnderstandingFileSource,
+  LoadedGlobalUnderstandingFile
+} from "../../application/global-understanding/index";
 import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
 
@@ -13,8 +16,9 @@ const requireNonEmptyString = (value: string, label: string): void => {
 const splitLogicalLines = (content: string): readonly string[] =>
   content.length === 0 ? [] : content.split(/\r\n|\r|\n/u);
 
-/** Node filesystem adapter that loads exact current-file evidence for T504 calculation. */
-export class NodeGlobalUnderstandingFileSource {
+/** Node filesystem adapter that loads exact current-file evidence for Global calculation. */
+export class NodeGlobalUnderstandingFileSource
+implements GlobalUnderstandingFileSource {
   public constructor(
     private readonly repositoryRoot: string,
     private readonly pathSemantics: FileSystemPathSemantics
@@ -23,9 +27,10 @@ export class NodeGlobalUnderstandingFileSource {
   }
 
   /**
-   * Reads one canonical included repository file without accepting a symbolic-link replacement.
+   * Reads one canonical included repository file and rejects non-regular entries or observable read races.
    *
-   * @throws When the path is non-canonical, the current entry is not a regular file, or reading fails.
+   * @throws When the path is non-canonical, either validation observes a non-regular entry, the entry metadata
+   * changes during the read, or the filesystem operation fails.
    */
   public async load(
     repositoryPath: string,
