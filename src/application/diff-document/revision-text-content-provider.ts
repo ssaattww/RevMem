@@ -11,9 +11,7 @@ export type RevisionTextContentProviderErrorCode =
   | "missing-file"
   | "invalid-encoding";
 
-const ERROR_MESSAGES: Readonly<
-  Record<RevisionTextContentProviderErrorCode, string>
-> = {
+const ERROR_MESSAGES: Readonly<Record<RevisionTextContentProviderErrorCode, string>> = {
   "missing-context": "Review context is unavailable",
   "missing-revision": "Revision object is unavailable",
   "missing-file": "File is unavailable at the requested revision",
@@ -34,28 +32,23 @@ export class RevisionTextContentProviderError extends Error {
   }
 }
 
-/**
- * Restores immutable original or modified text from a T302 virtual URI.
- *
- * The provider never substitutes another context, side, revision, or file. Known
- * absence and unsupported text encoding use stable error codes; unexpected adapter
- * failures are preserved for diagnostic handling by the caller.
- */
+/** Restores immutable original or modified text from a T302 virtual URI. */
 export class RevisionTextContentProvider {
   public constructor(
     private readonly uriCodec: ReviewDiffUriCodec,
     private readonly contentSource: RevisionTextContentSource
   ) {}
 
-  /** Decodes one virtual URI and returns the exact requested revision content. */
+  /**
+   * Decodes one virtual URI and returns exact revision content.
+   * `empty` descriptors are authoritative immutable empty documents and never reach the external source.
+   */
   public async provideTextDocumentContent(uri: string): Promise<string> {
     const descriptor = this.uriCodec.decode(uri);
+    if (descriptor.revisionSource === "empty") return "";
+
     const result = await this.contentSource.readTextContent(descriptor);
-
-    if (result.kind === "found") {
-      return result.content;
-    }
-
+    if (result.kind === "found") return result.content;
     throw new RevisionTextContentProviderError(result.kind, descriptor);
   }
 }

@@ -17,15 +17,12 @@ const BASE64_URL_TOKEN = /^[A-Za-z0-9_-]+$/u;
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
-/** Stable machine-readable reason for URI codec failures. */
 export type ReviewDiffUriCodecErrorCode =
   | "invalid-review-diff-descriptor"
   | "invalid-review-diff-uri";
 
-/** Error raised when a descriptor or virtual URI violates the canonical T302 contract. */
 export class ReviewDiffUriCodecError extends Error {
   public constructor(
-    /** Stable reason distinguishing an invalid descriptor from an invalid encoded URI. */
     public readonly code: ReviewDiffUriCodecErrorCode,
     message: string,
     options?: ErrorOptions
@@ -37,7 +34,6 @@ export class ReviewDiffUriCodecError extends Error {
 
 const descriptorError = (message: string): ReviewDiffUriCodecError =>
   new ReviewDiffUriCodecError("invalid-review-diff-descriptor", message);
-
 const uriError = (message: string, cause?: unknown): ReviewDiffUriCodecError =>
   new ReviewDiffUriCodecError("invalid-review-diff-uri", message, {
     ...(cause === undefined ? {} : { cause })
@@ -46,9 +42,7 @@ const uriError = (message: string, cause?: unknown): ReviewDiffUriCodecError =>
 const containsControlCharacter = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
-    if (code <= 0x1f || code === 0x7f) {
-      return true;
-    }
+    if (code <= 0x1f || code === 0x7f) return true;
   }
   return false;
 };
@@ -57,19 +51,13 @@ const containsUnpairedSurrogate = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {
-      if (index + 1 >= value.length) {
-        return true;
-      }
+      if (index + 1 >= value.length) return true;
       const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) {
-        return true;
-      }
+      if (next < 0xdc00 || next > 0xdfff) return true;
       index += 1;
       continue;
     }
-    if (code >= 0xdc00 && code <= 0xdfff) {
-      return true;
-    }
+    if (code >= 0xdc00 && code <= 0xdfff) return true;
   }
   return false;
 };
@@ -80,9 +68,7 @@ const requireWellFormedField = (
   maxBytes: number,
   failure: (message: string) => ReviewDiffUriCodecError
 ): string => {
-  if (value.length === 0) {
-    throw failure(`${name} must not be empty`);
-  }
+  if (value.length === 0) throw failure(`${name} must not be empty`);
   if (containsUnpairedSurrogate(value)) {
     throw failure(`${name} must be well-formed UTF-16`);
   }
@@ -144,8 +130,8 @@ const validateRevisionSource = (
   value: ReviewDiffRevisionSource,
   failure: (message: string) => ReviewDiffUriCodecError
 ): ReviewDiffRevisionSource => {
-  if (value !== "git-commit") {
-    throw failure("revisionSource must be git-commit");
+  if (value !== "git-commit" && value !== "empty") {
+    throw failure("revisionSource must be git-commit or empty");
   }
   return value;
 };
@@ -165,15 +151,10 @@ const validateRevision = (
 const encodeField = (value: string): string =>
   Buffer.from(value, "utf8").toString("base64url");
 
-const decodeField = (
-  token: string,
-  name: string,
-  maxBytes: number
-): string => {
+const decodeField = (token: string, name: string, maxBytes: number): string => {
   if (!BASE64_URL_TOKEN.test(token)) {
     throw uriError(`${name} is not canonical base64url`);
   }
-
   try {
     const bytes = Buffer.from(token, "base64url");
     if (bytes.length === 0 || bytes.length > maxBytes) {
@@ -184,9 +165,7 @@ const decodeField = (
     }
     return utf8Decoder.decode(bytes);
   } catch (error) {
-    if (error instanceof ReviewDiffUriCodecError) {
-      throw error;
-    }
+    if (error instanceof ReviewDiffUriCodecError) throw error;
     throw uriError(`${name} is not valid UTF-8`, error);
   }
 };
@@ -213,26 +192,19 @@ const validateDescriptor = (
     failure
   );
   const revision = validateRevision(descriptor.revision, failure);
-
-  return {
+  const common = {
     contextId,
     filePath,
     fileSystemPathSemantics,
     side: descriptor.side,
-    revisionSource,
     revision
-  };
+  } as const;
+  return revisionSource === "git-commit"
+    ? { ...common, revisionSource: "git-commit" }
+    : { ...common, revisionSource: "empty" };
 };
 
-/**
- * Encodes immutable review-diff document identity into one strict, versioned URI.
- *
- * Variable text fields use canonical base64url, while filesystem semantics and
- * revision source are explicit path segments. POSIX-only filename characters can
- * round-trip without weakening Windows path validation or context isolation.
- */
 export class ReviewDiffUriCodec {
-  /** Encodes one descriptor using the canonical `review-range-diff://document/v1` form. */
   public encode(descriptor: ReviewDiffDocumentDescriptor): string {
     const valid = validateDescriptor(descriptor, descriptorError);
     const uri = `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}/${REVIEW_DIFF_VERSION}/${encodeField(valid.contextId)}/${valid.fileSystemPathSemantics}/${valid.side}/${valid.revisionSource}/${encodeField(valid.revision)}/${encodeField(valid.filePath)}`;
@@ -242,14 +214,15 @@ export class ReviewDiffUriCodec {
     return uri;
   }
 
-  /** Decodes only canonical version-1 review-diff URIs. */
   public decode(uri: string): ReviewDiffDocumentDescriptor {
     if (
       uri.length === 0 ||
       uri.length > MAX_URI_LENGTH ||
       containsControlCharacter(uri)
     ) {
-      throw uriError("Review diff URI has an unsupported size or control character");
+      throw uriError(
+        "Review diff URI has an unsupported size or control character"
+      );
     }
 
     let parsed: URL;
@@ -296,19 +269,26 @@ export class ReviewDiffUriCodec {
     if (sideToken !== "original" && sideToken !== "modified") {
       throw uriError("Review diff URI side is invalid");
     }
-    if (sourceToken !== "git-commit") {
+    if (sourceToken !== "git-commit" && sourceToken !== "empty") {
       throw uriError("Review diff URI revision source is invalid");
     }
 
+    const common = {
+      contextId: decodeField(
+        contextToken!,
+        "contextId",
+        MAX_CONTEXT_ID_BYTES
+      ),
+      filePath: decodeField(fileToken!, "filePath", MAX_FILE_PATH_BYTES),
+      fileSystemPathSemantics: semanticsToken,
+      side: sideToken,
+      revision: decodeField(revisionToken!, "revision", 64)
+    } as const;
+    const input: ReviewDiffDocumentDescriptor = sourceToken === "git-commit"
+      ? { ...common, revisionSource: "git-commit" }
+      : { ...common, revisionSource: "empty" };
     const descriptor = validateDescriptor(
-      {
-        contextId: decodeField(contextToken!, "contextId", MAX_CONTEXT_ID_BYTES),
-        filePath: decodeField(fileToken!, "filePath", MAX_FILE_PATH_BYTES),
-        fileSystemPathSemantics: semanticsToken,
-        side: sideToken,
-        revisionSource: sourceToken,
-        revision: decodeField(revisionToken!, "revision", 64)
-      },
+      input,
       (message) => uriError(message)
     );
 
