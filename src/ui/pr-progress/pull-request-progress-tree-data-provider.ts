@@ -1,3 +1,4 @@
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
 import type { ReviewFileExclusionReason } from "../../core/file-exclusion/index";
 import type {
@@ -173,17 +174,50 @@ const validateCount = (value: number, label: string): void => {
     throw new RangeError(`${label} must be a non-negative safe integer.`);
   }
 };
-const validateNonEmpty = (value: string, label: string): string => {
+
+const validateNonBlank = (value: string, label: string): string => {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new RangeError(`${label} must not be empty.`);
   }
   return value;
 };
+
+const validateRepositoryPath = (
+  value: string,
+  semantics: FileSystemPathSemantics,
+  label: string
+): string => {
+  try {
+    return requireCanonicalRepositoryRelativePath(value, semantics, label);
+  } catch (error) {
+    throw new RangeError(error instanceof Error ? error.message : String(error));
+  }
+};
+
 const validateCommitObjectId = (value: string, label: string): void => {
   if (!FULL_COMMIT_OBJECT_ID.test(value)) {
     throw new RangeError(`${label} must be a full lowercase commit object ID.`);
   }
 };
+
+const cloneExclusionReason = (
+  reason: ReviewFileExclusionReason
+): ReviewFileExclusionReason => {
+  switch (reason.kind) {
+    case "binary": return { kind: "binary" };
+    case "default-glob": return { kind: "default-glob", pattern: reason.pattern };
+    case "user-glob": return { kind: "user-glob", pattern: reason.pattern };
+  }
+};
+
+const cloneRawFile = (
+  file: PullRequestDiffFileProgress
+): PullRequestDiffFileProgress => ({
+  ...file,
+  ...(file.exclusionReason === undefined
+    ? {}
+    : { exclusionReason: cloneExclusionReason(file.exclusionReason) })
+});
 
 const cloneUnsupportedReason = (
   reason: PullRequestLineReviewUnsupportedReason
@@ -200,11 +234,19 @@ const cloneReviewability = (
     reason: cloneUnsupportedReason(reviewability.reason)
   };
 
+const freezeReviewability = (
+  reviewability: PullRequestLineReviewability
+): PullRequestLineReviewability => {
+  const clone = cloneReviewability(reviewability);
+  if (clone.kind === "unsupported") Object.freeze(clone.reason);
+  return Object.freeze(clone);
+};
+
 const validateSnapshotIdentity = (
   identity: PullRequestProgressTreeSnapshotIdentity
 ): void => {
-  validateNonEmpty(identity.snapshotId, "PR progress snapshotId");
-  validateNonEmpty(identity.contextId, "PR progress contextId");
+  validateNonBlank(identity.snapshotId, "PR progress snapshotId");
+  validateNonBlank(identity.contextId, "PR progress contextId");
   validateCommitObjectId(identity.baseSha, "PR progress baseSha");
   validateCommitObjectId(identity.headSha, "PR progress headSha");
   const expectedDiffId = `${identity.baseSha}..${identity.headSha}`;
@@ -230,6 +272,7 @@ const formatExclusionReason = (reason: ReviewFileExclusionReason): string => {
     case "user-glob": return `ユーザー除外: ${reason.pattern}`;
   }
 };
+
 const formatUnsupportedReason = (
   reason: PullRequestLineReviewUnsupportedReason
 ): string => {
@@ -242,14 +285,25 @@ const formatUnsupportedReason = (
   }
 };
 
-const validateFile = (file: PullRequestDiffFileProgress): void => {
-  validateNonEmpty(file.fileId, "PR progress fileId");
-  validateNonEmpty(file.path, "PR progress path");
+const validateFile = (
+  file: PullRequestDiffFileProgress,
+  semantics: FileSystemPathSemantics
+): void => {
+  validateNonBlank(file.fileId, "PR progress fileId");
+  validateRepositoryPath(file.path, semantics, "PR progress path");
   if (file.oldPath !== undefined) {
-    validateNonEmpty(file.oldPath, `PR progress oldPath for ${file.fileId}`);
+    validateRepositoryPath(
+      file.oldPath,
+      semantics,
+      `PR progress oldPath for ${file.fileId}`
+    );
   }
   if (file.newPath !== undefined) {
-    validateNonEmpty(file.newPath, `PR progress newPath for ${file.fileId}`);
+    validateRepositoryPath(
+      file.newPath,
+      semantics,
+      `PR progress newPath for ${file.fileId}`
+    );
   }
   validateCount(file.additions, `PR progress additions for ${file.fileId}`);
   validateCount(file.deletions, `PR progress deletions for ${file.fileId}`);
@@ -329,7 +383,7 @@ const validateReviewability = (
               `Encoding line-review reason does not match binary file ${file.fileId}.`
             );
           }
-          validateNonEmpty(
+          validateNonBlank(
             (reason as { readonly encoding: string }).encoding,
             `Line-review unsupported encoding for ${file.fileId}`
           );
@@ -375,41 +429,21 @@ const defineEffectiveFile = (
   rawFile: PullRequestDiffFileProgress,
   reviewability: PullRequestLineReviewability
 ): PullRequestEffectiveFileProgress => {
-  const category = categoryFor(rawFile, reviewability);
-  const effectiveReason = reasonFor(rawFile, reviewability);
-  const projected = reviewability.kind === "unsupported"
-    ? {
-      ...rawFile,
-      reviewedLineCount: 0,
-      totalLineCount: 0,
-      progress: 1
-    }
-    : { ...rawFile };
-  Object.defineProperties(projected, {
-    raw: {
-      value: Object.freeze({ ...rawFile }),
-      enumerable: false,
-      writable: false
-    },
-    reviewability: {
-      value: Object.freeze(cloneReviewability(reviewability)),
-      enumerable: false,
-      writable: false
-    },
-    category: {
-      value: category,
-      enumerable: false,
-      writable: false
-    },
-    effectiveReason: {
-      value: effectiveReason,
-      enumerable: false,
-      writable: false
-    }
+  const raw = Object.freeze(cloneRawFile(rawFile));
+  if (raw.exclusionReason !== undefined) Object.freeze(raw.exclusionReason);
+  const detachedReviewability = freezeReviewability(reviewability);
+  const category = categoryFor(raw, detachedReviewability);
+  const effectiveReason = reasonFor(raw, detachedReviewability);
+  const unsupported = detachedReviewability.kind === "unsupported";
+  return Object.freeze({
+    raw,
+    reviewability: detachedReviewability,
+    category,
+    ...(effectiveReason === undefined ? {} : { effectiveReason }),
+    reviewedLineCount: unsupported ? 0 : raw.reviewedLineCount,
+    totalLineCount: unsupported ? 0 : raw.totalLineCount,
+    progress: unsupported ? 1 : raw.progress
   });
-  return Object.freeze(
-    projected as unknown as PullRequestEffectiveFileProgress
-  );
 };
 
 const cloneEffectiveFile = (
@@ -438,7 +472,7 @@ const createOpenTarget = (
     headSha: identity.headSha,
     originalDiffId: identity.originalDiffId,
     fileSystemPathSemantics: identity.fileSystemPathSemantics,
-    file: { ...file },
+    file: cloneRawFile(file),
     original: side(
       file.oldPath === undefined ? "absent" : "present",
       originalPath,
@@ -471,7 +505,7 @@ const toFileNode = (
     deletions: rawFile.deletions,
     ...(reason === undefined ? {} : { reason }),
     reviewability: cloneReviewability(effectiveFile.reviewability),
-    source: { ...rawFile },
+    source: cloneRawFile(rawFile),
     openTarget: createOpenTarget(identity, rawFile)
   };
 };
@@ -554,7 +588,7 @@ export class PullRequestProgressTreeDataProvider {
     let effectiveReviewed = 0;
     let effectiveTotal = 0;
     for (const rawFile of progress.files) {
-      validateFile(rawFile);
+      validateFile(rawFile, snapshot.fileSystemPathSemantics);
       if (seenFileIds.has(rawFile.fileId)) {
         throw new RangeError(
           `Duplicate PR progress fileId: ${rawFile.fileId}`
@@ -674,7 +708,7 @@ export class PullRequestProgressTreeDataProvider {
     if (node.reviewability.kind === "unsupported") {
       return {
         kind: "line-review-unavailable",
-        file: { ...node.source },
+        file: cloneRawFile(node.source),
         reason: cloneUnsupportedReason(node.reviewability.reason)
       };
     }
@@ -683,7 +717,7 @@ export class PullRequestProgressTreeDataProvider {
       kind: "opened-diff",
       target: {
         ...node.openTarget,
-        file: { ...node.openTarget.file },
+        file: cloneRawFile(node.openTarget.file),
         original: { ...node.openTarget.original },
         modified: { ...node.openTarget.modified }
       }
