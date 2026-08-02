@@ -4,21 +4,28 @@ VS Code の通常テキストエディタで、確認済みにした行範囲を
 
 ## 現状できること
 
+現在配布している VSIX から利用できる機能は次のとおりです。
+
 - カーソル行、単一選択、複数選択の行を確認済みにしたり、確認済みを解除したりできます。重複・隣接する選択範囲はまとめて扱います。
 - ファイル全体を確認済みにする、または全解除する操作があります。どちらも実行前に確認ダイアログを表示します。
+- 確認操作と解除操作は、現在の context と repository 単位の Global 状態へ atomic に反映されます。
 - 確認済み行をテーマ対応のグレー背景で表示します。ガターアイコンと Overview Ruler の表示は設定で切り替えられます。
 - hover で現在の context、確認日時、Global 状態を確認できます。
 - Git working tree 内のファイルは、workspace 内外を問わず branch または detached HEAD の context として扱います。
-- Git 管理外のファイルは、workspace 内なら workspace context、workspace 外なら external-file context として保存します。
+- Git の HEAD や branch が変化した場合は、commit 間の差分から未変更行を保守的に引き継ぎます。一意な rename・move は同じファイルとして追従し、変更行、曖昧な対応、取得できない証拠は未確認にします。
+- Git 管理外の workspace ファイルは、圧縮 snapshot と行差分を使って再起動後も確認済み範囲を追従します。snapshot の欠損、破損、期限切れ、曖昧な対応では未確認にします。
+- Git 管理外で workspace 外のファイルは external-file context として保存します。
 - UNC 共有上のファイルも、VS Code から開ける場合は server authority を含む URI で識別します。
 - 状態は owner に応じた VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
-- 安全のため、ファイル内容または Git revision が変わった場合は、以前の確認済み範囲を新しい内容へ無条件に引き継ぎません。
+- 確認・解除、context 作成、Git revision mapping の履歴を JSON Lines 形式で保存します。
+
+main には、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR 進捗計算、PR Progress Tree、Global 理解率計算の内部コンポーネントも実装されています。ただし、これらを Activity Bar、コマンド、Tree View、Status Bar として公開する runtime 配線はまだ完了していません。
 
 ## インストール方法
 
 この拡張機能は Marketplace ではなく VSIX で配布します。
 
-1. GitHub Releases の最新Releaseから、そのversionに対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回Releaseの例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
+1. GitHub Releases の最新 Release から、その version に対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回 Release の例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
 2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選んでダウンロードしたファイルを指定します。
 
 CLI を使う場合は、次を実行します。
@@ -40,11 +47,12 @@ Git working tree 内では、ファイルの親ディレクトリから reposito
 
 ## 現在の制限
 
-- diff editor と untitled editor は対象外です。
-- GitHub PR context は未接続です。Git 管理下では現在 branch または detached HEAD context を使用します。
-- Git HEAD が変わった場合の revision 間 mapping は未実装です。旧 revision の状態を新しい HEAD へ無条件に再ラベルしません。
-- 編集による行位置の追従、rename・move への追従は未実装です。内容が変わったファイルの保存済み範囲は無効化します。
-- 複数 root workspace、確認履歴の保存・閲覧は未対応です。
+- 現在の manifest で公開している4コマンドは通常エディタ専用です。diff editor と untitled editor では実行できません。
+- GitHub PR context、PR Progress Tree、Activity Bar、Current Context View、Global Understanding View、Review Contexts View、Status Bar は runtime に未接続です。Git 管理下では現在 branch または detached HEAD context を使用します。
+- 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。
+- 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。
+- 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。
+- `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。これらの UI が未接続のため、現在の通常エディタ操作と装飾には影響しません。
 - UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。
 
 ## 設定
@@ -56,16 +64,21 @@ VS Code の設定で次の項目を変更できます。
 | `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタの装飾へ重ねて表示します。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
+| `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
 
 ## 開発・検証
 
-Node.js 24 を使用します。依存関係を導入した後、次のコマンドでビルド、静的解析、単体テストを実行できます。
+Node.js 24 を使用します。依存関係を導入した後、次のコマンドで標準検証を実行できます。
 
 ```powershell
 npm ci
 npm run build
+npm run typecheck:contracts
+npm run validate:architecture
+npm run validate:architecture:negative
 npm run lint
 npm run test:unit
+npm test
 ```
 
 VSIX を作成するには次を実行します。
