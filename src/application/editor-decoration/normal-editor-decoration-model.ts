@@ -187,6 +187,9 @@ const currentPullRequestChangedIntervals = (
 
   const file = diff.files.find((candidate) => candidate.fileId === input.target.fileId);
   if (file === undefined) {
+    if (diff.files.some((candidate) => candidate.newPath === input.target.currentPath)) {
+      return { certain: false, intervals: [] };
+    }
     return { certain: true, intervals: [] };
   }
   if (file.newPath !== input.target.currentPath) {

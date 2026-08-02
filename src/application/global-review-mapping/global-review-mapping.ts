@@ -110,20 +110,53 @@ export function mapRepositoryGlobalStateThroughDocumentChanges(
 
 const inferredLineCount = (
   file: Readonly<GlobalFileReviewState>,
-  input: MapRepositoryGlobalStateThroughGitDiffInput
+  input: MapRepositoryGlobalStateThroughGitDiffInput,
+  parsed: ReturnType<typeof parseZeroContextGitDiff>
 ): number => {
   const explicit = input.oldLineCounts?.[file.fileId];
   if (explicit !== undefined) {
     return explicit;
   }
-  const pathMetadata = input.newFiles?.[file.currentPath];
-  if (pathMetadata !== undefined) {
-    return pathMetadata.lineCount;
-  }
-  return file.reviewed.reduce(
+  const reviewedExtent = file.reviewed.reduce(
     (maximum, interval) => Math.max(maximum, interval.endLineExclusive),
     0
   );
+  const diffOldExtent = parsed.files
+    .filter((diffFile) => diffFile.oldPath === file.currentPath)
+    .flatMap((diffFile) => diffFile.hunks)
+    .reduce(
+      (maximum, hunk) => Math.max(maximum, hunk.oldStart + hunk.oldLineCount),
+      0
+    );
+  return Math.max(reviewedExtent, diffOldExtent);
+};
+
+const assertModifiedDestinationIdentity = (
+  input: MapRepositoryGlobalStateThroughGitDiffInput,
+  parsed: ReturnType<typeof parseZeroContextGitDiff>
+): void => {
+  const originalByPath = new Map(
+    Object.values(input.globalState.files).map((file) => [file.currentPath, file])
+  );
+  for (const diffFile of parsed.files) {
+    if (
+      diffFile.isRename ||
+      diffFile.oldPath === undefined ||
+      diffFile.newPath === undefined ||
+      diffFile.oldPath !== diffFile.newPath
+    ) {
+      continue;
+    }
+    const original = originalByPath.get(diffFile.oldPath);
+    const destination = input.newFiles?.[diffFile.newPath];
+    if (
+      original !== undefined &&
+      destination !== undefined &&
+      destination.fileId !== original.fileId
+    ) {
+      throw new RangeError("Modified destination metadata must preserve the Global fileId.");
+    }
+  }
 };
 
 /**
@@ -135,6 +168,8 @@ const inferredLineCount = (
 export function mapRepositoryGlobalStateThroughGitDiff(
   input: MapRepositoryGlobalStateThroughGitDiffInput
 ): RepositoryGlobalState {
+  const parsed = parseZeroContextGitDiff(input.diff);
+  assertModifiedDestinationIdentity(input, parsed);
   const contextFiles = Object.fromEntries(
     Object.entries(input.globalState.files).map(([fileId, file]) => [
       fileId,
@@ -147,7 +182,7 @@ export function mapRepositoryGlobalStateThroughGitDiff(
         modifiedReviewed: file.reviewed.map((interval) => ({ ...interval })),
         originalReviewedByDiff: {},
         ...(file.contentHash === undefined ? {} : { contentHash: file.contentHash }),
-        lineCount: inferredLineCount(file, input),
+        lineCount: inferredLineCount(file, input, parsed),
         updatedAt: file.updatedAt
       }
     ])
@@ -163,7 +198,6 @@ export function mapRepositoryGlobalStateThroughGitDiff(
     ...(input.newFiles === undefined ? {} : { newFiles: input.newFiles })
   });
 
-  const parsed = parseZeroContextGitDiff(input.diff);
   const originalByPath = new Map(
     Object.values(input.globalState.files).map((file) => [file.currentPath, file])
   );

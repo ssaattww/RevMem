@@ -235,6 +235,25 @@ test("missing or stale current PR diff fails closed for lower-priority layers", 
   }
 });
 
+test("a current PR diff that assigns the target path to another file ID fails closed", () => {
+  const otherContext = pullRequestContext();
+  otherContext.contextId = "other-context";
+  otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
+  const baseline = currentDiff();
+  const differentFileId: PullRequestDiffSnapshot = {
+    ...baseline,
+    files: [{
+      ...baseline.files[0]!,
+      fileId: "different-file-id"
+    }]
+  };
+
+  const model = modelForDiff(differentFileId, otherContext);
+  assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
+    { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
+  ]);
+});
+
 test("incomplete or malformed current PR diff fails closed for lower-priority layers", () => {
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
@@ -266,6 +285,72 @@ test("incomplete or malformed current PR diff fails closed for lower-priority la
       { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" }
     ]);
   }
+});
+
+test("ordinary modified Git metadata must preserve the Global file ID", () => {
+  assert.throws(
+    () => mapRepositoryGlobalStateThroughGitDiff({
+      globalState: globalState(),
+      diff: [
+        "diff --git a/src/example.ts b/src/example.ts",
+        "--- a/src/example.ts",
+        "+++ b/src/example.ts",
+        "@@ -2 +2 @@",
+        "-b",
+        "+changed",
+        ""
+      ].join("\n"),
+      newRevisionId: "new-revision",
+      updatedAt: "2026-08-03T00:00:00.000Z",
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+      oldLineCounts: { "file-1": 4 },
+      newFiles: {
+        "src/example.ts": {
+          fileId: "different-file-id",
+          lineCount: 4,
+          contentHash: "different-content"
+        }
+      }
+    }),
+    /preserve the Global fileId/u
+  );
+});
+
+test("sparse Global ranges use the old diff extent when rename oldLineCounts are omitted", () => {
+  const state = globalState();
+  state.files["file-1"]!.reviewed = [{ startLine: 0, endLineExclusive: 1 }];
+  const oldText = [...Array.from({ length: 99 }, () => "unchanged"), "last"].join("\n");
+  const newText = Array.from({ length: 99 }, () => "unchanged").join("\n");
+
+  const result = mapRepositoryGlobalStateThroughGitDiff({
+    globalState: state,
+    diff: [
+      "diff --git a/src/example.ts b/src/renamed.ts",
+      "similarity index 99%",
+      "rename from src/example.ts",
+      "rename to src/renamed.ts",
+      "--- a/src/example.ts",
+      "+++ b/src/renamed.ts",
+      "@@ -100 +99,0 @@",
+      "-last",
+      ""
+    ].join("\n"),
+    newRevisionId: "new-revision",
+    updatedAt: "2026-08-03T00:00:00.000Z",
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
+    oldTexts: { "src/example.ts": oldText },
+    newFiles: {
+      "src/renamed.ts": {
+        fileId: "file-1",
+        lineCount: 99,
+        contentHash: "new-hash",
+        newText
+      }
+    }
+  });
+
+  assert.equal(result.files["file-1"]?.currentPath, "src/renamed.ts");
+  assert.deepEqual(result.files["file-1"]?.reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
 
 test("other-context intervals split where Global activity changes", () => {

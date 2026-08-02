@@ -49,8 +49,7 @@ jobs:
       - name: T502 Global mapping and display priority tests
         run: |
           set -o pipefail
-          npm run compile:test 2>&1 | tee test-output/ci/t502-compile-test.log
-          node --test test-dist/test/unit/global-review-mapping-display-priority.test.js 2>&1 | tee test-output/ci/test-t502.log
+          npm run test:t502 2>&1 | tee test-output/ci/test-t502.log
       - name: T503 repository enumeration tests
         run: |
           set -o pipefail
