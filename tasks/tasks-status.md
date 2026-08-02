@@ -1,19 +1,19 @@
 # Review Range Tracker タスク状況
 
-> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
+> 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通して更新する。
 
 ## 現在位置
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T304 PR Progress Tree View（PR #38の独立review全4 findingをclosureしcurrent mainへ統合済み）
-- 現在のタスク: PR #39 T504独立review指摘対応
-- 次のタスク: T504-IFR-001〜003のnormal fix verificationを完了し、新しいimplementation HEADで独立最終reviewを実施する
-- 実装状態: T504はrepository・file別Global理解率calculator、exact-evidence cache、chunk処理、open file優先のbackground再計算を実装済みである。独立最終reviewのT504-IFR-001（cooperative yield中のmutable Global入力とcache evidence混在）、T504-IFR-002（malformed non-NUL UTF-8の集計混入）、T504-IFR-003（進捗追跡未同期）は同一batchで修正・検証済みであり、normal fix verificationと独立reviewの再実施は未了。Issue #28、Issue #36、T607は本筋外held
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
+- 直近完了タスク: T402 PR差分取得の3段フォールバック（PR #40をcurrent mainへ統合済み）
+- 現在のタスク: なし
+- 次のタスク: 未選択。依存解消済みの着手候補はT305 Activity Bar・Current Context・Status Barと、T403 GitHub metadata・diff cache
+- 実装状態: current main `cb75305898627b3e69d248b931afba4a85fd8ef8`には、T304、T402、T502、T503、T504を含む直近の完了タスクが統合済みである。現在のVSIXへ接続されているのは通常editor操作、装飾、Git branch/detached revision追従、非Git snapshot追従、Global状態更新、JSONL履歴、除外設定である。diff editor、GitHub PR、PR Progress Tree、Global理解率の内部コンポーネントは実装済みだが、Activity Bar・command・Tree View・Status Barへのruntime配線は後続タスクで行う
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t504-global-understanding-progress`
-- Pull Request: #39（base=`main`）
+- Gitブランチ: product実装の進行中branchなし
+- Pull Request: product実装の進行中PRなし
 - T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
 - T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
@@ -25,184 +25,14 @@
 - T504 fix verification R2レポート: `reports/issue-1-t504-fix-verification-r2-20260802224600.md`
 - T504独立最終レビューレポート: `reports/issue-1-t504-independent-final-review-20260803062200.md`
 - T504独立review follow-upレポート: `reports/issue-1-t504-independent-review-followup-20260803083000.md`
-- PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureとCI成功後にsquash mergeする
-- T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
-- T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
-- T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
-- T002初回レビューレポート: `reports/issue-1-t002-review-20260723112423.md`
-- T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
-- T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
-- T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
-- T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
-- T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
-- T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
-- T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
-- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
-- T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
-- T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
-- T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
-- T101 review follow-upレポート: `reports/issue-1-t101-review-followup-20260723124645.md`
-- T101最終再レビューレポート: `reports/issue-1-t101-review-r3-20260723125125.md`
-- T102実装レポート: `reports/issue-1-t102-implementation-20260723132500.md`
-- T102レビューレポート: `reports/issue-1-t102-review-20260723133000.md`
-- T102初回レビューレポート: `reports/issue-1-t102-review-20260723132249.md`
-- T102 review follow-upレポート: `reports/issue-1-t102-review-followup-20260723133429.md`
-- T102最終再レビューレポート: `reports/issue-1-t102-review-r2-20260723134447.md`
-- T103実装レポート: `reports/issue-1-t103-implementation-20260723135000.md`
-- T103レビューレポート: `reports/issue-1-t103-review-20260723135500.md`
-- T103独立再レビューレポート: `reports/issue-1-t103-review-r2-20260723140033.md`
-- T103 review follow-upレポート: `reports/issue-1-t103-review-followup-20260723140931.md`
-- T103最終再レビューレポート: `reports/issue-1-t103-review-r3-20260723141902.md`
-- T104実装レポート: `reports/issue-1-t104-implementation-20260723142500.md`
-- T104レビューレポート: `reports/issue-1-t104-review-20260723143000.md`
-- T104独立再レビューレポート: `reports/issue-1-t104-review-r2-20260723144001.md`
-- T104 review follow-upレポート: `reports/issue-1-t104-review-followup-20260723144622.md`
-- T104再レビューレポート: `reports/issue-1-t104-review-r3-20260723145327.md`
-- T104追加review follow-upレポート: `reports/issue-1-t104-review-followup-r2-20260723145703.md`
-- T104最終再レビューレポート: `reports/issue-1-t104-review-r4-20260723150344.md`
-- T104-2復旧実装レポート: `reports/issue-1-t104-2-implementation-20260724205127.md`
-- T104-2初回レビューレポート: `reports/issue-1-t104-2-review-20260724210309.md`
-- T104-2最終再レビューレポート: `reports/issue-1-t104-2-review-r2-20260724211200.md`
-- T105実装レポート: `reports/issue-1-t105-implementation-20260723155600.md`
-- T105レビューレポート: `reports/issue-1-t105-review-20260723155800.md`
-- T106実装レポート: `reports/issue-1-t106-implementation-20260723175644.md`
-- T106レビューレポート: `reports/issue-1-t106-review-20260723175800.md`
-- T107実装レポート: `reports/issue-1-t107-implementation-20260723201924.md`
-- T107レビューレポート: `reports/issue-1-t107-review-20260723201924.md`
-- T108調査レポート: `reports/issue-1-t108-investigation-20260723225437.md`
-- T108実装レポート: `reports/issue-1-t108-implementation-20260723230550.md`
-- T108初回レビューレポート: `reports/issue-1-t108-review-20260723231514.md`
-- T108 review follow-upレポート: `reports/issue-1-t108-review-followup-20260723232037.md`
-- T108最終再レビューレポート: `reports/issue-1-t108-review-r2-20260723232331.md`
-- T109調査レポート: `reports/issue-1-t109-investigation-20260724201518.md`
-- T109実装レポート: `reports/issue-1-t109-implementation-20260724202210.md`
-- T109要件変更follow-upレポート: `reports/issue-1-t109-requirement-followup-20260724203235.md`
-- T109レビューレポート: `reports/issue-1-t109-review-20260724202930.md`
-- T201実装レポート: `reports/issue-1-t201-implementation-20260723142751.md`
-- T201初回レビューレポート: `reports/issue-1-t201-review-20260723142751.md`
-- T201独立再レビューレポート: `reports/issue-1-t201-review-r2-20260724193522.md`
-- T201 review follow-upレポート: `reports/issue-1-t201-review-followup-20260724194226.md`
-- T201最終再レビューレポート: `reports/issue-1-t201-review-r3-20260724194817.md`
-- T202実装レポート: `reports/issue-1-t202-implementation-20260723143500.md`
-- T202初回レビューレポート: `reports/issue-1-t202-review-20260723144000.md`
-- T202独立再レビューレポート: `reports/issue-1-t202-review-r2-20260724195352.md`
-- T202 review follow-upレポート: `reports/issue-1-t202-review-followup-20260724200119.md`
-- T202最終再レビューレポート: `reports/issue-1-t202-review-r3-20260724200649.md`
-- T300実装レポート: `reports/issue-1-t300-implementation-20260724205000.md`
-- T300初回レビューレポート: `reports/issue-1-t300-review-20260724205100.md`
-- T300 R2レビューレポート: `reports/issue-1-t300-review-r2-20260724212500.md`
-- T300 review follow-upレポート: `reports/issue-1-t300-review-followup-20260724214500.md`
-- T203実装レポート: `reports/issue-1-t203-implementation-20260724204000.md`
-- T203初回レビューレポート: `reports/issue-1-t203-review-20260724212419.md`
-- T203 review follow-upレポート: `reports/issue-1-t203-review-followup-20260724213540.md`
-- T203再レビューレポート: `reports/issue-1-t203-review-r2-20260724214315.md`
-- T203追加review follow-upレポート: `reports/issue-1-t203-review-followup-r2-20260724215028.md`
-- T203最終再レビューレポート: `reports/issue-1-t203-review-r3-20260724215350.md`
-- T300 R5レビューレポート: `reports/issue-1-t300-review-r5-20260725074608.md`
-- T300 R5 review follow-upレポート: `reports/issue-1-t300-review-followup-r5-20260725080046.md`
-- T300 R6レビューレポート: `reports/issue-1-t300-review-r6-20260725081226.md`
-- T300 R6 review follow-upレポート: `reports/issue-1-t300-review-followup-r6-20260725082128.md`
-- T300 R7最終再レビューレポート: `reports/issue-1-t300-review-r7-20260725082924.md`
-- T302実装レポート: `reports/issue-1-t302-implementation-20260725102242.md`
-- T302レビューレポート: `reports/issue-1-t302-review-20260725102242.md`
-- T302再レビュー対応レポートR2: `reports/issue-1-t302-review-followup-r2-20260725143000.md`
-- T302最終再レビューレポートR2: `reports/issue-1-t302-review-r2-20260725143500.md`
-- T302レビュー対応レポートR3: `reports/issue-1-t302-review-followup-r3-20260725160000.md`
-- T302最終再レビューレポートR3: `reports/issue-1-t302-review-r3-20260725160500.md`
-- T302レビュー対応レポートR4: `reports/issue-1-t302-review-followup-r4-20260725164000.md`
-- T302最終再レビューレポートR4: `reports/issue-1-t302-review-r4-20260725164500.md`
-- T302レビュー対応レポートR5: `reports/issue-1-t302-review-followup-r5-20260726113000.md`
-- T302最終再レビューレポートR5: `reports/issue-1-t302-review-r5-20260726113500.md`
-- T302 current main統合レポート: `reports/issue-1-t302-main-integration-20260726160000.md`
-- T302 R6レビューレポート: `reports/issue-1-t302-review-r6-20260726160636.md`
-- T302 R6 review follow-upレポート: `reports/issue-1-t302-review-followup-r6-20260726163000.md`
-- T302 R7最終再レビューレポート: `reports/issue-1-t302-review-r7-20260726162652.md`
-- T302進捗同期レポート: `reports/issue-1-t302-progress-sync-20260726162652.md`
-- T204 current main統合レポート: `reports/issue-1-t204-main-integration-20260726131355.md`
-- T204設計更新レポート: `reports/issue-1-t204-design-update-20260726132156.md`
-- T204 R9レビューレポート: `reports/issue-1-t204-review-r9-20260726132635.md`
-- T204 R9 review follow-upレポート: `reports/issue-1-t204-review-followup-r9-20260726133527.md`
-- T204 R10レビューレポート: `reports/issue-1-t204-review-r10-20260726134419.md`
-- T204 R10 review follow-upレポート: `reports/issue-1-t204-review-followup-r10-20260726135004.md`
-- T204 R11レビューレポート: `reports/issue-1-t204-review-r11-20260726135810.md`
-- T204 R11 review follow-upレポート: `reports/issue-1-t204-review-followup-r11-20260726140411.md`
-- T204 R12レビューレポート: `reports/issue-1-t204-review-r12-20260726141246.md`
-- T204 R12 review follow-upレポート: `reports/issue-1-t204-review-followup-r12-20260726143000.md`
-- T204 R13最終再レビューレポート: `reports/issue-1-t204-review-r13-20260726142730.md`
-- T204進捗同期レポート: `reports/issue-1-t204-progress-sync-20260726142730.md`
-- T205実装レポート: `reports/issue-1-t205-implementation-20260801150646.md`
-- T205初回レビューレポート: `reports/issue-1-t205-review-20260801155600.md`
-- T205 review follow-upレポート: `reports/issue-1-t205-review-followup-20260801160638.md`
-- T205 fix verificationレポート: `reports/issue-1-t205-review-r2-20260801164200.md`
-- T205進捗同期レポート: `reports/issue-1-t205-progress-sync-20260801172324.md`
-- T205 R3レビューレポート: `reports/issue-1-t205-review-r3-20260801173000.md`
-- T205 R3 review follow-upレポート: `reports/issue-1-t205-review-followup-r3-20260801180000.md`
-- T205 R4 fix verificationレポート: `reports/issue-1-t205-review-r4-20260801190000.md`
-- T205 R4 review follow-upレポート: `reports/issue-1-t205-review-followup-r4-20260801193000.md`
-- T205 R5 fix verificationレポート: `reports/issue-1-t205-review-r5-20260801202000.md`
-- T205 R5 review follow-upレポート: `reports/issue-1-t205-review-followup-r5-20260801210000.md`
-- T205 R6 fix verificationレポート: `reports/issue-1-t205-review-r6-20260801214000.md`
-- T205 R6 review follow-upレポート: `reports/issue-1-t205-review-followup-r6-20260801221000.md`
-- T205 R7 fix verificationレポート: `reports/issue-1-t205-review-r7-20260801224000.md`
-- T205 R7 review follow-upレポート: `reports/issue-1-t205-review-followup-r7-20260801231000.md`
-- T205 R8最終fix verificationレポート: `reports/issue-1-t205-review-r8-20260801234000.md`
-- T205独立レビュー1回目レポート: `reports/issue-1-t205-independent-final-review-20260801172324.md`
-- T205 IFR1設計更新レポート: `reports/issue-1-t205-ifr1-design-update-20260801194500.md`
-- T205 IFR1-P1 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-20260801194000.md`
-- T205 IFR1-P2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-20260801201500.md`
-- T205 IFR1検証レポート: `reports/issue-1-t205-ifr1-verification-20260801204500.md`
-- T205 IFR1 focused fix verificationレポート: `reports/issue-1-t205-ifr1-fix-verification-20260801213000.md`
-- T205 IFR1-P2 R2 review follow-upレポート: `reports/issue-1-t205-independent-review-followup-p2-r2-20260801215500.md`
-- T205 IFR1 focused fix verification R2レポート: `reports/issue-1-t205-ifr1-fix-verification-r2-20260801222500.md`
-- T205独立最終レビュー2回目レポート: `reports/issue-1-t205-independent-final-review-r2-20260801192938.md`
-- T206実装レポート: `reports/issue-1-t206-implementation-20260801215844.md`
-- T206初回通常レビューレポート: `reports/issue-1-t206-review-20260801223000.md`
-- T206 review follow-upレポート: `reports/issue-1-t206-review-followup-20260801224500.md`
-- T206 fix verificationレポート: `reports/issue-1-t206-fix-verification-20260801230500.md`
-- T206独立最終レビューレポート: `reports/issue-1-t206-independent-final-review-20260801233000.md`
-- T206独立review follow-upレポート: `reports/issue-1-t206-independent-review-followup-20260801235500.md`
-- T206独立finding fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-20260802002000.md`
-- T206独立review follow-up R2レポート: `reports/issue-1-t206-independent-review-followup-r2-20260802003500.md`
-- T206独立finding最終fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-r2-20260802005000.md`
-- T207実装レポート: `reports/issue-1-t207-implementation-20260802011000.md`
-- T207通常レビューレポート: `reports/issue-1-t207-review-20260802013500.md`
-- T207 review follow-upレポート: `reports/issue-1-t207-review-followup-20260802015000.md`
-- T207 fix verificationレポート: `reports/issue-1-t207-fix-verification-20260802021500.md`
-- T207独立最終レビューレポート: `reports/issue-1-t207-independent-final-review-20260802024500.md`
-- T207独立review follow-upレポート: `reports/issue-1-t207-independent-review-followup-20260802031000.md`
-- T207独立finding通常verificationレポート: `reports/issue-1-t207-independent-finding-normal-verification-20260802034500.md`
-- T207独立finding closure限定verificationレポート: `reports/issue-1-t207-independent-fix-verification-20260802034530.md`
-- T303独立最終レビューレポート: `reports/issue-1-t303-independent-final-review-20260802090000.md`
-- T303独立review follow-upレポート: `reports/issue-1-t303-independent-review-followup-20260802093100.md`
-- T303独立finding fix verificationレポート: `reports/issue-1-t303-independent-fix-verification-20260802103000.md`
-- T303独立review follow-up R2レポート: `reports/issue-1-t303-independent-review-followup-r2-20260802110000.md`
-- T303独立finding closure R2レポート: `reports/issue-1-t303-independent-fix-verification-r2-20260802113000.md`
-- T401独立最終レビューレポート: `reports/issue-1-t401-independent-final-review-20260802090030.md`
-- T401独立review follow-upレポート: `reports/issue-1-t401-independent-review-followup-20260802121500.md`
-- T401独立finding closureレポート: `reports/issue-1-t401-independent-fix-verification-20260802124500.md`
-- T601独立最終レビューレポート: `reports/issue-1-t601-independent-final-review-20260802093000.md`
-- T601独立review follow-upレポート: `reports/issue-1-t601-independent-review-followup-20260802154500.md`
-- T601独立finding closureレポート: `reports/issue-1-t601-independent-fix-verification-20260802163000.md`
-- T601独立review follow-up R2レポート: `reports/issue-1-t601-independent-review-followup-r2-20260802170000.md`
-- T601独立finding closure R2レポート: `reports/issue-1-t601-independent-fix-verification-r2-20260802173000.md`
-- T503独立最終レビューレポート: `reports/issue-1-t503-independent-final-review-20260802093030.md`
-- T503独立review follow-upレポート: `reports/issue-1-t503-independent-review-followup-20260802181500.md`
-- T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
-- T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
-- T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
-- T301初回レビューレポート: `reports/issue-1-t301-review-20260725095025.md`
-- T301 R2レビューレポート: `reports/issue-1-t301-review-r2-20260725101507.md`
-- T301 R3レビューレポート: `reports/issue-1-t301-review-r3-20260725131530.md`
-- T301 R4レビューレポート: `reports/issue-1-t301-review-r4-20260725134500.md`
-- T301 R5レビューレポート: `reports/issue-1-t301-review-r5-20260725151610.md`
-- T301 R6レビューレポート: `reports/issue-1-t301-review-r6-20260725154116.md`
-- T301 R7レビューレポート: `reports/issue-1-t301-review-r7-20260725162649.md`
-- T301 R8レビューレポート: `reports/issue-1-t301-review-r8-20260726145022.md`
-- T301 R8 review follow-upレポート: `reports/issue-1-t301-review-followup-r8-20260726151000.md`
-- T301 R9レビューレポート: `reports/issue-1-t301-review-r9-20260726151101.md`
-- T301 R9 review follow-upレポート: `reports/issue-1-t301-review-followup-r9-20260726152000.md`
-- T301 R10最終再レビューレポート: `reports/issue-1-t301-review-r10-20260726152625.md`
-- T301進捗同期レポート: `reports/issue-1-t301-progress-sync-20260726152625.md`
+- T402実装レポート: `reports/issue-1-t402-implementation-20260802215000.md`
+- T402通常レビューレポート: `reports/issue-1-t402-review-20260802221650.md`
+- T402 review follow-upレポート: `reports/issue-1-t402-review-followup-20260802225300.md`
+- T402 fix verificationレポート: `reports/issue-1-t402-fix-verification-20260802230000.md`
+- T402残存finding follow-upレポート: `reports/issue-1-t402-fix-verification-followup-20260802233000.md`
+- T402独立最終レビューレポート: `reports/issue-1-t402-independent-final-review-20260803062300.md`
+- T402独立review follow-upレポート: `reports/issue-1-t402-independent-review-followup-20260803091500.md`
+- PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureと対象HEAD一致CI成功後に利用者がmergeする
 
 ## 状態と規模
 
@@ -216,7 +46,7 @@
 | M | 2〜3日程度 |
 | L | 4〜5日程度。超過見込みなら再分解する |
 
-各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。
+各タスクは、記載した検証に加えて、挙動実装では変更範囲の単体テスト、全タスクで専用レビューと進捗同期を通過してから完了とする。Markdown lintは本repositoryの完了条件に含めない。環境・scaffold-onlyタスクはテスト適用可否を明示し、test harnessを担当する後続タスクと重複させない。文書同期だけの変更ではRed/Greenを作らず、既存の文書契約と標準CIで検証する。
 
 ## P0 開発基盤
 
@@ -261,7 +91,7 @@
 | T301 | 完了 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
 | T303 | 完了 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の独立review全5 findingをclosureし、exact-head CI成功済み |
-| T304 | 完了 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する。PR #38独立reviewの`T304-IFR-P1`〜`P4`をclosureしcurrent mainへ統合済み | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす。独立review全4 findingをclosureし、current main `0fdf87784355dce94fd4f1515a9e62d5257ecb75`へ統合済み |
+| T304 | 完了 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する。PR #38独立reviewの`T304-IFR-P1`〜`P4`をclosureしcurrent mainへ統合済み | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす。独立review全4 findingをclosureし、current mainへ統合済み |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
 | T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |
 
@@ -270,7 +100,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
-| T402 | 実装・独立review follow-up対応済み（通常fix verification待ち） | L | PR #40でPR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装した。`T402-IFR-P1`〜`P3`を一括修正し、報告は`reports/issue-1-t402-independent-final-review-20260803062300.md`と`reports/issue-1-t402-independent-review-followup-20260803091500.md`に記録する | T203、T301、T401 | local Gitではtextconvなしのraw blob座標を使用し、patchless zero-statのadded/deleted/renamed/copied binaryはimmutable contentで分類して共有binary exclusionへ渡す。T402 focused、Git/GitHub integration、compile/lint/contracts/architecture、broad validation、通常fix verification、exact-head CI、fresh independent final reviewが残る |
+| T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
 | T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
 | T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
@@ -280,18 +110,18 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T501 | 完了 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。T501-IFR2-P1〜P4をclosed、exact-head CI成功済み |
-| T502 | 完了（PR #37 normal fix verification待ち） | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装した。独立最終reviewの`T502-IFR-001`〜`005`は同一パス別IDのfail-closed、modified metadata identity reject、old diff extent、tracking同期、focused/default test配線として修正済み | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる。normal fix verification、current-head CI、再freeze、fresh independent final reviewを残す |
-| T503 | 完了（PR #34 closure待ち） | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象と除外診断を構築する。既存独立finding 6件を一括修正済み | T300 | `included`へコメント行を含む非空行の分母候補file、`excluded`へ実際に列挙した除外file、`excludedDirectories`へ再帰前にpruneしたdirectoryを1 directoryにつき1件保持する。pruneしたdirectoryを配下fileへ展開・推定せず、3配列をlocale非依存のpath昇順・配列内重複なしで返す。file-oriented user globはsubtree pruneを推定せず、明示的recursive globだけがpruneできる。共通ユーザーglob・binary・`.gitignore`・symbolic linkの理由を保持し、directory-only `.gitignore` ruleはregular fileへ適用しない |
-| T504 | 進行中（PR #39 normal fix verification待ち） | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する。独立reviewの`T504-IFR-001`〜`003`は修正・検証済み | T501、T503 | `included`の有効なGlobal非空行だけを分子・分母へ数え、`excluded`と`excludedDirectories`は理解率へ寄与させず、設定変更で再計算し、イベントループを長時間占有しない。cooperative yieldをまたぐ計算はvalidated immutable input snapshotのevidence keyと同じsnapshotから進捗を算出し、malformed UTF-8は`included`へ入れない。normal fix verification、current-head CI、fresh independent final reviewを残す。AC-18のcore部分を満たす |
-| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数を表示する。除外file数は`excluded.length`だけを表示し、`excludedDirectories.length`は加算せず、pruneした除外directory数を別の診断項目として表示する。AC-18を満たす |
+| T501 | 完了 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。独立review findingをclosed、exact-head CI成功済み |
+| T502 | 完了 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる。通常review・独立review findingをclosureし、PR #37をcurrent mainへ統合済み |
+| T503 | 完了 | M | T300の共通除外policyを使うrepository file列挙、gitignore、invalid encoding、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`、`excluded`、`excludedDirectories`を決定的に返し、pruneしたdirectoryを配下fileへ展開・推定しない。独立review findingをclosureし、PR #34をcurrent mainへ統合済み |
+| T504 | 完了 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | validated immutable evidenceから有効なGlobal非空行だけを集計し、malformed UTF-8を除外し、cooperative処理中のfile変更を再検証する。通常review・独立review findingをclosureし、PR #39をcurrent mainへ統合済み。AC-18のcore部分を満たす |
+| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数を表示する。除外file数は`excluded.length`だけを表示し、`excludedDirectories.length`を加算せず、pruneした除外directory数を別の診断項目として表示する。AC-18を満たす |
 | T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
 
 ## P6 Gitなし対応と堅牢化
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。既存独立finding全6件をclosed、exact-head CI成功済み |
+| T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
 | T602 | 未着手 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
@@ -320,4 +150,4 @@
 
 ## 次回開始時の選択
 
-T206はPR #29でmerge済み。T207は全findingをclosedしPR #35へ提出済み。T503はPR #34で既存独立finding 6件のfixとfocused validationを完了し、同じ独立reviewerによるclosure限定確認とexact-head CIを待つ。独立review fail後は同じ独立reviewerが既存findingのclosureだけを再確認し、新規観点・新規findingを追加しない方針を適用した。
+現在進行中のproduct実装タスクはない。依存関係が解消している候補はT305とT403であり、次回開始時に優先する1件を選択してから状態を`次`または`進行中`へ更新する。T505はT305、T602はT403の完了を待つ。
