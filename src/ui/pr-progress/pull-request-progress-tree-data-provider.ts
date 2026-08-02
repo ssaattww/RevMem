@@ -252,15 +252,6 @@ const validateReviewability = (
       }
       return reviewability;
     case "unsupported": {
-      if (
-        file.reviewedLineCount !== 0 ||
-        file.totalLineCount !== 0 ||
-        !ratiosEqual(file.progress, 1)
-      ) {
-        throw new RangeError(
-          `Line-review unsupported file must have zero line counts and progress 1: ${file.fileId}.`
-        );
-      }
       const reason = (reviewability as {
         readonly reason?: PullRequestLineReviewUnsupportedReason;
       }).reason;
@@ -272,7 +263,7 @@ const validateReviewability = (
           if (!binaryFile) {
             throw new RangeError(`Binary line-review reason does not match ${file.fileId}.`);
           }
-          return reviewability;
+          break;
         case "invalid-encoding":
         case "unsupported-encoding":
           if (binaryFile) {
@@ -282,10 +273,20 @@ const validateReviewability = (
             (reason as { readonly encoding: string }).encoding,
             `Line-review unsupported encoding for ${file.fileId}`
           );
-          return reviewability;
+          break;
         default:
           throw new RangeError(`Unknown line-review unsupported reason for ${file.fileId}.`);
       }
+      if (
+        file.reviewedLineCount !== 0 ||
+        file.totalLineCount !== 0 ||
+        !ratiosEqual(file.progress, 1)
+      ) {
+        throw new RangeError(
+          `Line-review unsupported file must have zero line counts and progress 1: ${file.fileId}.`
+        );
+      }
+      return reviewability;
     }
     default:
       throw new RangeError(`Unknown line reviewability for ${file.fileId}.`);
@@ -322,7 +323,12 @@ const createOpenTarget = (
   const originalPath = file.oldPath ?? file.newPath ?? file.path;
   const modifiedPath = file.newPath ?? file.oldPath ?? file.path;
   return {
-    ...identity,
+    snapshotId: identity.snapshotId,
+    contextId: identity.contextId,
+    baseSha: identity.baseSha,
+    headSha: identity.headSha,
+    originalDiffId: identity.originalDiffId,
+    fileSystemPathSemantics: identity.fileSystemPathSemantics,
     file,
     original: { filePath: originalPath, revision: identity.baseSha },
     modified: { filePath: modifiedPath, revision: identity.headSha }
