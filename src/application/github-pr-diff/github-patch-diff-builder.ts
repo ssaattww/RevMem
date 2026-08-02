@@ -180,6 +180,7 @@ export const buildSnapshotFromGitHubPatches = (
         if (remote.patch !== undefined && remote.patch.length > 0) {
           throw new InvalidRemoteDataError("Zero-change file must not have a patch.");
         }
+        if (remote.status === "modified") throw new MissingPatchError();
         hunks = [];
       } else {
         if (remote.patch === undefined) throw new MissingPatchError();
