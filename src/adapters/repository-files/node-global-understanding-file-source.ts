@@ -1,20 +1,96 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { TextDecoder } from "node:util";
 
 import type {
+  GlobalUnderstandingFileLoadOptions,
   GlobalUnderstandingFileSource,
   LoadedGlobalUnderstandingFile
 } from "../../application/global-understanding/index";
 import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
 
+const DEFAULT_MAX_WORK_BYTES = 64 * 1024;
+const NON_WHITESPACE = /\S/u;
+
 const requireNonEmptyString = (value: string, label: string): void => {
   if (value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
 };
 
-const splitLogicalLines = (content: string): readonly string[] =>
-  content.length === 0 ? [] : content.split(/\r\n|\r|\n/u);
+const defaultYieldControl = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
+const resolveLoadOptions = (
+  options: GlobalUnderstandingFileLoadOptions | undefined
+): GlobalUnderstandingFileLoadOptions => {
+  const resolved = options ?? {
+    maxWorkBytes: DEFAULT_MAX_WORK_BYTES,
+    yieldControl: defaultYieldControl
+  };
+  if (!Number.isSafeInteger(resolved.maxWorkBytes) || resolved.maxWorkBytes <= 0) {
+    throw new RangeError("maxWorkBytes must be a positive integer.");
+  }
+  return resolved;
+};
+
+interface AnalyzedContent {
+  readonly lineCount: number;
+  readonly nonEmptyLines: readonly number[];
+  readonly contentHash: string;
+}
+
+const analyzeContent = async (
+  content: Buffer,
+  options: GlobalUnderstandingFileLoadOptions
+): Promise<AnalyzedContent> => {
+  const decoder = new TextDecoder("utf-8");
+  const hash = createHash("sha256");
+  const nonEmptyLines: number[] = [];
+  let lineIndex = 0;
+  let currentLineNonEmpty = false;
+  let pendingCarriageReturn = false;
+
+  const completeLine = (): void => {
+    if (currentLineNonEmpty) nonEmptyLines.push(lineIndex);
+    lineIndex += 1;
+    currentLineNonEmpty = false;
+  };
+
+  const consumeDecoded = (decoded: string): void => {
+    for (let index = 0; index < decoded.length; index += 1) {
+      const character = decoded[index]!;
+      if (pendingCarriageReturn) {
+        completeLine();
+        pendingCarriageReturn = false;
+        if (character === "\n") continue;
+      }
+      if (character === "\r") {
+        pendingCarriageReturn = true;
+      } else if (character === "\n") {
+        completeLine();
+      } else if (!currentLineNonEmpty && NON_WHITESPACE.test(character)) {
+        currentLineNonEmpty = true;
+      }
+    }
+  };
+
+  for (let offset = 0; offset < content.length; offset += options.maxWorkBytes) {
+    const end = Math.min(content.length, offset + options.maxWorkBytes);
+    const chunk = content.subarray(offset, end);
+    hash.update(chunk);
+    consumeDecoded(decoder.decode(chunk, { stream: end < content.length }));
+    if (end < content.length) await options.yieldControl();
+  }
+
+  if (pendingCarriageReturn) completeLine();
+  if (currentLineNonEmpty) nonEmptyLines.push(lineIndex);
+  return {
+    lineCount: lineIndex + 1,
+    nonEmptyLines,
+    contentHash: hash.digest("hex")
+  };
+};
 
 /** Node filesystem adapter that loads exact current-file evidence for Global calculation. */
 export class NodeGlobalUnderstandingFileSource
@@ -28,15 +104,18 @@ implements GlobalUnderstandingFileSource {
 
   /**
    * Reads one canonical included repository file and rejects non-regular entries or observable read races.
+   * Decode, line scanning, and hashing are split into bounded byte chunks with cooperative yields.
    *
    * @throws When the path is non-canonical, either validation observes a non-regular entry, the entry metadata
-   * changes during the read, or the filesystem operation fails.
+   * changes during the read, the work budget is invalid, or the filesystem operation fails.
    */
   public async load(
     repositoryPath: string,
-    revisionId: string
+    revisionId: string,
+    options?: GlobalUnderstandingFileLoadOptions
   ): Promise<LoadedGlobalUnderstandingFile> {
     requireNonEmptyString(revisionId, "revisionId");
+    const loadOptions = resolveLoadOptions(options);
     const canonicalPath = requireCanonicalRepositoryRelativePath(
       repositoryPath,
       this.pathSemantics
@@ -60,20 +139,14 @@ implements GlobalUnderstandingFileSource {
       throw new Error(`Included repository file changed while reading: ${canonicalPath}`);
     }
 
-    const decoded = content.toString("utf8");
-    const lines = splitLogicalLines(decoded);
-    const nonEmptyLines: number[] = [];
-    lines.forEach((line, index) => {
-      if (line.trim().length > 0) nonEmptyLines.push(index);
-    });
-    const contentHash = createHash("sha256").update(content).digest("hex");
+    const analyzed = await analyzeContent(content, loadOptions);
     return {
       path: canonicalPath,
       revisionId,
-      lineCount: lines.length,
-      nonEmptyLines,
-      contentHash,
-      cacheKey: contentHash
+      lineCount: analyzed.lineCount,
+      nonEmptyLines: analyzed.nonEmptyLines,
+      contentHash: analyzed.contentHash,
+      cacheKey: analyzed.contentHash
     };
   }
 }
