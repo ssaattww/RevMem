@@ -216,9 +216,7 @@ test("current PR unreviewed changed lines suppress Global and other-context deco
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
   otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
-
   const model = modelForDiff(currentDiff(), otherContext);
-
   assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
     { interval: { startLine: 1, endLineExclusive: 2 }, source: "context" },
     { interval: { startLine: 2, endLineExclusive: 4 }, source: "other-context" }
@@ -229,7 +227,6 @@ test("missing or stale current PR diff fails closed for lower-priority layers", 
   const otherContext = pullRequestContext();
   otherContext.contextId = "other-context";
   otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
-
   for (const diff of [undefined, { ...currentDiff(), headSha: "stale-head" }]) {
     const model = modelForDiff(diff, otherContext);
     assert.deepEqual(model.map(({ interval, source }) => ({ interval, source })), [
@@ -243,14 +240,25 @@ test("incomplete or malformed current PR diff fails closed for lower-priority la
   otherContext.contextId = "other-context";
   otherContext.files["file-1"]!.modifiedReviewed = [{ startLine: 0, endLineExclusive: 4 }];
 
-  const incomplete = currentDiff();
-  incomplete.files[0]!.hunks = [];
-
-  const duplicateCoordinate = currentDiff();
-  duplicateCoordinate.files[0]!.hunks[0]!.lines = [
-    { kind: "addition", newLine: 1, text: "changed" },
-    { kind: "addition", newLine: 1, text: "duplicate" }
-  ];
+  const incompleteBase = currentDiff();
+  const incomplete: PullRequestDiffSnapshot = {
+    ...incompleteBase,
+    files: [{ ...incompleteBase.files[0]!, hunks: [] }]
+  };
+  const duplicateBase = currentDiff();
+  const duplicateCoordinate: PullRequestDiffSnapshot = {
+    ...duplicateBase,
+    files: [{
+      ...duplicateBase.files[0]!,
+      hunks: [{
+        ...duplicateBase.files[0]!.hunks[0]!,
+        lines: [
+          { kind: "addition", newLine: 1, text: "changed" },
+          { kind: "addition", newLine: 1, text: "duplicate" }
+        ]
+      }]
+    }]
+  };
 
   for (const diff of [incomplete, duplicateCoordinate]) {
     const model = modelForDiff(diff, otherContext);
@@ -285,11 +293,7 @@ test("other-context intervals split where Global activity changes", () => {
     showGlobalReviewed: true
   });
 
-  assert.deepEqual(model.map(({ interval, source, globalActive }) => ({
-    interval,
-    source,
-    globalActive
-  })), [
+  assert.deepEqual(model.map(({ interval, source, globalActive }) => ({ interval, source, globalActive })), [
     { interval: { startLine: 0, endLineExclusive: 1 }, source: "other-context", globalActive: false },
     { interval: { startLine: 1, endLineExclusive: 3 }, source: "other-context", globalActive: true },
     { interval: { startLine: 3, endLineExclusive: 4 }, source: "other-context", globalActive: false }
