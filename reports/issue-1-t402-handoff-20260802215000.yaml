@@ -1,0 +1,453 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial_implementation
+  generated_at: 2026-08-02T21:50:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #40
+task_id: T402
+branch: task/t402-pr-diff-acquisition
+base_ref: main
+target:
+  current_head: b8bd2f0ea38b7683d03d3d33073a5024d4f0e544
+  reviewed_head: null
+  commit_range: 76b49e99453ebcf7ebecb2c141ed24d750736abc..b8bd2f0ea38b7683d03d3d33073a5024d4f0e544
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use the GitHub connector, verify failure-diagnostic artifacts, implement RevMem changes with TDD, commit in small logical units, persist a detailed report and handoff, post a concise PR comment, create or update the PR, use only current-HEAD-matching CI, and do not merge.
+  - source: task
+    reference: tasks/tasks-status.md T402
+    summary: Fetch PR metadata/files and acquire a complete PR diff through local Git, PR files API patches, then base/head contents; mock success, missing, incomplete patch, and total failure without inferring reviewed state.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md
+    summary: Preserve exact PR/base/head identity and complete diff evidence before computing PR progress.
+  - source: repository_instruction
+    reference: .github/workflows/ci.yml
+    summary: On failure, retain command output including stdout/stderr, environment and Git state, generated test/build files, source, tests, tools, and configuration in a diagnostic artifact.
+
+development_policy:
+  method: TDD
+  testing_order: Add failing tests, confirm exact-head CI failure and diagnostics, implement the smallest coherent route, run focused validation and full CI, add boundary Red tests for discovered completeness gaps, then fix and revalidate.
+  governing_source: RevMem project instruction and uploaded implementation-worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+    - npm run test:t402
+  required_failure_diagnostics:
+    - test-output/ci command logs containing standard output and standard error
+    - test and build results
+    - environment and Git status
+    - generated dist and test-dist files
+    - source, tests, tools, package configuration, and workflow configuration
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/github-pr-diff/**
+      reason: T402 acquisition contracts, orchestration, and complete snapshot builders.
+    - path_or_operation: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      reason: T402 GitHub metadata/files/content acquisition.
+    - path_or_operation: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      reason: T402 local immutable commit diff route.
+    - path_or_operation: src/adapters/github/index.ts and src/adapters/local-git/index.ts
+      reason: Public adapter exports.
+    - path_or_operation: test/integration/t402-pr-diff-*.test.ts
+      reason: T402 Red, Green, boundary, and failure coverage.
+    - path_or_operation: type-fixtures/contracts/t402-pr-diff-acquisition.fixture.ts and type-fixtures/contracts/tsconfig.json
+      reason: Public contract compile-time coverage.
+    - path_or_operation: package.json test scripts
+      reason: Register T402 tests in focused and GitHub gates.
+    - path_or_operation: reports/issue-1-t402-implementation-20260802215000.md
+      reason: Required detailed implementation report.
+    - path_or_operation: reports/issue-1-t402-handoff-20260802215000.yaml
+      reason: Required lossless handoff.
+    - path_or_operation: PR #40 metadata and conversation
+      reason: Reviewer handoff and concise result comment.
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: Repository rule reserves task/progress changes for dedicated task/progress Skills.
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Existing workflow already satisfies required diagnostic artifact coverage; unrelated change is unnecessary.
+    - path_or_operation: T403-T405 cache, persistent PR layer, runtime UI, and Review Contexts implementation
+      reason: Outside T402 scope.
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+
+scope:
+  - Resolve one exact pull request comparison by repository identity, PR number, base SHA, and head SHA.
+  - Use local Git, complete GitHub patches, then exact base/head contents in that order.
+  - Produce the existing T301 PullRequestDiffSnapshot only from complete validated evidence.
+  - Validate status/path/statistics/hunk/patch/content consistency and retain failed-route reasons.
+  - Fetch paginated PR file records and exact immutable raw contents with bounded, validated pagination.
+  - Reject ambiguous API caps, invalid paths/revisions, identity mismatch, malformed or incomplete patches, oversized content diffs, and total acquisition failure.
+non_goals:
+  - T403 metadata or diff cache.
+  - T404 persistent PR context layer.
+  - T405 Review Contexts View and runtime composition.
+  - Task tracking updates, merge, or release.
+
+files:
+  changed:
+    - path: src/application/github-pr-diff/contracts.ts
+      purpose: Exact request, remote file/metadata, ports, source, attempt, and fail-closed result contracts.
+    - path: src/application/github-pr-diff/request-validation.ts
+      purpose: Canonical identity and full immutable object-ID validation.
+    - path: src/application/github-pr-diff/pull-request-diff-acquisition-service.ts
+      purpose: Ordered local/patch/content fallback and identity-bound fail-closed orchestration.
+    - path: src/application/github-pr-diff/snapshot-builder-shared.ts
+      purpose: Canonical paths, status/statistics validation, duplicate rejection, and snapshot identity.
+    - path: src/application/github-pr-diff/local-git-diff-builder.ts
+      purpose: Convert T203 zero-context Git diff output into T301 snapshots.
+    - path: src/application/github-pr-diff/github-patch-diff-builder.ts
+      purpose: Validate and convert complete unified patches.
+    - path: src/application/github-pr-diff/content-diff-builder.ts
+      purpose: Rebuild exact line diffs from immutable base/head contents with bounded deterministic LCS.
+    - path: src/application/github-pr-diff/pull-request-diff-builders.ts
+      purpose: Snapshot builder exports.
+    - path: src/application/github-pr-diff/index.ts
+      purpose: Public T402 application API.
+    - path: src/adapters/local-git/local-git-pull-request-diff-adapter.ts
+      purpose: Verify base/head as commit objects and execute zero-context Git diff through argument arrays.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Fetch exact PR metadata, paginated files, raw immutable content, and reject the 3000-file cap.
+    - path: src/adapters/github/index.ts
+      purpose: Export the GitHub T402 adapter.
+    - path: src/adapters/local-git/index.ts
+      purpose: Export the local T402 adapter.
+    - path: test/integration/t402-pr-diff-acquisition.test.ts
+      purpose: Twelve route, identity, patch, content, and fail-closed tests.
+    - path: test/integration/t402-pr-diff-boundary.test.ts
+      purpose: Three commit-object and API-cap boundary tests.
+    - path: type-fixtures/contracts/t402-pr-diff-acquisition.fixture.ts
+      purpose: Public positive and negative contract type coverage.
+    - path: type-fixtures/contracts/tsconfig.json
+      purpose: Register the T402 contract fixture.
+    - path: package.json
+      purpose: Register test:t402 and include both T402 suites in test:github.
+    - path: reports/issue-1-t402-implementation-20260802215000.md
+      purpose: Detailed TDD, implementation, diagnostics, and validation evidence.
+    - path: reports/issue-1-t402-handoff-20260802215000.yaml
+      purpose: Transport implementation evidence to normal review.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve T402 scope, dependencies, and exit condition.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Confirm exact identity and fallback design.
+    - path: .github/workflows/ci.yml
+      purpose: Verify required failure diagnostic artifacts before implementation.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Reuse the T301 complete snapshot contract.
+    - path: src/core/git-diff/git-diff-interval-mapping.ts
+      purpose: Reuse the T203 local Git diff parser.
+    - path: src/application/github-pr-context/contracts.ts
+      purpose: Reuse T401 repository and PR identity conventions.
+    - path: src/adapters/local-git/contracts.ts
+      purpose: Use the existing argument-array command executor boundary.
+    - path: test/integration/mock-github.test.ts
+      purpose: Match existing deterministic GitHub mock conventions.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated task/progress Skill-only update rule.
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing failure artifact already contains all mandated evidence.
+    - path_or_area: src/extension.ts and runtime composition
+      reason: Persistence and UI routing belong to T404/T405.
+    - path_or_area: T403-T405 implementation
+      reason: Explicitly outside T402.
+    - path_or_area: merge and release
+      reason: Reserved for the user and later workflow.
+
+commands:
+  - command: GitHub Actions CI run 30747002998
+    purpose: Confirm the initial missing-implementation Red tests and capture diagnostics.
+    exit_code: 1
+    result: failed
+    head_sha: a61929cfec47200d79fa1ff1892cd598c1dc71ab
+    evidence: compile:test failed on intentionally missing T402 application/adapter modules; artifact 8833199337 was uploaded.
+  - command: Focused TypeScript compile and Node test execution in extracted CI artifact workspace
+    purpose: Validate T402 application, adapters, contract fixture, acquisition tests, boundary tests, and architecture before push.
+    exit_code: 0
+    result: passed
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: Acquisition 12/12, boundary 3/3, strict focused typecheck, public contract fixture, and architecture validation passed.
+  - command: npm ci in extracted artifact workspace
+    purpose: Attempt a local full dependency-backed regression run.
+    exit_code: 1
+    result: blocked
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: The execution environment internal registry did not contain yocto-queue; this was not treated as success and full validation was delegated to official GitHub Actions.
+  - command: GitHub Actions CI run 30748015228
+    purpose: Validate the first complete implementation before the additional boundary review.
+    exit_code: 0
+    result: passed
+    head_sha: 069de0726f82bdc014b200b114397d28835d86b3
+    evidence: All CI gates passed.
+  - command: GitHub Actions CI run 30748311594
+    purpose: Confirm Red tests for commit-object verification and the GitHub 3000-file cap.
+    exit_code: 1
+    result: failed
+    head_sha: 49dbc8301a993e290d233efcdab55d6b17d4b547
+    evidence: Exactly three new boundary tests failed; prior gates passed and artifact 8833602975 was uploaded.
+  - command: GitHub Actions CI run 30748555293
+    purpose: Validate the final implementation code before report persistence.
+    exit_code: 0
+    result: passed
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: Job 91498337175 passed install, build, contracts, architecture positive/negative, lint, unit, T503, Git integration, Mock GitHub, and VS Code Extension Host gates.
+
+tests:
+  - name: Initial T402 acquisition contract suite
+    phase: red
+    result: failed
+    head_sha: a61929cfec47200d79fa1ff1892cd598c1dc71ab
+    evidence: Exact-head run 30747002998 failed because the referenced T402 modules did not exist.
+  - name: T402 acquisition integration suite
+    phase: green
+    result: passed
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: Twelve tests passed locally and in exact-head CI run 30748555293.
+  - name: Commit-object and API-cap completeness suite
+    phase: red
+    result: failed
+    head_sha: 49dbc8301a993e290d233efcdab55d6b17d4b547
+    evidence: Exact-head run 30748311594 exposed all three intended gaps and uploaded diagnostics.
+  - name: Commit-object and API-cap completeness suite
+    phase: regression
+    result: passed
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: Three boundary tests passed locally and in exact-head CI run 30748555293.
+  - name: Full repository CI gates
+    phase: verification
+    result: passed
+    head_sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+    evidence: Exact-head run 30748555293 conclusion success.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: b8bd2f0ea38b7683d03d3d33073a5024d4f0e544
+  conclusion: unknown
+  artifacts:
+    - id: 8833199337
+      name: ci-failure-diagnostics-30747002998-1
+      purpose: Initial Red compile/test logs, stdout/stderr, environment, generated output, source, tests, and configuration.
+    - id: 8833602975
+      name: ci-failure-diagnostics-30748311594-1
+      purpose: Boundary Red test output and complete root-cause diagnostics.
+
+implementation:
+  outcome: completed
+  final_head: b8bd2f0ea38b7683d03d3d33073a5024d4f0e544
+  commits:
+    - sha: a61929cfec47200d79fa1ff1892cd598c1dc71ab
+      purpose: Add initial failing T402 acquisition tests.
+    - sha: 069de0726f82bdc014b200b114397d28835d86b3
+      purpose: Complete the first implementation and validation wiring.
+    - sha: 49dbc8301a993e290d233efcdab55d6b17d4b547
+      purpose: Add failing completeness boundary tests.
+    - sha: d0a01e6db5328e07c1d98d4cf46313c5f5db2ac3
+      purpose: Verify local revisions as commit objects before diffing.
+    - sha: 171f28b2b588f084a09c4f53dc773d29c438e098
+      purpose: Reject the GitHub 3000-file endpoint cap as incomplete.
+    - sha: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+      purpose: Align adapter regression mocks and produce the final implementation code HEAD.
+    - sha: b8bd2f0ea38b7683d03d3d33073a5024d4f0e544
+      purpose: Persist the detailed implementation report.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: GitHub Actions run 30747002998
+      summary: Initial test-first compilation failed because T402 modules were intentionally absent.
+    - type: artifact
+      location: artifact 8833199337
+      summary: Initial Red stdout/stderr, test/build data, environment, source, tests, and configuration.
+    - type: test_result
+      location: GitHub Actions run 30748311594 job 91497690539
+      summary: Three completeness boundary tests failed before their implementation.
+    - type: artifact
+      location: artifact 8833602975
+      summary: Boundary Red diagnostics retained the exact assertions and all supporting context.
+    - type: standard_output
+      location: test-output/ci/test-github.log in both failure artifacts
+      summary: Node TAP output retained actual and expected route behavior.
+    - type: standard_error
+      location: test-output/ci/test-github.log in both failure artifacts
+      summary: Combined tee output retained assertion stacks and command failure status.
+  blocked_items: []
+  summary:
+    - T402 implements three ordered complete-diff acquisition routes.
+    - Exact PR/base/head identity is required across local and remote evidence.
+    - Incomplete patch, invalid metadata/path/statistics, API caps, oversized content diff, and total failure are fail-closed.
+    - Fifteen focused tests and all repository CI gates passed at implementation HEAD 8a9313da5295b6c8f099dc32db25e29adfce5bc1.
+    - PR #40 remains unmerged.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Normal review has not started.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t402-implementation-20260802215000.md
+    - reports/issue-1-t402-handoff-20260802215000.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed scope, TDD Red/Green evidence, diagnostic artifacts, implementation, validation, untouched areas, and risks were persisted.
+
+findings: []
+held: []
+unexplored:
+  - area: Runtime composition and persistent PR context routing
+    blocker: Assigned to T404 and T405; T402 exposes the acquisition service and adapters but does not activate them in src/extension.ts.
+    remaining_risk: Users cannot consume the new PR diff route until later persistence and UI integration is implemented.
+    verdict_impact: Normal review should treat this as an explicit non-goal rather than a T402 implementation failure.
+unknown:
+  - field_or_fact: Final exact-head CI run after handoff persistence
+    reason: The handoff commit creates a new PR HEAD; its matching run must be resolved after this file is committed.
+  - field_or_fact: Complete intermediate per-file commit list
+    reason: GitHub contents API created one commit per file; key milestone and final commits are recorded, while the authoritative complete sequence remains PR #40 commit history.
+not_applicable:
+  - field_or_area: Review findings and verdict
+    reason: Normal review has not started.
+remaining_risks:
+  - Pull requests that reach the GitHub 3000-file API cap require the local route; remote routes intentionally fail closed.
+  - Content fallback refuses files whose LCS matrix exceeds 1,000,000 cells instead of returning a partial diff.
+  - Binary files retain file identity/status but have no line hunks and do not provide semantic binary progress.
+  - Runtime persistence and UI composition remain in T404/T405.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      status: completed
+      task: T402
+      pull_request: 40
+      branch: task/t402-pr-diff-acquisition
+      report: reports/issue-1-t402-implementation-20260802215000.md
+      implementation_code_head: 8a9313da5295b6c8f099dc32db25e29adfce5bc1
+      implementation_code_ci:
+        run_id: 30748555293
+        job_id: 91498337175
+        conclusion: success
+      initial_red:
+        head_sha: a61929cfec47200d79fa1ff1892cd598c1dc71ab
+        run_id: 30747002998
+        artifact_id: 8833199337
+      boundary_red:
+        head_sha: 49dbc8301a993e290d233efcdab55d6b17d4b547
+        run_id: 30748311594
+        artifact_id: 8833602975
+      local_validation:
+        acquisition_tests: 12/12 passed
+        boundary_tests: 3/3 passed
+        focused_typecheck: passed
+        contract_fixture: passed
+        architecture: passed
+        full_npm_ci: blocked by unavailable yocto-queue in the execution environment internal registry
+      implementation_summary:
+        - local Git commit-object diff route
+        - validated GitHub PR files patch route
+        - exact base/head content diff route
+        - complete snapshot and fail-closed identity/statistics/path/patch/content validation
+        - GitHub pagination and 3000-file cap protection
+extensions:
+  - namespace: revmem
+    payload:
+      task_tracking_update_performed: false
+      task_tracking_reason: Dedicated task/progress Skill-only repository rule.
+      diagnostic_workflow_changed: false
+      diagnostic_workflow_reason: Existing CI already satisfied all mandatory artifact requirements.
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Perform a normal review of PR #40 at its immutable final current HEAD and verify all complete-diff and fail-closed boundaries.
+  instructions:
+    - Resolve PR #40 current HEAD after this handoff commit.
+    - Use only workflow runs whose head SHA exactly matches that current HEAD; do not substitute run 30748555293 if the HEAD differs.
+    - Inspect every changed production, test, report, and handoff file plus T203, T301, and T401 direct dependencies.
+    - Verify local commit-object checks, metadata identity, pagination validation, the 3000-file cap, patch completeness, content diff statistics/EOL behavior, rename/copy/add/delete/binary handling, exception classification, and total-failure no-snapshot behavior.
+    - Treat T403-T405 runtime/cache/persistence/UI work as explicit non-goals.
+    - Persist a detailed review report and concise PR comment; do not merge.
+  required_attachments_or_references:
+    - PR #40
+    - reports/issue-1-t402-implementation-20260802215000.md
+    - reports/issue-1-t402-handoff-20260802215000.yaml
+    - CI failure artifact 8833199337
+    - CI failure artifact 8833602975
+    - implementation CI run 30748555293
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t402-handoff-20260802215000.yaml
+  packet_url: null
+  transport_note: The packet is committed on PR #40. Resolve the resulting final HEAD and its exact matching CI run after persistence. No merge was performed.
