@@ -1,7 +1,8 @@
 import { requirePullRequestDiffAcquisitionRequest } from "../../application/github-pr-diff/index";
 import type {
   LocalPullRequestDiffPort,
-  PullRequestDiffAcquisitionRequest
+  PullRequestDiffAcquisitionRequest,
+  PullRequestDiffUnavailableReason
 } from "../../application/github-pr-diff/index";
 import {
   GitExecutableNotFoundError,
@@ -32,21 +33,27 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
 
   public async loadDiff(request: PullRequestDiffAcquisitionRequest): ReturnType<LocalPullRequestDiffPort["loadDiff"]> {
     requirePullRequestDiffAcquisitionRequest(request);
-    const invocation: GitCommandInvocation = {
-      cwd: this.repositoryRoot,
-      argumentsList: [
-        "diff",
-        "--no-ext-diff",
-        "--no-color",
-        "--unified=0",
-        "--find-renames",
-        "--find-copies",
-        request.baseSha,
-        request.headSha,
-        "--"
-      ]
-    };
     try {
+      for (const revision of [request.baseSha, request.headSha]) {
+        const unavailable = await this.verifyCommitObject(revision);
+        if (unavailable !== undefined) {
+          return { kind: "unavailable", reason: unavailable };
+        }
+      }
+      const invocation: GitCommandInvocation = {
+        cwd: this.repositoryRoot,
+        argumentsList: [
+          "diff",
+          "--no-ext-diff",
+          "--no-color",
+          "--unified=0",
+          "--find-renames",
+          "--find-copies",
+          request.baseSha,
+          request.headSha,
+          "--"
+        ]
+      };
       const result = await this.commandExecutor.execute(invocation);
       if (result.exitCode === 0) return { kind: "available", diff: result.stdout };
       if (missingRevision(`${result.stdout}\n${result.stderr}`)) {
@@ -59,5 +66,17 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
         reason: error instanceof GitExecutableNotFoundError ? "git-unavailable" : "git-failure"
       };
     }
+  }
+
+  private async verifyCommitObject(
+    revision: string
+  ): Promise<PullRequestDiffUnavailableReason | undefined> {
+    const result = await this.commandExecutor.execute({
+      cwd: this.repositoryRoot,
+      argumentsList: ["rev-parse", "--verify", "--quiet", `${revision}^{commit}`]
+    });
+    if (result.exitCode === 1) return "missing-revision";
+    if (result.exitCode !== 0 || result.stdout.trim() !== revision) return "git-failure";
+    return undefined;
   }
 }
