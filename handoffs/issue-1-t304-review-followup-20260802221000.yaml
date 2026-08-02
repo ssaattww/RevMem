@@ -1,0 +1,112 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: "2026-08-02T22:10:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+review_report: reports/issue-1-t304-review-20260802213932.md
+
+scope:
+  - Address T304-R1-P1 immutable PR diff identity and stale-node safety.
+  - Address T304-R1-P2 binary and encoding-based line-review unsupported classification.
+  - Address T304-R1-P3 standard and focused test discovery.
+non_goals:
+  - T305 concrete VS Code TreeItem, events, Activity Bar, Current Context, and Status Bar wiring.
+  - T402 PR metadata, diff acquisition, encoding detection source, cache, and refresh source.
+  - Independent final review.
+  - Merge.
+
+implementation:
+  outcome: completed
+  technical_head: e43069a967f6f5179d7a5894b897d05adc3f7f75
+  report_commit: 696868300be45919242b810b31e75f25b6f1af0b
+  summary:
+    - Replaced progress-only tree input with an identity-bound PR progress snapshot.
+    - Added immutable base/head diff targets and rejected nodes from prior snapshots.
+    - Added exhaustive binary, invalid-encoding, and unsupported-encoding availability reasons.
+    - Registered T304 in test:unit, test:t304, npm test, and the package-owned CI step.
+  addressed_findings:
+    - id: T304-R1-P1
+      disposition: addressed
+      evidence:
+        - PullRequestProgressTreeSnapshot binds contextId, baseSha, headSha, originalDiffId, and path semantics.
+        - PullRequestProgressTreeDiffTarget carries immutable original and modified sides.
+        - select rejects nodes not present in the current snapshot node set.
+    - id: T304-R1-P2
+      disposition: addressed
+      evidence:
+        - PullRequestLineReviewability explicitly models binary, invalid encoding, and unsupported encoding.
+        - line-review unsupported category takes precedence and retains a user-visible reason.
+        - availability records are exhaustive and conservatively validated.
+    - id: T304-R1-P3
+      disposition: addressed
+      evidence:
+        - test:unit contains pull-request-progress-tree.test.js.
+        - test:t304 executes CI contract and T304 behavior tests.
+        - CI invokes npm run test:t304 and saves test-output/ci/test-t304.log.
+
+red_evidence:
+  - finding: T304-R1-P3
+    head_sha: 851c55a66206ac64a82236fce6efa5f64655f3a5
+    run_id: 30748859263
+    job_id: 91499168091
+    conclusion: failure
+    artifact_id: 8833773687
+    artifact_name: ci-failure-diagnostics-30748859263-1
+  - finding: T304-R1-P1_and_T304-R1-P2
+    head_sha: c17b97f03af516f0c484356042c91d2ba8bb9c78
+    run_id: 30748932987
+    job_id: 91499365739
+    conclusion: failure
+    artifact_id: 8833796187
+    artifact_name: ci-failure-diagnostics-30748932987-1
+  - finding: implementation_boundary_correction
+    head_sha: 72a16a48070df9d67e79a82c8160a2d4153a9ec3
+    run_id: 30749149862
+    job_id: 91499941813
+    conclusion: failure
+    artifact_id: 8833863915
+    artifact_name: ci-failure-diagnostics-30749149862-1
+
+green_evidence:
+  technical_head: e43069a967f6f5179d7a5894b897d05adc3f7f75
+  workflow: CI
+  run_id: 30749231759
+  job_id: 91500162120
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  passed_steps:
+    - build
+    - contract_typecheck
+    - architecture_positive
+    - architecture_negative
+    - lint
+    - unit
+    - t304_focused
+    - t503_focused
+    - git_integration
+    - github_integration
+    - vscode_extension_host
+
+report:
+  path: reports/issue-1-t304-review-followup-20260802220800.md
+  outcome: created
+
+tracking:
+  tasks_status_updated: false
+  reason: tasks/tasks-status.md requires a repository progress-management skill that is unavailable in this worker context.
+
+review:
+  next_reviewer: same normal reviewer that produced the initial findings
+  requested_action: Verify closure of T304-R1-P1, T304-R1-P2, and T304-R1-P3 against the current PR head; do not perform independent final review until normal findings are closed.
+
+next_action:
+  type: normal_review_closure
+  summary: Confirm all three initial findings are closed on PR #38 and then proceed to independent final review only if the normal review passes.
