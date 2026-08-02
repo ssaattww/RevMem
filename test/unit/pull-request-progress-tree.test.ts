@@ -321,6 +321,100 @@ test("selection carries immutable context and revision identity", async () => {
   }]);
 });
 
+test("current tree nodes and detached host targets cannot mutate selection identity", async () => {
+  const opened: PullRequestProgressTreeDiffTarget[] = [];
+  const mutationErrors: unknown[] = [];
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async (target) => {
+      opened.push(target);
+      assert.throws(() => {
+        (target as unknown as Record<string, unknown>).contextId = "context-tampered";
+      }, TypeError);
+      mutationErrors.push("host target mutation rejected");
+    }
+  });
+  const renamed = progressFile("rename", "src/new.ts", {
+    oldPath: "src/old.ts",
+    newPath: "src/new.ts",
+    status: "renamed"
+  });
+  provider.replaceSnapshot(snapshot([renamed], {
+    snapshotId: "snapshot-immutable",
+    contextId: "context-original"
+  }));
+
+  const node = files(provider, categories(provider)[0]!)[0]!;
+  const rejectMutation = (target: object, key: string, value: unknown): void => {
+    assert.throws(() => {
+      (target as Record<string, unknown>)[key] = value;
+    }, TypeError);
+  };
+  for (const [target, key, value] of [
+    [node, "category", "completed"],
+    [node, "path", "src/tampered.ts"],
+    [node.reviewability, "kind", "unsupported"],
+    [node.source, "fileId", "tampered-file"],
+    [node.source, "path", "src/tampered.ts"],
+    [node.source, "oldPath", "src/tampered-old.ts"],
+    [node.source, "newPath", "src/tampered-new.ts"],
+    [node.source, "status", "added"],
+    [node.source, "excluded", true],
+    [node.openTarget, "snapshotId", "snapshot-tampered"],
+    [node.openTarget, "contextId", "context-tampered"],
+    [node.openTarget, "baseSha", "c".repeat(40)],
+    [node.openTarget, "headSha", "d".repeat(40)],
+    [node.openTarget, "originalDiffId", `${"c".repeat(40)}..${"d".repeat(40)}`],
+    [node.openTarget, "fileSystemPathSemantics", "windows"],
+    [node.openTarget.file, "fileId", "target-tampered-file"],
+    [node.openTarget.file, "path", "src/target-tampered.ts"],
+    [node.openTarget.file, "oldPath", "src/target-tampered-old.ts"],
+    [node.openTarget.file, "newPath", "src/target-tampered-new.ts"],
+    [node.openTarget.file, "status", "added"],
+    [node.openTarget.file, "excluded", true],
+    [node.openTarget.original, "kind", "absent"],
+    [node.openTarget.original, "filePath", "src/tampered-old.ts"],
+    [node.openTarget.original, "revision", "c".repeat(40)],
+    [node.openTarget.modified, "kind", "absent"],
+    [node.openTarget.modified, "filePath", "src/tampered-new.ts"],
+    [node.openTarget.modified, "revision", "d".repeat(40)]
+  ] as const) {
+    rejectMutation(target, key, value);
+  }
+
+  const first = await provider.select(node);
+  const second = await provider.select(node);
+
+  assert.equal(mutationErrors.length, 2);
+  assert.notEqual(opened[0], node.openTarget);
+  assert.notEqual(opened[0], opened[1]);
+  assert.deepEqual(opened, [
+    {
+      snapshotId: "snapshot-immutable",
+      contextId: "context-original",
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      originalDiffId: `${BASE_SHA}..${HEAD_SHA}`,
+      fileSystemPathSemantics: "posix",
+      file: renamed,
+      original: { kind: "present", filePath: "src/old.ts", revision: BASE_SHA },
+      modified: { kind: "present", filePath: "src/new.ts", revision: HEAD_SHA }
+    },
+    {
+      snapshotId: "snapshot-immutable",
+      contextId: "context-original",
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      originalDiffId: `${BASE_SHA}..${HEAD_SHA}`,
+      fileSystemPathSemantics: "posix",
+      file: renamed,
+      original: { kind: "present", filePath: "src/old.ts", revision: BASE_SHA },
+      modified: { kind: "present", filePath: "src/new.ts", revision: HEAD_SHA }
+    }
+  ]);
+  assert.deepEqual(first, { kind: "opened-diff", target: opened[0] });
+  assert.deepEqual(second, { kind: "opened-diff", target: opened[1] });
+});
+
 test("added and deleted selections open immutable empty missing sides through T303 and T302", async () => {
   const codec = new ReviewDiffUriCodec();
   const source = new RecordingContentSource();

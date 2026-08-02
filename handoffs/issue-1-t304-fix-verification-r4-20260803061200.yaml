@@ -190,7 +190,7 @@ review:
       result: supported
       evidence: R4 report claims match source, tests, commits, and CI.
   reserved_report_paths:
-    - reports/issue-1-t304-independent-final-review-20260803063000.md
+    - reports/issue-1-t304-independent-final-review-20260803062100.md
   report_attestation:
     allowed: false
     reviewed_implementation_head: null
@@ -293,7 +293,7 @@ next_action:
   instructions:
     - Use a fresh chat that did not implement T304, implement review fixes, or serve as normal reviewer.
     - Freeze the PR HEAD after this report and handoff commit and verify no later implementation/non-final evidence commit exists.
-    - Reserve and use reports/issue-1-t304-independent-final-review-20260803063000.md for the final review report.
+    - Reserve and use reports/issue-1-t304-independent-final-review-20260803062100.md for the final review report.
     - Review the complete PR independently rather than relying only on prior closure conclusions.
     - If final review passes, persist at most one report-attestation commit changing only the reserved report path.
     - Do not commit a handoff after a passing final-review attestation head.

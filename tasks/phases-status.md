@@ -102,6 +102,7 @@ Lを超える見込みになった場合は再分解する。
 - T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
 - T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
 - T303はPR #30でimplementation・通常review evidenceを復元し、timestamp-only no-op、whole-file回帰、canonical original diff ID、public JSDoc、consumer contract fixtureを修正した。同じ独立reviewerのclosure限定R2で全5 findingをclosed、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した
+- T304はPR #38でTree projectionとT302/T303連携を実装し、独立final reviewの`T304-IFR-P1`〜`P4`に対して、node/targetの深い不変化とdetached host target、public union migrationのbreaking-change記録とconsumer fixture、tracking、report reservationを修正した。follow-up evidenceは`reports/issue-1-t304-independent-review-followup-20260803073000.md`に記録し、通常verification、commit/push、exact-head CI、fresh independent final reviewが残る
 - T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント

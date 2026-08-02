@@ -222,6 +222,14 @@ const cloneRawFile = (
     : { exclusionReason: cloneExclusionReason(file.exclusionReason) })
 });
 
+const freezeRawFile = (
+  file: PullRequestDiffFileProgress
+): PullRequestDiffFileProgress => {
+  const clone = cloneRawFile(file);
+  if (clone.exclusionReason !== undefined) Object.freeze(clone.exclusionReason);
+  return Object.freeze(clone);
+};
+
 const cloneUnsupportedReason = (
   reason: PullRequestLineReviewUnsupportedReason
 ): PullRequestLineReviewUnsupportedReason => reason.kind === "binary"
@@ -462,13 +470,42 @@ const side = (
   revision: string
 ): PullRequestProgressTreeDiffSide => ({ kind, filePath, revision });
 
+const cloneDiffSide = (
+  value: PullRequestProgressTreeDiffSide
+): PullRequestProgressTreeDiffSide => ({ ...value });
+
+const freezeDiffSide = (
+  value: PullRequestProgressTreeDiffSide
+): PullRequestProgressTreeDiffSide => Object.freeze(cloneDiffSide(value));
+
+const cloneOpenTarget = (
+  target: PullRequestProgressTreeDiffTarget
+): PullRequestProgressTreeDiffTarget => ({
+  ...target,
+  file: cloneRawFile(target.file),
+  original: cloneDiffSide(target.original),
+  modified: cloneDiffSide(target.modified)
+});
+
+const freezeOpenTarget = (
+  target: PullRequestProgressTreeDiffTarget
+): PullRequestProgressTreeDiffTarget => {
+  const clone = cloneOpenTarget(target);
+  return Object.freeze({
+    ...clone,
+    file: freezeRawFile(clone.file),
+    original: freezeDiffSide(clone.original),
+    modified: freezeDiffSide(clone.modified)
+  });
+};
+
 const createOpenTarget = (
   identity: PullRequestProgressTreeSnapshotIdentity,
   file: PullRequestDiffFileProgress
 ): PullRequestProgressTreeDiffTarget => {
   const originalPath = file.oldPath ?? file.newPath ?? file.path;
   const modifiedPath = file.newPath ?? file.oldPath ?? file.path;
-  return {
+  return freezeOpenTarget({
     snapshotId: identity.snapshotId,
     contextId: identity.contextId,
     baseSha: identity.baseSha,
@@ -486,7 +523,7 @@ const createOpenTarget = (
       modifiedPath,
       identity.headSha
     )
-  };
+  });
 };
 
 const toFileNode = (
@@ -495,7 +532,7 @@ const toFileNode = (
 ): PullRequestProgressTreeFileNode => {
   const rawFile = effectiveFile.raw;
   const reason = effectiveFile.effectiveReason;
-  return {
+  return Object.freeze({
     kind: "file",
     category: effectiveFile.category,
     path: rawFile.path,
@@ -507,10 +544,10 @@ const toFileNode = (
     additions: rawFile.additions,
     deletions: rawFile.deletions,
     ...(reason === undefined ? {} : { reason }),
-    reviewability: cloneReviewability(effectiveFile.reviewability),
-    source: cloneRawFile(rawFile),
+    reviewability: freezeReviewability(effectiveFile.reviewability),
+    source: freezeRawFile(rawFile),
     openTarget: createOpenTarget(identity, rawFile)
-  };
+  });
 };
 
 const compareFileNodes = (
@@ -715,15 +752,10 @@ export class PullRequestProgressTreeDataProvider {
         reason: cloneUnsupportedReason(node.reviewability.reason)
       };
     }
-    await this.host.openDiff(node.openTarget);
-    return {
+    await this.host.openDiff(freezeOpenTarget(node.openTarget));
+    return Object.freeze({
       kind: "opened-diff",
-      target: {
-        ...node.openTarget,
-        file: cloneRawFile(node.openTarget.file),
-        original: { ...node.openTarget.original },
-        modified: { ...node.openTarget.modified }
-      }
-    };
+      target: freezeOpenTarget(node.openTarget)
+    });
   }
 }

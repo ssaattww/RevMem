@@ -4,6 +4,7 @@ import {
   type EmptyReviewDiffDocumentDescriptor,
   type GitCommitReviewDiffDocumentDescriptor,
   type ReviewDiffDocumentDescriptor,
+  type ReviewDiffRevisionSource,
   type RevisionTextContentSource
 } from "../../src/application/diff-document";
 import {
@@ -17,7 +18,10 @@ import {
   type GitBlobReader,
   type NodeLocalGitAdapterOptions
 } from "../../src/adapters/local-git";
-import { ReviewDiffTextDocumentContentProvider } from "../../src/ui/diff-editor";
+import {
+  ReviewDiffTextDocumentContentProvider,
+  type ReviewDiffEditorSideInput
+} from "../../src/ui/diff-editor";
 
 const descriptor = {
   contextId: "pull-request:github.com/owner/repository#42",
@@ -33,6 +37,23 @@ const emptyDescriptor = {
   revisionSource: "empty"
 } satisfies EmptyReviewDiffDocumentDescriptor;
 const descriptorUnion: ReviewDiffDocumentDescriptor = emptyDescriptor;
+const revisionSource: ReviewDiffRevisionSource = "empty";
+const presentSide = {
+  kind: "present",
+  filePath: "src/file.ts",
+  revision: descriptor.revision
+} satisfies ReviewDiffEditorSideInput;
+const absentSide = {
+  kind: "absent",
+  filePath: "src/file.ts",
+  revision: descriptor.revision
+} satisfies ReviewDiffEditorSideInput;
+const describeDescriptor = (value: ReviewDiffDocumentDescriptor): string => {
+  switch (value.revisionSource) {
+    case "git-commit": return `git:${value.revision}`;
+    case "empty": return `empty:${value.revision}`;
+  }
+};
 
 const source: RevisionTextContentSource = {
   async readTextContent(request) {
@@ -76,6 +97,11 @@ void [
   codec.encode(descriptor),
   codec.encode(emptyDescriptor),
   descriptorUnion,
+  revisionSource,
+  presentSide,
+  absentSide,
+  describeDescriptor(descriptor),
+  describeDescriptor(emptyDescriptor),
   applicationProvider,
   uiProvider,
   resolver,
