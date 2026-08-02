@@ -1,0 +1,147 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up R4
+  generated_at: "2026-08-03T05:54:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+base_sha: 76b49e99453ebcf7ebecb2c141ed24d750736abc
+source_review_report: reports/issue-1-t304-fix-verification-r3-20260803045900.md
+source_review_handoff: handoffs/issue-1-t304-fix-verification-r3-20260803050000.yaml
+source_reviewed_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+source_review_evidence_head: 7f2cb2b93e58376d8be4975fe464eebedd909e50
+
+scope:
+  - Address T304-R4-P1 effective progress runtime DTO shape and serialization.
+  - Address T304-R4-P2 filesystem-semantics-aware PR progress path validation.
+  - Address T304-R4-P3 unknown diff-side runtime discriminant handling.
+non_goals:
+  - Concrete VS Code TreeItem, Activity Bar, Current Context, and Status Bar wiring.
+  - PR metadata acquisition, encoding detection source, cache, and refresh implementation.
+  - Independent final review before normal review closure.
+  - Merge.
+
+diagnostic_workflow:
+  existing: true
+  changed: false
+  evidence:
+    - CI commands preserve merged stdout and stderr under test-output/ci.
+    - Failure artifacts include source, tests, type fixtures, generated output, environment, Git status, package configuration, and workflow.
+
+red_evidence:
+  head_sha: b2f6a7137c98afffa2ea43e3bfa5e4e3665c886e
+  workflow: CI
+  run_id: 30766227561
+  job_id: 91545342170
+  conclusion: failure
+  failed_step: Unit tests
+  artifact_id: 8839022955
+  artifact_name: ci-failure-diagnostics-30766227561-1
+  expected_failures:
+    - Effective file spread and JSON serialization lost public evidence fields and exposed raw T301 fields.
+    - POSIX whitespace-only repository path was rejected by trim-based validation.
+    - Unknown original and modified diff-side kinds were accepted as git-commit sides.
+
+intermediate_failures:
+  - head_sha: 0215835e7db595b4d7a97c73bcefa70d49bc8cda
+    run_id: 30766328027
+    job_id: 91545605579
+    conclusion: failure
+    failed_step: Lint
+    artifact_id: 8839055564
+    artifact_name: ci-failure-diagnostics-30766328027-1
+    cause: Canonical path validation wrapper did not preserve the caught error as cause.
+    correction: Added the original error as RangeError cause.
+  - head_sha: 6ebdf4e5fa263b493a9fe111a776efde3d40d671
+    run_id: 30766443103
+    job_id: 91545908428
+    conclusion: failure
+    failed_step: Unit tests
+    artifact_id: 8839091984
+    artifact_name: ci-failure-diagnostics-30766443103-1
+    cause: An older R2 test still expected the removed raw-like effective projection shape.
+    correction: Updated the expectation to the enumerable T304 DTO contract.
+
+implementation:
+  outcome: completed
+  technical_head: ad40ae8db02d4750221b8cca644d223f6447a560
+  report_commit: 12ec8a94b820e7f5262d334611301ecbd92f4e9c
+  summary:
+    - Replaced hidden Object.defineProperties evidence with a plain enumerable effective file DTO.
+    - Detached raw records, exclusion reasons, reviewability records, and unsupported reasons across getter calls.
+    - Reused the shared canonical repository-relative path validator with explicit POSIX or Windows semantics.
+    - Preserved canonical path validation errors as causes when wrapping them.
+    - Rejected unknown original or modified side kinds before descriptor creation, URI encoding, parsing, or host calls.
+    - Removed a duplicate temporary R4 test file and retained the regressions in the standard discovered R3 test file.
+  addressed_findings:
+    - id: T304-R4-P1
+      disposition: addressed
+      evidence:
+        - Spread, JSON round-trip, and Object.keys preserve exactly the declared effective DTO fields.
+        - Raw T301 fields exist only under raw and do not appear as top-level enumerable properties.
+        - Nested raw and reviewability evidence is detached between getter calls.
+    - id: T304-R4-P2
+      disposition: addressed
+      evidence:
+        - path, oldPath, and newPath use requireCanonicalRepositoryRelativePath with snapshot filesystem semantics.
+        - POSIX whitespace-only root filename is accepted.
+        - The same path is rejected under Windows semantics.
+    - id: T304-R4-P3
+      disposition: addressed
+      evidence:
+        - Only undefined, present, and absent side kinds are accepted.
+        - Invalid original and modified side kinds are rejected before codec or host calls.
+
+validation:
+  technical_head: ad40ae8db02d4750221b8cca644d223f6447a560
+  workflow: CI
+  run_id: 30766516189
+  job_id: 91546099726
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  passed_steps:
+    - build
+    - contract_typecheck
+    - architecture_positive
+    - architecture_negative
+    - lint
+    - unit
+    - t304_focused
+    - t503_focused
+    - git_integration
+    - github_integration
+    - vscode_extension_host
+
+files:
+  changed:
+    - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+    - src/ui/diff-editor/review-diff-editor-controller.ts
+    - test/unit/t304-review-followup-r3.test.ts
+    - test/unit/pull-request-progress-tree.test.ts
+    - reports/issue-1-t304-review-followup-r4-20260803055200.md
+    - handoffs/issue-1-t304-review-followup-r4-20260803055400.yaml
+
+report:
+  path: reports/issue-1-t304-review-followup-r4-20260803055200.md
+  outcome: created
+
+tracking:
+  tasks_status_updated: false
+  reason: tasks/tasks-status.md requires a repository progress-management skill unavailable in this worker context.
+
+review:
+  next_reviewer: same normal reviewer that produced the R3 fix verification findings
+  requested_action: Verify closure of T304-R4-P1, T304-R4-P2, and T304-R4-P3 on the final PR head. Do not begin independent final review until normal review passes.
+
+next_action:
+  type: normal_review_closure
+  summary: Confirm all R4 findings are closed, inspect sibling regressions, and proceed to independent final review only after a normal-review pass.
+
+merge:
+  performed: false
+  reserved_for: user
