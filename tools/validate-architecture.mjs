@@ -71,6 +71,10 @@ function isCorePlatformViolation(specifier) {
   );
 }
 
+function isApplicationRuntimeViolation(specifier) {
+  return specifier === "node:crypto" || specifier.startsWith("node:crypto/") || specifier === "node:zlib" || specifier.startsWith("node:zlib/") || specifier === "node:fs" || specifier.startsWith("node:fs/") || specifier === "fs" || specifier.startsWith("fs/");
+}
+
 function importSpecifiers(source, filePath) {
   const imports = [];
   const sourceFile = ts.createSourceFile(
@@ -133,6 +137,11 @@ for (const filePath of collectTypeScriptFiles(sourceRoot)) {
   for (const specifier of importSpecifiers(readFileSync(filePath, "utf8"), filePath)) {
     if (sourceLayer === "core" && isCorePlatformViolation(specifier)) {
       violations.push(`${relative(projectRoot, filePath)}: core must not import '${specifier}'.`);
+      continue;
+    }
+
+    if (sourceLayer === "application" && isApplicationRuntimeViolation(specifier)) {
+      violations.push(`${relative(projectRoot, filePath)}: application must not import runtime module '${specifier}'.`);
       continue;
     }
 

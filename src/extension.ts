@@ -13,9 +13,12 @@ import {
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
-  JsonlReviewHistoryStore
+  JsonlReviewHistoryStore,
+  resolveReviewStateStorageRoute
 } from "./adapters/state-repository/index";
-import { WorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
+import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/non-git-snapshots/index";
+import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
+import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
 import {
   createNormalEditorDecorationModel,
   type NormalEditorReviewedDecoration
@@ -222,10 +225,30 @@ export function activate(
       }
     })
   });
-  const workspaceSessionProvider = new WorkspaceReviewStateSessionProvider({
+  const workspaceStorageUris = {
+    globalStorageUri: context.globalStorageUri,
+    storageUri: context.storageUri
+  };
+  const snapshotStorage = new NodeNonGitSnapshotStorage({
+    snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
+      kind: "workspace", repositoryId: "extension-runtime", contextId: "extension-runtime"
+    }).snapshotDirectory
+  });
+  const workspaceSessionProvider = new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
     repository,
-    historyRecorder
+    historyRecorder,
+    snapshotTracker: new NonGitSnapshotTracker(snapshotStorage, new NodeNonGitSnapshotCodec(), {
+      maxSnapshots: 128,
+      maxCompressedBytes: 5 * 1024 * 1024,
+      retentionMs: 30 * 24 * 60 * 60 * 1_000
+    }),
+    resolveContent: (descriptor) => {
+      const resource = descriptor.documentUri;
+      return vscode.workspace.textDocuments.find((document) =>
+        document.uri.scheme === resource.scheme && document.uri.authority === resource.authority && document.uri.path === resource.path
+      )?.getText() ?? "";
+    }
   });
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
     gitInspector: createNodeLocalGitAdapter(),

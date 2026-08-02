@@ -1,0 +1,221 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: 2026-08-02T00:20:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #33
+task_id: T601
+branch: task/t601-non-git-snapshots
+base_ref: main
+target:
+  current_head: d258725e3dce47e4adb8e5c712b81e23b9675a8d
+  reviewed_head: null
+  commit_range: ec1ce78ab35867397c33d711095424e3eedd6e2c..2913e0b6de46a03dea31176dd975587d208dd408
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instruction
+    summary: Use uploaded worker skills, GitHub connector, TDD, diagnostic artifacts, small commits, repository report, PR comment, PR update, and no merge.
+  - source: task
+    reference: T601 / AC-13
+    summary: Implement compressed non-Git snapshots and conservative reviewed-range tracking across content edits.
+development_policy:
+  method: TDD
+  testing_order: Red before implementation, then focused and full CI
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t601
+    - npm run test:unit
+    - full GitHub Actions CI
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source and generated files
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T601 implementation, tests, package scripts, report, handoff, PR metadata/comment
+      reason: accepted task scope
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: tasks/tasks-status.md
+      reason: repository file requires dedicated manager
+scope:
+  - gzip-compressed snapshots
+  - SHA-256 integrity verification
+  - line-based unique mapping
+  - conservative ambiguous/missing/corrupt/expired behavior
+  - retention and compressed-byte limits
+  - workspace provider restart mapping
+non_goals:
+  - Git revision mapping
+  - history schema changes
+  - merge
+files:
+  changed:
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: snapshot and mapping core
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: workspace provider integration boundary
+    - path: src/adapters/workspace-review-state/index.ts
+      purpose: export provider
+    - path: test/unit/non-git-snapshot-tracker.test.ts
+      purpose: core and focused tests
+    - path: test/unit/workspace-non-git-snapshot-tracking.test.ts
+      purpose: provider recreation mapping test
+    - path: package.json
+      purpose: test:t601 and unit wiring
+    - path: reports/issue-1-t601-implementation-20260802001800.md
+      purpose: detailed implementation report
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: failure diagnostics and validation gates
+    - path: src/adapters/workspace-review-state/workspace-review-state-session-provider.ts
+      purpose: base provider contract
+    - path: src/adapters/document-review-state/document-review-state-session-provider.ts
+      purpose: routing compatibility
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: dedicated manager required
+commands:
+  - command: GitHub Actions CI run 30705395644
+    purpose: full validation of implementation HEAD
+    exit_code: 0
+    result: passed
+    head_sha: 2913e0b6de46a03dea31176dd975587d208dd408
+    evidence: all build, typecheck, architecture, lint, unit, integration and extension-host gates passed
+tests:
+  - name: T601 Red sequence
+    phase: red
+    result: failed
+    head_sha: multiple
+    evidence: runs 30704317868, 30704370120, 30704416209, 30704600364, 30704938885, 30705080410, 30705126118, 30705343607 with diagnostic artifacts
+  - name: Full CI
+    phase: green
+    result: passed
+    head_sha: 2913e0b6de46a03dea31176dd975587d208dd408
+    evidence: run 30705395644; 352/352 unit tests passed
+ci:
+  required: true
+  workflow: CI
+  run_id: 30705395644
+  head_sha: 2913e0b6de46a03dea31176dd975587d208dd408
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 2913e0b6de46a03dea31176dd975587d208dd408
+  commits:
+    - sha: 8f3c9cf9de9c3d878c5b5abaa745370dc66237d1
+      purpose: Red tests
+    - sha: 1789b9a43bcb0bca131e5e4ec035fedd8b915122
+      purpose: initial snapshot implementation
+    - sha: cf78b08ba3716292a9436fa23e9f8f38b2fe3823
+      purpose: conservative mapping fixes
+    - sha: 2913e0b6de46a03dea31176dd975587d208dd408
+      purpose: provider recreation Green
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifacts listed in implementation report
+      summary: every failed CI run saved diagnostic context
+  blocked_items: []
+  summary:
+    - compressed snapshots and conservative mapping implemented
+    - provider recreation mapping verified
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation worker does not issue independent review verdict
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t601-implementation-20260802001800.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed implementation and validation evidence persisted
+findings: []
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: independent final review
+    reason: implementation stage
+remaining_risks:
+  - host must inject a restart-persistent NonGitSnapshotStorage implementation
+  - duplicate-line multiplicity changes are intentionally conservative
+  - LCS performance limits require later large-document validation
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: See reports/issue-1-t601-implementation-20260802001800.md
+extensions: []
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Review PR #33 at the final report/handoff HEAD after matching CI succeeds.
+  instructions:
+    - Verify implementation diff and TDD evidence.
+    - Use only CI whose head SHA matches the PR current HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #33
+    - reports/issue-1-t601-implementation-20260802001800.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t601-implementation-20260802002000.yaml
+  packet_url: null
+  transport_note: Continue from PR #33 and verify matching current-HEAD CI; no merge permission is conveyed.

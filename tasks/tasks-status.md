@@ -6,14 +6,14 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）
-- 直近完了タスク: T501 Repository Global State repository（独立reviewの全4 findingをclosure済み）
-- 現在のタスク: PR #32 squash merge準備
-- 次のタスク: PR #32をsquash merge後、依存順に次タスクへ進む
-- 実装状態: T501は`origin/main`の`238149edb632d298ea43122b12b4cde72b70ec38`へrebaseし、T501-IFR2-P1〜P4を一括対応した。Global-only解除のContext/Global履歴証跡、public consumer fixture、trackingを追加し、同じ独立reviewerのclosure限定R2で全4件closed、`pass_with_held`、exact-head CI成功を確認済み。Issue #28はnon-blocking held
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
+- 直近完了タスク: T601 Gitなしsnapshot追従（独立reviewの全6 findingをclosure済み）
+- 現在のタスク: PR #33 squash merge準備
+- 次のタスク: PR #33をsquash merge後、依存順に次タスクへ進む
+- 実装状態: T601は最新main統合済みのPR #33で、persistent local extension snapshot adapter、authoritative latest-generation pointer、EOL-aware mapping、production composition/read-decoration path、application/runtime adapter境界を一括実装した。同じ独立reviewerのclosure限定R2で全6件closed、`pass_with_held`、exact-head CI成功を確認済み。通常reviewは完了済みのため再実施しない。Issue #28およびWindows temporary-directory cleanupの`EBUSY`は本筋外non-blocking held
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t501-global-state-repository`
-- Pull Request: #32（base=`main`）
+- Gitブランチ: `task/t601-non-git-snapshots`
+- Pull Request: #33（base=`main`）
 - T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
 - T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
@@ -174,6 +174,11 @@
 - T401独立最終レビューレポート: `reports/issue-1-t401-independent-final-review-20260802090030.md`
 - T401独立review follow-upレポート: `reports/issue-1-t401-independent-review-followup-20260802121500.md`
 - T401独立finding closureレポート: `reports/issue-1-t401-independent-fix-verification-20260802124500.md`
+- T601独立最終レビューレポート: `reports/issue-1-t601-independent-final-review-20260802093000.md`
+- T601独立review follow-upレポート: `reports/issue-1-t601-independent-review-followup-20260802154500.md`
+- T601独立finding closureレポート: `reports/issue-1-t601-independent-fix-verification-20260802163000.md`
+- T601独立review follow-up R2レポート: `reports/issue-1-t601-independent-review-followup-r2-20260802170000.md`
+- T601独立finding closure R2レポート: `reports/issue-1-t601-independent-fix-verification-r2-20260802173000.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -278,7 +283,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T601 | 未着手 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす |
+| T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。既存独立finding全6件をclosed、exact-head CI成功済み |
 | T602 | 未着手 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
