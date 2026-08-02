@@ -1,0 +1,92 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up corrected
+  generated_at: "2026-08-02T22:10:00+09:00"
+  corrected_at: "2026-08-02T22:47:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+reviewed_head: 1fdecc956d6c3a42d7d65b203ff7b75decd7afd8
+review_report: reports/issue-1-t304-review-20260802213932.md
+
+correction:
+  reason: Fix verification at HEAD 580671ab642cfa43216d06118af7b3b0fb6061c8 found T304-R1-P1 and T304-R1-P2 only partially addressed.
+  verification_report: reports/issue-1-t304-fix-verification-20260802221700.md
+  replacement_followup_report: reports/issue-1-t304-review-followup-r2-20260802224500.md
+  replacement_handoff: handoffs/issue-1-t304-review-followup-r2-20260802224700.yaml
+  historical_evidence_preserved: true
+
+scope:
+  - Initial implementation attempt for T304-R1-P1, T304-R1-P2, and T304-R1-P3.
+  - This file records the first attempt and its corrected verification disposition.
+non_goals:
+  - Treating implementation-worker addressed claims as review closure.
+  - Independent final review.
+  - Merge.
+
+implementation:
+  outcome: superseded_by_r2_followup
+  technical_head: e43069a967f6f5179d7a5894b897d05adc3f7f75
+  report_commit: 696868300be45919242b810b31e75f25b6f1af0b
+  summary:
+    - Added identity-bound snapshot and stale-node rejection.
+    - Added line-review unsupported reasons.
+    - Registered T304 tests in standard and focused suites.
+  finding_dispositions:
+    - id: T304-R1-P1
+      source_severity: high
+      disposition: partial_at_first_verification
+      remaining_at_verification:
+        - Added original and deleted modified sides incorrectly represented nonexistent Git blobs as present.
+      superseded_by: handoffs/issue-1-t304-review-followup-r2-20260802224700.yaml
+    - id: T304-R1-P2
+      source_severity: high
+      disposition: partial_at_first_verification
+      remaining_at_verification:
+        - Encoding-unsupported nonzero T301 progress could not be authoritatively projected out of the denominator.
+      superseded_by: handoffs/issue-1-t304-review-followup-r2-20260802224700.yaml
+    - id: T304-R1-P3
+      source_severity: medium
+      disposition: closed_at_first_verification
+
+red_evidence:
+  - finding: T304-R1-P3
+    head_sha: 851c55a66206ac64a82236fce6efa5f64655f3a5
+    run_id: 30748859263
+    job_id: 91499168091
+    conclusion: failure
+    artifact_id: 8833773687
+  - finding: T304-R1-P1_and_T304-R1-P2
+    head_sha: c17b97f03af516f0c484356042c91d2ba8bb9c78
+    run_id: 30748932987
+    job_id: 91499365739
+    conclusion: failure
+    artifact_id: 8833796187
+  - finding: implementation_boundary_correction
+    head_sha: 72a16a48070df9d67e79a82c8160a2d4153a9ec3
+    run_id: 30749149862
+    job_id: 91499941813
+    conclusion: failure
+    artifact_id: 8833863915
+
+green_evidence:
+  technical_head: e43069a967f6f5179d7a5894b897d05adc3f7f75
+  workflow: CI
+  run_id: 30749231759
+  job_id: 91500162120
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  note: Green execution did not prove closure of the untested absent-side and nonzero encoding-projection scenarios.
+
+tracking:
+  tasks_status_updated: false
+  reason: tasks/tasks-status.md requires an unavailable repository progress-management skill.
+
+next_action:
+  type: superseded
+  summary: Use the R2 follow-up handoff for current closure verification. Do not merge.

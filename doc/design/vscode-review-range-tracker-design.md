@@ -219,24 +219,45 @@ original側の削除行も確認・解除・進捗計算の対象にできる。
 
 ### 8.2 仮想文書descriptor
 
+仮想文書descriptorはrevision sourceをdiscriminantとするunionで表現する。
+
 ```ts
-interface ReviewDiffDocumentDescriptor {
+interface ReviewDiffDocumentDescriptorBase {
   contextId: string;
   filePath: string;
   fileSystemPathSemantics: "posix" | "windows";
   side: "original" | "modified";
-  revisionSource: "git-commit";
   revision: string;
 }
+
+interface GitCommitReviewDiffDocumentDescriptor
+  extends ReviewDiffDocumentDescriptorBase {
+  revisionSource: "git-commit";
+}
+
+interface EmptyReviewDiffDocumentDescriptor
+  extends ReviewDiffDocumentDescriptorBase {
+  revisionSource: "empty";
+}
+
+type ReviewDiffDocumentDescriptor =
+  | GitCommitReviewDiffDocumentDescriptor
+  | EmptyReviewDiffDocumentDescriptor;
 ```
 
-同じpathでもcontext、side、revision source、revisionが異なれば別文書とする。別contextや別revisionの内容を代用しない。
+`git-commit`は指定commitとpathに存在するexact blobを表す。`empty`はadded fileのoriginal側またはdeleted fileのmodified側など、比較revisionでfileが存在しないことを表すsynthetic immutable empty documentである。`empty`は論理path、context、side、比較revisionをURI identityとして保持するが、Local Git、GitHub、snapshot等の外部content sourceへ渡さずapplication providerが空文字列を返す。
+
+外部content source portの入力型は`GitCommitReviewDiffDocumentDescriptor`だけとする。adapterは型境界に加えてruntimeでも`empty`を拒否し、同じdescriptorが呼出経路によって別内容を返す状態を禁止する。
+
+同じpathでもcontext、side、revision source、revisionが異なれば別文書とする。別context、別side、別revision source、別revisionの内容を代用しない。
 
 ### 8.3 Immutable revision
 
-Git revisionはlowercaseのfull SHA-1またはfull SHA-256 commit object IDに限定する。`HEAD`、branch、tag、短縮ID、revision range、Git optionとなる文字列を受理しない。
+`revision`は`git-commit`と`empty`の双方でlowercaseのfull SHA-1またはfull SHA-256 commit object IDに限定する。`HEAD`、branch、tag、短縮ID、revision range、Git optionとなる文字列を受理しない。
 
-moving refはURI生成前にcommit object IDへ解決する。同じURIが後から別内容を返すことを禁止する。snapshot等を追加する場合は別のrevision sourceとimmutable IDを定義する。
+`git-commit`ではrevisionがexact blob取得元のcommit object IDである。`empty`ではfile本文の取得元ではなく、fileが存在しない側を特定するcomparison revisionとしてURI identityへ使用する。外部sourceへは送らない。
+
+moving refはURI生成前にcommit object IDへ解決する。同じURIが後から別内容を返すことを禁止する。将来別の本文sourceを追加する場合は、新しいrevision sourceとimmutable ID、source dispatch、consumer contractを一体で定義する。
 
 ### 8.4 Canonical URI
 
@@ -250,21 +271,24 @@ review-range-diff://document/v1/
   <file-path-base64url>
 ```
 
-可変文字列はUTF-8のcanonical base64urlとする。padding、再encode不一致、不正UTF-8、userinfo、password、port、query、fragment、未知version、未知segmentを拒否する。
+`revision-source`は`git-commit`または`empty`だけを許可する。codecはdecode後もdiscriminated unionを維持し、未知source、sourceとdescriptor shapeの不一致、padding、再encode不一致、不正UTF-8、userinfo、password、port、query、fragment、未知version、未知segmentを拒否する。
+
+可変文字列はUTF-8のcanonical base64urlとする。
 
 上限:
 
 - URI全長: 65,536文字
 - Context ID: UTF-8で8,192 bytes
 - file path: UTF-8で32,768 bytes
-- Git revision: full SHA-1またはfull SHA-256
+- comparison revision: full SHA-1またはfull SHA-256
 
 ### 8.5 VS Code境界
 
 - codec生成URIを`vscode.Uri.parse`できる
 - `uri.toString(true)`がcanonical URIと一致する
-- decode後のdescriptorが完全一致する
+- decode後のdescriptorとrevision source discriminantが完全一致する
 - `TextDocumentContentProvider`は同じURIをapplication providerへ渡す
+- application providerは`empty`を空文字列へ解決し、`git-commit`だけを外部content sourceへ委譲する
 
 provider登録と`vscode.diff`実行はUI adapterが行う。
 
@@ -493,7 +517,30 @@ fileごとに確認済み変更行数、全変更行数、率、追加数、削�
 
 未確認変更が残るfile、完了file、除外file、rename-only、binary/encoding対象外を別グループで表示する。
 
-除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。file単位・PR全体とも分母が0の進捗率は100%とする。仮想diff文書はidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、PR差分取得はrejectをpatch欠落・不完全時のfallback判断として再利用する。
+除外はvalidationを省略する理由にしない。nonbinary fileは構造とstateを検証した後で、除外された場合だけ集計分子・分母を0とする。raw resultは元の`additions`、`deletions`、status、path、exclusion reasonを保持する。file単位・PR全体とも分母が0の進捗率は100%とする。仮想diff文書はidentity-bound snapshotとold/new path・hunkをoriginal/modified表示へ再利用し、PR差分取得はrejectをpatch欠落・不完全時のfallback判断として再利用する。
+
+PR Progress UIはraw calculator resultへline reviewabilityを適用し、binaryまたはencoding対象外fileをeffective分子・分母から除外する。このprojectionはraw `PullRequestDiffProgress`を変更・再利用せず、専用の`PullRequestEffectiveProgress`として公開する。
+
+```ts
+interface PullRequestEffectiveFileProgress {
+  readonly raw: PullRequestDiffFileProgress;
+  readonly reviewability: PullRequestLineReviewability;
+  readonly category: PullRequestProgressTreeCategory;
+  readonly effectiveReason?: string;
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+}
+
+interface PullRequestEffectiveProgress {
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+  readonly files: readonly PullRequestEffectiveFileProgress[];
+}
+```
+
+`raw`はauthoritative calculatorの変更統計とidentityを保持し、direct countはUI集計用effective countを表す。`reviewability`と`effectiveReason`により、`excluded = false`かつraw変更統計がnonzeroでもeffective分母が0となる理由をconsumerが復元できなければならない。raw resultとeffective projectionを型上で相互代入可能にしない。
 
 ### 11.3 Global理解率
 
@@ -506,7 +553,7 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 Global集計用のrepository列挙結果は次の3分類を持つ。
 
 - `included`: Global分母候補となるfile。各fileの非空行数だけを分母へ加算する。
-- `excluded`: 実際にfileとして列挙した後、binary、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
+- `excluded`: 実際にfileとして列挙した後、binary、fatal UTF-8 decodeで`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
 - `excludedDirectories`: 共通除外policyまたは`.gitignore`により再帰前にpruneしたdirectory。1 directoryにつき1件だけ保持し、配下fileへ展開・推定しない。
 
 `included`、`excluded`、`excludedDirectories`はlocaleに依存しないrepository-relative pathのcode-unit昇順で、各配列内に重複pathを持たない。pruneしたdirectoryと配下fileはGlobal理解率の分子・分母へ寄与しない。directory件数は列挙診断としてfile除外数とは別に扱い、除外file数へ加算しない。
@@ -709,7 +756,9 @@ PRが解決されていない場合はbranchまたはworkspace contextを表示�
 - 削除行数
 - 除外・対象外の場合は理由
 
-ファイルを選択すると、そのcontextのdiff editorを開く。「次の未確認行」へは自動移動しない。
+行単位レビュー可能なfileを選択すると、そのcontextのidentity-bound diff editorを開く。「次の未確認行」へは自動移動しない。
+
+binary、不正encoding、未対応encoding等の「行単位レビュー対象外」fileはtext diffを開かない。Tree providerはhostを呼ばず、file identityと対象外理由を持つtyped selection resultを返す。VS Code Tree View adapterはこのresultを対象外理由の表示、選択不能表現、または情報通知へ変換し、text content providerへ送らない。
 
 既定sort:
 
@@ -873,8 +922,11 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - edit/Git diff mapping、複数hunk、CRLF/LF、空白設定
 - rename、copy、分割、曖昧候補
 - PR/file進捗、Global混入防止、除外
+- raw PR進捗とline-reviewability適用後のeffective進捗の型・意味分離
+- binary、不正encoding、未対応encoding nodeのselection resultとtext diff host非呼出し
 - Global列挙結果のfile/directory分離、除外数単位、安定sort、重複path禁止
 - 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
+- `git-commit` / `empty` descriptor union、source dispatch、empty documentの外部port非委譲
 - POSIX特殊path、Windows禁止path・予約デバイス名
 - missingとfatal failureの分離
 - metadata/blob timeout error contract
@@ -890,6 +942,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 
 - temporary Git repositoryでbase/head、commit、rename、rebase、branch切替
 - immutable revisionのoriginal/modified content
+- added/deletedのsynthetic empty sideとpresent sideの組合せ
 - PATHに存在しないportable Git絶対pathをmetadata・blob双方で利用
 - POSIX特殊filename
 - 4 MiB直下・直上blob
@@ -901,6 +954,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - 通常editor decorationとcommands
 - diff editor両side
 - dialog、Tree View、Status Bar
+- 行単位レビュー対象外nodeの理由表示とtext diff非実行
 - restart後の復元
 - actual `vscode.Uri`のparse・serialize・decode
 - `TextDocumentContentProvider`のdelegation
@@ -931,7 +985,7 @@ CI失敗時はtest log、生成物、source、test、設定、環境情報をart
 13. closed PRを並列管理できる
 14. restart後に状態を復元できる
 15. GitHub障害・Gitなし環境でも確実性を損なわず動作できる
-16. 仮想URIからcontext、file、filesystem semantics、side、immutable revisionを復元できる
+16. 仮想URIからcontext、file、filesystem semantics、side、revision source、immutable revisionを復元できる
 17. Local Git metadataとblobが同じruntime executable・timeoutを使用する
 18. 大容量blobや不正encodingを誤表示しない
 19. エラー時に不確実な範囲を確認済み表示しない

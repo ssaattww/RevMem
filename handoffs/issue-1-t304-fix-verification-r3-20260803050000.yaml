@@ -1,0 +1,477 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix verification R3
+  generated_at: "2026-08-03T05:00:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+target:
+  current_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  reviewed_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  commit_range: 52ed5ca2753326b9c1d80bb810717215a61c5898..283fa41b37c79c802ec2e93a7e67f4941603bb40
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー / RevMem project instructions"
+    summary: Reuse the same normal reviewer, verify previous findings against the current HEAD, inspect new changes and direct dependencies, persist a detailed report and handoff, post a concise PR review, use only matching-head CI, and do not merge.
+  - source: task
+    reference: tasks/tasks-status.md T304
+    summary: Provide five PR progress categories, deterministic remaining-line/path sorting, matching file metrics and reasons, and diff selection.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md sections 2.1, 7, 8.2-8.5, 11.2, 16.3, 20, 21
+    summary: Preserve canonical filesystem paths, immutable source-discriminated diff documents, raw/effective progress separation, unsupported selection behavior, and certainty-first failure handling.
+  - source: previous_review
+    reference: reports/issue-1-t304-fix-verification-r2-20260802225900.md
+    summary: Verify closure of T304-R3-P1, T304-R3-P2, and T304-R3-P3 and inspect newly changed T302/T304 boundaries.
+
+development_policy:
+  method: TDD required for implementation fixes
+  testing_order: Add failing regression tests before each fix, then run focused and broad validation on the exact resulting HEAD.
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t304
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results and merged stdout/stderr under test-output/ci
+    - environment and Git status
+    - generated dist/test-dist listing
+    - source, tests, tools, type fixtures, package/configuration, and workflow files in failure artifacts
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t304-fix-verification-r3-20260803045900.md
+      reason: Required durable detailed fix-verification report.
+    - path_or_operation: handoffs/issue-1-t304-fix-verification-r3-20260803050000.yaml
+      reason: Required lossless continuation packet.
+    - path_or_operation: PR #38 review comment
+      reason: Required concise review result.
+  forbidden:
+    - path_or_operation: implementation, tests, design, configuration, or workflow fixes
+      reason: Reviewer must not implement findings.
+    - path_or_operation: tasks/tasks-status.md direct edit
+      reason: Repository requires an unavailable progress-management skill.
+    - path_or_operation: merge PR #38
+      reason: Merge is reserved for the user.
+
+scope:
+  - Verify T304-R3-P1 unsupported-node selection closure.
+  - Verify T304-R3-P2 raw/effective public contract closure.
+  - Verify T304-R3-P3 descriptor/content-source closure.
+  - Inspect the complete R3 fix range, direct T302/T303 dependencies, tests, design, evidence, and exact-head CI.
+  - Identify new defects introduced by the fixes or still present in the PR.
+non_goals:
+  - Implement review findings.
+  - Perform independent final review while normal findings remain open.
+  - Implement concrete T305/T306 VS Code UI wiring.
+  - Implement T402 PR acquisition and encoding detection.
+  - Merge.
+
+files:
+  changed:
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Synchronize diff descriptor, effective projection, unsupported selection, and testing contracts.
+    - path: src/application/diff-document/contracts.ts
+      purpose: Define git-commit/empty descriptor union and narrow external content port.
+    - path: src/application/diff-document/index.ts
+      purpose: Export descriptor subtypes.
+    - path: src/application/diff-document/review-diff-uri-codec.ts
+      purpose: Preserve revision-source discriminants in canonical URIs.
+    - path: src/adapters/diff-document/local-git-revision-text-content-source.ts
+      purpose: Narrow and runtime-guard Local Git content source.
+    - path: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      purpose: Add typed unsupported selection and dedicated effective progress projection.
+    - path: src/ui/pr-progress/index.ts
+      purpose: Export new T304 public contracts.
+    - path: test/unit/t304-review-followup-r3.test.ts
+      purpose: R3 behavior regression coverage.
+    - path: test/unit/ci-workflow-contract.test.ts
+      purpose: Preserve R3 test discovery.
+    - path: type-fixtures/contracts/t302-diff-document.fixture.ts
+      purpose: Verify narrowed content-source contracts.
+    - path: type-fixtures/contracts/t304-pr-progress-tree.fixture.ts
+      purpose: Verify effective/raw incompatibility and selection result types.
+    - path: package.json
+      purpose: Register R3 regression tests.
+    - path: reports/issue-1-t304-review-followup-r3-20260802233700.md
+      purpose: R3 implementation evidence.
+    - path: handoffs/issue-1-t304-review-followup-r3-20260802233900.yaml
+      purpose: R3 implementation handoff.
+  inspected:
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: Verify present/absent runtime dispatch and malformed input behavior.
+    - path: src/application/diff-document/revision-text-content-provider.ts
+      purpose: Verify empty short-circuit and Git-only external delegation.
+    - path: src/application/repository-path/repository-relative-path.ts
+      purpose: Compare T304 path validation with canonical POSIX/Windows semantics.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Confirm raw T301 contract retained by T304 projection.
+    - path: test/unit/pull-request-progress-tree.test.ts
+      purpose: Inspect effective projection runtime assertions and prior coverage.
+    - path: test/unit/review-diff-editor-controller.test.ts
+      purpose: Inspect runtime discriminant validation coverage.
+    - path: test/unit/review-diff-content-provider.test.ts
+      purpose: Inspect immutable content behavior.
+    - path: type-fixtures/contracts/review-contracts.fixture.ts
+      purpose: Inspect public T303 consumer coverage.
+    - path: .github/workflows/ci.yml
+      purpose: Verify diagnostic artifact and test execution policy.
+  intentionally_untouched:
+    - path_or_area: source/test/design/configuration files
+      reason: Review mode forbids implementing fixes.
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Required progress-management skill is unavailable.
+
+commands:
+  - command: GitHub Actions CI run 30752596290
+    purpose: Validate reviewed implementation HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: Job 91509172807 completed all build, typecheck, architecture, lint, unit, focused, integration, and Extension Host steps successfully.
+  - command: GitHub Actions CI run 30751935700
+    purpose: Verify R3 TDD Red evidence.
+    exit_code: 2
+    result: failed
+    head_sha: dbe208cd65afae27ef29a78c323464ea3cded5ce
+    evidence: Contract typecheck failed and artifact 8834715318 was uploaded.
+  - command: GitHub Actions CI run 30752133930
+    purpose: Verify the reported intermediate test declaration failure.
+    exit_code: 2
+    result: failed
+    head_sha: 9a1140055eeab0149402301fb79edf1f742d006e
+    evidence: Workflow conclusion failure matches the implementation report.
+
+tests:
+  - name: unsupported selection typed result
+    phase: verification
+    result: passed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: Binary, invalid encoding, and unsupported encoding return line-review-unavailable without invoking host.
+  - name: effective/raw compile-time separation
+    phase: verification
+    result: passed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: T304 consumer fixture rejects assignment of PullRequestEffectiveProgress to PullRequestDiffProgress.
+  - name: empty descriptor source dispatch
+    phase: verification
+    result: passed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: Empty descriptor is short-circuited by application provider and rejected by Local Git source before resolver/Git access.
+  - name: effective DTO enumerable transport
+    phase: verification
+    result: failed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: Required effective fields are non-enumerable while undeclared raw T301 fields remain enumerable; existing deep-equality test fixes the raw-like runtime shape.
+  - name: POSIX whitespace-only path
+    phase: verification
+    result: failed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: T304 trim-based path validation rejects a path accepted by the canonical POSIX validator.
+  - name: unknown diff-side runtime discriminant
+    phase: verification
+    result: failed
+    head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+    evidence: Any kind other than absent is normalized to git-commit; no runtime rejection test exists.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30752596290
+  head_sha: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  conclusion: success
+  artifacts:
+    - id: 8834715318
+      name: ci-failure-diagnostics-30751935700-1
+      purpose: R3 Red contract typecheck logs, stdout/stderr, environment, generated output, source, tests, and configuration.
+
+implementation:
+  outcome: not_applicable
+  final_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer performed no implementation changes.
+
+review:
+  mode: fix_verification
+  reviewed_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  reviewer:
+    identity: ChatGPT normal reviewer in the same review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer in this chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat produced the initial T304 review and all normal fix verifications.
+        - This chat did not implement T304 or any review follow-up.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T304-R4-P2 and T304-R4-P3.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Runtime DTO transport, whitespace-only POSIX path, and unknown side discriminant.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: R3 T302/T304 and design changes were needed to close previous findings.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: Effective DTO, canonical repository path contract, and diff editor controller inspected.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: T304-R4-P1 and T304-R4-P3.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: Unknown side input is silently converted into a Git present side.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No credentials or secrets are processed by this change.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: No regression coverage exists for the three new findings; R3 test discovery itself is supported.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30752596290 exactly matches reviewed HEAD and succeeded.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: R3 detached/public DTO description conflicts with runtime enumerable shape; tracking sync is held.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: Hidden DTO fields and fail-open union dispatch create future regression risk.
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: Run 30752596290, job 91509172807, all steps success for HEAD 283fa41b37c79c802ec2e93a7e67f4941603bb40.
+    - item: R3 Red evidence
+      result: supported
+      evidence: Run 30751935700 matches dbe208cd65afae27ef29a78c323464ea3cded5ce and artifact 8834715318 exists.
+    - item: previous finding closure
+      result: supported
+      evidence: T304-R3-P1, P2, and P3 implementation conditions are present.
+    - item: new finding regression evidence
+      result: failed
+      evidence: Current suite omits effective DTO transport, whitespace-only path, and unknown side-kind cases.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Previous R3 findings are closed.
+    - Three new medium findings remain open.
+    - Independent final review must not start.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t304-fix-verification-r3-20260803045900.md
+  reviewed_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed closure evidence, new findings, coverage dispositions, CI assessment, held items, and next action were persisted.
+
+findings:
+  - id: T304-R4-P1
+    severity: medium
+    origin: introduced_by_fix
+    location: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts defineEffectiveFile/getEffectiveProgress; test/unit/pull-request-progress-tree.test.ts
+    description: Required effective DTO fields are non-enumerable on a raw-shaped object, so ordinary clone/serialization erases effective evidence and exposes undeclared raw fields.
+    impact: Consumers can silently lose reviewability, category, reason, and raw/effective distinction, reintroducing the R3-P2 ambiguity at runtime.
+    evidence: Object.defineProperties sets raw/reviewability/category/effectiveReason enumerable=false; existing deep-equality expects raw projected shape.
+    required_action: Return a plain enumerable DTO matching PullRequestEffectiveFileProgress, deep-clone nested raw evidence, and add spread/Object.keys/JSON regression tests.
+  - id: T304-R4-P2
+    severity: medium
+    origin: introduced_by_change
+    location: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts validateNonEmpty/validateFile
+    description: trim-based path validation rejects valid POSIX root filenames consisting only of spaces.
+    impact: A valid Git change cannot be represented in the PR Progress Tree or opened from it.
+    evidence: Canonical POSIX path validator accepts nonempty space filenames; T304 calls trim() for path fields.
+    required_action: Separate path validation from trimmed ID/label validation, apply canonical filesystem semantics, and add POSIX/Windows whitespace tests.
+  - id: T304-R4-P3
+    severity: medium
+    origin: introduced_by_fix
+    location: src/ui/diff-editor/review-diff-editor-controller.ts ReviewDiffEditorSideInput/openReviewDiff
+    description: Unknown runtime side kind values are treated as present Git sides because only kind===absent is tested.
+    impact: Malformed or future inputs fail open into Git access instead of being rejected as contract violations.
+    evidence: value.kind === "absent" ? "empty" : "git-commit"; no runtime kind validation or test.
+    required_action: Accept only undefined/present/absent, reject every other runtime value before URI or host calls, and add regression tests.
+
+held:
+  - item: task tracking sync
+    reason: tasks/tasks-status.md requires an unavailable progress-management skill.
+    owner: progress management worker
+    remaining_risk: Repository tracking continues to show T304 as unstarted until authorized synchronization.
+    verdict_impact: Held separately; direct edit is forbidden.
+  - item: concrete unsupported-node UI representation
+    reason: T305/T306 accepted scope.
+    owner: T305/T306
+    remaining_risk: Typed unavailable result has not yet been rendered by an Extension Host Tree adapter.
+    verdict_impact: Does not add another T304 core finding.
+  - item: PR acquisition and encoding detection source
+    reason: T402 and later accepted scope.
+    owner: T402+
+    remaining_risk: Runtime producer of lineReviewability remains future work.
+    verdict_impact: Does not block review of the current input contract beyond listed findings.
+
+unexplored: []
+unknown:
+  - field_or_fact: Markdown lint result
+    reason: No repository-local Markdown lint entry point exists.
+not_applicable:
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+  - field_or_area: secret handling
+    reason: The reviewed change does not handle secrets.
+remaining_risks:
+  - Effective DTO transport can currently discard the evidence that explains zero denominators.
+  - Valid POSIX filenames can be rejected by T304-only trimming.
+  - Malformed diff side inputs can be silently routed to Git content.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #38
+      task_id: T304
+      mode: review
+      branch: task/t304-pr-progress-tree
+      base_ref: main
+      current_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+      reviewed_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+      scope:
+        - Verify R3 finding closure and inspect complete current fix range.
+      non_goals:
+        - Implementation, independent final review, and merge.
+      authoritative_requirements:
+        - source: design/task/project instructions
+          reference: T304 and design sections 2.1, 7, 8, 11.2, 16.3, 20, 21
+          summary: Certainty-first PR progress and immutable diff contracts.
+      write_boundary:
+        allowed:
+          - review report, handoff, PR comment
+        forbidden:
+          - implementation, tracking direct edit, merge
+      development_policy:
+        method: TDD
+        testing_order: Red before fixes, exact-head Green after fixes
+      validation:
+        commands:
+          - broad CI and T304 focused suite
+        required_failure_diagnostics:
+          - stdout/stderr, test results, environment, generated output, source/test/configuration artifact
+      ci:
+        matching_run: "30752596290"
+        conclusion: success
+      unknown:
+        - Markdown lint unsupported
+      blocked: []
+      remaining_risks:
+        - Three new findings remain open.
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 283fa41b37c79c802ec2e93a7e67f4941603bb40
+      previous_findings:
+        - id: T304-R3-P1
+          severity: medium
+          disposition: addressed
+        - id: T304-R3-P2
+          severity: medium
+          disposition: addressed
+        - id: T304-R3-P3
+          severity: medium
+          disposition: addressed
+      new_findings:
+        - id: T304-R4-P1
+          severity: medium
+        - id: T304-R4-P2
+          severity: medium
+        - id: T304-R4-P3
+          severity: medium
+      verdict: fail
+      next_action: implementation fixes followed by same-reviewer fix verification
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: text/markdown
+    payload: Full detailed report persisted at reports/issue-1-t304-fix-verification-r3-20260803045900.md
+
+extensions:
+  - namespace: chatgpt.runtime.persistence
+    payload:
+      report_commit: fda2aff9982ed23c6f93699c32708ba82ac1a815
+      handoff_commit: pending_at_packet_creation
+      review_action_constraint: GitHub rejects REQUEST_CHANGES from the PR author; use COMMENT while retaining fail verdict.
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review follow-up R4
+  summary: Fix T304-R4-P1, T304-R4-P2, and T304-R4-P3 with TDD, broad validation, detailed report, and PR summary.
+  instructions:
+    - Replace hidden effective DTO representation with a plain enumerable detached contract.
+    - Align path validation with canonical POSIX/Windows semantics.
+    - Reject unknown runtime diff-side discriminants.
+    - Preserve previous finding identities and source severities.
+    - Use only exact-head workflow evidence and do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t304-fix-verification-r3-20260803045900.md
+    - reports/issue-1-t304-review-followup-r3-20260802233700.md
+    - PR #38
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t304-fix-verification-r3-20260803050000.yaml
+  packet_url: null
+  transport_note: Use this packet and the detailed report; do not rely on chat memory. Current permissions do not transfer automatically.

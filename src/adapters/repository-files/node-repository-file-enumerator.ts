@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { TextDecoder } from "node:util";
 import {
   ReviewFileExclusionPolicy,
   type ReviewFileExclusionReason
@@ -14,7 +15,8 @@ export interface IncludedRepositoryFile {
 export type RepositoryFileEnumerationExclusionReason =
   | ReviewFileExclusionReason
   | { readonly kind: "gitignore"; readonly pattern: string }
-  | { readonly kind: "symbolic-link" };
+  | { readonly kind: "symbolic-link" }
+  | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" };
 
 /** One concrete file identity excluded from Global aggregation. */
 export interface ExcludedRepositoryFile {
@@ -31,7 +33,10 @@ export interface ExcludedRepositoryFile {
  */
 export interface ExcludedRepositoryDirectory {
   readonly path: string;
-  readonly reason: Exclude<RepositoryFileEnumerationExclusionReason, { readonly kind: "symbolic-link" }>;
+  readonly reason: Exclude<
+    RepositoryFileEnumerationExclusionReason,
+    { readonly kind: "symbolic-link" | "invalid-encoding" }
+  >;
 }
 
 /**
@@ -124,6 +129,7 @@ const matchingGitIgnoreRule = (
 };
 
 const isBinary = (content: Buffer): boolean => content.subarray(0, Math.min(content.length, 8192)).includes(0);
+const decodeUtf8 = (content: Buffer): string => new TextDecoder("utf-8", { fatal: true }).decode(content);
 const compareRepositoryPaths = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
 const byRepositoryPath = <T extends { readonly path: string }>(left: T, right: T): number =>
@@ -147,14 +153,27 @@ export class NodeRepositoryFileEnumerator {
     for (const repositoryPath of walked.files.sort(compareRepositoryPaths)) {
       const absolutePath = path.join(repositoryRoot, ...repositoryPath.split("/"));
       const content = await readFile(absolutePath);
-      const decision = this.exclusionPolicy.evaluate({ path: repositoryPath, isBinary: isBinary(content) });
+      const binary = isBinary(content);
+      let decoded: string | undefined;
+      if (!binary) {
+        try {
+          decoded = decodeUtf8(content);
+        } catch {
+          excluded.push({
+            path: repositoryPath,
+            reason: { kind: "invalid-encoding", encoding: "utf-8" }
+          });
+          continue;
+        }
+      }
+      const decision = this.exclusionPolicy.evaluate({ path: repositoryPath, isBinary: binary });
       if (decision.excluded) {
         excluded.push({ path: decision.normalizedPath, reason: decision.reason });
         continue;
       }
       included.push({
         path: repositoryPath,
-        nonEmptyLineCount: NodeRepositoryFileEnumerator.countNonEmptyLines(content.toString("utf8"))
+        nonEmptyLineCount: NodeRepositoryFileEnumerator.countNonEmptyLines(decoded!)
       });
     }
 

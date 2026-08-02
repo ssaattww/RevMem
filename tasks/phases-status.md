@@ -30,7 +30,7 @@ Lを超える見込みになった場合は再分解する。
 | P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | edit、commit、branch、renameに追従し、変更部分だけ未確認になる |
 | P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両side、変更行進捗、除外・未確認file一覧が動く |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
-| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501のGlobal同期とlossless履歴証跡は独立review全4 findingをclosed、exact-head CI成功済み。表示優先順位、非空行集計、除外設定を進める |
+| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501のGlobal同期とlossless履歴証跡は独立review全4 findingをclosed、exact-head CI成功済み。T502の表示優先順位は独立最終reviewの5 findingを修正しnormal fix verification待ちである。T504はPR #39で独立reviewの3 findingを修正・検証済みであり、normal fix verificationとfresh independent final reviewを待つ。非空行集計、除外設定を進める |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はPR #33でpersistent snapshot、最新generation integrity、EOL mapping、Extension Host restartを実装し、独立review全6 findingをclosed、exact-head CI成功済み。履歴改変、移行、排他、障害、性能を含む残りの受け入れ条件を進める |
 
 ## P0 開発基盤
@@ -102,6 +102,7 @@ Lを超える見込みになった場合は再分解する。
 - T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
 - T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
 - T303はPR #30でimplementation・通常review evidenceを復元し、timestamp-only no-op、whole-file回帰、canonical original diff ID、public JSDoc、consumer contract fixtureを修正した。同じ独立reviewerのclosure限定R2で全5 findingをclosed、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した
+- T304はPR #38でTree projectionとT302/T303連携を実装し、独立final reviewの`T304-IFR-P1`〜`P4`をclosureした。node/targetの深い不変化とdetached host target、public union migrationのbreaking-change記録とconsumer fixture、tracking、report reservationを修正し、PR #38はcurrent main `0fdf87784355dce94fd4f1515a9e62d5257ecb75`へ統合済みである
 - T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
 
 ### 終了チェックポイント
@@ -144,6 +145,7 @@ context確認状態とGlobalを同期し、PR進捗と分離した理解率を�
 - 確認・解除がcontextとGlobalへatomicに反映される
 - 現在PR未確認変更をGlobalだけで確認済みにしない
 - binary、gitignore、生成物、user globを共通policyで除外する
+- malformed UTF-8を`invalid-encoding`としてGlobal集計対象外にする
 - current valid non-empty lineだけで理解率を計算する
 - 大規模集計をchunk化する
 

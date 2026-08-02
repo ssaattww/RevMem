@@ -84,6 +84,26 @@ After the minimal implementation changes, the same focused command passed all 26
 | `npm test` | stopped in `test:unit`: 366 passed, 19 failed, 2 skipped; all failures are the known Windows/POSIX fixture portability error `document path is outside the resolved Git working tree` tracked by Issue #28. Later chained suites did not run in this command; their relevant Git/GitHub suites were run separately above. |
 | `git diff --check` | passed |
 
+## origin/main integration evidence
+
+`origin/main` at `974dd0a` is being merged into this worktree. The only conflict was `package.json`; it is resolved and staged without a merge commit. The resolved script wiring keeps the main-side `test:t502`, `test:t304`, expanded `test:unit`, and default `test` wiring, while retaining the PR #40 `test:t402` command and the T402 cases in `test:github`. There are no duplicate script keys.
+
+The auto-merged `tasks/tasks-status.md` and `tasks/phases-status.md` retain T402, T502, T304, and T504 actual progress records. `type-fixtures/contracts/tsconfig.json` retains the T304 and T402 fixture entries; T502 and T504 do not define contract fixtures in this repository.
+
+Integration validation after resolving the manifest:
+
+| Command | Result |
+| --- | --- |
+| `npm run test:t402` | passed: 26 passed, 0 failed |
+| `npm run test:t502` | passed: 11 passed, 0 failed |
+| `npm run test:t304` | passed: 21 passed, 0 failed; includes package/CI contract and T502 default-wiring checks |
+| T503/T504 focused node tests | passed: 23 passed, 0 failed |
+| `npm run lint` | passed |
+| `npm run package` | passed; VSIX packaged |
+| `git diff --check` and `git diff --cached --check` | passed |
+
+The merge remains in progress. No merge commit, ordinary commit, push, PR mutation, or merge was performed.
+
 ## Held, unknown, and intentionally untouched
 
 - Held: Issue #28 owns the 19 broad-suite Windows/POSIX fixture portability failures; Issue #36 is outside the accepted follow-up scope.

@@ -1,39 +1,41 @@
 import type {
+  FileReviewState,
   GlobalFileReviewState,
   LineInterval,
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
+import { ReviewFileExclusionPolicy } from "../../core/file-exclusion/index";
 import {
   normalizeLineIntervals,
   subtractLineIntervals
 } from "../../core/intervals/index";
+import {
+  calculatePullRequestDiffProgress,
+  type PullRequestDiffSnapshot
+} from "../../core/pr-progress/index";
 import type { ReviewStateFileTarget } from "../../core/review-state/index";
 
-/** State layer that proves one normal-editor range is reviewed. */
-export type NormalEditorDecorationSource = "context" | "global";
+export type NormalEditorDecorationSource = "context" | "other-context" | "global";
 
-/** One certainly reviewed normal-editor range and its hover metadata. */
 export interface NormalEditorReviewedDecoration {
-  /** Zero-based half-open line interval rendered as a whole-line decoration. */
   readonly interval: LineInterval;
-  /** State layer that supplied this non-overlapping visual range. */
   readonly source: NormalEditorDecorationSource;
-  /** User-facing current context label rendered in hover text. */
   readonly contextLabel: string;
-  /** ISO 8601 update timestamp rendered as the available reviewed-at evidence. */
   readonly reviewedAt: string;
-  /** Whether the same range is currently valid in the enabled Global layer. */
   readonly globalActive: boolean;
 }
 
-/** Current mapped state required to calculate normal-editor decorations. */
 export interface NormalEditorDecorationModelInput {
   readonly contextState: Readonly<ReviewContextState>;
+  readonly otherContextStates?: readonly Readonly<ReviewContextState>[];
+  readonly currentPullRequestDiff?: Readonly<PullRequestDiffSnapshot>;
   readonly globalState: Readonly<RepositoryGlobalState>;
   readonly target: Readonly<ReviewStateFileTarget>;
   readonly showGlobalReviewed: boolean;
 }
+
+const DIFF_VALIDATION_POLICY = new ReviewFileExclusionPolicy({ userGlobs: [] });
 
 const contextRevision = (contextState: Readonly<ReviewContextState>): string | undefined =>
   contextState.kind === "pull-request"
@@ -51,11 +53,9 @@ const contextLabel = (contextState: Readonly<ReviewContextState>): string => {
       ? `PR #${contextState.pullRequest.number}`
       : `PR #${contextState.pullRequest.number}: ${title}`;
   }
-
   if (contextState.kind === "branch" && contextState.branch !== undefined) {
     return contextState.branch.refName;
   }
-
   const displayName = contextState.displayName.trim();
   return displayName.length === 0 ? "Workspace review" : displayName;
 };
@@ -80,8 +80,27 @@ const certainIntervals = (
       return undefined;
     }
   }
-
   return normalizeLineIntervals(intervals);
+};
+
+const validContextFile = (
+  contextState: Readonly<ReviewContextState>,
+  target: Readonly<ReviewStateFileTarget>
+): { readonly file: Readonly<FileReviewState>; readonly intervals: LineInterval[] } | undefined => {
+  const file = contextState.files[target.fileId];
+  if (
+    contextRevision(contextState) !== target.revisionId ||
+    file === undefined ||
+    file.fileId !== target.fileId ||
+    file.currentPath !== target.currentPath ||
+    file.revisionId !== target.revisionId ||
+    file.lineCount !== target.lineCount ||
+    !hasCertainContentHash(file.contentHash, target.contentHash)
+  ) {
+    return undefined;
+  }
+  const intervals = certainIntervals(file.modifiedReviewed, target.lineCount);
+  return intervals === undefined ? undefined : { file, intervals };
 };
 
 const validGlobalFile = (
@@ -93,7 +112,6 @@ const validGlobalFile = (
   ) {
     return undefined;
   }
-
   const file = input.globalState.files[input.target.fileId];
   if (
     file === undefined ||
@@ -104,7 +122,6 @@ const validGlobalFile = (
   ) {
     return undefined;
   }
-
   const intervals = certainIntervals(file.reviewed, input.target.lineCount);
   return intervals === undefined ? undefined : { file, intervals };
 };
@@ -118,107 +135,196 @@ const intersectLineIntervals = (
   const intersections: LineInterval[] = [];
   let leftIndex = 0;
   let rightIndex = 0;
-
   while (leftIndex < left.length && rightIndex < right.length) {
     const leftInterval = left[leftIndex]!;
     const rightInterval = right[rightIndex]!;
     const startLine = Math.max(leftInterval.startLine, rightInterval.startLine);
-    const endLineExclusive = Math.min(
-      leftInterval.endLineExclusive,
-      rightInterval.endLineExclusive
-    );
-
+    const endLineExclusive = Math.min(leftInterval.endLineExclusive, rightInterval.endLineExclusive);
     if (startLine < endLineExclusive) {
       intersections.push({ startLine, endLineExclusive });
     }
-
     if (leftInterval.endLineExclusive <= rightInterval.endLineExclusive) {
       leftIndex += 1;
     } else {
       rightIndex += 1;
     }
   }
-
   return intersections;
 };
 
-/**
- * Builds non-overlapping reviewed decorations for one current normal-editor file.
- *
- * The current context has visual priority. Global contributes only the remaining
- * ranges when enabled. Any revision, path, line-count, or available hash mismatch
- * removes only that uncertain layer instead of risking a false reviewed indication.
- */
+interface CurrentPullRequestChangeEvidence {
+  readonly certain: boolean;
+  readonly intervals: LineInterval[];
+}
+
+const currentPullRequestChangedIntervals = (
+  input: NormalEditorDecorationModelInput
+): CurrentPullRequestChangeEvidence => {
+  const context = input.contextState;
+  if (context.kind !== "pull-request") {
+    return { certain: true, intervals: [] };
+  }
+  const diff = input.currentPullRequestDiff;
+  if (
+    context.pullRequest === undefined ||
+    diff === undefined ||
+    diff.contextId !== context.contextId ||
+    diff.baseSha !== context.pullRequest.baseSha ||
+    diff.headSha !== context.pullRequest.headSha
+  ) {
+    return { certain: false, intervals: [] };
+  }
+
+  let validatedDiff: ReturnType<typeof calculatePullRequestDiffProgress>;
+  try {
+    validatedDiff = calculatePullRequestDiffProgress({
+      diff,
+      reviewContext: context,
+      exclusionPolicy: DIFF_VALIDATION_POLICY
+    });
+  } catch {
+    return { certain: false, intervals: [] };
+  }
+
+  const file = diff.files.find((candidate) => candidate.fileId === input.target.fileId);
+  if (file === undefined) {
+    const targetPath = DIFF_VALIDATION_POLICY.evaluate({
+      path: input.target.currentPath,
+      isBinary: false
+    }).normalizedPath;
+    if (validatedDiff.files.some((candidate) => candidate.path === targetPath)) {
+      return { certain: false, intervals: [] };
+    }
+    return { certain: true, intervals: [] };
+  }
+  if (file.newPath !== input.target.currentPath) {
+    return { certain: false, intervals: [] };
+  }
+  return {
+    certain: true,
+    intervals: normalizeLineIntervals(
+      file.hunks.flatMap((hunk) =>
+        hunk.lines.flatMap((line) =>
+          line.kind === "addition" && line.newLine !== undefined
+            ? [{ startLine: line.newLine - 1, endLineExclusive: line.newLine }]
+            : []
+        )
+      )
+    )
+  };
+};
+
+const appendDecorationRanges = (
+  decorations: NormalEditorReviewedDecoration[],
+  intervals: readonly LineInterval[],
+  source: NormalEditorDecorationSource,
+  label: string,
+  reviewedAt: string,
+  globalActive: boolean
+): void => {
+  for (const interval of intervals) {
+    decorations.push({
+      interval: { ...interval },
+      source,
+      contextLabel: label,
+      reviewedAt,
+      globalActive
+    });
+  }
+};
+
 export function createNormalEditorDecorationModel(
   input: NormalEditorDecorationModelInput
 ): readonly NormalEditorReviewedDecoration[] {
+  const current = validContextFile(input.contextState, input.target);
   const global = validGlobalFile(input);
-  const contextFile = input.contextState.files[input.target.fileId];
-  let contextIntervals: LineInterval[] | undefined;
-
-  if (
-    contextRevision(input.contextState) === input.target.revisionId &&
-    contextFile !== undefined &&
-    contextFile.fileId === input.target.fileId &&
-    contextFile.currentPath === input.target.currentPath &&
-    contextFile.revisionId === input.target.revisionId &&
-    contextFile.lineCount === input.target.lineCount &&
-    hasCertainContentHash(contextFile.contentHash, input.target.contentHash)
-  ) {
-    contextIntervals = certainIntervals(
-      contextFile.modifiedReviewed,
-      input.target.lineCount
-    );
-  }
-
-  const visibleGlobalIntervals = input.showGlobalReviewed
-    ? global?.intervals ?? []
-    : [];
-  const contextGlobalActive = intersectLineIntervals(
-    contextIntervals ?? [],
-    visibleGlobalIntervals
+  const visibleGlobalIntervals = input.showGlobalReviewed ? global?.intervals ?? [] : [];
+  const changeEvidence = currentPullRequestChangedIntervals(input);
+  const currentReviewedChanges = intersectLineIntervals(
+    current?.intervals ?? [],
+    changeEvidence.intervals
   );
-  const contextGlobalInactive = subtractLineIntervals(
-    contextIntervals ?? [],
-    contextGlobalActive
+  const suppressedChangedIntervals = subtractLineIntervals(
+    changeEvidence.intervals,
+    currentReviewedChanges
   );
+  const contextIntervals = current?.intervals ?? [];
+  const contextGlobalActive = intersectLineIntervals(contextIntervals, visibleGlobalIntervals);
+  const contextGlobalInactive = subtractLineIntervals(contextIntervals, contextGlobalActive);
   const decorations: NormalEditorReviewedDecoration[] = [];
 
-  if (contextFile !== undefined && contextIntervals !== undefined) {
+  if (current !== undefined) {
     const label = contextLabel(input.contextState);
-    for (const interval of contextGlobalInactive) {
-      decorations.push({
-        interval: { ...interval },
-        source: "context",
-        contextLabel: label,
-        reviewedAt: contextFile.updatedAt,
-        globalActive: false
-      });
-    }
-    for (const interval of contextGlobalActive) {
-      decorations.push({
-        interval: { ...interval },
-        source: "context",
-        contextLabel: label,
-        reviewedAt: contextFile.updatedAt,
-        globalActive: true
-      });
-    }
+    appendDecorationRanges(
+      decorations,
+      contextGlobalInactive,
+      "context",
+      label,
+      current.file.updatedAt,
+      false
+    );
+    appendDecorationRanges(
+      decorations,
+      contextGlobalActive,
+      "context",
+      label,
+      current.file.updatedAt,
+      true
+    );
   }
 
-  if (global !== undefined && visibleGlobalIntervals.length > 0) {
-    const globalOnly = subtractLineIntervals(
-      visibleGlobalIntervals,
-      contextIntervals ?? []
-    );
-    for (const interval of globalOnly) {
-      decorations.push({
-        interval: { ...interval },
-        source: "global",
-        contextLabel: "Global",
-        reviewedAt: global.file.updatedAt,
-        globalActive: true
-      });
+  if (changeEvidence.certain) {
+    let occupied = contextIntervals;
+    for (const otherContext of input.otherContextStates ?? []) {
+      if (
+        otherContext.contextId === input.contextState.contextId ||
+        otherContext.repositoryId !== input.contextState.repositoryId
+      ) {
+        continue;
+      }
+      const other = validContextFile(otherContext, input.target);
+      if (other === undefined) {
+        continue;
+      }
+      const visible = subtractLineIntervals(
+        subtractLineIntervals(other.intervals, occupied),
+        suppressedChangedIntervals
+      );
+      const globalActive = intersectLineIntervals(visible, visibleGlobalIntervals);
+      const globalInactive = subtractLineIntervals(visible, globalActive);
+      const label = contextLabel(otherContext);
+      appendDecorationRanges(
+        decorations,
+        globalInactive,
+        "other-context",
+        label,
+        other.file.updatedAt,
+        false
+      );
+      appendDecorationRanges(
+        decorations,
+        globalActive,
+        "other-context",
+        label,
+        other.file.updatedAt,
+        true
+      );
+      occupied = normalizeLineIntervals([...occupied, ...visible]);
+    }
+
+    if (global !== undefined && visibleGlobalIntervals.length > 0) {
+      const globalOnly = subtractLineIntervals(
+        subtractLineIntervals(visibleGlobalIntervals, occupied),
+        suppressedChangedIntervals
+      );
+      appendDecorationRanges(
+        decorations,
+        globalOnly,
+        "global",
+        "Global",
+        global.file.updatedAt,
+        true
+      );
     }
   }
 
@@ -226,6 +332,6 @@ export function createNormalEditorDecorationModel(
     (left, right) =>
       left.interval.startLine - right.interval.startLine ||
       left.interval.endLineExclusive - right.interval.endLineExclusive ||
-      (left.source === "context" ? -1 : 1)
+      (left.source === "context" ? -1 : left.source === "other-context" ? 0 : 1)
   );
 }
