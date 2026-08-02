@@ -1,0 +1,156 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up R3
+  generated_at: "2026-08-02T23:39:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+base_sha: 76b49e99453ebcf7ebecb2c141ed24d750736abc
+source_review_report: reports/issue-1-t304-fix-verification-r2-20260802225900.md
+source_review_handoff: handoffs/issue-1-t304-fix-verification-r2-20260802230100.yaml
+source_reviewed_head: 47cbc813e828c4cb26c9fcba417298c89d83ceb2
+source_review_evidence_head: 52ed5ca2753326b9c1d80bb810717215a61c5898
+
+scope:
+  - Address T304-R3-P1 unsupported file selection behavior.
+  - Address T304-R3-P2 raw and effective progress contract separation.
+  - Address T304-R3-P3 empty revision source port and adapter consistency.
+  - Synchronize the permanent feature design with the implemented contracts.
+non_goals:
+  - Concrete VS Code TreeItem, Activity Bar, Current Context, and Status Bar wiring.
+  - PR metadata acquisition, encoding detection source, cache, and refresh implementation.
+  - Independent final review before normal review closure.
+  - Merge.
+
+diagnostic_workflow:
+  existing: true
+  changed: false
+  evidence:
+    - CI commands preserve merged stdout and stderr under test-output/ci.
+    - Failure artifacts include source, tests, type fixtures, generated output, environment, Git status, package configuration, and workflow.
+
+red_evidence:
+  head_sha: dbe208cd65afae27ef29a78c323464ea3cded5ce
+  workflow: CI
+  run_id: 30751935700
+  job_id: 91507385687
+  conclusion: failure
+  failed_step: Contract typecheck
+  artifact_id: 8834715318
+  artifact_name: ci-failure-diagnostics-30751935700-1
+  expected_failures:
+    - Missing GitCommitReviewDiffDocumentDescriptor and EmptyReviewDiffDocumentDescriptor public contracts.
+    - Missing PullRequestEffectiveProgress and PullRequestProgressTreeSelectionResult public contracts.
+    - External content port and Local Git source still accepted empty descriptors.
+
+intermediate_failure:
+  head_sha: 9a1140055eeab0149402301fb79edf1f742d006e
+  run_id: 30752133930
+  job_id: 91507916999
+  conclusion: failure
+  artifact_id: 8834777254
+  artifact_name: ci-failure-diagnostics-30752133930-1
+  cause: New regression test used invalid readonly Array<T> syntax.
+  correction: Replaced the declaration with ReadonlyArray<T>; production implementation was unchanged by this correction.
+
+implementation:
+  outcome: completed
+  technical_head: 5beba08823b741b03c22e2b47a5343c219ca9e82
+  design_head: 62a361c1036dd187adad4bc5bf10464a8d26af15
+  report_commit: 56a810d649e57465298a16f4298dd54c09a5065d
+  summary:
+    - Unsupported line-review nodes return a typed unavailable selection result without calling the text-diff host.
+    - Effective PR progress is a distinct public projection retaining raw T301 records, reviewability, category, and effective reason.
+    - Review diff descriptors are discriminated into git-commit and synthetic empty sources.
+    - External content sources and Local Git accept only git-commit descriptors; Local Git also rejects empty at runtime before resolution.
+    - Permanent design sections for descriptor sources, progress projection, selection behavior, and validation were synchronized.
+  addressed_findings:
+    - id: T304-R3-P1
+      disposition: addressed
+      evidence:
+        - PullRequestProgressTreeSelectionResult distinguishes opened-diff from line-review-unavailable.
+        - Binary, invalid-encoding, and unsupported-encoding selections do not invoke PullRequestProgressTreeHost.openDiff.
+        - File nodes retain line reviewability and reason evidence.
+    - id: T304-R3-P2
+      disposition: addressed
+      evidence:
+        - PullRequestEffectiveProgress is not assignable to raw PullRequestDiffProgress in the consumer fixture.
+        - Effective files retain raw T301 records, reviewability, category, and effectiveReason.
+        - Unsupported files retain raw additions and deletions while effective numerator and denominator are zero.
+    - id: T304-R3-P3
+      disposition: addressed
+      evidence:
+        - ReviewDiffDocumentDescriptor is a git-commit or empty discriminated union.
+        - RevisionTextContentSource accepts only GitCommitReviewDiffDocumentDescriptor.
+        - RevisionTextContentProvider resolves empty internally without external source calls.
+        - LocalGitRevisionTextContentSource rejects empty before repository resolution or Git access.
+        - T302 consumer fixture and permanent design are aligned.
+
+validation:
+  - head_sha: 5beba08823b741b03c22e2b47a5343c219ca9e82
+    purpose: technical implementation green
+    run_id: 30752209455
+    job_id: 91508120696
+    conclusion: success
+    exact_head_verified: true
+    substituted_run: false
+  - head_sha: 62a361c1036dd187adad4bc5bf10464a8d26af15
+    purpose: implementation and permanent design green
+    run_id: 30752452916
+    job_id: 91508787329
+    conclusion: success
+    exact_head_verified: true
+    substituted_run: false
+  passed_steps:
+    - build
+    - contract_typecheck
+    - architecture_positive
+    - architecture_negative
+    - lint
+    - unit
+    - t304_focused
+    - t503_focused
+    - git_integration
+    - github_integration
+    - vscode_extension_host
+
+files:
+  changed:
+    - src/application/diff-document/contracts.ts
+    - src/application/diff-document/index.ts
+    - src/application/diff-document/review-diff-uri-codec.ts
+    - src/adapters/diff-document/local-git-revision-text-content-source.ts
+    - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+    - src/ui/pr-progress/index.ts
+    - test/unit/t304-review-followup-r3.test.ts
+    - test/unit/ci-workflow-contract.test.ts
+    - type-fixtures/contracts/t302-diff-document.fixture.ts
+    - type-fixtures/contracts/t304-pr-progress-tree.fixture.ts
+    - package.json
+    - doc/design/vscode-review-range-tracker-design.md
+    - reports/issue-1-t304-review-followup-r3-20260802233700.md
+    - handoffs/issue-1-t304-review-followup-r3-20260802233900.yaml
+
+report:
+  path: reports/issue-1-t304-review-followup-r3-20260802233700.md
+  outcome: created
+
+tracking:
+  tasks_status_updated: false
+  reason: tasks/tasks-status.md requires a repository progress-management skill unavailable in this worker context.
+
+review:
+  next_reviewer: same normal reviewer that produced the R2 fix verification findings
+  requested_action: Verify closure of T304-R3-P1, T304-R3-P2, and T304-R3-P3 on the current PR head. Do not begin independent final review until normal review passes.
+
+next_action:
+  type: normal_review_closure
+  summary: Confirm all R3 findings are closed, inspect new sibling regressions, and proceed to independent final review only after a normal-review pass.
+
+merge:
+  performed: false
+  reserved_for: user

@@ -1,0 +1,118 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up r2
+  generated_at: "2026-08-02T22:47:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+verification_report: reports/issue-1-t304-fix-verification-20260802221700.md
+previous_verification_head: 580671ab642cfa43216d06118af7b3b0fb6061c8
+review_evidence_head: 9b29b978505255790594eaa412bc7374c6f08cba
+
+scope:
+  - Close the remaining absent-side portion of T304-R1-P1.
+  - Close the raw T301 versus encoding-reviewability portion of T304-R1-P2.
+  - Address new public consumer fixture finding T304-R2-P1.
+  - Preserve the closed disposition of T304-R1-P3.
+non_goals:
+  - T305 concrete VS Code TreeItem and status UI wiring.
+  - T402 PR acquisition, encoding detection source, cache, and refresh implementation.
+  - Independent final review.
+  - Merge.
+
+implementation:
+  outcome: completed
+  technical_head: 4139b7538b0051ec21f30de1c9ddffff86469cd3
+  summary:
+    - Added present and absent immutable diff-side discriminants.
+    - Added canonical empty revision-source URIs and deterministic empty content without source lookup.
+    - Connected Tree selection through ReviewDiffEditorController and RevisionTextContentProvider for added and deleted files.
+    - Added an authoritative effective-progress projection from raw T301 results plus exhaustive line reviewability.
+    - Preserved raw additions and deletions while excluding unsupported files from the effective PR denominator.
+    - Added and executed a public T304 consumer type fixture.
+  finding_dispositions:
+    - id: T304-R1-P1
+      source_severity: high
+      disposition: addressed_pending_verification
+      evidence:
+        - Added original absent and modified absent side contracts.
+        - ReviewDiffEditorController uses revisionSource empty for absent sides.
+        - RevisionTextContentProvider returns an immutable empty document without calling the external source.
+        - End-to-end unit coverage verifies added and deleted Tree selections.
+    - id: T304-R1-P2
+      source_severity: high
+      disposition: addressed_pending_verification
+      evidence:
+        - replaceSnapshot validates the raw T301 aggregate first.
+        - Unsupported files are projected to zero reviewed and total lines only in effective progress.
+        - Raw additions and deletions remain on the file result and Tree node.
+        - getEffectiveProgress exposes the authoritative post-reviewability denominator.
+    - id: T304-R1-P3
+      source_severity: medium
+      disposition: closed_unchanged
+    - id: T304-R2-P1
+      source_severity: medium
+      disposition: addressed_pending_verification
+      evidence:
+        - Added type-fixtures/contracts/t304-pr-progress-tree.fixture.ts.
+        - Added positive public API construction and negative ts-expect-error contracts.
+        - Contract typecheck succeeds at the technical head.
+
+red_evidence:
+  head_sha: ec493bc682bdb7d5a181c75055e382707e92aeaa
+  workflow: CI
+  run_id: 30750333643
+  job_id: 91503128102
+  conclusion: failure
+  failed_step: contract_typecheck
+  artifact_id: 8834227607
+  artifact_name: ci-failure-diagnostics-30750333643-1
+  expected_failures:
+    - PullRequestProgressTreeDiffSide did not expose a side discriminant.
+    - PullRequestProgressTreeDataProvider did not expose getEffectiveProgress.
+
+green_evidence:
+  technical_head: 4139b7538b0051ec21f30de1c9ddffff86469cd3
+  workflow: CI
+  run_id: 30750518751
+  job_id: 91503639040
+  conclusion: success
+  exact_head_verified: true
+  substituted_run: false
+  passed_steps:
+    - build
+    - contract_typecheck
+    - architecture_positive
+    - architecture_negative
+    - lint
+    - unit
+    - t304_focused
+    - t503_focused
+    - git_integration
+    - github_integration
+    - vscode_extension_host
+
+report:
+  path: reports/issue-1-t304-review-followup-r2-20260802224500.md
+  outcome: created
+
+correction:
+  previous_report: reports/issue-1-t304-review-followup-20260802220800.md
+  previous_handoff: handoffs/issue-1-t304-review-followup-20260802221000.yaml
+  summary: The previous addressed claims for P1 and P2 applied only to the first implementation attempt; fix verification established that both remained partial. Correction notes are appended without deleting historical evidence.
+
+tracking:
+  tasks_status_updated: false
+  reason: tasks/tasks-status.md requires a repository progress-management skill that is unavailable in this worker context.
+
+review:
+  next_reviewer: same normal reviewer that produced the initial review and first fix verification
+  requested_action: Verify closure of T304-R1-P1, T304-R1-P2, and T304-R2-P1 while retaining T304-R1-P3 as closed. Do not perform independent final review unless all normal findings close.
+
+next_action:
+  type: normal_review_closure
+  summary: Verify the final PR head and exact-head CI, then proceed to independent review only after all normal findings close.

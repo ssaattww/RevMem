@@ -1,0 +1,387 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: "2026-08-02T21:08:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #38"
+task_id: T304
+branch: task/t304-pr-progress-tree
+base_ref: main
+target:
+  current_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+  reviewed_head: null
+  commit_range: 76b49e99453ebcf7ebecb2c141ed24d750736abc..814cf92027ab08b95c5b0bde2385eb42dd614876
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "t304開始 / project instruction"
+    summary: Implement T304 with uploaded Skills, GitHub connector, TDD, diagnostic artifacts, small commits, repository report, PR summary, and no merge.
+  - source: task
+    reference: tasks/tasks-status.md T304
+    summary: Classify PR progress into unreviewed, completed, excluded, non-line change, and line-review unsupported; sort by remaining lines descending then path ascending; retain counts and reasons; open diff on selection.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 16.3
+    summary: Fix category labels, per-file fields, default sorting, rename-only and binary classification, and no automatic next-unreviewed navigation.
+  - source: repository_instruction
+    reference: .github/workflows/ci.yml and repository task update rule
+    summary: Preserve failure diagnostics and do not directly edit task tracking outside an authorized progress management Skill.
+
+development_policy:
+  method: TDD
+  testing_order: failing test first, confirm exact-head Red CI and artifact, implement, run focused and broad exact-head CI
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run compile:test && node --test test-dist/test/unit/pull-request-progress-tree.test.js
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test result and merged standard output/standard error logs under test-output/ci
+    - environment and git status
+    - generated dist/test-dist listing
+    - source, test, tools, type fixtures, package/configuration, and workflow artifact payload
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/ui/pr-progress/**
+      reason: T304 implementation scope
+    - path_or_operation: test/unit/pull-request-progress-tree.test.ts
+      reason: TDD regression scope
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Execute focused T304 test while preserving diagnostic artifacts
+    - path_or_operation: reports/issue-1-t304-implementation-*.md
+      reason: Required durable implementation report
+    - path_or_operation: handoffs/issue-1-t304-implementation-*.yaml
+      reason: Required ChatGPT transport packet
+    - path_or_operation: PR #38 metadata and comments
+      reason: Required PR update and concise report
+  forbidden:
+    - path_or_operation: merge PR #38
+      reason: Merge is reserved for the user
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edits
+      reason: Repository requires a designated progress management Skill that was not available
+    - path_or_operation: T305/T402 runtime integration
+      reason: Outside T304 accepted scope
+
+scope:
+  - Platform-neutral PR Progress Tree provider with five stable categories.
+  - File projections retaining reviewed/total/progress/additions/deletions/reasons.
+  - Deterministic remaining-line and path sorting.
+  - Selection delegation to a diff-opening host.
+  - Conservative input validation and focused CI regression wiring.
+non_goals:
+  - Activity Bar, Current Context View, Status Bar, VS Code TreeItem/event registration.
+  - PR metadata, diff retrieval, cache, and refresh source.
+  - Automatic navigation to the next unreviewed line.
+  - Direct task tracking edits.
+
+files:
+  changed:
+    - path: test/unit/pull-request-progress-tree.test.ts
+      purpose: Red/Green coverage for classification, metrics, reasons, ordering, diff selection, and invalid input.
+    - path: src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+      purpose: Tree node contracts, classification, validation, deterministic sorting, and selection delegation.
+    - path: src/ui/pr-progress/index.ts
+      purpose: Public UI export for later T305 wiring.
+    - path: .github/workflows/ci.yml
+      purpose: Focused T304 compile/test logs and execution.
+    - path: reports/issue-1-t304-implementation-20260802210612.md
+      purpose: Detailed evidence-faithful implementation report.
+    - path: handoffs/issue-1-t304-implementation-20260802210800.yaml
+      purpose: Lossless cross-chat continuation packet.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve T304 scope, dependencies, completion conditions, and tracking write rule.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Resolve PR Progress Tree category, display, sorting, and selection requirements.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Reuse exact T301 progress result contract and validation semantics.
+    - path: src/core/file-exclusion/review-file-exclusion-policy.ts
+      purpose: Preserve stable binary/default/user exclusion reasons.
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: Preserve T303 immutable diff opening boundary.
+    - path: package.json
+      purpose: Confirm compile/test and broad validation entry points.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm existing failure diagnostics before implementation.
+  intentionally_untouched:
+    - path_or_area: src/extension.ts
+      reason: Concrete Activity Bar and Tree View registration is T305 scope.
+    - path_or_area: src/core/pr-progress/**
+      reason: T301 calculator is reused without duplication.
+    - path_or_area: src/ui/diff-editor/**
+      reason: T303 diff contract remains unchanged; T304 delegates through a host.
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: Existing section 16.3 already defines the implemented contract.
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Direct editing is forbidden by the repository update rule without a designated progress management Skill.
+
+commands:
+  - command: GitHub Actions CI run 30746824422
+    purpose: Confirm TDD Red on the test-only HEAD.
+    exit_code: 2
+    result: failed
+    head_sha: 89e2ee2de141ef9a4373f59e286dc9542500ef5c
+    evidence: Job 91493724836 failed in compile:test with TS2307 because src/ui/pr-progress/index did not exist; failure artifact 8833148861 was uploaded.
+  - command: GitHub Actions CI run 30747049935
+    purpose: Execute focused and broad validation on the technical implementation HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: 814cf92027ab08b95c5b0bde2385eb42dd614876
+    evidence: Job 91494308700 completed successfully, including the T304 focused test and all broad validation steps.
+
+tests:
+  - name: pull-request-progress-tree Red compile
+    phase: red
+    result: failed
+    head_sha: 89e2ee2de141ef9a4373f59e286dc9542500ef5c
+    evidence: Exact-head run 30746824422; missing T304 module; artifact 8833148861.
+  - name: pull-request-progress-tree focused behavior suite
+    phase: green
+    result: passed
+    head_sha: 814cf92027ab08b95c5b0bde2385eb42dd614876
+    evidence: Exact-head run 30747049935, step T304 PR progress tree tests.
+  - name: broad unit, Git, GitHub, and VS Code Extension Host regression
+    phase: regression
+    result: passed
+    head_sha: 814cf92027ab08b95c5b0bde2385eb42dd614876
+    evidence: Exact-head run 30747049935, job 91494308700.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30747049935
+  head_sha: 814cf92027ab08b95c5b0bde2385eb42dd614876
+  conclusion: success
+  artifacts:
+    - id: 8833148861
+      name: ci-failure-diagnostics-30746824422-1
+      purpose: TDD Red failure logs, standard output/error, environment, generated files, and source/test context.
+
+implementation:
+  outcome: completed
+  final_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+  commits:
+    - sha: 89e2ee2de141ef9a4373f59e286dc9542500ef5c
+      purpose: Add failing T304 behavior tests.
+    - sha: a7e0bf1203f06a8d618c0eaa6baef14dd30a3e04
+      purpose: Implement the PR progress tree provider.
+    - sha: 49a78c6b5bd4f65a2ce3a97beaf05997638079de
+      purpose: Export the public PR progress tree API.
+    - sha: 814cf92027ab08b95c5b0bde2385eb42dd614876
+      purpose: Execute focused T304 tests in CI with diagnostic logs.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: GitHub Actions run 30746824422, job 91493724836
+      summary: compile:test failed because the T304 module was intentionally absent at Red.
+    - type: standard_output
+      location: artifact 8833148861/test-output/ci/test-unit.log
+      summary: Merged command output records the TypeScript Red failure.
+    - type: standard_error
+      location: artifact 8833148861/test-output/ci/test-unit.log
+      summary: Standard error was merged with standard output by 2>&1 and retained in the diagnostic artifact.
+    - type: artifact
+      location: GitHub Actions artifact 8833148861
+      summary: Full failure context required by the project was preserved.
+  blocked_items: []
+  summary:
+    - Implemented five deterministic PR progress categories and source-preserving file nodes.
+    - Added conservative count, ratio, exclusion, identity, path, and aggregate validation.
+    - Added locale-independent default sorting and diff-opening host delegation.
+    - Confirmed TDD Red and Green using only workflow runs associated with the exact specified HEAD SHA.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment:
+    - item: independent review
+      result: not_applicable
+      evidence: Implementation workers do not issue an independent review verdict for their own changes.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - PR #38 requires a separate normal review; no implementation-worker review verdict was produced.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t304-implementation-20260802210612.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed implementation, TDD, CI, scope, and risk evidence was persisted in the repository.
+
+findings: []
+held:
+  - item: Concrete VS Code TreeItem, refresh event, Activity Bar, and Status Bar integration
+    reason: Accepted T305/T306 scope, not a T304 defect.
+    owner: T305/T306
+    remaining_risk: UI integration behavior remains unverified until its owning tasks execute Extension Host tests.
+    verdict_impact: none for T304 implementation completion; must be covered by later tasks.
+unexplored:
+  - area: Encoding-unsupported file classification from future GitHub diff acquisition paths
+    blocker: Current T301 progress contract exposes binary but no encoding-unsupported discriminant.
+    remaining_risk: T402 may need to extend the progress input consumed by this provider.
+    verdict_impact: none for current T304 contract; re-evaluate when T402 defines the runtime model.
+unknown:
+  - field_or_fact: final administrative PR HEAD after report and handoff persistence
+    reason: A repository file cannot contain the SHA of the commit that creates itself; the final HEAD and matching CI are recorded in PR metadata/comment after persistence.
+not_applicable:
+  - field_or_area: Markdown lint result
+    reason: No repository-local Markdown lint entry point exists; TypeScript lint is not treated as a substitute.
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+remaining_risks:
+  - A separate reviewer must verify the current PR HEAD and use only a matching-head CI run.
+  - T305/T306 must supply and verify concrete VS Code integration.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #38
+      task_id: T304
+      mode: implementation
+      branch: task/t304-pr-progress-tree
+      base_ref: main
+      current_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+      reviewed_head: null
+      scope:
+        - Implement the five-category PR Progress Tree provider, deterministic sorting, progress fields, reasons, and diff selection delegation.
+      non_goals:
+        - T305/T402 runtime wiring and direct task tracking edits.
+      development_policy:
+        method: TDD
+        testing_order: Red exact-head CI before implementation; focused then broad Green validation.
+      ci:
+        matching_run: "30747049935"
+        conclusion: success
+      blocked: []
+      remaining_risks:
+        - Concrete VS Code integration remains in later tasks.
+  - source_skill: implementation-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: initial implementation
+      changed_files:
+        - test/unit/pull-request-progress-tree.test.ts
+        - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+        - src/ui/pr-progress/index.ts
+        - .github/workflows/ci.yml
+      validation:
+        red_run: 30746824422
+        red_head: 89e2ee2de141ef9a4373f59e286dc9542500ef5c
+        red_artifact: 8833148861
+        green_run: 30747049935
+        green_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+        green_result: success
+      final_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+      blocked_items: []
+      next_required_action: independent normal review of PR #38; do not merge.
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body_path: reports/issue-1-t304-implementation-20260802210612.md
+      target_identity:
+        branch: task/t304-pr-progress-tree
+        base_ref: main
+        current_head: 814cf92027ab08b95c5b0bde2385eb42dd614876
+        reviewed_implementation_head: null
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t304-implementation-20260802210612.md
+        report_attestation_head: null
+      unresolved_discrepancies: []
+extensions:
+  - namespace: chatgpt.runtime.persistence
+    payload:
+      report_commit: 53666b1e46162edea43fdae7f4b31907e8573d7f
+      packet_commit: self-referential-unavailable
+      final_pr_head_and_ci_location: PR #38 metadata and final concise PR comment
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Perform a separate normal review of PR #38 at its current HEAD; do not merge.
+  instructions:
+    - Read this handoff and the detailed implementation report.
+    - Resolve the PR current HEAD and compare it with the workflow run head; do not use a run from another SHA.
+    - Review all changed files, dependencies, tests, validation wiring, and T304/T305 scope boundary.
+    - Persist the review report and concise PR comment according to repository rules.
+  required_attachments_or_references:
+    - PR #38
+    - reports/issue-1-t304-implementation-20260802210612.md
+    - GitHub Actions Red run 30746824422 and artifact 8833148861
+    - GitHub Actions Green run 30747049935 for implementation HEAD 814cf92027ab08b95c5b0bde2385eb42dd614876
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t304-implementation-20260802210800.yaml
+  packet_url: null
+  transport_note: The packet targets the technical implementation HEAD. The commit that persists this packet is administrative and its final SHA plus matching CI are recorded externally on PR #38.

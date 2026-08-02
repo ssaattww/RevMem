@@ -88,3 +88,11 @@ current HEADは未コミットのため、follow-up後のexact-head CIは存在�
 - normal review前にこの非final change setをcommitし、push後の新しいHEAD一致CIを取得する必要がある。
 - fresh independent final reviewは、tracking、report、validationを含む新しいfrozen implementation HEADだけを対象にする。
 - Issue #28、Issue #36、T607 heldは本follow-upの対象外として維持する。
+
+## 8. main integration evidence
+
+- `origin/main` `0fdf87784355dce94fd4f1515a9e62d5257ecb75`（T304 PR #38）をPR #39 branchへmergeした。
+- `tasks/phases-status.md`のconflictは、T304/P3のcurrent main統合済み実績と、T502のnormal fix verification待ち、T504の修正・検証済みかつclosure待ちを同時に保持して解消した。
+- auto-merged `tasks/tasks-status.md`を確認し、T502、T304、T504の行とcurrent positionがいずれも残っていることを確認した。T304はcurrent main統合済み、T502はnormal fix verification待ち、T504はnormal fix verification待ちとして実態へ同期した。
+- merge index上の検証は`npm run compile`、`npm run lint`、T503 focused 8 / 8、T504 focused 15 / 15、working treeとstaged indexの`git diff --check`がすべて成功した。
+- merge commit、push、PR mutation、mergeはこの作業では実施していない。

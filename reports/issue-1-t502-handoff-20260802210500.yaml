@@ -1,0 +1,321 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #37"
+task_id: T502
+mode: implementation
+branch: task/t502-global-mapping-display-priority
+base_ref: main
+base_sha: 76b49e99453ebcf7ebecb2c141ed24d750736abc
+current_head: d91d9b813eae6b132c9d4e970a7cf1f231908742
+reviewed_head: null
+
+scope:
+  - editによるRepository Global Stateの行範囲mapping
+  - Git diffとrenameによるRepository Global Stateのfile・行範囲mapping
+  - 現在PR未確認変更を最優先する6段階の通常editor表示優先順位
+non_goals:
+  - Global理解率calculatorとUI
+  - taskとphaseの進捗同期
+  - merge
+
+authoritative_requirements:
+  - source: tasks/tasks-status.md
+    reference: T502
+    summary: edit、Git diff、renameによるGlobal mappingと6段階表示優先順位を実装し、現在PR変更行をGlobalだけでグレーにしない
+  - source: doc/design/vscode-review-range-tracker-design.md
+    reference: section 11.4
+    summary: current PR unreviewed、untrackable/changed、current context、other context、Global、unreviewedの順序
+  - source: project instruction
+    reference: RevMem implementation policy
+    summary: TDD、failure diagnostics artifact、小さいcommit、exact-head CI、reportとPR comment、merge禁止
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_workflows
+  - write_report
+  - write_handoff
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/global-review-mapping/**
+      reason: T502 Global mapping application boundary
+    - path_or_operation: src/application/editor-decoration/normal-editor-decoration-model.ts
+      reason: T502 display priority
+    - path_or_operation: test/unit/global-review-mapping-display-priority.test.ts
+      reason: T502 regression evidence
+    - path_or_operation: .github/workflows/ci.yml
+      reason: T502 focused test execution and diagnostic logs
+    - path_or_operation: reports/issue-1-t502-*
+      reason: durable report and handoff
+    - path_or_operation: PR #37 body/comment/state
+      reason: implementation transport
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: dedicated progress manager responsibility
+    - path_or_operation: unrelated product/release files
+      reason: outside T502
+
+development_policy:
+  method: TDD
+  testing_order: test first, preserve exact-head Red/failure diagnostics, implement, focused validation, broad CI
+
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run compile:test && node --test test-dist/test/unit/global-review-mapping-display-priority.test.js
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source/test/config snapshots
+    - environment and Git status
+
+files:
+  changed:
+    - path: .github/workflows/ci.yml
+      purpose: execute T502 focused tests and preserve dedicated logs
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: edit and Git Global mapping
+    - path: src/application/global-review-mapping/index.ts
+      purpose: public application barrel
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: six-stage display priority
+    - path: test/unit/global-review-mapping-display-priority.test.ts
+      purpose: TDD and regression evidence
+    - path: reports/issue-1-t502-implementation-20260802210500.md
+      purpose: detailed implementation report
+    - path: reports/issue-1-t502-handoff-20260802210500.yaml
+      purpose: continuation packet
+  intentionally_untouched:
+    - path_or_area: core range mapping and Git transition implementation
+      reason: existing T201/T203/T204 contracts are reused
+    - path_or_area: persistence schema
+      reason: existing T501 state model is sufficient
+    - path_or_area: Global understanding calculator/UI
+      reason: T504/T505
+    - path_or_area: tracking files
+      reason: dedicated manager ownership
+
+commands:
+  - command: GitHub Actions CI
+    purpose: broad validation at implementation HEAD
+    exit_code: 0
+    result: passed
+    head_sha: 12259261e45b57faeed7b9140f4514b1534efb53
+    evidence: workflow run 30746906205
+
+tests:
+  - name: T502 initial API contract
+    phase: red
+    result: failed
+    head_sha: 1a409a32c66f672f127d66116712c1c5937f7b3a
+    evidence: production Global mapping API did not exist
+  - name: Build after initial implementation
+    phase: post_implementation
+    result: failed
+    head_sha: 1d3a7e158d2330dfcadce4b4167714b311113003
+    evidence: run 30746718467, artifact 8833114180, wrong PullRequestDiffSnapshot import
+  - name: T502 focused regressions after CI wiring
+    phase: post_implementation
+    result: failed
+    head_sha: 7a79917a6b23e7fdadcef8c760bd4ec3653a26a4
+    evidence: run 30746842546, artifact 8833153721, fixture violated stable rename identity
+  - name: T502 focused regressions
+    phase: green
+    result: passed
+    head_sha: 12259261e45b57faeed7b9140f4514b1534efb53
+    evidence: 3 passed in run 30746906205
+  - name: full CI
+    phase: regression
+    result: passed
+    head_sha: 12259261e45b57faeed7b9140f4514b1534efb53
+    evidence: build/contracts/architecture/lint/unit 387/Git/GitHub/VS Code all passed in run 30746906205
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30746906205
+  head_sha: 12259261e45b57faeed7b9140f4514b1534efb53
+  conclusion: success
+  artifacts:
+    - id: 8833114180
+      name: ci-failure-diagnostics-30746718467-1
+      purpose: initial compile failure diagnostics
+    - id: 8833153721
+      name: ci-failure-diagnostics-30746842546-1
+      purpose: focused rename fixture failure diagnostics
+
+implementation:
+  outcome: completed
+  final_head: 12259261e45b57faeed7b9140f4514b1534efb53
+  commits:
+    - sha: 1a409a32c66f672f127d66116712c1c5937f7b3a
+      purpose: failing tests first
+    - sha: 87126bd6701581c89379427fac8a2350e8e6e9da
+      purpose: Global mapping implementation
+    - sha: 889620762f6626f066afc1f41b09ea8634161a34
+      purpose: public export
+    - sha: 1d3a7e158d2330dfcadce4b4167714b311113003
+      purpose: display priority implementation
+    - sha: 37cd1346e2fe029e1afae3e4a1384fb13c31b0b4
+      purpose: product import boundary fix
+    - sha: 6e0752f5a2783f8455c81d61696e32fbb6e2ef25
+      purpose: test import boundary fix
+    - sha: 7a79917a6b23e7fdadcef8c760bd4ec3653a26a4
+      purpose: CI focused test wiring
+    - sha: 12259261e45b57faeed7b9140f4514b1534efb53
+      purpose: stable rename fixture correction and Green
+    - sha: d91d9b813eae6b132c9d4e970a7cf1f231908742
+      purpose: detailed implementation report
+  failure_diagnostics:
+    - type: artifact
+      location: artifact 8833114180
+      summary: TypeScript build import failure with stdout/stderr and source snapshot
+    - type: artifact
+      location: artifact 8833153721
+      summary: T502 focused test failure with test output, stdout/stderr and source snapshot
+  blocked_items: []
+  summary:
+    - accepted T502 scope implemented
+    - implementation HEAD exact-match CI succeeded
+    - report and handoff persistence commits require final exact-head CI confirmation
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation worker does not issue an independent review verdict
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t502-implementation-20260802210500.md
+    - reports/issue-1-t502-handoff-20260802210500.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed implementation evidence persisted
+
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final PR HEAD exact-match CI after this handoff commit
+    reason: workflow run starts only after handoff persistence
+not_applicable:
+  - field_or_area: review verdict
+    reason: implementation mode
+remaining_risks:
+  - normal review and independent final review remain required
+  - T504/T505 consumer integration remains future scope
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #37
+      task_id: T502
+      mode: implementation
+      branch: task/t502-global-mapping-display-priority
+      base_ref: main
+      current_head: d91d9b813eae6b132c9d4e970a7cf1f231908742
+      development_policy: TDD and exact-head CI
+  - source_skill: implementation-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      outcome: completed
+      implementation_head: 12259261e45b57faeed7b9140f4514b1534efb53
+      exact_head_ci: 30746906205 success
+      report: reports/issue-1-t502-implementation-20260802210500.md
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      outcome: created
+      path: reports/issue-1-t502-implementation-20260802210500.md
+
+extensions:
+  - namespace: revmem
+    payload:
+      diagnostic_workflow_changed: false
+      focused_ci_step_added: true
+      substituted_ci_runs: false
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: initial_review
+  summary: PR #37のnormal reviewを実施する
+  instructions:
+    - final documentation HEADと一致するCI successを確認してからreviewへ引き渡す
+    - Global mappingの保守性、6段階priority、current PR suppression、既存T106 regressionを確認する
+    - implementation reportとこのhandoffを参照する
+  required_attachments_or_references:
+    - PR #37
+    - reports/issue-1-t502-implementation-20260802210500.md
+    - reports/issue-1-t502-handoff-20260802210500.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t502-handoff-20260802210500.yaml
+  packet_url: null
+  transport_note: final PR HEAD and exact-head CI are also synchronized in PR #37 body/comment; no merge performed
