@@ -132,8 +132,8 @@ export class PullRequestDiffAcquisitionService {
         contents.push({});
         continue;
       }
-      let oldContent: string | undefined;
-      let newContent: string | undefined;
+      let oldContent: PullRequestFileContents["oldContent"];
+      let newContent: PullRequestFileContents["newContent"];
       if (file.oldPath !== undefined) {
         let oldResult: Awaited<ReturnType<PullRequestRemoteDataPort["readFile"]>>;
         try {
@@ -142,7 +142,9 @@ export class PullRequestDiffAcquisitionService {
           return { kind: "failure", reason: "invalid-data" };
         }
         if (oldResult.kind === "unavailable") return { kind: "failure", reason: oldResult.reason };
-        oldContent = oldResult.content;
+        oldContent = oldResult.kind === "binary"
+          ? { kind: "binary" }
+          : { kind: "text", content: oldResult.content };
       }
       if (file.newPath !== undefined) {
         let newResult: Awaited<ReturnType<PullRequestRemoteDataPort["readFile"]>>;
@@ -152,7 +154,9 @@ export class PullRequestDiffAcquisitionService {
           return { kind: "failure", reason: "invalid-data" };
         }
         if (newResult.kind === "unavailable") return { kind: "failure", reason: newResult.reason };
-        newContent = newResult.content;
+        newContent = newResult.kind === "binary"
+          ? { kind: "binary" }
+          : { kind: "text", content: newResult.content };
       }
       contents.push({
         ...(oldContent === undefined ? {} : { oldContent }),
