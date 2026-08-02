@@ -12,13 +12,30 @@ export interface ReviewDiffEditorHost<Uri> {
   openDiff(original: Uri, modified: Uri, title: string): Promise<void>;
 }
 
-/** One immutable side used to construct a review diff. */
-export interface ReviewDiffEditorSideInput {
+/** One immutable side whose file exists at the selected revision. */
+export interface ReviewDiffEditorPresentSideInput {
+  /** Optional discriminant retained for backward-compatible callers. */
+  readonly kind?: "present";
   /** Repository-relative path at this immutable revision. */
   readonly filePath: string;
   /** Full immutable revision identifier. */
   readonly revision: string;
 }
+
+/** One immutable empty side for a file absent at the selected revision. */
+export interface ReviewDiffEditorAbsentSideInput {
+  /** Discriminant proving that no repository blob should be read. */
+  readonly kind: "absent";
+  /** Repository-relative logical path retained for context-isolated URI identity. */
+  readonly filePath: string;
+  /** Full immutable comparison revision used to isolate the empty side. */
+  readonly revision: string;
+}
+
+/** One immutable present or absent side used to construct a review diff. */
+export type ReviewDiffEditorSideInput =
+  | ReviewDiffEditorPresentSideInput
+  | ReviewDiffEditorAbsentSideInput;
 
 /** Complete request for opening one context-isolated review diff. */
 export interface OpenReviewDiffInput {
@@ -37,26 +54,36 @@ export interface OpenReviewDiffInput {
 /** Encodes both immutable sides and delegates the actual editor opening to the host. */
 export class ReviewDiffEditorController<Uri> {
   /** Creates a controller with the canonical URI codec and platform host boundary. */
-  public constructor(private readonly codec: ReviewDiffUriCodec, private readonly host: ReviewDiffEditorHost<Uri>) {}
+  public constructor(
+    private readonly codec: ReviewDiffUriCodec,
+    private readonly host: ReviewDiffEditorHost<Uri>
+  ) {}
 
   /**
    * Opens the original/base URI first and modified/head URI second.
-   * @returns A promise that resolves only after the host accepts both canonical immutable URIs in diff order.
-   * @throws {TypeError} When `input.title` is empty or whitespace-only before any codec or host call.
-   * @throws {Error} Codec validation, URI parsing, and host opening failures propagate unchanged so callers can surface them.
+   * Absent sides use an immutable `empty` revision source instead of pretending that a Git blob exists.
    */
   public async openReviewDiff(input: OpenReviewDiffInput): Promise<void> {
-    if (input.title.trim().length === 0) throw new TypeError("Diff editor title must be a non-empty string.");
-    const descriptor = (side: "original" | "modified", value: ReviewDiffEditorSideInput): ReviewDiffDocumentDescriptor => ({
+    if (input.title.trim().length === 0) {
+      throw new TypeError("Diff editor title must be a non-empty string.");
+    }
+    const descriptor = (
+      side: "original" | "modified",
+      value: ReviewDiffEditorSideInput
+    ): ReviewDiffDocumentDescriptor => ({
       contextId: input.contextId,
       filePath: value.filePath,
       fileSystemPathSemantics: input.fileSystemPathSemantics,
       side,
-      revisionSource: "git-commit",
+      revisionSource: value.kind === "absent" ? "empty" : "git-commit",
       revision: value.revision
     });
-    const original = this.host.parseUri(this.codec.encode(descriptor("original", input.original)));
-    const modified = this.host.parseUri(this.codec.encode(descriptor("modified", input.modified)));
+    const original = this.host.parseUri(
+      this.codec.encode(descriptor("original", input.original))
+    );
+    const modified = this.host.parseUri(
+      this.codec.encode(descriptor("modified", input.modified))
+    );
     await this.host.openDiff(original, modified, input.title);
   }
 }
