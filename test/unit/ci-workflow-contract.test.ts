@@ -35,23 +35,26 @@ test("unit and focused suites execute the integrated design contract", async () 
   }
 });
 
-test("unit, npm test, focused CI execute the T304 tree contract", async () => {
+test("unit, npm test, focused CI execute the complete T304 tree contract", async () => {
   const manifest = JSON.parse(
     await readFile(packageJsonPath, "utf8")
   ) as PackageManifest;
   const scripts = manifest.scripts ?? {};
-  const treeTest = /test-dist\/test\/unit\/pull-request-progress-tree\.test\.js/u;
+  const initialTreeTest = /test-dist\/test\/unit\/pull-request-progress-tree\.test\.js/u;
+  const r3FollowupTest = /test-dist\/test\/unit\/t304-review-followup-r3\.test\.js/u;
 
-  assert.match(
-    requireScript(scripts, "test:unit"),
-    treeTest,
-    "test:unit must execute the T304 tree contract"
-  );
-  assert.match(
-    requireScript(scripts, "test:t304"),
-    treeTest,
-    "test:t304 must execute the T304 tree contract"
-  );
+  for (const [scriptName, pattern, description] of [
+    ["test:unit", initialTreeTest, "initial T304 tree contract"],
+    ["test:unit", r3FollowupTest, "T304 R3 follow-up contract"],
+    ["test:t304", initialTreeTest, "initial T304 tree contract"],
+    ["test:t304", r3FollowupTest, "T304 R3 follow-up contract"]
+  ] as const) {
+    assert.match(
+      requireScript(scripts, scriptName),
+      pattern,
+      `${scriptName} must execute the ${description}`
+    );
+  }
   assert.match(
     requireScript(scripts, "test"),
     /npm run test:unit\b/u,
