@@ -28,6 +28,11 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const lineCountOf = (content: string): number =>
   content.split(/\r\n|\r|\n/u).length;
 
+const physicalLineCountOf = (content: string): number =>
+  content.length === 0
+    ? 0
+    : content.split(/\r\n|\r|\n/u).length - Number(/\r\n|\r|\n$/u.test(content));
+
 const contextRevision = (state: ReviewContextState): string => {
   if (state.kind !== "branch" || state.branch === undefined) {
     throw new Error("Git revision mapping requires a persisted branch context.");
@@ -669,6 +674,7 @@ export class GitContextRevisionMapper {
         fileId: preservedFileId ??
           this.createUnoccupiedFileId(repositoryId, filePath, occupiedFileIds),
         lineCount: lineCountOf(content),
+        physicalLineCount: physicalLineCountOf(content),
         contentHash: this.digest(content),
         newText: content
       };

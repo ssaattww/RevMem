@@ -6,15 +6,20 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）
-- 直近完了タスク: T205 branch context resolver・Git状態監視
-- 現在のタスク: なし
-- 次のタスク: T207 temporary Git repository統合試験
-- 実装状態: T206は通常finding 3件と独立review finding 3件を全件closed。独立reviewはユーザー指定どおり1回で終了し、修正後は既存normal reviewerが最終`pass_with_held`を確認。実装HEAD `e00ff752407c2cdca017a92153114c320eec9522`のCIは全gate成功
-- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported
-- Gitブランチ: `task/t206-jsonl-history`
-- Pull Request: #29
-- PR方針: T206の設計更新、TDD実装、検証、通常1名と独立1名のreview証跡をPR #29へ反映した。独立reviewは1回で終了し、指摘修正後はnormal reviewer確認のみ実施。mergeは利用者が行う
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（進行中）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）
+- 直近完了タスク: T501 Repository Global State repository（独立reviewの全4 findingをclosure済み）
+- 現在のタスク: PR #32 squash merge準備
+- 次のタスク: PR #32をsquash merge後、依存順に次タスクへ進む
+- 実装状態: T501は`origin/main`の`238149edb632d298ea43122b12b4cde72b70ec38`へrebaseし、T501-IFR2-P1〜P4を一括対応した。Global-only解除のContext/Global履歴証跡、public consumer fixture、trackingを追加し、同じ独立reviewerのclosure限定R2で全4件closed、`pass_with_held`、exact-head CI成功を確認済み。Issue #28はnon-blocking held
+- ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
+- Gitブランチ: `task/t501-global-state-repository`
+- Pull Request: #32（base=`main`）
+- T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
+- T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
+- T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
+- T501独立レビュー指摘対応R2レポート: `reports/issue-1-t501-independent-review-followup-r2-20260802144500.md`
+- T501独立finding closure R2レポート: `reports/issue-1-t501-independent-fix-verification-r2-20260802150000.md`
+- PR方針: 完了済み通常reviewと1名の独立reviewerによる証跡を保持する。独立reviewの広域確認は1回とし、fail後は同じ独立reviewerが既存findingのclosureだけを確認して新規観点・新規findingを追加しない。全finding closureとCI成功後にsquash mergeする
 - T001実装レポート: `reports/issue-1-t001-implementation-20260723104931.md`
 - T001レビューレポート: `reports/issue-1-t001-review-20260723110231.md`
 - T002実装レポート: `reports/issue-1-t002-implementation-20260723111412.md`
@@ -153,6 +158,22 @@
 - T206独立finding fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-20260802002000.md`
 - T206独立review follow-up R2レポート: `reports/issue-1-t206-independent-review-followup-r2-20260802003500.md`
 - T206独立finding最終fix verificationレポート: `reports/issue-1-t206-independent-fix-verification-r2-20260802005000.md`
+- T207実装レポート: `reports/issue-1-t207-implementation-20260802011000.md`
+- T207通常レビューレポート: `reports/issue-1-t207-review-20260802013500.md`
+- T207 review follow-upレポート: `reports/issue-1-t207-review-followup-20260802015000.md`
+- T207 fix verificationレポート: `reports/issue-1-t207-fix-verification-20260802021500.md`
+- T207独立最終レビューレポート: `reports/issue-1-t207-independent-final-review-20260802024500.md`
+- T207独立review follow-upレポート: `reports/issue-1-t207-independent-review-followup-20260802031000.md`
+- T207独立finding通常verificationレポート: `reports/issue-1-t207-independent-finding-normal-verification-20260802034500.md`
+- T207独立finding closure限定verificationレポート: `reports/issue-1-t207-independent-fix-verification-20260802034530.md`
+- T303独立最終レビューレポート: `reports/issue-1-t303-independent-final-review-20260802090000.md`
+- T303独立review follow-upレポート: `reports/issue-1-t303-independent-review-followup-20260802093100.md`
+- T303独立finding fix verificationレポート: `reports/issue-1-t303-independent-fix-verification-20260802103000.md`
+- T303独立review follow-up R2レポート: `reports/issue-1-t303-independent-review-followup-r2-20260802110000.md`
+- T303独立finding closure R2レポート: `reports/issue-1-t303-independent-fix-verification-r2-20260802113000.md`
+- T401独立最終レビューレポート: `reports/issue-1-t401-independent-final-review-20260802090030.md`
+- T401独立review follow-upレポート: `reports/issue-1-t401-independent-review-followup-20260802121500.md`
+- T401独立finding closureレポート: `reports/issue-1-t401-independent-fix-verification-20260802124500.md`
 - T301実装レポート: `reports/issue-1-t301-implementation-20260725094000.md`
 - T301 current main統合レポート: `reports/issue-1-t301-main-integration-20260726144530.md`
 - T301設計更新レポート: `reports/issue-1-t301-design-update-20260726145300.md`
@@ -217,7 +238,7 @@
 | T204 | 完了 | M | rename、directory move、rename同時変更、deleteをfile stateへ適用し、copy・分割・統合・複数候補を新規未確認にする | T203 | 100% renameと一意なrenameだけを追従し、曖昧なケースを確認済みにしない。AC-09、AC-10を満たす |
 | T205 | 完了 | L | branch context resolver、detached commit context、Git状態監視、context revision更新と再計算を実装する | T104、T202〜T204 | branch切替で状態が分離され、commit追加後に正しいcontextへmappingされる。AC-12を満たす |
 | T206 | 完了 | M | 設計書15.4のイベントをJSON Linesへ追記し、session、repository、context、revision、side、前後範囲、理由を保存する | T102、T104、T201〜T205 | 全操作とedit・Git diff・rename・context revision mapping結果が1イベントとして適切な保存先へ追記され、現在状態を履歴から毎回再構築しない |
-| T207 | 次 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
+| T207 | 完了 | L | edit、commit追加、branch切替、rename、deleteを連続実行するtemporary Git repository統合試験を追加する | T201〜T206 | AC-07〜AC-10、AC-12を一連の操作で再現し、再起動後もstateとhistoryが整合する |
 
 ## P3 diff editorとPR進捗
 
@@ -226,7 +247,7 @@
 | T300 | 完了 | M | GitHub/Git変更fileに適用できる共通除外policyを実装し、既定glob、ユーザーglob、binary、除外理由、設定変更通知を定義する | T202 | pathとfile属性から除外理由を決定でき、VS Code設定変更で再評価され、上書き可能なeffective globと常時除外を分離し、単一backslash separatorと二重backslash literalを区別し、replay-safe canonical snapshotと設定入力上限を設け、PR進捗と後続Global集計が同じpolicyを利用できる |
 | T301 | 完了 | L | PR change/hunk/lineモデルと、ユーザー除外を除いた追加・削除行だけを分母にするPR・file進捗calculatorを純粋ロジックで実装する | T102、T203、T300 | 追加、削除、置換、未変更周辺、Global混入防止、ユーザー除外、binary、rename-onlyのテストが通る。除外対象を分母に含めず理由を返す。AC-16を満たす |
 | T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
-| T303 | 未着手 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす |
+| T303 | 完了 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の独立review全5 findingをclosureし、exact-head CI成功済み |
 | T304 | 未着手 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす |
 | T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
 | T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |
@@ -235,7 +256,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T401 | 未着手 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない |
+| T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 未着手 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する | T203、T301、T401 | 各経路の成功・欠落・不完全patchをmockで再現し、全経路失敗時に確認済みを推測しない |
 | T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
@@ -246,7 +267,7 @@
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| T501 | 未着手 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。AC-19、AC-20を満たす |
+| T501 | 完了 | L | Repository Global State repositoryを実装し、確認・解除・ファイル操作を現在contextとGlobalへatomicに反映して履歴を残す | T102、T104、T206 | PR、branch、workspaceの確認がGlobalへ反映され、解除は参照数に関係なくGlobalからも消える。T501-IFR2-P1〜P4をclosed、exact-head CI成功済み |
 | T502 | 未着手 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる |
 | T503 | 未着手 | M | T300の共通除外policyを使うrepository file列挙、gitignore、空行判定を実装し、Global集計対象を構築する | T300 | PR進捗と同じユーザーglob・binary判定を再利用して除外理由を保持し、コメント行を含む非空行だけを分母候補として決定的に列挙する |
 | T504 | 未着手 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | 有効なGlobal非空行だけを数え、設定変更で再計算し、イベントループを長時間占有しない。AC-18のcore部分を満たす |
@@ -286,4 +307,4 @@
 
 ## 次回開始時の選択
 
-T206は独立reviewを1回で終了し、指摘修正後のnormal fix verificationで全findingをclosedした。PR #29を提出済み。次回は新しいtask lifecycleでP2のT207だけを選択する。
+T206はPR #29でmerge済み。T207は全findingをclosedしPR #35へ提出済み。独立review fail後は同じ独立reviewerが既存findingのclosureだけを再確認し、新規観点・新規findingを追加しない方針を適用した。

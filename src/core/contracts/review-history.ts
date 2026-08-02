@@ -1,9 +1,7 @@
 import type { SchemaVersion } from "./schema-version";
 import type { LineInterval, ReviewDiffSide } from "./review-state";
 
-/**
- * Append-only event categories retained as review-history evidence.
- */
+/** Runtime discriminator for every persisted review-history record. */
 export type ReviewHistoryEventType =
   | "marked-reviewed"
   | "unmarked-reviewed"
@@ -17,71 +15,90 @@ export type ReviewHistoryEventType =
   | "context-revision-changed"
   | "mapping-unresolved";
 
-/**
- * Event categories that describe a transition affecting one file and diff side.
- */
+/** Event kinds that describe one file-side range transition. */
 export type FileReviewHistoryEventType = Exclude<
   ReviewHistoryEventType,
   "context-created" | "context-revision-changed"
 >;
+/** Event kinds that describe context lifecycle rather than a file range. */
+export type ContextReviewHistoryEventType = "context-created" | "context-revision-changed";
 
-/**
- * Event categories that describe a context-wide transition without one file.
- */
-export type ContextReviewHistoryEventType =
-  | "context-created"
-  | "context-revision-changed";
-
-/**
- * Identification and audit fields required for every append-only history event.
- */
+/** Fields shared by all canonical review-history events. */
 export interface ReviewHistoryEventBase {
-  /** Persisted-event schema version used by migration readers. */
+  /** Persisted schema revision. */
   schemaVersion: SchemaVersion;
-  /** Unique event identifier for idempotent history processing. */
+  /** Stable append-only event identity. */
   eventId: string;
-  /** ISO 8601 timestamp at which the event occurred. */
+  /** Canonical UTC timestamp at which the transition occurred. */
   occurredAt: string;
-  /** Identifier for the extension session that emitted the event. */
+  /** Runtime session that created the event. */
   sessionId: string;
-  /** Stable identity of the repository affected by the event. */
+  /** Repository owning the review context. */
   repositoryId: string;
-  /** Stable identity of the review context affected by the event. */
+  /** Context owning the reviewed ranges. */
   contextId: string;
-  /** Revision against which the event was evaluated. */
+  /** Immutable revision described by the event. */
   revisionId: string;
-  /** Machine-readable or user-action reason for the transition. */
+  /** Caller-visible reason for the transition. */
   reason: string;
 }
 
-/**
- * A file-scoped history event with the complete before-and-after range evidence.
- */
-export interface FileReviewHistoryEvent extends ReviewHistoryEventBase {
-  /** Discriminates file-scoped event payloads from context-wide payloads. */
-  type: FileReviewHistoryEventType;
-  /** Repository-relative path of the affected file. */
-  filePath: string;
-  /** Diff side to which the before-and-after ranges apply. */
-  diffSide: ReviewDiffSide;
-  /** Reviewed ranges before the transition; empty when none existed. */
-  previousRanges: LineInterval[];
-  /** Reviewed ranges after the transition; empty when all were removed. */
-  nextRanges: LineInterval[];
-}
+/** Legacy context-only range evidence retained for existing persisted JSONL records. */
+type LegacyFileReviewHistoryRangeEvidence = {
+  /** Omitted by historical records written before Global range evidence was added. */
+  readonly rangeRepresentation?: never;
+  /** Omitted because legacy records only stored Context ranges. */
+  readonly globalPreviousRanges?: never;
+  /** Omitted because legacy records only stored Context ranges. */
+  readonly globalNextRanges?: never;
+};
 
-/**
- * A context-wide history event; file and range evidence is inapplicable by type.
- */
+/** Additive evidence that retains distinct Context and Global before/after ranges. */
+type ContextAndGlobalFileReviewHistoryRangeEvidence = {
+  /** Declares that the existing range fields remain Context evidence and Global evidence follows. */
+  readonly rangeRepresentation: "context-and-global";
+  /** Global ranges before the same committed transition. */
+  readonly globalPreviousRanges: LineInterval[];
+  /** Global ranges after the same committed transition. */
+  readonly globalNextRanges: LineInterval[];
+};
+
+/** File-range fields shared by original and modified history events. */
+type FileReviewHistoryEventBase = ReviewHistoryEventBase & {
+  /** File-transition event kind. */
+  type: FileReviewHistoryEventType;
+  /** Canonical file path at the recorded revision. */
+  filePath: string;
+  /** Ranges before this event. */
+  previousRanges: LineInterval[];
+  /** Ranges after this event. */
+  nextRanges: LineInterval[];
+} & (LegacyFileReviewHistoryRangeEvidence | ContextAndGlobalFileReviewHistoryRangeEvidence);
+
+/** History event for mutable modified-side ranges, which intentionally has no original diff identity. */
+export type ModifiedFileReviewHistoryEvent = FileReviewHistoryEventBase & {
+  /** Identifies the modified-side range set. */
+  diffSide: Extract<ReviewDiffSide, "modified">;
+  /** Forbidden because modified ranges are not keyed by an immutable comparison. */
+  diffId?: never;
+};
+
+/** History event for immutable original-side deletion ranges. */
+export type OriginalFileReviewHistoryEvent = FileReviewHistoryEventBase & {
+  /** Identifies the immutable original-side range set. */
+  diffSide: Extract<ReviewDiffSide, "original">;
+  /** Canonical non-empty `${baseSha}..${headSha}` comparison identity. */
+  diffId: string;
+};
+
+/** Discriminated file history event with side-specific diff identity requirements. */
+export type FileReviewHistoryEvent = ModifiedFileReviewHistoryEvent | OriginalFileReviewHistoryEvent;
+
+/** Append-only lifecycle event that does not describe a file range. */
 export interface ContextReviewHistoryEvent extends ReviewHistoryEventBase {
-  /** Discriminates context-wide event payloads from file-scoped payloads. */
+  /** Context lifecycle discriminator. */
   type: ContextReviewHistoryEventType;
 }
 
-/**
- * One append-only review-history record. File-scoped events require file, side,
- * and range evidence; context-wide events cannot omit their common audit fields.
- */
-export type ReviewHistoryEvent =
-  | FileReviewHistoryEvent
-  | ContextReviewHistoryEvent;
+/** Canonical review-history record. */
+export type ReviewHistoryEvent = FileReviewHistoryEvent | ContextReviewHistoryEvent;

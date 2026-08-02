@@ -69,7 +69,7 @@ test("maps content-changing rename and replaces stale content hash", () => {
     ""
   ].join("\n");
   const result = apply({ file1: state("file1", "lib/old.ts", { contentHash: "stale" }) }, diff, {
-    newFiles: { "lib/new.ts": { fileId: "file1", lineCount: 4, contentHash: "fresh", newText: "one\nchanged\nthree\nfour\n" } },
+    newFiles: { "lib/new.ts": { fileId: "file1", lineCount: 5, contentHash: "fresh", newText: "one\nchanged\nthree\nfour\n" } },
     oldTexts: { "lib/old.ts": "one\nold\nthree\nfour\n" }
   });
 
@@ -203,13 +203,13 @@ test("preserves whitespace-only rename changes only when complete texts prove th
     ""
   ].join("\n");
   const result = applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 1, modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }] }) },
     diff,
     newRevisionId: "new",
     updatedAt,
     options: { ignoreWhitespaceChanges: true, ignoreEolChanges: false },
     oldTexts: { "old.ts": "const value = 1;\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "const  value = 1;\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "const  value = 1;\n" } }
   });
 
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
@@ -232,13 +232,13 @@ test("preserves CRLF to LF rename changes when EOL changes are ignored", () => {
     ""
   ].join("\n");
   const result = applyGitFileStateTransitions({
-    files: { file: state("file", "old.ts", { lineCount: 2, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
+    files: { file: state("file", "old.ts", { lineCount: 3, modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }] }) },
     diff,
     newRevisionId: "new",
     updatedAt,
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
     oldTexts: { "old.ts": "one\r\ntwo\r\n" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "one\ntwo\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 3, newText: "one\ntwo\n" } }
   });
 
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 2 }]);
@@ -266,7 +266,7 @@ test("preserves one terminal line-break addition when EOL changes are ignored", 
     updatedAt,
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: true },
     oldTexts: { "old.ts": "value" },
-    newFiles: { "new.ts": { fileId: "file", lineCount: 1, newText: "value\n" } }
+    newFiles: { "new.ts": { fileId: "file", lineCount: 2, newText: "value\n" } }
   });
 
   assert.deepEqual(result.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);

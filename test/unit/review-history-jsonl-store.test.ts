@@ -14,6 +14,10 @@ import {
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
+import {
+  parseReviewHistoryEventLine,
+  serializeReviewHistoryEvent
+} from "../../src/core/review-history/index";
 
 const target: ReviewStateRepositoryTarget = {
   kind: "git",
@@ -35,6 +39,13 @@ const event = (eventId = "event-1"): ReviewHistoryEvent => ({
   diffSide: "modified",
   previousRanges: [],
   nextRanges: [{ startLine: 1, endLineExclusive: 3 }]
+});
+
+test("reads existing Context-only JSONL records without reinterpreting their range fields", () => {
+  const legacy = event();
+  const legacyLine = serializeReviewHistoryEvent(legacy);
+  assert.doesNotMatch(legacyLine, /rangeRepresentation|globalPreviousRanges|globalNextRanges/u);
+  assert.deepEqual(parseReviewHistoryEventLine(legacyLine), legacy);
 });
 
 const temporaryStorage = async (): Promise<{

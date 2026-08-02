@@ -63,7 +63,10 @@ test("records a user state transaction only after its state commit boundary", as
     filePath: "src/example.ts",
     diffSide: "modified",
     previousRanges: [],
-    nextRanges: [{ startLine: 0, endLineExclusive: 2 }]
+    nextRanges: [{ startLine: 0, endLineExclusive: 2 }],
+    rangeRepresentation: "context-and-global",
+    globalPreviousRanges: [],
+    globalNextRanges: [{ startLine: 0, endLineExclusive: 2 }]
   }]);
 });
 

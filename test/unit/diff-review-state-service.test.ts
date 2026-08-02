@@ -1,0 +1,9 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewContextState, type RepositoryGlobalState } from "../../src/core/contracts/index";
+import { markOriginalReviewedRanges, unmarkOriginalReviewedRanges } from "../../src/core/review-state/index";
+const interval = (startLine:number,endLineExclusive:number)=>({startLine,endLineExclusive});
+const context: ReviewContextState={schemaVersion:REVIEW_RANGE_SCHEMA_VERSION,contextId:"c",kind:"branch",repositoryId:"r",displayName:"b",branch:{refName:"refs/heads/b",headRevision:"h"},files:{f:{schemaVersion:REVIEW_RANGE_SCHEMA_VERSION,fileId:"f",currentPath:"a.ts",previousPaths:[],revisionId:"h",modifiedReviewed:[],originalReviewedByDiff:{},lineCount:3,updatedAt:"2026-08-01T00:00:00.000Z"}},createdAt:"2026-08-01T00:00:00.000Z",updatedAt:"2026-08-01T00:00:00.000Z"};
+const global: RepositoryGlobalState={schemaVersion:REVIEW_RANGE_SCHEMA_VERSION,repositoryId:"r",currentRevisionId:"h",files:{},updatedAt:"2026-08-01T00:00:00.000Z"};
+const common={contextState:context,globalState:global,target:{fileId:"f",currentPath:"a.ts",revisionId:"h",lineCount:3},side:"original" as const,diffId:"d",originalLineCount:4,occurredAt:"2026-08-01T01:00:00.000Z"};
+test("original ranges are isolated by diff identity",()=>{const marked=markOriginalReviewedRanges({...common,intervals:[interval(1,3)]});assert.equal(marked.side,"original");assert.equal(marked.diffId,"d");assert.deepEqual(marked.next.contextState.files.f!.originalReviewedByDiff,{d:[interval(1,3)]});assert.deepEqual(marked.next.globalState,global);const unmarked=unmarkOriginalReviewedRanges({...common,contextState:marked.next.contextState,intervals:[interval(2,3)]});assert.deepEqual(unmarked.next.contextState.files.f!.originalReviewedByDiff,{d:[interval(1,2)]});});

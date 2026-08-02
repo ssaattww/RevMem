@@ -1,16 +1,14 @@
 import type { TextSelection } from "../../core/intervals/index";
 import { selectionsToLineIntervals } from "../../core/intervals/index";
-import {
-  commitReviewStateTransaction,
-  markFileReviewed,
-  markReviewedRanges,
-  unmarkFileReviewed,
-  unmarkReviewedRanges,
-  type ReviewStateFileTarget,
-  type ReviewStateMutationInput,
-  type ReviewStateTransaction,
-  type ReviewStateTransactionCommitter
+import type {
+  ReviewStateFileTarget,
+  ReviewStateMutationInput,
+  ReviewStateTransaction,
+  ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
+import {
+  RepositoryGlobalStateRepository
+} from "../repository-global-state/index";
 
 /** Whole-file operations that require explicit user confirmation. */
 export type ReviewWholeFileOperation =
@@ -74,38 +72,6 @@ export interface NormalEditorReviewCommandDependencies<Editor> {
 
 type SelectionOperation = "mark" | "unmark";
 
-const sameRanges = (
-  left: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
-  right: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
-): boolean => left.length === right.length && left.every((range, index) =>
-  range.startLine === right[index]?.startLine &&
-  range.endLineExclusive === right[index]?.endLineExclusive
-);
-
-const sameOriginalRanges = (
-  left: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>,
-  right: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>
-): boolean => {
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
-  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
-    key === rightKeys[index] && sameRanges(left[key] ?? [], right[key] ?? [])
-  );
-};
-
-const hasSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boolean => {
-  const expectedContext = transaction.expected.contextState.files[transaction.fileId];
-  const nextContext = transaction.next.contextState.files[transaction.fileId];
-  const expectedGlobal = transaction.expected.globalState.files[transaction.fileId];
-  const nextGlobal = transaction.next.globalState.files[transaction.fileId];
-  return !sameRanges(expectedContext?.modifiedReviewed ?? [], nextContext?.modifiedReviewed ?? []) ||
-    !sameRanges(expectedGlobal?.reviewed ?? [], nextGlobal?.reviewed ?? []) ||
-    !sameOriginalRanges(
-      expectedContext?.originalReviewedByDiff ?? {},
-      nextContext?.originalReviewedByDiff ?? {}
-    );
-};
-
 /**
  * Connects normal-editor selections and whole-file actions to Review State Service.
  *
@@ -115,11 +81,15 @@ const hasSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boole
  */
 export class NormalEditorReviewCommandService<Editor> {
   private readonly now: () => Date;
+  private readonly repositoryGlobalStateRepository: RepositoryGlobalStateRepository;
 
   public constructor(
     private readonly dependencies: NormalEditorReviewCommandDependencies<Editor>
   ) {
     this.now = dependencies.now ?? (() => new Date());
+    this.repositoryGlobalStateRepository = new RepositoryGlobalStateRepository({
+      requestHistory: dependencies.requestHistory
+    });
   }
 
   /** Marks all selected or cursor lines without displaying a confirmation dialog. */
@@ -165,23 +135,18 @@ export class NormalEditorReviewCommandService<Editor> {
     }
 
     const session = await this.openMatchingSession(editor, lineCount);
-    const occurredAt = this.now().toISOString();
-    const input = {
+    const result = await this.repositoryGlobalStateRepository.apply({
+      operation: operation === "mark"
+        ? "mark-ranges-reviewed"
+        : "unmark-ranges-reviewed",
       contextState: session.contextState,
       globalState: session.globalState,
       target: session.target,
       intervals,
-      occurredAt
-    };
-    const transaction = operation === "mark"
-      ? markReviewedRanges(input)
-      : unmarkReviewedRanges(input);
-
-    if (!hasSemanticChange(transaction)) {
-      return "no-op";
-    }
-    await this.commitAndRequestHistory(transaction, session.committer);
-    return "applied";
+      occurredAt: this.now().toISOString(),
+      committer: session.committer
+    });
+    return result.status;
   }
 
   private async applyWholeFileOperation(
@@ -195,21 +160,15 @@ export class NormalEditorReviewCommandService<Editor> {
 
     const lineCount = this.dependencies.getLineCount(editor);
     const session = await this.openMatchingSession(editor, lineCount);
-    const input: ReviewStateMutationInput = {
+    const result = await this.repositoryGlobalStateRepository.apply({
+      operation,
       contextState: session.contextState,
       globalState: session.globalState,
       target: session.target,
-      occurredAt: this.now().toISOString()
-    };
-    const transaction = operation === "mark-file-reviewed"
-      ? markFileReviewed(input)
-      : unmarkFileReviewed(input);
-
-    if (!hasSemanticChange(transaction)) {
-      return "no-op";
-    }
-    await this.commitAndRequestHistory(transaction, session.committer);
-    return "applied";
+      occurredAt: this.now().toISOString(),
+      committer: session.committer
+    });
+    return result.status;
   }
 
   private async openMatchingSession(
@@ -224,13 +183,5 @@ export class NormalEditorReviewCommandService<Editor> {
     }
 
     return session;
-  }
-
-  private async commitAndRequestHistory(
-    transaction: ReviewStateTransaction,
-    committer: ReviewStateTransactionCommitter
-  ): Promise<void> {
-    await commitReviewStateTransaction(transaction, committer);
-    await this.dependencies.requestHistory(transaction);
   }
 }

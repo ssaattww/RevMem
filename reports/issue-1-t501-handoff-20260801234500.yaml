@@ -1,0 +1,80 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue: 1
+task: T501
+pull_request: 32
+branch: task/t501-global-state-repository
+base_branch: main
+status: implementation_complete_review_required
+scope:
+  summary: Repository Global State repositoryを実装し、確認・解除・file操作をcurrent contextとGlobalへatomicに反映し、commit後に履歴をrequestする。
+  included:
+    - RepositoryGlobalStateRepository application service
+    - PR、branch、workspaceのGlobal自動反映
+    - 参照数に依存しないGlobal解除
+    - file全体確認・解除
+    - semantic no-op抑止
+    - T206 history順序
+    - normal editor command integration
+  excluded:
+    - Global mappingと表示優先順位
+    - Global理解率calculatorとUI
+    - task、phase進捗同期
+    - merge
+changed_files:
+  - src/application/repository-global-state/index.ts
+  - src/application/repository-global-state/repository-global-state-repository.ts
+  - src/application/review-commands/normal-editor-review-command-service.ts
+  - test/unit/repository-global-state-repository.test.ts
+  - test/unit/core-contracts.test.ts
+  - reports/issue-1-t501-implementation-20260801234500.md
+  - reports/issue-1-t501-handoff-20260801234500.yaml
+tdd:
+  red:
+    head_sha: c805cd7107a84a0a5563e026383439f0ccc18900
+    workflow_run: 30704211883
+    conclusion: failure
+    failed_step: Unit tests
+    diagnostic_artifact_id: 8819795376
+    diagnostic_artifact_name: ci-failure-diagnostics-30704211883-1
+    reason: src/application/repository-global-state/indexが未実装
+  intermediate_failure:
+    head_sha: 1504c20a01d0daf043b9f0d26bfb821c83456377
+    workflow_run: 30704279955
+    conclusion: failure
+    failed_step: Lint
+    diagnostic_artifact_id: 8819815699
+    reason: ReviewStateFileTargetの未使用import
+  green:
+    head_sha: d6a5edabd1e540220ba04e97cff786c00968726c
+    workflow_run: 30704317434
+    conclusion: success
+    successful_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+      - Unit tests
+      - Temporary Git integration tests
+      - Mock GitHub integration tests
+      - VS Code Extension Host tests
+ci_policy:
+  exact_head_only: true
+  substituted_runs: false
+  diagnostic_workflow_changed: false
+review:
+  required: true
+  implementation_report: reports/issue-1-t501-implementation-20260801234500.md
+  focus:
+    - application serviceの責務境界
+    - contextとGlobalのatomicity
+    - unmark semantics
+    - semantic no-opとhistory順序
+    - normal editor regression
+next_actions:
+  - final report/handoff commit HEADに一致するCIを確認する
+  - PRをready for reviewへ変更する
+  - normal reviewと独立最終reviewを実施する
+  - review通過後に専用managerでtask/phaseを同期する
+merge_performed: false

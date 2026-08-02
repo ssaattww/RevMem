@@ -30,6 +30,7 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState
 } from "../../core/contracts/index";
+import { normalizeLineIntervals } from "../../core/intervals/index";
 import {
   markReviewedRanges,
   type ReviewStateFileTarget,
@@ -535,24 +536,41 @@ export class DocumentReviewStateSessionProvider {
       return mapping;
     }
 
-    const matchingFileIds = new Set<string>();
+    const contextFileIds = new Set<string>();
     for (const [fileId, file] of Object.entries(commit.contextState.files)) {
       if (file.currentPath === mapping.target.currentPath) {
-        matchingFileIds.add(fileId);
+        contextFileIds.add(fileId);
       }
     }
+    if (contextFileIds.size > 1) {
+      throw new Error(
+        "persisted Git review context has conflicting file identities for the current path."
+      );
+    }
+    const contextFileId = contextFileIds.values().next().value as string | undefined;
+    if (contextFileId !== undefined) {
+      return {
+        ...mapping,
+        target: {
+          ...mapping.target,
+          fileId: contextFileId
+        }
+      };
+    }
+
+    const globalFileIds = new Set<string>();
     for (const [fileId, file] of Object.entries(commit.globalState.files)) {
       if (file.currentPath === mapping.target.currentPath) {
-        matchingFileIds.add(fileId);
+        globalFileIds.add(fileId);
       }
     }
 
-    if (matchingFileIds.size > 1) {
+    if (globalFileIds.size > 1) {
       throw new Error(
-        "persisted Git review state has conflicting file identities for the current path."
+        "persisted Git Global state has conflicting file identities for the current path."
       );
     }
-    const fileId = matchingFileIds.values().next().value as string | undefined;
+    const fileId = globalFileIds.values().next().value as string | undefined;
     if (fileId === undefined) {
       return mapping;
     }
@@ -561,6 +579,139 @@ export class DocumentReviewStateSessionProvider {
       target: {
         ...mapping.target,
         fileId
+      }
+    };
+  }
+
+  /** Atomically folds a legacy Global-only stable ID into the current context identity for one Git path. */
+  private async reconcilePersistedGitFileIdentity(
+    initial: ReviewStateCommit,
+    mapping: OwnedMapping
+  ): Promise<{ readonly commit: ReviewStateCommit; readonly mapping: OwnedMapping }> {
+    if (mapping.owner !== "git") {
+      return { commit: initial, mapping };
+    }
+
+    let current = initial;
+    while (true) {
+      const next = this.reconciledGitFileIdentityCommit(current, mapping);
+      if (next === undefined) {
+        return {
+          commit: current,
+          mapping: this.resolvePersistedFileMapping(current, mapping)
+        };
+      }
+
+      try {
+        await this.options.repository.commit({
+          operation: "unmark-file-reviewed",
+          repositoryId: mapping.repositoryTarget.repositoryId,
+          contextId: mapping.repositoryTarget.contextId,
+          fileId: mapping.target.fileId,
+          expected: {
+            contextState: current.contextState,
+            globalState: current.globalState
+          },
+          next: {
+            contextState: next.contextState,
+            globalState: next.globalState
+          }
+        });
+        current = next;
+      } catch (error) {
+        if (!(error instanceof StaleReviewStateError)) {
+          throw error;
+        }
+        const latest = await this.options.repository.load(mapping.repositoryTarget);
+        if (latest === undefined) {
+          throw new Error(
+            "persisted review state disappeared during Git file-identity reconciliation.",
+            { cause: error }
+          );
+        }
+        this.validateLoadedIdentity(latest, mapping);
+        if (
+          contextRevision(latest.contextState) !== mapping.target.revisionId ||
+          latest.globalState.currentRevisionId !== mapping.target.revisionId
+        ) {
+          throw new Error(
+            "persisted review state requires revision mapping before file identities can be reconciled.",
+            { cause: error }
+          );
+        }
+        current = latest;
+      }
+    }
+  }
+
+  /** Produces one complete snapshot that preserves only a certain Global identity merge. */
+  private reconciledGitFileIdentityCommit(
+    commit: ReviewStateCommit,
+    mapping: OwnedMapping
+  ): ReviewStateCommit | undefined {
+    const contextMatches = Object.entries(commit.contextState.files).filter(
+      ([, file]) => file.currentPath === mapping.target.currentPath
+    );
+    if (contextMatches.length > 1) {
+      throw new Error(
+        "persisted Git review context has conflicting file identities for the current path."
+      );
+    }
+    const contextMatch = contextMatches[0];
+    if (contextMatch === undefined) {
+      return undefined;
+    }
+    const [contextFileId, contextFile] = contextMatch;
+    const globalMatches = Object.entries(commit.globalState.files).filter(
+      ([, file]) => file.currentPath === mapping.target.currentPath
+    );
+    if (globalMatches.length > 1) {
+      throw new Error(
+        "persisted Git Global state has conflicting file identities for the current path."
+      );
+    }
+    const globalMatch = globalMatches[0];
+    if (globalMatch === undefined || globalMatch[0] === contextFileId) {
+      return undefined;
+    }
+
+    const [globalFileId, globalFile] = globalMatch;
+    const metadataMatches =
+      globalFile.revisionId === contextFile.revisionId &&
+      (globalFile.contentHash === undefined ||
+        contextFile.contentHash === undefined ||
+        globalFile.contentHash === contextFile.contentHash);
+    const reviewed = metadataMatches
+      ? normalizeLineIntervals(globalFile.reviewed).filter(
+          (interval) => interval.endLineExclusive <= contextFile.lineCount
+        )
+      : [];
+    const remainingGlobalFiles = withoutKey(commit.globalState.files, globalFileId);
+    const updatedAt = globalFile.updatedAt > contextFile.updatedAt
+      ? globalFile.updatedAt
+      : contextFile.updatedAt;
+
+    return {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: cloneValue(commit.contextState),
+      globalState: {
+        ...cloneValue(commit.globalState),
+        files: {
+          ...cloneValue(remainingGlobalFiles),
+          [contextFileId]: {
+            fileId: contextFileId,
+            currentPath: contextFile.currentPath,
+            revisionId: contextFile.revisionId,
+            reviewed,
+            ...(contextFile.contentHash === undefined
+              ? globalFile.contentHash === undefined
+                ? {}
+                : { contentHash: globalFile.contentHash }
+              : { contentHash: contextFile.contentHash }),
+            updatedAt
+          }
+        },
+        updatedAt
       }
     };
   }
@@ -583,7 +734,10 @@ export class DocumentReviewStateSessionProvider {
           "persisted review state requires revision mapping before it can be used."
         );
       }
-      mapping = this.resolvePersistedFileMapping(commit, mapping);
+      ({ commit, mapping } = await this.reconcilePersistedGitFileIdentity(
+        commit,
+        mapping
+      ));
     }
 
     const { contextStale, globalStale } = this.staleFileState(commit, mapping);
@@ -675,8 +829,12 @@ export class DocumentReviewStateSessionProvider {
             { cause: error }
           );
         }
-        mapping = this.resolvePersistedFileMapping(latest, mapping);
-        current = latest;
+        const reconciled = await this.reconcilePersistedGitFileIdentity(
+          latest,
+          mapping
+        );
+        mapping = reconciled.mapping;
+        current = reconciled.commit;
       }
     }
   }
