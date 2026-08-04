@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CurrentContextRuntimeCoordinator,
   CurrentContextUiController,
   type CurrentContextUiHost,
   type CurrentContextUiSnapshot
@@ -67,6 +68,30 @@ test("select applies the authoritative selected snapshot", async () => {
     "select",
     "tree:Branch: selected",
     "status:$(git-branch) selected: 80%"
+  ]);
+});
+
+test("runtime coordinator refreshes dependents after selected UI is applied", async () => {
+  const events: string[] = [];
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => pullRequestSnapshot,
+    selectContext: async () => ({
+      context: { kind: "workspace", label: "chosen" },
+      progress: undefined
+    })
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
+
+  await coordinator.selectContext();
+
+  assert.deepEqual(events, [
+    "tree:Workspace: chosen",
+    "status:$(folder) chosen",
+    "dependents"
   ]);
 });
 
