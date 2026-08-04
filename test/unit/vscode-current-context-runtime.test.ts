@@ -37,9 +37,12 @@ test("T305 composition root registers context runtime and synchronizes dependent
 
   assert.match(extension, /registerCurrentContextRuntime\(/u);
   assert.match(extension, /createNodeLocalGitAdapter\(\)/u);
+  assert.match(extension, /enumerateContexts/u);
+  assert.match(extension, /selectedKey/u);
   assert.match(extension, /refreshVisibleEditorDecorations/u);
   assert.match(runtime, /registerTreeDataProvider\(CURRENT_CONTEXT_VIEW_ID/u);
-  assert.match(runtime, /registerCommand\(REFRESH_CONTEXT_COMMAND_ID/u);
-  assert.match(runtime, /registerCommand\(SELECT_CONTEXT_COMMAND_ID/u);
+  assert.match(runtime, /registerCommand\(\s*REFRESH_CONTEXT_COMMAND_ID/u);
+  assert.match(runtime, /registerCommand\(\s*SELECT_CONTEXT_COMMAND_ID/u);
+  assert.match(runtime, /CurrentContextRuntimeCoordinator/u);
   assert.match(runtime, /createStatusBarItem/u);
 });
