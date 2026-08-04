@@ -217,6 +217,47 @@ test("non-offline API failures do not substitute cached data", async () => {
   assert.deepEqual(result, acquisition.result);
 });
 
+test("mixed offline-eligible and API failures do not substitute cached data", async () => {
+  const acquisition = new MutableAcquisition();
+  const storage = new InMemoryGitHubPullRequestCacheStorage();
+  await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(1_000)
+  }).acquire(request);
+  const mixedReasons = [
+    ["rate-limit", "api"],
+    ["api", "rate-limit"],
+    ["network", "api"],
+    ["api", "network"]
+  ] as const;
+
+  for (const [patchReason, contentReason] of mixedReasons) {
+    acquisition.result = {
+      kind: "unavailable",
+      attempts: [
+        { source: "local-git", reason: "missing-revision" },
+        { source: "github-patch", reason: patchReason },
+        { source: "github-content", reason: contentReason }
+      ]
+    };
+
+    const result = await new GitHubPullRequestCacheService({
+      acquisition,
+      storage,
+      freshnessMs: 60_000,
+      now: fixedDate(2_000)
+    }).acquire(request);
+
+    assert.deepEqual(
+      result,
+      acquisition.result,
+      `${patchReason} + ${contentReason} must not use offline cache`
+    );
+  }
+});
+
 test("cache entries are bound to the exact context, repository, PR, base, and head identity", async () => {
   const storage = new InMemoryGitHubPullRequestCacheStorage();
   const mismatchedRequest = { ...request, headSha: OTHER_HEAD_SHA };
