@@ -1,0 +1,872 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial_implementation
+  generated_at: 2026-08-05T05:06:32+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #44
+task_id: T403
+branch: task/t403-github-cache
+base_ref: main
+target:
+  current_head: 6f00bca056cd871a496b299265fc2988af180feb
+  reviewed_head: null
+  commit_range: 490389037f8bf83441a76798fe20d16b48de3d8b..6f00bca056cd871a496b299265fc2988af180feb
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat instruction and RevMem project instruction
+    summary: Implement T403 autonomously after reading instructions and uploaded Skills; use the GitHub connector, TDD, small commits, diagnostic artifacts, detailed repository report, concise PR comment, current-HEAD-only CI evidence, no merge.
+  - source: task
+    reference: tasks/tasks-status.md T403
+    summary: Implement GitHub metadata and diff caching, expiry, last-updated time, and offline reads after HTTP 429 or network failure.
+  - source: task
+    reference: tasks/tasks-status.md T403 completion condition
+    summary: Do not unnecessarily persist tokens or source text; show an acquired PR offline and explicitly identify old state.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: Fall back to local Git or cache during API restriction and network failure, show the last successful update time, and never persist the GitHub token.
+  - source: repository_instruction
+    reference: .github/workflows/ci.yml
+    summary: Preserve command output including standard output and standard error, test/build results, environment, Git state, generated output, source, tests, tools, and configuration in failure artifacts.
+  - source: repository_instruction
+    reference: tasks/tasks-status.md update rule
+    summary: Task status may be updated only through task-breakdown-planner, task-consistency-manager, or progress-sync-manager.
+  - source: repository_instruction
+    reference: RevMem current-HEAD CI rule
+    summary: Use only workflow runs whose head SHA matches the target PR current HEAD; do not substitute another SHA.
+  - source: repository_instruction
+    reference: RevMem merge boundary
+    summary: The worker creates or updates the PR but the user performs merge.
+
+development_policy:
+  method: TDD
+  testing_order: Add the T403 contract tests first, confirm an exact-head failing CI run and diagnostic artifact, implement the smallest coherent cache service and adapter, run focused and repository-wide validation, then preserve the report and handoff.
+  governing_source: RevMem project instruction and uploaded implementation-worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t403
+    - npm run test:t304
+    - npm run test:t502
+    - T503 repository enumeration tests
+    - T504 Global understanding tests
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test-output/ci logs containing standard output and standard error
+    - test and build results
+    - environment and Git status
+    - generated dist and test-dist files
+    - source, tests, tools, type fixtures, package configuration, and workflow configuration
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_configuration
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/github-pr-cache/**
+      reason: T403 cache contracts, validation, orchestration, and in-memory storage.
+    - path_or_operation: src/adapters/github/node-github-pull-request-cache-storage.ts
+      reason: Repository-local metadata and source-redacted diff persistence.
+    - path_or_operation: src/adapters/github/index.ts
+      reason: Public adapter export.
+    - path_or_operation: test/unit/github-pull-request-cache.test.ts
+      reason: T403 Red, Green, offline, identity, security, and persistence regression coverage.
+    - path_or_operation: type-fixtures/contracts/t403-github-pr-cache.fixture.ts and type-fixtures/contracts/tsconfig.json
+      reason: Public T403 compile-time contract coverage.
+    - path_or_operation: package.json
+      reason: Focused and default GitHub test wiring.
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Execute the focused T403 suite and retain its output in the existing diagnostic artifact system.
+    - path_or_operation: reports/issue-1-t403-implementation-20260805050632.md
+      reason: Required detailed implementation report.
+    - path_or_operation: reports/issue-1-t403-handoff-20260805050632.yaml
+      reason: Required lossless implementation handoff.
+    - path_or_operation: PR #44 metadata and conversation
+      reason: Reviewer handoff and concise implementation summary.
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Dedicated task/progress Skills are required and were not available in the uploaded worker package.
+    - path_or_operation: T404 persistent PR review layer
+      reason: Outside T403 scope.
+    - path_or_operation: T405 Review Contexts View, commands, Status Bar, and runtime composition
+      reason: Outside T403 scope.
+    - path_or_operation: T604 multi-process locking, cache cleanup, and capacity limits
+      reason: Outside T403 scope.
+    - path_or_operation: merge and release
+      reason: Reserved for the user and later workflow.
+
+scope:
+  - Wrap the immutable T402 acquisition boundary with exact-identity GitHub PR metadata and diff caching.
+  - Persist cache freshness timestamps and expose fresh or stale offline status.
+  - Read cache only after GitHub rate-limit or network failure.
+  - Preserve enough file, hunk, and line-coordinate evidence for offline PR display and progress while redacting source text.
+  - Keep tokens and unknown runtime fields out of persisted documents.
+  - Publish metadata and diff generations consistently through an atomic latest pointer.
+non_goals:
+  - Persisting PR review-state layers or multiple PR contexts.
+  - Wiring the cache into the current VSIX UI or Review Contexts View.
+  - Reconstructing source text from the offline cache.
+  - Multi-process locking, cache cleanup, generation retention, or capacity policy.
+  - Task tracking updates, merge, release, or independent review.
+
+files:
+  changed:
+    - path: .github/workflows/ci.yml
+      purpose: Run npm run test:t403 and save combined output in test-output/ci/test-t403.log while retaining the existing failure artifact coverage.
+    - path: package.json
+      purpose: Add test:t403 and include the cache suite in test:github.
+    - path: src/application/github-pr-cache/contracts.ts
+      purpose: Define acquisition, storage, cache entry, freshness, and live/offline result contracts.
+    - path: src/application/github-pr-cache/cache-entry.ts
+      purpose: Strictly validate, normalize, clone, identify, and source-redact cache entries.
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: Persist valid live results and use exact cache only for rate-limit or network failure.
+    - path: src/application/github-pr-cache/in-memory-github-pull-request-cache-storage.ts
+      purpose: Provide deterministic exact-identity storage for service and adapter tests.
+    - path: src/application/github-pr-cache/index.ts
+      purpose: Export the responsibility-separated T403 public application API.
+    - path: src/adapters/github/node-github-pull-request-cache-storage.ts
+      purpose: Store immutable metadata and redacted diff generations and publish one atomic latest pointer.
+    - path: src/adapters/github/index.ts
+      purpose: Export the Node GitHub cache adapter.
+    - path: test/unit/github-pull-request-cache.test.ts
+      purpose: Six live, offline, failure-selection, identity, persistence, source-redaction, and token-removal tests.
+    - path: type-fixtures/contracts/t403-github-pr-cache.fixture.ts
+      purpose: Positive and negative public cache contract type coverage.
+    - path: type-fixtures/contracts/tsconfig.json
+      purpose: Register the T403 public contract fixture.
+    - path: reports/issue-1-t403-implementation-20260805050632.md
+      purpose: Persist detailed TDD, implementation, validation, security, and risk evidence.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve T403 scope, dependencies, completion condition, and task-file update restriction.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Confirm fallback, last-update, cache, and token non-persistence design.
+    - path: .github/workflows/ci.yml
+      purpose: Verify failure diagnostic artifact coverage before implementation.
+    - path: src/application/github-pr-diff/**
+      purpose: Reuse the immutable T402 request, metadata, snapshot, reason, and validation contracts.
+    - path: src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+      purpose: Confirm T402 rate-limit and network classifications and token boundary.
+    - path: src/adapters/state-repository/atomic-text-file-store.ts
+      purpose: Reuse atomic text replacement for the latest generation pointer.
+    - path: src/adapters/state-repository/storage-router.ts
+      purpose: Confirm repository-local cache directory routing.
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: Reuse PullRequestDiffSnapshot and changed-line coordinate contracts.
+    - path: reports/issue-1-t402-implementation-20260802215000.md
+      purpose: Match repository implementation report structure and T402/T403 boundary.
+    - path: reports/issue-1-t402-handoff-20260802215000.yaml
+      purpose: Match repository schema-version-3 implementation handoff structure.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Their repository rule requires dedicated task/progress Skills not present in the uploaded package.
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: Existing design already specifies cache fallback, timestamp display, and token non-persistence; no design change was required.
+    - path_or_area: src/extension.ts and runtime composition
+      reason: Cache connection to UI and persistent PR layers belongs to T404/T405.
+    - path_or_area: persistent PR review layers and Review Contexts UI
+      reason: Explicit T404/T405 non-goals.
+    - path_or_area: multi-process lock, generation cleanup, and capacity limit
+      reason: T604 scope.
+    - path_or_area: merge and release
+      reason: Reserved for the user and later workflow.
+
+commands:
+  - command: GitHub Actions CI run 30944663833
+    purpose: Confirm the initial test-first missing-implementation failure and preserve diagnostics.
+    exit_code: 1
+    result: failed
+    head_sha: c5be5413ff75983eba207b3c5add7dd6b05d088b
+    evidence: Job 92111537433 failed compile:test because the referenced T403 application module and Node adapter did not exist; artifact 8906569405 was uploaded.
+  - command: GitHub Actions CI run 30945163506
+    purpose: Execute the first focused cache suite after implementation and inspect its failure artifact.
+    exit_code: 1
+    result: failed
+    head_sha: b1386942ad7fe045bd9f42eb9a5305080bbc1240
+    evidence: Four focused tests passed; one fixture attempted to persist source-bearing text and the production storage correctly rejected it. Artifact 8906772323 was uploaded, and the fixture was fixed without weakening storage validation.
+  - command: GitHub Actions CI run 30946152467
+    purpose: Validate the responsibility-separated implementation code before report persistence.
+    exit_code: 0
+    result: passed
+    head_sha: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+    evidence: Job 92116526756 passed build, contracts, architecture, lint, unit, focused T403, T304, T502, T503, T504, Git, GitHub, and VS Code Extension Host gates.
+  - command: GitHub Actions CI run 30946449372
+    purpose: Validate the target report HEAD before handoff transport.
+    exit_code: 0
+    result: passed
+    head_sha: 6f00bca056cd871a496b299265fc2988af180feb
+    evidence: Job 92117513942 passed all repository gates, including the focused and default T403 executions.
+
+tests:
+  - name: Initial T403 cache contract suite
+    phase: red
+    result: failed
+    head_sha: c5be5413ff75983eba207b3c5add7dd6b05d088b
+    evidence: Exact-head run 30944663833 failed because the test-first T403 modules were intentionally absent; diagnostic artifact 8906569405 retained the failure.
+  - name: First T403 focused suite
+    phase: green
+    result: failed
+    head_sha: b1386942ad7fe045bd9f42eb9a5305080bbc1240
+    evidence: Four of five tests passed. The remaining test exposed an invalid source-bearing fixture, not a production relaxation requirement; artifact 8906772323 retained the assertion and logs.
+  - name: T403 focused cache suite
+    phase: regression
+    result: passed
+    head_sha: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+    evidence: Six tests passed, covering live redaction, 429 stale fallback, network fresh fallback, generic API non-fallback, exact identity, atomic persistence, source rejection, and token removal.
+  - name: Public T403 contract fixture
+    phase: verification
+    result: passed
+    head_sha: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+    evidence: Contract typecheck passed for positive construction and expected negative calls.
+  - name: Full repository CI gates at report HEAD
+    phase: verification
+    result: passed
+    head_sha: 6f00bca056cd871a496b299265fc2988af180feb
+    evidence: Exact-head run 30946449372 and job 92117513942 concluded success.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30946449372
+  head_sha: 6f00bca056cd871a496b299265fc2988af180feb
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 6f00bca056cd871a496b299265fc2988af180feb
+  commits:
+    - sha: c5be5413ff75983eba207b3c5add7dd6b05d088b
+      purpose: Add the initial failing T403 cache contract tests.
+    - sha: bb12748fd0addb70e9b88b36c316583d9cbd8271
+      purpose: Add the first cache-aware application service and entry contract.
+    - sha: 6af1a1d015a4fa3066ab8dc7aa920d77f3e8c229
+      purpose: Add filesystem metadata and redacted diff generation persistence.
+    - sha: e098e2eec46b60166c4c5fa1f1cfcfdd783a53fc
+      purpose: Export the Node GitHub cache adapter.
+    - sha: b1386942ad7fe045bd9f42eb9a5305080bbc1240
+      purpose: Add the focused T403 CI gate and diagnostic log.
+    - sha: 28cde3ee3c9300d8af729cbcd0ba39864fce9fe2
+      purpose: Correct the identity mismatch fixture to remain source-redacted.
+    - sha: c2297483c1b582670a6f83cfec49d56d5944395b
+      purpose: Add the public T403 type fixture.
+    - sha: e93502a3357a80d0f1d5303c68a91c4335b74a04
+      purpose: Register the public T403 type fixture.
+    - sha: ebeae6cd0c00949bd38f538fe26e81d13df10149
+      purpose: Add test:t403 and include the suite in test:github.
+    - sha: bdddea7ce7022ab683b95847b94dd64b35ca3dcc
+      purpose: Use the canonical npm focused command in CI.
+    - sha: 61d657fce627bc9a154d07a66980590039e7a323
+      purpose: Add independent network-failure and fresh-cache coverage.
+    - sha: 0cb28b5d3f6ebd72bad1e24204ff32766e87b452
+      purpose: Verify source-bearing write rejection and unknown token removal.
+    - sha: 978aa9937c12e0fae4f1804660709c0dfcc5ead9
+      purpose: Separate public cache contracts.
+    - sha: bdcc55376018b08565588f01fca59f3c03966bbc
+      purpose: Isolate strict cache entry validation and normalization.
+    - sha: 7ad42821f96f6adcacd3f602f0b5e997a215c364
+      purpose: Isolate deterministic in-memory cache storage.
+    - sha: 0d48a47245af330b18bfe34e2c9dc8f6d3b7aec7
+      purpose: Isolate cache acquisition orchestration.
+    - sha: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+      purpose: Export the responsibility-separated application modules and establish the implementation-code Green HEAD.
+    - sha: 6f00bca056cd871a496b299265fc2988af180feb
+      purpose: Persist the detailed T403 implementation report.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: GitHub Actions run 30944663833 job 92111537433
+      summary: Initial Red compile:test failed because the T403 application and adapter modules were intentionally absent.
+    - type: artifact
+      location: GitHub Actions artifact 8906569405
+      summary: Initial Red test/build logs, combined standard output and standard error, environment, Git state, generated output, source, tests, tools, and configuration.
+    - type: test_result
+      location: GitHub Actions run 30945163506 job 92113212075
+      summary: One focused fixture supplied source-bearing text to the storage boundary and was rejected; four other focused tests passed.
+    - type: artifact
+      location: GitHub Actions artifact 8906772323
+      summary: Focused fixture assertion, combined standard output and standard error, source, generated tests, and supporting configuration.
+  blocked_items: []
+  summary:
+    - Exact PR comparison metadata and source-redacted diff cache are persisted with update and expiry timestamps.
+    - Only rate-limit and network failures may use exact offline cache; generic API failures do not substitute stale state.
+    - Offline results expose fresh or stale status and retain the failed live attempts.
+    - Metadata and diff generations are published together through a pointer-last atomic update.
+    - Token-like unknown fields are normalized away and source-bearing cached lines are rejected.
+    - T403 focused, public contract, GitHub integration, and full repository gates pass at the target report HEAD.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: false
+      evidence:
+        - No review was performed in this implementation chat.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - The implementation worker did not issue a review verdict for its own changes.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t403-implementation-20260805050632.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - The detailed report preserves TDD Red artifacts, implementation structure, exact-head CI, security boundaries, intentionally untouched areas, and remaining risks.
+
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: The SHA and matching CI run of the repository commit that persists this handoff packet.
+    reason: A repository file cannot contain the SHA of the commit that first creates that same file. The ChatGPT wrapper must verify that transport commit and record it in the PR body and concise PR comment.
+not_applicable:
+  - field_or_area: Review findings and verdict
+    reason: This is initial implementation, not review.
+  - field_or_area: Report attestation
+    reason: Administrative attestation is reserved for independent final review reports.
+  - field_or_area: Task tracking update
+    reason: Required dedicated task/progress Skills were not present in the uploaded worker package.
+  - field_or_area: Merge
+    reason: Merge is reserved for the user.
+remaining_risks:
+  - The privacy-preserving offline diff cache cannot reconstruct source text; T405 must present metadata, coordinates, progress, and freshness without implying cached source availability.
+  - Cached title and state may differ from GitHub when freshness is stale; T405 must display updatedAt and stale status.
+  - Generation cleanup, capacity limits, and multi-process locking remain for T604.
+  - A force-pushed head SHA creates a separate identity; old revision cache is deliberately not substituted.
+  - Runtime composition into the current VSIX remains for T404/T405.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #44
+      task_id: T403
+      mode: implementation
+      branch: task/t403-github-cache
+      base_ref: main
+      current_head: 490389037f8bf83441a76798fe20d16b48de3d8b
+      reviewed_head: null
+      scope:
+        - Implement exact GitHub PR metadata and source-redacted diff cache around T402.
+        - Expose expiry, last update, and fresh or stale offline status.
+        - Use cache after rate-limit or network failure only.
+        - Persist no token and no source body.
+      non_goals:
+        - T404 persistent PR layer.
+        - T405 UI/runtime composition.
+        - T604 lock, cleanup, and capacity policy.
+        - Task tracking updates, merge, release, or review.
+      authoritative_requirements:
+        - source: user instruction
+          reference: current request and project instruction
+          summary: Implement autonomously using uploaded Skills, GitHub connector, TDD, diagnostic artifacts, small commits, report, handoff, PR comment, exact-head CI, and no merge.
+        - source: task
+          reference: tasks/tasks-status.md T403
+          summary: Cache GitHub metadata and diff with expiry and offline fallback for 429/network failure without token or source persistence.
+        - source: design
+          reference: doc/design/vscode-review-range-tracker-design.md rev4
+          summary: Use cache fallback, show last successful update, and never persist the token.
+      write_boundary:
+        allowed:
+          - src/application/github-pr-cache/**
+          - src/adapters/github/node-github-pull-request-cache-storage.ts
+          - src/adapters/github/index.ts
+          - test/unit/github-pull-request-cache.test.ts
+          - type-fixtures/contracts/t403-github-pr-cache.fixture.ts
+          - type-fixtures/contracts/tsconfig.json
+          - package.json
+          - .github/workflows/ci.yml
+          - reports/issue-1-t403-implementation-20260805050632.md
+          - reports/issue-1-t403-handoff-20260805050632.yaml
+          - PR #44 metadata and comments
+        forbidden:
+          - tasks/tasks-status.md and tasks/phases-status.md without a dedicated task/progress Skill
+          - T404/T405/T604 implementation
+          - merge and release
+      development_policy:
+        method: TDD
+        testing_order: Add failing tests and confirm diagnostic artifact before implementation; then focused and broad validation.
+      validation:
+        commands:
+          - npm run build
+          - npm run typecheck:contracts
+          - npm run validate:architecture
+          - npm run validate:architecture:negative
+          - npm run lint
+          - npm run test:unit
+          - npm run test:t403
+          - npm run test:git
+          - npm run test:github
+          - npm run test:vscode
+        required_failure_diagnostics:
+          - Combined standard output and standard error logs.
+          - Test and build output.
+          - Environment and Git state.
+          - Generated output, source, tests, tools, fixtures, and configuration.
+      ci:
+        matching_run: null
+        conclusion: unknown
+      unknown:
+        - The implementation branch and PR did not exist before work started.
+      blocked: []
+      remaining_risks:
+        - Runtime UI integration and persistent PR layers are later tasks.
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: initial_implementation
+      accepted_scope:
+        - Exact-identity PR metadata and source-redacted diff cache around T402.
+        - Update and expiry timestamps with explicit fresh or stale offline status.
+        - Rate-limit and network-only cache fallback.
+        - Atomic metadata/diff generation publication and token/source non-persistence.
+      non_goals:
+        - T404 persistent PR state.
+        - T405 UI and runtime composition.
+        - T604 locking, cleanup, and capacity policy.
+        - Tracking updates, review, merge, and release.
+      requirements_and_design_references:
+        - tasks/tasks-status.md T403 and its completion condition.
+        - doc/design/vscode-review-range-tracker-design.md rev4 cache, fallback, timestamp, and token rules.
+        - RevMem TDD, diagnostic artifact, small commit, report, handoff, current-HEAD CI, PR, and merge boundaries.
+      changed_files:
+        - path: src/application/github-pr-cache/contracts.ts
+          purpose: Public cache contracts.
+        - path: src/application/github-pr-cache/cache-entry.ts
+          purpose: Strict cache normalization and validation.
+        - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+          purpose: Live persistence and offline fallback orchestration.
+        - path: src/application/github-pr-cache/in-memory-github-pull-request-cache-storage.ts
+          purpose: Deterministic storage.
+        - path: src/application/github-pr-cache/index.ts
+          purpose: Public exports.
+        - path: src/adapters/github/node-github-pull-request-cache-storage.ts
+          purpose: Atomic filesystem generation persistence.
+        - path: src/adapters/github/index.ts
+          purpose: Adapter export.
+        - path: test/unit/github-pull-request-cache.test.ts
+          purpose: Six T403 behavior and security tests.
+        - path: type-fixtures/contracts/t403-github-pr-cache.fixture.ts
+          purpose: Public type contract.
+        - path: type-fixtures/contracts/tsconfig.json
+          purpose: Fixture registration.
+        - path: package.json
+          purpose: Focused and default test wiring.
+        - path: .github/workflows/ci.yml
+          purpose: Focused T403 gate and diagnostic log.
+        - path: reports/issue-1-t403-implementation-20260805050632.md
+          purpose: Detailed implementation report.
+      intentionally_untouched:
+        - area: Task tracking files
+          reason: Dedicated task/progress Skill required.
+        - area: Design document
+          reason: Existing design already covers T403.
+        - area: Runtime UI and persistent PR layer
+          reason: T404/T405 scope.
+        - area: Locking and cache retention policy
+          reason: T604 scope.
+        - area: Merge and release
+          reason: User or later workflow owns them.
+      validation_commands_and_results:
+        - command: GitHub Actions CI run 30944663833
+          result: failed
+          head_sha: c5be5413ff75983eba207b3c5add7dd6b05d088b
+          evidence: Expected Red missing-module compile failure; artifact 8906569405.
+        - command: GitHub Actions CI run 30945163506
+          result: failed
+          head_sha: b1386942ad7fe045bd9f42eb9a5305080bbc1240
+          evidence: Four focused tests passed; invalid source-bearing fixture was correctly rejected; artifact 8906772323.
+        - command: GitHub Actions CI run 30946152467
+          result: passed
+          head_sha: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+          evidence: Full implementation-code gates passed.
+        - command: GitHub Actions CI run 30946449372
+          result: passed
+          head_sha: 6f00bca056cd871a496b299265fc2988af180feb
+          evidence: Full report-head gates passed.
+      failure_diagnostics_and_artifacts:
+        - type: artifact
+          id: 8906569405
+          name: ci-failure-diagnostics-30944663833-1
+          purpose: Initial Red logs and root-cause context.
+        - type: artifact
+          id: 8906772323
+          name: ci-failure-diagnostics-30945163506-1
+          purpose: Focused fixture failure logs and root-cause context.
+      commit_identities:
+        - c5be5413ff75983eba207b3c5add7dd6b05d088b
+        - bb12748fd0addb70e9b88b36c316583d9cbd8271
+        - 6af1a1d015a4fa3066ab8dc7aa920d77f3e8c229
+        - e098e2eec46b60166c4c5fa1f1cfcfdd783a53fc
+        - b1386942ad7fe045bd9f42eb9a5305080bbc1240
+        - 28cde3ee3c9300d8af729cbcd0ba39864fce9fe2
+        - c2297483c1b582670a6f83cfec49d56d5944395b
+        - e93502a3357a80d0f1d5303c68a91c4335b74a04
+        - ebeae6cd0c00949bd38f538fe26e81d13df10149
+        - bdddea7ce7022ab683b95847b94dd64b35ca3dcc
+        - 61d657fce627bc9a154d07a66980590039e7a323
+        - 0cb28b5d3f6ebd72bad1e24204ff32766e87b452
+        - 978aa9937c12e0fae4f1804660709c0dfcc5ead9
+        - bdcc55376018b08565588f01fca59f3c03966bbc
+        - 7ad42821f96f6adcacd3f602f0b5e997a215c364
+        - 0d48a47245af330b18bfe34e2c9dc8f6d3b7aec7
+        - 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+        - 6f00bca056cd871a496b299265fc2988af180feb
+      final_head: 6f00bca056cd871a496b299265fc2988af180feb
+      matching_ci:
+        workflow: CI
+        run_id: 30946449372
+        job_id: 92117513942
+        conclusion: success
+      blocked_items: []
+      unknowns:
+        - The handoff transport commit SHA is unknowable until this packet is created and must be recorded externally after exact-head CI.
+      remaining_risks:
+        - Offline source text is deliberately unavailable.
+        - Stale metadata requires explicit UI treatment.
+        - Cleanup, capacity, and locking remain for T604.
+        - Runtime composition remains for T404/T405.
+      next_required_action: Perform a normal review of PR #44 at its immutable current HEAD, using only a matching workflow run.
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body: |-
+        # T403 実装レポート
+
+        ## メタデータ
+
+        - Repository: `ssaattww/RevMem`
+        - Task: `T403`
+        - Pull Request: `#44`
+        - Branch: `task/t403-github-cache`
+        - Base: `main` / `490389037f8bf83441a76798fe20d16b48de3d8b`
+        - Implementation HEAD before this report: `7054a1bd6b4dabe839f145feeaf001dbd4ce09de`
+        - Mode: initial implementation
+        - Merge: 未実施
+
+        ## 目的と範囲
+
+        T403として、T402のimmutable PR diff取得結果を対象に、GitHub PR metadataとsource-redacted diffをrepository-local cacheへ保存し、GitHub APIが429またはnetwork failureで利用不能な場合に限って取得済みPRをoffline表示できるapplication serviceとfilesystem adapterを実装した。
+
+        cacheは`contextId`、GitHub host、owner、repository、PR番号、base SHA、head SHAの完全一致で識別する。live取得時刻と期限をISO 8601で記録し、offline読込時には`fresh`または`stale`を明示する。期限切れcacheも取得済み情報として返すが、古い状態であることをresult contractから判別できる。
+
+        永続diffにはfile identity、path、status、additions/deletions、hunk座標、line kindとline番号だけを保持し、line textは空文字列へredactする。GitHub tokenはcache contractに含めず、runtime objectに余分なtoken fieldが混入しても永続documentへコピーしない。
+
+        T404の複数PR layer永続化、T405のReview Contexts View/runtime配線、T604の複数process lock・cache cleanup、mergeは対象外とした。
+
+        ## authoritative requirements
+
+        - `tasks/tasks-status.md` T403: GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する。
+        - 完了条件: tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する。
+        - `doc/design/vscode-review-range-tracker-design.md`: API制限・network failure時はlocal Gitまたはcacheへfallbackし、最終成功更新時刻を表示する。tokenは永続化しない。
+        - RevMem実装はTDDを基本とし、先にfailureを確認してから実装する。
+        - failure時にはtest結果、標準出力、標準エラー、原因調査logをartifactへ保存する。
+        - current PR HEAD SHAとworkflow run head SHAが一致するrunだけをCI証拠に使用する。
+        - 詳細reportをrepositoryへ保存し、別途簡易reportをPR commentへ投稿する。
+        - mergeは利用者が行う。
+
+        ## 診断artifact workflow
+
+        作業開始時に`.github/workflows/ci.yml`を確認した。既存workflowは各commandを`2>&1 | tee test-output/ci/*.log`で実行し、failure時に次を`actions/upload-artifact@v4`へ保存する。
+
+        - test/build/architecture/lint command log（標準出力・標準エラーを含む）
+        - `dist/`、`test-dist/`、source、tests、tools、type fixtures
+        - environment、Git status、生成file一覧
+        - package/TypeScript/ESLint/workflow設定
+
+        したがって診断情報の追加自体は不要だった。T403 focused testを継続的に実行するため、同workflowへ`npm run test:t403`のgateと専用log `test-output/ci/test-t403.log`を追加した。
+
+        ### TDD Red artifact
+
+        - Red commit: `c5be5413ff75983eba207b3c5add7dd6b05d088b`
+        - Exact-head CI run: `30944663833`
+        - Job: `92111537433`
+        - Conclusion: failure
+        - Artifact: `ci-failure-diagnostics-30944663833-1`
+        - Artifact ID: `8906569405`
+
+        未実装の`src/application/github-pr-cache/index`と`NodeGitHubPullRequestCacheStorage`を参照するtestを先に追加したため、`compile:test`が意図どおり失敗した。別SHAのrunは使用していない。
+
+        ### focused fixture correction artifact
+
+        - HEAD: `b1386942ad7fe045bd9f42eb9a5305080bbc1240`
+        - Exact-head CI run: `30945163506`
+        - Job: `92113212075`
+        - Conclusion: failure
+        - Artifact: `ci-failure-diagnostics-30945163506-1`
+        - Artifact ID: `8906772323`
+
+        実装後のfocused test 5件中4件は成功し、identity mismatch用fixtureだけがsource本文を残したcache entryを直接storageへ書こうとして失敗した。production storageが安全境界どおり拒否した結果であり、storageを緩めずfixtureをsource-redacted entryへ修正した。
+
+        ## TDD記録
+
+        ### Redで固定した契約
+
+        初期testで次を定義した。
+
+        1. live GitHub取得結果を返す際、利用者へ返すsnapshotのsource textは維持する。
+        2. 永続cacheでは全line textをredactし、source本文を保存しない。
+        3. 更新時刻と期限を明示する。
+        4. 429またはnetwork failure時だけexact cacheへfallbackする。
+        5. 期限切れcacheを返す場合は`stale`と明示する。
+        6. generic API failureではcacheを代用しない。
+        7. context/repository/PR/base/headの一つでも違うentryを使用しない。
+        8. metadataとdiffを別領域に保存し、一つのgeneration pointerで公開する。
+        9. tokenとsource本文をfilesystemへ保存しない。
+
+        ### Green implementation
+
+        次を小さな論理単位で追加した。
+
+        - cache-aware acquisition contractとresult contract。
+        - source-redacted cache entryのstrict parser・clone・identity serializer。
+        - deterministic in-memory storage。
+        - 429/network限定のoffline fallback service。
+        - metadata/diff generationとlatest pointerを使用するfilesystem adapter。
+        - public adapter export、type fixture、focused/default test wiring、CI gate。
+        - application codeをcontracts、entry validation、service、in-memory storageへ責務分割。
+
+        追加の自己点検で、network failureの期限内`fresh`経路、source-bearing direct write拒否、extra token field除去をtestへ追加した。
+
+        ## 実装構成
+
+        ### Application contract
+
+        - `src/application/github-pr-cache/contracts.ts`
+          - T402 acquisition port、cache entry/storage、freshness status、live/offline resultを定義。
+          - offline resultは失敗したlive attemptを保持し、診断情報を失わない。
+
+        ### Cache entry validation
+
+        - `src/application/github-pr-cache/cache-entry.ts`
+          - request、metadata、snapshot、timestampをruntimeで再検証する。
+          - exact context/repository/PR/base/head identityを要求する。
+          - canonical POSIX repository-relative path、status/path matrix、status統計を検証する。
+          - file identity/display pathの重複を拒否する。
+          - hunk順序、座標、line cursor、old/new count、additions/deletionsを検証する。
+          - binary entryにhunkが存在する場合を拒否する。
+          - 永続cacheでは全line textが空文字列であることを要求する。
+          - schema version、canonical ISO timestamp、`expiresAt >= updatedAt`を要求する。
+
+        ### Cache-aware acquisition service
+
+        - `src/application/github-pr-cache/github-pull-request-cache-service.ts`
+          - T402 live acquisitionを先に実行する。
+          - valid metadata/snapshotを取得した場合だけredacted entryを保存する。
+          - cache write失敗時も完全なlive結果を破棄せず、`not-cached`として返す。
+          - remote attemptに`rate-limit`または`network`がある場合だけcacheを読む。
+          - cache read/corruption/identity mismatch時は元の`unavailable`を保持する。
+          - offline結果へ`fresh`/`stale`、`updatedAt`、`expiresAt`を付与する。
+
+        ### Storage adapters
+
+        - `src/application/github-pr-cache/in-memory-github-pull-request-cache-storage.ts`
+          - exact identity keyとdetached cloneを用いるtest/application storage。
+        - `src/adapters/github/node-github-pull-request-cache-storage.ts`
+          - identityをSHA-256 keyへ変換する。
+          - `cache/github/<key>/metadata-<generation>.json`へmetadataを保存する。
+          - `cache/diffs/<key>/diff-<generation>.json`へredacted diffを保存する。
+          - 両generation fileの書込後に`cache/github/<key>/latest.json`をatomic replaceし、不完全generationを公開しない。
+          - pointer内pathを再構築値と照合し、path injectionを拒否する。
+          - unsafe generation名、corrupt JSON、document identity不一致を拒否する。
+          - persistence直前にentryを正規化し、未知fieldを永続documentへコピーしない。
+
+        ### Public/test wiring
+
+        - `src/application/github-pr-cache/index.ts`: responsibility-based module export。
+        - `src/adapters/github/index.ts`: Node cache adapter export。
+        - `type-fixtures/contracts/t403-github-pr-cache.fixture.ts`: public positive/negative type contract。
+        - `type-fixtures/contracts/tsconfig.json`: fixture登録。
+        - `package.json`: `test:t403`追加、`test:github`へT403 suiteを接続。
+        - `.github/workflows/ci.yml`: focused T403 gateとstdout/stderr logを追加。
+
+        ## test coverage
+
+        `test/unit/github-pull-request-cache.test.ts`は6件を実行する。
+
+        1. live取得時にtimestampを付与し、cacheだけをsource-redactedにする。
+        2. 429時に期限切れexact cacheを返し、`stale`と表示する。
+        3. network failure時に期限内exact cacheを返し、`fresh`と表示する。
+        4. generic API failureではcacheを代用しない。
+        5. context/repository/PR/base/head identity mismatchを拒否する。
+        6. filesystem generation round-trip、source-bearing write拒否、extra token除去、source/token非永続化を確認する。
+
+        ## 検証
+
+        ### Exact-head Green CI
+
+        implementation HEAD `7054a1bd6b4dabe839f145feeaf001dbd4ce09de`に完全一致するCI run `30946152467`、job `92116526756`はsuccessだった。
+
+        成功したgate:
+
+        - Install dependencies
+        - Build
+        - Contract typecheck
+        - Architecture validation
+        - Architecture negative contract
+        - Lint
+        - Unit tests
+        - T403 GitHub cache tests
+        - T304 PR progress tree tests
+        - T502 Global mapping and display priority tests
+        - T503 repository enumeration tests
+        - T504 Global understanding tests
+        - Temporary Git integration tests
+        - Mock GitHub integration tests（T403 suiteを含む）
+        - VS Code Extension Host tests
+
+        success runのためfailure context collectionとartifact uploadはskipされた。
+
+        このreportとhandoffの保存後は新しいHEADになるため、PR commentには保存後のcurrent HEADと一致するrunだけを最終CI証拠として記録する。実装HEADのrunを最終HEADへ代用しない。
+
+        ## security・fail-closed境界
+
+        - tokenはapplication cache contract、metadata document、diff document、pointerのいずれにも存在しない。
+        - 未知fieldはvalidated entryへ再構築する際に除去する。
+        - source-bearing line textを含むentryはstorage write前に拒否する。
+        - cache identityはmoving refではなくfull base/head object IDを含む。
+        - exact identity不一致、corrupt JSON、schema mismatch、非canonical timestamp、invalid path/status/hunk/statisticsを使用しない。
+        - API failure全般へ広げず、task指定の429/networkだけをoffline fallback対象にする。
+        - cache write/read failureを確認済み状態や別PR dataへ推測変換しない。
+        - metadata/diffを先に書き、latest pointerを最後にatomic replaceする。
+
+        ## intentionally untouched
+
+        - `tasks/tasks-status.md`: repository ruleにより`task-breakdown-planner`、`task-consistency-manager`、`progress-sync-manager`経由でのみ更新可能なため、本implementation workerでは変更していない。
+        - `doc/design/vscode-review-range-tracker-design.md`: T403のcache、offline、timestamp、token非永続化方針が既に定義されており、設計変更を必要としなかった。
+        - `src/extension.ts`とruntime composition: T404/T405範囲。
+        - persistent PR review layer、Review Contexts View、command/UI表示: T404/T405範囲。
+        - multi-process lock、generation cleanup、容量上限: T604範囲。
+        - merge、release: 利用者または後続workflowの範囲。
+
+        ## remaining risks
+
+        - offline diff cacheはprivacy要件によりsource本文を持たない。offline UIは取得済みPR metadata、file/hunk座標、進捗用構造を表示できるが、remote source本文そのものをcacheだけから復元しない。
+        - metadataのtitle/stateは最終成功取得時点の値であり、`stale`時はGitHub上の最新状態と異なる可能性がある。resultのtimestamp/freshnessをT405 UIが明示する必要がある。
+        - cache generationのcleanup、容量制限、複数VS Code process間lockはT604に残る。T403 adapterはimmutable generationとpointer-last publicationを提供する。
+        - force-pushなどでhead SHAが変わった場合は別identityとなり、旧revision cacheを新revisionへ代用しない。
+        - runtime compositionはT404/T405で実装されるまで現在のVSIX UIへ接続されない。
+
+        ## 次のaction
+
+        - PR #44を通常reviewへ渡す。
+        - reviewerはPR current HEADを固定し、そのSHAに一致するCI runだけを使用する。
+        - T404/T405は本contractの`offline-cache`、`freshness`、`updatedAt`、`expiresAt`をUI/persistent layerへ接続する。
+        - mergeは利用者が行う。
+      evidence_sources:
+        - User and RevMem project instructions.
+        - tasks/tasks-status.md T403 and completion condition.
+        - doc/design/vscode-review-range-tracker-design.md rev4.
+        - GitHub Actions runs 30944663833, 30945163506, 30946152467, and 30946449372.
+        - Artifacts 8906569405 and 8906772323.
+        - Repository diff and commits through 6f00bca056cd871a496b299265fc2988af180feb.
+      target_identity:
+        branch: task/t403-github-cache
+        base_ref: main
+        current_head: 7054a1bd6b4dabe839f145feeaf001dbd4ce09de
+        reviewed_implementation_head: null
+      severity_records: []
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t403-implementation-20260805050632.md
+        report_attestation_head: null
+      concise_pr_comment_body: null
+      unresolved_discrepancies: []
+extensions:
+  - namespace: chatgpt.transport_state
+    payload:
+      target_head_before_packet_commit: 6f00bca056cd871a496b299265fc2988af180feb
+      matching_run_before_packet_commit: 30946449372
+      packet_commit_sha: unknown
+      packet_commit_matching_ci: unknown
+      instruction: After this packet is persisted, verify the PR current HEAD and only its matching workflow run; record the transport SHA and run in the PR body and concise PR comment.
+  - namespace: revmem.task_tracking
+    payload:
+      status_files_updated: false
+      reason: tasks/tasks-status.md requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager, and none was present in the uploaded worker package.
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Perform a normal review of PR #44 at an immutable current HEAD after the handoff transport commit and its exact-head CI are recorded.
+  instructions:
+    - Fetch PR #44 current HEAD and freeze that full SHA as reviewed_head.
+    - Use only a CI run whose head SHA exactly equals that reviewed_head; do not substitute run 30946449372 or another earlier SHA.
+    - Read the detailed implementation report and this handoff before reviewing.
+    - Review all changed implementation, tests, public contracts, CI wiring, persistence safety, and T402/T404/T405/T604 boundaries.
+    - Persist the detailed review report and review handoff under repository rules, and post a concise PR comment.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #44
+    - reports/issue-1-t403-implementation-20260805050632.md
+    - reports/issue-1-t403-handoff-20260805050632.yaml
+    - Initial Red artifact 8906569405
+    - Focused fixture artifact 8906772323
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t403-handoff-20260805050632.yaml
+  packet_url: https://github.com/ssaattww/RevMem/blob/task/t403-github-cache/reports/issue-1-t403-handoff-20260805050632.yaml
+  transport_note: This packet targets the fully validated report HEAD. Creating the packet necessarily adds one transport-only commit; the wrapper must validate that final PR HEAD separately and record it externally before handoff completion.
