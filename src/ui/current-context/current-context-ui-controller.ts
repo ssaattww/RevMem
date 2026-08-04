@@ -55,6 +55,15 @@ const validateProgress = (progress: CurrentContextProgress): void => {
   }
 };
 
+const validateContext = (context: CurrentContextDescriptor): void => {
+  if (context.label.length === 0) {
+    throw new Error("context label must not be empty");
+  }
+  if (context.kind === "pull-request" && !context.label.startsWith("#")) {
+    throw new Error("pull-request labels must start with #");
+  }
+};
+
 const formatPercent = (progress: CurrentContextProgress | undefined): string | undefined => {
   if (progress === undefined) {
     return undefined;
@@ -64,6 +73,7 @@ const formatPercent = (progress: CurrentContextProgress | undefined): string | u
 };
 
 const projectContextLabel = (context: CurrentContextDescriptor): string => {
+  validateContext(context);
   switch (context.kind) {
     case "pull-request":
       return context.label;
@@ -75,6 +85,7 @@ const projectContextLabel = (context: CurrentContextDescriptor): string => {
 };
 
 const projectStatusPrefix = (context: CurrentContextDescriptor): string => {
+  validateContext(context);
   switch (context.kind) {
     case "pull-request":
       return `$(git-pull-request) ${context.label}`;
@@ -106,6 +117,8 @@ const createTooltip = (snapshot: CurrentContextUiSnapshot): string => {
 };
 
 export class CurrentContextUiController {
+  private generation = 0;
+
   public constructor(
     private readonly host: CurrentContextUiHost,
     private readonly actions?: CurrentContextUiActions
@@ -129,8 +142,9 @@ export class CurrentContextUiController {
     if (this.actions === undefined) {
       return;
     }
+    const generation = ++this.generation;
     const snapshot = await this.actions.recompute();
-    if (snapshot !== undefined) {
+    if (snapshot !== undefined && generation === this.generation) {
       this.update(snapshot);
     }
   }
@@ -139,8 +153,9 @@ export class CurrentContextUiController {
     if (this.actions === undefined) {
       return;
     }
+    const generation = ++this.generation;
     const selection = await this.actions.selectContext();
-    if (selection === undefined) {
+    if (selection === undefined || generation !== this.generation) {
       return;
     }
     await this.refresh();
