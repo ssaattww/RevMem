@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 
 import {
   CurrentContextUiController,
-  type CurrentContextDescriptor,
   type CurrentContextTreeItem,
   type CurrentContextUiSnapshot
 } from "./current-context-ui-controller";
@@ -13,7 +12,7 @@ export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
   recompute(): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(): Promise<CurrentContextDescriptor | undefined>;
+  selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
 }
 
 class CurrentContextTreeDataProvider
@@ -77,13 +76,15 @@ export const registerCurrentContextRuntime = (
     await refreshDependents();
   };
 
+  const select = async (): Promise<void> => {
+    await controller.selectContext();
+    await refreshDependents();
+  };
+
   const registrations: vscode.Disposable[] = [
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
     vscode.commands.registerCommand(REFRESH_CONTEXT_COMMAND_ID, refresh),
-    vscode.commands.registerCommand(SELECT_CONTEXT_COMMAND_ID, async () => {
-      await controller.selectContext();
-      await refreshDependents();
-    }),
+    vscode.commands.registerCommand(SELECT_CONTEXT_COMMAND_ID, select),
     vscode.window.onDidChangeActiveTextEditor(() => {
       void refresh();
     }),
