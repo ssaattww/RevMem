@@ -20,11 +20,23 @@ import type {
   PullRequestDiffAcquisitionPort
 } from "./contracts";
 
-const allowsOfflineFallback = (attempts: readonly PullRequestDiffAcquisitionAttempt[]): boolean =>
-  attempts.some(attempt =>
-    (attempt.source === "github-patch" || attempt.source === "github-content") &&
-    (attempt.reason === "rate-limit" || attempt.reason === "network")
+const isOfflineFailure = (attempt: PullRequestDiffAcquisitionAttempt): boolean =>
+  attempt.reason === "rate-limit" || attempt.reason === "network";
+
+const isPatchFallbackPrecursor = (attempt: PullRequestDiffAcquisitionAttempt): boolean =>
+  attempt.source === "github-patch" &&
+  (attempt.reason === "missing-patch" || attempt.reason === "incomplete-patch");
+
+const allowsOfflineFallback = (attempts: readonly PullRequestDiffAcquisitionAttempt[]): boolean => {
+  const remoteAttempts = attempts.filter(attempt => attempt.source !== "local-git");
+  const terminal = remoteAttempts[remoteAttempts.length - 1];
+  if (terminal === undefined || !isOfflineFailure(terminal)) return false;
+
+  return remoteAttempts.every((attempt, index) =>
+    isOfflineFailure(attempt) ||
+    (index < remoteAttempts.length - 1 && isPatchFallbackPrecursor(attempt))
   );
+};
 
 const requireClockMilliseconds = (now: () => Date): number => {
   const date = now();
