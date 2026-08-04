@@ -36,8 +36,8 @@ implements vscode.TreeDataProvider<CurrentContextTreeItem> {
     return treeItem;
   }
 
-  public getChildren(): readonly CurrentContextTreeItem[] {
-    return this.current === undefined ? [] : [this.current];
+  public getChildren(): CurrentContextTreeItem[] {
+    return this.current === undefined ? [] : [{ ...this.current }];
   }
 
   public dispose(): void {
