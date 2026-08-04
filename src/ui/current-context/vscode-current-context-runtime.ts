@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { CurrentContextRuntimeCoordinator } from "./current-context-runtime-coordinator";
 import {
   CurrentContextUiController,
   type CurrentContextTreeItem,
@@ -70,34 +71,33 @@ export const registerCurrentContextRuntime = (
     },
     source
   );
-
-  const refresh = async (): Promise<void> => {
-    await controller.refresh();
-    await refreshDependents();
-  };
-
-  const select = async (): Promise<void> => {
-    await controller.selectContext();
-    await refreshDependents();
-  };
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    refreshDependents
+  });
 
   const registrations: vscode.Disposable[] = [
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
-    vscode.commands.registerCommand(REFRESH_CONTEXT_COMMAND_ID, refresh),
-    vscode.commands.registerCommand(SELECT_CONTEXT_COMMAND_ID, select),
+    vscode.commands.registerCommand(
+      REFRESH_CONTEXT_COMMAND_ID,
+      () => coordinator.refresh()
+    ),
+    vscode.commands.registerCommand(
+      SELECT_CONTEXT_COMMAND_ID,
+      () => coordinator.selectContext()
+    ),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      void refresh();
+      void coordinator.refresh();
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  void refresh();
+  void coordinator.refresh();
 
   return {
     controller,
-    refresh,
+    refresh: () => coordinator.refresh(),
     dispose: () => {
       for (const registration of registrations) {
         registration.dispose();
