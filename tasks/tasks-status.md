@@ -44,11 +44,11 @@
 - T002修正レポート: `reports/issue-1-t002-rework-20260723112951.md`
 - T002再レビューレポート: `reports/issue-1-t002-rereview-20260723113759.md`
 - T002追加修正レポート: `reports/issue-1-t002-rework-2-20260723114207.md`
-- T002最終レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
+- T002最終再レビューレポート: `reports/issue-1-t002-rereview-2-20260723114440.md`
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
 - T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
 - T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
-- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T003最終再レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
 - T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
 - T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
 - T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
