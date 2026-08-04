@@ -40,6 +40,20 @@ export interface CurrentContextUiActions {
   selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
 }
 
+export const currentContextSelectionKey = (
+  snapshot: CurrentContextUiSnapshot
+): string => {
+  const { context } = snapshot;
+  switch (context.kind) {
+    case "branch":
+      return [context.kind, context.detail ?? "", context.label].join("\0");
+    case "workspace":
+      return [context.kind, context.detail ?? "", context.label].join("\0");
+    case "pull-request":
+      return [context.kind, context.detail ?? "", context.label].join("\0");
+  }
+};
+
 const validateProgress = (progress: CurrentContextProgress): void => {
   if (!Number.isInteger(progress.reviewedLineCount) || progress.reviewedLineCount < 0) {
     throw new Error("reviewedLineCount must be a non-negative integer");
