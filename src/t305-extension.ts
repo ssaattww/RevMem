@@ -9,6 +9,7 @@ import {
   deactivate as deactivateBaseExtension
 } from "./extension";
 import {
+  currentContextSelectionKey,
   type CurrentContextDescriptor,
   type CurrentContextUiSnapshot
 } from "./ui/current-context/index";
@@ -31,13 +32,6 @@ const branchDescriptor = (
   headRevision: repository.head
 });
 
-const snapshotKey = (snapshot: CurrentContextUiSnapshot): string => [
-  snapshot.context.kind,
-  snapshot.context.label,
-  snapshot.context.detail ?? "",
-  snapshot.context.headRevision ?? ""
-].join("\0");
-
 /** T305 composition root that adds context UI while retaining the existing extension runtime. */
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
@@ -56,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
         },
         progress: undefined
       };
-      contexts.set(snapshotKey(snapshot), snapshot);
+      contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
 
     for (const editor of vscode.window.visibleTextEditors) {
@@ -69,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
           context: branchDescriptor(inspection.repository),
           progress: undefined
         };
-        contexts.set(snapshotKey(snapshot), snapshot);
+        contexts.set(currentContextSelectionKey(snapshot), snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const snapshot: CurrentContextUiSnapshot = {
@@ -80,7 +74,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
           },
           progress: undefined
         };
-        contexts.set(snapshotKey(snapshot), snapshot);
+        contexts.set(currentContextSelectionKey(snapshot), snapshot);
       }
     }
 
@@ -94,7 +88,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     const candidates = await enumerateContexts();
     const selected = selectedKey === undefined
       ? undefined
-      : candidates.find((candidate) => snapshotKey(candidate) === selectedKey);
+      : candidates.find((candidate) => currentContextSelectionKey(candidate) === selectedKey);
     if (selected !== undefined) {
       return selected;
     }
@@ -145,7 +139,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
         if (selected === undefined) {
           return undefined;
         }
-        selectedKey = snapshotKey(selected.snapshot);
+        selectedKey = currentContextSelectionKey(selected.snapshot);
         return selected.snapshot;
       }
     },
