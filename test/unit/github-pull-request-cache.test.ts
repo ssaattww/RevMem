@@ -278,7 +278,11 @@ test("filesystem cache publishes metadata and redacted diff through one generati
     const entry = await inMemory.read(request);
     assert.ok(entry);
 
-    await storage.write(entry);
+    await assert.rejects(
+      storage.write({ ...entry, snapshot }),
+      /source-redacted/u
+    );
+    await storage.write({ ...entry, token: "test-token" } as GitHubPullRequestCacheEntry);
     const restored = await storage.read(request);
 
     assert.deepEqual(restored, entry);
