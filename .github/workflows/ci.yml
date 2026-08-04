@@ -46,6 +46,10 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: T403 GitHub cache tests
+        run: |
+          set -o pipefail
+          node --test test-dist/test/unit/github-pull-request-cache.test.js 2>&1 | tee test-output/ci/test-t403.log
       - name: T304 PR progress tree tests
         run: |
           set -o pipefail
