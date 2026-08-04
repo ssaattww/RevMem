@@ -1,5 +1,6 @@
 export {
   CurrentContextUiController,
+  currentContextSelectionKey,
   type CurrentContextDescriptor,
   type CurrentContextKind,
   type CurrentContextProgress,
