@@ -23,15 +23,23 @@ Lを超える見込みになった場合は再分解する。
 
 ## フェーズ一覧
 
-| Phase | 状態 | マイルストーン | タスク | 依存Phase | 終了条件 |
+| Phase | 状態 | マイルストーン | タスク | 依存Phase | 現在の終了状況 |
 | --- | --- | --- | --- | --- | --- |
-| P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、Extension Hostの最小経路がローカルとCIで動く |
-| P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorで確認・解除・装飾・永続化・restart復元・VSIX配布が動く |
-| P2 | 進行中 | 編集・Git差分追従 | T201〜T207 | P1 | edit、commit、branch、renameに追従し、変更部分だけ未確認になる |
-| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | original/modified両side、変更行進捗、除外・未確認file一覧が動く |
-| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | PR検出、取得fallback、offline cache、複数PR管理が動く |
-| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501のGlobal同期とlossless履歴証跡は独立review全4 findingをclosed、exact-head CI成功済み。T502の表示優先順位は独立最終reviewの5 findingを修正しnormal fix verification待ちである。T504はPR #39で独立reviewの3 findingを修正・検証済みであり、normal fix verificationとfresh independent final reviewを待つ。非空行集計、除外設定を進める |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はPR #33でpersistent snapshot、最新generation integrity、EOL mapping、Extension Host restartを実装し、独立review全6 findingをclosed、exact-head CI成功済み。履歴改変、移行、排他、障害、性能を含む残りの受け入れ条件を進める |
+| P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、mock GitHub、Extension Host、architecture gate、失敗診断artifactがCIで動作する |
+| P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
+| P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
+| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T304はmainへ統合済み。T305のActivity Bar・Current Context・Status Barと、T306のExtension Host統合試験が未着手 |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401のPR resolverとT402の3段差分取得fallbackはmainへ統合済み。cache、永続PR layer、UI、障害統合試験が未着手 |
+| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
+
+## 現在位置
+
+- current main: `cb75305898627b3e69d248b931afba4a85fd8ef8`
+- 直近統合: T402 PR差分取得の3段フォールバック（PR #40）
+- 実装中タスク: なし
+- 依存解消済みの着手候補: T305、T403
+- T505はT305完了後、T602はT403完了後に着手可能
 
 ## P0 開発基盤
 
@@ -69,13 +77,15 @@ Lを超える見込みになった場合は再分解する。
 
 編集とGit revision変更に対して、未変更部分を維持しつつ変更部分だけを無効化する。
 
-### 現在の進捗
+### 完了内容
 
-- T201 Range Mapping Engineは最新`main`上で統合・検証済み
-- T202 Local Git Adapterは最新`main`上で統合・検証済み
-- T203 diff parserとrevision間interval mappingは最新`main`上で統合・検証・最終再レビュー済み
-- T204 rename・directory move・deleteのfile state適用はPR #15反映後の最新`main`上で統合・検証・Sol/high R13最終再レビュー済み
-- 次の実装対象はT205 branch context resolver・Git状態監視
+- Range Mapping Engine
+- Local Git Adapter
+- zero-context diff parserとrevision間interval mapping
+- rename、directory move、copy/add/deleteの保守的file-state transition
+- branch・detached context resolverとGit状態監視
+- append-only JSON Lines履歴
+- edit、commit、branch切替、rename、delete、restartのtemporary Git統合試験
 
 ### 終了チェックポイント
 
@@ -94,26 +104,23 @@ Lを超える見込みになった場合は再分解する。
 
 ### 現在の進捗
 
-- T300はcurrent main `7d11243634ae47258dad92b84a548185d64b6bbd`を統合し、R5/R6 review follow-upとSol/high R7最終再レビューを完了した
-- R5のeffective設定上書き、binary/`.git`常時除外境界、単一/二重backslash glob構文に加え、R6のoptions省略default、replay-safe canonical snapshot、`.git` semantic no-op、公開contract documentationをTDDで修正・検証した
-- R6ではpolicy/service direct利用、controller initial read、literal snapshot再投入、`.git`追加/削除、overlap reason通知の回帰を追加し、T300 focused 31/31、T203 focused 15/15、build、lint、contract typecheck、architecture、Extension Hostを確認した
-- T301はPR #15/#24反映後のcurrent mainへ統合し、identity-bound snapshot、complete diff・state validation、除外後のPR/file進捗、20件の累積回帰test、設計6.13/8.6同期、Sol/high R10最終再レビューを完了した
-- T302はcontext、file、filesystem semantics、side、immutable revisionを復元する仮想URIとcontent provider、Git missing/fatal分離、exact path、raw blob、fatal UTF-8、4 MiB超、actual `vscode.Uri`、public contractを検証済みである
-- T302はmetadata/blob共通Node runtime、Windows予約名、明示blob boundary、統一timeout error、design test discovery、architecture positive/negative CI gate、partial diagnosticを保持するblob timeout lifecycleをTDDで検証し、R5 follow-upと最終再レビューを完了した
-- T302はPR #15/#24/#25反映後のcurrent mainへ統合し、設計rev4へのT204/T301契約統合、公開surface JSDoc監査、Sol/high R7最終再レビューを完了した
-- T303はPR #30でimplementation・通常review evidenceを復元し、timestamp-only no-op、whole-file回帰、canonical original diff ID、public JSDoc、consumer contract fixtureを修正した。同じ独立reviewerのclosure限定R2で全5 findingをclosed、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した
-- T304はPR #38でTree projectionとT302/T303連携を実装し、独立final reviewの`T304-IFR-P1`〜`P4`をclosureした。node/targetの深い不変化とdetached host target、public union migrationのbreaking-change記録とconsumer fixture、tracking、report reservationを修正し、PR #38はcurrent main `0fdf87784355dce94fd4f1515a9e62d5257ecb75`へ統合済みである
-- T204、T301、T302の完了後も、全体の次の実装タスクはP2のT205とする
+- T300 共通除外policy: 完了
+- T301 PR差分ベース進捗calculator: 完了
+- T302 仮想diff URIとimmutable content provider: 完了
+- T303 diff editor両側の確認・解除: 完了
+- T304 PR Progress Tree provider: 完了
+- T305 Activity Bar、Current Context View、Status Bar、refresh/select context: 未着手
+- T306 diff操作から進捗UIまでのExtension Host試験: 未着手
 
 ### 終了チェックポイント
 
 - 仮想URIからcontext、file、filesystem semantics、side、immutable revisionを復元できる
 - Local Git metadataとblobが同じruntime executable・timeoutを使用する
 - process timeout時のpartial diagnosticと終了lifecycleを保持する
-- design/architecture contractが通常CIで実行される
 - original削除行とmodified追加行を確認・解除できる
 - 置換を削除と追加として数え、GlobalをPR進捗へ混入させない
 - 未確認、完了、除外、rename-only、binary/encoding対象外を分類表示する
+- Activity Bar、Tree View、Status Barをruntimeへ接続する
 
 ## P4 GitHub PR連携
 
@@ -123,8 +130,12 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 
 ### 現在の進捗
 
-- T401はPR #31で実装・通常reviewを完了した。独立reviewの`T401-IFR2-P1`〜`P7`に対して、configured Enterprise authorityへのtoken binding、T202 canonical remote identity共有、malformed/cyclic paginationのunavailable分類、network/API/shapeからbranch fallbackまでの受入matrix、public barrel consumer fixture、tracking同期を一括で実装した。同じ独立reviewerのclosure限定確認で全7件addressed、openなし、`pass_with_held`、exact-head CI成功を確認し、squash merge準備を完了した。
-- T402はPR #40で実装・通常review・2回のfix verificationを完了後、独立final reviewの`T402-IFR-P1`〜`P3`を受けた。今回のfollow-upでlocal Gitのtextconv無効化、patchless zero-statのadded/deleted/renamed/copied binaryをimmutable contentへ送る分類、T402/P4追跡同期を一括実装した。`reports/issue-1-t402-independent-final-review-20260803062300.md`と`reports/issue-1-t402-independent-review-followup-20260803091500.md`を根拠に、通常fix verification、exact-head CI、fresh independent final reviewを待つ。
+- T401 GitHub PR context resolver: 完了・main統合済み
+- T402 local Git、PR files patch、base/head contentの3段差分取得fallback: 完了・main統合済み
+- T403 GitHub metadata・diff cacheとoffline読込: 未着手
+- T404 永続PR context layer: 未着手
+- T405 Review Contexts ViewとPR管理UI: 未着手
+- T406 GitHub障害・複数PR・closed PR統合試験: 未着手
 
 ### 終了チェックポイント
 
@@ -140,20 +151,34 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 
 context確認状態とGlobalを同期し、PR進捗と分離した理解率を提供する。
 
+### 現在の進捗
+
+- T501 Repository Global State repository: 完了・main統合済み
+- T502 Global mappingと表示優先順位: 完了・main統合済み
+- T503 repository file列挙とGlobal集計候補: 完了・main統合済み
+- T504 Global理解率の再計算基盤: 完了・main統合済み
+- T505 Global Understanding View、Status Bar、Global layer設定UI: 未着手
+- T506 複数contextとGlobal集計の統合・Extension Host試験: 未着手
+
 ### 終了チェックポイント
 
 - 確認・解除がcontextとGlobalへatomicに反映される
 - 現在PR未確認変更をGlobalだけで確認済みにしない
-- binary、gitignore、生成物、user globを共通policyで除外する
-- malformed UTF-8を`invalid-encoding`としてGlobal集計対象外にする
+- binary、invalid encoding、gitignore、生成物、user globを共通policyで除外する
 - current valid non-empty lineだけで理解率を計算する
 - 大規模集計をchunk化する
+- PR進捗とGlobal理解率を別UIとして表示する
 
 ## P6 Gitなし対応と堅牢化
 
 ### 目的
 
 fallback、履歴改変、storage障害、並行実行、大規模dataを含む初期版の受け入れ条件を閉じる。
+
+### 現在の進捗
+
+- T601 圧縮snapshotと非Git行追従: 完了・main統合済み
+- T602〜T608: 未着手
 
 ### 終了チェックポイント
 
