@@ -46,30 +46,50 @@ test("pull request, branch, and workspace labels are projected consistently", ()
   assert.equal(host.statusText, "$(folder) sample-workspace");
 });
 
-test("refresh and select commands recompute one snapshot and synchronize tree and status", async () => {
+test("select applies the authoritative selected snapshot", async () => {
   const events: string[] = [];
-  const snapshots: CurrentContextUiSnapshot[] = [
-    pullRequestSnapshot,
-    {
-      context: { kind: "branch", label: "main" },
-      progress: { reviewedLineCount: 8, totalLineCount: 10, progress: 0.8 }
-    }
-  ];
+  const selected: CurrentContextUiSnapshot = {
+    context: { kind: "branch", label: "selected", detail: "/repo" },
+    progress: { reviewedLineCount: 8, totalLineCount: 10, progress: 0.8 }
+  };
   const host = createHost(events);
   const controller = new CurrentContextUiController(host, {
-    recompute: async () => snapshots.shift(),
+    recompute: async () => pullRequestSnapshot,
     selectContext: async () => {
       events.push("select");
-      return { kind: "branch", label: "selected" };
+      return selected;
     }
   });
 
-  await controller.refresh();
-  assert.deepEqual(events, ["tree:PR #42", "status:$(git-pull-request) PR #42: 50%"]);
-
-  events.length = 0;
   await controller.selectContext();
-  assert.deepEqual(events, ["select", "tree:Branch: main", "status:$(git-branch) main: 80%"]);
+
+  assert.deepEqual(events, [
+    "select",
+    "tree:Branch: selected",
+    "status:$(git-branch) selected: 80%"
+  ]);
+});
+
+test("refresh ignores stale asynchronous snapshots", async () => {
+  let resolveFirst!: (snapshot: CurrentContextUiSnapshot) => void;
+  const first = new Promise<CurrentContextUiSnapshot>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const host = createHost();
+  let calls = 0;
+  const controller = new CurrentContextUiController(host, {
+    recompute: async () => ++calls === 1
+      ? first
+      : { context: { kind: "branch", label: "new" }, progress: undefined },
+    selectContext: async () => undefined
+  });
+
+  const staleRefresh = controller.refresh();
+  await controller.refresh();
+  resolveFirst({ context: { kind: "branch", label: "old" }, progress: undefined });
+  await staleRefresh;
+
+  assert.equal(host.contextLabel, "Branch: new");
 });
 
 const createHost = (events: string[] = []): CurrentContextUiHost & {
