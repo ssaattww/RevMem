@@ -48,7 +48,7 @@
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
 - T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
 - T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
-- T003最終再レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
 - T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
 - T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
 - T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
@@ -252,6 +252,7 @@
 | T107 | 完了 | M | activation、deactivation、保存デバウンス、確認直後の即時保存、再起動復元を結ぶExtension Host試験を追加する | T101〜T106 | 再起動後に確認・解除状態と装飾が復元され、未保存の確認操作を成功表示しない。AC-23のローカル部分を満たす |
 | T108 | 完了 | S | 初回`main`マージ時に`0.0.1-pre`のGitHub prereleaseを作成して同版のVSIXをRelease assetとして添付し、現時点で利用できる機能、インストール方法、使い方を日本語READMEへ記載する | T001、T107 | Release workflowが再現可能な依存導入、検証、`review-range-tracker-0.0.1-pre.vsix`生成・冪等な添付を行い、ローカルpackage検証が成功し、READMEの説明がmanifestと実装に一致し、専用レビューと進捗同期を通過する |
 | T109 | 完了 | S | SSCのRelease workflowを基準に、`release: published`、`push: main`、version指定の`workflow_dispatch`、main更新ごとの動的pre-release version解決を移植し、NuGet配布部分だけをVSIXのGitHub Release assetへ置換する | T108 | 既存最新`0.0.1-pre`の次を`0.0.2-pre`とし、過去の未配布commitは補填せず、以後の各main pushでpatchを1ずつ進めたpre-releaseと同版VSIXを作成する。契約test、package検証、専用review、進捗同期を通過する |
+
 ## P2 編集・Git差分追従
 
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
