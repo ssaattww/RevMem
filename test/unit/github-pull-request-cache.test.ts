@@ -192,7 +192,14 @@ test("cache entries are bound to the exact context, repository, PR, base, and he
     snapshot: {
       ...snapshot,
       headSha: OTHER_HEAD_SHA,
-      originalDiffId: `${BASE_SHA}..${OTHER_HEAD_SHA}`
+      originalDiffId: `${BASE_SHA}..${OTHER_HEAD_SHA}`,
+      files: snapshot.files.map(file => ({
+        ...file,
+        hunks: file.hunks.map(hunk => ({
+          ...hunk,
+          lines: hunk.lines.map(line => ({ ...line, text: "" }))
+        }))
+      }))
     },
     updatedAt: "1970-01-01T00:00:01.000Z",
     expiresAt: "1970-01-01T00:01:01.000Z"
