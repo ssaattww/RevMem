@@ -76,7 +76,7 @@ const projectContextLabel = (context: CurrentContextDescriptor): string => {
   validateContext(context);
   switch (context.kind) {
     case "pull-request":
-      return context.label;
+      return `PR ${context.label}`;
     case "branch":
       return `Branch: ${context.label}`;
     case "workspace":
@@ -88,7 +88,7 @@ const projectStatusPrefix = (context: CurrentContextDescriptor): string => {
   validateContext(context);
   switch (context.kind) {
     case "pull-request":
-      return `$(git-pull-request) ${context.label}`;
+      return `$(git-pull-request) PR ${context.label}`;
     case "branch":
       return `$(git-branch) ${context.label}`;
     case "workspace":
