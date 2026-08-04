@@ -9,10 +9,12 @@ import {
   deactivate as deactivateBaseExtension
 } from "./extension";
 import {
-  registerCurrentContextRuntime,
   type CurrentContextDescriptor,
   type CurrentContextUiSnapshot
 } from "./ui/current-context/index";
+import {
+  registerCurrentContextRuntime
+} from "./ui/current-context/vscode-current-context-runtime";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
