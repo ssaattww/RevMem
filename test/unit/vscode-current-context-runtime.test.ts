@@ -32,12 +32,12 @@ test("T305 contributes the Review Range activity container, views, and commands"
 });
 
 test("T305 composition root registers context runtime and synchronizes dependent decorations", async () => {
-  const extension = await readUtf8("src/extension.ts");
+  const extension = await readUtf8("src/t305-extension.ts");
   const runtime = await readUtf8("src/ui/current-context/vscode-current-context-runtime.ts");
 
   assert.match(extension, /registerCurrentContextRuntime\(/u);
-  assert.match(extension, /documentSessionProvider\.loadForDecoration/u);
-  assert.match(extension, /decorationController\.refreshVisibleEditors\(\)/u);
+  assert.match(extension, /createNodeLocalGitAdapter\(\)/u);
+  assert.match(extension, /refreshVisibleEditorDecorations/u);
   assert.match(runtime, /registerTreeDataProvider\(CURRENT_CONTEXT_VIEW_ID/u);
   assert.match(runtime, /registerCommand\(REFRESH_CONTEXT_COMMAND_ID/u);
   assert.match(runtime, /registerCommand\(SELECT_CONTEXT_COMMAND_ID/u);
