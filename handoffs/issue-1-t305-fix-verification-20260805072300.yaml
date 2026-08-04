@@ -1,0 +1,152 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-05T07:23:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #42
+task_id: T305
+branch: feature/t305-context-ui
+base_ref: main
+target:
+  previous_review_head: 46c74b326bb8fecb1ffcc8e71eb98e715610a3da
+  reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+  commit_range: 46c74b326bb8fecb1ffcc8e71eb98e715610a3da..b1ef13ef2eb28e50264840de48079a30d52d6911
+review:
+  mode: fix_verification
+  reviewer:
+    identity: current ChatGPT T305 normal review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: current ChatGPT T305 normal review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Same chat performed the Skill-compliant initial review.
+        - Uploaded chatgpt-worker-skills.zip was re-read before fix verification.
+  reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+  verdict: fail
+  addressed_findings:
+    - id: T305-R1-001
+      severity: high
+      source_reviewed_head: d80145a885b04785193564a2480ced075405c989
+      disposition: addressed
+      evidence: Candidate enumeration, authoritative selectedKey, direct selected snapshot application, and dependent refresh coordination are present.
+    - id: T305-R1-003
+      severity: medium
+      source_reviewed_head: d80145a885b04785193564a2480ced075405c989
+      disposition: addressed
+      evidence: Behavioral tests cover selected snapshot application, dependent refresh order, and stale asynchronous refresh suppression.
+    - id: T305-R1-004
+      severity: medium
+      source_reviewed_head: d80145a885b04785193564a2480ced075405c989
+      disposition: unresolved
+      evidence: tasks/tasks-status.md still reports PR #39 T504 as current and no approved progress-management Skill is available in the supplied ZIP.
+  findings:
+    - id: T305-R1-004
+      severity: medium
+      origin: introduced_by_change
+      location: tasks/tasks-status.md
+      description: Authoritative task tracking remains unsynchronized with T305 and PR #42.
+      impact: Later workers receive stale current-task and branch state.
+      evidence: Reviewed HEAD still identifies PR #39 T504 and task/t504-global-understanding-progress.
+      required_action: Use an authorized progress-management Skill to update only the T305 tracking scope.
+    - id: T305-R2-001
+      severity: medium
+      origin: introduced_by_fix
+      location: src/t305-extension.ts snapshotKey, selectedKey and recompute
+      description: Branch selection identity includes the moving headRevision.
+      impact: A commit on the selected branch changes its key and silently clears the explicit selection during refresh.
+      evidence: snapshotKey joins kind, label, detail and headRevision; recompute falls back when the stored key no longer matches current candidates.
+      required_action: Use stable repository and full branch-ref identity without HEAD SHA, and add a Red behavioral test for selection persistence across branch HEAD updates.
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T305-R1-004 and T305-R2-001
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Explicit branch selection is lost after HEAD update.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: Fix diff is limited to T305 findings and review artifacts.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: Selection source, controller, coordinator, VS Code runtime, and tests inspected.
+    - criterion: API data configuration workflow and compatibility effects
+      disposition: checked_finding
+      evidence: Moving revision is used as selection identity.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Failure run 30954986258 produced diagnostic artifact 8910645692.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No secret or credential handling changes.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: No sibling-case test for selection persistence across branch HEAD change.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30955285996 matches b1ef13ef2eb28e50264840de48079a30d52d6911 and succeeded.
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: T305-R1-004 remains unresolved.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: Moving state in the identity creates unstable selection behavior.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30955285996
+  head_sha: b1ef13ef2eb28e50264840de48079a30d52d6911
+  conclusion: success
+  artifacts:
+    - id: 8910645692
+      name: diagnostic artifact
+      purpose: Investigate unit-test wiring failure in run 30954986258.
+report:
+  report_type: verification_report
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t305-fix-verification-20260805072300.md
+  reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+held:
+  - item: Manual VS Code UI verification
+    reason: Connector-centered review environment
+    owner: implementation owner
+    remaining_risk: Environment-specific Quick Pick or multi-root behavior may remain.
+    verdict_impact: none
+  - item: tasks/tasks-status.md update
+    reason: Required progress-management Skill is not present in supplied ZIP.
+    owner: user or authorized progress-management worker
+    remaining_risk: Authoritative tracking remains stale.
+    verdict_impact: required finding T305-R1-004 remains open
+unexplored:
+  - area: Complete successful CI stdout and stderr
+    blocker: Run identity and conclusion were available; all successful logs were not independently reviewed.
+    remaining_risk: Detailed step output was not inspected.
+    verdict_impact: none
+remaining_risks:
+  - A stable selection identity must distinguish same-named branches in different repositories while excluding moving revisions.
+  - Any implementation change requires a new matching workflow run.
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: Address T305-R1-004 and T305-R2-001, validate the new HEAD, and return to this review chat.
+  instructions:
+    - Add a failing test for preserving selected branch context when only HEAD changes.
+    - Replace moving-revision selection identity with stable repository plus full branch-ref identity.
+    - Use an authorized progress-management Skill to synchronize only T305 tracking scope.
+    - Commit and push in small logical units.
+    - Verify only a workflow run whose head SHA matches the new PR HEAD.
+    - Do not merge.
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t305-fix-verification-20260805072300.yaml
+  packet_url: null
+  transport_note: Detailed report is separate and must be read with this packet.
