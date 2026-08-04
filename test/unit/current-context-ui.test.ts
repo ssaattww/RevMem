@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextUiController,
+  currentContextSelectionKey,
   type CurrentContextUiHost,
   type CurrentContextUiSnapshot
 } from "../../src/ui/current-context/index";
@@ -45,6 +46,29 @@ test("pull request, branch, and workspace labels are projected consistently", ()
   });
   assert.equal(host.contextLabel, "Workspace: sample-workspace");
   assert.equal(host.statusText, "$(folder) sample-workspace");
+});
+
+test("branch selection identity remains stable when HEAD advances", () => {
+  const before: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "feature/t305-context-ui",
+      detail: "/repo",
+      headRevision: "1111111111111111111111111111111111111111"
+    },
+    progress: undefined
+  };
+  const after: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "feature/t305-context-ui",
+      detail: "/repo",
+      headRevision: "2222222222222222222222222222222222222222"
+    },
+    progress: undefined
+  };
+
+  assert.equal(currentContextSelectionKey(before), currentContextSelectionKey(after));
 });
 
 test("select applies the authoritative selected snapshot", async () => {
