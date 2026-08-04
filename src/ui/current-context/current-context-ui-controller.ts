@@ -37,7 +37,7 @@ export interface CurrentContextUiHost {
 
 export interface CurrentContextUiActions {
   recompute(): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(): Promise<CurrentContextDescriptor | undefined>;
+  selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
 }
 
 const validateProgress = (progress: CurrentContextProgress): void => {
@@ -155,9 +155,8 @@ export class CurrentContextUiController {
     }
     const generation = ++this.generation;
     const selection = await this.actions.selectContext();
-    if (selection === undefined || generation !== this.generation) {
-      return;
+    if (selection !== undefined && generation === this.generation) {
+      this.update(selection);
     }
-    await this.refresh();
   }
 }
