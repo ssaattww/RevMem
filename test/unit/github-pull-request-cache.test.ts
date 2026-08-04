@@ -189,6 +189,38 @@ test("network failure uses an unexpired exact cache and marks it fresh", async (
   });
 });
 
+test("patch fallback followed by network failure still uses an exact cache", async () => {
+  const acquisition = new MutableAcquisition();
+  const storage = new InMemoryGitHubPullRequestCacheStorage();
+  await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(1_000)
+  }).acquire(request);
+
+  for (const patchReason of ["missing-patch", "incomplete-patch"] as const) {
+    acquisition.result = {
+      kind: "unavailable",
+      attempts: [
+        { source: "local-git", reason: "missing-revision" },
+        { source: "github-patch", reason: patchReason },
+        { source: "github-content", reason: "network" }
+      ]
+    };
+
+    const result = await new GitHubPullRequestCacheService({
+      acquisition,
+      storage,
+      freshnessMs: 60_000,
+      now: fixedDate(2_000)
+    }).acquire(request);
+
+    assert.equal(result.kind, "acquired", patchReason);
+    assert.equal(result.source, "offline-cache", patchReason);
+  }
+});
+
 test("non-offline API failures do not substitute cached data", async () => {
   const acquisition = new MutableAcquisition();
   const storage = new InMemoryGitHubPullRequestCacheStorage();
