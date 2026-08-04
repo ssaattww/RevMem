@@ -113,7 +113,7 @@ test("live GitHub acquisition stores metadata and a source-redacted diff with ex
   assert.equal(JSON.stringify(stored).includes("source-secret"), false);
 });
 
-test("rate-limit and network failures use an exact cached PR and mark expired data stale", async () => {
+test("rate-limit failure uses an exact cached PR and marks expired data stale", async () => {
   const acquisition = new MutableAcquisition();
   const storage = new InMemoryGitHubPullRequestCacheStorage();
   const initial = new GitHubPullRequestCacheService({
@@ -152,6 +152,41 @@ test("rate-limit and network failures use an exact cached PR and mark expired da
     expiresAt: "1970-01-01T00:01:01.000Z"
   });
   assert.deepEqual(result.attempts, acquisition.result.attempts);
+});
+
+test("network failure uses an unexpired exact cache and marks it fresh", async () => {
+  const acquisition = new MutableAcquisition();
+  const storage = new InMemoryGitHubPullRequestCacheStorage();
+  await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(1_000)
+  }).acquire(request);
+  acquisition.result = {
+    kind: "unavailable",
+    attempts: [
+      { source: "local-git", reason: "missing-revision" },
+      { source: "github-patch", reason: "network" },
+      { source: "github-content", reason: "network" }
+    ]
+  };
+
+  const result = await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(2_000)
+  }).acquire(request);
+
+  assert.equal(result.kind, "acquired");
+  assert.equal(result.source, "offline-cache");
+  assert.deepEqual(result.cache, {
+    origin: "offline",
+    freshness: "fresh",
+    updatedAt: "1970-01-01T00:00:01.000Z",
+    expiresAt: "1970-01-01T00:01:01.000Z"
+  });
 });
 
 test("non-offline API failures do not substitute cached data", async () => {
