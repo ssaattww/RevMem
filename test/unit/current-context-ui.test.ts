@@ -10,7 +10,7 @@ import {
 const pullRequestSnapshot: CurrentContextUiSnapshot = {
   context: {
     kind: "pull-request",
-    label: "PR #42",
+    label: "#42",
     detail: "Improve context UI",
     baseRevision: "1111111111111111111111111111111111111111",
     headRevision: "2222222222222222222222222222222222222222"
