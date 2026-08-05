@@ -17,6 +17,8 @@ export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 export interface CurrentContextRuntimeSource {
   recompute(): Promise<CurrentContextUiSnapshot | undefined>;
   selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
+  acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
+  acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
 
 class CurrentContextTreeDataProvider

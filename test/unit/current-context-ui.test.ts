@@ -262,6 +262,20 @@ test("production candidate selection applies Quick Pick, branch replacement, dis
   assert.deepEqual(quickPickCalls, ["old,fallback"]);
 });
 
+test("a stale candidate resolution cannot clear a newer explicit selection", async () => {
+  const selection = new CurrentContextCandidateSelection();
+  const selected = branchSnapshot("selected", "refs/heads/selected");
+  const fallback = branchSnapshot("fallback", "refs/heads/fallback");
+
+  await selection.select([selected], async (candidates) => candidates[0]);
+  assert.equal(selection.resolve([fallback], fallback), fallback);
+  assert.equal(
+    selection.resolve([selected, fallback], fallback),
+    selected,
+    "A resolution not accepted by the UI must not discard the explicit selection."
+  );
+});
+
 test("production composition keeps successful Quick Pick Tree Status command and decoration runtime identity aligned", async () => {
   const events: string[] = [];
   const candidateSelection = new CurrentContextCandidateSelection();

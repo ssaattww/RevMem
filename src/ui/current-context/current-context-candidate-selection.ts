@@ -22,8 +22,9 @@ export class CurrentContextCandidateSelection {
   }
 
   /**
-   * Returns the still-present explicit selection, otherwise clears its stale
-   * identity before accepting the active-editor or first-candidate fallback.
+   * Returns the still-present explicit selection, otherwise computes an
+   * uncommitted fallback. The controller commits a disappeared selection only
+   * after it accepts the corresponding snapshot.
    */
   public resolve(
     candidates: readonly CurrentContextUiSnapshot[],
@@ -36,8 +37,22 @@ export class CurrentContextCandidateSelection {
       if (selected !== undefined) {
         return selected;
       }
-      this.selectedKey = undefined;
     }
     return fallback ?? candidates[0];
+  }
+
+  /** Commits that an accepted recomputation no longer represents the explicit selection. */
+  public acceptRecomputed(snapshot: CurrentContextUiSnapshot | undefined): void {
+    if (snapshot === undefined || this.selectedKey === undefined) {
+      return;
+    }
+    if (currentContextSelectionKey(snapshot) !== this.selectedKey) {
+      this.selectedKey = undefined;
+    }
+  }
+
+  /** Commits an accepted explicit Quick Pick selection. */
+  public acceptExplicit(snapshot: CurrentContextUiSnapshot): void {
+    this.selectedKey = currentContextSelectionKey(snapshot);
   }
 }

@@ -150,6 +150,8 @@ export function activate(context: vscode.ExtensionContext): unknown {
     context,
     {
       recompute,
+      acceptRecomputed: (snapshot) => selection.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => selection.acceptExplicit(snapshot),
       selectContext: async () => {
         const candidates = await enumerateContexts();
         if (candidates.length === 0) {

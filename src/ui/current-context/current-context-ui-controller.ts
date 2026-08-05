@@ -40,6 +40,8 @@ export interface CurrentContextUiHost {
 export interface CurrentContextUiActions {
   recompute(): Promise<CurrentContextUiSnapshot | undefined>;
   selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
+  acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
+  acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
 
 /** Result of a recomputation, distinguishing an empty current state from a stale request. */
@@ -179,7 +181,11 @@ export class CurrentContextUiController {
     const snapshot = await this.actions.recompute();
     if (snapshot !== undefined && generation === this.generation) {
       this.update(snapshot);
+      this.actions.acceptRecomputed?.(snapshot);
       return { snapshot, stale: false };
+    }
+    if (generation === this.generation) {
+      this.actions.acceptRecomputed?.(undefined);
     }
     return { snapshot: undefined, stale: generation !== this.generation };
   }
@@ -192,6 +198,7 @@ export class CurrentContextUiController {
     const selection = await this.actions.selectContext();
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);
+      this.actions.acceptExplicit?.(selection);
       return selection;
     }
     return undefined;

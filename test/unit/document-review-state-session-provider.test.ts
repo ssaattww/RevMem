@@ -264,6 +264,32 @@ test("a selected branch context rejects a different active editor but preserves 
   assert.equal(state, undefined);
 });
 
+test("a mismatched selected branch command creates no state before identity rejection", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository, new FakeGitInspector(repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "branch", fullRef: "refs/heads/other" }
+  })));
+  const selectedBranch = {
+    kind: "branch" as const,
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\repo",
+    branchRef: "refs/heads/selected"
+  };
+
+  await assert.rejects(
+    provider.open(descriptor({
+      documentUri: { scheme: "file", authority: "", path: "/C:/other/src/example.ts" },
+      documentFsPath: "C:\\other\\src\\example.ts",
+      fileSystemPathSemantics: "windows"
+    }), selectedBranch),
+    /selected branch context/u
+  );
+  assert.equal(repository.saves.length, 0);
+  assert.equal(repository.commits.size, 0);
+  assert.equal(repository.loads.length, 0);
+});
+
 test("a selected detached commit remains identity-bound instead of falling back to another repository", async () => {
   const repository = new FakeRepository();
   const head = "0123456789abcdef0123456789abcdef01234567";

@@ -163,8 +163,11 @@ export class GitContextDocumentReviewStateSessionProvider {
       return this.createDelegate({ kind: "not-repository", gitVersion: "selected-workspace" })
         .open(descriptor);
     }
-    const inspection = await this.inspectAndPrepare(descriptor, true);
+    const inspection = await this.inspect(descriptor);
     this.assertBranchSelection(inspection, selection);
+    if (inspection.kind === "repository") {
+      await this.prepareSnapshot(descriptor, true, toSnapshot(inspection.repository));
+    }
     return this.createDelegate(inspection).open(descriptor);
   }
 
@@ -180,9 +183,12 @@ export class GitContextDocumentReviewStateSessionProvider {
       return this.createDelegate({ kind: "not-repository", gitVersion: "selected-workspace" })
         .loadForDecoration(descriptor);
     }
-    const inspection = await this.inspectAndPrepare(descriptor, false);
+    const inspection = await this.inspect(descriptor);
     if (!this.branchSelectionMatches(inspection, selection)) {
       return undefined;
+    }
+    if (inspection.kind === "repository") {
+      await this.prepareSnapshot(descriptor, false, toSnapshot(inspection.repository));
     }
     return this.createDelegate(inspection).loadForDecoration(descriptor);
   }
@@ -258,8 +264,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean
   ): Promise<LocalGitRepositoryInspection> {
-    const inspectedPath = path.dirname(descriptor.documentFsPath);
-    const inspection = await this.options.gitInspector.inspectRepository(inspectedPath);
+    const inspection = await this.inspect(descriptor);
     if (inspection.kind === "repository") {
       await this.prepareSnapshot(
         descriptor,
@@ -268,6 +273,14 @@ export class GitContextDocumentReviewStateSessionProvider {
       );
     }
     return clone(inspection);
+  }
+
+  private async inspect(
+    descriptor: DocumentEditorReviewDescriptor
+  ): Promise<LocalGitRepositoryInspection> {
+    return this.options.gitInspector.inspectRepository(
+      path.dirname(descriptor.documentFsPath)
+    );
   }
 
   private async prepareSnapshot(
