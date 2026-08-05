@@ -1,0 +1,256 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-06T06:11:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #44
+task_id: T403
+branch: task/t403-github-cache
+base_ref: main
+target:
+  current_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  reviewed_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  commit_range: 9df5c1038a3e29a30713de31947c94c6cbc2a62f..c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t403-fix-verification-r2-20260806061100.md
+      reason: detailed normal-review fix verification report
+    - path_or_operation: reports/issue-1-t403-fix-verification-r2-handoff-20260806061100.yaml
+      reason: lossless handoff
+    - path_or_operation: PR #44 comment/review
+      reason: concise verdict transport
+  forbidden:
+    - path_or_operation: implementation, tests, tracking, design, workflow, configuration
+      reason: reviewer does not implement findings
+    - path_or_operation: merge
+      reason: user performs merge
+scope:
+  - verify T403-R003 closure
+  - confirm previous finding closures remain valid
+  - inspect all newly changed areas
+  - assess exact-head CI and report accuracy
+non_goals:
+  - implement changes
+  - independent final review
+  - merge
+files:
+  changed:
+    - path: tasks/tasks-status.md
+      purpose: revert unrelated T003 history label
+    - path: reports/issue-1-t403-fix-verification-20260805072600.md
+      purpose: previous fix-verification evidence
+    - path: reports/issue-1-t403-fix-verification-handoff-20260805072600.yaml
+      purpose: previous review handoff
+    - path: reports/issue-1-t403-review-followup-r2-20260805074600.md
+      purpose: R003 implementation follow-up evidence
+    - path: reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+      purpose: R003 implementation handoff
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: verify exact one-line revert and no unrelated task changes
+    - path: reports/issue-1-t403-review-followup-r2-20260805074600.md
+      purpose: verify finding identity, severity, scope and CI claims
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: confirm R001 closure remains unchanged
+    - path: test/unit/github-pull-request-cache.test.ts
+      purpose: confirm mixed and sibling regression coverage remains present
+commands:
+  - command: GitHub compare 9df5c1038a3e29a30713de31947c94c6cbc2a62f..c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+    purpose: inspect complete fix range
+    exit_code: 0
+    result: passed
+    head_sha: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+    evidence: five files; tracking diff is one addition and one deletion
+  - command: GitHub Actions CI run 30957228477
+    purpose: exact-head full validation
+    exit_code: 0
+    result: passed
+    head_sha: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+    evidence: all gates succeeded
+tests:
+  - name: T403 focused suite
+    phase: verification
+    result: passed
+    head_sha: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+    evidence: included in exact-head CI run 30957228477
+ci:
+  required: true
+  workflow: CI
+  run_id: 30957228477
+  head_sha: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  commits:
+    - sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+      purpose: revert unrelated T003 history label
+  addressed_findings:
+    - id: T403-R003
+      reviewed_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+      disposition: addressed
+      evidence: tasks tracking one-line revert and exact-head CI success
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - T003 history label was restored without product or other tracking changes
+review:
+  mode: fix_verification
+  reviewed_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  reviewer:
+    identity: current ChatGPT normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: current ChatGPT normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - same chat performed initial normal review and prior fix verification
+  verdict: pass_with_held
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: all source findings remain closed
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: product code unchanged and exact-head full CI passed
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: unrelated T003 label was reverted
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: complete five-file fix range inspected
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_no_finding
+      evidence: no product or workflow change in R003 fix
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: existing diagnostic workflow retained
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: cache redaction and token boundaries unchanged
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: exact-head full CI success
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: run 30957228477 matches reviewed head
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_no_finding
+      evidence: follow-up report matches the actual diff
+    - criterion: regression and maintainability risk
+      disposition: checked_no_finding
+      evidence: scope ownership restored
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: run 30957228477 success for c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T403-R001 high addressed
+    - T403-R002 medium addressed
+    - T403-R003 medium addressed
+    - normal review lifecycle has no remaining required findings
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t403-fix-verification-r2-20260806061100.md
+    - reports/issue-1-t403-fix-verification-r2-handoff-20260806061100.yaml
+  reviewed_head: c23d2c2bda5bf24df712723b7aa1ff3ecad98add
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed closure report and lossless handoff persisted
+findings:
+  - id: T403-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/application/github-pr-cache/github-pull-request-cache-service.ts
+    description: mixed remote failures previously allowed unsafe offline fallback
+    impact: generic API failures could be hidden by stale cache
+    evidence: prior fix verification and unchanged corrected implementation
+    required_action: completed
+  - id: T403-R002
+    severity: medium
+    origin: introduced_by_change
+    location: tasks/tasks-status.md
+    description: tracking previously recorded stale current-head evidence
+    impact: could mislead later current-head CI assessment
+    evidence: tracking now identifies verified product fix HEAD and matching run
+    required_action: completed
+  - id: T403-R003
+    severity: medium
+    origin: introduced_by_fix
+    location: tasks/tasks-status.md T003 report index
+    description: T403 fix range changed unrelated T003 history label
+    impact: violated scope ownership and report accuracy
+    evidence: one-line revert in commit 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    required_action: completed
+held:
+  - item: cache cleanup capacity and multi-process lock
+    reason: T604 ownership
+    owner: T604
+    remaining_risk: cache lifecycle hardening remains pending
+    verdict_impact: non-blocking
+  - item: runtime UI wiring
+    reason: T404 and T405 ownership
+    owner: T404/T405
+    remaining_risk: cache is not yet exposed through final UI
+    verdict_impact: non-blocking
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: report attestation
+    reason: normal fix verification, not independent final review
+remaining_risks:
+  - held work remains assigned to T404 T405 and T604
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: perform a fresh independent final review after freezing the implementation head
+  instructions:
+    - use a fresh chat that did not implement or serve as normal reviewer
+    - freeze the implementation head after all non-final changes are committed and pushed
+    - use only CI evidence matching that frozen head
+    - reserve the independent-final-review report path before freezing
+    - do not merge
+  required_attachments_or_references:
+    - PR #44
+    - reports/issue-1-t403-fix-verification-r2-20260806061100.md
+    - reports/issue-1-t403-fix-verification-r2-handoff-20260806061100.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t403-fix-verification-r2-handoff-20260806061100.yaml
+  packet_url: null
+  transport_note: use this packet for fresh independent final review
+source_payloads: []
+extensions: []
