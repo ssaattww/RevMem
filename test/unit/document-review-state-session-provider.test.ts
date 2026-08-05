@@ -203,6 +203,67 @@ test("Git ownership wins even when the file belongs to the current workspace", a
   assert.equal(repository.loads.some((target) => target.kind === "workspace"), true);
 });
 
+test("a selected workspace context routes a Git document through the same workspace identity", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(
+    repository,
+    new FakeGitInspector(repositoryInspection())
+  );
+  const selectedWorkspace = {
+    kind: "workspace" as const,
+    workspaceFolderUri: workspaceDescriptor().workspaceFolderUri
+  };
+
+  const session = await (provider as unknown as {
+    open(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedWorkspace
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>>;
+  }).open(descriptor({ workspace: workspaceDescriptor() }), selectedWorkspace);
+
+  assert.equal(session.owner, "workspace");
+  assert.equal(session.contextState.kind, "workspace");
+});
+
+test("a selected branch context rejects a different active editor but preserves its matching branch identity", async () => {
+  const repository = new FakeRepository();
+  const inspection = repositoryInspection({
+    rootPath: "C:\\repo",
+    branch: { kind: "branch", fullRef: "refs/heads/feature/issue-13" }
+  });
+  const gitInspector = new FakeGitInspector(inspection);
+  const provider = createProvider(repository, gitInspector);
+  const selectedBranch = {
+    kind: "branch" as const,
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\repo",
+    branchRef: "refs/heads/feature/issue-13"
+  };
+  const selectedDescriptor = descriptor({
+    documentUri: { scheme: "file", authority: "", path: "/C:/repo/src/example.ts" },
+    documentFsPath: "C:\\repo\\src\\example.ts",
+    fileSystemPathSemantics: "windows"
+  });
+
+  const session = await provider.open(selectedDescriptor, selectedBranch);
+  assert.equal(session.owner, "git");
+  assert.equal(session.contextState.branch?.refName, selectedBranch.branchRef);
+
+  gitInspector.result = repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "branch", fullRef: "refs/heads/feature/issue-13" }
+  });
+  const state = await provider.loadForDecoration(
+    descriptor({
+      documentUri: { scheme: "file", authority: "", path: "/C:/other/src/example.ts" },
+      documentFsPath: "C:\\other\\src\\example.ts",
+      fileSystemPathSemantics: "windows"
+    }),
+    selectedBranch
+  );
+  assert.equal(state, undefined);
+});
+
 /** Verifies that a non-Git document within a workspace retains workspace-local persistence rather than using global storage. */
 test("a non-Git workspace file keeps workspace-local persistence", async () => {
   const repository = new FakeRepository();

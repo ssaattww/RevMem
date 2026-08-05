@@ -6,7 +6,9 @@ const expectedCommandIds = [
   "reviewRange.markSelectionReviewed",
   "reviewRange.unmarkSelectionReviewed",
   "reviewRange.markFileReviewed",
-  "reviewRange.unmarkFileReviewed"
+  "reviewRange.unmarkFileReviewed",
+  "reviewRange.refreshContext",
+  "reviewRange.selectContext"
 ] as const;
 
 const expectedDecorationDefaults = {
@@ -290,6 +292,11 @@ export async function run(): Promise<void> {
     "Test-mode activation should expose lifecycle and runtime observation hooks."
   );
   await assertManifestAndConfiguration(extension);
+  await vscode.commands.executeCommand("reviewRange.refreshContext");
+  const selectingContext = vscode.commands.executeCommand("reviewRange.selectContext");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await vscode.commands.executeCommand("workbench.action.closeQuickOpen");
+  await selectingContext;
   if (phase === "confirm") {
     await assertExclusionConfigurationLifecycle(extensionApi);
   }

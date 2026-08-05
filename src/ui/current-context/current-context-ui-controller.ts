@@ -6,6 +6,8 @@ export interface CurrentContextDescriptor {
   readonly detail?: string;
   readonly baseRevision?: string;
   readonly headRevision?: string;
+  /** Runtime identity shared with commands and editor decoration reads. */
+  readonly selection?: SelectedReviewContext;
 }
 
 export interface CurrentContextProgress {
@@ -152,25 +154,30 @@ export class CurrentContextUiController {
     });
   }
 
-  public async refresh(): Promise<void> {
+  public async refresh(): Promise<CurrentContextUiSnapshot | undefined> {
     if (this.actions === undefined) {
-      return;
+      return undefined;
     }
     const generation = ++this.generation;
     const snapshot = await this.actions.recompute();
     if (snapshot !== undefined && generation === this.generation) {
       this.update(snapshot);
+      return snapshot;
     }
+    return undefined;
   }
 
-  public async selectContext(): Promise<void> {
+  public async selectContext(): Promise<CurrentContextUiSnapshot | undefined> {
     if (this.actions === undefined) {
-      return;
+      return undefined;
     }
     const generation = ++this.generation;
     const selection = await this.actions.selectContext();
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);
+      return selection;
     }
+    return undefined;
   }
 }
+import type { SelectedReviewContext } from "../../application/review-context/index";

@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 
-import { CurrentContextRuntimeCoordinator } from "./current-context-runtime-coordinator";
+import {
+  CurrentContextRuntimeCoordinator,
+  type CurrentContextDependentRefresher
+} from "./current-context-runtime-coordinator";
 import {
   CurrentContextUiController,
   type CurrentContextTreeItem,
@@ -53,7 +56,8 @@ export interface RegisteredCurrentContextRuntime extends vscode.Disposable {
 export const registerCurrentContextRuntime = (
   context: vscode.ExtensionContext,
   source: CurrentContextRuntimeSource,
-  refreshDependents: () => void | Promise<void>
+  dependentRefresher: CurrentContextDependentRefresher,
+  reportRefreshError: (error: unknown) => void | Promise<void>
 ): RegisteredCurrentContextRuntime => {
   const tree = new CurrentContextTreeDataProvider();
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -72,7 +76,7 @@ export const registerCurrentContextRuntime = (
     source
   );
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
-    refreshDependents
+    ...dependentRefresher
   });
 
   const registrations: vscode.Disposable[] = [
@@ -86,14 +90,14 @@ export const registerCurrentContextRuntime = (
       () => coordinator.selectContext()
     ),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      void coordinator.refresh();
+      void coordinator.refreshWithErrorBoundary(reportRefreshError);
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  void coordinator.refresh();
+  void coordinator.refreshWithErrorBoundary(reportRefreshError);
 
   return {
     controller,

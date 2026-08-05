@@ -31,18 +31,19 @@ test("T305 contributes the Review Range activity container, views, and commands"
   assert.match(manifest.scripts["test:t305"], /current-context-ui\.test\.js/u);
 });
 
-test("T305 composition root registers context runtime and synchronizes dependent decorations", async () => {
-  const extension = await readUtf8("src/t305-extension.ts");
-  const runtime = await readUtf8("src/ui/current-context/vscode-current-context-runtime.ts");
+test("T305 default and focused commands execute the same behavior suites", async () => {
+  const manifest = JSON.parse(await readUtf8("package.json")) as {
+    scripts: Record<string, string>;
+  };
+  const defaultSuites = manifest.scripts["test:unit"];
 
-  assert.match(extension, /registerCurrentContextRuntime\(/u);
-  assert.match(extension, /createNodeLocalGitAdapter\(\)/u);
-  assert.match(extension, /enumerateContexts/u);
-  assert.match(extension, /selectedKey/u);
-  assert.match(extension, /refreshVisibleEditorDecorations/u);
-  assert.match(runtime, /registerTreeDataProvider\(CURRENT_CONTEXT_VIEW_ID/u);
-  assert.match(runtime, /registerCommand\(\s*REFRESH_CONTEXT_COMMAND_ID/u);
-  assert.match(runtime, /registerCommand\(\s*SELECT_CONTEXT_COMMAND_ID/u);
-  assert.match(runtime, /CurrentContextRuntimeCoordinator/u);
-  assert.match(runtime, /createStatusBarItem/u);
+  for (const suite of [
+    "current-context-ui.test.js",
+    "vscode-current-context-runtime.test.js",
+    "t305-validation-wiring.test.js"
+  ]) {
+    const pattern = new RegExp(suite.replaceAll(".", "\\."), "u");
+    assert.match(defaultSuites, pattern);
+    assert.match(manifest.scripts["test:t305"], pattern);
+  }
 });

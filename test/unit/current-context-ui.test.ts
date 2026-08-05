@@ -119,6 +119,60 @@ test("runtime coordinator refreshes dependents after selected UI is applied", as
   ]);
 });
 
+test("selected context identity is applied to the review runtime before decorations refresh", async () => {
+  const events: string[] = [];
+  const selection = {
+    kind: "workspace" as const,
+    workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
+  };
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => undefined,
+    selectContext: async () => ({
+      context: { kind: "workspace", label: "chosen", selection },
+      progress: undefined
+    } as CurrentContextUiSnapshot)
+  });
+  const refresher = {
+    setSelectedContext: (value: typeof selection | undefined) => {
+      events.push(`selection:${value?.kind ?? "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  };
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, refresher);
+
+  await coordinator.selectContext();
+
+  assert.deepEqual(events, [
+    "tree:Workspace: chosen",
+    "status:$(folder) chosen",
+    "selection:workspace",
+    "dependents"
+  ]);
+});
+
+test("Git refresh failures are reported instead of escaping fire-and-forget activation and editor events", async () => {
+  const controller = new CurrentContextUiController(createHost(), {
+    recompute: async () => {
+      throw new Error("Git inspection failed for /workspace");
+    },
+    selectContext: async () => undefined
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    refreshDependents: () => undefined
+  });
+  const reported: string[] = [];
+
+  await (coordinator as unknown as {
+    refreshWithErrorBoundary(report: (error: unknown) => void): Promise<void>;
+  }).refreshWithErrorBoundary((error) => {
+    reported.push(error instanceof Error ? error.message : String(error));
+  });
+
+  assert.deepEqual(reported, ["Git inspection failed for /workspace"]);
+});
+
 test("refresh ignores stale asynchronous snapshots", async () => {
   let resolveFirst!: (snapshot: CurrentContextUiSnapshot) => void;
   const first = new Promise<CurrentContextUiSnapshot>((resolve) => {

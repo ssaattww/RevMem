@@ -6,7 +6,8 @@ import {
 } from "./adapters/local-git/index";
 import {
   activate as activateBaseExtension,
-  deactivate as deactivateBaseExtension
+  deactivate as deactivateBaseExtension,
+  type ReviewRangeRuntimePort
 } from "./extension";
 import {
   currentContextSelectionKey,
@@ -29,7 +30,15 @@ const branchDescriptor = (
       ? "detached"
       : repository.head.slice(0, 12),
   detail: repository.rootPath,
-  headRevision: repository.head
+  headRevision: repository.head,
+  selection: repository.branch.kind === "branch"
+    ? {
+        kind: "branch",
+        repositoryId: repository.repositoryId,
+        repositoryRoot: repository.rootPath,
+        branchRef: repository.branch.fullRef
+      }
+    : undefined
 });
 
 /** T305 composition root that adds context UI while retaining the existing extension runtime. */
@@ -46,7 +55,17 @@ export function activate(context: vscode.ExtensionContext): unknown {
         context: {
           kind: "workspace",
           label: folder.name,
-          detail: folder.uri.fsPath
+          detail: folder.uri.fsPath,
+          selection: {
+            kind: "workspace",
+            workspaceFolderUri: {
+              scheme: folder.uri.scheme,
+              authority: folder.uri.authority,
+              path: folder.uri.path,
+              query: folder.uri.query,
+              fragment: folder.uri.fragment
+            }
+          }
         },
         progress: undefined
       };
@@ -70,7 +89,19 @@ export function activate(context: vscode.ExtensionContext): unknown {
           context: {
             kind: "workspace",
             label: folder?.name ?? editor.document.fileName,
-            detail: folder?.uri.fsPath ?? editor.document.uri.fsPath
+            detail: folder?.uri.fsPath ?? editor.document.uri.fsPath,
+            ...(folder === undefined ? {} : {
+              selection: {
+                kind: "workspace" as const,
+                workspaceFolderUri: {
+                  scheme: folder.uri.scheme,
+                  authority: folder.uri.authority,
+                  path: folder.uri.path,
+                  query: folder.uri.query,
+                  fragment: folder.uri.fragment
+                }
+              }
+            })
           },
           progress: undefined
         };
@@ -112,6 +143,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     return candidates[0];
   };
 
+  const runtimePort: ReviewRangeRuntimePort = baseApi;
   registerCurrentContextRuntime(
     context,
     {
@@ -143,15 +175,14 @@ export function activate(context: vscode.ExtensionContext): unknown {
         return selected.snapshot;
       }
     },
-    async () => {
-      if (
-        typeof baseApi === "object" &&
-        baseApi !== null &&
-        "refreshVisibleEditorDecorations" in baseApi &&
-        typeof baseApi.refreshVisibleEditorDecorations === "function"
-      ) {
-        await baseApi.refreshVisibleEditorDecorations();
-      }
+    {
+      setSelectedContext: (selection) => runtimePort.setSelectedContext(selection),
+      refreshDependents: () => runtimePort.refreshVisibleEditorDecorations()
+    },
+    async (error) => {
+      await vscode.window.showErrorMessage(
+        `現在のレビューコンテキストを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   );
 
