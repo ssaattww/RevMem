@@ -363,6 +363,70 @@ test("production Git candidate and fallback composition keep a normal file on br
   }
 });
 
+test("Git-unavailable workspace fallback keeps the production candidate Tree Status and runtime selection aligned", async () => {
+  const events: string[] = [];
+  const unavailableGit = {
+    inspectRepository: async () => ({
+      kind: "git-unavailable" as const,
+      executable: "git"
+    })
+  };
+  const workspace: CurrentContextUiSnapshot = {
+    context: {
+      kind: "workspace",
+      label: "fallback workspace",
+      selection: {
+        kind: "workspace",
+        workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
+      }
+    },
+    progress: undefined
+  };
+  assert.equal(await isNonGitCurrentContextWorkspace(unavailableGit, "/workspace"), true);
+  const composition = new CurrentContextRuntimeComposition(
+    new CurrentContextCandidateSelection(),
+    {
+      enumerateCandidates: async () => [workspace],
+      resolveFallback: async (available) => available[0],
+      requestSelection: async (available) => available[0]
+    }
+  );
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: () => composition.recompute(),
+    selectContext: () => composition.selectContext(),
+    acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+    acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => {
+      events.push(`runtime:${selection?.kind ?? "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
+
+  await coordinator.refresh();
+
+  assert.deepEqual(events, [
+    "tree:Workspace: fallback workspace",
+    "status:$(folder) fallback workspace",
+    "runtime:workspace",
+    "dependents"
+  ]);
+});
+
+test("unexpected workspace Git inspection failures propagate instead of becoming a fallback candidate", async () => {
+  const failure = new Error("permission denied while inspecting /workspace");
+  await assert.rejects(
+    isNonGitCurrentContextWorkspace(
+      { inspectRepository: async () => { throw failure; } },
+      "/workspace"
+    ),
+    failure
+  );
+});
+
 test("a stale Quick Pick completion cannot replace the accepted explicit selection", async () => {
   const events: string[] = [];
   const selection = new CurrentContextCandidateSelection();

@@ -13,11 +13,20 @@ export const inspectCurrentContextDocument = (
 ): Promise<LocalGitRepositoryInspection> =>
   git.inspectRepository(gitInspectionStartPath(documentFsPath));
 
-/** Only a confirmed non-Git workspace folder may appear as a workspace candidate. */
+/** Applies the three-state Git inspection policy for workspace fallback candidates. */
 export const isNonGitCurrentContextWorkspace = async (
   git: Pick<LocalGitAdapter, "inspectRepository">,
   workspaceFsPath: string
-): Promise<boolean> => (await git.inspectRepository(workspaceFsPath)).kind === "not-repository";
+): Promise<boolean> => {
+  const inspection = await git.inspectRepository(workspaceFsPath);
+  switch (inspection.kind) {
+    case "repository":
+      return false;
+    case "not-repository":
+    case "git-unavailable":
+      return true;
+  }
+};
 
 /** Projects a resolved Git repository into the Current Context candidate consumed by the runtime. */
 export const gitCurrentContextSnapshot = (
