@@ -33,6 +33,11 @@ implements vscode.TreeDataProvider<CurrentContextTreeItem> {
     this.changed.fire(undefined);
   }
 
+  public clear(): void {
+    this.current = undefined;
+    this.changed.fire(undefined);
+  }
+
   public getTreeItem(item: CurrentContextTreeItem): vscode.TreeItem {
     const treeItem = new vscode.TreeItem(item.label, vscode.TreeItemCollapsibleState.None);
     treeItem.description = item.description;
@@ -73,6 +78,12 @@ export const registerCurrentContextRuntime = (
         status.text = item.text;
         status.tooltip = item.tooltip;
         status.show();
+      },
+      clearCurrentContext: () => tree.clear(),
+      clearStatusBar: () => {
+        status.text = "";
+        status.tooltip = undefined;
+        status.hide();
       }
     },
     source

@@ -25,9 +25,10 @@ export class CurrentContextRuntimeCoordinator {
 
   public async selectContext(): Promise<void> {
     const selection = await this.controller.selectContext();
-    if (selection !== undefined) {
-      this.dependentRefresher.setSelectedContext?.(selection.context.selection);
+    if (selection === undefined) {
+      return;
     }
+    this.dependentRefresher.setSelectedContext?.(selection.context.selection);
     await this.dependentRefresher.refreshDependents();
   }
 

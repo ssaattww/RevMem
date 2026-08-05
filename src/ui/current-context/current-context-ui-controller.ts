@@ -35,6 +35,8 @@ export interface CurrentContextStatusBarItem {
 export interface CurrentContextUiHost {
   setCurrentContext(item: CurrentContextTreeItem): void;
   setStatusBar(item: CurrentContextStatusBarItem): void;
+  clearCurrentContext(): void;
+  clearStatusBar(): void;
 }
 
 export interface CurrentContextUiActions {
@@ -185,6 +187,8 @@ export class CurrentContextUiController {
       return { snapshot, stale: false };
     }
     if (generation === this.generation) {
+      this.host.clearCurrentContext();
+      this.host.clearStatusBar();
       this.actions.acceptRecomputed?.(undefined);
     }
     return { snapshot: undefined, stale: generation !== this.generation };

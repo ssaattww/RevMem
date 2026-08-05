@@ -18,3 +18,8 @@ export {
 } from "./current-context-runtime-coordinator";
 
 export { CurrentContextCandidateSelection } from "./current-context-candidate-selection";
+
+export {
+  CurrentContextRuntimeComposition,
+  type CurrentContextRuntimeCompositionPort
+} from "./current-context-runtime-composition";

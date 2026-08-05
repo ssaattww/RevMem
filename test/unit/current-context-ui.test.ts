@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
+  CurrentContextRuntimeComposition,
   CurrentContextUiController,
   currentContextSelectionKey,
   type CurrentContextUiHost,
@@ -219,7 +220,7 @@ test("refresh replaces a disappeared selected branch identity with the authorita
   ]);
 });
 
-test("production candidate selection applies Quick Pick, branch replacement, disappearance, and detached identities", async () => {
+test("production candidate selection resolves accepted Quick Pick, branch replacement, disappearance, and detached identities", async () => {
   const selection = new CurrentContextCandidateSelection();
   const oldBranch = branchSnapshot("old", "refs/heads/old");
   const newBranch = branchSnapshot("new", "refs/heads/new");
@@ -254,10 +255,19 @@ test("production candidate selection applies Quick Pick, branch replacement, dis
     return candidates[0];
   });
   assert.equal(selected, oldBranch);
+  selection.acceptExplicit(selected);
   assert.equal(selection.resolve([newBranch, workspace], newBranch), newBranch);
   assert.equal(selection.resolve([workspace], workspace), workspace);
 
-  await selection.select([detached, workspace], async (candidates) => candidates[0]);
+  const detachedSelection = await selection.select(
+    [detached, workspace],
+    async (candidates) => candidates[0]
+  );
+  assert.notEqual(detachedSelection, undefined);
+  if (detachedSelection === undefined) {
+    throw new Error("The test Quick Pick must return its detached candidate.");
+  }
+  selection.acceptExplicit(detachedSelection);
   assert.equal(selection.resolve([detached, workspace], workspace)?.context.selection?.kind, "detached");
   assert.deepEqual(quickPickCalls, ["old,fallback"]);
 });
@@ -267,13 +277,118 @@ test("a stale candidate resolution cannot clear a newer explicit selection", asy
   const selected = branchSnapshot("selected", "refs/heads/selected");
   const fallback = branchSnapshot("fallback", "refs/heads/fallback");
 
-  await selection.select([selected], async (candidates) => candidates[0]);
+  selection.acceptExplicit(selected);
   assert.equal(selection.resolve([fallback], fallback), fallback);
   assert.equal(
     selection.resolve([selected, fallback], fallback),
     selected,
     "A resolution not accepted by the UI must not discard the explicit selection."
   );
+});
+
+test("a stale Quick Pick completion cannot replace the accepted explicit selection", async () => {
+  const events: string[] = [];
+  const selection = new CurrentContextCandidateSelection();
+  const accepted = branchSnapshot("accepted", "refs/heads/accepted");
+  const stale = branchSnapshot("stale", "refs/heads/stale");
+  let resolveStale!: (snapshot: CurrentContextUiSnapshot) => void;
+  const stalePick = new Promise<CurrentContextUiSnapshot>((resolve) => {
+    resolveStale = resolve;
+  });
+  let selects = 0;
+  let candidates = [stale];
+  const composition = new CurrentContextRuntimeComposition(selection, {
+    enumerateCandidates: async () => candidates,
+    resolveFallback: async (available) => available[0],
+    requestSelection: async () => {
+      selects += 1;
+      return selects === 1 ? stalePick : accepted;
+    }
+  });
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: () => composition.recompute(),
+    selectContext: () => composition.selectContext(),
+    acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+    acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (snapshot) => {
+      events.push(`runtime:${snapshot?.kind === "branch" ? snapshot.branchRef : "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
+
+  const staleCommand = coordinator.selectContext();
+  candidates = [accepted];
+  await coordinator.selectContext();
+  resolveStale(stale);
+  await staleCommand;
+  candidates = [accepted, stale];
+  await coordinator.refresh();
+
+  assert.deepEqual(events, [
+    "tree:Branch: accepted",
+    "status:$(git-branch) accepted",
+    "runtime:refs/heads/accepted",
+    "dependents",
+    "tree:Branch: accepted",
+    "status:$(git-branch) accepted",
+    "runtime:refs/heads/accepted",
+    "dependents"
+  ]);
+});
+
+test("an accepted zero-candidate refresh clears Tree Status runtime and explicit selection before recovery", async () => {
+  const events: string[] = [];
+  const selected = branchSnapshot("selected", "refs/heads/selected");
+  const recovered = branchSnapshot("recovered", "refs/heads/recovered");
+  const selection = new CurrentContextCandidateSelection();
+  let candidates: CurrentContextUiSnapshot[] = [selected];
+  const host = createHost(events);
+  const composition = new CurrentContextRuntimeComposition(selection, {
+    enumerateCandidates: async () => candidates,
+    resolveFallback: async (available) => available[0],
+    requestSelection: async (available) => available[0]
+  });
+  const controller = new CurrentContextUiController(host, {
+    recompute: () => composition.recompute(),
+    selectContext: () => composition.selectContext(),
+    acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+    acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (snapshot) => {
+      events.push(`runtime:${snapshot?.kind === "branch" ? snapshot.branchRef : "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
+
+  await coordinator.selectContext();
+  candidates = [];
+  await coordinator.refresh();
+  assert.equal(host.contextLabel, undefined);
+  assert.equal(host.statusText, undefined);
+  candidates = [recovered];
+  await coordinator.refresh();
+
+  assert.deepEqual(events, [
+    "tree:Branch: selected",
+    "status:$(git-branch) selected",
+    "runtime:refs/heads/selected",
+    "dependents",
+    "tree:clear",
+    "status:clear",
+    "runtime:automatic",
+    "dependents",
+    "tree:Branch: recovered",
+    "status:$(git-branch) recovered",
+    "runtime:refs/heads/recovered",
+    "dependents"
+  ]);
 });
 
 test("production composition keeps successful Quick Pick Tree Status command and decoration runtime identity aligned", async () => {
@@ -295,9 +410,16 @@ test("production composition keeps successful Quick Pick Tree Status command and
     progress: undefined
   };
   let candidates = [oldBranch];
+  const composition = new CurrentContextRuntimeComposition(candidateSelection, {
+    enumerateCandidates: async () => candidates,
+    resolveFallback: async (available) => available[0],
+    requestSelection: async (available) => available[0]
+  });
   const controller = new CurrentContextUiController(createHost(events), {
-    recompute: async () => candidateSelection.resolve(candidates, candidates[0]),
-    selectContext: async () => candidateSelection.select(candidates, async (available) => available[0])
+    recompute: () => composition.recompute(),
+    selectContext: () => composition.selectContext(),
+    acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+    acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
   });
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
     setSelectedContext: (selection) => {
@@ -388,5 +510,14 @@ const createHost = (events: string[] = []): CurrentContextUiHost & {
   setStatusBar(item) {
     this.statusText = item.text;
     events.push(`status:${item.text}`);
+  },
+  clearCurrentContext() {
+    this.contextLabel = undefined;
+    this.contextDescription = undefined;
+    events.push("tree:clear");
+  },
+  clearStatusBar() {
+    this.statusText = undefined;
+    events.push("status:clear");
   }
 });

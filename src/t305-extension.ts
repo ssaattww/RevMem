@@ -12,6 +12,7 @@ import {
 import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
+  CurrentContextRuntimeComposition,
   type CurrentContextDescriptor,
   type CurrentContextUiSnapshot
 } from "./ui/current-context/index";
@@ -123,8 +124,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
     );
   };
 
-  const recompute = async (): Promise<CurrentContextUiSnapshot | undefined> => {
-    const candidates = await enumerateContexts();
+  const resolveFallback = async (
+    candidates: readonly CurrentContextUiSnapshot[]
+  ): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
     if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
@@ -142,43 +144,43 @@ export function activate(context: vscode.ExtensionContext): unknown {
         );
       }
     }
-    return selection.resolve(candidates, fallback);
+    return fallback;
   };
+
+  const currentContextComposition = new CurrentContextRuntimeComposition(selection, {
+    enumerateCandidates: enumerateContexts,
+    resolveFallback,
+    requestSelection: async (available) => {
+      if (available.length === 0) {
+        await vscode.window.showInformationMessage(
+          "表示できるレビューコンテキストがありません。"
+        );
+        return undefined;
+      }
+      const items = available.map((snapshot) => ({
+        label: snapshot.context.kind === "branch"
+          ? `Branch: ${snapshot.context.label}`
+          : snapshot.context.kind === "workspace"
+            ? `Workspace: ${snapshot.context.label}`
+            : `PR ${snapshot.context.label}`,
+        description: snapshot.context.detail,
+        snapshot
+      }));
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: "レビューコンテキストを選択"
+      });
+      return selected?.snapshot;
+    }
+  });
 
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   registerCurrentContextRuntime(
     context,
     {
-      recompute,
-      acceptRecomputed: (snapshot) => selection.acceptRecomputed(snapshot),
-      acceptExplicit: (snapshot) => selection.acceptExplicit(snapshot),
-      selectContext: async () => {
-        const candidates = await enumerateContexts();
-        if (candidates.length === 0) {
-          await vscode.window.showInformationMessage(
-            "表示できるレビューコンテキストがありません。"
-          );
-          return undefined;
-        }
-        return selection.select(candidates, async (available) => {
-        const items = available.map((snapshot) => ({
-          label: snapshot.context.kind === "branch"
-            ? `Branch: ${snapshot.context.label}`
-            : snapshot.context.kind === "workspace"
-              ? `Workspace: ${snapshot.context.label}`
-              : `PR ${snapshot.context.label}`,
-          description: snapshot.context.detail,
-          snapshot
-        }));
-        const selected = await vscode.window.showQuickPick(items, {
-          placeHolder: "レビューコンテキストを選択"
-        });
-        if (selected === undefined) {
-          return undefined;
-        }
-        return selected.snapshot;
-        });
-      }
+      recompute: () => currentContextComposition.recompute(),
+      acceptRecomputed: (snapshot) => currentContextComposition.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => currentContextComposition.acceptExplicit(snapshot),
+      selectContext: () => currentContextComposition.selectContext()
     },
     {
       setSelectedContext: (selection) => runtimePort.setSelectedContext(selection),

@@ -7,18 +7,14 @@ import {
 export class CurrentContextCandidateSelection {
   private selectedKey: string | undefined;
 
-  /** Applies a completed Quick Pick choice as the explicit Current Context selection. */
+  /** Requests a Quick Pick choice without mutating the shared explicit selection. */
   public async select(
     candidates: readonly CurrentContextUiSnapshot[],
     requestSelection: (
       candidates: readonly CurrentContextUiSnapshot[]
     ) => Promise<CurrentContextUiSnapshot | undefined>
   ): Promise<CurrentContextUiSnapshot | undefined> {
-    const selected = await requestSelection(candidates);
-    if (selected !== undefined) {
-      this.selectedKey = currentContextSelectionKey(selected);
-    }
-    return selected;
+    return requestSelection(candidates);
   }
 
   /**
@@ -43,10 +39,10 @@ export class CurrentContextCandidateSelection {
 
   /** Commits that an accepted recomputation no longer represents the explicit selection. */
   public acceptRecomputed(snapshot: CurrentContextUiSnapshot | undefined): void {
-    if (snapshot === undefined || this.selectedKey === undefined) {
+    if (this.selectedKey === undefined) {
       return;
     }
-    if (currentContextSelectionKey(snapshot) !== this.selectedKey) {
+    if (snapshot === undefined || currentContextSelectionKey(snapshot) !== this.selectedKey) {
       this.selectedKey = undefined;
     }
   }
