@@ -15,7 +15,11 @@ export class CurrentContextRuntimeCoordinator {
   ) {}
 
   public async refresh(): Promise<void> {
-    await this.controller.refresh();
+    const result = await this.controller.refresh();
+    if (result.stale) {
+      return;
+    }
+    this.dependentRefresher.setSelectedContext?.(result.snapshot?.context.selection);
     await this.dependentRefresher.refreshDependents();
   }
 

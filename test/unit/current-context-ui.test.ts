@@ -3,11 +3,30 @@ import test from "node:test";
 
 import {
   CurrentContextRuntimeCoordinator,
+  CurrentContextCandidateSelection,
   CurrentContextUiController,
   currentContextSelectionKey,
   type CurrentContextUiHost,
   type CurrentContextUiSnapshot
 } from "../../src/ui/current-context/index";
+
+const branchSnapshot = (
+  label: string,
+  branchRef: string
+): CurrentContextUiSnapshot => ({
+  context: {
+    kind: "branch",
+    label,
+    detail: "/repo",
+    selection: {
+      kind: "branch",
+      repositoryId: "repo",
+      repositoryRoot: "/repo",
+      branchRef
+    }
+  },
+  progress: undefined
+});
 
 const pullRequestSnapshot: CurrentContextUiSnapshot = {
   context: {
@@ -149,6 +168,153 @@ test("selected context identity is applied to the review runtime before decorati
     "status:$(folder) chosen",
     "selection:workspace",
     "dependents"
+  ]);
+});
+
+test("refresh replaces a disappeared selected branch identity with the authoritative fallback before dependent refresh", async () => {
+  const events: string[] = [];
+  const oldSelection = {
+    kind: "branch" as const,
+    repositoryId: "repo",
+    repositoryRoot: "/repo",
+    branchRef: "refs/heads/old"
+  };
+  const fallbackSelection = {
+    kind: "workspace" as const,
+    workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
+  };
+  let current: CurrentContextUiSnapshot = {
+    context: { kind: "branch", label: "old", selection: oldSelection },
+    progress: undefined
+  };
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => current,
+    selectContext: async () => current
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => {
+      events.push(`selection:${selection?.kind}:${selection?.kind === "branch" ? selection.branchRef : "workspace"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
+
+  await coordinator.selectContext();
+  current = {
+    context: { kind: "workspace", label: "fallback", selection: fallbackSelection },
+    progress: undefined
+  };
+  await coordinator.refresh();
+
+  assert.deepEqual(events, [
+    "tree:Branch: old",
+    "status:$(git-branch) old",
+    "selection:branch:refs/heads/old",
+    "dependents",
+    "tree:Workspace: fallback",
+    "status:$(folder) fallback",
+    "selection:workspace:workspace",
+    "dependents"
+  ]);
+});
+
+test("production candidate selection applies Quick Pick, branch replacement, disappearance, and detached identities", async () => {
+  const selection = new CurrentContextCandidateSelection();
+  const oldBranch = branchSnapshot("old", "refs/heads/old");
+  const newBranch = branchSnapshot("new", "refs/heads/new");
+  const workspace: CurrentContextUiSnapshot = {
+    context: {
+      kind: "workspace",
+      label: "fallback",
+      selection: {
+        kind: "workspace",
+        workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
+      }
+    },
+    progress: undefined
+  };
+  const detached: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "0123456789ab",
+      selection: {
+        kind: "detached",
+        repositoryId: "other-repo",
+        repositoryRoot: "/other",
+        headRevision: "0123456789abcdef0123456789abcdef01234567"
+      }
+    },
+    progress: undefined
+  };
+  const quickPickCalls: string[] = [];
+
+  const selected = await selection.select([oldBranch, workspace], async (candidates) => {
+    quickPickCalls.push(candidates.map((candidate) => candidate.context.label).join(","));
+    return candidates[0];
+  });
+  assert.equal(selected, oldBranch);
+  assert.equal(selection.resolve([newBranch, workspace], newBranch), newBranch);
+  assert.equal(selection.resolve([workspace], workspace), workspace);
+
+  await selection.select([detached, workspace], async (candidates) => candidates[0]);
+  assert.equal(selection.resolve([detached, workspace], workspace)?.context.selection?.kind, "detached");
+  assert.deepEqual(quickPickCalls, ["old,fallback"]);
+});
+
+test("production composition keeps successful Quick Pick Tree Status command and decoration runtime identity aligned", async () => {
+  const events: string[] = [];
+  const candidateSelection = new CurrentContextCandidateSelection();
+  const oldBranch = branchSnapshot("old", "refs/heads/old");
+  const newBranch = branchSnapshot("new", "refs/heads/new");
+  const detached: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "other detached",
+      selection: {
+        kind: "detached",
+        repositoryId: "other",
+        repositoryRoot: "/other",
+        headRevision: "0123456789abcdef0123456789abcdef01234567"
+      }
+    },
+    progress: undefined
+  };
+  let candidates = [oldBranch];
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => candidateSelection.resolve(candidates, candidates[0]),
+    selectContext: async () => candidateSelection.select(candidates, async (available) => available[0])
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => {
+      events.push(`runtime:${selection?.kind}:${selection?.kind === "branch"
+        ? selection.branchRef
+        : selection?.kind === "detached" ? selection.repositoryRoot : "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("command-and-decoration-refresh");
+    }
+  });
+
+  await coordinator.selectContext();
+  candidates = [newBranch];
+  await coordinator.refresh();
+  candidates = [detached];
+  await coordinator.selectContext();
+
+  assert.deepEqual(events, [
+    "tree:Branch: old",
+    "status:$(git-branch) old",
+    "runtime:branch:refs/heads/old",
+    "command-and-decoration-refresh",
+    "tree:Branch: new",
+    "status:$(git-branch) new",
+    "runtime:branch:refs/heads/new",
+    "command-and-decoration-refresh",
+    "tree:Branch: other detached",
+    "status:$(git-branch) other detached",
+    "runtime:detached:/other",
+    "command-and-decoration-refresh"
   ]);
 });
 

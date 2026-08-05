@@ -264,6 +264,50 @@ test("a selected branch context rejects a different active editor but preserves 
   assert.equal(state, undefined);
 });
 
+test("a selected detached commit remains identity-bound instead of falling back to another repository", async () => {
+  const repository = new FakeRepository();
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const gitInspector = new FakeGitInspector(repositoryInspection({
+    rootPath: "C:\\detached",
+    branch: { kind: "detached" },
+    head
+  }));
+  const provider = createProvider(repository, gitInspector);
+  const selectedDetached = {
+    kind: "detached",
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\detached",
+    headRevision: head
+  };
+  const selectedDescriptor = descriptor({
+    documentUri: { scheme: "file", authority: "", path: "/C:/detached/src/example.ts" },
+    documentFsPath: "C:\\detached\\src\\example.ts",
+    fileSystemPathSemantics: "windows"
+  });
+
+  const session = await (provider as unknown as {
+    open(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedDetached
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>>;
+  }).open(selectedDescriptor, selectedDetached);
+  assert.equal(session.owner, "git");
+  assert.equal(session.contextState.branch?.refName, `HEAD@${head}`);
+
+  gitInspector.result = repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "detached" },
+    head
+  });
+  const state = await (provider as unknown as {
+    loadForDecoration(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedDetached
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["loadForDecoration"]>>>;
+  }).loadForDecoration(selectedDescriptor, selectedDetached);
+  assert.equal(state, undefined);
+});
+
 /** Verifies that a non-Git document within a workspace retains workspace-local persistence rather than using global storage. */
 test("a non-Git workspace file keeps workspace-local persistence", async () => {
   const repository = new FakeRepository();

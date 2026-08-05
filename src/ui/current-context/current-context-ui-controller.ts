@@ -42,10 +42,27 @@ export interface CurrentContextUiActions {
   selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
 }
 
+/** Result of a recomputation, distinguishing an empty current state from a stale request. */
+export interface CurrentContextRefreshResult {
+  readonly snapshot: CurrentContextUiSnapshot | undefined;
+  readonly stale: boolean;
+}
+
 export const currentContextSelectionKey = (
   snapshot: CurrentContextUiSnapshot
 ): string => {
   const { context } = snapshot;
+  const selection = context.selection;
+  if (selection?.kind === "branch") {
+    return ["branch", selection.repositoryId, selection.repositoryRoot, selection.branchRef].join("\0");
+  }
+  if (selection?.kind === "detached") {
+    return ["detached", selection.repositoryId, selection.repositoryRoot, selection.headRevision].join("\0");
+  }
+  if (selection?.kind === "workspace") {
+    const uri = selection.workspaceFolderUri;
+    return ["workspace", uri.scheme, uri.authority, uri.path, uri.query ?? "", uri.fragment ?? ""].join("\0");
+  }
   switch (context.kind) {
     case "branch":
       return [context.kind, context.detail ?? "", context.label].join("\0");
@@ -154,17 +171,17 @@ export class CurrentContextUiController {
     });
   }
 
-  public async refresh(): Promise<CurrentContextUiSnapshot | undefined> {
+  public async refresh(): Promise<CurrentContextRefreshResult> {
     if (this.actions === undefined) {
-      return undefined;
+      return { snapshot: undefined, stale: false };
     }
     const generation = ++this.generation;
     const snapshot = await this.actions.recompute();
     if (snapshot !== undefined && generation === this.generation) {
       this.update(snapshot);
-      return snapshot;
+      return { snapshot, stale: false };
     }
-    return undefined;
+    return { snapshot: undefined, stale: generation !== this.generation };
   }
 
   public async selectContext(): Promise<CurrentContextUiSnapshot | undefined> {

@@ -12,6 +12,12 @@ export type SelectedReviewContext =
       readonly branchRef: string;
     }
   | {
+      readonly kind: "detached";
+      readonly repositoryId: string;
+      readonly repositoryRoot: string;
+      readonly headRevision: string;
+    }
+  | {
       readonly kind: "workspace";
       readonly workspaceFolderUri: ResourceUri;
     };

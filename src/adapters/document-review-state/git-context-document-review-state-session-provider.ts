@@ -229,14 +229,20 @@ export class GitContextDocumentReviewStateSessionProvider {
     if (selection === undefined) {
       return true;
     }
-    if (selection.kind !== "branch") {
+    if (selection.kind === "workspace") {
       return false;
     }
-    return inspection.kind === "repository" &&
-      inspection.repository.repositoryId === selection.repositoryId &&
-      inspection.repository.rootPath === selection.repositoryRoot &&
-      inspection.repository.branch.kind === "branch" &&
-      inspection.repository.branch.fullRef === selection.branchRef;
+    if (inspection.kind !== "repository" ||
+      inspection.repository.repositoryId !== selection.repositoryId ||
+      inspection.repository.rootPath !== selection.repositoryRoot) {
+      return false;
+    }
+    if (selection.kind === "branch") {
+      return inspection.repository.branch.kind === "branch" &&
+        inspection.repository.branch.fullRef === selection.branchRef;
+    }
+    return inspection.repository.branch.kind === "detached" &&
+      inspection.repository.head === selection.headRevision;
   }
 
   private assertBranchSelection(
