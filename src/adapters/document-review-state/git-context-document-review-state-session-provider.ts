@@ -1,9 +1,8 @@
-import path from "node:path";
-
 import type {
   LocalGitRepository,
   LocalGitRepositoryInspection
 } from "../local-git/index";
+import { gitInspectionStartPath } from "../local-git/index";
 import {
   StaleReviewStateError,
   type ReviewStateCommit,
@@ -158,12 +157,14 @@ export class GitContextDocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorReviewStateSession> {
+    const inspection = await this.inspect(descriptor);
     if (selection?.kind === "workspace") {
       this.assertWorkspaceSelection(descriptor, selection);
-      return this.createDelegate({ kind: "not-repository", gitVersion: "selected-workspace" })
-        .open(descriptor);
+      if (inspection.kind === "repository") {
+        throw new Error("The selected workspace context does not own the active editor.");
+      }
+      return this.createDelegate(inspection).open(descriptor);
     }
-    const inspection = await this.inspect(descriptor);
     this.assertBranchSelection(inspection, selection);
     if (inspection.kind === "repository") {
       await this.prepareSnapshot(descriptor, true, toSnapshot(inspection.repository));
@@ -176,14 +177,17 @@ export class GitContextDocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
+    const inspection = await this.inspect(descriptor);
     if (selection?.kind === "workspace") {
       if (!this.workspaceSelectionMatches(descriptor, selection)) {
         return undefined;
       }
-      return this.createDelegate({ kind: "not-repository", gitVersion: "selected-workspace" })
+      if (inspection.kind === "repository") {
+        return undefined;
+      }
+      return this.createDelegate(inspection)
         .loadForDecoration(descriptor);
     }
-    const inspection = await this.inspect(descriptor);
     if (!this.branchSelectionMatches(inspection, selection)) {
       return undefined;
     }
@@ -278,9 +282,10 @@ export class GitContextDocumentReviewStateSessionProvider {
   private async inspect(
     descriptor: DocumentEditorReviewDescriptor
   ): Promise<LocalGitRepositoryInspection> {
-    return this.options.gitInspector.inspectRepository(
-      path.dirname(descriptor.documentFsPath)
-    );
+    return this.options.gitInspector.inspectRepository(gitInspectionStartPath(
+      descriptor.documentFsPath,
+      descriptor.fileSystemPathSemantics
+    ));
   }
 
   private async prepareSnapshot(

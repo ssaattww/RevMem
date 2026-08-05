@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 
+import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
+import {
+  gitCurrentContextSnapshot,
+  inspectCurrentContextDocument,
+  isNonGitCurrentContextWorkspace
+} from "../../src/t305-current-context-git";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
@@ -10,6 +17,7 @@ import {
   type CurrentContextUiHost,
   type CurrentContextUiSnapshot
 } from "../../src/ui/current-context/index";
+import { createTemporaryGitRepository } from "../support/temporary-git-repository";
 
 const branchSnapshot = (
   label: string,
@@ -284,6 +292,75 @@ test("a stale candidate resolution cannot clear a newer explicit selection", asy
     selected,
     "A resolution not accepted by the UI must not discard the explicit selection."
   );
+});
+
+test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {
+  const repository = await createTemporaryGitRepository();
+  const git = createNodeLocalGitAdapter();
+  const documentFsPath = path.join(repository.path, "fixture.txt");
+  const events: string[] = [];
+
+  try {
+    assert.equal(await isNonGitCurrentContextWorkspace(git, repository.path), false);
+    const branchInspection = await inspectCurrentContextDocument(git, documentFsPath);
+    assert.equal(branchInspection.kind, "repository");
+    if (branchInspection.kind !== "repository") {
+      throw new Error("The temporary Git file must resolve to its repository.");
+    }
+    const branch = gitCurrentContextSnapshot(branchInspection.repository);
+    assert.equal(branch.context.selection?.kind, "branch");
+
+    let candidates = [branch];
+    const composition = new CurrentContextRuntimeComposition(
+      new CurrentContextCandidateSelection(),
+      {
+        enumerateCandidates: async () => candidates,
+        resolveFallback: async (available) => available[0],
+        requestSelection: async (available) => available[0]
+      }
+    );
+    const controller = new CurrentContextUiController(createHost(events), {
+      recompute: () => composition.recompute(),
+      selectContext: () => composition.selectContext(),
+      acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+    });
+    const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+      setSelectedContext: (selection) => {
+        events.push(`runtime:${selection?.kind === "branch"
+          ? selection.branchRef
+          : selection?.kind === "detached" ? selection.headRevision : "automatic"}`);
+      },
+      refreshDependents: () => {
+        events.push("dependents");
+      }
+    });
+
+    await coordinator.refresh();
+    await repository.runGit(["checkout", "--detach", repository.headCommit]);
+    const detachedInspection = await inspectCurrentContextDocument(git, documentFsPath);
+    assert.equal(detachedInspection.kind, "repository");
+    if (detachedInspection.kind !== "repository") {
+      throw new Error("The detached temporary Git file must resolve to its repository.");
+    }
+    const detached = gitCurrentContextSnapshot(detachedInspection.repository);
+    assert.equal(detached.context.selection?.kind, "detached");
+    candidates = [detached];
+    await coordinator.refresh();
+
+    assert.deepEqual(events, [
+      "tree:Branch: main",
+      "status:$(git-branch) main",
+      "runtime:refs/heads/main",
+      "dependents",
+      `tree:Branch: ${repository.headCommit.slice(0, 12)}`,
+      `status:$(git-branch) ${repository.headCommit.slice(0, 12)}`,
+      `runtime:${repository.headCommit}`,
+      "dependents"
+    ]);
+  } finally {
+    await repository.cleanup();
+  }
 });
 
 test("a stale Quick Pick completion cannot replace the accepted explicit selection", async () => {

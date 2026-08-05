@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 
 import {
-  createNodeLocalGitAdapter,
-  type LocalGitRepository
+  createNodeLocalGitAdapter
 } from "./adapters/local-git/index";
 import {
   activate as activateBaseExtension,
@@ -13,42 +12,18 @@ import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
-  type CurrentContextDescriptor,
   type CurrentContextUiSnapshot
 } from "./ui/current-context/index";
+import {
+  gitCurrentContextSnapshot,
+  inspectCurrentContextDocument,
+  isNonGitCurrentContextWorkspace
+} from "./t305-current-context-git";
 import {
   registerCurrentContextRuntime
 } from "./ui/current-context/vscode-current-context-runtime";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
-
-const branchDescriptor = (
-  repository: LocalGitRepository
-): CurrentContextDescriptor => ({
-  kind: "branch",
-  label: repository.branch.kind === "branch"
-    ? repository.branch.fullRef.replace(/^refs\/heads\//u, "")
-    : repository.head === undefined
-      ? "detached"
-      : repository.head.slice(0, 12),
-  detail: repository.rootPath,
-  headRevision: repository.head,
-  selection: repository.branch.kind === "branch"
-    ? {
-        kind: "branch",
-        repositoryId: repository.repositoryId,
-        repositoryRoot: repository.rootPath,
-        branchRef: repository.branch.fullRef
-      }
-    : repository.head === undefined
-      ? undefined
-      : {
-          kind: "detached",
-          repositoryId: repository.repositoryId,
-          repositoryRoot: repository.rootPath,
-          headRevision: repository.head
-        }
-});
 
 /** T305 composition root that adds context UI while retaining the existing extension runtime. */
 export function activate(context: vscode.ExtensionContext): unknown {
@@ -60,6 +35,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
 
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
+        continue;
+      }
       const snapshot: CurrentContextUiSnapshot = {
         context: {
           kind: "workspace",
@@ -85,15 +63,15 @@ export function activate(context: vscode.ExtensionContext): unknown {
       if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
         continue;
       }
-      const inspection = await git.inspectRepository(editor.document.uri.fsPath);
+      const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
-        const snapshot: CurrentContextUiSnapshot = {
-          context: branchDescriptor(inspection.repository),
-          progress: undefined
-        };
+        const snapshot = gitCurrentContextSnapshot(inspection.repository);
         contexts.set(currentContextSelectionKey(snapshot), snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
+          continue;
+        }
         const snapshot: CurrentContextUiSnapshot = {
           context: {
             kind: "workspace",
@@ -130,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
     if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
-      const inspection = await git.inspectRepository(editor.document.uri.fsPath);
+      const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
           candidate.context.kind === "branch" &&
@@ -138,6 +116,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
         );
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
+          return undefined;
+        }
         fallback = candidates.find((candidate) =>
         candidate.context.kind === "workspace" &&
         candidate.context.label === (folder?.name ?? editor.document.fileName)
