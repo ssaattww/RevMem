@@ -427,6 +427,66 @@ test("unexpected workspace Git inspection failures propagate instead of becoming
   );
 });
 
+test("a Quick Pick choice is not committed when its candidate inventory changes without another controller generation", async () => {
+  const oldBranch = branchSnapshot("old", "refs/heads/old");
+  const newBranch = branchSnapshot("new", "refs/heads/new");
+  const detached: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "0123456789ab",
+      selection: {
+        kind: "detached",
+        repositoryId: "repo",
+        repositoryRoot: "/repo",
+        headRevision: "0123456789abcdef0123456789abcdef01234567"
+      }
+    },
+    progress: undefined
+  };
+
+  for (const nextCandidates of [[newBranch], [detached], []] as const) {
+    const events: string[] = [];
+    let candidates: readonly CurrentContextUiSnapshot[] = [oldBranch];
+    let resolvePick!: (snapshot: CurrentContextUiSnapshot) => void;
+    const pendingPick = new Promise<CurrentContextUiSnapshot>((resolve) => {
+      resolvePick = resolve;
+    });
+    const composition = new CurrentContextRuntimeComposition(
+      new CurrentContextCandidateSelection(),
+      {
+        enumerateCandidates: async () => candidates,
+        resolveFallback: async (available) => available[0],
+        requestSelection: async () => pendingPick
+      }
+    );
+    const controller = new CurrentContextUiController(createHost(events), {
+      recompute: () => composition.recompute(),
+      selectContext: () => composition.selectContext(),
+      acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+    });
+    const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+      setSelectedContext: (selection) => {
+        events.push(`runtime:${selection?.kind ?? "automatic"}`);
+      },
+      refreshDependents: () => {
+        events.push("dependents");
+      }
+    });
+
+    const pendingCommand = coordinator.selectContext();
+    candidates = nextCandidates;
+    resolvePick(oldBranch);
+    await pendingCommand;
+
+    assert.deepEqual(
+      events,
+      [],
+      "A changed or disappeared inventory must not apply the old Quick Pick result."
+    );
+  }
+});
+
 test("a stale Quick Pick completion cannot replace the accepted explicit selection", async () => {
   const events: string[] = [];
   const selection = new CurrentContextCandidateSelection();

@@ -1,5 +1,8 @@
 import { CurrentContextCandidateSelection } from "./current-context-candidate-selection";
-import type { CurrentContextUiSnapshot } from "./current-context-ui-controller";
+import {
+  currentContextSelectionKey,
+  type CurrentContextUiSnapshot
+} from "./current-context-ui-controller";
 
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
 export interface CurrentContextRuntimeCompositionPort {
@@ -33,7 +36,17 @@ export class CurrentContextRuntimeComposition {
 
   public async selectContext(): Promise<CurrentContextUiSnapshot | undefined> {
     const candidates = await this.port.enumerateCandidates();
-    return this.selection.select(candidates, (available) => this.port.requestSelection(available));
+    const selected = await this.selection.select(
+      candidates,
+      (available) => this.port.requestSelection(available)
+    );
+    if (selected === undefined) {
+      return undefined;
+    }
+    const currentCandidates = await this.port.enumerateCandidates();
+    return currentCandidates.find((candidate) =>
+      currentContextSelectionKey(candidate) === currentContextSelectionKey(selected)
+    );
   }
 
   public acceptRecomputed(snapshot: CurrentContextUiSnapshot | undefined): void {
