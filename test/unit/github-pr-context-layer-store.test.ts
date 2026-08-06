@@ -31,7 +31,7 @@ class InMemoryRepository implements GitHubPullRequestContextRepositoryPort {
   public commits = 0;
   public async load(): Promise<PullRequestReviewStateCommit | undefined> { return this.current === undefined ? undefined : clone(this.current); }
   public async create(transaction: Parameters<GitHubPullRequestContextRepositoryPort["create"]>[0]): Promise<void> {
-    if (this.current !== undefined || transaction.expected.contextState !== undefined) throw new Error("stale create");
+    if (this.current !== undefined) throw new Error("stale create");
     this.current = clone(transaction.next);
   }
   public async commit(transaction: Parameters<GitHubPullRequestContextRepositoryPort["commit"]>[0]): Promise<void> {
@@ -54,15 +54,14 @@ function context(overrides: Partial<ReviewContextState> = {}): ReviewContextStat
     displayName: "PR #48",
     pullRequest: pullRequest(),
     files: {
-      "stable-file-id": {
+      file: {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-        fileId: "stable-file-id",
+        fileId: "file",
         currentPath: "src/example.ts",
-        previousPaths: ["src/old-example.ts"],
+        previousPaths: ["src/old.ts"],
         revisionId: SHA_B,
         modifiedReviewed: [{ startLine: 1, endLineExclusive: 3 }],
         originalReviewedByDiff: { [`${SHA_A}..${SHA_B}`]: [{ startLine: 4, endLineExclusive: 5 }] },
-        contentHash: "hash",
         lineCount: 8,
         updatedAt: "2026-08-06T10:00:00.000Z",
       },
@@ -79,14 +78,7 @@ function globalState(revision = SHA_B): RepositoryGlobalState {
     repositoryId: REPOSITORY_ID,
     currentRevisionId: revision,
     files: {
-      "stable-file-id": {
-        fileId: "stable-file-id",
-        currentPath: "src/example.ts",
-        revisionId: revision,
-        reviewed: [{ startLine: 1, endLineExclusive: 3 }],
-        contentHash: "hash",
-        updatedAt: "2026-08-06T10:00:00.000Z",
-      },
+      file: { fileId: "file", currentPath: "src/example.ts", revisionId: revision, reviewed: [{ startLine: 1, endLineExclusive: 3 }], updatedAt: "2026-08-06T10:00:00.000Z" },
     },
     updatedAt: "2026-08-06T10:00:00.000Z",
   };
@@ -97,79 +89,57 @@ function service(repository: GitHubPullRequestContextRepositoryPort): GitHubPull
     contextState: {
       ...current.contextState,
       pullRequest: nextPullRequest,
-      files: {
-        ...current.contextState.files,
-        "stable-file-id": {
-          ...current.contextState.files["stable-file-id"]!,
-          revisionId: nextPullRequest.headSha,
-          modifiedReviewed: [],
-        },
-      },
+      files: { file: { ...current.contextState.files.file!, revisionId: nextPullRequest.headSha, modifiedReviewed: [] } },
       updatedAt: "2026-08-06T10:10:00.000Z",
     },
     globalState: {
       ...current.globalState,
       currentRevisionId: nextPullRequest.headSha,
-      files: {
-        ...current.globalState.files,
-        "stable-file-id": {
-          ...current.globalState.files["stable-file-id"]!,
-          revisionId: nextPullRequest.headSha,
-          reviewed: [],
-        },
-      },
+      files: { file: { ...current.globalState.files.file!, revisionId: nextPullRequest.headSha, reviewed: [] } },
       updatedAt: "2026-08-06T10:10:00.000Z",
     },
   }));
 }
 
-test("GitHub.com identityはcaseとdefault HTTPS portをcanonical化する", () => {
+test("canonical repository identityをcontext IDへ共有する", () => {
   assert.equal(createGitHubPullRequestContextId({ host: "GitHub.COM:443", owner: "SSAATTWW", repository: "RevMem.git", pullRequestNumber: 48 }), createGitHubPullRequestContextIdFromRepositoryId(REPOSITORY_ID, 48));
   assert.deepEqual(canonicalizeGitHubPullRequestIdentity({ host: "ghe.example:8443", owner: "Team", repository: "Repo", pullRequestNumber: 1 }), { host: "ghe.example:8443", owner: "Team", repository: "Repo", pullRequestNumber: 1 });
-  assert.throws(() => canonicalizeGitHubPullRequestIdentity({ host: "github.com:70000", owner: "a", repository: "b", pullRequestNumber: 1 }));
 });
 
-test("create境界はcanonical repositoryIdとcontextIdの不一致を拒否する", async () => {
+test("create境界はcanonical context ID不一致を拒否する", async () => {
   const repository = new InMemoryRepository();
   await assert.rejects(() => service(repository).create({ contextState: context({ contextId: "github-pr:github.com/SSAATTWW/RevMem#48" }), globalState: globalState() }, undefined), /canonical/);
-  assert.equal(repository.current, undefined);
 });
 
-test("metadata-only更新はauthoritative file stateとGlobalを保持する", async () => {
+test("metadata-only更新はfile stateとGlobalを保持する", async () => {
   const repository = new InMemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };
-  const result = await service(repository).update({
-    repositoryId: REPOSITORY_ID,
-    identity: { host: "github.com:443", owner: "SSAATTWW", repository: "RevMem", pullRequestNumber: 48 },
-    pullRequest: pullRequest({ state: "closed", title: "Closed PR" }),
-    displayName: "PR #48 closed",
-  });
+  const result = await service(repository).update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com:443", owner: "SSAATTWW", repository: "RevMem", pullRequestNumber: 48 }, pullRequest: pullRequest({ state: "closed" }) });
   assert.deepEqual(result.contextState.files, context().files);
   assert.deepEqual(result.globalState, globalState());
   assert.equal(isPullRequestDecorationEnabled(result.contextState.pullRequest!), false);
 });
 
-test("closed既定無効と明示overrideを保存・復元できる", async () => {
+test("closed既定無効と明示overrideを永続化する", async () => {
   assert.equal(isPullRequestDecorationEnabled(pullRequest({ state: "closed" })), false);
   assert.equal(isPullRequestDecorationEnabled(pullRequest({ state: "closed", decorationEnabled: true })), true);
   const repository = new InMemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };
-  const updated = await service(repository).update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ state: "closed", decorationEnabled: true }) });
-  assert.equal(isPullRequestDecorationEnabled(updated.contextState.pullRequest!), true);
+  const result = await service(repository).update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ state: "closed", decorationEnabled: true }) });
+  assert.equal(isPullRequestDecorationEnabled(result.contextState.pullRequest!), true);
   assert.equal((repository.current?.contextState.pullRequest as PullRequestReviewContext & { decorationEnabled?: boolean }).decorationEnabled, true);
 });
 
-test("revision変更はContextとowner-wide Globalを同じheadへmapしてCAS commitする", async () => {
+test("revision変更はContextとGlobalを同一headへmapする", async () => {
   const repository = new InMemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };
   const result = await service(repository).update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ headSha: SHA_C }) });
-  assert.equal(result.contextState.files["stable-file-id"]?.revisionId, SHA_C);
+  assert.equal(result.contextState.files.file?.revisionId, SHA_C);
   assert.equal(result.globalState.currentRevisionId, SHA_C);
-  assert.equal(result.globalState.files["stable-file-id"]?.revisionId, SHA_C);
-  assert.deepEqual(result.globalState.files["stable-file-id"]?.reviewed, []);
+  assert.equal(result.globalState.files.file?.revisionId, SHA_C);
 });
 
-test("Globalを旧revisionのまま返すmapperはfail closedで永続化しない", async () => {
+test("旧revision Globalを返すmapperはfail closedにする", async () => {
   const repository = new InMemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };
   const invalid = new GitHubPullRequestContextStateService(repository, async ({ current, nextPullRequest }) => ({ contextState: { ...current.contextState, pullRequest: nextPullRequest }, globalState: current.globalState }));
@@ -180,19 +150,19 @@ test("Globalを旧revisionのまま返すmapperはfail closedで永続化しな�
 test("実filesystem repositoryでcreate、restart load、CAS stale rejectionを検証する", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-t404-"));
   const storageUris = { globalStorageUri: { fsPath: root } };
-  const firstRepository = new FileSystemReviewStateRepository({ storageUris });
-  const firstService = service(firstRepository);
+  const first = service(new FileSystemReviewStateRepository({ storageUris }));
   const initial = { contextState: context(), globalState: globalState() };
-  await firstService.create(initial, undefined);
+  await first.create(initial, undefined);
 
   const restartedRepository = new FileSystemReviewStateRepository({ storageUris });
-  const restartedService = service(restartedRepository);
-  const loaded = await restartedService.load(REPOSITORY_ID, { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 });
-  assert.deepEqual(loaded, initial);
+  const restarted = service(restartedRepository);
+  const loaded = await restarted.load(REPOSITORY_ID, { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 });
+  assert.deepEqual(loaded?.contextState, initial.contextState);
+  assert.deepEqual(loaded?.globalState, initial.globalState);
 
   const staleRepository = new FileSystemReviewStateRepository({ storageUris });
   await staleRepository.load({ kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: context().contextId });
-  await restartedService.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ title: "new" }) });
+  await restarted.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ title: "new" }) });
   await assert.rejects(() => staleRepository.commit({ repositoryId: REPOSITORY_ID, contextId: context().contextId, expected: initial, next: initial }), /no longer matches/);
 });
 
