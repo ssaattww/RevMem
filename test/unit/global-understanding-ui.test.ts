@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import "./t505-global-understanding-source.test";
+
 import {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
+  GlobalUnderstandingRefreshController,
   type GlobalUnderstandingTreeSnapshot
-} from "../../src/ui/global-understanding/global-understanding-ui-model";
+} from "../../src/ui/global-understanding/index";
 import {
   resolveConfiguredNonGitSnapshotLimits
 } from "../../src/application/non-git-snapshots/non-git-snapshot-settings";
@@ -121,6 +124,55 @@ test("Global layer toggle does not refresh dependents when persistence fails", a
 
   await assert.rejects(() => controller.toggle(), /settings write failed/u);
   assert.deepEqual(events, ["write"]);
+});
+
+
+test("Global refresh clears stale presentation when the current recalculation fails", async () => {
+  const events: string[] = [];
+  const controller = new GlobalUnderstandingRefreshController(
+    {
+      recalculate: async () => {
+        throw new Error("recalculation failed");
+      }
+    },
+    {
+      show: () => events.push("show"),
+      clear: () => events.push("clear")
+    }
+  );
+
+  await assert.rejects(() => controller.refresh(), /recalculation failed/u);
+  assert.deepEqual(events, ["clear"]);
+});
+
+test("an older failed recalculation cannot clear a newer Global snapshot", async () => {
+  let rejectFirst: ((reason: Error) => void) | undefined;
+  let resolveSecond: ((value: GlobalUnderstandingTreeSnapshot) => void) | undefined;
+  let invocation = 0;
+  const events: string[] = [];
+  const controller = new GlobalUnderstandingRefreshController(
+    {
+      recalculate: () => {
+        invocation += 1;
+        if (invocation === 1) {
+          return new Promise((_, reject) => { rejectFirst = reject; });
+        }
+        return new Promise((resolve) => { resolveSecond = resolve; });
+      }
+    },
+    {
+      show: (value) => events.push(`show:${value.progress.reviewedNonEmptyLineCount}`),
+      clear: () => events.push("clear")
+    }
+  );
+
+  const first = controller.refresh();
+  const second = controller.refresh();
+  resolveSecond?.(snapshot());
+  await second;
+  rejectFirst?.(new Error("older failed"));
+  await assert.rejects(() => first, /older failed/u);
+  assert.deepEqual(events, ["show:3"]);
 });
 
 test("snapshot file-size setting is converted to the NonGitSnapshotTracker contract", () => {
