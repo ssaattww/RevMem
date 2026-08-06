@@ -1,6 +1,6 @@
 # Review Range Tracker
 
-VS Code の通常テキストエディタで、確認済みにした行範囲を記録・表示する拡張機能です。動作には **VS Code 1.125.0 以上**が必要です。
+VS Code で、確認済みにした行範囲を context ごとに記録・表示する拡張機能です。動作には **VS Code 1.125.0 以上**が必要です。
 
 ## 現状できること
 
@@ -18,8 +18,10 @@ VS Code の通常テキストエディタで、確認済みにした行範囲を
 - UNC 共有上のファイルも、VS Code から開ける場合は server authority を含む URI で識別します。
 - 状態は owner に応じた VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
 - 確認・解除、context 作成、Git revision mapping の履歴を JSON Lines 形式で保存します。
+- Activity Bar の **Review Range** から **Current Context** View を開き、現在の branch または workspace context を確認できます。
+- Current Context View と Status Bar は同じ context を表示します。View の操作から再計算や候補選択を行うと、通常エディタの確認操作と装飾にも選択結果が反映されます。
 
-main には、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR 進捗計算、PR Progress Tree、Global 理解率計算の内部コンポーネントも実装されています。ただし、これらを Activity Bar、コマンド、Tree View、Status Bar として公開する runtime 配線はまだ完了していません。
+main には、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR 進捗計算、PR Progress Tree、Global 理解率計算の内部コンポーネントも実装されています。local base/head を使った Extension Host 受け入れ試験では、PR Progress Tree から実際の diff editor を開き、original・modified 両側でファイル全体の確認・全解除を行い、進捗表示と永続状態が同期することを検証しています。ただし、GitHub PR context の永続管理と利用者向け選択経路はまだ実装途中です。
 
 ## インストール方法
 
@@ -42,13 +44,14 @@ code --install-extension review-range-tracker-<version>.vsix
 2. 対象行を選択するか、対象行にカーソルを置きます。
 3. 右クリックメニューまたはコマンドパレットで、`Review Range: 選択範囲を確認済みにする` または `Review Range: 選択範囲の確認済みを解除する` を実行します。
 4. ファイル全体を対象にするには、`Review Range: ファイル全体を確認済みにする` または `Review Range: ファイル全体の確認済みを解除する` を実行し、確認ダイアログを承認します。
+5. 現在の context は、Activity Bar の **Review Range** にある **Current Context** View または Status Bar で確認します。候補を選び直す場合は View の選択操作、最新状態を取り直す場合は再計算操作を使います。
 
 Git working tree 内では、ファイルの親ディレクトリから repository root を検出します。Git 管理下かどうかを先に判定し、workspace membership は非 Git 時の保存先選択にだけ使用します。
 
 ## 現在の制限
 
-- 現在の manifest で公開している4コマンドは通常エディタ専用です。diff editor と untitled editor では実行できません。
-- GitHub PR context、PR Progress Tree、Activity Bar、Current Context View、Global Understanding View、Review Contexts View、Status Bar は runtime に未接続です。Git 管理下では現在 branch または detached HEAD context を使用します。
+- 確認・解除の4コマンドは、利用者向けには通常エディタで使用します。PR Progress の実diff経路はExtension Host受け入れ試験で検証済みですが、GitHub PR contextを選択するproduction runtimeは未完成です。untitled editorでは実行できません。
+- Activity Bar、Current Context View、Status Bar、contextの再計算・選択はruntimeへ接続済みです。PR Progress Treeはlocal base/head受け入れ経路まで検証済みですが、通常利用時にGitHub PR contextを初期化する経路は未実装です。Global Understanding ViewとReview Contexts Viewも未接続です。
 - 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。
 - 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。
 - 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。
