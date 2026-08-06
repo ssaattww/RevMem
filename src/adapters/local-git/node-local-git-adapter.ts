@@ -4,7 +4,7 @@ import {
   type GitCommandExecutor,
   type GitCommandInvocation
 } from "./contracts";
-import { LocalGitAdapter } from "./local-git-adapter";
+import { LocalGitAdapter } from "./history-rewrite-local-git-adapter";
 import { NodeGitBlobReader } from "./node-git-blob-reader";
 import {
   NodeGitCommandExecutor,
@@ -80,8 +80,8 @@ implements GitRevisionMappingSource {
 }
 
 /**
- * Creates a local Git adapter whose metadata, complete diff, and blob commands
- * use one runtime executable and timeout policy.
+ * Creates a local Git adapter whose metadata, complete diff, blob, and tree
+ * enumeration commands use one runtime executable and timeout policy.
  */
 export function createNodeLocalGitAdapter(
   options: NodeLocalGitAdapterOptions = {}
