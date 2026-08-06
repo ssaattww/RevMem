@@ -46,6 +46,10 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: T602 history rewrite recovery tests
+        run: |
+          set -o pipefail
+          node --test test-dist/test/unit/history-rewrite-recovery.test.js 2>&1 | tee test-output/ci/test-t602.log
       - name: T403 GitHub cache tests
         run: |
           set -o pipefail
