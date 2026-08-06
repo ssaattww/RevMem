@@ -23,7 +23,7 @@ export interface GlobalUnderstandingRuntimeSource {
 export interface GlobalUnderstandingRuntimeDependencies {
   readonly source: GlobalUnderstandingRuntimeSource;
   readonly readGlobalLayerEnabled: () => boolean;
-  readonly writeGlobalLayerEnabled: (enabled: boolean) => void | Promise<void>;
+  readonly writeGlobalLayerEnabled: (enabled: boolean) => void | PromiseLike<void>;
   readonly refreshDecorations: () => void | Promise<void>;
   readonly reportError: (error: unknown) => void | Promise<void>;
 }
@@ -138,7 +138,7 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
 
   public getChildren(
     node?: GlobalUnderstandingViewNode
-  ): readonly GlobalUnderstandingViewNode[] {
+  ): GlobalUnderstandingViewNode[] {
     const model = this.model;
     if (model === undefined) return [];
     if (node === undefined) {
@@ -148,7 +148,7 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
         model.diagnostics
       ];
     }
-    if (node.kind === "files-group") return model.files;
+    if (node.kind === "files-group") return [...model.files];
     if (node.kind === "diagnostics") {
       return [
         {
@@ -227,7 +227,9 @@ export const registerGlobalUnderstandingRuntime = (
 
   const toggle = new GlobalLayerToggleController({
     readEnabled: dependencies.readGlobalLayerEnabled,
-    writeEnabled: dependencies.writeGlobalLayerEnabled,
+    writeEnabled: async (enabled) => {
+      await dependencies.writeGlobalLayerEnabled(enabled);
+    },
     refreshDecorations: dependencies.refreshDecorations,
     refreshGlobalUnderstanding: refresh
   });
