@@ -18,12 +18,18 @@ const resolvePositiveSafeInteger = (value: unknown, fallback: number): number =>
 /** Converts the user-facing per-snapshot limit while retaining an independent aggregate budget. */
 export const resolveConfiguredNonGitSnapshotLimits = (
   settings: ConfiguredNonGitSnapshotSettings
-): NonGitSnapshotLimits => ({
-  maxSnapshots: DEFAULT_MAX_SNAPSHOTS,
-  maxSnapshotCompressedBytes: resolvePositiveSafeInteger(
+): NonGitSnapshotLimits => {
+  const maxSnapshotCompressedBytes = resolvePositiveSafeInteger(
     settings.maxSnapshotFileSizeBytes,
     DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES
-  ),
-  maxTotalCompressedBytes: DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES,
-  retentionMs: DEFAULT_RETENTION_MILLISECONDS
-});
+  );
+  return {
+    maxSnapshots: DEFAULT_MAX_SNAPSHOTS,
+    maxSnapshotCompressedBytes,
+    maxTotalCompressedBytes: Math.max(
+      DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES,
+      maxSnapshotCompressedBytes
+    ),
+    retentionMs: DEFAULT_RETENTION_MILLISECONDS
+  };
+};
