@@ -1,0 +1,93 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #48"
+task_id: T404
+mode: implementation
+branch: feature/t404-pr-context-layers
+base_ref: main
+current_head: 35ba510431679a85d50c3b73c03f18d2e0ef32cd
+reviewed_head: 8b2de3b0657b5b1bd7094fa9efc0faaf88b02a34
+scope:
+  - stable GitHub PR context identity from host/owner/repository/PR number
+  - base/head revision and PR lifecycle persistence
+  - independent multi-PR review layers below globalStorageUri
+  - closed and merged PR decoration disabled by default
+  - restart restoration and atomic JSON publication
+non_goals:
+  - T405 Review Contexts View and layer selection UI
+  - merge
+write_boundary:
+  allowed:
+    - src/application/github-pr-context/**
+    - src/adapters/github/**
+    - test/unit/github-pr-context-layer-store.test.ts
+    - .github/workflows/ci.yml
+    - reports/issue-1-t404-*
+  forbidden:
+    - tasks/tasks-status.md without required progress-management Skill
+    - tasks/phases-status.md without required progress-management Skill
+validation:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - node --test test-dist/test/unit/github-pr-context-layer-store.test.js
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - generated files and source snapshot
+ci:
+  matching_run: "31090821677"
+  head_sha: 8b2de3b0657b5b1bd7094fa9efc0faaf88b02a34
+  conclusion: success
+  note: report and handoff commits require a new exact-head CI check
+implementation:
+  outcome: completed
+  final_head: 35ba510431679a85d50c3b73c03f18d2e0ef32cd
+  commits:
+    - sha: 58124757929214ed8a566b39d420b7b08355719a
+      purpose: Red test
+    - sha: d987ec93500761e0b117ca4f44e233cc8bc300ba
+      purpose: initial implementation
+    - sha: 6fcad616b6a975b3e014fa714d3310c816a20bb6
+      purpose: architecture separation
+    - sha: 8b166544bfb43ccc19b77134a82c377f89a659db
+      purpose: Node adapter
+    - sha: 8b2de3b0657b5b1bd7094fa9efc0faaf88b02a34
+      purpose: lint correction and validated implementation HEAD
+    - sha: 35ba510431679a85d50c3b73c03f18d2e0ef32cd
+      purpose: detailed implementation report
+  failure_diagnostics:
+    - type: artifact
+      location: workflow run 31090559332 artifact 8963238742
+      summary: architecture violation evidence
+    - type: artifact
+      location: workflow run 31090721162 artifact 8963309238
+      summary: lint violation evidence
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t404-implementation-20260806185200.md
+unknown:
+  - final report/handoff HEAD matching CI conclusion is pending
+remaining_risks:
+  - Extension activation composition remains for downstream wiring
+  - multi-process lock, cleanup and capacity limits remain T604 scope
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: initial_review
+  summary: Review the complete T404 PR #48 change set against design rev4 and exact current HEAD.
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t404-handoff-20260806185200.yaml
+  transport_note: Use PR #48 current HEAD; do not substitute CI from another SHA.
