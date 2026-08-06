@@ -1,0 +1,303 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-07T07:50:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #43
+task_id: T505
+branch: feature/t505-global-understanding-ui
+base_ref: main
+target:
+  current_head: c2ec7df9ad53ba95de2178fd51f6419685be198c
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  commit_range: c75c7961c3951764fed956dddd2161095cc8f26d..c2ec7df9ad53ba95de2178fd51f6419685be198c
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Tests are failing; diagnose and fix them autonomously.
+  - source: report
+    reference: reports/issue-1-t505-fix-verification-20260807051700.md
+    summary: T505-R007 requires the original producer packet to be preserved in schema v3 source_payloads.
+  - source: handoff
+    reference: chatgpt-worker-skills.zip/chat-handoff-manager/SKILL.md
+    summary: Handoffs are lossless transport envelopes and schema v3 source_payloads.payload carries producer output as an object or string.
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: Use GitHub connector, preserve diagnostics, use exact current-HEAD CI only, report changes, comment PR, and do not merge.
+
+development_policy:
+  method: test-driven development / failure-driven correction
+  testing_order: Treat the existing failing R007 regression as RED, fix the handoff rather than weakening the test, verify the corrected static contract, then require exact-head CI.
+  governing_source: RevMem repository instructions and uploaded worker Skills
+validation_plan:
+  commands:
+    - npm run test:t505
+    - npm run test:unit
+    - npm run build
+    - npm run lint
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source and test files
+    - environment and Git state
+blocked:
+  - item: Exact-head GitHub Actions validation
+    reason: Connector currently returns no pull-request workflow run whose head SHA matches the technical fix HEAD.
+    required_input_or_decision: Confirm a newly generated run only when its head SHA exactly matches the PR current HEAD.
+
+authorized_actions:
+  - read_repository
+  - edit_tests
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+      reason: Correct the R007 lossless source-payload contract.
+    - path_or_operation: reports/issue-1-t505-ci-failure-fix-20260807075000.md
+      reason: Persist detailed failure diagnosis and correction evidence.
+    - path_or_operation: handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+      reason: Persist continuation state.
+    - path_or_operation: PR #43 metadata and comment
+      reason: Publish concise correction status.
+  forbidden:
+    - path_or_operation: unrelated product implementation
+      reason: Failure root cause is isolated to handoff transport.
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
+      reason: Required progress-management Skill is unavailable.
+    - path_or_operation: merge
+      reason: Reserved for the user.
+
+scope:
+  - Diagnose the currently reported failing T505 test.
+  - Preserve the R007 test because it detects a real contract violation.
+  - Embed the exact historical legacy packet into source_payloads.payload.
+  - Persist correction evidence and request exact-head validation.
+non_goals:
+  - Broaden T505 behavior.
+  - Change reviewer verdict.
+  - Merge.
+
+files:
+  changed:
+    - path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+      purpose: Embed exact legacy producer packet in source_payloads.payload.
+    - path: reports/issue-1-t505-ci-failure-fix-20260807075000.md
+      purpose: Detailed correction report.
+    - path: handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+      purpose: Lossless continuation packet.
+  inspected:
+    - path: test/unit/t505-review-findings.test.ts
+      purpose: Identify the exact R007 failing expectation.
+    - path: handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
+      purpose: Recover exact source producer packet.
+    - path: chatgpt-worker-skills.zip/chat-handoff-manager/SKILL.md
+      purpose: Confirm schema v3 source_payloads contract.
+    - path: .github/workflows/ci.yml
+      purpose: Existing failure diagnostics policy.
+  intentionally_untouched:
+    - path_or_area: test/unit/t505-review-findings.test.ts
+      reason: Test correctly detected the lossless transport violation.
+    - path_or_area: product source
+      reason: Not involved in this failure.
+    - path_or_area: merge
+      reason: User-owned action.
+
+commands:
+  - command: Inspect T505-R007 regression and historical handoff
+    purpose: Identify deterministic failure condition.
+    exit_code: 1
+    result: failed
+    head_sha: c75c7961c3951764fed956dddd2161095cc8f26d
+    evidence: Test requires `payload: |-`; historical handoff only stored a repository-file reference object.
+  - command: Inspect corrected historical handoff
+    purpose: Verify the R007 static contract after the fix.
+    exit_code: 0
+    result: passed
+    head_sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+    evidence: `source_payloads.payload: |-` is present and begins with the exact legacy `schema_version: 3` / `handoff:` packet.
+  - command: GitHub Actions exact-head lookup
+    purpose: Validate only the current technical fix HEAD.
+    exit_code: unknown
+    result: blocked
+    head_sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+    evidence: Connector returned no matching pull-request workflow run; no other SHA was substituted.
+
+tests:
+  - name: T505-R007 follow-up handoff uses the required schema v3 top-level packet and preserves the original payload
+    phase: red
+    result: failed
+    head_sha: c75c7961c3951764fed956dddd2161095cc8f26d
+    evidence: Historical handoff referenced the source payload instead of embedding it.
+  - name: T505-R007 source payload static contract after correction
+    phase: green
+    result: passed
+    head_sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+    evidence: Corrected file contains `source_payloads.payload: |-` with the original packet inline.
+  - name: Full GitHub Actions suite
+    phase: verification
+    result: not_run
+    head_sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+    evidence: No exact-head pull-request workflow run is available through the connector.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+  conclusion: unknown
+  artifacts: []
+
+implementation:
+  outcome: partial
+  final_head: 5204ea1737665f8b68937525d155560c12b2cc0a
+  commits:
+    - sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+      purpose: Embed exact legacy source payload in corrected schema v3 handoff.
+    - sha: c2ec7df9ad53ba95de2178fd51f6419685be198c
+      purpose: Persist detailed CI failure correction report.
+  addressed_findings:
+    - id: T505-R007
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: Failing regression was preserved; source payload is now embedded inline and audit copy remains available.
+  failure_diagnostics:
+    - type: test_result
+      location: test/unit/t505-review-findings.test.ts
+      summary: R007 required an inline source payload and exposed the reference-only handoff as non-lossless.
+  blocked_items:
+    - item: Exact-head full CI
+      reason: No matching workflow run is exposed by the connector.
+      required_input_or_decision: Wait for a matching run; never substitute another SHA.
+  summary:
+    - Root cause is isolated to the historical handoff transport contract.
+    - The test was correct and was not weakened.
+    - The historical handoff now carries the exact original producer packet inline.
+
+review:
+  mode: not_applicable
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - This chat implemented the correction and cannot verify its own review verdict.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Original reviewer verification remains required after exact-head CI succeeds.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t505-ci-failure-fix-20260807075000.md
+    - handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed root cause and correction are persisted.
+
+findings:
+  - id: T505-R007
+    severity: low
+    origin: introduced_by_fix
+    location: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+    description: Schema v3 source_payloads contained only a reference object, not the original producer payload.
+    impact: The handoff was not self-contained/lossless and the R007 regression failed.
+    evidence: The test requires `payload: |-`; the pre-fix handoff used a mapping with preserved_repository_file/content_sha.
+    required_action: Embed the exact original legacy packet as source_payloads.payload while retaining any audit copy separately.
+
+held:
+  - item: Exact-head CI
+    reason: Matching workflow run is not currently exposed.
+    owner: GitHub Actions / repository operator
+    remaining_risk: Full repository validation remains incomplete.
+    verdict_impact: No pass claim is allowed.
+unexplored: []
+unknown:
+  - field_or_fact: Run ID of the failing workflow observed by the user
+    reason: Connector returns no matching pull-request run for the failure-observed or technical fix HEAD.
+not_applicable:
+  - field_or_area: merge
+    reason: Reserved for the user.
+remaining_risks:
+  - Exact-head full CI is still required.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: review-followup
+    content_type: application/yaml
+    payload:
+      failure_observed_head: c75c7961c3951764fed956dddd2161095cc8f26d
+      technical_fix_head: 5204ea1737665f8b68937525d155560c12b2cc0a
+      finding: T505-R007
+      root_cause: reference-only source_payloads violated the lossless transport requirement
+      fix: exact legacy packet embedded inline under source_payloads.payload
+extensions:
+  - namespace: revmem
+    payload:
+      pull_request: 43
+      correction_report: reports/issue-1-t505-ci-failure-fix-20260807075000.md
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: After exact-head CI succeeds, independently verify T505-R002/R005/R006/R007 including the corrected R007 handoff.
+  instructions:
+    - Confirm PR current HEAD first.
+    - Use only workflow runs whose head SHA exactly equals that current HEAD.
+    - Preserve finding IDs and severities.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #43
+    - reports/issue-1-t505-ci-failure-fix-20260807075000.md
+    - handoffs/issue-1-t505-review-followup-20260806210039.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+  packet_url: null
+  transport_note: Continue only after exact-head CI is available; this worker did not merge or issue a review verdict.
