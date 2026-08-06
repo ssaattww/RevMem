@@ -3,15 +3,17 @@ import test from "node:test";
 
 import type { FileReviewState } from "../../src/core/contracts/index";
 import {
-  GitRevisionMappingHistoryRewritePort,
   HistoryRewriteRecoveryService,
-  NonGitSnapshotHistoryRewritePort,
   type HistoryRewriteCurrentFile,
   type HistoryRewriteGitObjectPort,
   type HistoryRewriteGitObjectResult,
   type HistoryRewriteSnapshotPort,
   type HistoryRewriteSnapshotResult
 } from "../../src/application/history-rewrite-recovery/index";
+import {
+  GitRevisionMappingHistoryRewritePort,
+  NonGitSnapshotHistoryRewritePort
+} from "../../src/application/history-rewrite-recovery/adapters";
 import type {
   GitRevisionMappingSource,
   GitRevisionMappingTextReadResult
