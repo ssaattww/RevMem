@@ -1,1 +1,4 @@
-export { canonicalizeHostedGitRepositoryIdentity } from "./hosted-git-repository-identity";
+export {
+  canonicalizeHostedGitAuthority,
+  canonicalizeHostedGitRepositoryIdentity,
+} from "./hosted-git-repository-identity";
