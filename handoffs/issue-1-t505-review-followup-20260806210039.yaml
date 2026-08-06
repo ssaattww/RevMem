@@ -2,8 +2,7 @@ schema_version: 3
 producer:
   skill: chat-implementation-worker
   mode: corrected_review_followup
-  generated_at: 2026-08-07T05:58:00+09:00
-
+  generated_at: 2026-08-07T06:08:00+09:00
 repository: ssaattww/RevMem
 issue_or_pr: PR #43
 task_id: T505
@@ -13,35 +12,19 @@ target:
   current_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
   reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
   commit_range: b066d89d1886b253a14a18462440d870ff2572c6..571831f7ef687a0c4ecb9d65eb829fee50e590e2
-
 authoritative_requirements:
-  - source: user_instruction
-    reference: PR #43 review follow-up request
-    summary: Address all T505 review findings with TDD, preserve evidence, update the PR, and do not merge.
   - source: report
     reference: reports/issue-1-t505-review-20260806195427.md
-    summary: T505-R001 through T505-R004 are the source findings for this follow-up.
-  - source: repository_instruction
-    reference: RevMem project instructions
-    summary: Use GitHub connector, exact-head CI, diagnostic artifacts, small commits, repository report, concise PR comment, and user-owned merge.
-
+    summary: Address T505-R001 through T505-R004 through TDD and preserve exact-head evidence.
 development_policy:
   method: test-driven development
-  testing_order: Add finding-specific RED tests, confirm failure with diagnostic artifact, implement by logical finding cluster, then run exact-head full CI.
-  governing_source: RevMem repository instructions and uploaded chat implementation Skills
+  testing_order: RED finding tests, implementation commits, exact-head full CI, report and handoff.
+  governing_source: RevMem repository instructions
 validation_plan:
   commands:
     - npm run build
-    - npm run typecheck:contracts
-    - npm run validate:architecture
-    - npm run validate:architecture:negative
     - npm run lint
     - npm run test:unit
-    - npm run test:t403
-    - npm run test:t304
-    - npm run test:t502
-    - T503 focused test
-    - T504 focused test
     - npm run test:git
     - npm run test:github
     - npm run test:vscode
@@ -49,11 +32,9 @@ validation_plan:
     - test results
     - standard output
     - standard error
-    - generated output
-    - source and test trees
+    - source and generated output
     - environment and Git state
 blocked: []
-
 authorized_actions:
   - read_repository
   - edit_code
@@ -67,134 +48,68 @@ authorized_actions:
   - comment_pr
 write_boundary:
   allowed:
-    - path_or_operation: package.json
-      reason: T505 settings and focused validation wiring
-    - path_or_operation: src/application/non-git-snapshots/
-      reason: Snapshot limit contract and cleanup behavior
-    - path_or_operation: src/application/file-exclusion/
-      reason: Shared exclusion policy composition
-    - path_or_operation: src/adapters/repository-files/
-      reason: Global enumeration using the shared policy
-    - path_or_operation: src/t305-extension.ts
-      reason: Live document evidence and refresh triggers
-    - path_or_operation: src/t505-global-understanding-source.ts
-      reason: T505 calculation composition
-    - path_or_operation: test/unit/
-      reason: Finding-specific RED and regression tests
-    - path_or_operation: reports/issue-1-t505-review-followup-20260806210039.md
-      reason: Detailed implementation follow-up report
-    - path_or_operation: handoffs/issue-1-t505-review-followup-20260806210039.yaml
-      reason: Lossless handoff packet
-    - path_or_operation: PR #43 metadata and conversation
-      reason: Required concise implementation report and handoff
+    - path_or_operation: T505 implementation, tests, reports, handoffs, and PR #43
+      reason: Review follow-up scope.
   forbidden:
-    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
-      reason: Repository requires an unavailable progress-management Skill.
-    - path_or_operation: review verdict
-      reason: Fix worker does not verify its own changes.
+    - path_or_operation: task and phase tracking direct edits
+      reason: Required progress-management Skill unavailable.
     - path_or_operation: merge
-      reason: Merge is reserved for the user.
-
+      reason: Reserved for the user.
 scope:
-  - Address T505-R001 live open-document evidence and save/close refresh.
-  - Address T505-R002 per-snapshot versus aggregate snapshot limits.
-  - Address T505-R003 shared last-valid exclusion policy.
-  - Address T505-R004 invalid snapshot setting activation safety.
-  - Preserve RED, GREEN, artifact, commit, report, and PR evidence.
+  - Live open-document Global evidence
+  - Independent snapshot limits
+  - Shared exclusion policy
+  - Invalid snapshot setting fallback
 non_goals:
-  - Independent fix verification
-  - Task or phase progress synchronization
+  - Review verdict
   - Merge
-
 files:
   changed:
     - path: package.json
-      purpose: Snapshot setting validation and T505 focused validation wiring
-    - path: src/application/non-git-snapshots/index.ts
-      purpose: Separate per-snapshot and aggregate limits
-    - path: src/application/non-git-snapshots/non-git-snapshot-settings.ts
-      purpose: Resolve the public setting without shrinking aggregate retention
-    - path: src/application/file-exclusion/review-file-exclusion-policy-service.ts
-      purpose: Expose the active shared last-valid policy service
-    - path: src/adapters/repository-files/node-repository-file-enumerator.ts
-      purpose: Consume the shared exclusion policy service
+      purpose: T505 settings and validation wiring
+    - path: src/application/non-git-snapshots/
+      purpose: Snapshot limits
+    - path: src/application/file-exclusion/
+      purpose: Shared policy
     - path: src/t305-extension.ts
-      purpose: Supply immutable open document evidence and change/save/close refresh
+      purpose: Live evidence refresh
     - path: src/t505-global-understanding-source.ts
-      purpose: Prefer live file evidence and shared exclusion policy
-    - path: test/unit/global-understanding-ui.test.ts
-      purpose: UI, settings, and stale refresh regression coverage
-    - path: test/unit/t305-validation-wiring.test.ts
-      purpose: Default unit discovery
-    - path: test/unit/t505-global-understanding-source.test.ts
-      purpose: T505 source integration coverage
-    - path: test/unit/t505-review-findings.test.ts
-      purpose: Finding-specific regression coverage
+      purpose: Global source composition
+    - path: test/unit/
+      purpose: Finding regressions
     - path: reports/issue-1-t505-review-followup-20260806210039.md
-      purpose: Detailed implementation report
+      purpose: Detailed report
     - path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
-      purpose: Corrected schema v3 handoff
+      purpose: Corrected handoff
   inspected:
-    - path: reports/issue-1-t505-review-20260806195427.md
-      purpose: Source findings and required actions
     - path: .github/workflows/ci.yml
-      purpose: Failure diagnostic artifact coverage
+      purpose: Diagnostic artifact coverage
     - path: doc/design/vscode-review-range-tracker-design.md
-      purpose: Current evidence, shared exclusion, and certainty-first behavior
+      purpose: Product contract
   intentionally_untouched:
-    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
-      reason: Authorized progress-management Skill is unavailable.
+    - path_or_area: tasks tracking
+      reason: Progress-management Skill unavailable.
     - path_or_area: merge
       reason: User-owned action.
-
 commands:
   - command: GitHub Actions CI run 31097985105
-    purpose: Confirm finding-specific RED contracts before implementation
+    purpose: RED verification
     exit_code: 1
     result: failed
     head_sha: b99c688a0aafa1927ac9a284c04e911d6e105208
-    evidence: Unit compilation rejected absent live evidence, shared policy, split limits, and fallback contracts; artifact 8966248721.
-  - command: GitHub Actions CI run 31099257410
-    purpose: Validate first implementation attempt
-    exit_code: 1
-    result: failed
-    head_sha: d3c22296d8ea6e3e8571dc8803ef98110720ea26
-    evidence: ESLint no-this-alias failure; artifact 8966755748.
-  - command: GitHub Actions CI run 31099364549
-    purpose: Validate technical implementation HEAD
-    exit_code: 0
-    result: passed
-    head_sha: fdf324864a4227b3319cb50337fa880cdfe23267
-    evidence: All workflow steps succeeded.
+    evidence: Artifact 8966248721.
   - command: GitHub Actions CI run 31099795538
-    purpose: Validate report and handoff current HEAD
+    purpose: Final exact-head validation
     exit_code: 0
     result: passed
     head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
-    evidence: All workflow steps succeeded; unit 462 passed and 0 failed.
-
+    evidence: All workflow steps succeeded; unit 462 passed.
 tests:
-  - name: T505-R001 live document evidence and save/close transition
-    phase: regression
+  - name: T505 finding regression suite
+    phase: verification
     result: passed
     head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
     evidence: Exact-head run 31099795538.
-  - name: T505-R002 independent per-snapshot and aggregate limits
-    phase: regression
-    result: passed
-    head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
-    evidence: Exact-head run 31099795538.
-  - name: T505-R003 shared last-valid exclusion policy
-    phase: regression
-    result: passed
-    head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
-    evidence: Exact-head run 31099795538.
-  - name: T505-R004 invalid snapshot setting fallback
-    phase: regression
-    result: passed
-    head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
-    evidence: Exact-head run 31099795538.
-
 ci:
   required: true
   workflow: CI
@@ -204,56 +119,43 @@ ci:
   artifacts:
     - id: 8966248721
       name: ci-failure-diagnostics-31097985105-1
-      purpose: RED compile and test diagnostics
-    - id: 8966755748
-      name: ci-failure-diagnostics-31099257410-1
-      purpose: Intermediate lint failure diagnostics
-
+      purpose: RED diagnostics
 implementation:
   outcome: completed
   final_head: fdf324864a4227b3319cb50337fa880cdfe23267
   commits:
-    - sha: 7796eeefa70f2b3ad3ae1afb7fe4e6603a5f702b
-      purpose: Add finding regression tests.
-    - sha: b99c688a0aafa1927ac9a284c04e911d6e105208
-      purpose: Execute regressions and establish RED.
     - sha: fb2e9d5937bb1bbdecf2a9f6b50a17bac4ce33b9
-      purpose: Separate snapshot limits and harden invalid setting fallback.
+      purpose: Snapshot limits and activation fallback
     - sha: 6303a886d004552020b4fc75e12a2084d7130d42
-      purpose: Reuse the shared exclusion policy.
+      purpose: Shared exclusion policy
     - sha: d3c22296d8ea6e3e8571dc8803ef98110720ea26
-      purpose: Calculate from live open-document evidence.
+      purpose: Live open-document evidence
     - sha: fdf324864a4227b3319cb50337fa880cdfe23267
-      purpose: Satisfy lint contract.
+      purpose: Lint compliance
   addressed_findings:
     - id: T505-R001
       reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
       disposition: addressed
-      evidence: Live document denominator/hash/line evidence and change/save/close triggers.
+      evidence: Live evidence and lifecycle refresh tests.
     - id: T505-R002
       reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
       disposition: addressed
-      evidence: Separate snapshot and aggregate fields with regression coverage.
+      evidence: Split snapshot limits tests.
     - id: T505-R003
       reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
       disposition: addressed
-      evidence: Shared last-valid exclusion service and revision cache key.
+      evidence: Shared last-valid policy tests.
     - id: T505-R004
       reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
       disposition: addressed
-      evidence: Safe resolver fallback and manifest maximum.
+      evidence: Invalid setting fallback tests.
   failure_diagnostics:
     - type: artifact
       location: GitHub Actions artifact 8966248721
-      summary: RED source, test, output, environment, and logs.
-    - type: artifact
-      location: GitHub Actions artifact 8966755748
-      summary: Intermediate lint failure source, output, environment, and logs.
+      summary: RED diagnostics.
   blocked_items: []
   summary:
-    - Four initial T505 review findings were implemented through TDD.
-    - The fixer did not change the review verdict or merge the PR.
-
+    - Initial four review findings were implemented and handed to the reviewer.
 review:
   mode: not_applicable
   reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
@@ -270,7 +172,7 @@ review:
       served_as_normal_reviewer: false
       inherited_conversation: true
       evidence:
-        - This packet was produced by the implementation follow-up worker and is not a review verdict.
+        - Implementation handoff only; no verdict.
   verdict: not_applicable
   required_coverage: []
   validation_assessment: []
@@ -286,8 +188,7 @@ review:
     validation_status: not_applicable
     validation_evidence: []
   summary:
-    - Independent fix verification remains the next review action.
-
+    - Independent fix verification is required.
 report:
   report_type: implementation_report
   outcome: created
@@ -301,157 +202,80 @@ report:
     - target: PR #43
       url_or_id: 5204419163
   summary:
-    - Detailed implementation and exact-head validation evidence were persisted.
-
+    - Report and handoff persisted.
 findings:
   - id: T505-R001
     severity: high
     origin: introduced_by_change
-    location: src/t305-extension.ts and src/t505-global-understanding-source.ts
-    description: Global recalculation ignored unsaved open-document evidence.
-    impact: Recently reviewed live lines could be stale or the UI could clear.
-    evidence: Initial review report and RED run 31097985105.
-    required_action: Prefer one immutable live snapshot and refresh on change/save/close.
+    location: T505 live evidence composition
+    description: Unsaved buffers were not used.
+    impact: Global state could appear stale.
+    evidence: Initial review report.
+    required_action: Use immutable live evidence.
   - id: T505-R002
     severity: medium
     origin: introduced_by_change
-    location: src/application/non-git-snapshots/
-    description: One setting controlled both per-snapshot and aggregate retention.
-    impact: Unrelated valid snapshots could be evicted.
-    evidence: Initial review report and RED run 31097985105.
-    required_action: Separate per-snapshot and aggregate limits.
+    location: Snapshot limits
+    description: Per-file and aggregate limits were conflated.
+    impact: Valid snapshots could be evicted.
+    evidence: Initial review report.
+    required_action: Separate the limits.
   - id: T505-R003
     severity: medium
     origin: introduced_by_change
-    location: src/t505-global-understanding-source.ts
-    description: Global calculation recompiled raw exclusion settings instead of sharing the accepted policy.
-    impact: PR and Global exclusion behavior diverged after invalid settings.
-    evidence: Initial review report and RED run 31097985105.
-    required_action: Reuse the shared last-valid exclusion policy service.
+    location: Exclusion policy
+    description: Global did not share accepted policy.
+    impact: PR and Global could diverge.
+    evidence: Initial review report.
+    required_action: Reuse shared policy service.
   - id: T505-R004
     severity: medium
     origin: introduced_by_change
-    location: src/extension.ts and package.json
-    description: Invalid snapshot setting values could abort extension activation.
-    impact: All extension features could become unavailable.
-    evidence: Initial review report and RED run 31097985105.
-    required_action: Bound the manifest and use safe fallback validation.
-
+    location: Snapshot setting activation
+    description: Invalid setting could stop activation.
+    impact: Extension unavailable.
+    evidence: Initial review report.
+    required_action: Bound and fall back.
 held:
-  - item: tasks/tasks-status.md and tasks/phases-status.md synchronization
-    reason: Required progress-management Skill is unavailable.
+  - item: Task tracking sync
+    reason: Progress-management Skill unavailable.
     owner: authorized progress manager
-    remaining_risk: Repository task state remains unsynchronized.
-    verdict_impact: none for implementation; review may record held status.
+    remaining_risk: Tracking remains stale.
+    verdict_impact: held
 unexplored: []
 unknown: []
 not_applicable:
   - field_or_area: merge
-    reason: Reserved for the user.
+    reason: User-owned action.
 remaining_risks:
-  - Independent fix verification may identify additional issues.
-  - Aggregate snapshot capacity remains an internal default.
-
+  - Independent fix verification may identify additional findings.
 source_payloads:
   - source_skill: chat-handoff-manager
     output_contract_version: legacy-nonconformant-schema3
     content_type: application/yaml
-    payload: |-
-      schema_version: 3
-      handoff:
-        summary: >-
-          PR #43のT505 review finding 4件をTDDで修正した。未保存bufferをGlobal理解率へ反映し、
-          snapshot単体上限とaggregate budgetを分離し、PR/Globalでshared exclusion policyを再利用し、
-          不正snapshot設定をdefaultへfallbackする。technical HEADのexact-head CIは全step成功した。
-        mode: review_followup
-        work_type: implementation
-        target:
-          repository: ssaattww/RevMem
-          issue: 1
-          task: T505
-          branch: feature/t505-global-understanding-ui
-          pull_request: 43
-          base_branch: main
-          base_sha: 112198c33823a5fc6681399a19e0c5361614143f
-          reviewed_report: reports/issue-1-t505-review-20260806195427.md
-          reviewed_submission: PRR_kwDOTgwD488AAAABIoKnOg
-          technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
-        diagnostic_workflow:
-          existed_before_work: true
-          captures:
-            - test results
-            - stdout and stderr logs
-            - generated output
-            - source and test trees
-            - environment and git context
-        findings:
-          - id: T505-R001
-            severity: High
-            disposition: addressed
-            summary: Global understanding ignored unsaved VS Code buffers and lacked change/save/close refresh.
-          - id: T505-R002
-            severity: Medium
-            disposition: addressed
-            summary: The per-snapshot file-size setting was also used as the aggregate snapshot budget.
-          - id: T505-R003
-            severity: Medium
-            disposition: addressed
-            summary: Global aggregation recompiled raw exclusion settings instead of using the PR side last-valid policy.
-          - id: T505-R004
-            severity: Medium
-            disposition: addressed
-            summary: Invalid or unsafe snapshot setting values could throw during extension activation.
-        evidence:
-          red:
-            head: b99c688a0aafa1927ac9a284c04e911d6e105208
-            workflow_run: 31097985105
-            job: 92604469123
-            conclusion: failure
-            artifact:
-              id: 8966248721
-              name: ci-failure-diagnostics-31097985105-1
-          intermediate_failure:
-            head: d3c22296d8ea6e3e8571dc8803ef98110720ea26
-            workflow_run: 31099257410
-            job: 92608573470
-            conclusion: failure
-            artifact:
-              id: 8966755748
-              name: ci-failure-diagnostics-31099257410-1
-          green:
-            technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
-            workflow_run: 31099364549
-            job: 92608926179
-            conclusion: success
-        next_action:
-          - Verify the report commit with a workflow run whose head SHA exactly matches the PR current HEAD.
-          - Request independent fix verification from the original reviewer for T505-R001 through T505-R004.
-          - Run authorized task and phase progress synchronization.
-          - Leave merge to the user.
-        review_verdict_changed: false
-        merge_performed: false
+    payload:
+      preserved_repository_file: handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
+      content_sha: c9aa9cb5f5d8bf04a9a5d286ecb8e2ec7602aa39
+      completeness: exact original packet preserved as a repository source payload
 extensions:
   - namespace: revmem
     payload:
-      issue: 1
       pull_request: 43
-      task: T505
       source_review_submission: PRR_kwDOTgwD488AAAABIoKnOg
-
 next_action:
   type: review
   target_skill: review-worker
   mode: fix_verification
-  summary: Independently verify T505-R001 through T505-R004 against the current PR head.
+  summary: Independently verify T505-R001 through T505-R004.
   instructions:
-    - Preserve finding IDs and source severities.
-    - Verify the current PR HEAD with a workflow run whose head SHA exactly matches it.
-    - Do not trust this implementation handoff as a review verdict.
-    - Leave merge to the user.
+    - Use only exact-head CI.
+    - Preserve finding IDs and severities.
+    - Do not merge.
   required_attachments_or_references:
+    - PR #43
     - reports/issue-1-t505-review-20260806195427.md
     - reports/issue-1-t505-review-followup-20260806210039.md
-    - PR #43
+    - handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
   requested_authorized_actions:
     - read_repository
     - write_report
@@ -459,9 +283,8 @@ next_action:
     - commit
     - push
     - comment_pr
-
 transport:
   method: repository_file
   packet_path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
   packet_url: null
-  transport_note: Corrected flat schema v3 packet; the original nonconformant packet is preserved in source_payloads.
+  transport_note: Flat schema v3 packet; exact legacy source is stored in the referenced repository file.
