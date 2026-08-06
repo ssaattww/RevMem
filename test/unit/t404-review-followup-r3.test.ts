@@ -11,11 +11,9 @@ import {
   type GitHubPullRequestContextRepositoryPort,
   type PullRequestReviewStateCommit,
 } from "../../src/application/github-pr-context/index.js";
-import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
 import { normalizeGitRemoteUrl } from "../../src/adapters/local-git/index.js";
-import {
-  canonicalizeHostedGitRepositoryIdentity,
-} from "../../src/core/repository-identity/index.js";
+import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
+import { canonicalizeHostedGitRepositoryIdentity } from "../../src/core/repository-identity/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type PullRequestReviewContext,
@@ -85,6 +83,7 @@ test("T202/T401 and T404 share one hosted repository canonicalizer", () => {
   const shared = canonicalizeHostedGitRepositoryIdentity("GitHub.COM:443", "SSAATTWW/RevMem.git");
   assert.equal(shared, REPOSITORY_ID);
   assert.equal(normalizeGitRemoteUrl("https://GitHub.COM:443/SSAATTWW/RevMem.git"), shared);
+  assert.throws(() => createGitHubPullRequestContextIdFromRepositoryId("github.com//revmem", 48), /repositoryId|repository/i);
 });
 
 test("mapped snapshots reject stale or foreign file revisions and PR descriptors", async () => {
@@ -134,11 +133,12 @@ test("explicit closed override survives metadata refresh and revision transition
 
 test("filesystem persistence isolates multiple PR contexts across restart", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-t404-r3-"));
-  const repository = new FileSystemReviewStateRepository({ globalStorageUri: { fsPath: root } });
+  const storageUris = { globalStorageUri: { fsPath: root } };
+  const repository = new FileSystemReviewStateRepository({ storageUris });
   const service = new GitHubPullRequestContextStateService(repository, async ({ current }) => current);
   await service.create({ contextState: context(48), globalState: globalState() }, undefined);
   await service.create({ contextState: context(49, { pullRequest: pr({ number: 49 }) }), globalState: globalState() }, globalState());
-  const restarted = new GitHubPullRequestContextStateService(new FileSystemReviewStateRepository({ globalStorageUri: { fsPath: root } }), async ({ current }) => current);
+  const restarted = new GitHubPullRequestContextStateService(new FileSystemReviewStateRepository({ storageUris }), async ({ current }) => current);
   assert.equal((await restarted.load(REPOSITORY_ID, { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }))?.contextState.pullRequest?.number, 48);
   assert.equal((await restarted.load(REPOSITORY_ID, { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 49 }))?.contextState.pullRequest?.number, 49);
 });
