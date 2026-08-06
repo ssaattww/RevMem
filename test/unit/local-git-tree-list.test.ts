@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  GitCommandFailedError,
   LocalGitAdapter,
   type GitCommandExecutor,
   type GitCommandInvocation,
@@ -187,7 +188,12 @@ test("Local Git treats rev-parse exit 128 as a fatal Git command failure", async
   const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
   await assert.rejects(
     adapter.listFilePathsAtRevision("/repo", REVISION),
-    /fatal: not a git repository/u
+    (error: unknown) => {
+      assert.ok(error instanceof GitCommandFailedError);
+      assert.equal(error.result.exitCode, 128);
+      assert.equal(error.result.stderr, "fatal: not a git repository");
+      return true;
+    }
   );
   executor.assertExhausted();
 });
