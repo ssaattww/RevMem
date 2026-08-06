@@ -60,7 +60,7 @@
 - T003実装レポート: `reports/issue-1-t003-implementation-20260723114808.md`
 - T003初回レビューレポート: `reports/issue-1-t003-review-20260723115746.md`
 - T003修正レポート: `reports/issue-1-t003-rework-20260723120313.md`
-- T003最終再レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
+- T003最終レビューレポート: `reports/issue-1-t003-rereview-20260723120507.md`
 - T101実装レポート: `reports/issue-1-t101-implementation-20260723123000.md`
 - T101レビューレポート: `reports/issue-1-t101-review-20260723123200.md`
 - T101独立再レビューレポート: `reports/issue-1-t101-review-r2-20260723123638.md`
