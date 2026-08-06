@@ -3,10 +3,18 @@ import { GitContextRevisionMapper as DirectGitContextRevisionMapper } from "./gi
 import type {
   GitContextRevisionMapperOptions,
   GitContextRevisionMappingInput,
-  GitContextRevisionMappingResult
+  GitContextRevisionMappingResult,
+  GitRevisionMappingSource
 } from "./contracts";
 
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+
+interface GitRevisionTreePathSource extends GitRevisionMappingSource {
+  listFilePathsAtRevision(
+    repositoryRoot: string,
+    revision: string
+  ): Promise<readonly string[] | undefined>;
+}
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -16,6 +24,12 @@ const contextRevision = (state: ReviewContextState): string => {
   }
   return state.branch.headRevision;
 };
+
+const hasTreePathSource = (
+  source: GitRevisionMappingSource
+): source is GitRevisionTreePathSource =>
+  "listFilePathsAtRevision" in source &&
+  typeof source.listFilePathsAtRevision === "function";
 
 /**
  * Keeps direct immutable Git mapping authoritative and invokes T602 snapshot
@@ -50,6 +64,7 @@ export class GitContextRevisionMapper {
       return direct;
     }
 
+    const currentCandidatePaths = await this.currentCandidatePaths(input);
     const recovered = await this.options.historyRewriteRecovery.recover({
       current: input.current,
       contextFiles: availability.contextMissing
@@ -62,7 +77,7 @@ export class GitContextRevisionMapper {
       oldGlobalRevisionId,
       fileSystemPathSemantics: input.fileSystemPathSemantics,
       options: input.options,
-      currentCandidatePaths: [...(input.currentCandidatePaths ?? [])],
+      currentCandidatePaths,
       occurredAt: direct.contextState.updatedAt
     });
 
@@ -88,6 +103,32 @@ export class GitContextRevisionMapper {
         ])
       ].sort()
     };
+  }
+
+  private async currentCandidatePaths(
+    input: GitContextRevisionMappingInput
+  ): Promise<readonly string[]> {
+    if (input.currentCandidatePaths !== undefined) {
+      return [...input.currentCandidatePaths];
+    }
+    if (!hasTreePathSource(this.options.source)) {
+      return [];
+    }
+
+    let paths: readonly string[] | undefined;
+    try {
+      paths = await this.options.source.listFilePathsAtRevision(
+        input.current.repositoryRoot,
+        input.current.revisionId
+      );
+    } catch {
+      return [];
+    }
+    if (paths === undefined) {
+      return [];
+    }
+    this.validateCandidatePaths(paths);
+    return [...paths];
   }
 
   private async oldObjectAvailability(
