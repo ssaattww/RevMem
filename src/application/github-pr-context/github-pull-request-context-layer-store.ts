@@ -3,6 +3,7 @@ import type {
   RepositoryGlobalState,
   ReviewContextState,
 } from "../../core/contracts/index";
+import { canonicalizeHostedGitRepositoryIdentity } from "../../core/repository-identity/index";
 
 export interface GitHubPullRequestContextIdentity {
   readonly host: string;
@@ -44,9 +45,20 @@ export interface GitHubPullRequestContextRepositoryPort {
   }): Promise<void>;
 }
 
+export interface PullRequestRevisionMappingEvidence {
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly sourceBaseSha: string;
+  readonly sourceHeadSha: string;
+  readonly targetBaseSha: string;
+  readonly targetHeadSha: string;
+}
+
 export interface PullRequestRevisionMappingInput {
   readonly current: PullRequestReviewStateCommit;
   readonly nextPullRequest: PullRequestReviewContextVisibility;
+  /** Immutable identity/revision evidence captured before the mapper runs. */
+  readonly evidence: PullRequestRevisionMappingEvidence;
 }
 
 /** Maps Context and owner-wide Global as one revision transition. */
@@ -61,30 +73,28 @@ export interface UpdatePullRequestContextInput {
   readonly displayName?: string;
 }
 
-const GITHUB_HOST = "github.com";
-const HOST_PATTERN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/u;
-const NAME_PATTERN = /^[A-Za-z0-9_.-]+$/u;
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 export function canonicalizeGitHubPullRequestIdentity(
   identity: GitHubPullRequestContextIdentity
 ): GitHubPullRequestContextIdentity {
-  let host = identity.host.trim().toLowerCase();
-  if (host.endsWith(":443")) host = host.slice(0, -4);
-  if (!HOST_PATTERN.test(host) || host.includes("..")) throw new Error("Invalid canonical GitHub host");
-  const explicitPort = host.includes(":") ? Number(host.slice(host.lastIndexOf(":") + 1)) : undefined;
-  if (explicitPort !== undefined && (!Number.isInteger(explicitPort) || explicitPort < 1 || explicitPort > 65535)) {
-    throw new Error("Invalid GitHub port");
+  if (!Number.isSafeInteger(identity.pullRequestNumber) || identity.pullRequestNumber <= 0) {
+    throw new Error("Invalid pull request number");
   }
-  let owner = identity.owner.trim();
-  let repository = identity.repository.trim().replace(/\.git$/iu, "");
-  if (!NAME_PATTERN.test(owner) || !NAME_PATTERN.test(repository)) throw new Error("Invalid GitHub owner or repository");
-  if (host === GITHUB_HOST) {
-    owner = owner.toLowerCase();
-    repository = repository.toLowerCase();
-  }
-  if (!Number.isSafeInteger(identity.pullRequestNumber) || identity.pullRequestNumber <= 0) throw new Error("Invalid pull request number");
-  return { host, owner, repository, pullRequestNumber: identity.pullRequestNumber };
+  const repositoryId = canonicalizeHostedGitRepositoryIdentity(
+    identity.host,
+    `${identity.owner}/${identity.repository}`
+  );
+  const slash = repositoryId.indexOf("/");
+  const host = repositoryId.slice(0, slash);
+  const repositoryPath = repositoryId.slice(slash + 1);
+  const pathSlash = repositoryPath.indexOf("/");
+  return {
+    host,
+    owner: repositoryPath.slice(0, pathSlash),
+    repository: repositoryPath.slice(pathSlash + 1),
+    pullRequestNumber: identity.pullRequestNumber,
+  };
 }
 
 /** Builds the PR context ID from the T202/T401 canonical repository identity. */
@@ -92,17 +102,17 @@ export function createGitHubPullRequestContextIdFromRepositoryId(
   repositoryId: string,
   pullRequestNumber: number
 ): string {
-  if (repositoryId.trim() !== repositoryId || repositoryId.length === 0 || repositoryId.includes("#")) {
-    throw new Error("repositoryId must be a canonical repository identity");
+  const canonicalRepositoryId = requireCanonicalRepositoryId(repositoryId);
+  if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+    throw new Error("Invalid pull request number");
   }
-  if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) throw new Error("Invalid pull request number");
-  return `github-pr:${repositoryId}#${pullRequestNumber}`;
+  return `github-pr:${canonicalRepositoryId}#${pullRequestNumber}`;
 }
 
 export function createGitHubPullRequestContextId(identity: GitHubPullRequestContextIdentity): string {
   const canonical = canonicalizeGitHubPullRequestIdentity(identity);
   return createGitHubPullRequestContextIdFromRepositoryId(
-    `${canonical.host}/${canonical.owner}/${canonical.repository}`,
+    canonicalizeHostedGitRepositoryIdentity(canonical.host, `${canonical.owner}/${canonical.repository}`),
     canonical.pullRequestNumber
   );
 }
@@ -122,16 +132,21 @@ export class GitHubPullRequestContextStateService {
     expectedGlobalState: RepositoryGlobalState | undefined
   ): Promise<void> {
     const pullRequest = requirePullRequestContext(commit.contextState);
+    const canonicalRepositoryId = requireCanonicalRepositoryId(commit.contextState.repositoryId);
+    if (commit.globalState.repositoryId !== canonicalRepositoryId) {
+      throw new Error("Global state does not match canonical repository identity");
+    }
     const canonicalContextId = createGitHubPullRequestContextIdFromRepositoryId(
-      commit.contextState.repositoryId,
+      canonicalRepositoryId,
       pullRequest.number
     );
     if (commit.contextState.contextId !== canonicalContextId) {
       throw new Error("Pull-request contextId does not match canonical repository identity");
     }
-    requirePullRequestDescriptor(pullRequest, commit.contextState.repositoryId, pullRequest.number);
+    requirePullRequestDescriptor(pullRequest, canonicalRepositoryId, pullRequest.number);
+    requireSnapshotFileRevisions(commit, pullRequest.headSha);
     await this.repository.create({
-      repositoryId: commit.contextState.repositoryId,
+      repositoryId: canonicalRepositoryId,
       contextId: commit.contextState.contextId,
       expected: { contextState: undefined, globalState: expectedGlobalState },
       next: cloneCommit(commit),
@@ -139,36 +154,51 @@ export class GitHubPullRequestContextStateService {
   }
 
   public async load(repositoryId: string, identity: GitHubPullRequestContextIdentity): Promise<PullRequestReviewStateCommit | undefined> {
-    requireIdentityMatchesRepositoryId(identity, repositoryId);
+    const canonicalRepositoryId = requireCanonicalRepositoryId(repositoryId);
+    requireIdentityMatchesRepositoryId(identity, canonicalRepositoryId);
     return this.repository.load({
       kind: "pull-request",
-      repositoryId,
-      contextId: createGitHubPullRequestContextIdFromRepositoryId(repositoryId, identity.pullRequestNumber),
+      repositoryId: canonicalRepositoryId,
+      contextId: createGitHubPullRequestContextIdFromRepositoryId(canonicalRepositoryId, identity.pullRequestNumber),
     });
   }
 
   public async update(input: UpdatePullRequestContextInput): Promise<PullRequestReviewStateCommit> {
-    requireIdentityMatchesRepositoryId(input.identity, input.repositoryId);
-    const contextId = createGitHubPullRequestContextIdFromRepositoryId(input.repositoryId, input.identity.pullRequestNumber);
-    requirePullRequestDescriptor(input.pullRequest, input.repositoryId, input.identity.pullRequestNumber);
-    const target = { kind: "pull-request" as const, repositoryId: input.repositoryId, contextId };
+    const canonicalRepositoryId = requireCanonicalRepositoryId(input.repositoryId);
+    requireIdentityMatchesRepositoryId(input.identity, canonicalRepositoryId);
+    const contextId = createGitHubPullRequestContextIdFromRepositoryId(canonicalRepositoryId, input.identity.pullRequestNumber);
+    requirePullRequestDescriptor(input.pullRequest, canonicalRepositoryId, input.identity.pullRequestNumber);
+    const target = { kind: "pull-request" as const, repositoryId: canonicalRepositoryId, contextId };
     const current = await this.repository.load(target);
     if (current === undefined) throw new Error("Pull-request review context does not exist");
-    requirePullRequestContext(current.contextState);
+    const currentPullRequest = requirePullRequestContext(current.contextState);
+    const nextPullRequest = preserveVisibilityOverride(currentPullRequest, input.pullRequest);
 
     const revisionChanged =
-      current.contextState.pullRequest!.baseSha !== input.pullRequest.baseSha ||
-      current.contextState.pullRequest!.headSha !== input.pullRequest.headSha;
+      currentPullRequest.baseSha !== nextPullRequest.baseSha ||
+      currentPullRequest.headSha !== nextPullRequest.headSha;
     let next: PullRequestReviewStateCommit;
     if (revisionChanged) {
-      next = await this.mapRevision({ current: cloneCommit(current), nextPullRequest: cloneValue(input.pullRequest) });
-      requireMappedCommit(next, current, input.pullRequest);
+      const evidence = Object.freeze<PullRequestRevisionMappingEvidence>({
+        repositoryId: canonicalRepositoryId,
+        contextId,
+        sourceBaseSha: currentPullRequest.baseSha,
+        sourceHeadSha: currentPullRequest.headSha,
+        targetBaseSha: nextPullRequest.baseSha,
+        targetHeadSha: nextPullRequest.headSha,
+      });
+      next = await this.mapRevision({
+        current: cloneCommit(current),
+        nextPullRequest: cloneValue(nextPullRequest),
+        evidence,
+      });
+      requireMappedCommit(next, current, nextPullRequest, evidence);
     } else {
       next = {
         contextState: {
           ...cloneValue(current.contextState),
           displayName: input.displayName ?? current.contextState.displayName,
-          pullRequest: cloneValue(input.pullRequest),
+          pullRequest: cloneValue(nextPullRequest),
           updatedAt: new Date().toISOString(),
         },
         globalState: cloneValue(current.globalState),
@@ -176,7 +206,7 @@ export class GitHubPullRequestContextStateService {
     }
 
     await this.repository.commit({
-      repositoryId: input.repositoryId,
+      repositoryId: canonicalRepositoryId,
       contextId,
       expected: cloneCommit(current),
       next: cloneCommit(next),
@@ -185,9 +215,38 @@ export class GitHubPullRequestContextStateService {
   }
 }
 
+function preserveVisibilityOverride(
+  current: PullRequestReviewContextVisibility,
+  next: PullRequestReviewContextVisibility
+): PullRequestReviewContextVisibility {
+  if (next.decorationEnabled !== undefined || current.decorationEnabled === undefined) {
+    return cloneValue(next);
+  }
+  return { ...cloneValue(next), decorationEnabled: current.decorationEnabled };
+}
+
+function requireCanonicalRepositoryId(repositoryId: string): string {
+  if (repositoryId.trim() !== repositoryId || repositoryId.length === 0) {
+    throw new Error("repositoryId must be canonical");
+  }
+  const slash = repositoryId.indexOf("/");
+  if (slash <= 0 || slash !== repositoryId.lastIndexOf("/") - repositoryId.slice(slash + 1).indexOf("/") - 1) {
+    // Parsing is validated below; this branch only rejects obviously malformed authorities early.
+  }
+  const pieces = repositoryId.split("/");
+  if (pieces.length !== 3) throw new Error("repositoryId must contain host/owner/repository");
+  const canonical = canonicalizeHostedGitRepositoryIdentity(pieces[0]!, `${pieces[1]!}/${pieces[2]!}`);
+  if (canonical !== repositoryId) throw new Error("repositoryId must be canonical");
+  return canonical;
+}
+
 function requireIdentityMatchesRepositoryId(identity: GitHubPullRequestContextIdentity, repositoryId: string): void {
   const canonical = canonicalizeGitHubPullRequestIdentity(identity);
-  if (`${canonical.host}/${canonical.owner}/${canonical.repository}` !== repositoryId) {
+  const canonicalIdentityRepository = canonicalizeHostedGitRepositoryIdentity(
+    canonical.host,
+    `${canonical.owner}/${canonical.repository}`
+  );
+  if (canonicalIdentityRepository !== repositoryId) {
     throw new Error("PR identity does not match canonical repositoryId");
   }
 }
@@ -223,18 +282,35 @@ function requirePullRequestDescriptor(
 function requireMappedCommit(
   mapped: PullRequestReviewStateCommit,
   current: PullRequestReviewStateCommit,
-  pullRequest: PullRequestReviewContextVisibility
+  pullRequest: PullRequestReviewContextVisibility,
+  evidence: PullRequestRevisionMappingEvidence
 ): void {
   const mappedPullRequest = requirePullRequestContext(mapped.contextState);
+  requirePullRequestDescriptor(mappedPullRequest, evidence.repositoryId, pullRequest.number);
   if (
+    mapped.contextState.contextId !== evidence.contextId ||
     mapped.contextState.contextId !== current.contextState.contextId ||
-    mapped.contextState.repositoryId !== current.contextState.repositoryId ||
-    mapped.globalState.repositoryId !== current.globalState.repositoryId ||
-    mappedPullRequest.baseSha !== pullRequest.baseSha ||
-    mappedPullRequest.headSha !== pullRequest.headSha ||
-    mapped.globalState.currentRevisionId !== pullRequest.headSha
+    mapped.contextState.repositoryId !== evidence.repositoryId ||
+    mapped.globalState.repositoryId !== evidence.repositoryId ||
+    mappedPullRequest.baseSha !== evidence.targetBaseSha ||
+    mappedPullRequest.headSha !== evidence.targetHeadSha ||
+    mapped.globalState.currentRevisionId !== evidence.targetHeadSha
   ) {
     throw new Error("Revision mapper returned a mismatched Context/Global commit");
+  }
+  requireSnapshotFileRevisions(mapped, evidence.targetHeadSha);
+}
+
+function requireSnapshotFileRevisions(commit: PullRequestReviewStateCommit, revisionId: string): void {
+  for (const file of Object.values(commit.contextState.files)) {
+    if (file.revisionId !== revisionId) {
+      throw new Error("Mapped Context file revision does not match target head");
+    }
+  }
+  for (const file of Object.values(commit.globalState.files)) {
+    if (file.revisionId !== revisionId) {
+      throw new Error("Mapped Global file revision does not match target head");
+    }
   }
 }
 
