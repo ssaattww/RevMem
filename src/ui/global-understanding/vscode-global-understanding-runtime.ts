@@ -175,6 +175,7 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
 export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable {
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
+  invalidate(): void;
   clear(): void;
 }
 
@@ -210,6 +211,7 @@ export const registerGlobalUnderstandingRuntime = (
     }
   );
 
+  const invalidate = (): void => refreshController.invalidate();
   const clear = (): void => refreshController.clear();
   const refresh = (): Promise<void> =>
     refreshController.refresh().then(() => undefined);
@@ -266,6 +268,7 @@ export const registerGlobalUnderstandingRuntime = (
   return {
     refresh,
     refreshWithErrorBoundary,
+    invalidate,
     clear,
     dispose: () => {
       for (const registration of registrations) registration.dispose();
