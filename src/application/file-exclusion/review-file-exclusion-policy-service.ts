@@ -35,6 +35,16 @@ export type ReviewFileExclusionPolicyChangeListener = (
 const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+let activeReviewFileExclusionPolicyService: ReviewFileExclusionPolicyService | undefined;
+
+/** Returns the policy service created by the active extension composition root. */
+export const getActiveReviewFileExclusionPolicyService = (): ReviewFileExclusionPolicyService => {
+  if (activeReviewFileExclusionPolicyService === undefined) {
+    throw new Error("The shared exclusion policy service is not active.");
+  }
+  return activeReviewFileExclusionPolicyService;
+};
+
 /** Owns the current shared file-exclusion policy and publishes effective setting changes. */
 export class ReviewFileExclusionPolicyService {
   private policy: ReviewFileExclusionPolicy;
@@ -43,11 +53,17 @@ export class ReviewFileExclusionPolicyService {
 
   public constructor(options: ReviewFileExclusionPolicyServiceOptions = {}) {
     this.policy = new ReviewFileExclusionPolicy({ userGlobs: options.userGlobs });
+    activeReviewFileExclusionPolicyService = this;
   }
 
   /** Evaluates one changed file using the current immutable policy snapshot. */
   public evaluate(candidate: Readonly<ReviewFileExclusionCandidate>): ReviewFileExclusionDecision {
     return this.policy.evaluate(candidate);
+  }
+
+  /** Evaluates whether a directory subtree can be pruned using the current policy snapshot. */
+  public evaluateDirectory(path: string): ReviewFileExclusionDecision {
+    return this.policy.evaluateDirectory(path);
   }
 
   /** Returns a detached replay-safe canonical snapshot of the current decision-bearing effective setting. */
