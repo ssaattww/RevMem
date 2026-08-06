@@ -18,7 +18,6 @@ import {
   type HistoryRewriteGitObjectPort
 } from "./index";
 
-/** Dependencies for complete context and Global recovery after Git history rewriting. */
 export interface GitHistoryRewriteRecoveryCoordinatorOptions {
   readonly source: GitRevisionMappingSource;
   readonly stableHash: StableHash;
@@ -28,7 +27,6 @@ export interface GitHistoryRewriteRecoveryCoordinatorOptions {
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const GLOBAL_SCOPE_PREFIX = "git-global:";
 
-/** Stable snapshot scope for owner-wide Global review evidence. */
 export const gitGlobalSnapshotScope = (repositoryId: string): string => {
   if (repositoryId.length === 0 || repositoryId.includes("\0")) {
     throw new TypeError("repositoryId must be non-empty and contain no null character.");
@@ -36,11 +34,6 @@ export const gitGlobalSnapshotScope = (repositoryId: string): string => {
   return `${GLOBAL_SCOPE_PREFIX}${repositoryId}`;
 };
 
-/**
- * Maps complete context and Global file snapshots after the old Git object has
- * disappeared. The coordinator delegates line proof to T601 snapshots and the
- * T602 recovery service, then rejects cross-file destination conflicts.
- */
 export class GitHistoryRewriteRecoveryCoordinator
 implements GitHistoryRewriteRecoveryPort {
   private readonly recovery: HistoryRewriteRecoveryService;
@@ -68,15 +61,11 @@ implements GitHistoryRewriteRecoveryPort {
 
     for (const file of Object.values(input.contextFiles)) {
       const candidates = candidatesFor(file.currentPath, input.currentCandidatePaths, catalog);
-      let snapshotId: string | undefined;
-      try {
-        snapshotId = await this.coordinatorOptions.snapshotTracker.latestSnapshotId(
-          input.current.contextId,
-          file.fileId
-        );
-      } catch {
-        snapshotId = undefined;
-      }
+      const snapshotId = await this.ownedSnapshotId(
+        input.current.contextId,
+        file.fileId,
+        occurredAtMilliseconds
+      );
       const result = await this.recovery.recover({
         file,
         newRevisionId: input.current.revisionId,
@@ -106,15 +95,11 @@ implements GitHistoryRewriteRecoveryPort {
     const globalScope = gitGlobalSnapshotScope(input.current.repositoryId);
     for (const file of Object.values(input.globalFiles)) {
       const candidates = candidatesFor(file.currentPath, input.currentCandidatePaths, catalog);
-      let snapshotId: string | undefined;
-      try {
-        snapshotId = await this.coordinatorOptions.snapshotTracker.latestSnapshotId(
-          globalScope,
-          file.fileId
-        );
-      } catch {
-        snapshotId = undefined;
-      }
+      const snapshotId = await this.ownedSnapshotId(
+        globalScope,
+        file.fileId,
+        occurredAtMilliseconds
+      );
       const prior = await this.globalRecoveryInput(
         file,
         input.oldGlobalRevisionId,
@@ -159,6 +144,12 @@ implements GitHistoryRewriteRecoveryPort {
       }
     }
 
+    reconcileSharedFileIdentities(
+      input,
+      contextFiles,
+      globalFiles,
+      unresolved
+    );
     removeConflictingDestinations(contextFiles, unresolved);
     removeConflictingDestinations(globalFiles, unresolved);
     return {
@@ -166,6 +157,37 @@ implements GitHistoryRewriteRecoveryPort {
       globalFiles,
       unresolvedFileIds: [...unresolved].sort()
     };
+  }
+
+  private async ownedSnapshotId(
+    scope: string,
+    fileId: string,
+    now: number
+  ): Promise<string | undefined> {
+    let snapshotId: string | undefined;
+    try {
+      snapshotId = await this.coordinatorOptions.snapshotTracker.latestSnapshotId(
+        scope,
+        fileId
+      );
+      if (snapshotId === undefined) {
+        return undefined;
+      }
+      const restored = await this.coordinatorOptions.snapshotTracker.restore(
+        snapshotId,
+        now
+      );
+      if (
+        restored === undefined ||
+        restored.workspaceContextId !== scope ||
+        restored.fileId !== fileId
+      ) {
+        return undefined;
+      }
+      return snapshotId;
+    } catch {
+      return undefined;
+    }
   }
 
   private async loadCurrentCatalog(
@@ -181,19 +203,19 @@ implements GitHistoryRewriteRecoveryPort {
 
     const catalog = new Map<string, HistoryRewriteCurrentFile>();
     for (const path of paths) {
-      let read: Awaited<ReturnType<GitRevisionMappingSource["readTextFileAtRevision"]>>;
-      try {
-        read = await this.coordinatorOptions.source.readTextFileAtRevision(
-          input.current.repositoryRoot,
-          input.current.revisionId,
-          path,
-          input.fileSystemPathSemantics
-        );
-      } catch {
+      const read = await this.coordinatorOptions.source.readTextFileAtRevision(
+        input.current.repositoryRoot,
+        input.current.revisionId,
+        path,
+        input.fileSystemPathSemantics
+      );
+      if (read.kind === "missing-file") {
         continue;
       }
       if (read.kind !== "found") {
-        continue;
+        throw new Error(
+          `Current immutable catalog is incomplete for ${path}: ${read.kind}`
+        );
       }
       catalog.set(path, {
         fileId: `history-rewrite-candidate:${this.coordinatorOptions.stableHash.digest(path)}`,
@@ -262,6 +284,31 @@ implements GitHistoryRewriteRecoveryPort {
       lineCount,
       updatedAt: file.updatedAt
     };
+  }
+}
+
+function reconcileSharedFileIdentities(
+  input: Readonly<GitHistoryRewriteRecoveryInput>,
+  contextFiles: Record<string, FileReviewState>,
+  globalFiles: Record<string, GlobalFileReviewState>,
+  unresolved: Set<string>
+): void {
+  const shared = Object.keys(input.contextFiles).filter(
+    (fileId) => input.globalFiles[fileId] !== undefined
+  );
+  for (const fileId of shared) {
+    const context = contextFiles[fileId];
+    const global = globalFiles[fileId];
+    if (
+      context !== undefined &&
+      global !== undefined &&
+      context.currentPath === global.currentPath
+    ) {
+      continue;
+    }
+    delete contextFiles[fileId];
+    delete globalFiles[fileId];
+    unresolved.add(fileId);
   }
 }
 
