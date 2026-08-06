@@ -5,7 +5,7 @@ import {
   type GitFileStateTransitionInput,
   type GitNewFileStateInput,
 } from "../../core/git-diff/index";
-import type { FileReviewState } from "../../core/contracts/index";
+import type { FileReviewState, GlobalFileReviewState } from "../../core/contracts/index";
 import type {
   PullRequestRevisionMapper,
   PullRequestRevisionMappingEvidence,
@@ -34,7 +34,8 @@ const DEFAULT_MAPPING_OPTIONS: GitFileStateTransitionInput["options"] = {
 const requireMatchingEvidence = (
   expected: Readonly<PullRequestRevisionMappingEvidence>,
   actual: Readonly<ImmutablePullRequestRevisionEvidence>,
-  files: Readonly<Record<string, Readonly<FileReviewState>>>
+  contextFiles: Readonly<Record<string, Readonly<FileReviewState>>>,
+  globalFiles: Readonly<Record<string, Readonly<GlobalFileReviewState>>>
 ): void => {
   if (
     actual.sourceBaseSha !== expected.sourceBaseSha ||
@@ -46,7 +47,10 @@ const requireMatchingEvidence = (
   }
   if (actual.diff.length === 0) throw new Error("Immutable PR revision evidence requires a complete diff");
 
-  const trackedPaths = new Set(Object.values(files).map((file) => file.currentPath));
+  const trackedPaths = new Set([
+    ...Object.values(contextFiles).map((file) => file.currentPath),
+    ...Object.values(globalFiles).map((file) => file.currentPath),
+  ]);
   for (const changed of parseZeroContextGitDiff(actual.diff).files) {
     const touchesTracked =
       (changed.oldPath !== undefined && trackedPaths.has(changed.oldPath)) ||
@@ -94,7 +98,12 @@ export function createImmutablePullRequestRevisionMapper(
 ): PullRequestRevisionMapper {
   return async ({ current, nextPullRequest, evidence }) => {
     const immutable = await loadEvidence(Object.freeze({ ...evidence }));
-    requireMatchingEvidence(evidence, immutable, current.contextState.files);
+    requireMatchingEvidence(
+      evidence,
+      immutable,
+      current.contextState.files,
+      current.globalState.files
+    );
     const updatedAt = immutable.updatedAt ?? new Date().toISOString();
 
     const contextTransition = applyGitFileStateTransitions({
