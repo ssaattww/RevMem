@@ -6,14 +6,14 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T305 Activity Bar・Current Context・Status Bar（PR #42）とT403 GitHub metadata・diff cache（PR #44）をcurrent mainへ統合済み
-- 現在のタスク: T306 local base/headのdiff両側操作からPR Progress UI更新までのExtension Host試験
-- 次のタスク: T306の全範囲独立reviewを別reviewerで一度だけ実施し、通過後にPR #45をsquash mergeする
-- 実装状態: 実diff tab両paneの既存command受入、永続進捗UI、bounded worker/fixture cleanup、required runner回帰を実装した。通常review finding `T306-R1-P1` Highと`T306-R1-P2` Mediumは同じreviewerのbounded closure verificationでclosed、exact-head CI成功済み
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
+- 直近完了タスク: T306 diff操作からPR Progress UIまでのExtension Host受入（PR #45）をcurrent mainへ統合済み
+- 現在のタスク: なし（T306完了）
+- 次のタスク: 未選択。依存解消済み候補はT404またはT602。T505は未実装のため今回の対象外
+- 実装状態: T306は通常review findingsをclosedし、別reviewerの全範囲独立reviewで`pass_with_held`、exact-head CI成功後にPR #45をsquash merge済み
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t306-extension-host-acceptance`
-- Pull Request: PR #45（draft、通常review完了・独立review待ち、merge未実施）
+- Gitブランチ: `main`
+- Pull Request: PR #45（squash merge済み、merge commit `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`）
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -21,6 +21,7 @@
 - T306通常review finding修正確認レポート: `reports/issue-1-t306-fix-verification-20260806131859.md`
 - T306通常review指摘対応R2レポート: `reports/issue-1-t306-review-followup-r2-20260806132432.md`
 - T306通常review finding修正確認R2レポート: `reports/issue-1-t306-fix-verification-r2-20260806134727.md`
+- T306独立最終レビューレポート: `reports/issue-1-t306-independent-final-review-20260806135357.md`
 - T403実装レポート: `reports/issue-1-t403-implementation-20260805050632.md`
 - T403 handoff: `reports/issue-1-t403-handoff-20260805050632.yaml`
 - T403通常レビューレポート: `reports/issue-1-t403-review-20260805061700.md`
@@ -282,7 +283,7 @@
 | T303 | 完了 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の独立review全5 findingをclosureし、exact-head CI成功済み |
 | T304 | 完了 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する。PR #38独立reviewの`T304-IFR-P1`〜`P4`をclosureしcurrent mainへ統合済み | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす。独立review全4 findingをclosureし、current mainへ統合済み |
 | T305 | 完了 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する。独立review findingsをclosureし、PR #42をcurrent mainへ統合済み |
-| T306 | 進行中（通常review完了・独立review待ち） | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17を実UI/runtime操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する。通常review findingsはclosed、exact-head CI成功済み。別reviewerの全範囲独立review 1回とmergeを残す |
+| T306 | 完了 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17の実UI/runtime操作、両paneのファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binary、bounded runner/cleanupを検証した。通常review findingsをclosedし、全範囲独立review `pass_with_held`、exact-head CI成功後にPR #45をcurrent mainへsquash merge済み |
 
 ## P4 GitHub PR連携
 
@@ -339,4 +340,4 @@
 
 ## 次回開始時の選択
 
-T305とT403はcurrent mainへ統合済み。T306の全範囲通常reviewは完了し、`T306-R1-P1` Highと`T306-R1-P2` Mediumは同じreviewerのbounded closure verificationでclosedした。次は別reviewerの全範囲独立reviewを一度だけ実施し、通過後にPR #45をsquash mergeする。T306完了まで新規product taskへ着手しない。T404とT602は依存解消済み、T505は未実装のため対象外とする。
+T305、T403、T306はcurrent mainへ統合済み。T306は通常review findingsをclosedし、全範囲独立review `pass_with_held`、exact-head CI成功後にPR #45をsquash mergeした。次のproduct taskは未選択。依存解消済み候補はT404またはT602で、T505は未実装のため今回の対象外とする。
