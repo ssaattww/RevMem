@@ -49,7 +49,7 @@ jobs:
       - name: T602 history rewrite recovery tests
         run: |
           set -o pipefail
-          node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js 2>&1 | tee test-output/ci/test-t602.log
+          node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js 2>&1 | tee test-output/ci/test-t602.log
       - name: T403 GitHub cache tests
         run: |
           set -o pipefail
