@@ -6,7 +6,6 @@ import type {
   GitRevisionMappingSource,
   GitRevisionMappingTextReadResult
 } from "../../src/application/review-context/index";
-import type { FileSystemPathSemantics } from "../../src/application/workspace-identity/index";
 
 const OLD_SHA = "1111111111111111111111111111111111111111";
 const NEW_SHA = "2222222222222222222222222222222222222222";
@@ -28,12 +27,7 @@ class CopyRevisionSource implements GitRevisionMappingSource {
     return this.diff;
   }
 
-  public async readTextFileAtRevision(
-    _repositoryRoot: string,
-    _revision: string,
-    _repositoryRelativePath: string,
-    _fileSystemPathSemantics: FileSystemPathSemantics
-  ): Promise<GitRevisionMappingTextReadResult> {
+  public async readTextFileAtRevision(): Promise<GitRevisionMappingTextReadResult> {
     throw new Error("copy evidence must be rejected before immutable reads");
   }
 }
