@@ -160,18 +160,8 @@ export class HistoryRewriteRecoveryService {
       return unresolved("ambiguous-file-mapping");
     }
 
-    if (samePath.length === 1 && input.snapshotId !== undefined) {
-      const result = await this.mapSnapshot(input, samePath[0] as HistoryRewriteCurrentFile);
-      if (result.status === "recovered") {
-        return result;
-      }
-      if (result.reason === "snapshot-failure") {
-        return result;
-      }
-    }
-
-    if (samePath.length === 0 && input.snapshotId !== undefined) {
-      const surviving: Array<{
+    if (input.snapshotId !== undefined) {
+      const mappedCandidates: Array<{
         readonly current: HistoryRewriteCurrentFile;
         readonly reviewedRanges: readonly LineInterval[];
       }> = [];
@@ -182,27 +172,52 @@ export class HistoryRewriteRecoveryService {
         } catch {
           return unresolved("snapshot-failure");
         }
-        if (mapped.kind === "mapped" && mapped.reviewedRanges.length > 0) {
-          if (!rangesFit(mapped.reviewedRanges, candidate.lineCount)) {
-            return unresolved("snapshot-failure");
-          }
-          surviving.push({ current: candidate, reviewedRanges: mapped.reviewedRanges });
+        if (mapped.kind !== "mapped") {
+          continue;
         }
+        if (!rangesFit(mapped.reviewedRanges, candidate.lineCount)) {
+          return unresolved("snapshot-failure");
+        }
+        mappedCandidates.push({
+          current: candidate,
+          reviewedRanges: mapped.reviewedRanges
+        });
       }
-      if (surviving.length === 1) {
-        const evidence = surviving[0];
-        if (evidence === undefined) {
-          return unresolved("missing-evidence");
+
+      const samePathMapping = mappedCandidates.find(
+        (candidate) => candidate.current.path === input.file.currentPath
+      );
+      const survivingOtherMappings = mappedCandidates.filter(
+        (candidate) =>
+          candidate.current.path !== input.file.currentPath &&
+          candidate.reviewedRanges.length > 0
+      );
+      if (samePathMapping !== undefined) {
+        if (survivingOtherMappings.length > 0) {
+          return unresolved("ambiguous-file-mapping");
         }
         return recovered(
           "snapshot-diff",
           input,
-          evidence.current,
-          evidence.reviewedRanges
+          samePathMapping.current,
+          samePathMapping.reviewedRanges
         );
       }
-      if (surviving.length > 1) {
+
+      const survivingMappings = mappedCandidates.filter(
+        (candidate) => candidate.reviewedRanges.length > 0
+      );
+      if (survivingMappings.length > 1) {
         return unresolved("ambiguous-file-mapping");
+      }
+      const uniqueSnapshotMapping = survivingMappings[0];
+      if (uniqueSnapshotMapping !== undefined) {
+        return recovered(
+          "snapshot-diff",
+          input,
+          uniqueSnapshotMapping.current,
+          uniqueSnapshotMapping.reviewedRanges
+        );
       }
     }
 
@@ -219,28 +234,6 @@ export class HistoryRewriteRecoveryService {
       );
     }
     return unresolved("missing-evidence");
-  }
-
-  private async mapSnapshot(
-    input: Readonly<HistoryRewriteRecoveryInput>,
-    currentFile: HistoryRewriteCurrentFile
-  ): Promise<HistoryRewriteRecoveryResult> {
-    if (input.snapshotId === undefined) {
-      return unresolved("missing-evidence");
-    }
-    let mapped: HistoryRewriteSnapshotResult;
-    try {
-      mapped = await this.snapshots.map(input.snapshotId, currentFile, input.now);
-    } catch {
-      return unresolved("snapshot-failure");
-    }
-    if (mapped.kind !== "mapped") {
-      return unresolved("missing-evidence");
-    }
-    if (!rangesFit(mapped.reviewedRanges, currentFile.lineCount)) {
-      return unresolved("snapshot-failure");
-    }
-    return recovered("snapshot-diff", input, currentFile, mapped.reviewedRanges);
   }
 }
 
@@ -277,23 +270,27 @@ function recoverFromGitDiff(
   input: Readonly<HistoryRewriteRecoveryInput>,
   evidence: Extract<HistoryRewriteGitObjectResult, { readonly kind: "diff" }>
 ): HistoryRewriteRecoveryResult {
-  if (
-    evidence.oldPath !== input.file.currentPath ||
-    (
-      evidence.newText !== undefined &&
-      uniquePathCandidate(input.currentFiles, evidence.newPath).kind === "unique" &&
-      input.currentFiles.find((candidate) => candidate.path === evidence.newPath)?.content !== undefined &&
-      input.currentFiles.find((candidate) => candidate.path === evidence.newPath)?.content !== evidence.newText
-    )
-  ) {
+  if (evidence.oldPath !== input.file.currentPath) {
     return unresolved("invalid-git-diff");
   }
+
   const target = uniquePathCandidate(input.currentFiles, evidence.newPath);
   if (target.kind === "ambiguous") {
     return unresolved("ambiguous-file-mapping");
   }
   if (target.kind === "missing") {
     return unresolved("missing-evidence");
+  }
+  if (
+    (evidence.oldText !== undefined &&
+      documentLineCount(evidence.oldText) !== input.file.lineCount) ||
+    (evidence.newText !== undefined &&
+      documentLineCount(evidence.newText) !== target.current.lineCount) ||
+    (evidence.newText !== undefined &&
+      target.current.content !== undefined &&
+      target.current.content !== evidence.newText)
+  ) {
+    return unresolved("invalid-git-diff");
   }
 
   try {
@@ -405,6 +402,10 @@ function unresolved(
     reason,
     reviewedRanges: []
   };
+}
+
+function documentLineCount(content: string): number {
+  return content.split(/\r\n|\r|\n/u).length;
 }
 
 function rangesFit(
