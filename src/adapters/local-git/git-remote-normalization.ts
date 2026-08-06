@@ -1,6 +1,8 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { canonicalizeHostedGitRepositoryIdentity } from "../../core/repository-identity/index";
+
 const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/;
 const SCP_LIKE_REMOTE = /^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/;
 const DEFAULT_PORT_BY_PROTOCOL: Readonly<Record<string, string>> = {
@@ -34,12 +36,14 @@ const normalizeRepositoryPath = (value: string): string => {
 };
 
 const canonicalHostPath = (host: string, repositoryPath: string): string => {
-  const normalizedHost = host.toLowerCase();
   const normalizedPath = normalizeRepositoryPath(repositoryPath);
-  const hostAwarePath = normalizedHost === "github.com"
-    ? normalizedPath.toLowerCase()
-    : normalizedPath;
+  const segments = normalizedPath.split("/");
+  if (segments.length === 2) {
+    return canonicalizeHostedGitRepositoryIdentity(host, normalizedPath);
+  }
 
+  const normalizedHost = host.toLowerCase();
+  const hostAwarePath = normalizedHost === "github.com" ? normalizedPath.toLowerCase() : normalizedPath;
   return `${normalizedHost}/${hostAwarePath}`;
 };
 
@@ -64,17 +68,6 @@ const normalizedUrlHost = (url: URL): string => {
 
 /**
  * Normalizes a Git remote into a credential-free repository identity.
- *
- * SCP-style SSH and URL-style remotes are reduced to `host/path`. GitHub paths
- * are lowercased because GitHub repository names are case-insensitive. Default
- * protocol ports are omitted. Local path remotes are resolved from the
- * repository root and rendered as file URLs. UNC file URLs retain their server
- * authority so separate network repositories cannot collide.
- *
- * @param remoteUrl Exact value returned by `git remote get-url`.
- * @param repositoryRoot Repository root used only for local-path remotes.
- * @returns Canonical remote identity without credentials, query, fragment, or `.git`.
- * @throws {TypeError} If the remote is empty or cannot identify a repository path.
  */
 export function normalizeGitRemoteUrl(
   remoteUrl: string,
