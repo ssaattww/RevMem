@@ -76,12 +76,14 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
         request.oldRevisionId,
         request.newRevisionId
       );
-      if (containsCopyFrom(diff, request.oldPath)) {
-        return failure("Git copy evidence cannot transfer stable file identity.");
+      const parsed = parseZeroContextGitDiff(diff);
+      const sections = diffSections(diff);
+      if (sections.length !== parsed.files.length) {
+        return failure("Git diff section framing is inconsistent.");
       }
-      const candidates = parseZeroContextGitDiff(diff).files.filter(
-        (file) => file.oldPath === request.oldPath
-      );
+      const candidates = parsed.files
+        .map((file, index) => ({ file, index }))
+        .filter(({ file }) => file.oldPath === request.oldPath);
       if (candidates.length === 0) {
         return { kind: "unchanged", newPath: request.oldPath };
       }
@@ -89,7 +91,13 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
         return failure("Ambiguous Git file mapping for the old path.");
       }
       const candidate = candidates[0];
-      if (candidate?.newPath === undefined) {
+      if (candidate === undefined) {
+        return failure("Git file mapping candidate is missing.");
+      }
+      if (sectionHasCopyMetadata(sections[candidate.index] ?? "")) {
+        return failure("Git copy evidence cannot transfer stable file identity.");
+      }
+      if (candidate.file.newPath === undefined) {
         return failure("The Git file mapping has no destination path.");
       }
 
@@ -103,7 +111,7 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
         this.source.readTextFileAtRevision(
           this.repositoryRoot,
           request.newRevisionId,
-          candidate.newPath,
+          candidate.file.newPath,
           this.fileSystemPathSemantics
         )
       ]);
@@ -115,7 +123,7 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
       return {
         kind: "diff",
         oldPath: request.oldPath,
-        newPath: candidate.newPath,
+        newPath: candidate.file.newPath,
         diff,
         oldText: oldText.content,
         newText: newText.content
@@ -126,9 +134,15 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
   }
 }
 
-function containsCopyFrom(diff: string, oldPath: string): boolean {
-  return diff.split(/\r?\n/u).some(
-    (line) => line === `copy from ${oldPath}`
+function diffSections(diff: string): readonly string[] {
+  return diff
+    .split(/(?=^diff --git )/mu)
+    .filter((section) => section.startsWith("diff --git "));
+}
+
+function sectionHasCopyMetadata(section: string): boolean {
+  return section.split(/\r?\n/u).some(
+    (line) => line.startsWith("copy from ") || line.startsWith("copy to ")
   );
 }
 
