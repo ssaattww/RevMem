@@ -28,7 +28,7 @@ Lを超える見込みになった場合は再分解する。
 | P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、mock GitHub、Extension Host、architecture gate、失敗診断artifactがCIで動作する |
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
-| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T305はmainへ統合済み。T306は実UI/runtime・bounded termination findingsを修正済みで通常review closure待ち |
+| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T305はmainへ統合済み。T306は通常review closure確認で残った実diff pane操作・成功通知後hang境界を修正中 |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T403はmainへ統合済み。永続PR layer、UI、障害統合試験が未着手 |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
@@ -110,7 +110,7 @@ Lを超える見込みになった場合は再分解する。
 - T303 diff editor両側の確認・解除: 完了
 - T304 PR Progress Tree provider: 完了
 - T305 Activity Bar、Current Context View、Status Bar、refresh/select context: 完了・PR #42でmain統合済み
-- T306 diff操作から進捗UIまでのExtension Host試験: 通常review finding closure待ち
+- T306 diff操作から進捗UIまでのExtension Host試験: 通常review finding残存境界を修正中
 
 ### 終了チェックポイント
 
