@@ -77,6 +77,9 @@ const coordinatesOf = (
   fileId: target.fileId
 });
 
+const snapshotGenerationKey = (coordinates: SnapshotCoordinates): string =>
+  `${coordinates.contextScope}\0${coordinates.globalScope}\0${coordinates.fileId}`;
+
 const stateMatchesTarget = (
   contextState: DeepReadonly<ReviewContextState>,
   globalState: DeepReadonly<RepositoryGlobalState>,
@@ -101,6 +104,7 @@ export class DocumentReviewStateSessionProvider {
   private readonly snapshotTracker: NonGitSnapshotTracker | undefined;
   private readonly stableHash: StableHash;
   private readonly nowMilliseconds: () => number;
+  private readonly snapshotGenerations = new Map<string, number>();
   private snapshotCommitQueue: Promise<void> = Promise.resolve();
 
   public constructor(options: DocumentReviewStateSessionProviderOptions) {
@@ -137,14 +141,20 @@ export class DocumentReviewStateSessionProvider {
     }
 
     const coordinates = coordinatesOf(session.contextState, session.target);
+    const capturedGeneration = this.snapshotGenerationOf(coordinates);
     const content = await this.readProvenContent(descriptor, session.target);
-    await this.enqueueSnapshotCommit(() => this.replaceSnapshots(
-      coordinates,
-      content,
-      session.contextState,
-      session.globalState,
-      session.target
-    ));
+    await this.enqueueSnapshotCommit(async () => {
+      if (this.snapshotGenerationOf(coordinates) !== capturedGeneration) {
+        return;
+      }
+      await this.replaceSnapshots(
+        coordinates,
+        content,
+        session.contextState,
+        session.globalState,
+        session.target
+      );
+    });
 
     const delegateCommitter = session.committer;
     return {
@@ -152,6 +162,7 @@ export class DocumentReviewStateSessionProvider {
       committer: {
         commit: (transaction) => this.enqueueSnapshotCommit(async () => {
           await delegateCommitter.commit(transaction);
+          this.advanceSnapshotGeneration(coordinates);
           try {
             const nextContent = await this.readProvenContent(
               descriptor,
@@ -181,6 +192,15 @@ export class DocumentReviewStateSessionProvider {
 
   public dispose(): void {
     this.delegate.dispose();
+  }
+
+  private snapshotGenerationOf(coordinates: SnapshotCoordinates): number {
+    return this.snapshotGenerations.get(snapshotGenerationKey(coordinates)) ?? 0;
+  }
+
+  private advanceSnapshotGeneration(coordinates: SnapshotCoordinates): void {
+    const key = snapshotGenerationKey(coordinates);
+    this.snapshotGenerations.set(key, (this.snapshotGenerations.get(key) ?? 0) + 1);
   }
 
   private enqueueSnapshotCommit(operation: () => Promise<void>): Promise<void> {
