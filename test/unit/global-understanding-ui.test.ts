@@ -8,6 +8,7 @@ import {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
+  GlobalUnderstandingRefreshCoalescer,
   GlobalUnderstandingRefreshController,
   type GlobalUnderstandingTreeSnapshot
 } from "../../src/ui/global-understanding/global-understanding-ui-model";
@@ -146,7 +147,7 @@ test("Global refresh clears stale presentation when the current recalculation fa
   assert.deepEqual(events, ["clear"]);
 });
 
-test("an older failed recalculation cannot clear a newer Global snapshot", async () => {
+test("T505-R005 an older failed recalculation is absorbed after a newer Global snapshot is published", async () => {
   let rejectFirst: ((reason: Error) => void) | undefined;
   let resolveSecond: ((value: GlobalUnderstandingTreeSnapshot) => void) | undefined;
   let invocation = 0;
@@ -172,8 +173,39 @@ test("an older failed recalculation cannot clear a newer Global snapshot", async
   resolveSecond?.(snapshot());
   await second;
   rejectFirst?.(new Error("older failed"));
-  await assert.rejects(() => first, /older failed/u);
+  assert.equal(await first, undefined);
   assert.deepEqual(events, ["show:3"]);
+});
+
+test("T505-R005 rapid document changes cancel the pending timer and run one latest refresh", () => {
+  const callbacks = new Map<number, () => void>();
+  const cancelled: number[] = [];
+  const events: string[] = [];
+  let nextHandle = 0;
+  const coalescer = new GlobalUnderstandingRefreshCoalescer({
+    schedule: (callback, delayMs) => {
+      events.push(`schedule:${delayMs}`);
+      const handle = ++nextHandle;
+      callbacks.set(handle, callback);
+      return handle;
+    },
+    cancel: (handle) => {
+      const numeric = handle as number;
+      cancelled.push(numeric);
+      callbacks.delete(numeric);
+    },
+    run: () => {
+      events.push("refresh");
+    }
+  }, 150);
+
+  coalescer.request();
+  coalescer.request();
+  assert.deepEqual(cancelled, [1]);
+  assert.equal(callbacks.has(1), false);
+  callbacks.get(2)?.();
+  assert.deepEqual(events, ["schedule:150", "schedule:150", "refresh"]);
+  coalescer.dispose();
 });
 
 test("snapshot file-size setting is converted to an independent per-snapshot limit", () => {
