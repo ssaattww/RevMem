@@ -3,11 +3,10 @@ const REPOSITORY_PATH_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/u;
 
 /**
  * Canonicalizes a hosted Git repository authority and owner/repository path.
- * This pure boundary is shared by local Git identity (T202/T401) and PR context identity (T404).
+ * Protocol-specific default-port removal happens before this pure shared boundary.
  */
 export function canonicalizeHostedGitRepositoryIdentity(hostInput: string, repositoryPathInput: string): string {
-  let host = hostInput.trim().toLowerCase();
-  if (host.endsWith(":443")) host = host.slice(0, -4);
+  const host = hostInput.trim().toLowerCase();
   if (!HOST_PATTERN.test(host) || host.includes("..")) throw new TypeError("Invalid hosted Git authority");
 
   const portSeparator = host.lastIndexOf(":");
