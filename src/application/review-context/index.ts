@@ -1,5 +1,8 @@
 /** Public application API for Git review context resolution, mapping, and monitoring. */
-export { GitContextRevisionMapper } from "./history-rewrite-git-context-revision-mapper";
+export {
+  GitContextRevisionMapper,
+  registerGitHistoryRewriteRecovery
+} from "./history-rewrite-git-context-revision-mapper";
 export { GitReviewContextResolver } from "./git-review-context-resolver";
 export { PollingGitStateMonitor } from "./polling-git-state-monitor";
 export { sameResourceUri } from "./selected-review-context";
