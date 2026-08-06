@@ -1,6 +1,7 @@
 import { mapRepositoryGlobalStateThroughGitDiff } from "../global-review-mapping/index";
 import {
   applyGitFileStateTransitions,
+  mapReviewedIntervalsAcrossDiff,
   parseZeroContextGitDiff,
   type GitFileStateTransitionInput,
   type GitNewFileStateInput,
@@ -88,10 +89,6 @@ const advanceRetainedContextFiles = (
   ])
 );
 
-/**
- * Creates the T404 revision mapper that remaps reviewed ranges from immutable
- * revision-bound diff and blob/content evidence.
- */
 export function createImmutablePullRequestRevisionMapper(
   loadEvidence: ImmutablePullRequestRevisionEvidenceLoader,
   options: GitFileStateTransitionInput["options"] = DEFAULT_MAPPING_OPTIONS
@@ -105,6 +102,7 @@ export function createImmutablePullRequestRevisionMapper(
       current.globalState.files
     );
     const updatedAt = immutable.updatedAt ?? new Date().toISOString();
+    const parsed = parseZeroContextGitDiff(immutable.diff);
 
     const contextTransition = applyGitFileStateTransitions({
       files: current.contextState.files,
@@ -120,6 +118,48 @@ export function createImmutablePullRequestRevisionMapper(
     }
 
     const contextFiles = advanceRetainedContextFiles(contextTransition.files, evidence.targetHeadSha);
+    const originalByPath = new Map(
+      Object.values(current.contextState.files).map((file) => [file.currentPath, file])
+    );
+    for (const diffFile of parsed.files) {
+      if (
+        diffFile.isRename ||
+        diffFile.oldPath === undefined ||
+        diffFile.newPath === undefined ||
+        diffFile.oldPath !== diffFile.newPath
+      ) {
+        continue;
+      }
+      const original = originalByPath.get(diffFile.oldPath);
+      if (original === undefined) {
+        continue;
+      }
+      const transitioned = contextFiles[original.fileId];
+      const destination = immutable.newFiles[diffFile.newPath];
+      if (transitioned === undefined || destination === undefined) {
+        continue;
+      }
+      const mapped = mapReviewedIntervalsAcrossDiff({
+        reviewed: original.modifiedReviewed,
+        diff: immutable.diff,
+        oldPath: diffFile.oldPath,
+        newPath: diffFile.newPath,
+        oldText: immutable.oldTexts[diffFile.oldPath],
+        newText: destination.newText,
+        options,
+      });
+      contextFiles[original.fileId] = {
+        ...transitioned,
+        revisionId: evidence.targetHeadSha,
+        modifiedReviewed: mapped.reviewed,
+        lineCount: destination.lineCount,
+        ...(destination.contentHash === undefined
+          ? { contentHash: undefined }
+          : { contentHash: destination.contentHash }),
+        updatedAt,
+      };
+    }
+
     const globalState = mapRepositoryGlobalStateThroughGitDiff({
       globalState: current.globalState,
       diff: immutable.diff,
