@@ -490,10 +490,7 @@ extensions:
     payload:
       implementation_target_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
       implementation_report_commit: 4a5fc5fe050c76fb8d20d6b044c7409e41a0363e
-      validated_administrative_head_before_this_commit: f42bdbac82a3060fa3abf32bebe3d769c1d205d4
-      validated_administrative_run_before_this_commit: 31095615304
-      validated_administrative_conclusion_before_this_commit: success
-      note: This update records the previously validated administrative head and therefore creates a newer handoff commit. The next reviewer must re-fetch the current PR head and validate the exact matching run; the PR comment is the durable place for the final self-external validation reference.
+      note: A repository handoff file cannot contain its own commit SHA. Do not append further administrative CI references to this file. The final exact-head validation must be recorded externally in the PR body and PR comment after this commit succeeds.
 
 next_action:
   type: review
@@ -505,14 +502,15 @@ next_action:
     - Review the complete base-to-head diff, including administrative report and handoff changes.
     - Verify direct Git priority, missing-only snapshot fallback, context/Global isolation, unique mapping, tree enumeration, generation safety and production runtime behavior.
     - Use only a workflow run whose head SHA equals the reviewed PR head; otherwise report CI as incomplete.
+    - Read the PR body and latest implementation comment for the final administrative exact-head CI reference.
     - Persist the review report, post the concise PR result, and do not merge.
   required_attachments_or_references:
     - PR #49
     - reports/issue-1-t602-implementation-20260806195000.md
     - reports/issue-1-t602-handoff-20260806195139.yaml
     - implementation CI run 31094706729
-    - administrative CI run 31095615304 for head f42bdbac82a3060fa3abf32bebe3d769c1d205d4 before this handoff update
     - Red artifacts 8963364201, 8963629179, 8963826320, 8964182780, 8964473998, 8964554714, 8964658023, 8964732426, 8964865421 and 8964902969
+    - latest PR body and implementation comment for the final administrative exact-head run
   requested_authorized_actions:
     - read_repository
     - edit_documentation
@@ -526,4 +524,4 @@ transport:
   method: repository_file
   packet_path: reports/issue-1-t602-handoff-20260806195139.yaml
   packet_url: null
-  transport_note: The handoff is persisted on PR #49. Re-fetch the final PR head and exact-head CI because a repository handoff file cannot self-reference its own commit SHA.
+  transport_note: This is the last repository handoff edit. Final exact-head CI is intentionally recorded only in the PR body and PR comment so the branch is not advanced again.
