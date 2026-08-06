@@ -45,7 +45,7 @@ test("closedまたはmerged PRは既定で装飾を無効化する", async () =>
 
 test("globalStorage配下にはsource本文やtokenを含まないversioned JSONだけを保存する", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-t404-")); const store = new NodeGitHubPullRequestContextLayerStore(root); await store.upsert(layer());
-  const persisted = await readFile(path.join(root, "github-pr-context-layers.v1.json"), "utf8"); assert.match(persisted, /\"version\":1/); assert.doesNotMatch(persisted, /token|sourceText|authorization/i);
+  const persisted = await readFile(path.join(root, "github-pr-context-layers.v1.json"), "utf8"); assert.match(persisted, /"version":1/); assert.doesNotMatch(persisted, /token|sourceText|authorization/i);
 });
 
 test("不正なcontext identity、revision、interval、永続化内容はfail closedにする", async () => {
