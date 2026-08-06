@@ -2,7 +2,7 @@ schema_version: 3
 producer:
   skill: chat-implementation-worker
   mode: corrected_review_followup
-  generated_at: 2026-08-07T06:08:00+09:00
+  generated_at: 2026-08-07T07:48:00+09:00
 repository: ssaattww/RevMem
 issue_or_pr: PR #43
 task_id: T505
@@ -16,6 +16,9 @@ authoritative_requirements:
   - source: report
     reference: reports/issue-1-t505-review-20260806195427.md
     summary: Address T505-R001 through T505-R004 through TDD and preserve exact-head evidence.
+  - source: handoff
+    reference: chatgpt-worker-skills.zip/chat-handoff-manager/SKILL.md
+    summary: Schema v3 source_payloads must carry the original producer payload losslessly.
 development_policy:
   method: test-driven development
   testing_order: RED finding tests, implementation commits, exact-head full CI, report and handoff.
@@ -25,6 +28,7 @@ validation_plan:
     - npm run build
     - npm run lint
     - npm run test:unit
+    - npm run test:t505
     - npm run test:git
     - npm run test:github
     - npm run test:vscode
@@ -60,6 +64,7 @@ scope:
   - Independent snapshot limits
   - Shared exclusion policy
   - Invalid snapshot setting fallback
+  - Lossless schema v3 handoff transport
 non_goals:
   - Review verdict
   - Merge
@@ -80,7 +85,9 @@ files:
     - path: reports/issue-1-t505-review-followup-20260806210039.md
       purpose: Detailed report
     - path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
-      purpose: Corrected handoff
+      purpose: Corrected lossless schema v3 handoff
+    - path: handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
+      purpose: Independent audit copy of the exact legacy packet
   inspected:
     - path: .github/workflows/ci.yml
       purpose: Diagnostic artifact coverage
@@ -99,7 +106,7 @@ commands:
     head_sha: b99c688a0aafa1927ac9a284c04e911d6e105208
     evidence: Artifact 8966248721.
   - command: GitHub Actions CI run 31099795538
-    purpose: Final exact-head validation
+    purpose: Historical exact-head validation
     exit_code: 0
     result: passed
     head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
@@ -109,7 +116,12 @@ tests:
     phase: verification
     result: passed
     head_sha: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
-    evidence: Exact-head run 31099795538.
+    evidence: Historical exact-head run 31099795538.
+  - name: T505-R007 source payload transport
+    phase: regression
+    result: failed
+    head_sha: c75c7961c3951764fed956dddd2161095cc8f26d
+    evidence: The schema-v3 regression requires source_payloads.payload to contain the original packet inline; the prior version only referenced an external file.
 ci:
   required: true
   workflow: CI
@@ -153,9 +165,13 @@ implementation:
     - type: artifact
       location: GitHub Actions artifact 8966248721
       summary: RED diagnostics.
+    - type: test_result
+      location: test/unit/t505-review-findings.test.ts
+      summary: T505-R007 detected that the legacy source payload had been referenced rather than embedded.
   blocked_items: []
   summary:
     - Initial four review findings were implemented and handed to the reviewer.
+    - The historical handoff is corrected so the original nonconformant packet is embedded losslessly in source_payloads.payload.
 review:
   mode: not_applicable
   reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
@@ -191,18 +207,19 @@ review:
     - Independent fix verification is required.
 report:
   report_type: implementation_report
-  outcome: created
+  outcome: updated
   persistence_mode: repository_file
   paths:
     - reports/issue-1-t505-review-followup-20260806210039.md
     - handoffs/issue-1-t505-review-followup-20260806210039.yaml
+    - handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
   reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
   attestation_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
   pr_comments:
     - target: PR #43
       url_or_id: 5204419163
   summary:
-    - Report and handoff persisted.
+    - Report and corrected lossless handoff persisted.
 findings:
   - id: T505-R001
     severity: high
@@ -253,15 +270,181 @@ source_payloads:
   - source_skill: chat-handoff-manager
     output_contract_version: legacy-nonconformant-schema3
     content_type: application/yaml
-    payload:
-      preserved_repository_file: handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
-      content_sha: c9aa9cb5f5d8bf04a9a5d286ecb8e2ec7602aa39
-      completeness: exact original packet preserved as a repository source payload
+    payload: |-
+      schema_version: 3
+      handoff:
+        summary: >-
+          PR #43のT505 review finding 4件をTDDで修正した。未保存bufferをGlobal理解率へ反映し、
+          snapshot単体上限とaggregate budgetを分離し、PR/Globalでshared exclusion policyを再利用し、
+          不正snapshot設定をdefaultへfallbackする。technical HEADのexact-head CIは全step成功した。
+        mode: review_followup
+        work_type: implementation
+        target:
+          repository: ssaattww/RevMem
+          issue: 1
+          task: T505
+          branch: feature/t505-global-understanding-ui
+          pull_request: 43
+          base_branch: main
+          base_sha: 112198c33823a5fc6681399a19e0c5361614143f
+          reviewed_report: reports/issue-1-t505-review-20260806195427.md
+          reviewed_submission: PRR_kwDOTgwD488AAAABIoKnOg
+          technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
+        diagnostic_workflow:
+          existed_before_work: true
+          captures:
+            - test results
+            - stdout and stderr logs
+            - generated output
+            - source and test trees
+            - environment and git context
+        findings:
+          - id: T505-R001
+            severity: High
+            disposition: addressed
+            summary: Global understanding ignored unsaved VS Code buffers and lacked change/save/close refresh.
+            changes:
+              - T505 receives immutable open TextDocument snapshots with line count, non-empty indexes, SHA-256, version cache key, and validateCurrent.
+              - Open-document denominator and source evidence replace the matching disk enumeration entry.
+              - document change, save, and close events refresh Global understanding.
+            tests:
+              - Unsaved buffer differs from disk and remains current immediately after review-state persistence.
+              - Save and close switches the same path back to disk evidence.
+              - Production wiring contains change/save/close subscriptions.
+          - id: T505-R002
+            severity: Medium
+            disposition: addressed
+            summary: The per-snapshot file-size setting was also used as the aggregate snapshot budget.
+            changes:
+              - Added separate maxSnapshotCompressedBytes and maxTotalCompressedBytes limits.
+              - The public setting changes only the per-snapshot limit; aggregate budget remains a separate fixed policy.
+              - Legacy maxCompressedBytes remains accepted for existing internal callers.
+            tests:
+              - Multiple individually valid snapshots survive when combined bytes exceed only the per-snapshot limit.
+          - id: T505-R003
+            severity: Medium
+            disposition: addressed
+            summary: Global aggregation recompiled raw exclusion settings instead of using the PR side last-valid policy.
+            changes:
+              - T505 receives the same ReviewFileExclusionPolicyService created by the base extension.
+              - Repository enumeration consumes the service evaluate/evaluateDirectory boundary.
+              - T504 configurationKey uses the shared policy revision.
+            tests:
+              - A valid exclusion followed by an invalid setting retains identical Global denominator and pruned diagnostics.
+          - id: T505-R004
+            severity: Medium
+            disposition: addressed
+            summary: Invalid or unsafe snapshot setting values could throw during extension activation.
+            changes:
+              - Resolver accepts unknown runtime values and falls back to the manifest default.
+              - Manifest caps the setting at Number.MAX_SAFE_INTEGER.
+              - Invalid, non-integer, non-finite, and unsafe values do not throw.
+            tests:
+              - All invalid value classes resolve to defaults.
+              - Manifest maximum is verified.
+        evidence:
+          red:
+            head: b99c688a0aafa1927ac9a284c04e911d6e105208
+            workflow_run: 31097985105
+            job: 92604469123
+            conclusion: failure
+            artifact:
+              id: 8966248721
+              name: ci-failure-diagnostics-31097985105-1
+            failure: compile:test rejected absent open evidence, shared policy, split limits, and fallback contracts.
+          intermediate_failure:
+            head: d3c22296d8ea6e3e8571dc8803ef98110720ea26
+            workflow_run: 31099257410
+            job: 92608573470
+            conclusion: failure
+            artifact:
+              id: 8966755748
+              name: ci-failure-diagnostics-31099257410-1
+            failure: ESLint no-this-alias in the active exclusion-policy registration.
+          green:
+            technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
+            workflow_run: 31099364549
+            job: 92608926179
+            conclusion: success
+            results:
+              build: success
+              contract_typecheck: success
+              architecture_positive: success
+              architecture_negative: expected 11 findings matched
+              lint: success
+              unit: 462 passed, 0 failed
+              t403: 8 passed, 0 failed
+              t304: 21 passed, 0 failed
+              t502: 11 passed, 0 failed
+              t503: 7 passed, 0 failed, 1 capability-based skipped
+              t504: 15 passed, 0 failed
+              git_integration: 36 passed, 0 failed
+              github_mock: 47 passed, 0 failed
+              vscode_extension_host: success
+        commits:
+          - sha: 7796eeefa70f2b3ad3ae1afb7fe4e6603a5f702b
+            purpose: Add finding-specific RED tests.
+          - sha: b99c688a0aafa1927ac9a284c04e911d6e105208
+            purpose: Execute finding tests from the standard unit suite.
+          - sha: fb2e9d5937bb1bbdecf2a9f6b50a17bac4ce33b9
+            purpose: Split snapshot limits and add invalid-setting fallback.
+          - sha: 6303a886d004552020b4fc75e12a2084d7130d42
+            purpose: Reuse the shared exclusion policy.
+          - sha: d3c22296d8ea6e3e8571dc8803ef98110720ea26
+            purpose: Use immutable open document evidence and refresh lifecycle events.
+          - sha: fdf324864a4227b3319cb50337fa880cdfe23267
+            purpose: Satisfy the lint contract without changing behavior.
+        changed_files:
+          - package.json
+          - src/application/file-exclusion/review-file-exclusion-policy-service.ts
+          - src/application/non-git-snapshots/index.ts
+          - src/application/non-git-snapshots/non-git-snapshot-settings.ts
+          - src/adapters/repository-files/node-repository-file-enumerator.ts
+          - src/extension.ts
+          - src/t305-extension.ts
+          - src/t505-global-understanding-source.ts
+          - test/unit/global-understanding-ui.test.ts
+          - test/unit/t305-validation-wiring.test.ts
+          - test/unit/t505-review-findings.test.ts
+          - reports/issue-1-t505-review-followup-20260806210039.md
+          - handoffs/issue-1-t505-review-followup-20260806210039.yaml
+        intentionally_untouched:
+          - path: .github/workflows/ci.yml
+            reason: Existing failure diagnostic workflow already covers required evidence.
+          - path: doc/design/vscode-review-range-tracker-design.md
+            reason: Existing design already requires current evidence, shared exclusions, and one-snapshot limit semantics.
+          - path: tasks/tasks-status.md
+            reason: Dedicated progress-management Skill unavailable.
+          - path: tasks/phases-status.md
+            reason: Dedicated progress-management Skill unavailable.
+          - area: review verdict
+            reason: Fix worker does not verify its own implementation.
+          - area: merge
+            reason: Reserved for the user.
+        risks:
+          - Open document evidence is scoped to files under the selected local repository root and current selected revision.
+          - Aggregate snapshot budget is an internal default and has no user-facing setting.
+          - Invalid snapshot values silently use the documented default to preserve extension availability.
+          - Exact current report HEAD CI must be checked after report and handoff commit.
+        reports:
+          implementation: reports/issue-1-t505-implementation-20260806191405.md
+          initial_review: reports/issue-1-t505-review-20260806195427.md
+          followup: reports/issue-1-t505-review-followup-20260806210039.md
+          handoff: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+        next_action:
+          - Verify the report commit with a workflow run whose head SHA exactly matches the PR current HEAD.
+          - Request independent fix verification from the original reviewer for T505-R001 through T505-R004.
+          - Run authorized task and phase progress synchronization.
+          - Leave merge to the user.
+        review_verdict_changed: false
+        merge_performed: false
 extensions:
   - namespace: revmem
     payload:
       pull_request: 43
       source_review_submission: PRR_kwDOTgwD488AAAABIoKnOg
+      preserved_source_payload_file: handoffs/source-payloads/issue-1-t505-review-followup-20260806210039.legacy.yaml
+      preserved_source_payload_sha: 58fd800329e885c01b422d39274353d86f611d8d
 next_action:
   type: review
   target_skill: review-worker
@@ -287,4 +470,4 @@ transport:
   method: repository_file
   packet_path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
   packet_url: null
-  transport_note: Flat schema v3 packet; exact legacy source is stored in the referenced repository file.
+  transport_note: Flat schema v3 packet with the exact legacy producer payload embedded inline; the audit copy remains in the referenced repository file.
