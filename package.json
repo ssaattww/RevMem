@@ -173,6 +173,7 @@
         "reviewRange.maxSnapshotFileSizeBytes": {
           "type": "integer",
           "minimum": 1,
+          "maximum": 9007199254740991,
           "default": 5242880,
           "description": "Git管理外ファイルの1 snapshotで許可する圧縮後の最大byte数です。変更はExtension Hostの再読み込み後に新規snapshotへ適用されます。"
         }

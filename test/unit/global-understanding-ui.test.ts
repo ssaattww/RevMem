@@ -12,6 +12,8 @@ import {
   type GlobalUnderstandingTreeSnapshot
 } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import {
+  DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES,
   resolveConfiguredNonGitSnapshotLimits
 } from "../../src/application/non-git-snapshots/non-git-snapshot-settings";
 
@@ -126,7 +128,6 @@ test("Global layer toggle does not refresh dependents when persistence fails", a
   assert.deepEqual(events, ["write"]);
 });
 
-
 test("Global refresh clears stale presentation when the current recalculation fails", async () => {
   const events: string[] = [];
   const controller = new GlobalUnderstandingRefreshController(
@@ -175,21 +176,24 @@ test("an older failed recalculation cannot clear a newer Global snapshot", async
   assert.deepEqual(events, ["show:3"]);
 });
 
-test("snapshot file-size setting is converted to the NonGitSnapshotTracker contract", () => {
+test("snapshot file-size setting is converted to an independent per-snapshot limit", () => {
   assert.deepEqual(resolveConfiguredNonGitSnapshotLimits({
     maxSnapshotFileSizeBytes: 10 * 1024 * 1024
   }), {
     maxSnapshots: 128,
-    maxCompressedBytes: 10 * 1024 * 1024,
+    maxSnapshotCompressedBytes: 10 * 1024 * 1024,
+    maxTotalCompressedBytes: DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES,
     retentionMs: 30 * 24 * 60 * 60 * 1_000
   });
 
-  assert.throws(
-    () => resolveConfiguredNonGitSnapshotLimits({
-      maxSnapshotFileSizeBytes: 0
-    }),
-    /maxSnapshotFileSizeBytes/u
-  );
+  assert.deepEqual(resolveConfiguredNonGitSnapshotLimits({
+    maxSnapshotFileSizeBytes: 0
+  }), {
+    maxSnapshots: 128,
+    maxSnapshotCompressedBytes: DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
+    maxTotalCompressedBytes: DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES,
+    retentionMs: 30 * 24 * 60 * 60 * 1_000
+  });
 });
 
 test("manifest contributes T505 commands and the designed snapshot limit setting", async () => {

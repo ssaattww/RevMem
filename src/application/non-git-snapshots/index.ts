@@ -10,7 +10,10 @@ export interface NonGitTrackedFileState {
 
 export interface NonGitSnapshotLimits {
   readonly maxSnapshots: number;
-  readonly maxCompressedBytes: number;
+  readonly maxSnapshotCompressedBytes?: number;
+  readonly maxTotalCompressedBytes?: number;
+  /** @deprecated Use separate per-snapshot and aggregate limits. */
+  readonly maxCompressedBytes?: number;
   readonly retentionMs: number;
 }
 
@@ -105,13 +108,23 @@ interface SnapshotEnvelope extends NonGitTrackedFileState {
 }
 
 export class NonGitSnapshotTracker {
+  private readonly maxSnapshotCompressedBytes: number;
+  private readonly maxTotalCompressedBytes: number;
+
   public constructor(
     private readonly storage: NonGitSnapshotStorage,
     private readonly codec: NonGitSnapshotCodec,
     private readonly limits: NonGitSnapshotLimits,
   ) {
     assertPositiveInteger(limits.maxSnapshots, "maxSnapshots");
-    assertPositiveInteger(limits.maxCompressedBytes, "maxCompressedBytes");
+    this.maxSnapshotCompressedBytes = requireLimit(
+      limits.maxSnapshotCompressedBytes ?? limits.maxCompressedBytes,
+      "maxSnapshotCompressedBytes"
+    );
+    this.maxTotalCompressedBytes = requireLimit(
+      limits.maxTotalCompressedBytes ?? limits.maxCompressedBytes,
+      "maxTotalCompressedBytes"
+    );
     assertPositiveInteger(limits.retentionMs, "retentionMs");
   }
 
@@ -126,8 +139,8 @@ export class NonGitSnapshotTracker {
     const payload = JSON.stringify(envelope);
     const snapshotId = this.codec.sha256(payload);
     const compressed = await this.codec.compress(payload);
-    if (compressed.byteLength > this.limits.maxCompressedBytes) {
-      throw new Error("Snapshot exceeds maxCompressedBytes");
+    if (compressed.byteLength > this.maxSnapshotCompressedBytes) {
+      throw new Error("Snapshot exceeds maxSnapshotCompressedBytes");
     }
     await this.storage.put(snapshotId, compressed, now);
     await this.cleanup(now);
@@ -197,7 +210,7 @@ export class NonGitSnapshotTracker {
     }
     const remaining = await ordered();
     let totalBytes = remaining.reduce((total, [, value]) => total + value.bytes.byteLength, 0);
-    while (remaining.length > this.limits.maxSnapshots || totalBytes > this.limits.maxCompressedBytes) {
+    while (remaining.length > this.limits.maxSnapshots || totalBytes > this.maxTotalCompressedBytes) {
       const oldest = remaining.shift();
       if (oldest === undefined) break;
       await this.storage.delete(oldest[0]); totalBytes -= oldest[1].bytes.byteLength;
@@ -241,5 +254,6 @@ function uniqueLcsMapping(oldLines: readonly string[], newLines: readonly string
 function linesToIntervals(lines: readonly number[]): readonly LineInterval[] { if (lines.length === 0) return []; const intervals: LineInterval[] = []; let start = lines[0]!; let previous = start; for (const line of lines.slice(1)) { if (line === previous + 1) { previous = line; continue; } intervals.push({ startLine: start, endLineExclusive: previous + 1 }); start = line; previous = line; } intervals.push({ startLine: start, endLineExclusive: previous + 1 }); return intervals; }
 function snapshotKey(workspaceContextId: string, fileId: string): string { return `${workspaceContextId}\0${fileId}`; }
 function assertPositiveInteger(value: number, name: string): void { if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`${name} must be a positive safe integer`); }
+function requireLimit(value: number | undefined, name: string): number { if (value === undefined) throw new TypeError(`${name} must be configured`); assertPositiveInteger(value, name); return value; }
 function assertTimestamp(value: number): void { if (!Number.isSafeInteger(value) || value < 0) throw new TypeError("now must be a non-negative safe integer"); }
 function requireNonEmpty(value: string, name: string): string { if (value.length === 0) throw new TypeError(`${name} must not be empty`); return value; }
