@@ -128,6 +128,21 @@ class RuntimeSource implements GitRevisionMappingSource {
     [`${OLD_SHA}\0src/example.ts`, CONTENT],
     [`${NEW_SHA}\0src/example.ts`, CONTENT]
   ]);
+  private readGate:
+    | {
+        started: () => void;
+        wait: Promise<void>;
+      }
+    | undefined;
+
+  public armNextRead(): { readonly started: Promise<void>; release(): void } {
+    let startedResolve!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { startedResolve = resolve; });
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    this.readGate = { started: startedResolve, wait };
+    return { started, release };
+  }
 
   public async objectExists(_root: string, objectName: string): Promise<boolean> {
     return objectName === OLD_SHA ? this.oldObjectExists : true;
@@ -151,6 +166,12 @@ class RuntimeSource implements GitRevisionMappingSource {
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
+    const gate = this.readGate;
+    if (gate !== undefined) {
+      this.readGate = undefined;
+      gate.started();
+      await gate.wait;
+    }
     const content = this.texts.get(`${revision}\0${path}`);
     return content === undefined
       ? { kind: "missing-file" }
@@ -295,6 +316,46 @@ test("a delayed stale open cannot republish reviewed ranges after a newer unrevi
   await new Promise<void>((resolve) => setImmediate(resolve));
   gate.release();
   await Promise.all([newerCommit, staleOpen]);
+
+  source.oldObjectExists = false;
+  inspector.head = NEW_SHA;
+  const recovered = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  assert.deepEqual(
+    recovered.contextState.files[recovered.target.fileId]?.modifiedReviewed,
+    []
+  );
+  assert.deepEqual(
+    recovered.globalState.files[recovered.target.fileId]?.reviewed,
+    []
+  );
+  provider.dispose();
+});
+
+test("a stale open delayed before enqueue cannot overwrite a newer unreview commit", async () => {
+  const { stableHash, inspector, source, provider } = setup();
+  const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt: NOW
+  }));
+
+  const gate = source.armNextRead();
+  const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
+  await gate.started;
+
+  await initial.committer.commit(unmarkReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt: NOW
+  }));
+
+  gate.release();
+  await staleOpen;
 
   source.oldObjectExists = false;
   inspector.head = NEW_SHA;
