@@ -42,12 +42,18 @@ export class LocalGitAdapter extends BaseLocalGitAdapter {
       ]
     };
     const revisionResult = await this.treeCommandExecutor.execute(revisionInvocation);
-    if (revisionResult.exitCode === 1 || revisionResult.exitCode === 128) {
+    if (revisionResult.exitCode === 1) {
       return undefined;
     }
     requireSuccess(revisionInvocation, revisionResult);
     if (firstNonEmptyLine(revisionResult.stdout) !== object) {
-      return undefined;
+      throw new GitCommandFailedError(revisionInvocation, {
+        ...revisionResult,
+        exitCode: 1,
+        stderr: revisionResult.stderr.length > 0
+          ? revisionResult.stderr
+          : "git rev-parse returned an unexpected object ID"
+      });
     }
 
     const treeInvocation: GitCommandInvocation = {
