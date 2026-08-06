@@ -13,18 +13,22 @@ interface NonGitSnapshotLimitBase {
   readonly retentionMs: number;
 }
 
+export type LegacyNonGitSnapshotLimits = NonGitSnapshotLimitBase & {
+  /** @deprecated Use separate per-snapshot and aggregate limits. */
+  readonly maxCompressedBytes: number;
+  readonly maxSnapshotCompressedBytes?: never;
+  readonly maxTotalCompressedBytes?: never;
+};
+
+export type SplitNonGitSnapshotLimits = NonGitSnapshotLimitBase & {
+  readonly maxCompressedBytes?: never;
+  readonly maxSnapshotCompressedBytes: number;
+  readonly maxTotalCompressedBytes: number;
+};
+
 export type NonGitSnapshotLimits =
-  | (NonGitSnapshotLimitBase & {
-      /** @deprecated Use separate per-snapshot and aggregate limits. */
-      readonly maxCompressedBytes: number;
-      readonly maxSnapshotCompressedBytes?: never;
-      readonly maxTotalCompressedBytes?: never;
-    })
-  | (NonGitSnapshotLimitBase & {
-      readonly maxCompressedBytes?: never;
-      readonly maxSnapshotCompressedBytes: number;
-      readonly maxTotalCompressedBytes: number;
-    });
+  | LegacyNonGitSnapshotLimits
+  | SplitNonGitSnapshotLimits;
 
 export interface SavedNonGitSnapshot {
   readonly snapshotId: string;
