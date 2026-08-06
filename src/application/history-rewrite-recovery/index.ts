@@ -7,31 +7,21 @@ import { normalizeLineIntervals } from "../../core/intervals/index";
 
 /** Current repository evidence available after a rebase or force-push. */
 export interface HistoryRewriteCurrentFile {
-  /** Candidate identity in the current repository enumeration. */
   readonly fileId: string;
-  /** Canonical repository-relative path. */
   readonly path: string;
-  /** VS Code line count for the current file. */
   readonly lineCount: number;
-  /** Exact current content hash, when available. */
   readonly contentHash?: string;
-  /** Complete current text, when available for diff evidence validation. */
   readonly content?: string;
 }
 
-/** Request for old-object evidence between the persisted and current revisions. */
 export interface HistoryRewriteGitObjectRequest {
   readonly oldRevisionId: string;
   readonly newRevisionId: string;
   readonly oldPath: string;
 }
 
-/** Ordered first-stage result returned by the Local Git boundary. */
 export type HistoryRewriteGitObjectResult =
-  | {
-      readonly kind: "unchanged";
-      readonly newPath: string;
-    }
+  | { readonly kind: "unchanged"; readonly newPath: string }
   | {
       readonly kind: "diff";
       readonly oldPath: string;
@@ -40,30 +30,17 @@ export type HistoryRewriteGitObjectResult =
       readonly oldText?: string;
       readonly newText?: string;
     }
-  | {
-      readonly kind: "missing-old-revision";
-    }
-  | {
-      readonly kind: "failure";
-      readonly reason: string;
-    };
+  | { readonly kind: "missing-old-revision" }
+  | { readonly kind: "failure"; readonly reason: string };
 
-/** Local Git port. Only `missing-old-revision` permits snapshot fallback. */
 export interface HistoryRewriteGitObjectPort {
   diff(request: HistoryRewriteGitObjectRequest): Promise<HistoryRewriteGitObjectResult>;
 }
 
-/** Conservative mapping result from one saved snapshot to one current candidate. */
 export type HistoryRewriteSnapshotResult =
-  | {
-      readonly kind: "mapped";
-      readonly reviewedRanges: readonly LineInterval[];
-    }
-  | {
-      readonly kind: "missing" | "corrupt" | "expired" | "ambiguous";
-    };
+  | { readonly kind: "mapped"; readonly reviewedRanges: readonly LineInterval[] }
+  | { readonly kind: "missing" | "corrupt" | "expired" | "ambiguous" };
 
-/** Snapshot port implemented by the T601 snapshot tracker boundary. */
 export interface HistoryRewriteSnapshotPort {
   map(
     snapshotId: string,
@@ -72,7 +49,6 @@ export interface HistoryRewriteSnapshotPort {
   ): Promise<HistoryRewriteSnapshotResult>;
 }
 
-/** Complete input for recovering one persisted file after history rewriting. */
 export interface HistoryRewriteRecoveryInput {
   readonly file: Readonly<FileReviewState>;
   readonly newRevisionId: string;
@@ -95,7 +71,6 @@ export type HistoryRewriteUnresolvedReason =
   | "missing-evidence"
   | "snapshot-failure";
 
-/** Recovery preserves review state only when one ordered evidence source proves it. */
 export type HistoryRewriteRecoveryResult =
   | {
       readonly status: "recovered";
@@ -111,10 +86,6 @@ export type HistoryRewriteRecoveryResult =
 
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
-/**
- * Applies the T602 evidence order for one file:
- * old Git object diff, saved snapshot diff, unique exact-content mapping, then unreviewed.
- */
 export class HistoryRewriteRecoveryService {
   public constructor(
     private readonly gitObjects: HistoryRewriteGitObjectPort,
@@ -187,13 +158,10 @@ export class HistoryRewriteRecoveryService {
       const samePathMapping = mappedCandidates.find(
         (candidate) => candidate.current.path === input.file.currentPath
       );
-      const survivingOtherMappings = mappedCandidates.filter(
-        (candidate) =>
-          candidate.current.path !== input.file.currentPath &&
-          candidate.reviewedRanges.length > 0
-      );
       if (samePathMapping !== undefined) {
-        if (survivingOtherMappings.length > 0) {
+        if (mappedCandidates.some(
+          (candidate) => candidate.current.path !== input.file.currentPath
+        )) {
           return unresolved("ambiguous-file-mapping");
         }
         return recovered(
@@ -204,19 +172,22 @@ export class HistoryRewriteRecoveryService {
         );
       }
 
-      const survivingMappings = mappedCandidates.filter(
-        (candidate) => candidate.reviewedRanges.length > 0
-      );
-      if (survivingMappings.length > 1) {
-        return unresolved("ambiguous-file-mapping");
-      }
-      const uniqueSnapshotMapping = survivingMappings[0];
-      if (uniqueSnapshotMapping !== undefined) {
+      if (mappedCandidates.length > 0) {
+        const exactContent = uniqueExactContentCandidate(input);
+        if (exactContent.kind !== "unique") {
+          return unresolved("ambiguous-file-mapping");
+        }
+        const mapped = mappedCandidates.find(
+          (candidate) => candidate.current.path === exactContent.current.path
+        );
+        if (mapped === undefined) {
+          return unresolved("missing-evidence");
+        }
         return recovered(
           "snapshot-diff",
           input,
-          uniqueSnapshotMapping.current,
-          uniqueSnapshotMapping.reviewedRanges
+          mapped.current,
+          mapped.reviewedRanges
         );
       }
     }
