@@ -4,10 +4,15 @@ import type {
   GitContextRevisionMapperOptions,
   GitContextRevisionMappingInput,
   GitContextRevisionMappingResult,
+  GitHistoryRewriteRecoveryPort,
   GitRevisionMappingSource
 } from "./contracts";
 
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const registeredHistoryRewriteRecovery = new WeakMap<
+  GitRevisionMappingSource,
+  GitHistoryRewriteRecoveryPort
+>();
 
 interface GitRevisionTreePathSource extends GitRevisionMappingSource {
   listFilePathsAtRevision(
@@ -31,17 +36,28 @@ const hasTreePathSource = (
   "listFilePathsAtRevision" in source &&
   typeof source.listFilePathsAtRevision === "function";
 
+/** Registers one source-local runtime recovery before constructing its mapper. */
+export function registerGitHistoryRewriteRecovery(
+  source: GitRevisionMappingSource,
+  recovery: GitHistoryRewriteRecoveryPort
+): void {
+  registeredHistoryRewriteRecovery.set(source, recovery);
+}
+
 /**
  * Keeps direct immutable Git mapping authoritative and invokes T602 snapshot
  * recovery only for the snapshot side whose old object is proven missing.
  */
 export class GitContextRevisionMapper {
   private readonly directMapper: DirectGitContextRevisionMapper;
+  private readonly historyRewriteRecovery: GitHistoryRewriteRecoveryPort | undefined;
 
   public constructor(
     private readonly options: GitContextRevisionMapperOptions
   ) {
     this.directMapper = new DirectGitContextRevisionMapper(options);
+    this.historyRewriteRecovery = options.historyRewriteRecovery ??
+      registeredHistoryRewriteRecovery.get(options.source);
   }
 
   public async map(
@@ -58,14 +74,14 @@ export class GitContextRevisionMapper {
 
     const direct = await this.directMapper.map(input);
     if (
-      this.options.historyRewriteRecovery === undefined ||
+      this.historyRewriteRecovery === undefined ||
       (!availability.contextMissing && !availability.globalMissing)
     ) {
       return direct;
     }
 
     const currentCandidatePaths = await this.currentCandidatePaths(input);
-    const recovered = await this.options.historyRewriteRecovery.recover({
+    const recovered = await this.historyRewriteRecovery.recover({
       current: input.current,
       contextFiles: availability.contextMissing
         ? clone(input.contextState.files)
