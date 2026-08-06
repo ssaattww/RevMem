@@ -95,16 +95,13 @@ const stateMatchesTarget = (
     globalFile.contentHash === target.contentHash;
 };
 
-/**
- * Public document session provider backed by Git context preparation and the
- * existing reconciled active-owner snapshot.
- */
 export class DocumentReviewStateSessionProvider {
   private readonly delegate: GitContextDocumentReviewStateSessionProvider;
   private readonly revisionSource: GitRevisionMappingSource | undefined;
   private readonly snapshotTracker: NonGitSnapshotTracker | undefined;
   private readonly stableHash: StableHash;
   private readonly nowMilliseconds: () => number;
+  private snapshotCommitQueue: Promise<void> = Promise.resolve();
 
   public constructor(options: DocumentReviewStateSessionProviderOptions) {
     this.revisionSource = options.gitRevisionSource ??
@@ -126,7 +123,6 @@ export class DocumentReviewStateSessionProvider {
     this.delegate = new GitContextDocumentReviewStateSessionProvider(options);
   }
 
-  /** Resolves and maps the active Git context before opening it exactly once. */
   public async open(
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
@@ -154,23 +150,28 @@ export class DocumentReviewStateSessionProvider {
     return {
       ...session,
       committer: {
-        commit: async (transaction) => {
-          await this.invalidateSnapshots(coordinates);
+        commit: (transaction) => this.enqueueSnapshotCommit(async () => {
           await delegateCommitter.commit(transaction);
-          const nextContent = await this.readProvenContent(descriptor, session.target);
-          await this.publishSnapshots(
-            coordinates,
-            nextContent,
-            transaction.next.contextState,
-            transaction.next.globalState,
-            session.target
-          );
-        }
+          try {
+            const nextContent = await this.readProvenContent(
+              descriptor,
+              session.target
+            );
+            await this.replaceSnapshots(
+              coordinates,
+              nextContent,
+              transaction.next.contextState,
+              transaction.next.globalState,
+              session.target
+            );
+          } catch {
+            await this.invalidateSnapshots(coordinates).catch(() => undefined);
+          }
+        })
       }
     };
   }
 
-  /** Resolves and maps an existing Git context before non-mutating decoration reads. */
   public loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
@@ -178,9 +179,14 @@ export class DocumentReviewStateSessionProvider {
     return this.delegate.loadForDecoration(descriptor, selection);
   }
 
-  /** Stops Git state polling owned by this provider. */
   public dispose(): void {
     this.delegate.dispose();
+  }
+
+  private enqueueSnapshotCommit(operation: () => Promise<void>): Promise<void> {
+    const result = this.snapshotCommitQueue.then(operation, operation);
+    this.snapshotCommitQueue = result.catch(() => undefined);
+    return result;
   }
 
   private async readProvenContent(
@@ -223,52 +229,36 @@ export class DocumentReviewStateSessionProvider {
     globalState: DeepReadonly<RepositoryGlobalState>,
     target: Readonly<ReviewStateFileTarget>
   ): Promise<void> {
-    await this.invalidateSnapshots(coordinates);
-    await this.publishSnapshots(
-      coordinates,
-      content,
-      contextState,
-      globalState,
-      target
-    );
-  }
-
-  private async publishSnapshots(
-    coordinates: SnapshotCoordinates,
-    content: string | undefined,
-    contextState: DeepReadonly<ReviewContextState>,
-    globalState: DeepReadonly<RepositoryGlobalState>,
-    target: Readonly<ReviewStateFileTarget>
-  ): Promise<void> {
     if (
-      this.snapshotTracker === undefined ||
       content === undefined ||
       !stateMatchesTarget(contextState, globalState, target)
     ) {
+      await this.invalidateSnapshots(coordinates);
       return;
     }
     const contextFile = contextState.files[target.fileId];
     const globalFile = globalState.files[target.fileId];
     if (contextFile === undefined || globalFile === undefined) {
+      await this.invalidateSnapshots(coordinates);
       return;
     }
 
+    const now = this.nowMilliseconds();
     try {
-      const now = this.nowMilliseconds();
-      await this.snapshotTracker.saveLatest({
+      await this.snapshotTracker?.saveLatest({
         workspaceContextId: coordinates.contextScope,
         fileId: coordinates.fileId,
         content,
         reviewedRanges: contextFile.modifiedReviewed
       }, now);
-      await this.snapshotTracker.saveLatest({
+      await this.snapshotTracker?.saveLatest({
         workspaceContextId: coordinates.globalScope,
         fileId: coordinates.fileId,
         content,
         reviewedRanges: globalFile.reviewed
       }, now);
     } catch (error) {
-      await this.invalidateSnapshots(coordinates);
+      await this.invalidateSnapshots(coordinates).catch(() => undefined);
       throw error;
     }
   }
