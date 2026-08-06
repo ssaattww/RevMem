@@ -2,12 +2,8 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
-import {
-  getActiveReviewFileExclusionPolicyService
-} from "./application/file-exclusion/review-file-exclusion-policy-service";
-import {
-  createNodeLocalGitAdapter
-} from "./adapters/local-git/index";
+import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
+import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
@@ -24,9 +20,7 @@ import {
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
 } from "./t305-current-context-git";
-import {
-  registerCurrentContextRuntime
-} from "./ui/current-context/vscode-current-context-runtime";
+import { registerCurrentContextRuntime } from "./ui/current-context/vscode-current-context-runtime";
 import {
   GlobalUnderstandingRefreshCoalescer,
   registerGlobalUnderstandingRuntime
@@ -38,7 +32,6 @@ import {
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
-/** T305 composition root that adds context UI while retaining the existing extension runtime. */
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
@@ -48,18 +41,14 @@ export function activate(context: vscode.ExtensionContext): unknown {
   const exclusionPolicy = getActiveReviewFileExclusionPolicyService();
   const readOpenDocuments = (owner: Readonly<T505GlobalUnderstandingOwner>) =>
     vscode.workspace.textDocuments.flatMap((document) => {
-      if (document.isClosed || !FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
-        return [];
-      }
+      if (document.isClosed || !FILESYSTEM_SCHEMES.has(document.uri.scheme)) return [];
       const relativePath = path.relative(owner.repositoryRoot, document.uri.fsPath);
       if (
         relativePath.length === 0 ||
         path.isAbsolute(relativePath) ||
         relativePath === ".." ||
         relativePath.startsWith(`..${path.sep}`)
-      ) {
-        return [];
-      }
+      ) return [];
       const repositoryPath = relativePath.split(path.sep).join("/");
       const content = document.getText();
       const contentHash = stableHash.digest(content);
@@ -80,9 +69,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
             document.isClosed ||
             document.version !== version ||
             stableHash.digest(document.getText()) !== contentHash
-          ) {
-            throw new Error(`Open document changed during Global recalculation: ${repositoryPath}`);
-          }
+          ) throw new Error(`Open document changed during Global recalculation: ${repositoryPath}`);
         }
       }];
     });
@@ -97,11 +84,8 @@ export function activate(context: vscode.ExtensionContext): unknown {
 
   const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
-
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
-        continue;
-      }
+      if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
           kind: "workspace",
@@ -122,20 +106,15 @@ export function activate(context: vscode.ExtensionContext): unknown {
       };
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
-
     for (const editor of vscode.window.visibleTextEditors) {
-      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
-        continue;
-      }
+      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) continue;
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);
         contexts.set(currentContextSelectionKey(snapshot), snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
-          continue;
-        }
+        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
         const snapshot: CurrentContextUiSnapshot = {
           context: {
             kind: "workspace",
@@ -159,33 +138,25 @@ export function activate(context: vscode.ExtensionContext): unknown {
         contexts.set(currentContextSelectionKey(snapshot), snapshot);
       }
     }
-
     return [...contexts.values()].sort((left, right) =>
-      left.context.kind.localeCompare(right.context.kind) ||
-      left.context.label.localeCompare(right.context.label)
+      left.context.kind.localeCompare(right.context.kind) || left.context.label.localeCompare(right.context.label)
     );
   };
 
-  const resolveFallback = async (
-    candidates: readonly CurrentContextUiSnapshot[]
-  ): Promise<CurrentContextUiSnapshot | undefined> => {
+  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[]): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
     if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
-          candidate.context.kind === "branch" &&
-          candidate.context.detail === inspection.repository.rootPath
+          candidate.context.kind === "branch" && candidate.context.detail === inspection.repository.rootPath
         );
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) {
-          return undefined;
-        }
+        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) return undefined;
         fallback = candidates.find((candidate) =>
-        candidate.context.kind === "workspace" &&
-        candidate.context.label === (folder?.name ?? editor.document.fileName)
+          candidate.context.kind === "workspace" && candidate.context.label === (folder?.name ?? editor.document.fileName)
         );
       }
     }
@@ -197,9 +168,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     resolveFallback,
     requestSelection: async (available) => {
       if (available.length === 0) {
-        await vscode.window.showInformationMessage(
-          "表示できるレビューコンテキストがありません。"
-        );
+        await vscode.window.showInformationMessage("表示できるレビューコンテキストがありません。");
         return undefined;
       }
       const items = available.map((snapshot) => ({
@@ -221,10 +190,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
   const globalRuntime = registerGlobalUnderstandingRuntime(context, {
     source: globalSource,
     readGlobalLayerEnabled: () =>
-      vscode.workspace.getConfiguration("reviewRange").get(
-        "showGlobalReviewed",
-        true
-      ),
+      vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true),
     writeGlobalLayerEnabled: (enabled) =>
       vscode.workspace.getConfiguration("reviewRange").update(
         "showGlobalReviewed",
@@ -242,6 +208,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     void globalRuntime.refreshWithErrorBoundary();
   };
   const documentChangeRefresh = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => globalRuntime.invalidate(),
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     run: refreshGlobalUnderstanding
@@ -257,9 +224,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(refreshGlobalUnderstanding),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      requestRefreshForDocumentChange(event.document);
-    }),
+    vscode.workspace.onDidChangeTextDocument((event) => requestRefreshForDocumentChange(event.document)),
     vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
     vscode.workspace.onDidCloseTextDocument(refreshForSavedOrClosedDocument),
     documentChangeRefresh
