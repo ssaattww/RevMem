@@ -567,13 +567,11 @@ export function activate(
     diffHost: {
       parseUri: (value) => vscode.Uri.parse(value, true),
       openDiff: async (original, modified, title) => {
-        void vscode.commands.executeCommand(
+        await vscode.commands.executeCommand(
           "vscode.diff",
           original,
           modified,
           title
-        ).then(undefined, (error: unknown) =>
-          vscode.window.showErrorMessage(`差分エディタを開けませんでした: ${errorMessage(error)}`)
         );
         openedLocalBaseHeadDiffs.push({
           original: original.toString(true),

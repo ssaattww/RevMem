@@ -63,6 +63,47 @@ test("owned Extension Host launch bounds an intentional process-tree hang and pr
   assert.equal(await pathExists(temporary.path), false, "The owned fixture must be cleaned after a timeout.");
 });
 
+test("owned Extension Host launch fails and terminates its tree when success is reported before worker close", async () => {
+  const temporary = await createTemporaryDirectory("owned-extension-host-success-without-close");
+  const workerPath = join(temporary.path, "success-without-close-worker.cjs");
+  const nestedPidPath = join(temporary.path, "nested.pid");
+  const diagnosticDirectory = join(temporary.path, "diagnostics");
+  try {
+    await writeFile(workerPath, [
+      "const { spawn } = require('node:child_process');",
+      "const { writeFileSync } = require('node:fs');",
+      `const nested = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);`,
+      `writeFileSync(${JSON.stringify(nestedPidPath)}, String(nested.pid));`,
+      "process.send({ kind: 'succeeded' });",
+      "setInterval(() => {}, 1000);"
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      runOwnedExtensionHostLaunch({
+        phase: "success-without-close",
+        workerPath,
+        configurationPath: join(temporary.path, "configuration.json"),
+        timeoutMs: 250,
+        diagnosticDirectory,
+        redactPaths: [temporary.path]
+      }),
+      /failed/u
+    );
+
+    const nestedPid = Number(await readFile(nestedPidPath, "utf8"));
+    await waitFor(async () => processIsGone(nestedPid), 2_000);
+    const diagnosticFiles = await readdir(diagnosticDirectory);
+    assert.equal(diagnosticFiles.length, 1);
+    const diagnostics = await readFile(join(diagnosticDirectory, diagnosticFiles[0]!), "utf8");
+    assert.match(diagnostics, /"status": "failed"/u);
+    assert.match(diagnostics, /reported success but did not close/u);
+    assert.match(diagnostics, /"termination": "requested"/u);
+  } finally {
+    await temporary.cleanup();
+  }
+  assert.equal(await pathExists(temporary.path), false, "The success-without-close fixture must be cleaned.");
+});
+
 test("owned Extension Host launch records finite worker failures without treating them as success", async () => {
   const temporary = await createTemporaryDirectory("owned-extension-host-failure");
   const workerPath = join(temporary.path, "failure-worker.cjs");

@@ -61,6 +61,19 @@ interface ReviewRangeT306TestApi {
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
 
+const assertActiveLocalBaseHeadDiff = (
+  diff: { readonly original: string; readonly modified: string }
+): void => {
+  const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+  assert.ok(tab, "Opening a reviewable Tree item must activate a tab.");
+  assert.ok(
+    tab.input instanceof vscode.TabInputTextDiff,
+    "A reviewable Tree item must activate a real text-diff tab, not a normal editor."
+  );
+  assert.equal(tab.input.original.toString(true), diff.original);
+  assert.equal(tab.input.modified.toString(true), diff.modified);
+};
+
 const runGit = async (
   workspacePath: string,
   argumentsList: readonly string[]
@@ -172,8 +185,12 @@ export async function run(): Promise<void> {
     assert.equal(opened.length, 1, "Selecting a text Tree node should open the real diff host.");
     const [diff] = opened;
     assert.ok(diff);
-    const original = await within("original diff focus", vscode.window.showTextDocument(vscode.Uri.parse(diff.original, true)));
-    assert.match(original.document.getText(), /const removed/u);
+    assertActiveLocalBaseHeadDiff(diff);
+    await within(
+      "original diff pane focus",
+      vscode.commands.executeCommand("workbench.action.compareEditor.focusSecondarySide")
+    );
+    assert.equal(vscode.window.activeTextEditor?.document.uri.toString(true), diff.original);
     extensionApi.setLocalBaseHeadConfirmationAnswer(true);
     await within("whole-file mark", vscode.commands.executeCommand("reviewRange.markFileReviewed"));
 
@@ -190,8 +207,12 @@ export async function run(): Promise<void> {
     assert.ok(markedFile, "The diff command should persist context-local reviewed ranges.");
     assert.ok(Object.values(markedState.globalState.files).some((file) => file.reviewed.length > 0));
 
-    const modified = await within("modified diff focus", vscode.window.showTextDocument(vscode.Uri.parse(diff.modified, true)));
-    assert.match(modified.document.getText(), /const added/u);
+    assertActiveLocalBaseHeadDiff(diff);
+    await within(
+      "modified diff pane focus",
+      vscode.commands.executeCommand("workbench.action.compareEditor.focusPrimarySide")
+    );
+    assert.equal(vscode.window.activeTextEditor?.document.uri.toString(true), diff.modified);
     await within("whole-file unmark", vscode.commands.executeCommand("reviewRange.unmarkFileReviewed"));
     const unmarked = extensionApi.getLocalBaseHeadTree();
     assert.equal(unmarked.reviewedLineCount, 0);

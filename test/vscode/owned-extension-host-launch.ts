@@ -6,7 +6,9 @@ import { dirname, join, relative } from "node:path";
 export interface OwnedExtensionHostLaunchInput {
   readonly phase: string;
   readonly workerPath: string;
-  readonly configurationPath: string;
+  readonly configurationPath?: string;
+  /** Optional arguments passed only to this owned worker. */
+  readonly workerArguments?: readonly string[];
   readonly timeoutMs: number;
   readonly diagnosticDirectory: string;
   readonly redactPaths: readonly string[];
@@ -65,6 +67,14 @@ const delay = (milliseconds: number): Promise<void> => new Promise((resolveDelay
   setTimeout(resolveDelay, milliseconds);
 });
 
+const closeWithin = async <Result>(
+  closed: Promise<Result>,
+  timeoutMs: number
+): Promise<Result | undefined> => Promise.race([
+  closed,
+  delay(timeoutMs).then(() => undefined)
+]);
+
 /** Terminates only the process tree rooted at the known worker PID. */
 const terminateOwnedTree = async (child: ChildProcess, closed: Promise<unknown>): Promise<"requested" | "already-exited"> => {
   if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
@@ -102,12 +112,15 @@ export const runOwnedExtensionHostLaunch = async (
   input: OwnedExtensionHostLaunchInput
 ): Promise<OwnedExtensionHostLaunchResult> => {
   const timeoutMs = requireTimeout(input.timeoutMs);
-  const child = spawn(process.execPath, [input.workerPath], {
+  const launchedAt = Date.now();
+  const child = spawn(process.execPath, [input.workerPath, ...(input.workerArguments ?? [])], {
     cwd: dirname(input.workerPath),
     detached: process.platform !== "win32",
     env: {
       ...process.env,
-      REVIEW_RANGE_EXTENSION_HOST_LAUNCH_CONFIG: input.configurationPath
+      ...(input.configurationPath === undefined
+        ? {}
+        : { REVIEW_RANGE_EXTENSION_HOST_LAUNCH_CONFIG: input.configurationPath })
     },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true
@@ -132,7 +145,10 @@ export const runOwnedExtensionHostLaunch = async (
   });
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<{ readonly kind: "timed-out" }>((resolveTimeout) => {
-    timeoutHandle = setTimeout(() => resolveTimeout({ kind: "timed-out" }), timeoutMs);
+    timeoutHandle = setTimeout(
+      () => resolveTimeout({ kind: "timed-out" }),
+      Math.max(0, timeoutMs - (Date.now() - launchedAt))
+    );
   });
   const exited = closed.then(() => ({ kind: "exited" as const }));
   const observed = await Promise.race([
@@ -140,20 +156,42 @@ export const runOwnedExtensionHostLaunch = async (
     timeout,
     exited
   ]);
-  if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
 
   let status: OwnedExtensionHostLaunchResult["status"];
   let workerError: string | undefined;
   let termination: OwnedExtensionHostLaunchResult["termination"] = "not-needed";
+  let closedResult: { readonly exitCode: number | null; readonly signal: NodeJS.Signals | null } | undefined;
   if (observed.kind === "succeeded") {
-    status = "succeeded";
+    const afterSuccess = await Promise.race([
+      closed.then((result) => ({ kind: "exited" as const, result })),
+      timeout
+    ]);
+    if (afterSuccess.kind === "exited") {
+      closedResult = afterSuccess.result;
+      status = closedResult.exitCode === 0 ? "succeeded" : "failed";
+      if (status === "failed") {
+        workerError = "Worker reported success but exited unsuccessfully.";
+      }
+    } else {
+      status = "failed";
+      workerError = "Worker reported success but did not close before the launch deadline.";
+      termination = await terminateOwnedTree(child, closed);
+      closedResult = await closeWithin(closed, TERMINATION_GRACE_MS);
+    }
   } else {
     status = observed.kind === "timed-out" ? "timed-out" : "failed";
     workerError = observed.kind === "failed" ? observed.error : undefined;
-    termination = await terminateOwnedTree(child, closed);
+    if (observed.kind === "exited") {
+      closedResult = await closed;
+    } else {
+      termination = await terminateOwnedTree(child, closed);
+      closedResult = await closeWithin(closed, TERMINATION_GRACE_MS);
+    }
   }
-  const closedResult = await closed;
-  if (status === "succeeded" && closedResult.exitCode !== 0) status = "failed";
+  if (closedResult === undefined) {
+    workerError ??= "Owned worker did not close after process-tree termination.";
+  }
+  if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
 
   await mkdir(input.diagnosticDirectory, { recursive: true });
   const diagnosticPath = join(input.diagnosticDirectory, `${input.phase}-${Date.now()}.json`);
@@ -162,8 +200,8 @@ export const runOwnedExtensionHostLaunch = async (
     status,
     timeoutMs,
     pid: child.pid,
-    exitCode: closedResult.exitCode,
-    signal: closedResult.signal,
+    exitCode: closedResult?.exitCode ?? null,
+    signal: closedResult?.signal ?? null,
     termination,
     ...(workerError === undefined ? {} : { workerError: redact(workerError, input.redactPaths) }),
     stdout: redact(stdout, input.redactPaths),
@@ -174,8 +212,8 @@ export const runOwnedExtensionHostLaunch = async (
     phase: input.phase,
     status,
     pid: child.pid,
-    exitCode: closedResult.exitCode,
-    signal: closedResult.signal,
+    exitCode: closedResult?.exitCode ?? null,
+    signal: closedResult?.signal ?? null,
     termination,
     diagnosticPath: diagnosticDisplayPath(diagnosticPath)
   };

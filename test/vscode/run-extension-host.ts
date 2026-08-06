@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 
 import { createTemporaryDirectory, pathExists } from "../support/temporary-directory";
 import { runOwnedExtensionHostLaunch } from "./owned-extension-host-launch";
+import { cleanupOwnedTemporaryDirectory } from "./owned-temporary-directory-cleanup";
 
 const VS_CODE_TEST_VERSION = "1.130.0";
 const testPhases = [
@@ -11,6 +12,7 @@ const testPhases = [
   "restore-unmarked"
 ] as const;
 const DEFAULT_LAUNCH_TIMEOUT_MS = 120_000;
+const FIXTURE_CLEANUP_TIMEOUT_MS = 10_000;
 
 const launchTimeout = (): number => {
   const configured = process.env.REVIEW_RANGE_VSCODE_LAUNCH_TIMEOUT_MS;
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workerPath = join(__dirname, "run-extension-host-launch-worker.js");
+  const cleanupWorkerPath = join(__dirname, "run-extension-host-cleanup-worker.js");
   const launchArgsFor = (
     workspacePath: string,
     userDataPath: string,
@@ -96,7 +99,13 @@ async function main(): Promise<void> {
       await launch(`lifecycle-${phase}`, lifecyclePaths, join(__dirname, "suite"), phase);
     }
   } finally {
-    await temporaryDirectory.cleanup();
+    await cleanupOwnedTemporaryDirectory({
+      rootPath: temporaryDirectory.path,
+      workerPath: cleanupWorkerPath,
+      timeoutMs: FIXTURE_CLEANUP_TIMEOUT_MS,
+      diagnosticDirectory: join(projectRoot, "test-output", "vscode-launch-diagnostics"),
+      redactPaths: [temporaryDirectory.path, projectRoot]
+    });
   }
 
   if (await pathExists(temporaryDirectory.path)) {

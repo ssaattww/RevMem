@@ -9,16 +9,17 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T305 Activity Bar・Current Context・Status Bar（PR #42）とT403 GitHub metadata・diff cache（PR #44）をcurrent mainへ統合済み
 - 現在のタスク: T306 local base/headのdiff両側操作からPR Progress UI更新までのExtension Host試験
-- 次のタスク: 通常review finding `T306-R1-P1` の実diff pane操作と `T306-R1-P2` の成功通知後hang境界・required CI接続を修正し、同じ通常reviewerのbounded closure verificationへ戻す
-- 実装状態: 実Tree View・virtual diff・既存command・永続state/historyへの接続とowned runnerは実装済み。bounded closure verificationで、実diff editorのopen/focus証明と、worker成功通知後もcloseまでabsolute deadlineを維持する境界が残存と判定された
+- 次のタスク: 修正済みの通常review finding `T306-R1-P1` と `T306-R1-P2` を、同じ通常reviewerのbounded closure verificationで確認する
+- 実装状態: 実diff tabのoriginal/modified paneをfocusして既存commandを実行する受入経路へ変更した。worker成功通知後もcloseまでabsolute deadlineを維持し、fixture cleanupも厳密に所有確認したtemporary rootを期限付きworkerで処理する。runner回帰はrequired CIへ接続済みで、focused/default Extension Host試験はGreen
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
 - Gitブランチ: `task/t306-extension-host-acceptance`
-- Pull Request: PR #45（draft、通常review finding残存境界の修正中、merge未実施）
+- Pull Request: PR #45（draft、通常review finding closure待ち、merge未実施）
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
 - T306通常review指摘対応レポート: `reports/issue-1-t306-review-followup-20260806121906.md`
 - T306通常review finding修正確認レポート: `reports/issue-1-t306-fix-verification-20260806131859.md`
+- T306通常review指摘対応R2レポート: `reports/issue-1-t306-review-followup-r2-20260806132432.md`
 - T403実装レポート: `reports/issue-1-t403-implementation-20260805050632.md`
 - T403 handoff: `reports/issue-1-t403-handoff-20260805050632.yaml`
 - T403通常レビューレポート: `reports/issue-1-t403-review-20260805061700.md`
@@ -280,7 +281,7 @@
 | T303 | 完了 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の独立review全5 findingをclosureし、exact-head CI成功済み |
 | T304 | 完了 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する。PR #38独立reviewの`T304-IFR-P1`〜`P4`をclosureしcurrent mainへ統合済み | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす。独立review全4 findingをclosureし、current mainへ統合済み |
 | T305 | 完了 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する。独立review findingsをclosureし、PR #42をcurrent mainへ統合済み |
-| T306 | 進行中（通常review finding残存境界を修正中） | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17を実UI/runtime操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する。`T306-R1-P1` の実diff pane操作と `T306-R1-P2` の成功通知後hang/required CI境界を修正後、同じ通常reviewerのbounded closure verification、全範囲独立review 1回、mergeを行う |
+| T306 | 進行中（通常review finding closure待ち） | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17を実UI/runtime操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する。`T306-R1-P1` の実diff pane操作と `T306-R1-P2` の成功通知後hang/required CI境界は修正済み。同じ通常reviewerのbounded closure verification、全範囲独立review 1回、mergeを残す |
 
 ## P4 GitHub PR連携
 
@@ -337,4 +338,4 @@
 
 ## 次回開始時の選択
 
-T305とT403はcurrent mainへ統合済み。T306の全範囲通常reviewは完了済みで、同じ通常reviewerのbounded closure verificationにより `T306-R1-P1` の実diff pane操作と `T306-R1-P2` の成功通知後hang/required CI境界が残存と判定された。この2境界だけを修正して同じreviewerのclosure確認へ戻し、closure後に別reviewerの全範囲独立reviewを一度実施してmergeへ進む。T306完了まで新規product taskへ着手しない。T404とT602は依存解消済み、T505は未実装のため対象外とする。
+T305とT403はcurrent mainへ統合済み。T306の全範囲通常reviewは完了済みで、`T306-R1-P1` の実diff pane操作と `T306-R1-P2` の成功通知後hang/required CI境界は修正済み。同じ通常reviewerのbounded closure verificationを行い、closure後に別reviewerの全範囲独立reviewを一度実施してmergeへ進む。T306完了まで新規product taskへ着手しない。T404とT602は依存解消済み、T505は未実装のため対象外とする。
