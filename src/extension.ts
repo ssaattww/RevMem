@@ -11,6 +11,10 @@ import {
   createNodeLocalGitAdapter
 } from "./adapters/local-git/index";
 import {
+  LocalGitPullRequestDiffAdapter,
+  NodeGitCommandExecutor
+} from "./adapters/local-git/index";
+import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
@@ -24,14 +28,29 @@ import {
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
-import { NormalEditorReviewCommandService } from "./application/review-commands/index";
+import {
+  DiffEditorReviewCommandService,
+  NormalEditorReviewCommandService
+} from "./application/review-commands/index";
+import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
+  ReviewFileExclusionPolicy,
   type ReviewFileExclusionDecision
 } from "./core/file-exclusion/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState
+} from "./core/contracts/index";
+import { calculatePullRequestDiffProgress } from "./core/pr-progress/index";
+import {
+  PullRequestProgressTreeDataProvider,
+  type PullRequestProgressTreeFileNode
+} from "./ui/pr-progress/index";
 import {
   NormalEditorDecorationController,
   createRefreshingNormalEditorReviewCommandHandlers,
@@ -75,6 +94,32 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
+  runLocalPullRequestAcceptance(input: {
+    readonly baseSha: string;
+    readonly headSha: string;
+  }): Promise<LocalPullRequestAcceptanceResult>;
+}
+
+interface LocalPullRequestAcceptanceFile {
+  readonly path: string;
+  readonly category: string;
+  readonly reason?: string;
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+}
+
+interface LocalPullRequestAcceptanceSnapshot {
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly files: readonly LocalPullRequestAcceptanceFile[];
+}
+
+interface LocalPullRequestAcceptanceResult {
+  readonly before: LocalPullRequestAcceptanceSnapshot;
+  readonly markedFromOriginal: LocalPullRequestAcceptanceSnapshot;
+  readonly unmarked: LocalPullRequestAcceptanceSnapshot;
+  readonly binarySelectionKind: string;
+  readonly textDiffOpenCount: number;
 }
 
 interface ActiveExtensionRuntime {
@@ -483,6 +528,201 @@ export function activate(
       decorationController.refreshVisibleEditors()
   };
 
+  const runLocalPullRequestAcceptance = async (
+    input: { readonly baseSha: string; readonly headSha: string }
+  ): Promise<LocalPullRequestAcceptanceResult> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("T306 acceptance requires one local workspace folder.");
+    }
+    const request = {
+      contextId: "pull-request:local/t306#1",
+      repository: { host: "local.test", owner: "t306", repository: "fixture" },
+      number: 1,
+      baseSha: input.baseSha,
+      headSha: input.headSha
+    };
+    const acquisition = await new PullRequestDiffAcquisitionService({
+      local: new LocalGitPullRequestDiffAdapter(
+        new NodeGitCommandExecutor(),
+        workspaceFolder.uri.fsPath
+      ),
+      remote: {
+        fetch: async () => ({ kind: "unavailable", reason: "api" }),
+        readFile: async () => ({ kind: "unavailable", reason: "api" })
+      }
+    }).acquire(request);
+    if (acquisition.kind !== "acquired") {
+      throw new Error("T306 local base/head comparison was unavailable.");
+    }
+    const diff = acquisition.snapshot;
+    const reviewFile = diff.files.find((file) => file.newPath === "review.ts");
+    if (reviewFile === undefined) throw new Error("T306 review fixture file is missing.");
+    const originalLineCount = Math.max(
+      0,
+      ...reviewFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
+        line.kind === "deletion" && line.oldLine !== undefined ? [line.oldLine] : []
+      ))
+    );
+    const modifiedLineCount = Math.max(
+      0,
+      ...reviewFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
+        line.kind === "addition" && line.newLine !== undefined ? [line.newLine] : []
+      ))
+    );
+    const occurredAt = "2026-08-06T00:00:00.000Z";
+    const copyContextState = (state: Readonly<ReviewContextState>): ReviewContextState => ({
+      ...state,
+      files: Object.fromEntries(Object.entries(state.files).map(([fileId, file]) => [fileId, {
+        ...file,
+        previousPaths: [...file.previousPaths],
+        modifiedReviewed: file.modifiedReviewed.map((range) => ({ ...range })),
+        originalReviewedByDiff: Object.fromEntries(Object.entries(file.originalReviewedByDiff)
+          .map(([diffId, ranges]) => [diffId, ranges.map((range) => ({ ...range }))]))
+      }]))
+    });
+    const copyGlobalState = (state: Readonly<RepositoryGlobalState>): RepositoryGlobalState => ({
+      ...state,
+      files: Object.fromEntries(Object.entries(state.files).map(([fileId, file]) => [fileId, {
+        ...file,
+        reviewed: file.reviewed.map((range) => ({ ...range }))
+      }]))
+    });
+    let contextState: ReviewContextState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextId: diff.contextId,
+      kind: "pull-request",
+      repositoryId: "local-t306-fixture",
+      displayName: "T306 local fixture",
+      pullRequest: {
+        host: request.repository.host,
+        owner: request.repository.owner,
+        repository: request.repository.repository,
+        number: request.number,
+        state: "open",
+        baseSha: diff.baseSha,
+        headSha: diff.headSha
+      },
+      files: {
+        [reviewFile.fileId]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          fileId: reviewFile.fileId,
+          currentPath: reviewFile.newPath ?? reviewFile.oldPath ?? reviewFile.fileId,
+          previousPaths: [],
+          revisionId: diff.headSha,
+          modifiedReviewed: [],
+          originalReviewedByDiff: {},
+          lineCount: modifiedLineCount,
+          updatedAt: occurredAt
+        }
+      },
+      createdAt: occurredAt,
+      updatedAt: occurredAt
+    };
+    let globalState: RepositoryGlobalState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      repositoryId: contextState.repositoryId,
+      currentRevisionId: diff.headSha,
+      files: {},
+      updatedAt: occurredAt
+    };
+    let textDiffOpenCount = 0;
+    const provider = new PullRequestProgressTreeDataProvider({
+      openDiff: async () => { textDiffOpenCount += 1; }
+    });
+    const replaceProgress = (): LocalPullRequestAcceptanceSnapshot => {
+      const progress = calculatePullRequestDiffProgress({
+        diff,
+        reviewContext: contextState,
+        exclusionPolicy: new ReviewFileExclusionPolicy({
+          userGlobs: fileExclusionPolicyService.getUserGlobs()
+        })
+      });
+      provider.replaceSnapshot({
+        snapshotId: `t306:${diff.baseSha}..${diff.headSha}`,
+        contextId: diff.contextId,
+        baseSha: diff.baseSha,
+        headSha: diff.headSha,
+        originalDiffId: diff.originalDiffId,
+        fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+        progress,
+        lineReviewabilityByFileId: Object.fromEntries(diff.files.map((file) => [
+          file.fileId,
+          file.status === "binary"
+            ? { kind: "unsupported", reason: { kind: "binary" } }
+            : { kind: "reviewable" }
+        ]))
+      });
+      const files = provider.getChildren()
+        .flatMap((category) => provider.getChildren(category))
+        .filter((node): node is PullRequestProgressTreeFileNode => node.kind === "file")
+        .map((node) => ({
+          path: node.path,
+          category: node.category,
+          ...(node.reason === undefined ? {} : { reason: node.reason }),
+          reviewedLineCount: node.reviewedLineCount,
+          totalLineCount: node.totalLineCount
+        }));
+      return {
+        reviewedLineCount: provider.getEffectiveProgress().reviewedLineCount,
+        totalLineCount: provider.getEffectiveProgress().totalLineCount,
+        files
+      };
+    };
+    const before = replaceProgress();
+    const binary = provider.getChildren().flatMap((category) => provider.getChildren(category))
+      .find((node): node is PullRequestProgressTreeFileNode =>
+        node.kind === "file" && node.path === "binary.bin"
+      );
+    if (binary === undefined) throw new Error("T306 binary fixture node is missing.");
+    const binarySelection = await provider.select(binary);
+    const service = new DiffEditorReviewCommandService<{
+      readonly side: "original" | "modified";
+      readonly lineCount: number;
+    }>({
+      getSide: (editor) => editor.side,
+      getLineCount: (editor) => editor.lineCount,
+      getSelections: () => [],
+      openSession: async () => ({
+        contextState,
+        globalState,
+        target: {
+          fileId: reviewFile.fileId,
+          currentPath: reviewFile.newPath ?? reviewFile.oldPath ?? reviewFile.fileId,
+          revisionId: diff.headSha,
+          lineCount: modifiedLineCount
+        },
+        diffId: diff.originalDiffId,
+        originalLineCount,
+        originalDeletionIntervals: reviewFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
+          line.kind === "deletion" && line.oldLine !== undefined
+            ? [{ startLine: line.oldLine - 1, endLineExclusive: line.oldLine }]
+            : []
+        )),
+        committer: {
+          commit: async (transaction) => {
+            contextState = copyContextState(transaction.next.contextState as unknown as ReviewContextState);
+            globalState = copyGlobalState(transaction.next.globalState as unknown as RepositoryGlobalState);
+          }
+        }
+      }),
+      confirmWholeFileOperation: async () => true,
+      requestHistory: async () => undefined,
+      now: () => new Date(occurredAt)
+    });
+    await service.markFileReviewed({ side: "original", lineCount: originalLineCount });
+    const markedFromOriginal = replaceProgress();
+    await service.unmarkFileReviewed({ side: "modified", lineCount: modifiedLineCount });
+    const unmarked = replaceProgress();
+    return {
+      before,
+      markedFromOriginal,
+      unmarked,
+      binarySelectionKind: binarySelection.kind,
+      textDiffOpenCount
+    };
+  };
+
   if (context.extensionMode !== vscode.ExtensionMode.Test) {
     return runtimePort;
   }
@@ -496,7 +736,8 @@ export function activate(
       userGlobs: fileExclusionPolicyService.getUserGlobs()
     }),
     evaluateFileExclusion: (path, isBinary = false) =>
-      fileExclusionPolicyService.evaluate({ path, isBinary })
+      fileExclusionPolicyService.evaluate({ path, isBinary }),
+    runLocalPullRequestAcceptance
   };
 }
 

@@ -14,6 +14,7 @@ const testPhases = [
 ] as const;
 
 async function main(): Promise<void> {
+  const focusedT306 = process.argv.includes("--t306");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workspacePath = join(temporaryDirectory.path, "workspace");
@@ -30,6 +31,16 @@ async function main(): Promise<void> {
 
   try {
     await Promise.all([mkdir(workspacePath), mkdir(userDataPath), mkdir(extensionsPath)]);
+
+    await runTests({
+      cachePath: join(projectRoot, ".vscode-test"),
+      extensionDevelopmentPath: projectRoot,
+      extensionTestsPath: join(__dirname, "t306-suite"),
+      launchArgs,
+      version: VS_CODE_TEST_VERSION
+    });
+
+    if (focusedT306) return;
 
     await runTests({
       cachePath: join(projectRoot, ".vscode-test"),
