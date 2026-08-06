@@ -1,0 +1,307 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-06T06:10:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #42
+task_id: T305
+branch: feature/t305-context-ui
+base_ref: main
+target:
+  previous_review_head: ae413b3a1f38f210cb3abe466c25c2e9077b375d
+  reviewed_head: 5504c2e55b8c842446f9eced10221c1374adaad6
+  commit_range: ae413b3a1f38f210cb3abe466c25c2e9077b375d..5504c2e55b8c842446f9eced10221c1374adaad6
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Re-review T305 using the supplied Skill ZIP.
+  - source: repository_instruction
+    reference: project instructions
+    summary: Use GitHub connector, persist detailed report and concise PR comment, use only matching-HEAD CI, and do not merge.
+  - source: previous_review
+    reference: reports/issue-1-t305-fix-verification-20260805072300.md
+    summary: Verify T305-R2-001 and retain T305-R1-004 until task tracking is synchronized.
+development_policy:
+  method: TDD
+  testing_order: failing test before implementation
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t305
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - root-cause investigation logs
+blocked:
+  - item: tasks/tasks-status.md synchronization
+    reason: Required progress-management Skills are absent from the supplied ZIP.
+    required_input_or_decision: Supply or authorize task-breakdown-planner, task-consistency-manager, or progress-sync-manager.
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t305-fix-verification-r2-20260806061000.md
+      reason: detailed fix verification report
+    - path_or_operation: handoffs/issue-1-t305-fix-verification-r2-20260806061000.yaml
+      reason: lossless handoff
+    - path_or_operation: PR #42 review comment
+      reason: concise verification result
+  forbidden:
+    - path_or_operation: implementation, tests, design, workflow, configuration, or task tracking
+      reason: reviewer must not implement fixes
+    - path_or_operation: merge
+      reason: merge belongs to the user
+scope:
+  - Verify T305-R2-001 branch selection identity across HEAD updates
+  - Verify T305-R1-004 task tracking synchronization
+  - Inspect fix diff and sibling cases
+non_goals:
+  - Implement fixes
+  - Expand T305 scope
+  - Merge PR #42
+files:
+  changed:
+    - path: src/t305-extension.ts
+      purpose: use stable context selection key
+    - path: src/ui/current-context/current-context-ui-controller.ts
+      purpose: define stable selection key
+    - path: src/ui/current-context/index.ts
+      purpose: export stable selection key
+    - path: test/unit/current-context-ui.test.ts
+      purpose: HEAD-advance regression test
+    - path: reports/issue-1-t305-review-followup-r2-20260805073100.md
+      purpose: implementation follow-up report
+    - path: handoffs/issue-1-t305-review-followup-r2-20260805073100.yaml
+      purpose: implementation follow-up handoff
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: authoritative tracking state
+    - path: package.json
+      purpose: focused and complete validation wiring
+  intentionally_untouched:
+    - path_or_area: product code and tests
+      reason: review-only role
+commands:
+  - command: GitHub compare ae413b3a1f38f210cb3abe466c25c2e9077b375d..5504c2e55b8c842446f9eced10221c1374adaad6
+    purpose: inspect complete fix range
+    exit_code: 0
+    result: passed
+    head_sha: 5504c2e55b8c842446f9eced10221c1374adaad6
+    evidence: Six commits and six changed paths enumerated.
+  - command: GitHub source inspection
+    purpose: verify stable key implementation and regression test
+    exit_code: 0
+    result: passed
+    head_sha: 5504c2e55b8c842446f9eced10221c1374adaad6
+    evidence: Key excludes headRevision and includes kind, repository detail, and branch label.
+tests:
+  - name: T305 R2 Red
+    phase: red
+    result: failed
+    head_sha: 09d4dd092909bf52d274917fe2a54ff6c5404d5a
+    evidence: Matching run 30956847349 failed before the fix.
+  - name: Current HEAD CI
+    phase: verification
+    result: passed
+    head_sha: 5504c2e55b8c842446f9eced10221c1374adaad6
+    evidence: Matching run 30957078473 succeeded.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30957078473
+  head_sha: 5504c2e55b8c842446f9eced10221c1374adaad6
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: 5504c2e55b8c842446f9eced10221c1374adaad6
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer made no implementation changes.
+review:
+  mode: fix_verification
+  reviewed_head: 5504c2e55b8c842446f9eced10221c1374adaad6
+  reviewer:
+    identity: current ChatGPT T305 normal review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: current ChatGPT T305 normal review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Same chat performed prior T305 review rounds.
+        - Supplied Skill ZIP was extracted and required review Skills were read before this round.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T305-R1-004 remains unresolved.
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: T305-R2-001 is fixed and the HEAD-advance sibling case is tested.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: Fix range is limited to the finding and reports.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: Key definition, all consumers, and regression test inspected.
+    - criterion: API data configuration workflow and compatibility effects
+      disposition: checked_no_finding
+      evidence: Stable key preserves repository distinction and ignores moving HEAD.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Matching Red and Green runs are recorded.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No credential or secret handling changes.
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: Direct regression test covers HEAD advancement.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Run 30957078473 matches reviewed HEAD and succeeded.
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: tasks/tasks-status.md remains on PR #39 / T504.
+    - criterion: regression and maintainability risks
+      disposition: checked_no_finding
+      evidence: Shared selection-key function centralizes identity semantics.
+  validation_assessment:
+    - item: T305-R2-001
+      result: supported
+      evidence: Stable key implementation and regression test.
+    - item: T305-R1-004
+      result: failed
+      evidence: Authoritative tracking remains stale.
+    - item: matching CI
+      result: supported
+      evidence: Run 30957078473 / success.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T305-R2-001 is addressed.
+    - T305-R1-004 remains unresolved.
+    - No new finding was identified.
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t305-fix-verification-r2-20260806061000.md
+  reviewed_head: 5504c2e55b8c842446f9eced10221c1374adaad6
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed fix verification report persisted.
+findings:
+  - id: T305-R1-004
+    severity: medium
+    origin: introduced_by_change
+    location: tasks/tasks-status.md
+    description: Authoritative task tracking remains unsynchronized with T305 and PR #42.
+    impact: Later workers receive stale current-task and branch state.
+    evidence: The reviewed HEAD still identifies PR #39 / T504 and task/t504-global-understanding-progress.
+    required_action: Use an authorized progress-management Skill to update only the T305 tracking scope.
+held:
+  - item: tasks/tasks-status.md update
+    reason: Required progress-management Skills are absent from the supplied ZIP.
+    owner: user or authorized progress-management worker
+    remaining_risk: Authoritative tracking remains stale.
+    verdict_impact: T305-R1-004 remains a required finding.
+  - item: Interactive VS Code multi-root verification
+    reason: Connector-centered review environment.
+    owner: implementation owner
+    remaining_risk: Environment-specific behavior was not manually exercised.
+    verdict_impact: none
+unexplored:
+  - area: Full successful CI logs
+    blocker: Run identity and conclusion were available, but every successful stdout/stderr stream was not inspected.
+    remaining_risk: Detailed successful-step output was not independently reviewed.
+    verdict_impact: none
+unknown: []
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: This is normal fix verification.
+remaining_risks:
+  - A new implementation or tracking commit requires another matching-HEAD CI run and fix verification.
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      reviewed_head: 5504c2e55b8c842446f9eced10221c1374adaad6
+      scope_resolved: true
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      verdict: fail
+      addressed_findings:
+        - T305-R2-001
+      open_findings:
+        - T305-R1-004
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/issue-1-t305-fix-verification-r2-20260806061000.md
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: Resolve T305-R1-004 through an authorized progress-management Skill, validate the new HEAD, and return to this review chat.
+  instructions:
+    - Supply or authorize a permitted progress-management Skill.
+    - Update only the T305 tracking scope.
+    - Commit and push the tracking update.
+    - Verify only a workflow run whose head SHA matches the new PR HEAD.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t305-fix-verification-r2-20260806061000.md
+    - handoffs/issue-1-t305-fix-verification-r2-20260806061000.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_documentation
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t305-fix-verification-r2-20260806061000.yaml
+  packet_url: null
+  transport_note: Read together with the detailed verification report.

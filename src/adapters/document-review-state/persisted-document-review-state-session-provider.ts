@@ -9,6 +9,7 @@ import type {
   DocumentNormalEditorDecorationState,
   DocumentNormalEditorReviewStateSession
 } from "./document-review-state-session-provider";
+import type { SelectedReviewContext } from "../../application/review-context/index";
 
 /**
  * Public document session provider backed by Git context preparation and the
@@ -23,16 +24,18 @@ export class DocumentReviewStateSessionProvider {
 
   /** Resolves and maps the active Git context before opening it exactly once. */
   public open(
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    return this.delegate.open(descriptor);
+    return this.delegate.open(descriptor, selection);
   }
 
   /** Resolves and maps an existing Git context before non-mutating decoration reads. */
   public loadForDecoration(
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
-    return this.delegate.loadForDecoration(descriptor);
+    return this.delegate.loadForDecoration(descriptor, selection);
   }
 
   /** Stops Git state polling owned by this provider. */

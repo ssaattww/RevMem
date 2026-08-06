@@ -1,9 +1,8 @@
-import path from "node:path";
-
 import type {
   LocalGitRepository,
   LocalGitRepositoryInspection
 } from "../local-git/index";
+import { gitInspectionStartPath } from "../local-git/index";
 import {
   StaleReviewStateError,
   type ReviewStateCommit,
@@ -21,6 +20,7 @@ import {
   type GitStateObserver,
   type ResolvedGitReviewContext
 } from "../../application/review-context/index";
+import { sameResourceUri, type SelectedReviewContext } from "../../application/review-context/index";
 import { ReviewHistoryRecorder } from "../../application/review-history/index";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
 import type { GitDiffMappingOptions } from "../../core/git-diff/index";
@@ -154,17 +154,46 @@ export class GitContextDocumentReviewStateSessionProvider {
 
   /** Maps or initializes the current Git context before opening a writable session. */
   public async open(
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    const inspection = await this.inspectAndPrepare(descriptor, true);
+    const inspection = await this.inspect(descriptor);
+    if (selection?.kind === "workspace") {
+      this.assertWorkspaceSelection(descriptor, selection);
+      if (inspection.kind === "repository") {
+        throw new Error("The selected workspace context does not own the active editor.");
+      }
+      return this.createDelegate(inspection).open(descriptor);
+    }
+    this.assertBranchSelection(inspection, selection);
+    if (inspection.kind === "repository") {
+      await this.prepareSnapshot(descriptor, true, toSnapshot(inspection.repository));
+    }
     return this.createDelegate(inspection).open(descriptor);
   }
 
   /** Maps an existing current Git context before performing a read-only decoration load. */
   public async loadForDecoration(
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
-    const inspection = await this.inspectAndPrepare(descriptor, false);
+    const inspection = await this.inspect(descriptor);
+    if (selection?.kind === "workspace") {
+      if (!this.workspaceSelectionMatches(descriptor, selection)) {
+        return undefined;
+      }
+      if (inspection.kind === "repository") {
+        return undefined;
+      }
+      return this.createDelegate(inspection)
+        .loadForDecoration(descriptor);
+    }
+    if (!this.branchSelectionMatches(inspection, selection)) {
+      return undefined;
+    }
+    if (inspection.kind === "repository") {
+      await this.prepareSnapshot(descriptor, false, toSnapshot(inspection.repository));
+    }
     return this.createDelegate(inspection).loadForDecoration(descriptor);
   }
 
@@ -186,12 +215,60 @@ export class GitContextDocumentReviewStateSessionProvider {
     });
   }
 
+  private workspaceSelectionMatches(
+    descriptor: DocumentEditorReviewDescriptor,
+    selection: Extract<SelectedReviewContext, { readonly kind: "workspace" }>
+  ): boolean {
+    return descriptor.workspace !== undefined &&
+      sameResourceUri(descriptor.workspace.workspaceFolderUri, selection.workspaceFolderUri);
+  }
+
+  private assertWorkspaceSelection(
+    descriptor: DocumentEditorReviewDescriptor,
+    selection: Extract<SelectedReviewContext, { readonly kind: "workspace" }>
+  ): void {
+    if (!this.workspaceSelectionMatches(descriptor, selection)) {
+      throw new Error("The selected workspace context does not own the active editor.");
+    }
+  }
+
+  private branchSelectionMatches(
+    inspection: LocalGitRepositoryInspection,
+    selection: SelectedReviewContext | undefined
+  ): boolean {
+    if (selection === undefined) {
+      return true;
+    }
+    if (selection.kind === "workspace") {
+      return false;
+    }
+    if (inspection.kind !== "repository" ||
+      inspection.repository.repositoryId !== selection.repositoryId ||
+      inspection.repository.rootPath !== selection.repositoryRoot) {
+      return false;
+    }
+    if (selection.kind === "branch") {
+      return inspection.repository.branch.kind === "branch" &&
+        inspection.repository.branch.fullRef === selection.branchRef;
+    }
+    return inspection.repository.branch.kind === "detached" &&
+      inspection.repository.head === selection.headRevision;
+  }
+
+  private assertBranchSelection(
+    inspection: LocalGitRepositoryInspection,
+    selection: SelectedReviewContext | undefined
+  ): void {
+    if (!this.branchSelectionMatches(inspection, selection)) {
+      throw new Error("The selected branch context does not own the active editor.");
+    }
+  }
+
   private async inspectAndPrepare(
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean
   ): Promise<LocalGitRepositoryInspection> {
-    const inspectedPath = path.dirname(descriptor.documentFsPath);
-    const inspection = await this.options.gitInspector.inspectRepository(inspectedPath);
+    const inspection = await this.inspect(descriptor);
     if (inspection.kind === "repository") {
       await this.prepareSnapshot(
         descriptor,
@@ -200,6 +277,15 @@ export class GitContextDocumentReviewStateSessionProvider {
       );
     }
     return clone(inspection);
+  }
+
+  private async inspect(
+    descriptor: DocumentEditorReviewDescriptor
+  ): Promise<LocalGitRepositoryInspection> {
+    return this.options.gitInspector.inspectRepository(gitInspectionStartPath(
+      descriptor.documentFsPath,
+      descriptor.fileSystemPathSemantics
+    ));
   }
 
   private async prepareSnapshot(

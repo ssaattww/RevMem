@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
 
 import {
   GitCommandFailedError,
@@ -73,7 +74,7 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
   }
 
   /** Executes Git directly and captures UTF-8 output. */
-  public execute(invocation: GitCommandInvocation): Promise<GitCommandResult> {
+  public async execute(invocation: GitCommandInvocation): Promise<GitCommandResult> {
     const normalizedInvocation: GitCommandInvocation = {
       cwd: invocation.cwd,
       argumentsList: [...invocation.argumentsList]
@@ -81,6 +82,13 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
     for (const [index, argument] of normalizedInvocation.argumentsList.entries()) {
       if (argument.includes("\0")) {
         throw new TypeError(`argumentsList[${index}] must not contain null characters`);
+      }
+    }
+
+    if (normalizedInvocation.cwd !== undefined) {
+      const details = await stat(normalizedInvocation.cwd);
+      if (!details.isDirectory()) {
+        throw new TypeError("Git command cwd must identify a directory.");
       }
     }
 
