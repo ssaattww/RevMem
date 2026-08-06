@@ -3,13 +3,21 @@ import test from "node:test";
 
 import type { FileReviewState } from "../../src/core/contracts/index";
 import {
+  GitRevisionMappingHistoryRewritePort,
   HistoryRewriteRecoveryService,
+  NonGitSnapshotHistoryRewritePort,
   type HistoryRewriteCurrentFile,
   type HistoryRewriteGitObjectPort,
   type HistoryRewriteGitObjectResult,
   type HistoryRewriteSnapshotPort,
   type HistoryRewriteSnapshotResult
 } from "../../src/application/history-rewrite-recovery/index";
+import type {
+  GitRevisionMappingSource,
+  GitRevisionMappingTextReadResult
+} from "../../src/application/review-context/index";
+import type { FileSystemPathSemantics } from "../../src/application/workspace-identity/index";
+import type { NonGitSnapshotMappingResult } from "../../src/application/non-git-snapshots/index";
 
 const OLD_SHA = "1111111111111111111111111111111111111111";
 const NEW_SHA = "2222222222222222222222222222222222222222";
@@ -258,4 +266,152 @@ test("fails closed when direct Git diff evidence is malformed", async () => {
     reviewedRanges: []
   });
   assert.equal(snapshots.calls.length, 0);
+});
+
+class RecordingRevisionSource implements GitRevisionMappingSource {
+  public oldObjectExists = true;
+  public diff = "";
+  public readonly reads = new Map<string, GitRevisionMappingTextReadResult>();
+  public readonly calls: string[] = [];
+
+  public async objectExists(repositoryRoot: string, objectName: string): Promise<boolean> {
+    this.calls.push(`exists:${repositoryRoot}:${objectName}`);
+    return this.oldObjectExists;
+  }
+
+  public async diffRevisions(
+    repositoryRoot: string,
+    leftRevision: string,
+    rightRevision: string
+  ): Promise<string> {
+    this.calls.push(`diff:${repositoryRoot}:${leftRevision}:${rightRevision}`);
+    return this.diff;
+  }
+
+  public async readTextFileAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePath: string,
+    fileSystemPathSemantics: FileSystemPathSemantics
+  ): Promise<GitRevisionMappingTextReadResult> {
+    this.calls.push(`read:${repositoryRoot}:${revision}:${repositoryRelativePath}:${fileSystemPathSemantics}`);
+    return this.reads.get(`${revision}\0${repositoryRelativePath}`) ?? { kind: "missing-file" };
+  }
+}
+
+const gitAdapter = (source: RecordingRevisionSource) =>
+  new GitRevisionMappingHistoryRewritePort(source, "/repo", "posix");
+
+test("Git revision adapter returns missing-old-revision without requesting a diff", async () => {
+  const source = new RecordingRevisionSource();
+  source.oldObjectExists = false;
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, { kind: "missing-old-revision" });
+  assert.deepEqual(source.calls, [`exists:/repo:${OLD_SHA}`]);
+});
+
+test("Git revision adapter treats an absent file section as SHA-only unchanged evidence", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/other.ts b/src/other.ts",
+    "--- a/src/other.ts",
+    "+++ b/src/other.ts",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    ""
+  ].join("\n");
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, { kind: "unchanged", newPath: "src/a.ts" });
+  assert.equal(source.calls.filter((call) => call.startsWith("read:")).length, 0);
+});
+
+test("Git revision adapter resolves one rename and returns exact old and new text proof", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/renamed.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/renamed.ts",
+    ""
+  ].join("\n");
+  source.reads.set(`${OLD_SHA}\0src/a.ts`, { kind: "found", content: "one\ntwo\nthree" });
+  source.reads.set(`${NEW_SHA}\0src/renamed.ts`, { kind: "found", content: "one\ntwo\nthree" });
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, {
+    kind: "diff",
+    oldPath: "src/a.ts",
+    newPath: "src/renamed.ts",
+    diff: source.diff,
+    oldText: "one\ntwo\nthree",
+    newText: "one\ntwo\nthree"
+  });
+});
+
+test("Git revision adapter fails closed for multiple sections claiming the same old path", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/one.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/one.ts",
+    "diff --git a/src/a.ts b/src/two.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/two.ts",
+    ""
+  ].join("\n");
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.equal(result.kind, "failure");
+  assert.match(result.reason, /ambiguous/i);
+});
+
+test("T601 snapshot adapter maps complete current content and preserves fail-closed statuses", async () => {
+  const calls: Array<readonly [string, string, number]> = [];
+  let next: NonGitSnapshotMappingResult = {
+    status: "mapped",
+    reviewedRanges: [{ startLine: 1, endLineExclusive: 2 }]
+  };
+  const adapter = new NonGitSnapshotHistoryRewritePort({
+    map: async (snapshotId: string, content: string, now: number) => {
+      calls.push([snapshotId, content, now]);
+      return next;
+    }
+  });
+
+  assert.deepEqual(await adapter.map("snapshot-a", current(), 123), {
+    kind: "mapped",
+    reviewedRanges: [{ startLine: 1, endLineExclusive: 2 }]
+  });
+  next = { status: "ambiguous", reviewedRanges: [] };
+  assert.deepEqual(await adapter.map("snapshot-a", current(), 124), { kind: "ambiguous" });
+  assert.deepEqual(await adapter.map("snapshot-a", current({ content: undefined }), 125), { kind: "missing" });
+  assert.deepEqual(calls, [
+    ["snapshot-a", "one\ntwo\nthree", 123],
+    ["snapshot-a", "one\ntwo\nthree", 124]
+  ]);
 });
