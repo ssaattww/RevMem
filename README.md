@@ -50,13 +50,15 @@ Git working tree 内では、ファイルの親ディレクトリから reposito
 
 ## 現在の制限
 
-- 確認・解除の4コマンドは、利用者向けには通常エディタで使用します。PR Progress の実diff経路はExtension Host受け入れ試験で検証済みですが、GitHub PR contextを選択するproduction runtimeは未完成です。untitled editorでは実行できません。
-- Activity Bar、Current Context View、Status Bar、contextの再計算・選択はruntimeへ接続済みです。PR Progress Treeはlocal base/head受け入れ経路まで検証済みですが、通常利用時にGitHub PR contextを初期化する経路は未実装です。Global Understanding ViewとReview Contexts Viewも未接続です。
-- 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。
-- 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。
-- 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。
-- `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。これらの UI が未接続のため、現在の通常エディタ操作と装飾には影響しません。
-- UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。
+以下のタスク ID は [`tasks/tasks-status.md`](tasks/tasks-status.md) の定義を指します。複数タスクを記載している項目は、最後のタスクまで完了した時点を解消条件とします。
+
+- 確認・解除の4コマンドは、利用者向けには通常エディタで使用します。PR Progress の実diff経路はExtension Host受け入れ試験で検証済みですが、GitHub PR contextを選択するproduction runtimeは未完成です。**この制限は、`T404`でPR contextの永続管理、`T405`で利用者向けの選択・再検出・layer管理を実装し、`T406`の統合試験が完了すると解消します。** untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
+- Activity Bar、Current Context View、Status Bar、contextの再計算・選択はruntimeへ接続済みです。PR Progress Treeはlocal base/head受け入れ経路まで検証済みですが、通常利用時にGitHub PR contextを初期化する経路は未実装です。Global Understanding ViewとReview Contexts Viewも未接続です。**GitHub PR contextとReview Contexts Viewは`T404`〜`T406`、Global Understanding Viewは`T505`と`T506`が完了すると解消します。**
+- 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。**この制限は、複数contextの変更追従をruntimeへ統合してExtension Host試験を行う`T506`が完了すると解消します。**
+- 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。**履歴UIは初期版の現行タスク範囲外で、解消予定タスクはありません。`T603`はschema migrationと破損回復、`T604`は複数window競合とatomic history appendを扱いますが、履歴UIは追加しません。**
+- 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。**この制限は`T605`が完了すると解消し、初期版全体の最終受け入れは`T608`で確認します。**
+- `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。対応UIの接続は、GitHub PR進捗が`T404`〜`T406`、Global理解率が`T505`と`T506`の完了で揃います。**通常エディタの確認操作と装飾へ影響しないことは仕様であり、解消対象の制限ではありません。**
+- UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。**これはVS Codeのセキュリティ制約であり、解消予定タスクはありません。**
 
 ## 設定
 
