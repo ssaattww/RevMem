@@ -30,7 +30,7 @@ const NEW_SHA = "2222222222222222222222222222222222222222";
 const NOW = "2026-08-06T11:40:00.000Z";
 const REPOSITORY_ID = "github.com/example/runtime-rewrite";
 const CONTENT = "alpha\nbeta\ngamma";
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const clone = <T>(value: unknown): T => JSON.parse(JSON.stringify(value)) as T;
 
 const keyOf = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
@@ -66,8 +66,8 @@ class MemoryRepository implements DocumentReviewStateRepository {
       contextId: transaction.contextId
     }, {
       schemaVersion: transaction.next.contextState.schemaVersion,
-      contextState: clone(transaction.next.contextState),
-      globalState: clone(transaction.next.globalState)
+      contextState: clone<ReviewStateCommit["contextState"]>(transaction.next.contextState),
+      globalState: clone<ReviewStateCommit["globalState"]>(transaction.next.globalState)
     });
   }
 
@@ -81,8 +81,8 @@ class MemoryRepository implements DocumentReviewStateRepository {
     assert.ok(entry);
     const next: ReviewStateCommit = {
       schemaVersion: transaction.next.contextState.schemaVersion,
-      contextState: clone(transaction.next.contextState),
-      globalState: clone(transaction.next.globalState)
+      contextState: clone<ReviewStateCommit["contextState"]>(transaction.next.contextState),
+      globalState: clone<ReviewStateCommit["globalState"]>(transaction.next.globalState)
     };
     this.commits.set(entry[0], next);
     this.replaceGlobal(next);
@@ -92,8 +92,8 @@ class MemoryRepository implements DocumentReviewStateRepository {
     for (const [key, current] of this.commits) {
       if (current.globalState.repositoryId === commit.globalState.repositoryId) {
         this.commits.set(key, {
-          ...clone(current),
-          globalState: clone(commit.globalState)
+          ...clone<ReviewStateCommit>(current),
+          globalState: clone<ReviewStateCommit["globalState"]>(commit.globalState)
         });
       }
     }
