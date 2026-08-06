@@ -1,5 +1,13 @@
 # README exclude説明明確化レポート
 
+## メタデータ
+
+- Repository: `ssaattww/RevMem`
+- Pull Request: `#51`
+- Branch: `agent/readme-exclude-clarification`
+- Base: `main`
+- Merge: 実施しない
+
 ## 目的
 
 `README.md`の`reviewRange.exclude`説明について、「通常エディタの確認操作と装飾へ影響しない」という抽象的な表現を、利用者が挙動を直接理解できる説明へ置き換える。
@@ -17,9 +25,10 @@
 ## 検証
 
 - documentation-only変更のためTDDは非適用。
-- 変更後READMEをGitHub connectorで再取得して文言を確認する。
-- `main`との差分がREADMEと本レポートだけであることを確認する。
-- PR作成後はcurrent HEAD SHAと一致するworkflow runだけをCI判定対象とし、別SHAのrunは代用しない。
+- 変更後READMEをGitHub connectorで再取得し、説明が「確認済みにできる／表示・保存される／PR進捗とGlobal理解率からは除外される」と明示されていることを確認。
+- `main`との差分がREADME 1行と本レポートだけであることを確認。
+- PR作成時HEAD `71af8cfcb4cff7e9749c59f5d34a090791f52220` に対して複数回workflow runを確認したが、一致するpull-request runは存在しなかった。別SHAのrunは代用していない。
+- 本レポート更新後は新しいPR current HEADについて再度exact-head CIを確認する。
 
 ## 対象外
 
