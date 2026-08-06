@@ -15,6 +15,7 @@ import type {
   ReviewContextState
 } from "../../core/contracts/index";
 import type {
+  DeepReadonly,
   ReviewStateFileTarget,
   ReviewStateTransaction
 } from "../../core/review-state/index";
@@ -78,8 +79,8 @@ const coordinatesOf = (
 });
 
 const stateMatchesTarget = (
-  contextState: Readonly<ReviewContextState>,
-  globalState: Readonly<RepositoryGlobalState>,
+  contextState: DeepReadonly<ReviewContextState>,
+  globalState: DeepReadonly<RepositoryGlobalState>,
   target: Readonly<ReviewStateFileTarget>
 ): boolean => {
   const contextFile = contextState.files[target.fileId];
@@ -219,8 +220,8 @@ export class DocumentReviewStateSessionProvider {
   private async replaceSnapshots(
     coordinates: SnapshotCoordinates,
     content: string | undefined,
-    contextState: Readonly<ReviewContextState>,
-    globalState: Readonly<RepositoryGlobalState>,
+    contextState: DeepReadonly<ReviewContextState>,
+    globalState: DeepReadonly<RepositoryGlobalState>,
     target: Readonly<ReviewStateFileTarget>
   ): Promise<void> {
     await this.invalidateSnapshots(coordinates);
@@ -236,8 +237,8 @@ export class DocumentReviewStateSessionProvider {
   private async publishSnapshots(
     coordinates: SnapshotCoordinates,
     content: string | undefined,
-    contextState: Readonly<ReviewContextState>,
-    globalState: Readonly<RepositoryGlobalState>,
+    contextState: DeepReadonly<ReviewContextState>,
+    globalState: DeepReadonly<RepositoryGlobalState>,
     target: Readonly<ReviewStateFileTarget>
   ): Promise<void> {
     if (
