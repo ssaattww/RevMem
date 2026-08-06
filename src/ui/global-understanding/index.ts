@@ -2,11 +2,13 @@ export {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
+  GlobalUnderstandingRefreshCoalescer,
   GlobalUnderstandingRefreshController
 } from "./global-understanding-ui-model";
 
 export type {
   GlobalLayerToggleHost,
+  GlobalUnderstandingRefreshCoalescerHost,
   GlobalUnderstandingRefreshHost,
   GlobalUnderstandingRefreshSource,
   GlobalUnderstandingDiagnosticsNode,
