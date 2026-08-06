@@ -11,6 +11,7 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import {
   InMemoryNonGitSnapshotStorage,
   NonGitSnapshotTracker,
+  type NonGitSnapshotLimits,
   type NonGitTrackedFileState
 } from "../../src/application/non-git-snapshots/index";
 import {
@@ -24,6 +25,15 @@ import {
   type ReviewContextState
 } from "../../src/core/contracts/index";
 import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+
+const incompleteSplitLimits = {
+  maxSnapshots: 1,
+  maxSnapshotCompressedBytes: 1024,
+  retentionMs: 1_000
+};
+// @ts-expect-error T505-R002: the split limit contract requires both per-snapshot and aggregate limits.
+const rejectedIncompleteSplitLimits: NonGitSnapshotLimits = incompleteSplitLimits;
+void rejectedIncompleteSplitLimits;
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
@@ -158,6 +168,19 @@ const snapshotState = (fileId: string, content: string): NonGitTrackedFileState 
   reviewedRanges: [{ startLine: 0, endLineExclusive: 1 }]
 });
 
+const snapshotIdFor = (
+  codec: NodeNonGitSnapshotCodec,
+  state: NonGitTrackedFileState,
+  now: number
+): string => codec.sha256(JSON.stringify({
+  schemaVersion: 1,
+  createdAt: now,
+  workspaceContextId: state.workspaceContextId,
+  fileId: state.fileId,
+  content: state.content,
+  reviewedRanges: state.reviewedRanges
+}));
+
 test("T505-R002 keeps individually valid snapshots when only their combined size exceeds the per-snapshot limit", async () => {
   const storage = new InMemoryNonGitSnapshotStorage();
   const codec = new NodeNonGitSnapshotCodec();
@@ -182,6 +205,57 @@ test("T505-R002 keeps individually valid snapshots when only their combined size
   assert.ok(await storage.totalBytes() > perSnapshotLimit);
   assert.equal(await storage.has(first.snapshotId), true);
   assert.equal(await storage.has(second.snapshotId), true);
+});
+
+test("T505-R002 rejects aggregate limits below the per-snapshot limit and never publishes a removed latest snapshot", async () => {
+  const codec = new NodeNonGitSnapshotCodec();
+  assert.throws(
+    () => new NonGitSnapshotTracker(
+      new InMemoryNonGitSnapshotStorage(),
+      codec,
+      {
+        maxSnapshots: 8,
+        maxSnapshotCompressedBytes: 1024,
+        maxTotalCompressedBytes: 512,
+        retentionMs: 60_000
+      }
+    ),
+    /maxTotalCompressedBytes.*maxSnapshotCompressedBytes/u
+  );
+
+  const configuredPerSnapshot = DEFAULT_MAX_TOTAL_SNAPSHOT_BYTES + 1;
+  const resolved = resolveConfiguredNonGitSnapshotLimits({
+    maxSnapshotFileSizeBytes: configuredPerSnapshot
+  });
+  assert.equal(resolved.maxSnapshotCompressedBytes, configuredPerSnapshot);
+  assert.ok(resolved.maxTotalCompressedBytes >= configuredPerSnapshot);
+
+  const storage = new InMemoryNonGitSnapshotStorage();
+  const tracker = new NonGitSnapshotTracker(storage, codec, {
+    maxSnapshots: 1,
+    maxSnapshotCompressedBytes: 1024 * 1024,
+    maxTotalCompressedBytes: 1024 * 1024,
+    retentionMs: 60_000
+  });
+  const now = 2_000;
+  const first = await tracker.save(snapshotState("first.ts", "first-content"), now);
+  let candidate: NonGitTrackedFileState | undefined;
+  for (let index = 0; index < 100_000; index += 1) {
+    const current = snapshotState(`candidate-${index}.ts`, `candidate-content-${index}`);
+    if (snapshotIdFor(codec, current, now) < first.snapshotId) {
+      candidate = current;
+      break;
+    }
+  }
+  assert.ok(candidate, "a lexicographically earlier same-timestamp snapshot fixture must be found");
+
+  const latest = await tracker.saveLatest(candidate, now);
+  assert.equal(await storage.has(latest.snapshotId), true);
+  assert.equal(
+    await tracker.latestSnapshotId(candidate.workspaceContextId, candidate.fileId),
+    latest.snapshotId
+  );
+  assert.deepEqual(await tracker.restore(latest.snapshotId, now), candidate);
 });
 
 test("T505-R003 reuses the shared last-valid exclusion policy after an invalid setting", async (t) => {
@@ -240,4 +314,45 @@ test("T505-R004 invalid snapshot settings fall back without throwing and the man
     ]?.maximum,
     Number.MAX_SAFE_INTEGER
   );
+});
+
+test("T505-R006 focused validation executes the review-finding suite exactly once", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  const focused = manifest.scripts["test:t505"] ?? "";
+  assert.equal(
+    focused.match(/test-dist\/test\/unit\/t505-review-findings\.test\.js/gu)?.length ?? 0,
+    1
+  );
+});
+
+test("T505-R007 follow-up handoff uses the required schema v3 top-level packet and preserves the original payload", async () => {
+  const handoff = await readFile(
+    "handoffs/issue-1-t505-review-followup-20260806210039.yaml",
+    "utf8"
+  );
+  for (const key of [
+    "producer",
+    "repository",
+    "issue_or_pr",
+    "task_id",
+    "target",
+    "authorized_actions",
+    "write_boundary",
+    "commands",
+    "tests",
+    "ci",
+    "implementation",
+    "review",
+    "report",
+    "source_payloads",
+    "next_action",
+    "transport"
+  ]) {
+    assert.match(handoff, new RegExp(`^${key}:`, "mu"), `missing top-level ${key}`);
+  }
+  assert.doesNotMatch(handoff, /^handoff:/mu);
+  assert.match(handoff, /output_contract_version: legacy-nonconformant-schema3/u);
+  assert.match(handoff, /payload: \|-/u);
 });
