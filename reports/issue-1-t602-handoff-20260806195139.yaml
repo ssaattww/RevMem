@@ -490,7 +490,7 @@ extensions:
     payload:
       implementation_target_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
       implementation_report_commit: 4a5fc5fe050c76fb8d20d6b044c7409e41a0363e
-      immutable_handoff_rule: Never edit this file to append its own commit SHA or a final administrative run. Final exact-head validation belongs only in PR metadata and comments.
+      immutable_handoff_rule: This repository file is now immutable. Never edit it to append its own commit SHA or a final administrative run. Final exact-head validation belongs only in PR metadata and comments.
 
 next_action:
   type: review
@@ -524,4 +524,4 @@ transport:
   method: repository_file
   packet_path: reports/issue-1-t602-handoff-20260806195139.yaml
   packet_url: null
-  transport_note: Final exact-head CI is intentionally recorded only in the PR body and PR comment. Do not modify this handoff merely to record that run.
+  transport_note: This handoff is immutable. Final exact-head CI is recorded only in the PR body and PR comment.
