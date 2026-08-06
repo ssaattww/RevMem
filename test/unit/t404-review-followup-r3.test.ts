@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  createGitHubPullRequestContextId,
   createGitHubPullRequestContextIdFromRepositoryId,
   GitHubPullRequestContextStateService,
   isPullRequestDecorationEnabled,
@@ -80,9 +81,13 @@ class MemoryRepository implements GitHubPullRequestContextRepositoryPort {
 }
 
 test("T202/T401 and T404 share one hosted repository canonicalizer", () => {
-  const shared = canonicalizeHostedGitRepositoryIdentity("GitHub.COM:443", "SSAATTWW/RevMem.git");
+  const shared = canonicalizeHostedGitRepositoryIdentity("github.com", "SSAATTWW/RevMem.git");
   assert.equal(shared, REPOSITORY_ID);
   assert.equal(normalizeGitRemoteUrl("https://GitHub.COM:443/SSAATTWW/RevMem.git"), shared);
+  assert.equal(
+    createGitHubPullRequestContextId({ host: "GitHub.COM:443", owner: "SSAATTWW", repository: "RevMem.git", pullRequestNumber: 48 }),
+    `github-pr:${shared}#48`
+  );
   assert.throws(() => createGitHubPullRequestContextIdFromRepositoryId("github.com//revmem", 48), /repositoryId|repository/i);
 });
 
