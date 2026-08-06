@@ -1,0 +1,521 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial review
+  generated_at: 2026-08-06T19:54:27+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #43
+task_id: T505
+branch: feature/t505-global-understanding-ui
+base_ref: main
+target:
+  current_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  commit_range: 112198c33823a5fc6681399a19e0c5361614143f..253123e51c5b30a5697392f7540743bd46bdf8d1
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T505を自立して通常reviewし、ZIP内Skillに従い、全指摘を一度で提示する。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector、exact current-HEAD CI、diagnostic artifact、詳細report、簡易PR comment、非mergeを守る。
+  - source: task
+    reference: tasks/tasks-status.md T505
+    summary: Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装しAC-18を満たす。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: certainty-first Global理解率、共有除外policy、Global UI、設定、error policyを定義する。
+
+development_policy:
+  method: test-driven development for implementation fixes; review is inspection and evidence validation
+  testing_order: each required finding must receive a Red regression before implementation, then focused/full exact-head CI
+  governing_source: RevMem repository instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t505
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - generated build and test output
+    - source and test files
+    - environment and Git state
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t505-review-20260806195427.md
+      reason: required detailed normal-review report
+    - path_or_operation: handoffs/issue-1-t505-review-20260806195427.yaml
+      reason: required lossless normal-review continuation packet
+    - path_or_operation: PR #43 review comment
+      reason: required single concise review summary containing all findings
+  forbidden:
+    - path_or_operation: product source, tests, design, workflow, configuration, or task tracking
+      reason: normal reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user-owned action
+
+scope:
+  - inspect T505 full diff and every changed file
+  - verify Global View, Status Bar, layer toggle, refresh, exclusion, snapshot setting, and persisted state composition
+  - inspect direct T300/T501/T503/T504/T601 dependencies
+  - verify tests, reports, handoff, diagnostic workflow, and exact-head CI
+non_goals:
+  - implement findings
+  - independent final review
+  - T404/T405 product work
+  - T506 full multi-context/restart acceptance
+  - T607 final performance optimization
+  - merge
+
+files:
+  changed:
+    - path: package.json
+      purpose: commands, views, configuration, activation, test script
+    - path: src/application/non-git-snapshots/non-git-snapshot-settings.ts
+      purpose: snapshot setting conversion
+    - path: src/extension.ts
+      purpose: review-state notifications and snapshot setting activation
+    - path: src/t305-extension.ts
+      purpose: T505 production composition
+    - path: src/t505-global-understanding-source.ts
+      purpose: persisted Global state, repository enumeration, and recalculation source
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: pure presentation and refresh/toggle control
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: Tree View, Status Bar, commands, config listeners
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: UI model/settings tests
+    - path: test/unit/t505-global-understanding-source.test.ts
+      purpose: filesystem/persisted state source test
+    - path: test/unit/t305-validation-wiring.test.ts
+      purpose: unit discovery
+    - path: reports/issue-1-t505-implementation-20260806191405.md
+      purpose: implementation evidence
+    - path: handoffs/issue-1-t505-implementation-20260806191405.yaml
+      purpose: implementation continuation evidence
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: task scope, dependencies, exit criteria, progress governance
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: authoritative design
+    - path: .github/workflows/ci.yml
+      purpose: diagnostic artifact and validation workflow
+    - path: src/application/global-understanding/global-understanding-background-recalculator.ts
+      purpose: T504 evidence/cache/recalculation contract
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: disk evidence behavior
+    - path: src/application/file-exclusion/review-file-exclusion-policy-service.ts
+      purpose: shared effective exclusion policy
+    - path: src/adapters/file-exclusion/review-file-exclusion-configuration-controller.ts
+      purpose: invalid-setting preservation behavior
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: per-snapshot and aggregate byte-limit semantics
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: snapshot retention impact on review evidence
+    - path: src/adapters/state-repository/
+      purpose: owner-wide Global loading and durability
+  intentionally_untouched:
+    - path_or_area: all product source and tests
+      reason: reviewer boundary
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: progress-management Skill required and unavailable
+    - path_or_area: merge
+      reason: user-owned action
+
+commands:
+  - command: GitHub compare 112198c33823a5fc6681399a19e0c5361614143f..253123e51c5b30a5697392f7540743bd46bdf8d1
+    purpose: immutable full changed-file set and commit range
+    exit_code: 0
+    result: passed
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: 13 files, +2056/-16, 10 commits, ahead by 10
+  - command: GitHub Actions run 31092729844 / job 92587310694
+    purpose: reviewed implementation HEAD exact-match validation
+    exit_code: 0
+    result: passed
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: all build, type, architecture, lint, unit, focused, integration, and Extension Host steps succeeded
+
+tests:
+  - name: existing T505 unit/source suite
+    phase: verification
+    result: passed
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: exact-head CI run 31092729844
+  - name: unsaved active-buffer Global recalculation regression
+    phase: not_applicable
+    result: not_run
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: missing; required by T505-R001
+  - name: per-snapshot versus aggregate capacity regression
+    phase: not_applicable
+    result: not_run
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: missing; required by T505-R002
+  - name: invalid-after-valid shared exclusion regression
+    phase: not_applicable
+    result: not_run
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: missing; required by T505-R003
+  - name: invalid snapshot setting activation regression
+    phase: not_applicable
+    result: not_run
+    head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+    evidence: missing; required by T505-R004
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31092729844
+  head_sha: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - reviewer performed no implementation or test modification
+
+review:
+  mode: initial_review
+  reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  reviewer:
+    identity: ChatGPT normal review worker in current T505 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: initial review
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - current chat started with user request for T505 review
+        - implementation report and handoff were read as evidence only
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T505-R002 and T505-R003
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: T505-R001 and T505-R004
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: no unrelated product implementation found
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: T300/T501/T504/T601 integration findings
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_finding
+      evidence: T505-R002 through T505-R004
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: diagnostic workflow sufficient; configuration boundaries defective
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no new secret persistence or external source transfer
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: four defect-class regressions absent
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: run 31092729844 exact head success
+    - criterion: report tracking and documentation accuracy
+      disposition: held
+      evidence: implementation report/handoff accurate; task status requires unavailable manager
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: policy duplication and dual-use byte limit
+  validation_assessment:
+    - item: reviewed implementation exact-head CI
+      result: supported
+      evidence: 31092729844 / 92587310694 / success / head 253123e51c5b30a5697392f7540743bd46bdf8d1
+    - item: diagnostic artifact workflow
+      result: supported
+      evidence: logs stdout stderr test results generated outputs source tests environment and Git state on failure
+    - item: required finding regressions
+      result: unsupported
+      evidence: no tests exercise R001-R004 scenarios
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - four required findings were identified in one complete initial review
+    - technical verdict applies to reviewed implementation head 253123e51c5b30a5697392f7540743bd46bdf8d1
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t505-review-20260806195427.md
+    - handoffs/issue-1-t505-review-20260806195427.yaml
+  reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed report and lossless handoff prepared for repository persistence
+
+findings:
+  - id: T505-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/extension.ts; src/t305-extension.ts; src/t505-global-understanding-source.ts; src/adapters/repository-files/node-global-understanding-file-source.ts
+    description: Review commands persist live unsaved editor evidence, but immediate Global recalculation reads disk-only evidence.
+    impact: The just-reviewed Global state becomes stale or the entire Tree/Status is cleared until another refresh trigger.
+    evidence: Live editor hash/line count is persisted and reviewStateChanged fires; T505 source uses only filesystem enumerator and readFile-based source; no unsaved-buffer test exists.
+    required_action: Add Red coverage and inject immutable open-document content/denominator evidence ahead of disk fallback, with save/close invalidation.
+  - id: T505-R002
+    severity: medium
+    origin: introduced_by_change
+    location: package.json; src/application/non-git-snapshots/non-git-snapshot-settings.ts; src/application/non-git-snapshots/index.ts
+    description: The declared per-snapshot file-size setting is mapped to a field also used as the aggregate snapshot storage budget.
+    impact: Multiple individually valid snapshots can evict unrelated history when their combined compressed size exceeds the per-file setting.
+    evidence: Manifest says one snapshot; resolver maps to maxCompressedBytes; tracker uses it in both save reject and totalBytes cleanup.
+    required_action: Split per-snapshot and aggregate byte limits and add multi-snapshot regression coverage.
+  - id: T505-R003
+    severity: medium
+    origin: introduced_by_change
+    location: src/t305-extension.ts; src/t505-global-understanding-source.ts; shared exclusion policy service/controller
+    description: Global recalculation recompiles raw VS Code exclusion settings instead of reusing the shared accepted effective policy.
+    impact: Invalid settings leave PR progress on the last valid policy but clear/fail Global Understanding, violating policy consistency.
+    evidence: Base controller preserves last valid service state; T505 independently constructs ReviewFileExclusionPolicy from raw settings.
+    required_action: Inject the shared canonical policy snapshot/revision and add invalid-after-valid consistency coverage.
+  - id: T505-R004
+    severity: medium
+    origin: introduced_by_change
+    location: package.json; src/application/non-git-snapshots/non-git-snapshot-settings.ts; src/extension.ts
+    description: Invalid snapshot limit values throw synchronously during tracker construction without an activation error boundary.
+    impact: One bad setting disables the entire extension rather than only the non-Git snapshot feature.
+    evidence: Resolver rejects invalid values; activation calls it directly; manifest lacks a safe-integer maximum; test expects the throw.
+    required_action: Add activation Red coverage, runtime validation/fallback, manifest maximum, and scoped error handling.
+
+held:
+  - item: tasks status and phases status synchronization
+    reason: dedicated progress-management Skill is required and unavailable
+    owner: progress-management worker
+    remaining_risk: T505 remains marked unimplemented until closure and authorized synchronization
+    verdict_impact: non-blocking relative to the four technical findings, but required before task completion
+  - item: T506 multi-context edit and restart acceptance
+    reason: explicitly assigned to T506
+    owner: T506
+    remaining_risk: broader AC-18 to AC-20 integration remains unverified
+    verdict_impact: not a T505 blocker beyond the narrow R001 command-trigger path
+  - item: staged rendering and large-repository performance
+    reason: explicitly assigned to T607
+    owner: T607
+    remaining_risk: current production source does not publish partial progress or prioritize open files in visible output
+    verdict_impact: not a T505 correctness blocker
+
+unexplored:
+  - area: Windows Remote SSH Dev Containers real-host T505 UI behavior
+    blocker: owned by T605 and no real-host execution in this review
+    remaining_risk: platform-specific URI or host behavior
+    verdict_impact: non-blocking for this initial review
+  - area: large repository performance measurement
+    blocker: owned by T607
+    remaining_risk: delayed initial Global View publication
+    verdict_impact: non-blocking for T505 correctness
+
+unknown: []
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: this is normal initial review
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - Fixes may affect T501 live state, T300 policy ownership, and T601 snapshot compatibility and require sibling regressions.
+  - Administrative review commits after the reviewed head require their own exact-head CI classification and do not transfer the technical verdict to new product changes.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #43
+      task_id: T505
+      mode: review
+      branch: feature/t505-global-understanding-ui
+      base_ref: main
+      current_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+      reviewed_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+      scope:
+        - full T505 diff, requirements, design, direct dependencies, tests, configuration, workflow, reports, tracking, and exact-head CI
+      non_goals:
+        - implementation, independent final review, merge
+      authoritative_requirements:
+        - source: user
+          reference: current chat
+          summary: complete initial review and all findings once
+        - source: repository
+          reference: RevMem instructions
+          summary: connector, exact-head CI, report, handoff, non-merge
+        - source: task/design
+          reference: T505 and design rev4
+          summary: Global UI, shared exclusion, snapshot setting, certainty-first evidence
+      write_boundary:
+        allowed:
+          - review report, handoff, PR review comment
+        forbidden:
+          - product changes, tracking changes, merge
+      development_policy:
+        method: TDD for fixes
+        testing_order: Red then implementation then exact-head CI
+      validation:
+        commands:
+          - full CI workflow
+        required_failure_diagnostics:
+          - test results, stdout, stderr, logs, source, tests, environment, Git state
+      ci:
+        matching_run: 31092729844
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - four uncovered defect classes
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      review_mode: initial review
+      reviewed_implementation_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+      base: 112198c33823a5fc6681399a19e0c5361614143f
+      commit_range: 112198c33823a5fc6681399a19e0c5361614143f..253123e51c5b30a5697392f7540743bd46bdf8d1
+      reviewer_identity: ChatGPT normal review worker
+      required_coverage: see typed review.required_coverage
+      findings: see typed findings
+      held: see typed held
+      unexplored: see typed unexplored
+      validation_assessment: see typed review.validation_assessment
+      verdict: fail
+      remaining_risks: see typed remaining_risks
+      next_action: implementation fixes followed by same-reviewer fix verification
+      reserved_report_paths: []
+      report_attestation_allowed: false
+      attestation_conditions: not applicable to normal initial review
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: review_report
+      complete_body_reference: reports/issue-1-t505-review-20260806195427.md
+      evidence_sources:
+        - T505 task and design rev4
+        - PR #43 diff and implementation artifacts
+        - exact-head CI run 31092729844
+        - direct dependency source contracts
+      target_identity:
+        branch: feature/t505-global-understanding-ui
+        base_ref: main
+        current_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+        reviewed_implementation_head: 253123e51c5b30a5697392f7540743bd46bdf8d1
+      severity_records:
+        - finding_id: T505-R001
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T505-R002
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T505-R003
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T505-R004
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t505-review-20260806195427.md
+          - handoffs/issue-1-t505-review-20260806195427.yaml
+        report_attestation_head: null
+      concise_pr_comment_body: generated after persistence with all findings in one review
+      unresolved_discrepancies: []
+extensions:
+  - namespace: chatgpt.review.persistence
+    payload:
+      review_report_commit: 3ee151e9135faee98a9ff4cdf07c971250c54045
+      handoff_commit: pending
+      post_persistence_current_head_ci: pending
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review finding follow-up
+  summary: Add Red regressions and address T505-R001 through T505-R004 on PR #43, then return to this same normal reviewer for fix verification.
+  instructions:
+    - Preserve finding IDs and severities.
+    - Do not merge.
+    - Use exact current-HEAD CI only.
+    - Save detailed follow-up report and schema-v3 handoff.
+    - Have the authorized progress manager synchronize task tracking after findings close.
+  required_attachments_or_references:
+    - reports/issue-1-t505-review-20260806195427.md
+    - handoffs/issue-1-t505-review-20260806195427.yaml
+    - PR #43
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_configuration
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t505-review-20260806195427.yaml
+  packet_url: null
+  transport_note: Detailed review report is separate; this packet preserves review context, findings, held items, and exact-head evidence. Current permissions do not transfer automatically.
