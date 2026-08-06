@@ -138,13 +138,13 @@ export class DocumentReviewStateSessionProvider {
 
     const coordinates = coordinatesOf(session.contextState, session.target);
     const content = await this.readProvenContent(descriptor, session.target);
-    await this.replaceSnapshots(
+    await this.enqueueSnapshotCommit(() => this.replaceSnapshots(
       coordinates,
       content,
       session.contextState,
       session.globalState,
       session.target
-    );
+    ));
 
     const delegateCommitter = session.committer;
     return {
