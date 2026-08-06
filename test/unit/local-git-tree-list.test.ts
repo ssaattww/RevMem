@@ -167,3 +167,27 @@ test("Local Git rejects non-NUL-terminated or duplicate tree path evidence", asy
     );
   }
 });
+
+test("Local Git treats rev-parse exit 128 as a fatal Git command failure", async () => {
+  const executor = new PlannedExecutor();
+  executor.queue({
+    cwd: "/repo",
+    argumentsList: [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${REVISION}^{commit}`
+    ]
+  }, {
+    exitCode: 128,
+    stdout: "",
+    stderr: "fatal: not a git repository"
+  });
+
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  await assert.rejects(
+    adapter.listFilePathsAtRevision("/repo", REVISION),
+    /fatal: not a git repository/u
+  );
+  executor.assertExhausted();
+});
