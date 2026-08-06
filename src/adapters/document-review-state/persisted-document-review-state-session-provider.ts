@@ -16,8 +16,7 @@ import type {
 } from "../../core/contracts/index";
 import type {
   DeepReadonly,
-  ReviewStateFileTarget,
-  ReviewStateTransaction
+  ReviewStateFileTarget
 } from "../../core/review-state/index";
 import {
   GitContextDocumentReviewStateSessionProvider
