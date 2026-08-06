@@ -490,7 +490,10 @@ extensions:
     payload:
       implementation_target_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
       implementation_report_commit: 4a5fc5fe050c76fb8d20d6b044c7409e41a0363e
-      note: Report and handoff are administrative commits after the technical implementation head. The next reviewer must fetch the final PR head and include all later changes in the reviewed scope.
+      final_administrative_head_before_this_update: 59d49aaf1b8fd2ad365f9bf71d9f772eed06508f
+      final_administrative_run_before_this_update: 31095377366
+      final_administrative_conclusion_before_this_update: success
+      note: Report and handoff are administrative commits after the technical implementation head. Updating this handoff advances the branch again, so the next reviewer must fetch the latest PR head and validate the exact matching run.
 
 next_action:
   type: review
@@ -508,6 +511,7 @@ next_action:
     - reports/issue-1-t602-implementation-20260806195000.md
     - reports/issue-1-t602-handoff-20260806195139.yaml
     - implementation CI run 31094706729
+    - administrative CI run 31095377366 for head 59d49aaf1b8fd2ad365f9bf71d9f772eed06508f before this handoff update
     - Red artifacts 8963364201, 8963629179, 8963826320, 8964182780, 8964473998, 8964554714, 8964658023, 8964732426, 8964865421 and 8964902969
   requested_authorized_actions:
     - read_repository
