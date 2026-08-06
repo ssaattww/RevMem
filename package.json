@@ -264,7 +264,7 @@
     "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:t502 && npm run test:vscode",
     "test:t402": "npm run compile:test && node --test test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js",
     "test:t305": "npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js",
-    "test:t505": "npm run compile:test && node --test test-dist/test/unit/global-understanding-ui.test.js"
+    "test:t505": "npm run compile:test && node --test test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/t505-review-findings.test.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
