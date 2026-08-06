@@ -1,0 +1,170 @@
+schema_version: 3
+handoff:
+  summary: >-
+    PR #43のT505 review finding 4件をTDDで修正した。未保存bufferをGlobal理解率へ反映し、
+    snapshot単体上限とaggregate budgetを分離し、PR/Globalでshared exclusion policyを再利用し、
+    不正snapshot設定をdefaultへfallbackする。technical HEADのexact-head CIは全step成功した。
+  mode: review_followup
+  work_type: implementation
+  target:
+    repository: ssaattww/RevMem
+    issue: 1
+    task: T505
+    branch: feature/t505-global-understanding-ui
+    pull_request: 43
+    base_branch: main
+    base_sha: 112198c33823a5fc6681399a19e0c5361614143f
+    reviewed_report: reports/issue-1-t505-review-20260806195427.md
+    reviewed_submission: PRR_kwDOTgwD488AAAABIoKnOg
+    technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
+  diagnostic_workflow:
+    existed_before_work: true
+    captures:
+      - test results
+      - stdout and stderr logs
+      - generated output
+      - source and test trees
+      - environment and git context
+  findings:
+    - id: T505-R001
+      severity: High
+      disposition: addressed
+      summary: Global understanding ignored unsaved VS Code buffers and lacked change/save/close refresh.
+      changes:
+        - Capture immutable open TextDocument evidence with path, revision, version, line count, non-empty lines, hash, and cache key.
+        - Replace both denominator evidence and T504 file source evidence for open files from the same snapshot.
+        - Subscribe Global recalculation to change, save, and close events.
+        - Reject stale open-document snapshots through validateCurrent.
+      tests:
+        - T505-R001 prefers immutable open-document evidence and switches to disk after save and close.
+        - T505-R001 wires change, save, and close events to Global evidence refresh.
+    - id: T505-R002
+      severity: Medium
+      disposition: addressed
+      summary: The per-snapshot file-size setting was also used as the aggregate snapshot budget.
+      changes:
+        - Separate maxSnapshotCompressedBytes and maxTotalCompressedBytes.
+        - Keep deprecated maxCompressedBytes only for existing internal caller compatibility.
+        - Resolve the user-facing setting only into the per-snapshot limit.
+      tests:
+        - T505-R002 keeps individually valid snapshots when only their combined size exceeds the per-snapshot limit.
+        - Existing T601 count, aggregate cleanup, expiration, mapping, and corruption tests remain green.
+    - id: T505-R003
+      severity: Medium
+      disposition: addressed
+      summary: Global aggregation recompiled raw exclusion settings instead of using the PR side last-valid policy.
+      changes:
+        - Reuse the active ReviewFileExclusionPolicyService created by the base composition root.
+        - Inject the shared service into NodeRepositoryFileEnumerator and T505 source.
+        - Use the service revision as T504 configuration cache evidence.
+        - Refresh Global UI on effective policy changes.
+      tests:
+        - T505-R003 reuses the shared last-valid exclusion policy after an invalid setting.
+        - Existing shared PR/Global exclusion policy tests remain green.
+    - id: T505-R004
+      severity: Medium
+      disposition: addressed
+      summary: Invalid or unsafe snapshot setting values could throw during extension activation.
+      changes:
+        - Add Number.MAX_SAFE_INTEGER as the manifest maximum.
+        - Treat setting input as unknown and fall back to the default for non-positive, non-integer, non-finite, or unsafe values.
+        - Preserve the independent aggregate budget after fallback.
+      tests:
+        - T505-R004 invalid snapshot settings fall back without throwing and the manifest caps safe integers.
+        - VS Code Extension Host lifecycle remains green.
+  evidence:
+    red:
+      commits:
+        - 7796eeefa70f2b3ad3ae1afb7fe4e6603a5f702b
+        - b99c688a0aafa1927ac9a284c04e911d6e105208
+      head: b99c688a0aafa1927ac9a284c04e911d6e105208
+      workflow_run: 31097985105
+      job: 92604469123
+      conclusion: failure
+      failure: unit compilation rejected the absent live evidence, shared policy, split limit, and fallback contracts.
+      artifact:
+        id: 8966248721
+        name: ci-failure-diagnostics-31097985105-1
+    intermediate_failure:
+      head: d3c22296d8ea6e3e8571dc8803ef98110720ea26
+      workflow_run: 31099257410
+      job: 92608573470
+      conclusion: failure
+      failure: ESLint no-this-alias finding in the shared policy service registration.
+      artifact:
+        id: 8966755748
+        name: ci-failure-diagnostics-31099257410-1
+    green:
+      technical_implementation_head: fdf324864a4227b3319cb50337fa880cdfe23267
+      workflow_run: 31099364549
+      job: 92608926179
+      conclusion: success
+      results:
+        build: success
+        contract_typecheck: success
+        architecture_positive: success
+        architecture_negative: expected 11 findings matched
+        lint: success
+        unit: 462 passed, 0 failed
+        t403_focused: 8 passed, 0 failed
+        t304_focused: 21 passed, 0 failed
+        t502_focused: 11 passed, 0 failed
+        t503_focused: 7 passed, 0 failed, 1 platform skip
+        t504_focused: 15 passed, 0 failed
+        git_integration: 36 passed, 0 failed
+        github_mock: 47 passed, 0 failed
+        vscode_extension_host: all phases succeeded
+  commits:
+    - sha: 7796eeefa70f2b3ad3ae1afb7fe4e6603a5f702b
+      purpose: Add review finding regression tests.
+    - sha: b99c688a0aafa1927ac9a284c04e911d6e105208
+      purpose: Execute review finding regressions in the default unit suite and establish RED.
+    - sha: fb2e9d5937bb1bbdecf2a9f6b50a17bac4ce33b9
+      purpose: Separate snapshot limits and harden invalid setting fallback.
+    - sha: 6303a886d004552020b4fc75e12a2084d7130d42
+      purpose: Reuse the shared exclusion policy service.
+    - sha: d3c22296d8ea6e3e8571dc8803ef98110720ea26
+      purpose: Calculate Global understanding from live open-document evidence.
+    - sha: fdf324864a4227b3319cb50337fa880cdfe23267
+      purpose: Satisfy the exclusion service lint contract.
+  changed_files:
+    - package.json
+    - src/adapters/repository-files/node-repository-file-enumerator.ts
+    - src/application/file-exclusion/review-file-exclusion-policy-service.ts
+    - src/application/non-git-snapshots/index.ts
+    - src/application/non-git-snapshots/non-git-snapshot-settings.ts
+    - src/t305-extension.ts
+    - src/t505-global-understanding-source.ts
+    - test/unit/global-understanding-ui.test.ts
+    - test/unit/non-git-snapshot-tracker.test.ts
+    - test/unit/t305-validation-wiring.test.ts
+    - test/unit/t505-global-understanding-source.test.ts
+    - test/unit/t505-review-findings.test.ts
+    - reports/issue-1-t505-review-followup-20260806210039.md
+    - handoffs/issue-1-t505-review-followup-20260806210039.yaml
+  intentionally_untouched:
+    - path: doc/design/vscode-review-range-tracker-design.md
+      reason: Existing design already requires current evidence and shared exclusion behavior; fixes align implementation without adding product requirements.
+    - path: tasks/tasks-status.md
+      reason: Manager-only update rule; no task-breakdown-planner, task-consistency-manager, or progress-sync-manager skill is available.
+    - path: tasks/phases-status.md
+      reason: Manager-only update rule; no authorized progress manager skill is available.
+    - area: review verdict
+      reason: Fix worker does not perform independent review verification.
+    - area: merge
+      reason: Reserved for the user.
+  risks:
+    - Open-document evidence is bound to document version and content hash; concurrent edits invalidate the calculation and require another refresh.
+    - Aggregate snapshot budget remains a fixed internal default while the user-facing setting controls only the per-snapshot limit.
+    - Deprecated maxCompressedBytes remains temporarily for internal caller compatibility.
+    - npm ci reports three pre-existing high severity dependency vulnerabilities; this follow-up adds no dependency.
+  reports:
+    followup: reports/issue-1-t505-review-followup-20260806210039.md
+    handoff: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+  next_action:
+    - Verify the report commit with a workflow run whose head SHA exactly matches the PR current HEAD.
+    - Request independent fix verification from the original reviewer for T505-R001 through T505-R004.
+    - Run authorized task and phase progress synchronization.
+    - Leave merge to the user.
+  review_verdict_changed: false
+  merge_performed: false
