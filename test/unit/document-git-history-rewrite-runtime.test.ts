@@ -285,15 +285,16 @@ test("a delayed stale open cannot republish reviewed ranges after a newer unrevi
   const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
   await gate.started;
 
-  await initial.committer.commit(unmarkReviewedRanges({
+  const newerCommit = initial.committer.commit(unmarkReviewedRanges({
     contextState: initial.contextState,
     globalState: initial.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW
   }));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   gate.release();
-  await staleOpen;
+  await Promise.all([newerCommit, staleOpen]);
 
   source.oldObjectExists = false;
   inspector.head = NEW_SHA;
