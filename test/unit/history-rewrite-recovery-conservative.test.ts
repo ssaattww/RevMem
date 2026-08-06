@@ -144,3 +144,28 @@ test("direct Git evidence is rejected when complete old text contradicts persist
   });
   assert.deepEqual(snapshots.paths, []);
 });
+
+test("snapshot recovery never chooses identity from reviewed-range survival alone", async () => {
+  const snapshots = new RecordingSnapshots((candidate) => ({
+    kind: "mapped",
+    reviewedRanges: candidate.path === "src/actual.ts"
+      ? []
+      : [{ startLine: 1, endLineExclusive: 2 }]
+  }));
+
+  const result = await recover(
+    { kind: "missing-old-revision" },
+    snapshots,
+    [
+      current("src/actual.ts", "changed-actual", "changed\nall\nlines"),
+      current("src/unrelated.ts", "unrelated", "zero\ntwo\nother")
+    ]
+  );
+
+  assert.deepEqual(result, {
+    status: "unresolved",
+    source: "unreviewed",
+    reason: "ambiguous-file-mapping",
+    reviewedRanges: []
+  });
+});
