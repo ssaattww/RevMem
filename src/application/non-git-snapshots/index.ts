@@ -8,14 +8,23 @@ export interface NonGitTrackedFileState {
   readonly reviewedRanges: readonly LineInterval[];
 }
 
-export interface NonGitSnapshotLimits {
+interface NonGitSnapshotLimitBase {
   readonly maxSnapshots: number;
-  readonly maxSnapshotCompressedBytes?: number;
-  readonly maxTotalCompressedBytes?: number;
-  /** @deprecated Use separate per-snapshot and aggregate limits. */
-  readonly maxCompressedBytes?: number;
   readonly retentionMs: number;
 }
+
+export type NonGitSnapshotLimits =
+  | (NonGitSnapshotLimitBase & {
+      /** @deprecated Use separate per-snapshot and aggregate limits. */
+      readonly maxCompressedBytes: number;
+      readonly maxSnapshotCompressedBytes?: never;
+      readonly maxTotalCompressedBytes?: never;
+    })
+  | (NonGitSnapshotLimitBase & {
+      readonly maxCompressedBytes?: never;
+      readonly maxSnapshotCompressedBytes: number;
+      readonly maxTotalCompressedBytes: number;
+    });
 
 export interface SavedNonGitSnapshot {
   readonly snapshotId: string;
@@ -125,6 +134,11 @@ export class NonGitSnapshotTracker {
       limits.maxTotalCompressedBytes ?? limits.maxCompressedBytes,
       "maxTotalCompressedBytes"
     );
+    if (this.maxTotalCompressedBytes < this.maxSnapshotCompressedBytes) {
+      throw new RangeError(
+        "maxTotalCompressedBytes must be greater than or equal to maxSnapshotCompressedBytes"
+      );
+    }
     assertPositiveInteger(limits.retentionMs, "retentionMs");
   }
 
@@ -143,7 +157,10 @@ export class NonGitSnapshotTracker {
       throw new Error("Snapshot exceeds maxSnapshotCompressedBytes");
     }
     await this.storage.put(snapshotId, compressed, now);
-    await this.cleanup(now);
+    await this.cleanup(now, snapshotId);
+    if (await this.storage.get(snapshotId) === undefined) {
+      throw new Error("Saved snapshot was removed during cleanup");
+    }
     return { snapshotId, compressedBytes: compressed.byteLength };
   }
 
@@ -202,18 +219,22 @@ export class NonGitSnapshotTracker {
     } catch { return { status: "corrupt" }; }
   }
 
-  private async cleanup(now: number): Promise<void> {
+  private async cleanup(now: number, protectedSnapshotId?: string): Promise<void> {
     const ordered = async (): Promise<Array<readonly [string, NonGitSnapshotStoredValue]>> =>
       [...await this.storage.entries()].sort(([leftId, left], [rightId, right]) => left.createdAt - right.createdAt || leftId.localeCompare(rightId));
     for (const [id, value] of await ordered()) {
-      if (now - value.createdAt > this.limits.retentionMs) await this.storage.delete(id);
+      if (id !== protectedSnapshotId && now - value.createdAt > this.limits.retentionMs) {
+        await this.storage.delete(id);
+      }
     }
     const remaining = await ordered();
     let totalBytes = remaining.reduce((total, [, value]) => total + value.bytes.byteLength, 0);
     while (remaining.length > this.limits.maxSnapshots || totalBytes > this.maxTotalCompressedBytes) {
-      const oldest = remaining.shift();
-      if (oldest === undefined) break;
-      await this.storage.delete(oldest[0]); totalBytes -= oldest[1].bytes.byteLength;
+      const removableIndex = remaining.findIndex(([id]) => id !== protectedSnapshotId);
+      if (removableIndex < 0) break;
+      const [oldest] = remaining.splice(removableIndex, 1);
+      await this.storage.delete(oldest[0]);
+      totalBytes -= oldest[1].bytes.byteLength;
     }
   }
 }
