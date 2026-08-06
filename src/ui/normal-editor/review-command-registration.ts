@@ -18,6 +18,11 @@ export interface NormalEditorCommandHost<Editor> {
   getActiveEditor(): Editor | undefined;
   /** @returns Whether an active editor is a diff editor, which this registration never passes to review handlers. */
   isDiffEditor(editor: Editor): boolean;
+  /** Optionally handles the same contributed command while a supported diff editor is focused. */
+  invokeDiffEditorCommand?(
+    commandId: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
+    editor: Editor
+  ): void | Promise<unknown>;
   /** Registers one command callback and returns the disposable that unregisters that exact callback. */
   registerCommand(
     commandId: string,
@@ -83,15 +88,24 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
 
 const invokeForActiveNormalEditor = async <Editor>(
   host: NormalEditorCommandHost<Editor>,
+  commandId: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
   invocation: CommandInvocation<Editor>
 ): Promise<void> => {
   const editor = host.getActiveEditor();
-  if (editor === undefined || host.isDiffEditor(editor)) {
+  if (editor === undefined) {
     await host.showNormalEditorRequired();
     return;
   }
 
   try {
+    if (host.isDiffEditor(editor)) {
+      if (host.invokeDiffEditorCommand === undefined) {
+        await host.showNormalEditorRequired();
+        return;
+      }
+      await host.invokeDiffEditorCommand(commandId, editor);
+      return;
+    }
     await invocation(editor);
   } catch (error) {
     await host.showCommandError(error);
@@ -112,29 +126,37 @@ export function registerNormalEditorReviewCommands<Editor>(
   host: NormalEditorCommandHost<Editor>,
   handlers: NormalEditorReviewCommandHandlers<Editor>
 ): CommandDisposable[] {
-  const registrations: ReadonlyArray<readonly [string, CommandInvocation<Editor>]> = [
+  const registrations: ReadonlyArray<readonly [
+    keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
+    string,
+    CommandInvocation<Editor>
+  ]> = [
     [
+      "markSelectionReviewed",
       NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed,
       (editor) => handlers.markSelectionReviewed(editor)
     ],
     [
+      "unmarkSelectionReviewed",
       NORMAL_EDITOR_REVIEW_COMMAND_IDS.unmarkSelectionReviewed,
       (editor) => handlers.unmarkSelectionReviewed(editor)
     ],
     [
+      "markFileReviewed",
       NORMAL_EDITOR_REVIEW_COMMAND_IDS.markFileReviewed,
       (editor) => handlers.markFileReviewed(editor)
     ],
     [
+      "unmarkFileReviewed",
       NORMAL_EDITOR_REVIEW_COMMAND_IDS.unmarkFileReviewed,
       (editor) => handlers.unmarkFileReviewed(editor)
     ]
   ];
 
-  return registrations.map(([commandId, invocation]) =>
+  return registrations.map(([operation, commandId, invocation]) =>
     host.registerCommand(
       commandId,
-      async () => invokeForActiveNormalEditor(host, invocation)
+      async () => invokeForActiveNormalEditor(host, operation, invocation)
     )
   );
 }

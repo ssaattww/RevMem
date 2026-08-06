@@ -6,12 +6,27 @@ import * as vscode from "vscode";
 
 const execFileAsync = promisify(execFile);
 
+const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(operation),
+      new Promise<Value>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`T306 timed out: ${label}`)), 10_000);
+      })
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+};
+
 interface PullRequestProgressTreeFile {
   readonly path: string;
   readonly category: string;
   readonly reason?: string;
   readonly reviewedLineCount: number;
   readonly totalLineCount: number;
+  readonly node: unknown;
 }
 
 interface PullRequestProgressSnapshot {
@@ -21,16 +36,29 @@ interface PullRequestProgressSnapshot {
 }
 
 interface ReviewRangeT306TestApi {
-  runLocalPullRequestAcceptance(input: {
+  initializeLocalBaseHeadRuntime(input: {
     readonly baseSha: string;
     readonly headSha: string;
-  }): Promise<{
-    readonly before: PullRequestProgressSnapshot;
-    readonly markedFromOriginal: PullRequestProgressSnapshot;
-    readonly unmarked: PullRequestProgressSnapshot;
-    readonly binarySelectionKind: string;
-    readonly textDiffOpenCount: number;
+  }): Promise<void>;
+  getLocalBaseHeadTree(): PullRequestProgressSnapshot;
+  getLocalBaseHeadOpenedDiffs(): readonly {
+    readonly original: string;
+    readonly modified: string;
+  }[];
+  getLocalBaseHeadPersistence(): Promise<{
+    readonly contextState: {
+      readonly files: Readonly<Record<string, {
+        readonly modifiedReviewed: readonly unknown[];
+        readonly originalReviewedByDiff: Readonly<Record<string, readonly unknown[]>>;
+      }>>;
+    };
+    readonly globalState: {
+      readonly files: Readonly<Record<string, {
+        readonly reviewed: readonly unknown[];
+      }>>;
+    };
   }>;
+  setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
 
 const runGit = async (
@@ -84,11 +112,12 @@ export async function run(): Promise<void> {
   try {
     const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
     assert.ok(extension, "The Extension Development Host should load this extension.");
-    const extensionApi = (await extension.activate()) as ReviewRangeT306TestApi;
-    const acceptance = await extensionApi.runLocalPullRequestAcceptance(comparison);
+    const extensionApi = (await within("extension activation", extension.activate())) as ReviewRangeT306TestApi;
+    await within("local base/head initialization", extensionApi.initializeLocalBaseHeadRuntime(comparison));
+    const before = extensionApi.getLocalBaseHeadTree();
 
     assert.deepEqual(
-      acceptance.before,
+      before,
       {
       reviewedLineCount: 0,
       totalLineCount: 2,
@@ -97,49 +126,81 @@ export async function run(): Promise<void> {
           path: "review.ts",
           category: "unreviewed",
           reviewedLineCount: 0,
-          totalLineCount: 2
+          totalLineCount: 2,
+          node: before.files[0]!.node
         },
         {
           path: "excluded.generated.ts",
           category: "excluded",
           reason: "ユーザー除外: **/*.generated.ts",
           reviewedLineCount: 0,
-          totalLineCount: 0
+          totalLineCount: 0,
+          node: before.files[1]!.node
         },
         {
           path: "rename-target.ts",
           category: "non-line-change",
           reviewedLineCount: 0,
-          totalLineCount: 0
+          totalLineCount: 0,
+          node: before.files[2]!.node
         },
         {
           path: "binary.bin",
           category: "line-review-unsupported",
           reason: "バイナリファイル",
           reviewedLineCount: 0,
-          totalLineCount: 0
+          totalLineCount: 0,
+          node: before.files[3]!.node
         }
       ]
     },
       "The local base/head comparison should project excluded, rename-only, and binary files separately."
     );
+    const binary = before.files.find((file) => file.path === "binary.bin");
+    assert.ok(binary);
+    await within("binary Tree selection", vscode.commands.executeCommand("reviewRange.openPrProgressItem", binary.node));
     assert.equal(
-      acceptance.markedFromOriginal.reviewedLineCount,
-      2,
-      "A whole-file operation invoked while the original side is focused should review both modified and deletion lines."
-    );
-    assert.equal(acceptance.markedFromOriginal.totalLineCount, 2);
-    assert.equal(
-      acceptance.unmarked.reviewedLineCount,
-      0,
-      "The whole-file unmark should clear modified, Global, and original deletion review state."
-    );
-    assert.equal(acceptance.binarySelectionKind, "line-review-unavailable");
-    assert.equal(
-      acceptance.textDiffOpenCount,
+      extensionApi.getLocalBaseHeadOpenedDiffs().length,
       0,
       "Selecting a binary PR Progress node must not delegate to the text-diff host."
     );
+
+    const review = before.files.find((file) => file.path === "review.ts");
+    assert.ok(review);
+    await within("text Tree selection", vscode.commands.executeCommand("reviewRange.openPrProgressItem", review.node));
+    const opened = extensionApi.getLocalBaseHeadOpenedDiffs();
+    assert.equal(opened.length, 1, "Selecting a text Tree node should open the real diff host.");
+    const [diff] = opened;
+    assert.ok(diff);
+    const original = await within("original diff focus", vscode.window.showTextDocument(vscode.Uri.parse(diff.original, true)));
+    assert.match(original.document.getText(), /const removed/u);
+    extensionApi.setLocalBaseHeadConfirmationAnswer(true);
+    await within("whole-file mark", vscode.commands.executeCommand("reviewRange.markFileReviewed"));
+
+    const marked = extensionApi.getLocalBaseHeadTree();
+    assert.equal(
+      marked.reviewedLineCount,
+      2,
+      "A whole-file operation while the original diff document is focused should review additions and deletions."
+    );
+    const markedState = await extensionApi.getLocalBaseHeadPersistence();
+    const markedFile = Object.values(markedState.contextState.files).find((file) =>
+      file.modifiedReviewed.length > 0 || Object.values(file.originalReviewedByDiff).some((ranges) => ranges.length > 0)
+    );
+    assert.ok(markedFile, "The diff command should persist context-local reviewed ranges.");
+    assert.ok(Object.values(markedState.globalState.files).some((file) => file.reviewed.length > 0));
+
+    const modified = await within("modified diff focus", vscode.window.showTextDocument(vscode.Uri.parse(diff.modified, true)));
+    assert.match(modified.document.getText(), /const added/u);
+    await within("whole-file unmark", vscode.commands.executeCommand("reviewRange.unmarkFileReviewed"));
+    const unmarked = extensionApi.getLocalBaseHeadTree();
+    assert.equal(unmarked.reviewedLineCount, 0);
+    const unmarkedState = await extensionApi.getLocalBaseHeadPersistence();
+    assert.ok(Object.values(unmarkedState.contextState.files).every((file) =>
+      file.modifiedReviewed.length === 0 &&
+      Object.values(file.originalReviewedByDiff).every((ranges) => ranges.length === 0)
+    ));
+    assert.ok(Object.values(unmarkedState.globalState.files).every((file) => file.reviewed.length === 0));
   } finally {
     await configuration.update("exclude", undefined, vscode.ConfigurationTarget.Workspace);
   }

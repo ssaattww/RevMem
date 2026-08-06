@@ -35,25 +35,25 @@
         "command": "reviewRange.markSelectionReviewed",
         "title": "選択範囲を確認済みにする",
         "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
+        "enablement": "editorTextFocus"
       },
       {
         "command": "reviewRange.unmarkSelectionReviewed",
         "title": "選択範囲の確認済みを解除する",
         "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
+        "enablement": "editorTextFocus"
       },
       {
         "command": "reviewRange.markFileReviewed",
         "title": "ファイル全体を確認済みにする",
         "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
+        "enablement": "editorTextFocus"
       },
       {
         "command": "reviewRange.unmarkFileReviewed",
         "title": "ファイル全体の確認済みを解除する",
         "category": "Review Range",
-        "enablement": "editorTextFocus && !isInDiffEditor"
+        "enablement": "editorTextFocus"
       },
       {
         "command": "reviewRange.refreshContext",
@@ -63,6 +63,11 @@
       {
         "command": "reviewRange.selectContext",
         "title": "現在のコンテキストを選択",
+        "category": "Review Range"
+      },
+      {
+        "command": "reviewRange.openPrProgressItem",
+        "title": "PR Progress項目を開く",
         "category": "Review Range"
       }
     ],
@@ -99,6 +104,13 @@
           "command": "reviewRange.selectContext",
           "when": "view == reviewRange.currentContext",
           "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "reviewRange.openPrProgressItem",
+          "when": "view == reviewRange.prProgress && viewItem == reviewRange.prProgressFile",
+          "group": "inline"
         }
       ]
     },
@@ -218,6 +230,7 @@
     "test:t403": "npm run compile:test && node --test test-dist/test/unit/github-pull-request-cache.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
     "test:t306": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js --t306",
+    "test:vscode-runner": "npm run compile:test && node --test test-dist/test/unit/owned-extension-host-launch.test.js",
     "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:t502 && npm run test:vscode",
     "test:t402": "npm run compile:test && node --test test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js",
     "test:t305": "npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js"
