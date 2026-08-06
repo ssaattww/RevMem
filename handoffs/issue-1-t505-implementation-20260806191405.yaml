@@ -1,0 +1,522 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: 2026-08-06T19:14:05+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #43
+task_id: T505
+branch: feature/t505-global-understanding-ui
+base_ref: main
+target:
+  current_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  reviewed_head: null
+  commit_range: 112198c33823a5fc6681399a19e0c5361614143f..7989e40fa3eaa68bf23fb13a845e6130fc631464
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T505の実装を開始し、指示とworker Skillsを読み、自立して実装・検証・PR更新まで進める。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connectorを使用し、TDD、失敗diagnostic artifact、小さなcommit、詳細report、簡易PR comment、非mergeを守る。
+  - source: task
+    reference: tasks/tasks-status.md T505
+    summary: Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する。
+  - source: task
+    reference: tasks/tasks-status.md T505 exit criteria
+    summary: 全体・file別率、確認数、対象数をPR進捗と別表示し、excluded file数とpruned directory数を混ぜない。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 sections 11.3, 16.1, 16.5, 16.8, 16.9
+    summary: Global理解率、Activity Bar、Global Understanding View、Global layer切替、設定contractを定義する。
+
+development_policy:
+  method: test-driven development
+  testing_order: diagnostic workflow確認、失敗先行contract test、RED exact-head CI、最小実装、focused and full regression CI、自己点検、追加回帰test、最終exact-head CI
+  governing_source: RevMem repository instructions and tasks/tasks-status.md
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t403
+    - npm run test:t304
+    - npm run test:t502
+    - repository-file-enumerator focused test
+    - Global understanding focused tests
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - generated build and test output
+    - source and test files
+    - environment and Git state
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: package.json
+      reason: T505 commands, activation, settings, and focused validation wiring
+    - path_or_operation: src/application/non-git-snapshots/non-git-snapshot-settings.ts
+      reason: snapshot limit setting conversion
+    - path_or_operation: src/extension.ts
+      reason: review-state events and snapshot setting runtime application
+    - path_or_operation: src/t305-extension.ts
+      reason: T305 and T505 composition root
+    - path_or_operation: src/t505-global-understanding-source.ts
+      reason: T503/T504/persisted Global state composition
+    - path_or_operation: src/ui/global-understanding/
+      reason: pure UI model and VS Code runtime
+    - path_or_operation: test/unit/global-understanding-ui.test.ts
+      reason: TDD and regression coverage
+    - path_or_operation: test/unit/t305-validation-wiring.test.ts
+      reason: default unit test discovery
+    - path_or_operation: test/unit/t505-global-understanding-source.test.ts
+      reason: source composition regression coverage
+    - path_or_operation: reports/issue-1-t505-implementation-20260806191405.md
+      reason: required detailed implementation report
+    - path_or_operation: handoffs/issue-1-t505-implementation-20260806191405.yaml
+      reason: required transportable handoff
+    - path_or_operation: PR #43 metadata and comment
+      reason: required PR update and concise report
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
+      reason: repository file requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager, none of which is available in this worker Skill set
+    - path_or_operation: unrelated task implementation
+      reason: outside T505 scope
+    - path_or_operation: merge
+      reason: user performs merge
+
+scope:
+  - provide Global Understanding Tree View separate from PR Progress
+  - display repository and per-file reviewed/total non-empty line counts and percentages
+  - display excluded file and pruned directory diagnostics separately
+  - provide adjacent Global Status Bar display
+  - provide Global decoration layer toggle
+  - apply decoration, exclusion, and snapshot size settings
+  - synchronize Global recalculation with context and review-state changes
+  - fail closed on current recalculation failure and suppress stale asynchronous results
+non_goals:
+  - T506 multi-context and restart Extension Host acceptance suite
+  - T404/T405 saved GitHub PR context and Review Contexts View
+  - schema migration, locking, cleanup, and performance optimization
+  - independent review verdict
+  - merge
+
+files:
+  changed:
+    - path: package.json
+      purpose: T505 commands, view activation, menus, snapshot setting, focused test script
+    - path: src/application/non-git-snapshots/non-git-snapshot-settings.ts
+      purpose: convert max snapshot file-size setting to tracker limits
+    - path: src/extension.ts
+      purpose: expose review-state change notifications and apply snapshot settings
+    - path: src/t305-extension.ts
+      purpose: compose Current Context, decoration, and Global runtime refresh
+    - path: src/t505-global-understanding-source.ts
+      purpose: join T503 enumeration, persisted Global state, and T504 recalculation
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: pure tree/status models, toggle controller, and fail-closed refresh controller
+    - path: src/ui/global-understanding/index.ts
+      purpose: public T505 exports
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: VS Code Tree View, Status Bar, commands, and configuration refresh
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: model, toggle, refresh race, manifest, and setting regression tests
+    - path: test/unit/t305-validation-wiring.test.ts
+      purpose: execute T505 tests from the standard unit suite
+    - path: test/unit/t505-global-understanding-source.test.ts
+      purpose: real filesystem and persisted-state source composition test
+    - path: reports/issue-1-t505-implementation-20260806191405.md
+      purpose: detailed implementation evidence
+    - path: handoffs/issue-1-t505-implementation-20260806191405.yaml
+      purpose: lossless continuation packet
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: T505 scope, dependencies, exit criteria, and tracking update governance
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Global calculation, UI, commands, and configuration contracts
+    - path: .github/workflows/ci.yml
+      purpose: required failure diagnostic artifact coverage
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: T504 authoritative progress contract
+    - path: src/application/global-understanding/global-understanding-background-recalculator.ts
+      purpose: background recalculation and exact-evidence cache contract
+    - path: src/adapters/repository-files/node-repository-file-enumerator.ts
+      purpose: T503 included/excluded/excludedDirectories contract
+    - path: src/ui/current-context/
+      purpose: T305 runtime and accepted-context lifecycle
+    - path: src/adapters/state-repository/
+      purpose: persisted Global state routing and validation
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: existing workflow already preserved all required failure diagnostics
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: rev4 already defines T505 behavior
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: required progress-management Skill unavailable
+    - path_or_area: T404, T405, T506, and P6 implementation
+      reason: outside accepted T505 scope
+    - path_or_area: merge
+      reason: user-owned action
+
+commands:
+  - command: GitHub Actions CI run 31087207176
+    purpose: current-main RED verification
+    exit_code: 1
+    result: failed
+    head_sha: 087402a9062a16809b441d6c2f9df39dab52e84b
+    evidence: missing Global UI production modules and snapshot settings resolver; failure artifact 8961893165
+  - command: GitHub Actions CI run 31089893161
+    purpose: first implementation verification
+    exit_code: 1
+    result: failed
+    head_sha: 6d1c6e2b3dd046c8b1c8f4f7106f11cfcfc93b2f
+    evidence: TypeScript VS Code Thenable and TreeDataProvider boundary errors; failure artifact 8962967039
+  - command: GitHub Actions CI run 31090195788
+    purpose: post-type-fix verification
+    exit_code: 1
+    result: failed
+    head_sha: 8db3baa328fbdcfda1ed803f0c8a6268da8c7c9a
+    evidence: runtime barrel imported by pure unit test
+  - command: GitHub Actions CI run 31090319267
+    purpose: first full green regression
+    exit_code: 0
+    result: passed
+    head_sha: f45b2e1cb61384a8018ab408f7ee8d2e52db2e24
+    evidence: all CI steps succeeded
+  - command: GitHub Actions CI run 31091811575
+    purpose: post-self-review fail-closed regression
+    exit_code: 1
+    result: failed
+    head_sha: eb4927b35dbe26c250a0ba274aad3d895690bccd
+    evidence: added regression test imported runtime barrel; failure artifact 8963769419
+  - command: GitHub Actions CI run 31092139431
+    purpose: final technical implementation exact-head verification
+    exit_code: 0
+    result: passed
+    head_sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+    evidence: job 92585409568; build, typecheck, architecture, lint, unit, focused, integration, and Extension Host steps all succeeded
+
+tests:
+  - name: Global Understanding UI and settings RED contracts
+    phase: red
+    result: failed
+    head_sha: 087402a9062a16809b441d6c2f9df39dab52e84b
+    evidence: exact-head run 31087207176 failed because required production APIs did not exist
+  - name: Global Understanding pure model and manifest contracts
+    phase: green
+    result: passed
+    head_sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+    evidence: test/unit/global-understanding-ui.test.ts in run 31092139431
+  - name: Global calculation source composition
+    phase: regression
+    result: passed
+    head_sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+    evidence: persisted Global state, real filesystem enumeration, binary exclusion, pruned directory diagnostics, and revision mismatch test
+  - name: standard repository regression and Extension Host suite
+    phase: verification
+    result: passed
+    head_sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+    evidence: run 31092139431 job 92585409568
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31092139431
+  head_sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  commits:
+    - sha: 087402a9062a16809b441d6c2f9df39dab52e84b
+      purpose: add current-main failing T505 contracts
+    - sha: c5c1dbe47059f73f6ba73c4a3b276fda893de328
+      purpose: add Global understanding presentation contracts
+    - sha: 6d1c6e2b3dd046c8b1c8f4f7106f11cfcfc93b2f
+      purpose: wire Global understanding runtime and settings
+    - sha: 8db3baa328fbdcfda1ed803f0c8a6268da8c7c9a
+      purpose: align VS Code runtime type boundaries
+    - sha: f45b2e1cb61384a8018ab408f7ee8d2e52db2e24
+      purpose: isolate pure UI model from VS Code runtime in tests
+    - sha: ef9053970d552039b3278bcdba5aec8ff35a61db
+      purpose: clear stale Global presentation on recalculation failure
+    - sha: eb4927b35dbe26c250a0ba274aad3d895690bccd
+      purpose: add fail-closed refresh and source composition regressions
+    - sha: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+      purpose: keep unit imports runtime-neutral
+  addressed_findings:
+    - id: T505-SR-P1
+      reviewed_head: f45b2e1cb61384a8018ab408f7ee8d2e52db2e24
+      disposition: addressed
+      evidence: current recalculation failure clears Global Tree/Status; stale older failure cannot clear a newer successful snapshot; tests pass at 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8961893165
+      summary: RED compile failure diagnostics for head 087402a9062a16809b441d6c2f9df39dab52e84b
+    - type: artifact
+      location: GitHub Actions artifact 8962967039
+      summary: TypeScript runtime boundary failure diagnostics for head 6d1c6e2b3dd046c8b1c8f4f7106f11cfcfc93b2f
+    - type: artifact
+      location: GitHub Actions artifact 8963769419
+      summary: post-self-review unit import failure diagnostics for head eb4927b35dbe26c250a0ba274aad3d895690bccd
+  blocked_items: []
+  summary:
+    - Global Understanding View and adjacent Status Bar are connected to T503/T504 and current persisted Global state.
+    - Excluded files and pruned directories remain separate diagnostics.
+    - Global layer setting is persisted before dependent surfaces refresh.
+    - Current recalculation failures clear stale presentation and asynchronous stale results are ignored.
+    - Snapshot file-size limit is configurable and applied when the Extension Host creates the non-Git tracker.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: implementation worker did not perform normal or independent review
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - this packet is produced by the implementation chat
+  verdict: not_applicable
+  required_coverage:
+    - criterion: normal review
+      disposition: unexplored
+      evidence: not yet performed
+    - criterion: independent final review
+      disposition: unexplored
+      evidence: not yet performed
+  validation_assessment:
+    - item: technical implementation exact-head CI
+      result: supported
+      evidence: run 31092139431 at head 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - no review verdict was issued by the implementation worker
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t505-implementation-20260806191405.md
+    - handoffs/issue-1-t505-implementation-20260806191405.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed implementation report and transportable handoff prepared for repository persistence
+
+findings:
+  - id: T505-SR-P1
+    severity: medium
+    origin: introduced_by_change
+    location: src/ui/global-understanding refresh lifecycle
+    description: a current-context recalculation failure could leave the prior context Global Tree and Status Bar visible
+    impact: users could misread stale Global understanding data as belonging to the selected context
+    evidence: implementation self-check after the first successful run 31090319267
+    required_action: clear current presentation on current-generation failure while preventing stale older failures from clearing newer results
+
+held:
+  - item: synchronize T505 completion in tasks/tasks-status.md and tasks/phases-status.md
+    reason: repository instructions require task-breakdown-planner, task-consistency-manager, or progress-sync-manager; none is available in this worker Skill set
+    owner: progress-sync capable worker or user-selected follow-up
+    remaining_risk: task tracking may temporarily continue to show T505 as unstarted
+    verdict_impact: no implementation verdict exists; product implementation and exact-head CI are unaffected
+
+unexplored:
+  - area: normal review
+    blocker: not part of implementation-worker responsibilities
+    remaining_risk: implementation defects not found by tests or self-check may remain
+    verdict_impact: PR must not be treated as review-passed
+  - area: independent final review
+    blocker: requires a separate independent reviewer lifecycle
+    remaining_risk: terminal review gate is not satisfied
+    verdict_impact: merge readiness is not established
+
+unknown:
+  - field_or_fact: repository commit SHA that persists this report and handoff
+    reason: the SHA is created after the packet body is generated and will be recorded externally in PR metadata/comment
+not_applicable:
+  - field_or_area: reviewed implementation head
+    reason: no normal or independent review has occurred
+  - field_or_area: report attestation
+    reason: this is an implementation report, not an independent final review attestation
+remaining_risks:
+  - T506 multi-context and restart acceptance tests remain pending
+  - T607 large-repository performance evaluation remains pending
+  - saved GitHub PR context and Review Contexts behavior remain T404/T405 work
+  - progress tracking remains temporarily stale until an authorized progress-sync Skill is used
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: runtime-neutral context v1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #43
+      task_id: T505
+      mode: implementation
+      branch: feature/t505-global-understanding-ui
+      base_ref: main
+      current_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+      reviewed_head: null
+      scope:
+        - Global Understanding UI and settings defined by T505
+      non_goals:
+        - follow-on task implementation
+        - review verdict
+        - merge
+      development_policy:
+        method: TDD
+        testing_order: RED before production implementation, then focused and full regression
+      validation:
+        commands:
+          - GitHub Actions CI
+        required_failure_diagnostics:
+          - logs, stdout, stderr, source, tests, generated files, environment and Git state
+      ci:
+        matching_run: '31092139431'
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - review lifecycle remains pending
+  - source_skill: implementation-worker
+    output_contract_version: runtime-neutral implementation evidence v1
+    content_type: application/yaml
+    payload:
+      mode: initial implementation
+      accepted_scope:
+        - T505 Global Understanding View, Status Bar, Global layer, and settings
+      non_goals:
+        - T506 and later tasks
+        - merge
+      changed_files:
+        - package.json
+        - src/application/non-git-snapshots/non-git-snapshot-settings.ts
+        - src/extension.ts
+        - src/t305-extension.ts
+        - src/t505-global-understanding-source.ts
+        - src/ui/global-understanding/global-understanding-ui-model.ts
+        - src/ui/global-understanding/index.ts
+        - src/ui/global-understanding/vscode-global-understanding-runtime.ts
+        - test/unit/global-understanding-ui.test.ts
+        - test/unit/t305-validation-wiring.test.ts
+        - test/unit/t505-global-understanding-source.test.ts
+      final_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+      matching_ci:
+        run_id: 31092139431
+        job_id: 92585409568
+        conclusion: success
+      blocked_items: []
+      next_required_action: normal review
+  - source_skill: report-writer
+    output_contract_version: report output v1
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body_path: reports/issue-1-t505-implementation-20260806191405.md
+      evidence_sources:
+        - tasks/tasks-status.md T505
+        - design rev4
+        - PR #43
+        - exact-head CI run 31092139431
+        - failure diagnostic artifacts 8961893165, 8962967039, 8963769419
+      target_identity:
+        branch: feature/t505-global-understanding-ui
+        base_ref: main
+        current_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+        reviewed_implementation_head: null
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t505-implementation-20260806191405.md
+          - handoffs/issue-1-t505-implementation-20260806191405.yaml
+        report_attestation_head: null
+      concise_pr_comment_body: implementation completed; exact-head CI passed; report and handoff persisted; progress sync held; no merge
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: revmem.progress_tracking
+    payload:
+      status: held
+      files:
+        - tasks/tasks-status.md
+        - tasks/phases-status.md
+      required_skill_options:
+        - task-breakdown-planner
+        - task-consistency-manager
+        - progress-sync-manager
+  - namespace: chatgpt.persistence
+    payload:
+      implementation_head: 7989e40fa3eaa68bf23fb13a845e6130fc631464
+      report_commit_sha: pending_at_packet_generation
+      recording_location: PR #43 body and concise PR comment after persistence
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: initial_review
+  summary: Perform normal review of T505 on PR #43 without assuming the implementation worker's self-check is a review verdict.
+  instructions:
+    - resolve the current PR HEAD before review
+    - verify the Global source composition, fail-closed refresh behavior, settings, and T305/T306 regression impact
+    - use only CI evidence whose head SHA matches the reviewed PR HEAD
+    - persist a detailed review report and post a concise PR comment
+    - do not merge
+  required_attachments_or_references:
+    - PR #43
+    - reports/issue-1-t505-implementation-20260806191405.md
+    - handoffs/issue-1-t505-implementation-20260806191405.yaml
+    - CI run 31092139431 for implementation head 7989e40fa3eaa68bf23fb13a845e6130fc631464
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t505-implementation-20260806191405.yaml
+  packet_url: null
+  transport_note: The persistence commit SHA is recorded externally after this packet is committed. The user chooses the next review chat and performs merge.
