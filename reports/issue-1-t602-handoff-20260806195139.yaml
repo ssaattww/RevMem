@@ -3,7 +3,6 @@ producer:
   skill: chat-implementation-worker
   mode: implementation
   generated_at: "2026-08-06T19:51:39+09:00"
-
 repository: ssaattww/RevMem
 issue_or_pr: "PR #49"
 task_id: T602
@@ -17,21 +16,21 @@ target:
 authoritative_requirements:
   - source: user_instruction
     reference: project instruction
-    summary: Use the uploaded worker skills, operate autonomously, use the GitHub connector, apply TDD, save failure diagnostics, create or update a PR, write a detailed repository report and a concise PR comment, and never merge.
+    summary: Use the uploaded worker skills, operate autonomously, use the GitHub connector, follow TDD, preserve failure diagnostics, update a PR, persist reports, comment the PR, and never merge.
   - source: task
     reference: tasks/tasks-status.md T602
-    summary: Recover after rebase or force-push in the order old Git object diff, snapshot diff, unique mapping, then unreviewed; do not clear all for a SHA-only change and do not invent review evidence for missing or ambiguous objects.
+    summary: Recover after rebase or force-push by old Git object diff, snapshot diff, unique mapping, then unreviewed; a SHA-only change must not clear all evidence.
   - source: design
     reference: doc/design/vscode-review-range-tracker-design.md rev4 section 10.4
-    summary: Prefer old immutable Git objects, then saved snapshots, then unique rename/content correspondence; ambiguity becomes unreviewed.
+    summary: Direct immutable Git evidence has priority; missing, contradictory, or ambiguous evidence is unreviewed.
   - source: repository_instruction
-    reference: AGENTS.md and repository tracking rules
-    summary: Follow existing skills and do not update tasks/tasks-status.md except through its named progress-management skills.
+    reference: tasks/tasks-status.md update rule
+    summary: Tracking files may be changed only through the named progress-management skills.
 
 development_policy:
   method: TDD
-  testing_order: Add failing regression tests, confirm exact-head Red CI and diagnostics, implement in reviewable commits, then run focused and full exact-head CI.
-  governing_source: user and RevMem project instructions
+  testing_order: Add failing regression tests and confirm exact-head Red CI before implementation; implement in small commits; run focused and full exact-head CI.
+  governing_source: RevMem project instructions and uploaded chat implementation worker skills
 validation_plan:
   commands:
     - npm ci
@@ -45,16 +44,15 @@ validation_plan:
     - npm run test:t403
     - npm run test:t304
     - npm run test:t502
-    - T503 repository enumeration focused tests from CI
-    - T504 Global understanding focused tests from CI
+    - T503 focused repository enumeration tests
+    - T504 focused Global understanding tests
     - npm run test:git
     - npm run test:github
     - xvfb-run -a npm run test:vscode
   required_failure_diagnostics:
-    - Complete stdout and stderr logs under test-output/ci.
-    - Test results, generated files, source, tests, configuration and workflow files.
-    - Runner environment, exact SHA and ref, git status and generated-file inventory.
-    - GitHub Actions failure artifact for every failed Red run.
+    - Complete standard output and standard error logs under test-output/ci.
+    - Test results, generated files, source, tests, tools, configuration, workflow and environment evidence.
+    - A GitHub Actions failure artifact for every required Red run.
 blocked: []
 
 authorized_actions:
@@ -75,185 +73,211 @@ authorized_actions:
 write_boundary:
   allowed:
     - path_or_operation: src/application/history-rewrite-recovery/**
-      reason: T602 recovery contracts, service, adapters and coordinator.
+      reason: T602 recovery service, adapters and coordinator.
     - path_or_operation: src/application/review-context/**
-      reason: Integrate missing-object recovery without replacing direct Git mapping.
+      reason: Integrate missing-object recovery while retaining direct Git mapping.
     - path_or_operation: src/adapters/local-git/**
-      reason: Enumerate exact immutable revision paths conservatively.
+      reason: Enumerate exact immutable revision paths.
     - path_or_operation: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
-      reason: Publish and consume context and Global recovery snapshots in the production Git session path.
+      reason: Production Git snapshot publication and recovery registration.
     - path_or_operation: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
-      reason: Expose the existing T601 tracker to the production composition boundary.
+      reason: Share the T601 tracker with production Git composition.
     - path_or_operation: test/unit/history-rewrite-*.test.ts
       reason: T602 Red and regression coverage.
     - path_or_operation: test/unit/local-git-tree-list.test.ts
-      reason: Immutable tree framing and revision boundary coverage.
+      reason: Immutable tree framing and missing revision boundaries.
     - path_or_operation: test/unit/document-git-history-rewrite-runtime.test.ts
-      reason: Production provider acceptance coverage.
+      reason: Production recovery acceptance.
     - path_or_operation: .github/workflows/ci.yml
-      reason: Execute the focused T602 suite and preserve its output in diagnostics.
-    - path_or_operation: reports/issue-1-t602-implementation-20260806195139.md
-      reason: Persist the detailed implementation report.
+      reason: Execute focused T602 tests and retain diagnostics.
+    - path_or_operation: reports/issue-1-t602-implementation-20260806195000.md
+      reason: Detailed implementation report.
     - path_or_operation: reports/issue-1-t602-handoff-20260806195139.yaml
-      reason: Persist this transport packet.
+      reason: Lossless handoff packet.
   forbidden:
     - path_or_operation: merge PR #49
-      reason: Merge is reserved for the user.
+      reason: Merge is user-owned.
     - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md direct edits
-      reason: Repository rules require dedicated progress-management skills that were not available to this worker.
-    - path_or_operation: independent review verdict or approval
-      reason: Implementation worker must not serve as reviewer.
-    - path_or_operation: unrelated product, release or design changes
-      reason: Outside T602 scope.
+      reason: Dedicated progress-management skills are required and were unavailable.
+    - path_or_operation: normal or independent review verdict
+      reason: Implementation worker must not act as reviewer.
 
 scope:
-  - Implement ordered recovery after rebase or force-push.
-  - Keep direct immutable Git evidence authoritative.
-  - Reuse T601 snapshots only after old-object absence is proven.
-  - Preserve stable file identity only for unique path/content evidence.
-  - Fail closed for missing, corrupt, expired, malformed, contradictory or ambiguous evidence.
-  - Connect recovery to the production Git document session and exact-head CI.
+  - Ordered recovery after rebase or force-push.
+  - Direct immutable Git evidence remains authoritative.
+  - Snapshot fallback only after old-object absence is proven.
+  - Stable identity only for one unique path/content mapping.
+  - Independent context and Global snapshot evidence.
+  - Production Git session snapshot publication and generation invalidation.
 non_goals:
-  - Schema migration and corruption quarantine owned by T603.
-  - Cross-window locking and history atomicity owned by T604.
-  - Comprehensive failure retry and privacy-safe diagnostics policy owned by T606.
-  - Large-repository performance optimization owned by T607.
-  - Merge, release, normal review or independent final review.
+  - T603 schema migration and corruption quarantine.
+  - T604 cross-window locking and history atomicity.
+  - T606 comprehensive retry and privacy-safe diagnostic policy.
+  - T607 large-scale performance optimization.
+  - Merge, release, normal review, or independent final review.
 
 files:
   changed:
     - path: .github/workflows/ci.yml
-      purpose: Run focused T602 tests and save test-t602.log.
+      purpose: Focused T602 test gate and test-t602.log.
     - path: src/application/history-rewrite-recovery/index.ts
-      purpose: Ordered recovery service and conservative result contracts.
+      purpose: Ordered recovery service and fail-closed contracts.
     - path: src/application/history-rewrite-recovery/adapters.ts
-      purpose: Adapt immutable Git revision evidence and T601 snapshot mapping.
+      purpose: Immutable Git and T601 snapshot adapters.
     - path: src/application/history-rewrite-recovery/git-context-recovery.ts
-      purpose: Recover context and Global files independently with separate snapshot scopes.
+      purpose: Complete context and Global recovery coordinator.
     - path: src/application/review-context/contracts.ts
-      purpose: Define current-tree and missing-object recovery ports.
+      purpose: Recovery and current-tree ports.
     - path: src/application/review-context/history-rewrite-git-context-revision-mapper.ts
-      purpose: Keep direct mapping first and invoke recovery only for proven missing old objects.
+      purpose: Missing-object-only fallback around the direct mapper.
     - path: src/application/review-context/index.ts
-      purpose: Export T602 application API and registration boundary.
+      purpose: Export T602 application contracts and registration.
     - path: src/adapters/local-git/history-rewrite-local-git-adapter.ts
-      purpose: List exact immutable revision paths using validated NUL-framed Git output.
+      purpose: NUL-framed immutable tree path listing.
     - path: src/adapters/local-git/index.ts
-      purpose: Export tree-list capability.
+      purpose: Export history rewrite Local Git API.
     - path: src/adapters/local-git/node-local-git-adapter.ts
-      purpose: Expose tree listing through the production Node Local Git adapter.
+      purpose: Production tree-list connection.
     - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
-      purpose: Register production recovery, publish context and Global snapshots, and invalidate stale generations before commits.
+      purpose: Production coordinator registration and context/Global snapshot publication.
     - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
-      purpose: Expose the existing T601 tracker to production composition.
+      purpose: Expose the existing T601 tracker.
     - path: test/unit/history-rewrite-recovery.test.ts
-      purpose: Core evidence ordering and basic recovery Red/Green coverage.
+      purpose: Core recovery ordering.
     - path: test/unit/history-rewrite-recovery-conservative.test.ts
-      purpose: Ambiguity, authoritative-empty and contradictory-text boundaries.
+      purpose: Ambiguity, empty mapping, and contradictory text proof.
     - path: test/unit/history-rewrite-git-context-integration.test.ts
-      purpose: Context and Global recovery integration.
+      purpose: Context and Global integration.
     - path: test/unit/history-rewrite-tree-enumeration.test.ts
-      purpose: Current immutable tree candidate enumeration.
+      purpose: Automatic current-tree candidates.
     - path: test/unit/local-git-tree-list.test.ts
-      purpose: NUL framing, embedded newline, missing revision and malformed output coverage.
+      purpose: Git path framing and missing revision tests.
     - path: test/unit/document-git-history-rewrite-runtime.test.ts
-      purpose: Production session snapshot publication and old-object-loss restoration.
-    - path: reports/issue-1-t602-implementation-20260806195139.md
-      purpose: Detailed implementation and TDD evidence report.
+      purpose: Production snapshot publication and restoration.
+    - path: reports/issue-1-t602-implementation-20260806195000.md
+      purpose: Detailed implementation report.
     - path: reports/issue-1-t602-handoff-20260806195139.yaml
-      purpose: Lossless next-chat handoff.
+      purpose: This handoff packet.
   inspected:
     - path: tasks/tasks-status.md
-      purpose: Resolve T602 scope, dependencies and exit conditions.
+      purpose: T602 definition, dependencies and completion conditions.
     - path: doc/design/vscode-review-range-tracker-design.md
-      purpose: Confirm section 10.4 recovery order and certainty policy.
+      purpose: Recovery order and certainty policy.
     - path: .github/workflows/ci.yml
-      purpose: Verify failure diagnostics existed before implementation.
+      purpose: Existing failure diagnostic artifact coverage.
     - path: src/application/review-context/git-context-revision-mapper.ts
-      purpose: Preserve existing direct immutable revision mapping as the first stage.
+      purpose: Existing direct immutable Git mapper.
     - path: src/application/non-git-snapshots/index.ts
-      purpose: Reuse authoritative T601 mapping and retention semantics.
-    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
-      purpose: Reuse generation invalidation and publication safety.
+      purpose: T601 authoritative mapping and retention behavior.
     - path: src/adapters/state-repository/contracts.ts
-      purpose: Preserve complete context and Global CAS boundaries.
+      purpose: Complete context and Global CAS contract.
   intentionally_untouched:
     - path_or_area: doc/design/vscode-review-range-tracker-design.md
-      reason: Existing rev4 section 10.4 already defines the implemented behavior; no design change was required.
+      reason: Rev4 section 10.4 already defines the implemented behavior.
     - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
-      reason: Direct edits are prohibited by the file's update rule and the required progress-management skills were unavailable.
+      reason: Direct edits are prohibited and required progress-management skills were unavailable.
     - path_or_area: merge and release
-      reason: Reserved for the user and later workflow.
+      reason: User-owned and outside the implementation task.
 
 commands:
-  - command: GitHub Actions CI at ef3e669814c9c3f8036bcf1c27cca7c33d704c54
-    purpose: Confirm service-level Red before implementation.
+  - command: CI at ef3e669814c9c3f8036bcf1c27cca7c33d704c54
+    purpose: Service Red.
     exit_code: 2
     result: failed
     head_sha: ef3e669814c9c3f8036bcf1c27cca7c33d704c54
-    evidence: run 31090848838; module missing; artifact 8963364201.
-  - command: GitHub Actions CI at 812b0f294a9c5083c192c229780e9af8baeff0a4
-    purpose: Confirm Git and snapshot adapter Red.
+    evidence: run 31090848838; artifact 8963364201; recovery module absent.
+  - command: CI at 812b0f294a9c5083c192c229780e9af8baeff0a4
+    purpose: Adapter Red.
     exit_code: 2
     result: failed
     head_sha: 812b0f294a9c5083c192c229780e9af8baeff0a4
-    evidence: run 31091485735; adapter exports missing; artifact 8963629179.
-  - command: GitHub Actions CI at cee3b393984323c3b4bdb25fb62dbb730b372223
-    purpose: Confirm conservative ambiguity and text-proof Red cases.
+    evidence: run 31091485735; artifact 8963629179; adapter exports absent.
+  - command: CI at cee3b393984323c3b4bdb25fb62dbb730b372223
+    purpose: Conservative ambiguity and text-proof Red.
     exit_code: 1
     result: failed
     head_sha: cee3b393984323c3b4bdb25fb62dbb730b372223
-    evidence: run 31091967984; two focused failures; artifact 8963826320.
-  - command: GitHub Actions CI at 276b9e036d04d525a4622fe6a35086e732f295d2
-    purpose: Confirm production runtime fixture type Red.
+    evidence: run 31091967984; artifact 8963826320; two focused assertions failed.
+  - command: CI at 0f979c2e9a67ea52a69eb204a42f9cd2533ecaf5
+    purpose: Git mapper coordinator Red.
+    exit_code: 1
+    result: failed
+    head_sha: 0f979c2e9a67ea52a69eb204a42f9cd2533ecaf5
+    evidence: run 31092830042; artifact 8964182780; recovery coordinator absent.
+  - command: CI at b416cde72f4965c669682d63f7df39fa90116d94
+    purpose: Immutable tree listing Red.
+    exit_code: 1
+    result: failed
+    head_sha: b416cde72f4965c669682d63f7df39fa90116d94
+    evidence: run 31093541191; artifact 8964473998; tree enumeration absent.
+  - command: CI at c0fd956ac914a1787e58b42c19a81e9b64f6bca9
+    purpose: Automatic candidate enumeration Red.
+    exit_code: 1
+    result: failed
+    head_sha: c0fd956ac914a1787e58b42c19a81e9b64f6bca9
+    evidence: run 31093735079; artifact 8964554714; mapper did not enumerate the current tree.
+  - command: CI at 276b9e036d04d525a4622fe6a35086e732f295d2
+    purpose: Runtime fixture type Red.
     exit_code: 2
     result: failed
     head_sha: 276b9e036d04d525a4622fe6a35086e732f295d2
-    evidence: run 31093993447; readonly fixture type mismatch; artifact 8964658023.
-  - command: GitHub Actions CI at f6be6a37254043472149f4215bbd7a8dc297a66e
-    purpose: Confirm production provider snapshot wiring Red.
+    evidence: run 31093993447; artifact 8964658023; readonly fixture type mismatch.
+  - command: CI at f6be6a37254043472149f4215bbd7a8dc297a66e
+    purpose: Production snapshot wiring Red.
     exit_code: 1
     result: failed
     head_sha: f6be6a37254043472149f4215bbd7a8dc297a66e
-    evidence: run 31094180135; production open returned unreviewed; artifact 8964732426.
-  - command: GitHub Actions CI at 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-    purpose: Run all configured validation gates against the final implementation HEAD.
+    evidence: run 31094180135; artifact 8964732426; production open returned empty reviewed ranges.
+  - command: CI at 73cd3133af2ba15f7fb827850713d16cace379e2
+    purpose: Production transaction type correction Red.
+    exit_code: 2
+    result: failed
+    head_sha: 73cd3133af2ba15f7fb827850713d16cace379e2
+    evidence: run 31094540912; artifact 8964865421; recursive readonly transaction typing required.
+  - command: CI at c5f3db4d88ecc29dc4940d7b433325b9de1845c9
+    purpose: Final lint Red.
+    exit_code: 1
+    result: failed
+    head_sha: c5f3db4d88ecc29dc4940d7b433325b9de1845c9
+    evidence: run 31094626163; artifact 8964902969; one unused type import remained.
+  - command: CI at 424fdd54e059500d7c9e1b78793bb75f281b6fa3
+    purpose: Final implementation Green.
     exit_code: 0
     result: passed
     head_sha: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-    evidence: run 31094706729 completed with success.
+    evidence: run 31094706729 completed successfully.
 
 tests:
-  - name: Core history rewrite evidence ordering
+  - name: Ordered recovery service
     phase: red
     result: failed
     head_sha: ef3e669814c9c3f8036bcf1c27cca7c33d704c54
-    evidence: Required module did not exist in run 31090848838.
-  - name: Git and snapshot production adapter contract
-    phase: red
-    result: failed
-    head_sha: 812b0f294a9c5083c192c229780e9af8baeff0a4
-    evidence: Required adapters were not exported in run 31091485735.
-  - name: Conservative ambiguity and complete text validation
+    evidence: Module absent in run 31090848838.
+  - name: Conservative candidate and text proof
     phase: red
     result: failed
     head_sha: cee3b393984323c3b4bdb25fb62dbb730b372223
-    evidence: Two focused assertions failed in run 31091967984.
-  - name: Production provider snapshot publication and restoration
+    evidence: Two focused failures in run 31091967984.
+  - name: Revision mapper and current tree integration
+    phase: red
+    result: failed
+    head_sha: c0fd956ac914a1787e58b42c19a81e9b64f6bca9
+    evidence: Recovery coordinator and automatic candidate enumeration were introduced through separate Red stages.
+  - name: Production snapshot publication and restoration
     phase: red
     result: failed
     head_sha: f6be6a37254043472149f4215bbd7a8dc297a66e
-    evidence: Focused T602 runtime assertion returned empty reviewed ranges in run 31094180135.
-  - name: T602 focused recovery suite
+    evidence: New production acceptance test failed while the previous 448 unit tests passed.
+  - name: T602 focused suite
     phase: green
     result: passed
     head_sha: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-    evidence: All focused service, conservative, integration, tree, Local Git and production runtime tests passed in run 31094706729.
-  - name: Full configured repository regression suite
+    evidence: Service, conservative, context, tree, Local Git and production runtime tests passed in run 31094706729.
+  - name: Complete configured regression suite
     phase: regression
     result: passed
     head_sha: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-    evidence: Build, typecheck, architecture, lint, 448 unit tests, T403/T304/T502/T503/T504, Git, GitHub and Extension Host gates passed in run 31094706729.
+    evidence: Build, typecheck, architecture, lint, 448 unit tests, focused component suites, Git, GitHub and Extension Host gates passed.
 
 ci:
   required: true
@@ -264,59 +288,72 @@ ci:
   artifacts:
     - id: 8963364201
       name: ci-failure-diagnostics-31090848838-1
-      purpose: Initial service Red diagnostics.
+      purpose: Service Red diagnostics.
     - id: 8963629179
       name: ci-failure-diagnostics-31091485735-1
       purpose: Adapter Red diagnostics.
     - id: 8963826320
       name: ci-failure-diagnostics-31091967984-1
       purpose: Conservative recovery Red diagnostics.
+    - id: 8964182780
+      name: ci-failure-diagnostics-31092830042-1
+      purpose: Git mapper integration Red diagnostics.
+    - id: 8964473998
+      name: ci-failure-diagnostics-31093541191-1
+      purpose: Immutable tree listing Red diagnostics.
+    - id: 8964554714
+      name: ci-failure-diagnostics-31093735079-1
+      purpose: Automatic candidate enumeration Red diagnostics.
     - id: 8964658023
       name: ci-failure-diagnostics-31093993447-1
-      purpose: Production runtime fixture type diagnostics.
+      purpose: Runtime fixture type diagnostics.
     - id: 8964732426
       name: ci-failure-diagnostics-31094180135-1
-      purpose: Production snapshot wiring Red diagnostics.
+      purpose: Production wiring Red diagnostics.
+    - id: 8964865421
+      name: ci-failure-diagnostics-31094540912-1
+      purpose: Production transaction typing diagnostics.
+    - id: 8964902969
+      name: ci-failure-diagnostics-31094626163-1
+      purpose: Final lint diagnostics.
 
 implementation:
   outcome: completed
   final_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
   commits:
     - sha: ef3e669814c9c3f8036bcf1c27cca7c33d704c54
-      purpose: Add initial failing T602 service tests.
+      purpose: Initial failing recovery tests.
     - sha: 65618f0d34eede1436611ef25e6f7b5012fd554e
-      purpose: Implement the first recovery service version.
+      purpose: Initial recovery service.
     - sha: d698f97304c463aed514d226d7d309e4ecbb7757
-      purpose: Add the focused T602 CI gate.
+      purpose: Focused CI gate.
     - sha: c856bfdf772317e8abcf522f84a5e90123c15f9b
-      purpose: Add Git revision and T601 snapshot adapters.
-    - sha: da2a20e0a3d4496087f0eed64be2a34c30f5608f
-      purpose: Export adapter surface.
+      purpose: Git and snapshot adapters.
     - sha: cee3b393984323c3b4bdb25fb62dbb730b372223
-      purpose: Add conservative ambiguity and text-proof Red tests.
+      purpose: Conservative Red tests.
     - sha: e4f1621bb086875a2bf64204c05c0c87614c6951
-      purpose: Close conservative recovery failures and integrate current-tree mapping.
+      purpose: Conservative recovery corrections and context integration.
     - sha: 276b9e036d04d525a4622fe6a35086e732f295d2
-      purpose: Register the production runtime acceptance test in CI.
+      purpose: Register production runtime acceptance.
     - sha: f6be6a37254043472149f4215bbd7a8dc297a66e
-      purpose: Fix acceptance fixture typing and expose the production-wiring Red.
+      purpose: Expose the production-wiring Red after fixture correction.
     - sha: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-      purpose: Complete production snapshot publication, coordinator registration and recovery wiring; remove the final lint-only unused import.
+      purpose: Complete production snapshot wiring and final lint correction.
   addressed_findings: []
   failure_diagnostics:
     - type: artifact
-      location: GitHub Actions artifacts 8963364201, 8963629179, 8963826320, 8964658023 and 8964732426
-      summary: Every required Red failure preserved test output, standard output/error, source, tests, generated files and environment evidence.
+      location: GitHub Actions artifacts 8963364201, 8963629179, 8963826320, 8964182780, 8964473998, 8964554714, 8964658023, 8964732426, 8964865421 and 8964902969
+      summary: All required Red failures retained test output, standard output/error, source, tests, generated files and environment evidence.
     - type: log
       location: test-output/ci/test-t602.log
-      summary: Focused T602 execution output is retained by the CI workflow on failure.
+      summary: Focused T602 output is captured by the CI workflow.
   blocked_items: []
   summary:
-    - Direct old-object Git evidence remains authoritative and non-missing Git failures cannot fall through to snapshots.
-    - T601 snapshots recover context and Global independently only after old-object absence is proven.
-    - Rename/content inheritance requires one unique candidate; ambiguity and contradictory evidence become unreviewed.
-    - Production Git sessions now publish exact context and Global snapshots and invalidate old generations before state commits.
-    - Exact implementation HEAD CI run 31094706729 succeeded across all configured gates.
+    - Direct Git evidence is authoritative; non-missing Git failures cannot fall through to snapshots.
+    - T601 snapshots recover context and Global independently only when old objects are proven missing.
+    - Rename/content recovery requires one unique candidate; ambiguity remains unreviewed.
+    - Production sessions publish exact immutable context and Global snapshots and invalidate old generations before state commits.
+    - Exact implementation HEAD run 31094706729 passed every configured gate.
 
 review:
   mode: not_applicable
@@ -334,19 +371,19 @@ review:
       served_as_normal_reviewer: false
       inherited_conversation: true
       evidence:
-        - This packet was produced by the implementation worker; no review verdict was attempted.
+        - Produced by the implementation worker; no review verdict was attempted.
   verdict: not_applicable
   required_coverage:
-    - criterion: Normal initial review of the complete PR diff
+    - criterion: Complete initial review of PR #49
       disposition: unexplored
-      evidence: Implementation completed; normal review is the next action.
+      evidence: Initial review is the next action.
   validation_assessment:
-    - item: Exact-head CI for implementation HEAD
+    - item: Exact-head implementation CI
       result: supported
       evidence: Run 31094706729 succeeded for 424fdd54e059500d7c9e1b78793bb75f281b6fa3.
-    - item: Normal review findings
+    - item: Review findings
       result: not_applicable
-      evidence: No normal review has occurred yet.
+      evidence: No review has run.
   reserved_report_paths: []
   report_attestation:
     allowed: not_applicable
@@ -359,53 +396,53 @@ review:
     validation_status: not_applicable
     validation_evidence: []
   summary:
-    - No technical review verdict is included; the next chat must perform an initial review independently.
+    - A fresh independent normal reviewer must review the complete PR diff.
 
 report:
   report_type: implementation_report
   outcome: created
   persistence_mode: repository_file
   paths:
-    - reports/issue-1-t602-implementation-20260806195139.md
+    - reports/issue-1-t602-implementation-20260806195000.md
     - reports/issue-1-t602-handoff-20260806195139.yaml
   reviewed_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
   attestation_head: null
   pr_comments: []
   summary:
-    - Detailed TDD, implementation, fail-closed and validation evidence was persisted before handoff.
+    - The detailed report records complete implementation, TDD, fail-closed and exact-head CI evidence.
 
 findings: []
 held:
-  - item: Uncommitted working-tree-only content is not accepted as immutable snapshot proof.
-    reason: Snapshot publication requires exact revision/path content whose SHA-256 and line count match the current target.
+  - item: Working-tree-only content is not accepted as immutable snapshot proof.
+    reason: Snapshot publication requires exact revision/path content matching target hash and line count.
     owner: intended certainty policy
-    remaining_risk: A history rewrite can leave working-tree-only reviewed content unreviewed rather than restoring it.
-    verdict_impact: Non-blocking for T602 because the behavior is fail-closed and no unsupported reviewed evidence is displayed.
-  - item: Large repository and candidate-set performance
-    reason: Performance measurement and optimization are assigned to T607.
+    remaining_risk: Such content becomes unreviewed after history loss.
+    verdict_impact: Non-blocking and fail-closed.
+  - item: Large repository recovery performance
+    reason: Owned by T607.
     owner: T607
-    remaining_risk: Current unique mapping and snapshot recovery have not been benchmarked at T607 scale.
-    verdict_impact: Does not alter implementation completion; reviewer should confirm no unbounded correctness defect in the changed scope.
+    remaining_risk: Candidate enumeration and immutable content reads are not benchmarked at T607 scale.
+    verdict_impact: Does not change implementation completion.
 unexplored:
-  - area: Normal review of the complete PR #49 diff
-    blocker: Not an implementation-worker responsibility.
-    remaining_risk: A reviewer may identify correctness, architecture, test or documentation findings.
-    verdict_impact: PR must not be considered review-complete until initial review and later independent final review gates are satisfied.
+  - area: Complete normal review of PR #49
+    blocker: Outside implementation-worker responsibility.
+    remaining_risk: Review may identify correctness, architecture, validation or documentation findings.
+    verdict_impact: PR is not review-complete.
 unknown:
   - field_or_fact: Final review verdict
     reason: No normal or independent review has run.
-  - field_or_fact: Post-merge task and phase status
-    reason: Tracking files were intentionally not modified and merge is user-owned.
+  - field_or_fact: Post-merge tracking state
+    reason: Tracking files were intentionally untouched and merge is user-owned.
 not_applicable:
-  - field_or_area: Review findings addressed
-    reason: This is initial implementation, not review follow-up.
-  - field_or_area: Report attestation
-    reason: Attestation is a terminal independent-final-review mechanism and is not applicable before normal review.
+  - field_or_area: Review finding closure
+    reason: This is initial implementation.
+  - field_or_area: Independent review report attestation
+    reason: Not applicable before normal and independent review.
 remaining_risks:
-  - T603 still owns schema migration, backup and corruption quarantine.
-  - T604 still owns cross-window locking and atomic history append.
-  - T606 still owns comprehensive failure retry and privacy-safe diagnostic policy.
-  - T607 still owns large-scale performance measurement.
+  - T603 owns schema migration, backup and corruption quarantine.
+  - T604 owns cross-window locking and atomic history append.
+  - T606 owns comprehensive retry and privacy-safe diagnostics.
+  - T607 owns scale performance validation.
   - Normal review has not yet assessed the complete PR diff.
 
 source_payloads:
@@ -420,73 +457,58 @@ source_payloads:
       base_sha: 112198c33823a5fc6681399a19e0c5361614143f
       implementation_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
       development_method: TDD
-      red_evidence:
-        - head: ef3e669814c9c3f8036bcf1c27cca7c33d704c54
-          run: 31090848838
-          artifact: 8963364201
-          reason: service module missing
-        - head: 812b0f294a9c5083c192c229780e9af8baeff0a4
-          run: 31091485735
-          artifact: 8963629179
-          reason: production adapters missing
-        - head: cee3b393984323c3b4bdb25fb62dbb730b372223
-          run: 31091967984
-          artifact: 8963826320
-          reason: ambiguity and contradictory text proof were not rejected
-        - head: 276b9e036d04d525a4622fe6a35086e732f295d2
-          run: 31093993447
-          artifact: 8964658023
-          reason: production acceptance fixture type boundary
-        - head: f6be6a37254043472149f4215bbd7a8dc297a66e
-          run: 31094180135
-          artifact: 8964732426
-          reason: production session did not publish recovery snapshots
-      green_evidence:
-        head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
+      exact_head_green:
         run: 31094706729
         conclusion: success
-      implementation_summary:
-        - Ordered direct Git, snapshot, unique-content and unreviewed recovery.
-        - Independent context and Global snapshot scopes.
-        - Exact immutable current-tree enumeration and content proof.
-        - Production snapshot publication and stale-generation invalidation.
-      report_path: reports/issue-1-t602-implementation-20260806195139.md
-      next_action: independent normal initial review
+      red_runs:
+        - { head: ef3e669814c9c3f8036bcf1c27cca7c33d704c54, run: 31090848838, artifact: 8963364201 }
+        - { head: 812b0f294a9c5083c192c229780e9af8baeff0a4, run: 31091485735, artifact: 8963629179 }
+        - { head: cee3b393984323c3b4bdb25fb62dbb730b372223, run: 31091967984, artifact: 8963826320 }
+        - { head: 0f979c2e9a67ea52a69eb204a42f9cd2533ecaf5, run: 31092830042, artifact: 8964182780 }
+        - { head: b416cde72f4965c669682d63f7df39fa90116d94, run: 31093541191, artifact: 8964473998 }
+        - { head: c0fd956ac914a1787e58b42c19a81e9b64f6bca9, run: 31093735079, artifact: 8964554714 }
+        - { head: 276b9e036d04d525a4622fe6a35086e732f295d2, run: 31093993447, artifact: 8964658023 }
+        - { head: f6be6a37254043472149f4215bbd7a8dc297a66e, run: 31094180135, artifact: 8964732426 }
+        - { head: 73cd3133af2ba15f7fb827850713d16cace379e2, run: 31094540912, artifact: 8964865421 }
+        - { head: c5f3db4d88ecc29dc4940d7b433325b9de1845c9, run: 31094626163, artifact: 8964902969 }
+      report_path: reports/issue-1-t602-implementation-20260806195000.md
+      handoff_path: reports/issue-1-t602-handoff-20260806195139.yaml
+      merge_performed: false
+      next_action: normal initial review
   - source_skill: report-writer
     output_contract_version: unknown
     content_type: text/markdown
-    payload: Detailed implementation report persisted at reports/issue-1-t602-implementation-20260806195139.md.
+    payload: Detailed implementation report persisted at reports/issue-1-t602-implementation-20260806195000.md.
 extensions:
   - namespace: revmem.exact_head_policy
     payload:
       implementation_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
       workflow_run: 31094706729
       conclusion: success
-      rule: Do not substitute a run from any other SHA. Re-fetch PR head after any later commit and validate the run for that exact head.
+      rule: Never substitute a workflow run from another SHA. Re-fetch the PR head after administrative commits and validate that exact head.
   - namespace: revmem.transport_identity
     payload:
       implementation_target_head: 424fdd54e059500d7c9e1b78793bb75f281b6fa3
-      report_commit: 6852091f3749469d00dbaa32efa16cd937c5a03b
-      note: This handoff is an administrative repository-file commit after the technical implementation head. The next reviewer must fetch the current PR head and verify that post-implementation commits are limited to report and handoff transport before setting the reviewed head.
+      implementation_report_commit: 4a5fc5fe050c76fb8d20d6b044c7409e41a0363e
+      note: Report and handoff are administrative commits after the technical implementation head. The next reviewer must fetch the final PR head and include all later changes in the reviewed scope.
 
 next_action:
   type: review
   target_skill: review-worker
   mode: initial_review
-  summary: Perform a fresh normal review of PR #49, including all implementation, tests, production wiring, CI workflow and report/handoff changes; emit all actionable findings in one review round.
+  summary: Perform a fresh normal review of the complete PR #49 diff and emit all actionable findings in one round.
   instructions:
-    - Re-fetch PR #49 and record its current exact head before reviewing.
-    - Confirm commits after 424fdd54e059500d7c9e1b78793bb75f281b6fa3 are administrative report/handoff-only changes or expand the reviewed scope accordingly.
-    - Review the complete base-to-head diff, not only the latest production-wiring fix.
-    - Verify direct Git evidence priority, missing-only snapshot fallback, independent context/Global recovery, stable identity rules, current-tree enumeration, snapshot generation safety and production session behavior.
-    - Use only workflow runs whose head SHA equals the reviewed PR head; report CI as incomplete when no matching run exists.
-    - Persist the detailed review report and post the concise PR review result according to the review skill; do not merge.
+    - Re-fetch PR #49 and record its current exact head.
+    - Review the complete base-to-head diff, including administrative report and handoff changes.
+    - Verify direct Git priority, missing-only snapshot fallback, context/Global isolation, unique mapping, tree enumeration, generation safety and production runtime behavior.
+    - Use only a workflow run whose head SHA equals the reviewed PR head; otherwise report CI as incomplete.
+    - Persist the review report, post the concise PR result, and do not merge.
   required_attachments_or_references:
     - PR #49
-    - reports/issue-1-t602-implementation-20260806195139.md
+    - reports/issue-1-t602-implementation-20260806195000.md
     - reports/issue-1-t602-handoff-20260806195139.yaml
-    - exact implementation CI run 31094706729
-    - Red diagnostic artifacts 8963364201, 8963629179, 8963826320, 8964658023 and 8964732426
+    - implementation CI run 31094706729
+    - Red artifacts 8963364201, 8963629179, 8963826320, 8964182780, 8964473998, 8964554714, 8964658023, 8964732426, 8964865421 and 8964902969
   requested_authorized_actions:
     - read_repository
     - edit_documentation
@@ -496,9 +518,8 @@ next_action:
     - push
     - update_pr
     - comment_pr
-
 transport:
   method: repository_file
   packet_path: reports/issue-1-t602-handoff-20260806195139.yaml
   packet_url: null
-  transport_note: The packet is persisted on PR #49. The next chat must re-fetch the current PR head and exact-head CI because the handoff commit itself is administrative and cannot self-reference its own SHA.
+  transport_note: The handoff is persisted on PR #49. Re-fetch the final PR head and exact-head CI because a repository handoff file cannot self-reference its own commit SHA.
