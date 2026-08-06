@@ -13,7 +13,7 @@
 - 実装状態: T306 focused Extension Host試験はRed `loadLocalPullRequestProgress is not a function`からGreenへ遷移した。実local Gitのbase/head、original focusedのfile全体確認・全解除、除外、rename-only、binary非diffを検証済み
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
 - Gitブランチ: `task/t306-extension-host-acceptance`
-- Pull Request: 未作成
+- Pull Request: PR #45（draft、通常review待ち、merge未実施）
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T403実装レポート: `reports/issue-1-t403-implementation-20260805050632.md`
 - T403 handoff: `reports/issue-1-t403-handoff-20260805050632.yaml`
