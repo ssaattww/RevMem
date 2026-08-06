@@ -37,6 +37,12 @@ const sameStrings = (left: readonly string[], right: readonly string[]): boolean
 
 let activeReviewFileExclusionPolicyService: ReviewFileExclusionPolicyService | undefined;
 
+const registerActiveReviewFileExclusionPolicyService = (
+  service: ReviewFileExclusionPolicyService
+): void => {
+  activeReviewFileExclusionPolicyService = service;
+};
+
 /** Returns the policy service created by the active extension composition root. */
 export const getActiveReviewFileExclusionPolicyService = (): ReviewFileExclusionPolicyService => {
   if (activeReviewFileExclusionPolicyService === undefined) {
@@ -53,7 +59,7 @@ export class ReviewFileExclusionPolicyService {
 
   public constructor(options: ReviewFileExclusionPolicyServiceOptions = {}) {
     this.policy = new ReviewFileExclusionPolicy({ userGlobs: options.userGlobs });
-    activeReviewFileExclusionPolicyService = this;
+    registerActiveReviewFileExclusionPolicyService(this);
   }
 
   /** Evaluates one changed file using the current immutable policy snapshot. */
