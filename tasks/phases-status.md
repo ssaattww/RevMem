@@ -28,18 +28,18 @@ Lを超える見込みになった場合は再分解する。
 | P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、mock GitHub、Extension Host、architecture gate、失敗診断artifactがCIで動作する |
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
-| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T304はmainへ統合済み。T305のActivity Bar・Current Context・Status Barと、T306のExtension Host統合試験が未着手 |
-| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401のPR resolverとT402の3段差分取得fallbackはmainへ統合済み。cache、永続PR layer、UI、障害統合試験が未着手 |
+| P3 | 進行中 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T305はmainへ統合済み。T306は通常review findings closed、exact-head CI成功済みで独立review待ち |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T403はmainへ統合済み。永続PR layer、UI、障害統合試験が未着手 |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
 
 ## 現在位置
 
-- current main: `cb75305898627b3e69d248b931afba4a85fd8ef8`
-- 直近統合: T402 PR差分取得の3段フォールバック（PR #40）
-- 実装中タスク: なし
-- 依存解消済みの着手候補: T305、T403
-- T505はT305完了後、T602はT403完了後に着手可能
+- current main: `31a2c306f1d2e1acebea557fd6a7606b7e915117`
+- 直近統合: T305 Activity Bar・Current Context・Status Bar（PR #42）、T403 GitHub metadata・diff cache（PR #44）
+- 実装中タスク: T306 diff操作から進捗UIまでのExtension Host試験
+- 依存解消済みの着手候補: T404、T505、T602
+- T306完了まで新規product taskへ着手しない
 
 ## P0 開発基盤
 
@@ -109,8 +109,8 @@ Lを超える見込みになった場合は再分解する。
 - T302 仮想diff URIとimmutable content provider: 完了
 - T303 diff editor両側の確認・解除: 完了
 - T304 PR Progress Tree provider: 完了
-- T305 Activity Bar、Current Context View、Status Bar、refresh/select context: 未着手
-- T306 diff操作から進捗UIまでのExtension Host試験: 未着手
+- T305 Activity Bar、Current Context View、Status Bar、refresh/select context: 完了・PR #42でmain統合済み
+- T306 diff操作から進捗UIまでのExtension Host試験: 通常review完了・独立review待ち
 
 ### 終了チェックポイント
 
@@ -132,7 +132,7 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 
 - T401 GitHub PR context resolver: 完了・main統合済み
 - T402 local Git、PR files patch、base/head contentの3段差分取得fallback: 完了・main統合済み
-- T403 GitHub metadata・diff cacheとoffline読込: 未着手
+- T403 GitHub metadata・diff cacheとoffline読込: 完了・PR #44でmain統合済み
 - T404 永続PR context layer: 未着手
 - T405 Review Contexts ViewとPR管理UI: 未着手
 - T406 GitHub障害・複数PR・closed PR統合試験: 未着手

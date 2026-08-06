@@ -50,6 +50,7 @@ const expectedThemeColors = new Map([
 ]);
 
 const TEST_PHASE_ENVIRONMENT_VARIABLE = "REVIEW_RANGE_TEST_PHASE";
+const TEST_OPERATION_TIMEOUT_MS = 10_000;
 type TestPhase =
   | "confirm"
   | "restore-confirmed-and-unmark"
@@ -77,6 +78,20 @@ interface ReviewRangeExtensionTestApi {
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
+
+const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(operation),
+      new Promise<Value>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`VS Code lifecycle operation timed out: ${label}`)), TEST_OPERATION_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+};
 
 const readTestPhase = (): TestPhase => {
   const phase = process.env[TEST_PHASE_ENVIRONMENT_VARIABLE];
@@ -291,29 +306,25 @@ export async function run(): Promise<void> {
     extensionApi,
     "Test-mode activation should expose lifecycle and runtime observation hooks."
   );
-  await assertManifestAndConfiguration(extension);
-  await vscode.commands.executeCommand("reviewRange.refreshContext");
-  const selectingContext = vscode.commands.executeCommand("reviewRange.selectContext");
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  await vscode.commands.executeCommand("workbench.action.closeQuickOpen");
-  await selectingContext;
+  await within("manifest and configuration", assertManifestAndConfiguration(extension));
+  await within("refresh context command", vscode.commands.executeCommand("reviewRange.refreshContext"));
   if (phase === "confirm") {
-    await assertExclusionConfigurationLifecycle(extensionApi);
+    await within("exclusion configuration lifecycle", assertExclusionConfigurationLifecycle(extensionApi));
   }
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, "The Extension Host fixture should open a workspace folder.");
-  const { documentUri, editor, splitEditor } = await openLifecycleFixture(
+  const { documentUri, editor, splitEditor } = await within("open lifecycle fixture", openLifecycleFixture(
     phase,
     workspaceFolder
-  );
+  ));
 
   assert.equal(vscode.window.visibleTextEditors.includes(editor), true);
   assert.equal(vscode.window.visibleTextEditors.includes(splitEditor), true);
 
   if (phase === "confirm") {
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await extensionApi.refreshVisibleEditorDecorations();
+    await within("mark selection command", vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
+    await within("refresh confirmed decorations", extensionApi.refreshVisibleEditorDecorations());
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [{ startLine: 0, endLineExclusive: 1 }],
@@ -322,7 +333,7 @@ export async function run(): Promise<void> {
     return;
   }
 
-  await extensionApi.refreshVisibleEditorDecorations();
+  await within("refresh restored decorations", extensionApi.refreshVisibleEditorDecorations());
   if (phase === "restore-confirmed-and-unmark") {
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
@@ -331,8 +342,8 @@ export async function run(): Promise<void> {
     );
 
     splitEditor.selection = new vscode.Selection(0, 0, 0, 0);
-    await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await extensionApi.refreshVisibleEditorDecorations();
+    await within("unmark selection command", vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed"));
+    await within("refresh unmarked decorations", extensionApi.refreshVisibleEditorDecorations());
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [],

@@ -24,14 +24,25 @@ import {
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
-import { NormalEditorReviewCommandService } from "./application/review-commands/index";
+import {
+  NormalEditorReviewCommandService
+} from "./application/review-commands/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
+  ReviewFileExclusionPolicy,
   type ReviewFileExclusionDecision
 } from "./core/file-exclusion/index";
+import {
+  type PullRequestProgressTreeDiffTarget,
+  type PullRequestProgressTreeFileNode
+} from "./ui/pr-progress/index";
+import {
+  registerVscodePullRequestProgressTree,
+  type VscodePullRequestProgressTreeDataProvider
+} from "./ui/pr-progress/vscode-pull-request-progress-tree";
 import {
   NormalEditorDecorationController,
   createRefreshingNormalEditorReviewCommandHandlers,
@@ -40,6 +51,7 @@ import {
   type NormalEditorDecorationHost,
   type NormalEditorDecorationSettings
 } from "./ui/normal-editor/index";
+import { LocalBaseHeadRuntime } from "./t306-local-base-head-runtime";
 
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
@@ -75,6 +87,28 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
+  initializeLocalBaseHeadRuntime(input: {
+    readonly baseSha: string;
+    readonly headSha: string;
+  }): Promise<void>;
+  getLocalBaseHeadTree(): {
+    readonly reviewedLineCount: number;
+    readonly totalLineCount: number;
+    readonly files: readonly ({
+      readonly path: string;
+      readonly category: string;
+      readonly reason?: string;
+      readonly reviewedLineCount: number;
+      readonly totalLineCount: number;
+      readonly node: PullRequestProgressTreeFileNode;
+    })[];
+  };
+  getLocalBaseHeadOpenedDiffs(): readonly {
+    readonly original: string;
+    readonly modified: string;
+  }[];
+  getLocalBaseHeadPersistence(): ReturnType<LocalBaseHeadRuntime<vscode.Uri>["getPersistence"]>;
+  setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
 
 interface ActiveExtensionRuntime {
@@ -433,9 +467,31 @@ export function activate(
         : "user-file"
     )
   });
+  const localBaseHeadCommandServiceReference: {
+    current: {
+      markSelectionReviewed(editor: vscode.TextEditor): Promise<unknown>;
+      unmarkSelectionReviewed(editor: vscode.TextEditor): Promise<unknown>;
+      markFileReviewed(editor: vscode.TextEditor): Promise<unknown>;
+      unmarkFileReviewed(editor: vscode.TextEditor): Promise<unknown>;
+    } | undefined;
+  } = { current: undefined };
+  const localBaseHeadTreeReference: {
+    current: VscodePullRequestProgressTreeDataProvider | undefined;
+  } = { current: undefined };
+  let localBaseHeadConfirmationAnswer: boolean | undefined;
   const host: NormalEditorCommandHost<vscode.TextEditor> = {
     getActiveEditor: () => vscode.window.activeTextEditor,
-    isDiffEditor: () => isActiveDiffEditor(),
+    isDiffEditor: (editor) =>
+      isActiveDiffEditor() || editor.document.uri.scheme === "review-range-diff",
+    invokeDiffEditorCommand: async (operation, editor) => {
+      const service = localBaseHeadCommandServiceReference.current;
+      if (service === undefined || editor.document.uri.scheme !== "review-range-diff") {
+        throw new Error("Review Range diff editor is not available.");
+      }
+      const result = await service[operation](editor);
+      if (result === "applied") localBaseHeadTreeReference.current?.refresh();
+      return result;
+    },
     registerCommand: (commandId, handler) =>
       vscode.commands.registerCommand(commandId, handler),
     showNormalEditorRequired: async () => {
@@ -483,6 +539,158 @@ export function activate(
       decorationController.refreshVisibleEditors()
   };
 
+  const localBaseHeadRuntimeReference: {
+    current: LocalBaseHeadRuntime<vscode.Uri> | undefined;
+  } = { current: undefined };
+  const openedLocalBaseHeadDiffs: {
+    original: string;
+    modified: string;
+  }[] = [];
+  const openLocalBaseHeadDiff = async (
+    target: PullRequestProgressTreeDiffTarget
+  ): Promise<void> => {
+    const runtime = localBaseHeadRuntimeReference.current;
+    if (runtime === undefined) {
+      throw new Error("Local base/head runtime is not available.");
+    }
+    await runtime.diffController.openReviewDiff({
+      contextId: target.contextId,
+      fileSystemPathSemantics: target.fileSystemPathSemantics,
+      original: target.original,
+      modified: target.modified,
+      title: target.file.path
+    });
+  };
+  const localBaseHeadRuntime = new LocalBaseHeadRuntime<vscode.Uri>({
+    repository,
+    historyRecorder,
+    diffHost: {
+      parseUri: (value) => vscode.Uri.parse(value, true),
+      openDiff: async (original, modified, title) => {
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          original,
+          modified,
+          title
+        );
+        openedLocalBaseHeadDiffs.push({
+          original: original.toString(true),
+          modified: modified.toString(true)
+        });
+      }
+    },
+    progressHost: {
+      openDiff: openLocalBaseHeadDiff
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({
+      userGlobs: fileExclusionPolicyService.getUserGlobs()
+    })
+  });
+  localBaseHeadRuntimeReference.current = localBaseHeadRuntime;
+  const localBaseHeadCommandService = localBaseHeadRuntime.createCommandService<vscode.TextEditor>({
+    getSide: (editor) => localBaseHeadRuntime.sideForDiffDocumentUri(
+      editor.document.uri.toString(true)
+    ),
+    getLineCount: (editor) => editor.document.lineCount,
+    getSelections: (editor) => editor.selections.map((selection) => ({
+      anchor: {
+        line: selection.anchor.line,
+        character: selection.anchor.character
+      },
+      active: {
+        line: selection.active.line,
+        character: selection.active.character
+      }
+    })),
+    fileIdFor: (editor) => localBaseHeadRuntime.fileIdForDiffDocumentUri(
+      editor.document.uri.toString(true)
+    ),
+    confirmWholeFileOperation: async (operation) => {
+      if (context.extensionMode === vscode.ExtensionMode.Test &&
+        localBaseHeadConfirmationAnswer !== undefined) {
+        return localBaseHeadConfirmationAnswer;
+      }
+      if (operation === "mark-file-reviewed") {
+        const result = await vscode.window.showWarningMessage(
+          "このファイルの全行を確認済みにします。",
+          { modal: true },
+          MARK_FILE_CONFIRMATION
+        );
+        return result === MARK_FILE_CONFIRMATION;
+      }
+      const result = await vscode.window.showWarningMessage(
+        "このファイルのすべての確認済み状態を解除します。",
+        { modal: true, detail: "Global確認済み状態も解除されます。" },
+        UNMARK_FILE_CONFIRMATION
+      );
+      return result === UNMARK_FILE_CONFIRMATION;
+    }
+  });
+  localBaseHeadCommandServiceReference.current = localBaseHeadCommandService;
+  localBaseHeadTreeReference.current = registerVscodePullRequestProgressTree(
+    context,
+    localBaseHeadRuntime.progress,
+    async (error) => {
+      await vscode.window.showErrorMessage(
+        `PR Progressを開けませんでした: ${errorMessage(error)}`
+      );
+    }
+  );
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(
+      "review-range-diff",
+      localBaseHeadRuntime.documentContentProvider
+    )
+  );
+
+  const initializeLocalBaseHeadRuntime = async (
+    input: { readonly baseSha: string; readonly headSha: string }
+  ): Promise<void> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("T306 acceptance requires one local workspace folder.");
+    }
+    await localBaseHeadRuntime.initialize({
+      workspaceRoot: workspaceFolder.uri.fsPath,
+      baseSha: input.baseSha,
+      headSha: input.headSha
+    });
+    localBaseHeadTreeReference.current?.refresh();
+  };
+
+  const localBaseHeadTree = (): {
+    readonly reviewedLineCount: number;
+    readonly totalLineCount: number;
+    readonly files: readonly ({
+      readonly path: string;
+      readonly category: string;
+      readonly reason?: string;
+      readonly reviewedLineCount: number;
+      readonly totalLineCount: number;
+      readonly node: PullRequestProgressTreeFileNode;
+    })[];
+  } => {
+    const tree = localBaseHeadTreeReference.current;
+    if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+    const files = tree.getChildren()
+      .flatMap((category) => tree.getChildren(category))
+      .filter((node): node is PullRequestProgressTreeFileNode => node.kind === "file")
+      .map((node) => ({
+        path: node.path,
+        category: node.category,
+        ...(node.reason === undefined ? {} : { reason: node.reason }),
+        reviewedLineCount: node.reviewedLineCount,
+        totalLineCount: node.totalLineCount,
+        node
+      }));
+    const progress = localBaseHeadRuntime.progress.getEffectiveProgress();
+    return {
+      reviewedLineCount: progress.reviewedLineCount,
+      totalLineCount: progress.totalLineCount,
+      files
+    };
+  };
+
   if (context.extensionMode !== vscode.ExtensionMode.Test) {
     return runtimePort;
   }
@@ -496,7 +704,14 @@ export function activate(
       userGlobs: fileExclusionPolicyService.getUserGlobs()
     }),
     evaluateFileExclusion: (path, isBinary = false) =>
-      fileExclusionPolicyService.evaluate({ path, isBinary })
+      fileExclusionPolicyService.evaluate({ path, isBinary }),
+    initializeLocalBaseHeadRuntime,
+    getLocalBaseHeadTree: localBaseHeadTree,
+    getLocalBaseHeadOpenedDiffs: () => openedLocalBaseHeadDiffs.map((diff) => ({ ...diff })),
+    getLocalBaseHeadPersistence: () => localBaseHeadRuntime.getPersistence(),
+    setLocalBaseHeadConfirmationAnswer: (answer) => {
+      localBaseHeadConfirmationAnswer = answer;
+    }
   };
 }
 

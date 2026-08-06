@@ -7,13 +7,20 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T402 PR差分取得の3段フォールバック（PR #40をcurrent mainへ統合済み）
-- 現在のタスク: T403 GitHub metadata・diff cache（T403-R001/R002/R003はclosure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正）
-- 次のタスク: 同じ独立reviewerがT403-IFR-001とT403-IFR-002のfinding closure verificationを行う。closure後にmergeへ進み、新規product taskは着手しない
-- 実装状態: T403 fix implementation HEAD `059b491b71aa7b71600839d482d15e7bf68a8ec8`では、mixed `rate-limit/network`とgeneric `api` failureでoffline cacheを返さず、`missing-patch`・`incomplete-patch`後のnetwork failureではfallbackを維持する。matching CI run `30952458920`は全gate成功済み。後続のreport・handoff・tracking commitはadministrative変更であり、product fixの検証証拠へ別SHAのrunを代用しない
+- 直近完了タスク: T305 Activity Bar・Current Context・Status Bar（PR #42）とT403 GitHub metadata・diff cache（PR #44）をcurrent mainへ統合済み
+- 現在のタスク: T306 local base/headのdiff両側操作からPR Progress UI更新までのExtension Host試験
+- 次のタスク: T306の全範囲独立reviewを別reviewerで一度だけ実施し、通過後にPR #45をsquash mergeする
+- 実装状態: 実diff tab両paneの既存command受入、永続進捗UI、bounded worker/fixture cleanup、required runner回帰を実装した。通常review finding `T306-R1-P1` Highと`T306-R1-P2` Mediumは同じreviewerのbounded closure verificationでclosed、exact-head CI成功済み
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: `task/t403-github-cache`
-- Pull Request: PR #44（T403-R001/R002/R003 closure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正、同じ独立reviewerのfinding closure verification待ち、merge未実施）
+- Gitブランチ: `task/t306-extension-host-acceptance`
+- Pull Request: PR #45（draft、通常review完了・独立review待ち、merge未実施）
+- T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
+- T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
+- T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
+- T306通常review指摘対応レポート: `reports/issue-1-t306-review-followup-20260806121906.md`
+- T306通常review finding修正確認レポート: `reports/issue-1-t306-fix-verification-20260806131859.md`
+- T306通常review指摘対応R2レポート: `reports/issue-1-t306-review-followup-r2-20260806132432.md`
+- T306通常review finding修正確認R2レポート: `reports/issue-1-t306-fix-verification-r2-20260806134727.md`
 - T403実装レポート: `reports/issue-1-t403-implementation-20260805050632.md`
 - T403 handoff: `reports/issue-1-t403-handoff-20260805050632.yaml`
 - T403通常レビューレポート: `reports/issue-1-t403-review-20260805061700.md`
@@ -274,8 +281,8 @@
 | T302 | 完了 | L | context、file、filesystem semantics、side、immutable revision sourceを復元できる仮想URI codecとoriginal/modified content providerを実装する | T104、T202、T203 | URI round-trip、full commit別内容、missing/fatal分離、POSIX/Windows path、共通Git runtime、design test discovery、architecture positive/negative CI gate、metadata/blob timeout lifecycle、4 MiB超UTF-8、invalid encoding、actual VS Code URI、公開contractが決定的で、異なるcontextが衝突しない |
 | T303 | 完了 | L | diff editorを開く処理と両側の選択・ファイル操作を実装し、T102 transaction contractをoriginal側のside・diff ID・削除範囲へ拡張して`originalReviewedByDiff`へ保存する | T206、T301、T302 | 両側で選択確認・解除が動く。ファイル全体確認はfocused sideに関係なくmodified全行とoriginal-only削除行を同時に確認し、全解除はcontext・Global・original削除行をすべて解除する。削除行が進捗へ反映される。AC-14、AC-15を満たす。PR #30の独立review全5 findingをclosureし、exact-head CI成功済み |
 | T304 | 完了 | M | PR Progress Tree Viewを実装し、未確認、完了、除外、行以外の変更、行対象外を分類し、未確認数降順・path昇順で表示する。PR #38独立reviewの`T304-IFR-P1`〜`P4`をclosureしcurrent mainへ統合済み | T300、T301、T303 | 各fileの確認数、全変更数、率、追加、削除が一致し、ユーザー除外を理由付きで別表示し、選択でdiffを開く。AC-17を満たす。独立review全4 findingをclosureし、current mainへ統合済み |
-| T305 | 未着手 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する |
-| T306 | 未着手 | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17をUI操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する |
+| T305 | 完了 | M | Activity Bar、Current Context View、Status Bar、refresh/select contextの最小UIを実装する | T103、T205、T304 | PR相当、branch、workspaceの表示が切り替わり、再計算後にTreeとStatus Barが同期する。独立review findingsをclosureし、PR #42をcurrent mainへ統合済み |
+| T306 | 進行中（通常review完了・独立review待ち） | L | local base/headをPR相当として、diff両側操作から進捗UI更新までのExtension Host試験を追加する | T300〜T305 | AC-14〜AC-17を実UI/runtime操作で通す。focused sideに依存しないファイル全体確認・全解除、ユーザー除外の分母除外と別表示、rename-only、binaryを検証する。通常review findingsはclosed、exact-head CI成功済み。別reviewerの全範囲独立review 1回とmergeを残す |
 
 ## P4 GitHub PR連携
 
@@ -283,7 +290,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
-| T403 | 進行中（PR #44 IFR-001/002指摘対応中） | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した。T403-R001/R002/R003はclosure済みで、独立最終reviewがT403-IFR-001/002を発見し本commitで修正する | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。Red artifact、focused test、全CIを完了した。次は同じ独立reviewerのfinding closure verificationを行い、closure後にmergeへ進む |
+| T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
 | T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
@@ -332,4 +339,4 @@
 
 ## 次回開始時の選択
 
-T403が進行中であり、T403-R001/R002/R003はclosure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正する。次はPR #44の同じ独立reviewerによるfinding closure verificationを行い、closure後にmergeへ進む。T403完了まで新規product taskへ着手しない。T404とT602はT403完了待ち、T305はユーザー指定Heldのため未選択のままとする。
+T305とT403はcurrent mainへ統合済み。T306の全範囲通常reviewは完了し、`T306-R1-P1` Highと`T306-R1-P2` Mediumは同じreviewerのbounded closure verificationでclosedした。次は別reviewerの全範囲独立reviewを一度だけ実施し、通過後にPR #45をsquash mergeする。T306完了まで新規product taskへ着手しない。T404とT602は依存解消済み、T505は未実装のため対象外とする。
