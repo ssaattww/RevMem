@@ -1,0 +1,266 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-05T07:46:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #44
+task_id: T403
+branch: task/t403-github-cache
+base_ref: main
+target:
+  current_head: 8a9ad8a0c56f112f8ca834ec90a4210dba231ba2
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  commit_range: 9df5c1038a3e29a30713de31947c94c6cbc2a62f..8a9ad8a0c56f112f8ca834ec90a4210dba231ba2
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: レビュー指摘へ対応し、PR更新まで行う
+  - source: repository_instruction
+    reference: project instructions
+    summary: GitHub connectorを使用し、mergeせず、詳細reportとPR簡易reportを残し、current HEAD一致CIのみを判定に使う
+  - source: report
+    reference: reports/issue-1-t403-fix-verification-20260805072600.md
+    summary: T403-R003 mediumとしてT003履歴ラベルのscope外変更をrevertする
+
+development_policy:
+  method: scope-limited review follow-up
+  testing_order: tracking-only revertのためRed testはnot applicable。exact diff確認後にrepository全CIを実行
+  governing_source: RevMem project instructions and T403 fix verification report
+validation_plan:
+  commands:
+    - compare c38ed128106fcdbcc7ea08bd474c59c92a8e74b1..635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    - GitHub Actions CI for exact fix implementation HEAD 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+  required_failure_diagnostics:
+    - test result logs
+    - standard output
+    - standard error
+    - source and generated files
+    - environment and git status
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: tasks/tasks-status.md T003 label revert only
+      reason: T403-R003 required action
+    - path_or_operation: reports/issue-1-t403-review-followup-r2-20260805074600.md
+      reason: required detailed report
+    - path_or_operation: reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+      reason: transportable handoff
+    - path_or_operation: PR #44 body and comments
+      reason: concise completion evidence
+  forbidden:
+    - path_or_operation: product code and tests
+      reason: T403-R003 is tracking-only
+    - path_or_operation: workflows and design
+      reason: outside finding scope
+    - path_or_operation: tasks/phases-status.md and other task records
+      reason: outside T403-R003 scope
+    - path_or_operation: merge
+      reason: user performs merge
+
+scope:
+  - Revert the unrelated T003 history label introduced during T403 review follow-up
+  - Prove the fix commit changes only that line
+  - Verify exact-head CI
+  - Persist report and handoff
+non_goals:
+  - Re-review T403-R001 or T403-R002
+  - Modify T403 runtime behavior
+  - Modify T003 history beyond restoring the main-branch label
+  - Start another task
+  - Merge PR #44
+
+files:
+  changed:
+    - path: tasks/tasks-status.md
+      purpose: Restore T003 report label to the pre-T403 value
+    - path: reports/issue-1-t403-review-followup-r2-20260805074600.md
+      purpose: Detailed R003 follow-up evidence
+    - path: reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+      purpose: Lossless handoff to the same normal reviewer
+  inspected:
+    - path: reports/issue-1-t403-fix-verification-20260805072600.md
+      purpose: Authoritative finding identity, severity, and required action
+    - path: tasks/tasks-status.md at main
+      purpose: Confirm authoritative T003 label
+    - path: tasks/tasks-status.md at 0990063727a58b04c2da8f79869a11c1be74c0bd
+      purpose: Identify the correct pre-regression blob
+    - path: commit 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+      purpose: Confirm the single unrelated label change
+  intentionally_untouched:
+    - path_or_area: T403 product code and tests
+      reason: R003 is documentation scope only
+    - path_or_area: tasks/phases-status.md and non-T403 task state
+      reason: not owned by this follow-up
+    - path_or_area: workflows and design
+      reason: no change required
+
+commands:
+  - command: compare c38ed128106fcdbcc7ea08bd474c59c92a8e74b1..635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    purpose: Verify exact scope of the R003 fix
+    exit_code: 0
+    result: passed
+    head_sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    evidence: tasks/tasks-status.md only, additions 1, deletions 1
+  - command: GitHub Actions CI run 30957023353
+    purpose: Full repository validation
+    exit_code: 0
+    result: passed
+    head_sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    evidence: job 92152364043; all gates success
+
+tests:
+  - name: T403-R003 exact diff validation
+    phase: verification
+    result: passed
+    head_sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    evidence: T003 final-review label is the only changed line
+  - name: Repository CI regression suite
+    phase: regression
+    result: passed
+    head_sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+    evidence: run 30957023353 / job 92152364043
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30957023353
+  head_sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+  commits:
+    - sha: 635aa824e1f5ece1085005dbeba6b5d3ec07c8c6
+      purpose: Revert the unrelated T003 history label only
+  addressed_findings:
+    - id: T403-R003
+      reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+      disposition: addressed
+      evidence: One-line revert and exact-head CI success
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Restored `T003最終レビューレポート` without altering its report path
+    - Preserved all T403 tracking and review evidence
+    - Full CI succeeded on the exact fix implementation HEAD
+
+review:
+  mode: not_applicable
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: implementation follow-up does not issue a verdict
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: false
+      evidence:
+        - This chat performed only the requested R003 fix
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Same normal reviewer must verify T403-R003 closure only
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t403-review-followup-r2-20260805074600.md
+    - reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed R003 follow-up report and handoff persisted
+
+findings:
+  - id: T403-R003
+    severity: medium
+    origin: introduced_by_fix
+    location: tasks/tasks-status.md T003 report index
+    description: T403 review follow-up changed the T003 report label outside the accepted scope
+    impact: Scope ownership and report accuracy were violated
+    evidence: commit 9df5c103 changed only `T003最終レビューレポート` to `T003最終再レビューレポート`
+    required_action: Revert the T003 label and verify the new current HEAD
+
+held:
+  - item: cache cleanup, capacity limits, and multi-process locking
+    reason: T604 ownership
+    owner: T604
+    remaining_risk: unchanged
+    verdict_impact: none for R003 verification
+  - item: runtime UI integration
+    reason: T404/T405 ownership
+    owner: T404/T405
+    remaining_risk: unchanged
+    verdict_impact: none for R003 verification
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: New Red test
+    reason: Tracking-only one-line revert has no runtime behavior to drive through TDD
+remaining_risks:
+  - T403-R003 requires closure verification by the same normal reviewer
+
+source_payloads: []
+extensions: []
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix verification
+  summary: Verify T403-R003 closure only on the new PR current HEAD
+  instructions:
+    - Confirm `tasks/tasks-status.md` restores `T003最終レビューレポート`
+    - Confirm the fix commit changed no other line
+    - Confirm the new current HEAD has a matching successful CI run
+    - Preserve T403-R003 severity as medium and do not add new review scope
+  required_attachments_or_references:
+    - reports/issue-1-t403-fix-verification-20260805072600.md
+    - reports/issue-1-t403-review-followup-r2-20260805074600.md
+    - reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t403-review-followup-r2-handoff-20260805074600.yaml
+  packet_url: null
+  transport_note: The handoff commit SHA and final current-head CI are recorded externally in PR metadata/comment after persistence.

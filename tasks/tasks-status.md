@@ -8,12 +8,17 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（進行中）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T402 PR差分取得の3段フォールバック（PR #40をcurrent mainへ統合済み）
-- 現在のタスク: なし
-- 次のタスク: 未選択。依存解消済みの着手候補はT305 Activity Bar・Current Context・Status Barと、T403 GitHub metadata・diff cache
-- 実装状態: current main `cb75305898627b3e69d248b931afba4a85fd8ef8`には、T304、T402、T502、T503、T504を含む直近の完了タスクが統合済みである。現在のVSIXへ接続されているのは通常editor操作、装飾、Git branch/detached revision追従、非Git snapshot追従、Global状態更新、JSONL履歴、除外設定である。diff editor、GitHub PR、PR Progress Tree、Global理解率の内部コンポーネントは実装済みだが、Activity Bar・command・Tree View・Status Barへのruntime配線は後続タスクで行う
+- 現在のタスク: T403 GitHub metadata・diff cache（T403-R001/R002/R003はclosure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正）
+- 次のタスク: 同じ独立reviewerがT403-IFR-001とT403-IFR-002のfinding closure verificationを行う。closure後にmergeへ進み、新規product taskは着手しない
+- 実装状態: T403 fix implementation HEAD `059b491b71aa7b71600839d482d15e7bf68a8ec8`では、mixed `rate-limit/network`とgeneric `api` failureでoffline cacheを返さず、`missing-patch`・`incomplete-patch`後のnetwork failureではfallbackを維持する。matching CI run `30952458920`は全gate成功済み。後続のreport・handoff・tracking commitはadministrative変更であり、product fixの検証証拠へ別SHAのrunを代用しない
 - ブロッカー: なし。Issue #28はWindows POSIX fixtureの本筋外non-blocking held。Markdown lintはrepository wiring未整備でunsupported。ローカル依存未導入はIssue #36で追跡する
-- Gitブランチ: product実装の進行中branchなし
-- Pull Request: product実装の進行中PRなし
+- Gitブランチ: `task/t403-github-cache`
+- Pull Request: PR #44（T403-R001/R002/R003 closure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正、同じ独立reviewerのfinding closure verification待ち、merge未実施）
+- T403実装レポート: `reports/issue-1-t403-implementation-20260805050632.md`
+- T403 handoff: `reports/issue-1-t403-handoff-20260805050632.yaml`
+- T403通常レビューレポート: `reports/issue-1-t403-review-20260805061700.md`
+- T403 review follow-upレポート: `reports/issue-1-t403-review-followup-20260805063000.md`
+- T403 review follow-up handoff: `reports/issue-1-t403-review-followup-handoff-20260805063000.yaml`
 - T501独立レビューレポート: `reports/issue-1-t501-independent-final-review-20260802090100.md`
 - T501独立レビュー指摘対応レポート: `reports/issue-1-t501-independent-review-followup-20260802134500.md`
 - T501独立finding closureレポート: `reports/issue-1-t501-independent-fix-verification-20260802141500.md`
@@ -278,7 +283,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
-| T403 | 未着手 | M | GitHub metadata・diff cache、期限、最終更新時刻、429・network failure時のoffline読込を実装する | T104、T402 | tokenとsource本文を不要に永続化せず、offline時に取得済みPRを表示し、古い状態を明示する |
+| T403 | 進行中（PR #44 IFR-001/002指摘対応中） | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した。T403-R001/R002/R003はclosure済みで、独立最終reviewがT403-IFR-001/002を発見し本commitで修正する | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。Red artifact、focused test、全CIを完了した。次は同じ独立reviewerのfinding closure verificationを行い、closure後にmergeへ進む |
 | T404 | 未着手 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する | T104、T205、T401、T403 | 同じPRのcommit追加で状態を継続し、別PRは分離され、closed PRは既定で装飾無効になり、再起動後も復元される。AC-11、AC-21のcore部分を満たす |
 | T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
@@ -327,4 +332,4 @@
 
 ## 次回開始時の選択
 
-現在進行中のproduct実装タスクはない。依存関係が解消している候補はT305とT403であり、次回開始時に優先する1件を選択してから状態を`次`または`進行中`へ更新する。T505はT305、T602はT403の完了を待つ。
+T403が進行中であり、T403-R001/R002/R003はclosure済み、独立最終reviewでT403-IFR-001/002を発見し本commitで修正する。次はPR #44の同じ独立reviewerによるfinding closure verificationを行い、closure後にmergeへ進む。T403完了まで新規product taskへ着手しない。T404とT602はT403完了待ち、T305はユーザー指定Heldのため未選択のままとする。

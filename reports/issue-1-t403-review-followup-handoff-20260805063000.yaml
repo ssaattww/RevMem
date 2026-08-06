@@ -1,0 +1,170 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_follow_up
+  generated_at: 2026-08-05T06:30:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #44
+task_id: T403
+branch: task/t403-github-cache
+base_ref: main
+target:
+  reviewed_head: dae613ce12be2027eecf27b4f5c4762dddb0a51d
+  fix_implementation_head: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+  report_head: a41de7f7f6c2fb45f62c80810f381198c33817eb
+  current_head: a41de7f7f6c2fb45f62c80810f381198c33817eb
+  commit_range: dae613ce12be2027eecf27b4f5c4762dddb0a51d..a41de7f7f6c2fb45f62c80810f381198c33817eb
+
+authoritative_requirements:
+  - source: review_finding
+    reference: T403-R001
+    summary: Add mixed rate-limit/network and generic API failure Red tests, then allow offline cache only when the remote terminal failure sequence contains no generic API failure.
+  - source: review_finding
+    reference: T403-R002
+    summary: Synchronize only the T403 task tracking with the reviewed/fixed implementation HEAD and its exact matching CI evidence.
+  - source: user_instruction
+    reference: current chat
+    summary: Address the review findings and update only this task's status scope.
+  - source: project_instruction
+    reference: RevMem project instructions
+    summary: Use GitHub connector, TDD, diagnostic artifacts, small logical commits, detailed report, concise PR comment, exact-head CI only, and do not merge.
+
+development_policy:
+  method: TDD review follow-up
+  testing_order: Add mixed-failure Red tests, confirm exact-head failure and diagnostic artifact, implement minimal fallback fix, add sibling preservation test, run focused and full CI, then synchronize T403 tracking.
+
+scope:
+  - Close T403-R001 by rejecting offline cache when any remote attempt has a generic API or other non-offline reason.
+  - Preserve T402 missing-patch and incomplete-patch transitions followed by network failure.
+  - Close T403-R002 by synchronizing only T403-related task status text.
+  - Persist a detailed follow-up report and transport this handoff to the same normal reviewer.
+non_goals:
+  - New findings or broader implementation changes.
+  - T404, T405, or T604 implementation.
+  - tasks/phases-status.md or non-T403 task state changes.
+  - Independent review, merge, or release.
+
+findings:
+  - id: T403-R001
+    severity: high
+    disposition: addressed
+    reviewed_head: dae613ce12be2027eecf27b4f5c4762dddb0a51d
+    red_commit: 1ecd22388dd60f9986ecd95ab3a49fb2ec59aeb8
+    red_ci:
+      run_id: 30952268922
+      job_id: 92136965055
+      conclusion: failure
+      artifact_id: 8909601516
+      artifact_name: ci-failure-diagnostics-30952268922-1
+      artifact_digest: sha256:9958d185cef2bd6f50cf252d611b13ec6dee8fe744cb4b809204cd50cff0e1f4
+      evidence: Existing unit tests passed; the new mixed-failure test failed because rate-limit plus api returned offline-cache.
+    fix_commits:
+      - sha: e19861a9452918075b7e12962067d174155a1538
+        purpose: Evaluate the full remote attempt sequence and reject generic failures.
+      - sha: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+        purpose: Preserve missing/incomplete patch followed by network fallback with regression coverage.
+    green_ci:
+      head_sha: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+      run_id: 30952458920
+      job_id: 92137613440
+      conclusion: success
+    verification_request: Confirm all four mixed API combinations retain unavailable and both patch fallback precursor cases retain offline-cache.
+  - id: T403-R002
+    severity: medium
+    disposition: addressed_by_tracking_sync
+    reviewed_head: dae613ce12be2027eecf27b4f5c4762dddb0a51d
+    authoritative_fix_head: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+    matching_ci_run: 30952458920
+    verification_request: Confirm tasks/tasks-status.md changes are limited to T403-related lines and no longer claim an obsolete PR current HEAD or CI run.
+
+files:
+  changed:
+    - path: test/unit/github-pull-request-cache.test.ts
+      purpose: Mixed remote failure Red coverage and patch fallback preservation coverage.
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: Full remote attempt sequence evaluation for offline fallback.
+    - path: reports/issue-1-t403-review-followup-20260805063000.md
+      purpose: Detailed review follow-up report.
+    - path: reports/issue-1-t403-review-followup-handoff-20260805063000.yaml
+      purpose: Lossless handoff to normal fix verification.
+    - path: tasks/tasks-status.md
+      purpose: T403-only tracking synchronization; to be committed after this packet.
+  intentionally_untouched:
+    - path_or_area: tasks/phases-status.md
+      reason: User restricted the update to the current task scope.
+    - path_or_area: non-T403 task rows and task state
+      reason: Outside the user's requested scope.
+    - path_or_area: T404, T405, and T604
+      reason: Outside review findings.
+    - path_or_area: merge and release
+      reason: Reserved for the user or later workflow.
+
+validation:
+  red:
+    head_sha: 1ecd22388dd60f9986ecd95ab3a49fb2ec59aeb8
+    run_id: 30952268922
+    conclusion: failure
+    artifact_id: 8909601516
+  green:
+    head_sha: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+    run_id: 30952458920
+    job_id: 92137613440
+    conclusion: success
+    passed_gates:
+      - build
+      - contract typecheck
+      - architecture validation
+      - architecture negative contract
+      - lint
+      - unit tests
+      - T403 focused tests
+      - T304 tests
+      - T502 tests
+      - T503 tests
+      - T504 tests
+      - temporary Git integration
+      - mock GitHub integration
+      - VS Code Extension Host
+
+implementation:
+  outcome: review_findings_addressed
+  reviewed_head: dae613ce12be2027eecf27b4f5c4762dddb0a51d
+  fix_implementation_head: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+  commits:
+    - sha: 1ecd22388dd60f9986ecd95ab3a49fb2ec59aeb8
+      purpose: Add failing mixed remote failure regression tests.
+    - sha: e19861a9452918075b7e12962067d174155a1538
+      purpose: Reject mixed generic remote API failures.
+    - sha: 059b491b71aa7b71600839d482d15e7bf68a8ec8
+      purpose: Preserve valid patch-to-content network fallback and establish Green implementation HEAD.
+    - sha: a41de7f7f6c2fb45f62c80810f381198c33817eb
+      purpose: Persist the detailed normal review follow-up report.
+  blocked_items: []
+  remaining_risks:
+    - Final tracking and handoff commits are administrative and require their own exact-head CI before reviewer handoff.
+    - Normal review fix verification and independent final review remain pending.
+
+report:
+  report_type: review_follow_up
+  outcome: created
+  paths:
+    - reports/issue-1-t403-review-followup-20260805063000.md
+    - reports/issue-1-t403-review-followup-handoff-20260805063000.yaml
+
+next_action:
+  type: normal_fix_verification
+  target: PR #44
+  reviewer_continuity: Use the same normal reviewer that produced reports/issue-1-t403-review-20260805061700.md.
+  instructions:
+    - Freeze the current PR HEAD after the T403-only task tracking commit.
+    - Use only a CI run whose head SHA exactly matches that frozen HEAD.
+    - Verify closure of T403-R001 and T403-R002 only.
+    - Do not add new findings in fix verification unless the fix itself introduces a direct regression that prevents closure.
+    - Persist the fix verification report and concise PR comment.
+    - Do not merge.
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t403-review-followup-handoff-20260805063000.yaml
+  transport_note: A subsequent T403-only tracking commit will advance the PR HEAD; the wrapper must record and validate that final exact HEAD externally.

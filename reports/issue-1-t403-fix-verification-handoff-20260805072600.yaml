@@ -1,0 +1,215 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-05T07:26:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #44
+task_id: T403
+branch: task/t403-github-cache
+base_ref: main
+target:
+  current_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  commit_range: dae613ce12be2027eecf27b4f5c4762dddb0a51d..9df5c1038a3e29a30713de31947c94c6cbc2a62f
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t403-fix-verification-20260805072600.md
+      reason: detailed fix verification report
+    - path_or_operation: reports/issue-1-t403-fix-verification-handoff-20260805072600.yaml
+      reason: lossless review handoff
+    - path_or_operation: PR #44 comment/review
+      reason: concise verdict transport
+  forbidden:
+    - path_or_operation: implementation, tests, tracking, design, workflow, configuration
+      reason: reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user performs merge
+
+scope:
+  - verify T403-R001 and T403-R002 on current fix range
+  - inspect newly changed areas and sibling cases
+  - assess current-head CI and reporting accuracy
+non_goals:
+  - implement fixes
+  - independent final review
+  - merge
+
+files:
+  changed:
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: R001 fallback correction
+    - path: test/unit/github-pull-request-cache.test.ts
+      purpose: mixed-failure and precursor regression coverage
+    - path: tasks/tasks-status.md
+      purpose: R002 tracking sync and newly detected unrelated T003 change
+    - path: reports/issue-1-t403-review-followup-20260805063000.md
+      purpose: implementation follow-up evidence
+    - path: reports/issue-1-t403-review-followup-handoff-20260805063000.yaml
+      purpose: implementation handoff evidence
+  inspected:
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: verify terminal and all-remote attempt semantics
+    - path: test/unit/github-pull-request-cache.test.ts
+      purpose: verify mixed and sibling route tests
+    - path: tasks/tasks-status.md
+      purpose: verify T403-only scope and state identity
+    - path: reports/issue-1-t403-review-20260805061700.md
+      purpose: source finding identity and severity
+    - path: reports/issue-1-t403-review-followup-20260805063000.md
+      purpose: claimed fixes and scope
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 30955349018
+  head_sha: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  conclusion: success
+  artifacts: []
+
+review:
+  mode: fix_verification
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  reviewer:
+    identity: same ChatGPT normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same ChatGPT normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - initial T403 review and this verification occurred in the same chat
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: T403-R001 corrected
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: mixed failures and patch precursor sibling cases covered
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_finding
+      evidence: T403-R003
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: full fix range and T402 attempt semantics inspected
+    - criterion: API/data/configuration/workflow compatibility
+      disposition: checked_no_finding
+      evidence: current-head CI success
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Red run and diagnostic artifact recorded
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: fix does not weaken existing redaction/token boundaries
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: mixed four cases and precursor two cases added
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: run 30955349018 matches reviewed HEAD
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: follow-up scope declaration conflicts with unrelated T003 edit
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: cross-task history mutation creates ownership ambiguity
+  summary:
+    - T403-R001 high addressed
+    - T403-R002 medium addressed
+    - T403-R003 medium newly opened
+
+findings:
+  - id: T403-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/application/github-pr-cache/github-pull-request-cache-service.ts
+    description: mixed generic API failure previously allowed offline cache
+    impact: generic failures could be hidden by stale cache
+    evidence: fixed by all-remote attempt validation and regression tests
+    required_action: none; addressed
+  - id: T403-R002
+    severity: medium
+    origin: introduced_by_change
+    location: tasks/tasks-status.md T403 current state
+    description: tracking previously recorded obsolete PR HEAD and CI as current
+    impact: could mislead current-head-only CI decisions
+    evidence: now records verified fix implementation HEAD and matching run without claiming PR current HEAD
+    required_action: none; addressed
+  - id: T403-R003
+    severity: medium
+    origin: introduced_by_fix
+    location: tasks/tasks-status.md T003 report index
+    description: T403 fix range changes T003 final review label despite T403-only scope
+    impact: unrelated task history is modified and follow-up report becomes inaccurate
+    evidence: current HEAD 9df5c103 changes T003 label; follow-up report says T403-only and T403 other tasks untouched
+    required_action: revert the T003 label change and verify new current-head CI
+
+held:
+  - item: cache cleanup capacity and multi-process locking
+    reason: T604 ownership
+    owner: T604
+    remaining_risk: unchanged
+    verdict_impact: non-blocking
+  - item: runtime UI wiring
+    reason: T404/T405 ownership
+    owner: T404/T405
+    remaining_risk: unchanged
+    verdict_impact: non-blocking
+
+unexplored: []
+remaining_risks:
+  - T003 unrelated history edit remains in PR until reverted
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t403-fix-verification-20260805072600.md
+    - reports/issue-1-t403-fix-verification-handoff-20260805072600.yaml
+  reviewed_head: 9df5c1038a3e29a30713de31947c94c6cbc2a62f
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - source findings closed but new medium finding prevents pass
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: revert unrelated T003 task-history label change and return for T403-R003 fix verification
+  instructions:
+    - modify only the unrelated T003 label back to its pre-fix-range value
+    - preserve T403-R001 and T403-R002 fixes
+    - commit and push
+    - verify CI run whose head SHA matches the new PR current HEAD
+    - request verification in this same normal-review chat
+  required_attachments_or_references:
+    - reports/issue-1-t403-fix-verification-20260805072600.md
+    - PR #44
+  requested_authorized_actions:
+    - read_repository
+    - edit_documentation
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t403-fix-verification-handoff-20260805072600.yaml
+  packet_url: null
+  transport_note: use this packet with the detailed verification report; merge is not authorized

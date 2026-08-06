@@ -17,6 +17,7 @@
     "t304-pr-progress-tree.fixture.ts",
     "t401-github-pr-context.fixture.ts",
     "t402-pr-diff-acquisition.fixture.ts",
+    "t403-github-pr-cache.fixture.ts",
     "t501-repository-global-state.fixture.ts"
   ]
 }
