@@ -11,7 +11,6 @@ import type {
   HistoryRewriteSnapshotResult
 } from "./index";
 
-/** Minimal T601 boundary needed to map one saved snapshot to current text. */
 export interface NonGitSnapshotHistoryRewriteTracker {
   map(
     snapshotId: string,
@@ -20,7 +19,6 @@ export interface NonGitSnapshotHistoryRewriteTracker {
   ): Promise<NonGitSnapshotMappingResult>;
 }
 
-/** Adapts the T601 snapshot tracker to the T602 recovery contract. */
 export class NonGitSnapshotHistoryRewritePort implements HistoryRewriteSnapshotPort {
   public constructor(
     private readonly tracker: NonGitSnapshotHistoryRewriteTracker
@@ -46,8 +44,9 @@ export class NonGitSnapshotHistoryRewritePort implements HistoryRewriteSnapshotP
 }
 
 /**
- * Adapts the immutable Git revision source used by T205 to T602's first-stage
- * evidence contract. Only a proven missing old object enables later snapshot fallback.
+ * Legacy test boundary for the ordered recovery service. Production mapping
+ * uses the existing GitContextRevisionMapper and never routes copy metadata
+ * through this adapter.
  */
 export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitObjectPort {
   public constructor(
@@ -77,6 +76,9 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
         request.oldRevisionId,
         request.newRevisionId
       );
+      if (containsCopyFrom(diff, request.oldPath)) {
+        return failure("Git copy evidence cannot transfer stable file identity.");
+      }
       const candidates = parseZeroContextGitDiff(diff).files.filter(
         (file) => file.oldPath === request.oldPath
       );
@@ -122,6 +124,12 @@ export class GitRevisionMappingHistoryRewritePort implements HistoryRewriteGitOb
       return failure(error instanceof Error ? error.message : "Unknown Git failure.");
     }
   }
+}
+
+function containsCopyFrom(diff: string, oldPath: string): boolean {
+  return diff.split(/\r?\n/u).some(
+    (line) => line === `copy from ${oldPath}`
+  );
 }
 
 function failure(reason: string): HistoryRewriteGitObjectResult {
