@@ -49,13 +49,11 @@ export function registerGitHistoryRewriteRecovery(
  * recovery only for the snapshot side whose old object is proven missing.
  */
 export class GitContextRevisionMapper {
-  private readonly directMapper: DirectGitContextRevisionMapper;
   private readonly historyRewriteRecovery: GitHistoryRewriteRecoveryPort | undefined;
 
   public constructor(
     private readonly options: GitContextRevisionMapperOptions
   ) {
-    this.directMapper = new DirectGitContextRevisionMapper(options);
     this.historyRewriteRecovery = options.historyRewriteRecovery ??
       registeredHistoryRewriteRecovery.get(options.source);
   }
@@ -66,13 +64,18 @@ export class GitContextRevisionMapper {
     this.validateCandidatePaths(input.currentCandidatePaths ?? []);
     const oldContextRevisionId = contextRevision(input.contextState);
     const oldGlobalRevisionId = input.globalState.currentRevisionId;
+    const observation = this.createObservedSource();
     const availability = await this.oldObjectAvailability(
+      observation.source,
       input.current.repositoryRoot,
       oldContextRevisionId,
       oldGlobalRevisionId
     );
 
-    const direct = await this.directMapper.map(input);
+    const direct = await new DirectGitContextRevisionMapper({
+      ...this.options,
+      source: observation.source
+    }).map(input);
     if (
       this.historyRewriteRecovery === undefined ||
       (!availability.contextMissing && !availability.globalMissing)
@@ -121,6 +124,38 @@ export class GitContextRevisionMapper {
     };
   }
 
+  private createObservedSource(): {
+    readonly source: GitRevisionMappingSource;
+  } {
+    const availability = new Map<string, Promise<boolean>>();
+    const original = this.options.source;
+    const source: GitRevisionMappingSource = {
+      objectExists: (repositoryRoot, objectName) => {
+        const key = `${repositoryRoot}\0${objectName}`;
+        let observed = availability.get(key);
+        if (observed === undefined) {
+          observed = original.objectExists(repositoryRoot, objectName);
+          availability.set(key, observed);
+        }
+        return observed;
+      },
+      diffRevisions: (repositoryRoot, leftRevision, rightRevision) =>
+        original.diffRevisions(repositoryRoot, leftRevision, rightRevision),
+      readTextFileAtRevision: (
+        repositoryRoot,
+        revision,
+        repositoryRelativePath,
+        fileSystemPathSemantics
+      ) => original.readTextFileAtRevision(
+        repositoryRoot,
+        revision,
+        repositoryRelativePath,
+        fileSystemPathSemantics
+      )
+    };
+    return { source };
+  }
+
   private async currentCandidatePaths(
     input: GitContextRevisionMappingInput
   ): Promise<readonly string[]> {
@@ -131,23 +166,19 @@ export class GitContextRevisionMapper {
       return [];
     }
 
-    let paths: readonly string[] | undefined;
-    try {
-      paths = await this.options.source.listFilePathsAtRevision(
-        input.current.repositoryRoot,
-        input.current.revisionId
-      );
-    } catch {
-      return [];
-    }
+    const paths = await this.options.source.listFilePathsAtRevision(
+      input.current.repositoryRoot,
+      input.current.revisionId
+    );
     if (paths === undefined) {
-      return [];
+      throw new Error("Current immutable revision disappeared during history-rewrite recovery.");
     }
     this.validateCandidatePaths(paths);
     return [...paths];
   }
 
   private async oldObjectAvailability(
+    source: GitRevisionMappingSource,
     repositoryRoot: string,
     oldContextRevisionId: string,
     oldGlobalRevisionId: string
@@ -166,7 +197,7 @@ export class GitContextRevisionMapper {
       globalEligible &&
       oldContextRevisionId === oldGlobalRevisionId
     ) {
-      const exists = await this.options.source.objectExists(
+      const exists = await source.objectExists(
         repositoryRoot,
         oldContextRevisionId
       );
@@ -178,10 +209,10 @@ export class GitContextRevisionMapper {
 
     const [contextExists, globalExists] = await Promise.all([
       contextEligible
-        ? this.options.source.objectExists(repositoryRoot, oldContextRevisionId)
+        ? source.objectExists(repositoryRoot, oldContextRevisionId)
         : Promise.resolve(true),
       globalEligible
-        ? this.options.source.objectExists(repositoryRoot, oldGlobalRevisionId)
+        ? source.objectExists(repositoryRoot, oldGlobalRevisionId)
         : Promise.resolve(true)
     ]);
     return {
