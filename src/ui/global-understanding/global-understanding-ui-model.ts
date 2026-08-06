@@ -49,6 +49,16 @@ export interface GlobalUnderstandingStatusBarModel {
   readonly tooltip: string;
 }
 
+
+export interface GlobalUnderstandingRefreshSource {
+  recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+}
+
+export interface GlobalUnderstandingRefreshHost {
+  show(snapshot: GlobalUnderstandingTreeSnapshot): void;
+  clear(): void;
+}
+
 export interface GlobalLayerToggleHost {
   readEnabled(): boolean;
   writeEnabled(enabled: boolean): void | Promise<void>;
@@ -193,5 +203,38 @@ export class GlobalLayerToggleController {
     await this.host.refreshDecorations();
     await this.host.refreshGlobalUnderstanding();
     return next;
+  }
+}
+
+
+/** Prevents stale or failed recalculations from publishing Global data for the wrong context. */
+export class GlobalUnderstandingRefreshController {
+  private generation = 0;
+
+  public constructor(
+    private readonly source: GlobalUnderstandingRefreshSource,
+    private readonly host: GlobalUnderstandingRefreshHost
+  ) {}
+
+  public clear(): void {
+    this.generation += 1;
+    this.host.clear();
+  }
+
+  public async refresh(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
+    const currentGeneration = ++this.generation;
+    try {
+      const snapshot = await this.source.recalculate();
+      if (currentGeneration !== this.generation) return undefined;
+      if (snapshot === undefined) {
+        this.host.clear();
+        return undefined;
+      }
+      this.host.show(snapshot);
+      return snapshot;
+    } catch (error) {
+      if (currentGeneration === this.generation) this.host.clear();
+      throw error;
+    }
   }
 }

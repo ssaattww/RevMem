@@ -4,6 +4,7 @@ import {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
+  GlobalUnderstandingRefreshController,
   type GlobalUnderstandingDiagnosticsNode,
   type GlobalUnderstandingFileNode,
   type GlobalUnderstandingSummaryNode,
@@ -189,33 +190,29 @@ export const registerGlobalUnderstandingRuntime = (
   );
   status.name = "Review Range Global Understanding";
   status.command = TOGGLE_GLOBAL_LAYER_COMMAND_ID;
-  let generation = 0;
-
-  const clear = (): void => {
-    generation += 1;
+  const clearPresentation = (): void => {
     tree.clear();
     status.text = "";
     status.tooltip = undefined;
     status.hide();
   };
-
-  const refresh = async (): Promise<void> => {
-    const currentGeneration = ++generation;
-    const snapshot = await dependencies.source.recalculate();
-    if (currentGeneration !== generation) return;
-    if (snapshot === undefined) {
-      tree.clear();
-      status.text = "";
-      status.tooltip = undefined;
-      status.hide();
-      return;
+  const refreshController = new GlobalUnderstandingRefreshController(
+    dependencies.source,
+    {
+      show: (snapshot) => {
+        tree.setModel(createGlobalUnderstandingTreeModel(snapshot));
+        const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
+        status.text = statusModel.text;
+        status.tooltip = statusModel.tooltip;
+        status.show();
+      },
+      clear: clearPresentation
     }
-    tree.setModel(createGlobalUnderstandingTreeModel(snapshot));
-    const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
-    status.text = statusModel.text;
-    status.tooltip = statusModel.tooltip;
-    status.show();
-  };
+  );
+
+  const clear = (): void => refreshController.clear();
+  const refresh = (): Promise<void> =>
+    refreshController.refresh().then(() => undefined);
 
   const refreshWithErrorBoundary = async (): Promise<void> => {
     try {
