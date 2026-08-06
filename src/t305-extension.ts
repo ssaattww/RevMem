@@ -4,6 +4,9 @@ import {
   createNodeLocalGitAdapter
 } from "./adapters/local-git/index";
 import {
+  DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
+} from "./core/file-exclusion/index";
+import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
   type ReviewRangeRuntimePort
@@ -22,6 +25,10 @@ import {
 import {
   registerCurrentContextRuntime
 } from "./ui/current-context/vscode-current-context-runtime";
+import {
+  registerGlobalUnderstandingRuntime
+} from "./ui/global-understanding/index";
+import { T505GlobalUnderstandingSource } from "./t505-global-understanding-source";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
@@ -30,6 +37,18 @@ export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
   const git = createNodeLocalGitAdapter();
   const selection = new CurrentContextCandidateSelection();
+  const globalSource = new T505GlobalUnderstandingSource({
+    storageUris: {
+      globalStorageUri: context.globalStorageUri,
+      storageUri: context.storageUri
+    },
+    readExcludeGlobs: () => [
+      ...vscode.workspace.getConfiguration("reviewRange").get<readonly string[]>(
+        "exclude",
+        DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
+      )
+    ]
+  });
 
   const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
@@ -155,17 +174,50 @@ export function activate(context: vscode.ExtensionContext): unknown {
   });
 
   const runtimePort: ReviewRangeRuntimePort = baseApi;
+  const globalRuntime = registerGlobalUnderstandingRuntime(context, {
+    source: globalSource,
+    readGlobalLayerEnabled: () =>
+      vscode.workspace.getConfiguration("reviewRange").get(
+        "showGlobalReviewed",
+        true
+      ),
+    writeGlobalLayerEnabled: (enabled) =>
+      vscode.workspace.getConfiguration("reviewRange").update(
+        "showGlobalReviewed",
+        enabled,
+        vscode.ConfigurationTarget.Workspace
+      ),
+    refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+    reportError: async (error) => {
+      await vscode.window.showErrorMessage(
+        `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  });
+  context.subscriptions.push(runtimePort.onDidChangeReviewState(() => {
+    void globalRuntime.refreshWithErrorBoundary();
+  }));
+
   registerCurrentContextRuntime(
     context,
     {
       recompute: () => currentContextComposition.recompute(),
-      acceptRecomputed: (snapshot) => currentContextComposition.acceptRecomputed(snapshot),
-      acceptExplicit: (snapshot) => currentContextComposition.acceptExplicit(snapshot),
+      acceptRecomputed: (snapshot) => {
+        currentContextComposition.acceptRecomputed(snapshot);
+        globalSource.setContext(snapshot);
+      },
+      acceptExplicit: (snapshot) => {
+        currentContextComposition.acceptExplicit(snapshot);
+        globalSource.setContext(snapshot);
+      },
       selectContext: () => currentContextComposition.selectContext()
     },
     {
       setSelectedContext: (selection) => runtimePort.setSelectedContext(selection),
-      refreshDependents: () => runtimePort.refreshVisibleEditorDecorations()
+      refreshDependents: async () => {
+        await runtimePort.refreshVisibleEditorDecorations();
+        await globalRuntime.refresh();
+      }
     },
     async (error) => {
       await vscode.window.showErrorMessage(
