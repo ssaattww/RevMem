@@ -167,8 +167,7 @@ export class GlobalUnderstandingRefreshCoalescer {
     if (this.disposed) return;
     this.host.invalidate();
     this.cancel();
-    let handle: unknown;
-    handle = this.host.schedule(() => {
+    const handle = this.host.schedule(() => {
       if (this.disposed || this.scheduled !== handle) return;
       this.scheduled = undefined;
       void this.host.run();
