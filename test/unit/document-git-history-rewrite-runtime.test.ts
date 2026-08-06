@@ -19,11 +19,16 @@ import type {
 import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index";
 import {
   InMemoryNonGitSnapshotStorage,
-  NonGitSnapshotTracker
+  NonGitSnapshotTracker,
+  type NonGitTrackedFileState,
+  type SavedNonGitSnapshot
 } from "../../src/application/non-git-snapshots/index";
 import type { GitRevisionMappingSource } from "../../src/application/review-context/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
-import { markReviewedRanges } from "../../src/core/review-state/index";
+import {
+  markReviewedRanges,
+  unmarkReviewedRanges
+} from "../../src/core/review-state/index";
 
 const OLD_SHA = "1111111111111111111111111111111111111111";
 const NEW_SHA = "2222222222222222222222222222222222222222";
@@ -153,6 +158,37 @@ class RuntimeSource implements GitRevisionMappingSource {
   }
 }
 
+class DelayedSnapshotTracker extends NonGitSnapshotTracker {
+  private gate:
+    | {
+        started: () => void;
+        wait: Promise<void>;
+      }
+    | undefined;
+
+  public armNextSave(): { readonly started: Promise<void>; release(): void } {
+    let startedResolve!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { startedResolve = resolve; });
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    this.gate = { started: startedResolve, wait };
+    return { started, release };
+  }
+
+  public override async saveLatest(
+    state: NonGitTrackedFileState,
+    now: number
+  ): Promise<SavedNonGitSnapshot> {
+    const gate = this.gate;
+    if (gate !== undefined) {
+      this.gate = undefined;
+      gate.started();
+      await gate.wait;
+    }
+    return super.saveLatest(state, now);
+  }
+}
+
 const descriptor = (hash: string): DocumentEditorReviewDescriptor => ({
   documentUri: {
     scheme: "file",
@@ -165,12 +201,12 @@ const descriptor = (hash: string): DocumentEditorReviewDescriptor => ({
   contentHash: hash
 });
 
-test("production Git provider publishes snapshots and restores reviewed ranges after the old object disappears", async () => {
+const setup = (tracker?: NonGitSnapshotTracker) => {
   const stableHash = new NodeSha256StableHash();
   const repository = new MemoryRepository();
   const inspector = new MutableInspector();
   const source = new RuntimeSource();
-  const tracker = new NonGitSnapshotTracker(
+  const actualTracker = tracker ?? new NonGitSnapshotTracker(
     new InMemoryNonGitSnapshotStorage(),
     new NodeNonGitSnapshotCodec(),
     {
@@ -182,7 +218,7 @@ test("production Git provider publishes snapshots and restores reviewed ranges a
   const workspaceProvider = new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
     repository,
-    snapshotTracker: tracker,
+    snapshotTracker: actualTracker,
     resolveContent: () => CONTENT,
     now: () => new Date(NOW)
   });
@@ -194,6 +230,11 @@ test("production Git provider publishes snapshots and restores reviewed ranges a
     stableHash,
     now: () => new Date(NOW)
   });
+  return { stableHash, inspector, source, provider, tracker: actualTracker };
+};
+
+test("production Git provider publishes snapshots and restores reviewed ranges after the old object disappears", async () => {
+  const { stableHash, inspector, source, provider } = setup();
 
   const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
   await initial.committer.commit(markReviewedRanges({
@@ -217,5 +258,53 @@ test("production Git provider publishes snapshots and restores reviewed ranges a
     [{ startLine: 0, endLineExclusive: 3 }]
   );
   assert.equal(recovered.target.revisionId, NEW_SHA);
+  provider.dispose();
+});
+
+test("a delayed stale open cannot republish reviewed ranges after a newer unreview commit", async () => {
+  const tracker = new DelayedSnapshotTracker(
+    new InMemoryNonGitSnapshotStorage(),
+    new NodeNonGitSnapshotCodec(),
+    {
+      maxSnapshots: 64,
+      maxCompressedBytes: 1024 * 1024,
+      retentionMs: 24 * 60 * 60 * 1_000
+    }
+  );
+  const { stableHash, inspector, source, provider } = setup(tracker);
+  const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt: NOW
+  }));
+
+  const gate = tracker.armNextSave();
+  const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
+  await gate.started;
+
+  await initial.committer.commit(unmarkReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt: NOW
+  }));
+  gate.release();
+  await staleOpen;
+
+  source.oldObjectExists = false;
+  inspector.head = NEW_SHA;
+  const recovered = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  assert.deepEqual(
+    recovered.contextState.files[recovered.target.fileId]?.modifiedReviewed,
+    []
+  );
+  assert.deepEqual(
+    recovered.globalState.files[recovered.target.fileId]?.reviewed,
+    []
+  );
   provider.dispose();
 });
