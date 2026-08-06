@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   createGitHubPullRequestContextId,
   createGitHubPullRequestContextIdFromRepositoryId,
+  createImmutablePullRequestRevisionMapper,
   GitHubPullRequestContextStateService,
   isPullRequestDecorationEnabled,
   type GitHubPullRequestContextRepositoryPort,
@@ -48,9 +49,9 @@ const context = (number = 48, overrides: Partial<ReviewContextState> = {}): Revi
       currentPath: "src/example.ts",
       previousPaths: [],
       revisionId: B,
-      modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
+      modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }],
       originalReviewedByDiff: {},
-      lineCount: 1,
+      lineCount: 3,
       updatedAt: "2026-08-07T00:00:00.000Z",
     },
   },
@@ -66,7 +67,7 @@ const globalState = (revision = B): RepositoryGlobalState => ({
   files: {
     file: {
       fileId: "file", currentPath: "src/example.ts", revisionId: revision,
-      reviewed: [{ startLine: 0, endLineExclusive: 1 }], updatedAt: "2026-08-07T00:00:00.000Z",
+      reviewed: [{ startLine: 0, endLineExclusive: 3 }], updatedAt: "2026-08-07T00:00:00.000Z",
     },
   },
   updatedAt: "2026-08-07T00:00:00.000Z",
@@ -89,6 +90,58 @@ test("T202/T401 and T404 share one hosted repository canonicalizer", () => {
     `github-pr:${shared}#48`
   );
   assert.throws(() => createGitHubPullRequestContextIdFromRepositoryId("github.com//revmem", 48), /repositoryId|repository/i);
+  assert.throws(
+    () => createGitHubPullRequestContextId({ host: "ghe.example:8443:443", owner: "Team", repository: "Repo", pullRequestNumber: 48 }),
+    /authority|host|port|repository/i
+  );
+});
+
+test("immutable diff/content mapper invalidates changed reviewed lines instead of only advancing revision", async () => {
+  const mapper = createImmutablePullRequestRevisionMapper(async (evidence) => ({
+    sourceBaseSha: evidence.sourceBaseSha,
+    sourceHeadSha: evidence.sourceHeadSha,
+    targetBaseSha: evidence.targetBaseSha,
+    targetHeadSha: evidence.targetHeadSha,
+    diff: [
+      "diff --git a/src/example.ts b/src/example.ts",
+      "--- a/src/example.ts",
+      "+++ b/src/example.ts",
+      "@@ -2 +2 @@",
+      "-old",
+      "+changed",
+      ""
+    ].join("\n"),
+    oldTexts: { "src/example.ts": "one\nold\nthree\n" },
+    newFiles: {
+      "src/example.ts": {
+        fileId: "file",
+        lineCount: 3,
+        newText: "one\nchanged\nthree\n",
+      },
+    },
+  }));
+  const mapped = await mapper({
+    current: { contextState: context(), globalState: globalState() },
+    nextPullRequest: pr({ headSha: C }),
+    evidence: Object.freeze({
+      repositoryId: REPOSITORY_ID,
+      contextId: createGitHubPullRequestContextIdFromRepositoryId(REPOSITORY_ID, 48),
+      sourceBaseSha: A,
+      sourceHeadSha: B,
+      targetBaseSha: A,
+      targetHeadSha: C,
+    }),
+  });
+  assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+    { startLine: 2, endLineExclusive: 3 },
+  ]);
+  assert.deepEqual(mapped.globalState.files.file?.reviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+    { startLine: 2, endLineExclusive: 3 },
+  ]);
+  assert.equal(mapped.contextState.files.file?.revisionId, C);
+  assert.equal(mapped.globalState.files.file?.revisionId, C);
 });
 
 test("mapped snapshots reject stale or foreign file revisions and PR descriptors", async () => {
