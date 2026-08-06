@@ -81,20 +81,17 @@ export function canonicalizeGitHubPullRequestIdentity(
   if (!Number.isSafeInteger(identity.pullRequestNumber) || identity.pullRequestNumber <= 0) {
     throw new Error("Invalid pull request number");
   }
+
+  const canonicalHost = canonicalizePullRequestHost(identity.host);
   const repositoryId = canonicalizeHostedGitRepositoryIdentity(
-    identity.host,
+    canonicalHost,
     `${identity.owner}/${identity.repository}`
   );
-  const slash = repositoryId.indexOf("/");
-  const host = repositoryId.slice(0, slash);
-  const repositoryPath = repositoryId.slice(slash + 1);
-  const pathSlash = repositoryPath.indexOf("/");
-  return {
-    host,
-    owner: repositoryPath.slice(0, pathSlash),
-    repository: repositoryPath.slice(pathSlash + 1),
-    pullRequestNumber: identity.pullRequestNumber,
-  };
+  const [host, owner, repository] = repositoryId.split("/");
+  if (host === undefined || owner === undefined || repository === undefined) {
+    throw new Error("Invalid canonical GitHub repository identity");
+  }
+  return { host, owner, repository, pullRequestNumber: identity.pullRequestNumber };
 }
 
 /** Builds the PR context ID from the T202/T401 canonical repository identity. */
@@ -215,6 +212,12 @@ export class GitHubPullRequestContextStateService {
   }
 }
 
+function canonicalizePullRequestHost(host: string): string {
+  let canonical = host.trim().toLowerCase();
+  if (canonical.endsWith(":443")) canonical = canonical.slice(0, -4);
+  return canonical;
+}
+
 function preserveVisibilityOverride(
   current: PullRequestReviewContextVisibility,
   next: PullRequestReviewContextVisibility
@@ -228,10 +231,6 @@ function preserveVisibilityOverride(
 function requireCanonicalRepositoryId(repositoryId: string): string {
   if (repositoryId.trim() !== repositoryId || repositoryId.length === 0) {
     throw new Error("repositoryId must be canonical");
-  }
-  const slash = repositoryId.indexOf("/");
-  if (slash <= 0 || slash !== repositoryId.lastIndexOf("/") - repositoryId.slice(slash + 1).indexOf("/") - 1) {
-    // Parsing is validated below; this branch only rejects obviously malformed authorities early.
   }
   const pieces = repositoryId.split("/");
   if (pieces.length !== 3) throw new Error("repositoryId must contain host/owner/repository");
