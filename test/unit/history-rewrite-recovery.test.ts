@@ -175,7 +175,7 @@ test("uses snapshot diff only after the old Git object is missing", async () => 
   assert.deepEqual(result.file.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
 });
 
-test("uses a unique exact-content mapping for a renamed file after snapshot diff has no surviving evidence", async () => {
+test("honors an authoritative empty snapshot after exact-content rename identity is proven", async () => {
   const { recovery, snapshots } = service(
     { kind: "missing-old-revision" },
     () => ({ kind: "mapped", reviewedRanges: [] })
@@ -188,12 +188,12 @@ test("uses a unique exact-content mapping for a renamed file after snapshot diff
   })]);
 
   assert.equal(result.status, "recovered");
-  assert.equal(result.source, "unique-content");
+  assert.equal(result.source, "snapshot-diff");
   assert.equal(snapshots.calls.length, 1);
   assert.equal(result.file.fileId, "file-a");
   assert.equal(result.file.currentPath, "src/renamed.ts");
   assert.deepEqual(result.file.previousPaths, ["src/a.ts"]);
-  assert.deepEqual(result.file.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+  assert.deepEqual(result.file.modifiedReviewed, []);
 });
 
 test("does not invent review state when exact-content rename candidates are duplicated", async () => {
