@@ -10,7 +10,7 @@ import {
   GlobalLayerToggleController,
   GlobalUnderstandingRefreshController,
   type GlobalUnderstandingTreeSnapshot
-} from "../../src/ui/global-understanding/index";
+} from "../../src/ui/global-understanding/global-understanding-ui-model";
 import {
   resolveConfiguredNonGitSnapshotLimits
 } from "../../src/application/non-git-snapshots/non-git-snapshot-settings";
