@@ -17,10 +17,11 @@ async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
-  const workspacePath = join(temporaryDirectory.path, "workspace");
-  const userDataPath = join(temporaryDirectory.path, "user-data");
-  const extensionsPath = join(temporaryDirectory.path, "extensions");
-  const launchArgs = [
+  const launchArgsFor = (
+    workspacePath: string,
+    userDataPath: string,
+    extensionsPath: string
+  ): string[] => [
     workspacePath,
     "--user-data-dir",
     userDataPath,
@@ -28,15 +29,38 @@ async function main(): Promise<void> {
     extensionsPath,
     "--disable-extensions"
   ];
+  const t306Paths = {
+    workspace: join(temporaryDirectory.path, "t306-workspace"),
+    userData: join(temporaryDirectory.path, "t306-user-data"),
+    extensions: join(temporaryDirectory.path, "t306-extensions")
+  };
+  const t302Paths = {
+    workspace: join(temporaryDirectory.path, "t302-workspace"),
+    userData: join(temporaryDirectory.path, "t302-user-data"),
+    extensions: join(temporaryDirectory.path, "t302-extensions")
+  };
+  const lifecyclePaths = {
+    workspace: join(temporaryDirectory.path, "lifecycle-workspace"),
+    userData: join(temporaryDirectory.path, "lifecycle-user-data"),
+    extensions: join(temporaryDirectory.path, "lifecycle-extensions")
+  };
 
   try {
-    await Promise.all([mkdir(workspacePath), mkdir(userDataPath), mkdir(extensionsPath)]);
+    await Promise.all([
+      ...Object.values(t306Paths),
+      ...Object.values(t302Paths),
+      ...Object.values(lifecyclePaths)
+    ].map((path) => mkdir(path)));
 
     await runTests({
       cachePath: join(projectRoot, ".vscode-test"),
       extensionDevelopmentPath: projectRoot,
       extensionTestsPath: join(__dirname, "t306-suite"),
-      launchArgs,
+      launchArgs: launchArgsFor(
+        t306Paths.workspace,
+        t306Paths.userData,
+        t306Paths.extensions
+      ),
       version: VS_CODE_TEST_VERSION
     });
 
@@ -46,7 +70,11 @@ async function main(): Promise<void> {
       cachePath: join(projectRoot, ".vscode-test"),
       extensionDevelopmentPath: projectRoot,
       extensionTestsPath: join(__dirname, "t302-suite"),
-      launchArgs,
+      launchArgs: launchArgsFor(
+        t302Paths.workspace,
+        t302Paths.userData,
+        t302Paths.extensions
+      ),
       version: VS_CODE_TEST_VERSION
     });
 
@@ -56,7 +84,11 @@ async function main(): Promise<void> {
         cachePath: join(projectRoot, ".vscode-test"),
         extensionDevelopmentPath: projectRoot,
         extensionTestsPath: join(__dirname, "suite"),
-        launchArgs,
+        launchArgs: launchArgsFor(
+          lifecyclePaths.workspace,
+          lifecyclePaths.userData,
+          lifecyclePaths.extensions
+        ),
         version: VS_CODE_TEST_VERSION
       });
     }
