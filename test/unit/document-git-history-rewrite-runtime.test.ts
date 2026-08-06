@@ -157,7 +157,7 @@ class RuntimeSource implements GitRevisionMappingSource {
   }
 
   public async readTextFileAtRevision(
-    _root: string,
+    root: string,
     revision: string,
     path: string
   ): Promise<
@@ -167,7 +167,7 @@ class RuntimeSource implements GitRevisionMappingSource {
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
     const gate = this.readGate;
-    if (gate !== undefined) {
+    if (gate !== undefined && root === "/repo/src") {
       this.readGate = undefined;
       gate.started();
       await gate.wait;
