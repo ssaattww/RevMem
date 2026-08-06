@@ -1,0 +1,357 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-08-05T06:21:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #42
+task_id: T305
+branch: feature/t305-context-ui
+base_ref: main
+target:
+  current_head: 48d09045cfefc7538c9a0aebf82c4e1c5af85a9a
+  reviewed_head: d80145a885b04785193564a2480ced075405c989
+  commit_range: cb75305898627b3e69d248b931afba4a85fd8ef8..d80145a885b04785193564a2480ced075405c989
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Review T305 autonomously and follow the uploaded Skill ZIP.
+  - source: repository_instruction
+    reference: project instructions
+    summary: Use GitHub connector, verify only workflow runs matching the target HEAD, persist detailed report and concise PR comment, and do not merge.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 section 16
+    summary: Provide Review Range Activity Bar, Current Context UI, status display, context refresh and context selection operations.
+  - source: pr
+    reference: PR #42 body and implementation handoff
+    summary: T305 scope includes Activity Bar, Current Context, Status Bar, branch/workspace runtime resolution, pull-request display projection, refresh/select commands, and synchronized refresh.
+development_policy:
+  method: TDD
+  testing_order: failing test before implementation
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t305
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - logs required for root-cause investigation
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t305-review-skill-compliant-20260805062100.md
+      reason: detailed normal review report
+    - path_or_operation: handoffs/issue-1-t305-review-20260805062100.yaml
+      reason: lossless review handoff
+    - path_or_operation: PR #42 review comment
+      reason: concise review result and correction
+  forbidden:
+    - path_or_operation: implementation, tests, design, workflow, configuration, or unrelated tracking changes
+      reason: reviewer must not implement fixes
+    - path_or_operation: merge
+      reason: merge belongs to the user
+scope:
+  - Activity Bar and contributed views
+  - Current Context Tree View and Status Bar
+  - refresh/select context commands
+  - branch/workspace runtime resolution
+  - pull-request/branch/workspace display projection
+  - dependent decoration refresh
+  - manifest, tests, implementation report, implementation handoff, tracking accuracy
+non_goals:
+  - implement review fixes
+  - merge PR #42
+  - require GitHub PR resolver in T305 without task-boundary evidence
+files:
+  changed:
+    - path: handoffs/issue-1-t305-implementation-20260805061000.yaml
+      purpose: implementation handoff
+    - path: media/review-range.svg
+      purpose: Activity Bar icon
+    - path: package.json
+      purpose: activation, views, commands, scripts, extension entry point
+    - path: reports/issue-1-t305-implementation-20260805061000.md
+      purpose: implementation report
+    - path: src/t305-extension.ts
+      purpose: composition root and branch/workspace context resolution
+    - path: src/ui/current-context/current-context-ui-controller.ts
+      purpose: UI projection and refresh/select coordination
+    - path: src/ui/current-context/index.ts
+      purpose: public UI barrel
+    - path: src/ui/current-context/vscode-current-context-runtime.ts
+      purpose: VS Code Tree/Status/command runtime
+    - path: test/unit/current-context-ui.test.ts
+      purpose: UI controller tests
+    - path: test/unit/vscode-current-context-runtime.test.ts
+      purpose: manifest/runtime structure tests
+  inspected:
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: accepted UI design
+    - path: tasks/tasks-status.md
+      purpose: authoritative task tracking state
+    - path: src/extension.ts
+      purpose: base extension activation dependency
+    - path: src/adapters/local-git
+      purpose: repository inspection dependency
+  intentionally_untouched:
+    - path_or_area: product code and tests
+      reason: review-only role
+commands:
+  - command: GitHub compare merge-base to reviewed HEAD
+    purpose: enumerate complete implementation diff
+    exit_code: 0
+    result: passed
+    head_sha: d80145a885b04785193564a2480ced075405c989
+    evidence: 10 changed implementation files were enumerated.
+  - command: GitHub connector source and design inspection
+    purpose: review changed files and direct dependencies
+    exit_code: 0
+    result: passed
+    head_sha: d80145a885b04785193564a2480ced075405c989
+    evidence: controller, runtime, composition root, manifest, tests, design, tracking and reports inspected.
+tests:
+  - name: T305 Red test commit
+    phase: red
+    result: passed
+    head_sha: 8eec9d64eb6d0f9fbbb5e93571ef3f0ab59378cb
+    evidence: commit defines initial current-context UI expectations.
+  - name: Current HEAD CI test suites
+    phase: verification
+    result: passed
+    head_sha: d80145a885b04785193564a2480ced075405c989
+    evidence: workflow run 30950863381 succeeded.
+ci:
+  required: true
+  workflow: CI
+  run_id: 30950863381
+  head_sha: d80145a885b04785193564a2480ced075405c989
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: d80145a885b04785193564a2480ced075405c989
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Review worker did not modify implementation.
+review:
+  mode: initial_review
+  reviewed_head: d80145a885b04785193564a2480ced075405c989
+  reviewer:
+    identity: current ChatGPT T305 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - This chat was started for T305 review and did not implement T305.
+        - Uploaded Skill ZIP was read before the skill-compliant review round.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T305-R1-001
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: context selection is a no-op
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: diff limited to T305 UI, manifest, tests and reports
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: composition root, Local Git adapter and base refresh dependency inspected
+    - criterion: API, data, configuration, workflow and compatibility effects
+      disposition: checked_no_finding
+      evidence: activation and contribution wiring are consistent within accepted T305 scope
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: matching CI success and diagnostic policy evidence
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: no new secret or credential handling
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: T305-R1-003
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: run 30950863381 matches reviewed HEAD
+    - criterion: report, tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: T305-R1-004
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: runtime behavioral coverage is insufficient
+  validation_assessment:
+    - item: matching CI run
+      result: supported
+      evidence: run 30950863381 conclusion success
+    - item: context selection behavior
+      result: failed
+      evidence: selected descriptor is not applied and only current context is offered
+    - item: task tracking accuracy
+      result: failed
+      evidence: tasks/tasks-status.md remains on T504/PR #39
+    - item: diagnostic artifact workflow
+      result: supported
+      evidence: existing policy and implementation handoff artifact references
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - One High and two Medium required findings remain.
+    - Historical T305-R1-002 is corrected by erratum because T305 scope evidence does not require a PR resolver.
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t305-review-skill-compliant-20260805062100.md
+  reviewed_head: d80145a885b04785193564a2480ced075405c989
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed Skill-compliant initial review report persisted.
+findings:
+  - id: T305-R1-001
+    severity: high
+    origin: introduced_by_change
+    location: src/t305-extension.ts; src/ui/current-context/current-context-ui-controller.ts
+    description: The select-context command does not persist or apply the selected context and offers only the current context.
+    impact: The command and Status Bar action are effectively no-ops.
+    evidence: The selected descriptor is ignored and refresh recomputes from the active editor.
+    required_action: Add context enumeration and authoritative selection state with TDD behavioral coverage.
+  - id: T305-R1-003
+    severity: medium
+    origin: coverage_miss
+    location: test/unit/vscode-current-context-runtime.test.ts; test/unit/current-context-ui.test.ts
+    description: Runtime tests mainly inspect source strings and preserve the broken selection contract.
+    impact: Major runtime behavior regressions can pass CI.
+    evidence: assert.match source inspection and no assertion that the selected descriptor is applied.
+    required_action: Add behavioral or Extension Host tests for command execution, selection, UI synchronization and dependent refresh.
+  - id: T305-R1-004
+    severity: medium
+    origin: introduced_by_change
+    location: tasks/tasks-status.md; implementation report and handoff
+    description: Authoritative task tracking is not synchronized with T305 and PR #42.
+    impact: Subsequent workers receive stale task state.
+    evidence: tracking still identifies T504 and PR #39 as current.
+    required_action: Update only the T305 tracking scope through an authorized progress-management Skill.
+held:
+  - item: PR resolver and full PR metadata integration
+    reason: Current T305 PR and handoff scope does not establish this as mandatory implementation scope.
+    owner: implementation or task-planning owner
+    remaining_risk: Later integration may require model expansion.
+    verdict_impact: none for this review
+  - item: Manual VS Code UI verification
+    reason: Connector-only review environment
+    owner: implementation owner
+    remaining_risk: Environment-specific UI behavior was not manually exercised.
+    verdict_impact: none because required findings are source-proven
+unexplored:
+  - area: Complete successful CI job logs
+    blocker: Connector provided run conclusion but not full step logs.
+    remaining_risk: Detailed successful-step output was not independently inspected.
+    verdict_impact: none; current-HEAD run identity and conclusion are confirmed
+  - area: Remote and multi-root manual runtime
+    blocker: No interactive VS Code runtime in this review environment.
+    remaining_risk: Environment-specific runtime defects may remain.
+    verdict_impact: none for current fail verdict
+unknown: []
+not_applicable:
+  - field_or_area: security and secret handling
+    reason: no new credential or secret processing
+  - field_or_area: independent final review attestation
+    reason: this is a normal initial review
+remaining_risks:
+  - Fixes may introduce new runtime selection-state races and require sibling-case tests.
+  - Any new implementation HEAD requires a new matching workflow run; run 30950863381 must not be reused.
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      reviewed_head: d80145a885b04785193564a2480ced075405c989
+      scope_resolved: true
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      verdict: fail
+      finding_ids:
+        - T305-R1-001
+        - T305-R1-003
+        - T305-R1-004
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/issue-1-t305-review-skill-compliant-20260805062100.md
+extensions:
+  - namespace: severity_errata
+    payload:
+      finding_id: T305-R1-002
+      source_severity: high
+      record_type: erratum
+      disposition: withdrawn_as_unsupported_scope_expansion
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review finding remediation
+  summary: Fix T305-R1-001, T305-R1-003 and T305-R1-004, then return to this chat for fix verification.
+  instructions:
+    - Add a failing behavioral test before fixing context selection.
+    - Implement context enumeration and authoritative selected-context state.
+    - Add runtime behavioral coverage for UI and dependent refresh synchronization.
+    - Synchronize only T305 tracking through the authorized progress-management Skill.
+    - Commit and push in small logical units.
+    - Verify a workflow run whose head SHA exactly matches the new implementation HEAD.
+  required_attachments_or_references:
+    - reports/issue-1-t305-review-skill-compliant-20260805062100.md
+    - PR #42
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t305-review-20260805062100.yaml
+  packet_url: null
+  transport_note: Use this packet together with the detailed review report; do not rely on chat memory.

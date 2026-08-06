@@ -27,6 +27,7 @@ import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/i
 import { NormalEditorReviewCommandService } from "./application/review-commands/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
 import { WorkspaceIdentityService } from "./application/workspace-identity/index";
+import type { SelectedReviewContext } from "./application/review-context/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
   type ReviewFileExclusionDecision
@@ -61,7 +62,15 @@ interface FileExclusionPolicySnapshot {
   readonly userGlobs: readonly string[];
 }
 
-interface ReviewRangeExtensionTestApi {
+/** Production runtime boundary shared with Current Context composition. */
+export interface ReviewRangeRuntimePort {
+  /** Applies an explicit Current Context identity to commands and decorations. */
+  setSelectedContext(selection: SelectedReviewContext | undefined): void;
+  /** Re-renders visible editors after a selected-context change. */
+  refreshVisibleEditorDecorations(): Promise<void>;
+}
+
+interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
@@ -176,7 +185,7 @@ const uniqueVisibleIntervals = (
 /** Activates the Review Range Tracker extension. */
 export function activate(
   context: vscode.ExtensionContext
-): ReviewRangeExtensionTestApi | undefined {
+): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
   const stableHash = new NodeSha256StableHash();
   const fileExclusionPolicyService = new ReviewFileExclusionPolicyService();
   const fileExclusionConfigurationController =
@@ -257,6 +266,7 @@ export function activate(
     stableHash,
     historyRecorder
   });
+  let selectedContext: SelectedReviewContext | undefined;
   const appliedDecorations = new Map<
     vscode.TextEditor,
     readonly NormalEditorReviewedDecoration[]
@@ -287,7 +297,7 @@ export function activate(
     };
   };
   const openDocumentSession = (editor: vscode.TextEditor) =>
-    documentSessionProvider.open(toDocumentDescriptor(editor));
+    documentSessionProvider.open(toDocumentDescriptor(editor), selectedContext);
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
@@ -310,7 +320,8 @@ export function activate(
         return [];
       }
       const session = await documentSessionProvider.loadForDecoration(
-        toDocumentDescriptor(editor)
+        toDocumentDescriptor(editor),
+        selectedContext
       );
       if (session === undefined) {
         return [];
@@ -464,13 +475,20 @@ export function activate(
   };
   void decorationController.start().catch(reportDecorationError);
 
+  const runtimePort: ReviewRangeRuntimePort = {
+    setSelectedContext: (selection) => {
+      selectedContext = selection;
+    },
+    refreshVisibleEditorDecorations: () =>
+      decorationController.refreshVisibleEditors()
+  };
+
   if (context.extensionMode !== vscode.ExtensionMode.Test) {
-    return undefined;
+    return runtimePort;
   }
 
   return {
-    refreshVisibleEditorDecorations: () =>
-      decorationController.refreshVisibleEditors(),
+    ...runtimePort,
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
     getFileExclusionPolicySnapshot: () => ({

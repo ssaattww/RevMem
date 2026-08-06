@@ -1,0 +1,33 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue: 1
+task: T305
+status: ready_for_review
+pull_request: 42
+branch: feature/t305-context-ui
+implementation:
+  red_commit: 8eec9d64eb6d0f9fbbb5e93571ef3f0ab59378cb
+  validated_code_head: df9813ef0577daf2fab7972e83861651beaf20e4
+  report: reports/issue-1-t305-implementation-20260805061000.md
+scope:
+  - Activity Bar Review Range container
+  - Current Context Tree View
+  - Status Bar context display
+  - refresh and select context commands
+  - branch and workspace runtime resolution
+  - synchronized context and decoration refresh
+verification:
+  exact_head_workflow_run: 30950635045
+  exact_head_conclusion: success
+  note: Documentation and handoff commits require a final exact-head run before handoff completion.
+diagnostic_artifacts:
+  - run: 30944873516
+    artifact: 8906651412
+  - run: 30950305204
+    artifact: 8908820239
+  - run: 30950429579
+    artifact: 8908864978
+held:
+  - item: tasks/tasks-status.md synchronization
+    reason: Required progress-management skill is not present in the uploaded skill set; direct modification is prohibited by the file contract.
+merge: false

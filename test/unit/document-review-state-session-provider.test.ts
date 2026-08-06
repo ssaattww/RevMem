@@ -22,6 +22,8 @@ import {
   WorkspaceReviewStateSessionProvider
 } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
+import type { GitStateObserver } from "../../src/application/review-context/index";
+import type { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 import { markReviewedRanges } from "../../src/core/review-state/index";
 
 const occurredAt = "2026-07-24T12:30:00.000Z";
@@ -138,7 +140,9 @@ const workspaceDescriptor = (): NonNullable<DocumentEditorReviewDescriptor["work
 
 const createProvider = (
   repository: FakeRepository,
-  gitInspector: FakeGitInspector
+  gitInspector: FakeGitInspector,
+  gitStateObserver?: GitStateObserver,
+  historyRecorder?: ReviewHistoryRecorder
 ): DocumentReviewStateSessionProvider => {
   const stableHash = new NodeSha256StableHash();
   const workspaceProvider = new WorkspaceReviewStateSessionProvider({
@@ -152,7 +156,9 @@ const createProvider = (
     repository,
     workspaceProvider,
     stableHash,
-    now: () => new Date(occurredAt)
+    now: () => new Date(occurredAt),
+    ...(gitStateObserver === undefined ? {} : { gitStateObserver }),
+    ...(historyRecorder === undefined ? {} : { historyRecorder })
   });
 };
 
@@ -201,6 +207,152 @@ test("Git ownership wins even when the file belongs to the current workspace", a
   assert.equal(session.owner, "git");
   assert.equal(repository.loads.some((target) => target.kind === "git"), true);
   assert.equal(repository.loads.some((target) => target.kind === "workspace"), true);
+});
+
+test("a selected workspace context cannot bypass a Git document owner or create lower-owner side effects", async () => {
+  const repository = new FakeRepository();
+  let observations = 0;
+  let historyRecords = 0;
+  const provider = createProvider(
+    repository,
+    new FakeGitInspector(repositoryInspection()),
+    {
+      observe: () => {
+        observations += 1;
+      }
+    },
+    {
+      recordRevisionMapping: async () => {
+        historyRecords += 1;
+      }
+    } as unknown as ReviewHistoryRecorder
+  );
+  const selectedWorkspace = {
+    kind: "workspace" as const,
+    workspaceFolderUri: workspaceDescriptor().workspaceFolderUri
+  };
+
+  await assert.rejects((provider as unknown as {
+    open(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedWorkspace
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>>;
+  }).open(descriptor({ workspace: workspaceDescriptor() }), selectedWorkspace),
+  /selected workspace context does not own the active editor/u);
+
+  assert.equal(repository.loads.length, 0);
+  assert.equal(repository.saves.length, 0);
+  assert.equal(observations, 0);
+  assert.equal(historyRecords, 0);
+});
+
+test("a selected branch context rejects a different active editor but preserves its matching branch identity", async () => {
+  const repository = new FakeRepository();
+  const inspection = repositoryInspection({
+    rootPath: "C:\\repo",
+    branch: { kind: "branch", fullRef: "refs/heads/feature/issue-13" }
+  });
+  const gitInspector = new FakeGitInspector(inspection);
+  const provider = createProvider(repository, gitInspector);
+  const selectedBranch = {
+    kind: "branch" as const,
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\repo",
+    branchRef: "refs/heads/feature/issue-13"
+  };
+  const selectedDescriptor = descriptor({
+    documentUri: { scheme: "file", authority: "", path: "/C:/repo/src/example.ts" },
+    documentFsPath: "C:\\repo\\src\\example.ts",
+    fileSystemPathSemantics: "windows"
+  });
+
+  const session = await provider.open(selectedDescriptor, selectedBranch);
+  assert.equal(session.owner, "git");
+  assert.equal(session.contextState.branch?.refName, selectedBranch.branchRef);
+
+  gitInspector.result = repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "branch", fullRef: "refs/heads/feature/issue-13" }
+  });
+  const state = await provider.loadForDecoration(
+    descriptor({
+      documentUri: { scheme: "file", authority: "", path: "/C:/other/src/example.ts" },
+      documentFsPath: "C:\\other\\src\\example.ts",
+      fileSystemPathSemantics: "windows"
+    }),
+    selectedBranch
+  );
+  assert.equal(state, undefined);
+});
+
+test("a mismatched selected branch command creates no state before identity rejection", async () => {
+  const repository = new FakeRepository();
+  const provider = createProvider(repository, new FakeGitInspector(repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "branch", fullRef: "refs/heads/other" }
+  })));
+  const selectedBranch = {
+    kind: "branch" as const,
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\repo",
+    branchRef: "refs/heads/selected"
+  };
+
+  await assert.rejects(
+    provider.open(descriptor({
+      documentUri: { scheme: "file", authority: "", path: "/C:/other/src/example.ts" },
+      documentFsPath: "C:\\other\\src\\example.ts",
+      fileSystemPathSemantics: "windows"
+    }), selectedBranch),
+    /selected branch context/u
+  );
+  assert.equal(repository.saves.length, 0);
+  assert.equal(repository.commits.size, 0);
+  assert.equal(repository.loads.length, 0);
+});
+
+test("a selected detached commit remains identity-bound instead of falling back to another repository", async () => {
+  const repository = new FakeRepository();
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const gitInspector = new FakeGitInspector(repositoryInspection({
+    rootPath: "C:\\detached",
+    branch: { kind: "detached" },
+    head
+  }));
+  const provider = createProvider(repository, gitInspector);
+  const selectedDetached = {
+    kind: "detached",
+    repositoryId: "github.com/example/project",
+    repositoryRoot: "C:\\detached",
+    headRevision: head
+  };
+  const selectedDescriptor = descriptor({
+    documentUri: { scheme: "file", authority: "", path: "/C:/detached/src/example.ts" },
+    documentFsPath: "C:\\detached\\src\\example.ts",
+    fileSystemPathSemantics: "windows"
+  });
+
+  const session = await (provider as unknown as {
+    open(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedDetached
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>>;
+  }).open(selectedDescriptor, selectedDetached);
+  assert.equal(session.owner, "git");
+  assert.equal(session.contextState.branch?.refName, `HEAD@${head}`);
+
+  gitInspector.result = repositoryInspection({
+    rootPath: "C:\\other",
+    branch: { kind: "detached" },
+    head
+  });
+  const state = await (provider as unknown as {
+    loadForDecoration(
+      value: DocumentEditorReviewDescriptor,
+      selection: typeof selectedDetached
+    ): Promise<Awaited<ReturnType<DocumentReviewStateSessionProvider["loadForDecoration"]>>>;
+  }).loadForDecoration(selectedDescriptor, selectedDetached);
+  assert.equal(state, undefined);
 });
 
 /** Verifies that a non-Git document within a workspace retains workspace-local persistence rather than using global storage. */

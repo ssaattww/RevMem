@@ -1,0 +1,43 @@
+schema_version: 1
+work:
+  repository: ssaattww/RevMem
+  issue: 1
+  pull_request: 42
+  task: T305
+  branch: feature/t305-context-ui
+  mode: review-followup
+review_source:
+  report: reports/issue-1-t305-review-skill-compliant-20260805062100.md
+findings:
+  - id: T305-R1-001
+    disposition: addressed
+    evidence:
+      - test/unit/current-context-ui.test.ts
+      - src/ui/current-context/current-context-ui-controller.ts
+      - src/t305-extension.ts
+  - id: T305-R1-003
+    disposition: addressed
+    evidence:
+      - src/ui/current-context/current-context-runtime-coordinator.ts
+      - src/ui/current-context/vscode-current-context-runtime.ts
+      - test/unit/current-context-ui.test.ts
+      - test/unit/vscode-current-context-runtime.test.ts
+  - id: T305-R1-004
+    disposition: held
+    reason: Required progress-management Skill is not present in chatgpt-worker-skills.zip; direct edit would violate tasks/tasks-status.md update rules.
+validation:
+  code_head: 3a6b4a0c3709ffe59d23c3317a8d42f3928fc3f7
+  workflow_run: 30955102766
+  conclusion: success
+  exact_head_only: true
+  failure_run:
+    run_id: 30954986258
+    artifact_id: 8910645692
+reports:
+  implementation: reports/issue-1-t305-implementation-20260805061000.md
+  review: reports/issue-1-t305-review-skill-compliant-20260805062100.md
+  followup: reports/issue-1-t305-review-followup-20260805070500.md
+next_action:
+  owner: normal-reviewer
+  action: Verify T305-R1-001 and T305-R1-003 closure. Keep T305-R1-004 open until an allowed progress-management Skill updates tasks/tasks-status.md.
+merge_performed: false

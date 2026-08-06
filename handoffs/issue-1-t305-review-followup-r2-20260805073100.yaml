@@ -1,0 +1,94 @@
+schema_version: 3
+created_at: 2026-08-05T07:31:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #42
+task_id: T305
+mode: implementation
+branch: feature/t305-context-ui
+base_ref: main
+current_head: ae70911068aa050b93eae65e365696af05be2618
+reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+scope:
+  - Address T305-R2-001 stable branch selection identity
+  - Preserve T305-R1-001 and T305-R1-003 regression evidence
+  - Synchronize T305 task tracking when an authorized progress-management Skill is available
+non_goals:
+  - GitHub PR resolver implementation withdrawn from T305 required scope
+  - Merge PR #42
+write_boundary:
+  allowed:
+    - src/ui/current-context/**
+    - src/t305-extension.ts
+    - test/unit/current-context-ui.test.ts
+    - reports/issue-1-t305-*.md
+    - handoffs/issue-1-t305-*.yaml
+    - tasks/tasks-status.md only through its authorized progress-management workflow
+  forbidden:
+    - unrelated task implementation
+    - merge
+implementation:
+  outcome: partial
+  final_head: ae70911068aa050b93eae65e365696af05be2618
+  commits:
+    - sha: 09d4dd092909bf52d274917fe2a54ff6c5404d5a
+      purpose: Red test reproducing branch selection loss after HEAD advance
+    - sha: e9ef6424af2b22bea34d9300bfd7e749f11416c6
+      purpose: Stable context selection identity implementation
+    - sha: f38e33c2f37cbb9e0aad72d27b2fd87e0f5035b6
+      purpose: Export stable selection identity
+    - sha: c7e1ba2203a5014876ef0855b15301437ea044c6
+      purpose: Apply stable identity in VS Code composition root
+    - sha: ae70911068aa050b93eae65e365696af05be2618
+      purpose: Detailed review follow-up report
+  addressed_findings:
+    - id: T305-R2-001
+      reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+      disposition: addressed
+      evidence: currentContextSelectionKey excludes moving headRevision for branch context and regression test asserts identity stability
+    - id: T305-R1-004
+      reviewed_head: b1ef13ef2eb28e50264840de48079a30d52d6911
+      disposition: blocked
+      evidence: tasks/tasks-status.md requires one of three progress-management Skills absent from the supplied ZIP
+ci:
+  required: true
+  workflow: CI
+  run_id: 30956921309
+  head_sha: c7e1ba2203a5014876ef0855b15301437ea044c6
+  conclusion: success
+  artifacts: []
+tests:
+  - name: branch selection identity remains stable when HEAD advances
+    phase: red
+    result: failed
+    head_sha: 09d4dd092909bf52d274917fe2a54ff6c5404d5a
+    evidence: matching CI run 30956847349 failed before implementation
+  - name: full CI
+    phase: green
+    result: passed
+    head_sha: c7e1ba2203a5014876ef0855b15301437ea044c6
+    evidence: matching CI run 30956921309 succeeded
+blocked:
+  - item: T305-R1-004 task tracking synchronization
+    reason: Required progress-management Skill is absent from chatgpt-worker-skills.zip
+    required_input_or_decision: Provide task-breakdown-planner, task-consistency-manager, or progress-sync-manager; alternatively change the repository update rule
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t305-review-followup-r2-20260805073100.md
+    - handoffs/issue-1-t305-review-followup-r2-20260805073100.yaml
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Verify T305-R2-001 against the new implementation HEAD and retain T305-R1-004 as blocked until authorized tracking synchronization is possible
+  instructions:
+    - Use only a workflow run whose head SHA matches the new implementation HEAD
+    - Do not reintroduce withdrawn T305-R1-002
+    - Do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t305-review-followup-r2-20260805073100.yaml
+  packet_url: null
+  transport_note: Repository handoff for normal fix verification

@@ -2,6 +2,7 @@
 export { GitContextRevisionMapper } from "./git-context-revision-mapper";
 export { GitReviewContextResolver } from "./git-review-context-resolver";
 export { PollingGitStateMonitor } from "./polling-git-state-monitor";
+export { sameResourceUri } from "./selected-review-context";
 
 export type {
   GitContextRevisionMapperOptions,
@@ -24,3 +25,5 @@ export type {
   ResolvedGitReviewContext,
   ResolvedGitReviewContextKind
 } from "./contracts";
+
+export type { SelectedReviewContext } from "./selected-review-context";
