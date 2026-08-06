@@ -49,7 +49,6 @@ export interface GlobalUnderstandingStatusBarModel {
   readonly tooltip: string;
 }
 
-
 export interface GlobalUnderstandingRefreshSource {
   recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
 }
@@ -206,6 +205,50 @@ export class GlobalLayerToggleController {
   }
 }
 
+export interface GlobalUnderstandingRefreshCoalescerHost {
+  schedule(callback: () => void, delayMs: number): unknown;
+  cancel(handle: unknown): void;
+  run(): void | Promise<void>;
+}
+
+/** Debounces rapid refresh requests so only the latest document evidence starts recalculation. */
+export class GlobalUnderstandingRefreshCoalescer {
+  private scheduled: unknown | undefined;
+  private disposed = false;
+
+  public constructor(
+    private readonly host: GlobalUnderstandingRefreshCoalescerHost,
+    private readonly delayMs = 150
+  ) {
+    if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
+      throw new RangeError("delayMs must be a non-negative safe integer.");
+    }
+  }
+
+  public request(): void {
+    if (this.disposed) return;
+    this.cancel();
+    let handle: unknown;
+    handle = this.host.schedule(() => {
+      if (this.disposed || this.scheduled !== handle) return;
+      this.scheduled = undefined;
+      void this.host.run();
+    }, this.delayMs);
+    this.scheduled = handle;
+  }
+
+  public cancel(): void {
+    if (this.scheduled === undefined) return;
+    this.host.cancel(this.scheduled);
+    this.scheduled = undefined;
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.cancel();
+  }
+}
 
 /** Prevents stale or failed recalculations from publishing Global data for the wrong context. */
 export class GlobalUnderstandingRefreshController {
@@ -233,7 +276,8 @@ export class GlobalUnderstandingRefreshController {
       this.host.show(snapshot);
       return snapshot;
     } catch (error) {
-      if (currentGeneration === this.generation) this.host.clear();
+      if (currentGeneration !== this.generation) return undefined;
+      this.host.clear();
       throw error;
     }
   }
