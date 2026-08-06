@@ -1,0 +1,294 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: "2026-08-07T06:21:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "PR #49"
+task_id: T602
+branch: agent/t602-rebase-force-push-recovery
+base_ref: main@112198c33823a5fc6681399a19e0c5361614143f
+target:
+  current_head: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  commit_range: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7..1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat instruction
+    summary: Address the latest T602 PR review findings autonomously using the uploaded ZIP skills and GitHub connector; do not merge.
+  - source: pr
+    reference: PR #49 fix verification review 4878125817
+    summary: T602-R010 high remains; discard stale open publication when immutable read completes after a newer unreview commit.
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: Use TDD, preserve failure diagnostics artifacts, make reviewable commits, save detailed report, comment the PR, and use only exact-head CI evidence.
+
+development_policy:
+  method: TDD
+  testing_order: Add the reverse-arrival race regression before implementation; confirm exact-head Red when available; then implement and validate exact-head Green when available.
+  governing_source: RevMem project instructions and uploaded implementation worker skills
+validation_plan:
+  commands:
+    - npm ci
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - node --test test-dist/test/unit/document-git-history-rewrite-runtime.test.js
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test-output/ci command logs containing stdout and stderr
+    - generated dist/test-dist files
+    - source, tests, tools, configuration and workflow files
+    - environment and git status evidence
+    - ci-failure-diagnostics artifact on workflow failure
+blocked:
+  - item: Exact-head Red execution for test-first commit 11d4e2672de76882efa93cc0f4a94393d59e6798
+    reason: No pull-request workflow run exists for that SHA.
+    required_input_or_decision: null
+  - item: Exact-head Green validation for implementation HEAD 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+    reason: No pull-request workflow run exists for that SHA after repeated checks.
+    required_input_or_decision: null
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: test/unit/document-git-history-rewrite-runtime.test.ts
+      reason: R010 reverse-arrival regression coverage.
+    - path_or_operation: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      reason: R010 stale open snapshot generation validation.
+    - path_or_operation: reports/issue-1-t602-review-followup-20260807062100.md
+      reason: Detailed implementation report.
+    - path_or_operation: reports/issue-1-t602-implementation-handoff-20260807062100.yaml
+      reason: Lossless implementation handoff.
+    - path_or_operation: PR #49 body/comment
+      reason: Concise implementation and validation status update.
+  forbidden:
+    - path_or_operation: merge PR #49
+      reason: Merge is user-owned.
+    - path_or_operation: tasks/tasks-status.md direct edit
+      reason: Repository requires its dedicated progress-management path.
+    - path_or_operation: independent review verdict
+      reason: Implementation worker must not review its own fix.
+
+scope:
+  - Address T602-R010 reverse-arrival stale-open snapshot publication race.
+  - Preserve previously verified R003 and R011 fixes unchanged.
+  - Record exact-head CI absence without substituting another SHA.
+non_goals:
+  - T604 multi-window locking or cross-process synchronization.
+  - Unrelated snapshot subsystem redesign.
+  - Merge or release.
+
+files:
+  changed:
+    - path: test/unit/document-git-history-rewrite-runtime.test.ts
+      purpose: Delay immutable read before stale open enqueue and prove newer unreview state cannot be resurrected.
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: Coordinates-scoped generation capture and stale publication rejection.
+    - path: reports/issue-1-t602-review-followup-20260807062100.md
+      purpose: Detailed follow-up implementation report.
+    - path: reports/issue-1-t602-implementation-handoff-20260807062100.yaml
+      purpose: This schema v3 handoff.
+  inspected:
+    - path: reports/issue-1-t602-fix-verification-20260807054700.md
+      purpose: Authoritative latest R010 finding and required action.
+    - path: .github/workflows/ci.yml
+      purpose: Existing failure diagnostic artifact coverage and T602 focused CI entry point.
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: Direct cause and queue/generation boundary.
+    - path: test/unit/document-git-history-rewrite-runtime.test.ts
+      purpose: Existing forward-order race coverage and new reverse-arrival sibling case.
+  intentionally_untouched:
+    - path_or_area: src/application/history-rewrite-recovery/adapters.ts
+      reason: R011 was explicitly verified addressed by the latest normal reviewer.
+    - path_or_area: task tracking
+      reason: Direct edit is outside the allowed progress-management path.
+    - path_or_area: merge/release
+      reason: User-owned.
+
+commands:
+  - command: GitHub exact-head workflow lookup for 11d4e2672de76882efa93cc0f4a94393d59e6798
+    purpose: Confirm Red CI evidence for test-first commit.
+    exit_code: unknown
+    result: not_run
+    head_sha: 11d4e2672de76882efa93cc0f4a94393d59e6798
+    evidence: No matching pull-request workflow run returned by GitHub connector.
+  - command: GitHub exact-head workflow lookup for 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+    purpose: Confirm Green CI evidence for implementation HEAD.
+    exit_code: unknown
+    result: not_run
+    head_sha: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+    evidence: No matching pull-request workflow run returned in repeated checks.
+
+tests:
+  - name: stale open delayed before enqueue cannot overwrite newer unreview commit
+    phase: red
+    result: not_run
+    head_sha: 11d4e2672de76882efa93cc0f4a94393d59e6798
+    evidence: Test committed before implementation; exact-head workflow run unavailable.
+  - name: same regression after generation validation implementation
+    phase: green
+    result: not_run
+    head_sha: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+    evidence: Exact-head workflow run unavailable.
+
+ci:
+  required: true
+  workflow: .github/workflows/ci.yml
+  run_id: null
+  head_sha: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+  conclusion: unknown
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+  commits:
+    - sha: 11d4e2672de76882efa93cc0f4a94393d59e6798
+      purpose: Add reviewer-required reverse-arrival R010 regression before implementation.
+    - sha: 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd
+      purpose: Add coordinates-scoped snapshot generation and reject stale open publication.
+  addressed_findings:
+    - id: T602-R010
+      reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+      disposition: addressed
+      evidence: Open captures a coordinates generation before its delayed immutable read; queued publication is discarded if a successful newer commit advanced that generation. Reverse-arrival regression was added test-first.
+    - id: T602-R003
+      reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+      disposition: addressed
+      evidence: Latest fix verification explicitly marked R003 addressed; no change in this follow-up.
+    - id: T602-R011
+      reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+      disposition: addressed
+      evidence: Latest fix verification explicitly marked R011 addressed; no change in this follow-up.
+  failure_diagnostics:
+    - type: artifact
+      location: .github/workflows/ci.yml
+      summary: Failure diagnostics workflow remains configured, but no exact-head run exists to generate an artifact for this follow-up.
+  blocked_items:
+    - item: Exact-head CI validation
+      reason: No matching workflow run exists for the technical implementation HEAD.
+      required_input_or_decision: null
+  summary:
+    - Added the missing reverse-arrival race test required by the reviewer.
+    - Added coordinates-scoped generation validation so delayed stale opens cannot publish after a newer successful commit.
+    - Did not broaden into T604 cross-window locking.
+
+review:
+  mode: not_applicable
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  reviewer:
+    identity: same normal reviewer represented by PR review 4878125817
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same normal reviewer
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - PR review 4878125817 is the authoritative latest fix verification input.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Implementation worker does not issue a fix-verification verdict.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t602-review-followup-20260807062100.md
+    - reports/issue-1-t602-implementation-handoff-20260807062100.yaml
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed follow-up report and schema v3 implementation handoff persisted.
+
+findings:
+  - id: T602-R010
+    severity: high
+    origin: introduced_by_fix
+    location: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts open/publication ordering
+    description: A stale open could finish its immutable read after a newer unreview commit and enqueue stale snapshot publication afterwards.
+    impact: Later history rewrite recovery could resurrect reviewed ranges that had been explicitly unreviewed.
+    evidence: PR review 4878125817 and report reports/issue-1-t602-fix-verification-20260807054700.md.
+    required_action: Validate captured generation/expected state immediately before publication and add the reverse-arrival read-delay regression test.
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: Exact-head CI result for technical implementation HEAD
+    reason: No matching pull-request workflow run exists.
+not_applicable:
+  - field_or_area: Independent final review
+    reason: This is implementation follow-up.
+remaining_risks:
+  - Technical fix is not backed by an exact-head executed workflow because GitHub has no matching run.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: "Review follow-up completed for T602-R010. Test-first commit 11d4e2672de76882efa93cc0f4a94393d59e6798 adds the reverse-arrival race. Implementation commit 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd adds coordinates-scoped generation validation. Exact-head Red and Green CI runs are absent, so validation remains unavailable and no success is claimed."
+extensions:
+  - namespace: revmem.runtime
+    payload:
+      report_commit: c90229474413063447be4c5ff5a506bea2c064e7
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Re-verify T602-R010 against technical implementation HEAD 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd.
+  instructions:
+    - Use the same normal reviewer continuity for finding T602-R010.
+    - Inspect the reverse-arrival delayed-read regression and generation validation.
+    - Use only workflow runs whose head_sha equals 1a6ee2f1c3e4b302554a9977cad588ae8b5f06cd; if none exists, keep CI unavailable rather than substituting another SHA.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t602-review-followup-20260807062100.md
+    - reports/issue-1-t602-implementation-handoff-20260807062100.yaml
+    - PR #49 review 4878125817
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t602-implementation-handoff-20260807062100.yaml
+  packet_url: null
+  transport_note: Persisted on the PR branch. The handoff records the technical implementation HEAD separately from later report/handoff management commits.
