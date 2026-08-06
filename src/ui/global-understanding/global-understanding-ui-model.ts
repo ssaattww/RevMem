@@ -5,9 +5,7 @@ import type {
 
 export interface GlobalUnderstandingTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
-  /** Concrete excluded files only; pruned directory descendants are never inferred. */
   readonly excludedFileCount: number;
-  /** One diagnostic record per directory pruned before traversal. */
   readonly prunedExcludedDirectoryCount: number;
 }
 
@@ -67,54 +65,23 @@ export interface GlobalLayerToggleHost {
 
 const compareCodeUnits = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
-
 const requireCount = (value: number, name: string): void => {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(`${name} must be a non-negative safe integer.`);
-  }
+  if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${name} must be a non-negative safe integer.`);
 };
-
-const ratio = (reviewed: number, total: number): number =>
-  total === 0 ? 1 : reviewed / total;
-
+const ratio = (reviewed: number, total: number): number => total === 0 ? 1 : reviewed / total;
 const ratiosEqual = (left: number, right: number): boolean =>
-  Math.abs(left - right) <=
-  Number.EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
-
-const validateProgress = (
-  reviewed: number,
-  total: number,
-  progress: number,
-  label: string
-): void => {
+  Math.abs(left - right) <= Number.EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
+const validateProgress = (reviewed: number, total: number, progress: number, label: string): void => {
   requireCount(reviewed, `${label}.reviewed`);
   requireCount(total, `${label}.total`);
-  if (reviewed > total) {
-    throw new RangeError(`${label}.reviewed must not exceed total.`);
-  }
-  if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
-    throw new RangeError(`${label}.progress must be in 0..1.`);
-  }
-  if (!ratiosEqual(progress, ratio(reviewed, total))) {
-    throw new RangeError(`${label}.progress does not match its counts.`);
-  }
+  if (reviewed > total) throw new RangeError(`${label}.reviewed must not exceed total.`);
+  if (!Number.isFinite(progress) || progress < 0 || progress > 1) throw new RangeError(`${label}.progress must be in 0..1.`);
+  if (!ratiosEqual(progress, ratio(reviewed, total))) throw new RangeError(`${label}.progress does not match its counts.`);
 };
-
-const formatPercent = (progress: number): string =>
-  `${Math.round(progress * 100)}%`;
-
-const fileNode = (
-  file: GlobalUnderstandingFileProgress
-): GlobalUnderstandingFileNode => {
-  if (file.path.length === 0) {
-    throw new RangeError("Global understanding file path must not be empty.");
-  }
-  validateProgress(
-    file.reviewedNonEmptyLineCount,
-    file.totalNonEmptyLineCount,
-    file.progress,
-    `Global understanding file ${file.path}`
-  );
+const formatPercent = (progress: number): string => `${Math.round(progress * 100)}%`;
+const fileNode = (file: GlobalUnderstandingFileProgress): GlobalUnderstandingFileNode => {
+  if (file.path.length === 0) throw new RangeError("Global understanding file path must not be empty.");
+  validateProgress(file.reviewedNonEmptyLineCount, file.totalNonEmptyLineCount, file.progress, `Global understanding file ${file.path}`);
   return Object.freeze({
     kind: "file" as const,
     path: file.path,
@@ -127,34 +94,17 @@ const fileNode = (
   });
 };
 
-/** Projects one immutable Global calculation and enumeration diagnostic snapshot for Tree View rendering. */
-export const createGlobalUnderstandingTreeModel = (
-  snapshot: GlobalUnderstandingTreeSnapshot
-): GlobalUnderstandingTreeModel => {
+export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const { progress } = snapshot;
-  validateProgress(
-    progress.reviewedNonEmptyLineCount,
-    progress.totalNonEmptyLineCount,
-    progress.progress,
-    "Global understanding repository"
-  );
+  validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
-  requireCount(
-    snapshot.prunedExcludedDirectoryCount,
-    "prunedExcludedDirectoryCount"
-  );
-
-  const files = progress.files.map(fileNode).sort((left, right) =>
-    compareCodeUnits(left.path, right.path)
-  );
+  requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  const files = progress.files.map(fileNode).sort((left, right) => compareCodeUnits(left.path, right.path));
   const paths = new Set<string>();
   for (const file of files) {
-    if (paths.has(file.path)) {
-      throw new RangeError(`duplicate Global understanding path: ${file.path}`);
-    }
+    if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
     paths.add(file.path);
   }
-
   return Object.freeze({
     summary: Object.freeze({
       kind: "summary" as const,
@@ -174,10 +124,7 @@ export const createGlobalUnderstandingTreeModel = (
   });
 };
 
-/** Formats the Global half of the T305 Status Bar display. */
-export const formatGlobalUnderstandingStatusBar = (
-  snapshot: GlobalUnderstandingTreeSnapshot
-): GlobalUnderstandingStatusBarModel => {
+export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingStatusBarModel => {
   const model = createGlobalUnderstandingTreeModel(snapshot);
   const percent = formatPercent(model.summary.progress);
   return {
@@ -192,10 +139,8 @@ export const formatGlobalUnderstandingStatusBar = (
   };
 };
 
-/** Persists the Global decoration layer setting before refreshing dependent surfaces. */
 export class GlobalLayerToggleController {
   public constructor(private readonly host: GlobalLayerToggleHost) {}
-
   public async toggle(): Promise<boolean> {
     const next = !this.host.readEnabled();
     await this.host.writeEnabled(next);
@@ -206,27 +151,21 @@ export class GlobalLayerToggleController {
 }
 
 export interface GlobalUnderstandingRefreshCoalescerHost {
+  invalidate(): void;
   schedule(callback: () => void, delayMs: number): unknown;
   cancel(handle: unknown): void;
   run(): void | Promise<void>;
 }
 
-/** Debounces rapid refresh requests so only the latest document evidence starts recalculation. */
 export class GlobalUnderstandingRefreshCoalescer {
   private scheduled: unknown | undefined;
   private disposed = false;
-
-  public constructor(
-    private readonly host: GlobalUnderstandingRefreshCoalescerHost,
-    private readonly delayMs = 150
-  ) {
-    if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
-      throw new RangeError("delayMs must be a non-negative safe integer.");
-    }
+  public constructor(private readonly host: GlobalUnderstandingRefreshCoalescerHost, private readonly delayMs = 150) {
+    if (!Number.isSafeInteger(delayMs) || delayMs < 0) throw new RangeError("delayMs must be a non-negative safe integer.");
   }
-
   public request(): void {
     if (this.disposed) return;
+    this.host.invalidate();
     this.cancel();
     let handle: unknown;
     handle = this.host.schedule(() => {
@@ -236,13 +175,11 @@ export class GlobalUnderstandingRefreshCoalescer {
     }, this.delayMs);
     this.scheduled = handle;
   }
-
   public cancel(): void {
     if (this.scheduled === undefined) return;
     this.host.cancel(this.scheduled);
     this.scheduled = undefined;
   }
-
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -250,20 +187,11 @@ export class GlobalUnderstandingRefreshCoalescer {
   }
 }
 
-/** Prevents stale or failed recalculations from publishing Global data for the wrong context. */
 export class GlobalUnderstandingRefreshController {
   private generation = 0;
-
-  public constructor(
-    private readonly source: GlobalUnderstandingRefreshSource,
-    private readonly host: GlobalUnderstandingRefreshHost
-  ) {}
-
-  public clear(): void {
-    this.generation += 1;
-    this.host.clear();
-  }
-
+  public constructor(private readonly source: GlobalUnderstandingRefreshSource, private readonly host: GlobalUnderstandingRefreshHost) {}
+  public invalidate(): void { this.generation += 1; }
+  public clear(): void { this.invalidate(); this.host.clear(); }
   public async refresh(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
     try {
