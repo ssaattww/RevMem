@@ -1,4 +1,4 @@
-import type { NonGitSnapshotLimits } from "./index";
+import type { SplitNonGitSnapshotLimits } from "./index";
 
 export const DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_SNAPSHOTS = 128;
@@ -18,7 +18,7 @@ const resolvePositiveSafeInteger = (value: unknown, fallback: number): number =>
 /** Converts the user-facing per-snapshot limit while retaining an independent aggregate budget. */
 export const resolveConfiguredNonGitSnapshotLimits = (
   settings: ConfiguredNonGitSnapshotSettings
-): NonGitSnapshotLimits => {
+): SplitNonGitSnapshotLimits => {
   const maxSnapshotCompressedBytes = resolvePositiveSafeInteger(
     settings.maxSnapshotFileSizeBytes,
     DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES
