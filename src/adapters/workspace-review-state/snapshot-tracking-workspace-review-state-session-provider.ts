@@ -33,6 +33,11 @@ export class SnapshotTrackingWorkspaceReviewStateSessionProvider
     this.nowMilliseconds = () => (options.now?.() ?? new Date()).getTime();
   }
 
+  /** Reuses the same T601 generation store for Git history-rewrite recovery. */
+  public get historyRewriteSnapshotTracker(): NonGitSnapshotTracker {
+    return this.snapshotTracker;
+  }
+
   public override async open(
     descriptor: WorkspaceEditorReviewDescriptor,
   ): Promise<WorkspaceNormalEditorReviewStateSession> {
