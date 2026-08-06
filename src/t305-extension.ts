@@ -28,6 +28,7 @@ import {
   registerCurrentContextRuntime
 } from "./ui/current-context/vscode-current-context-runtime";
 import {
+  GlobalUnderstandingRefreshCoalescer,
   registerGlobalUnderstandingRuntime
 } from "./ui/global-understanding/index";
 import {
@@ -240,17 +241,28 @@ export function activate(context: vscode.ExtensionContext): unknown {
   const refreshGlobalUnderstanding = (): void => {
     void globalRuntime.refreshWithErrorBoundary();
   };
-  const refreshForDocument = (document: vscode.TextDocument): void => {
-    if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) refreshGlobalUnderstanding();
+  const documentChangeRefresh = new GlobalUnderstandingRefreshCoalescer({
+    schedule: (callback, delayMs) => setTimeout(callback, delayMs),
+    cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    run: refreshGlobalUnderstanding
+  });
+  const requestRefreshForDocumentChange = (document: vscode.TextDocument): void => {
+    if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) documentChangeRefresh.request();
+  };
+  const refreshForSavedOrClosedDocument = (document: vscode.TextDocument): void => {
+    if (!FILESYSTEM_SCHEMES.has(document.uri.scheme)) return;
+    documentChangeRefresh.cancel();
+    refreshGlobalUnderstanding();
   };
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(refreshGlobalUnderstanding),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      refreshForDocument(event.document);
+      requestRefreshForDocumentChange(event.document);
     }),
-    vscode.workspace.onDidSaveTextDocument(refreshForDocument),
-    vscode.workspace.onDidCloseTextDocument(refreshForDocument)
+    vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
+    vscode.workspace.onDidCloseTextDocument(refreshForSavedOrClosedDocument),
+    documentChangeRefresh
   );
 
   registerCurrentContextRuntime(
