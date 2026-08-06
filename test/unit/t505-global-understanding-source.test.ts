@@ -13,9 +13,7 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState
 } from "../../src/core/contracts/index";
-import {
-  DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
-} from "../../src/core/file-exclusion/index";
+import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
 import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
 
 const sha256 = (value: string): string =>
@@ -76,7 +74,8 @@ test("T505 source joins persisted Global state with included files and separate 
 
   const source = new T505GlobalUnderstandingSource({
     storageUris,
-    readExcludeGlobs: () => DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
     fileSystemPathSemantics: "posix",
     yieldControl: () => undefined
   });

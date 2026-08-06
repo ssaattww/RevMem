@@ -1,11 +1,13 @@
+import path from "node:path";
 import * as vscode from "vscode";
 
+import { NodeSha256StableHash } from "./adapters/crypto/index";
+import {
+  getActiveReviewFileExclusionPolicyService
+} from "./application/file-exclusion/review-file-exclusion-policy-service";
 import {
   createNodeLocalGitAdapter
 } from "./adapters/local-git/index";
-import {
-  DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
-} from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
@@ -28,26 +30,68 @@ import {
 import {
   registerGlobalUnderstandingRuntime
 } from "./ui/global-understanding/index";
-import { T505GlobalUnderstandingSource } from "./t505-global-understanding-source";
+import {
+  T505GlobalUnderstandingSource,
+  type T505GlobalUnderstandingOwner
+} from "./t505-global-understanding-source";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
 /** T305 composition root that adds context UI while retaining the existing extension runtime. */
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
+  const runtimePort: ReviewRangeRuntimePort = baseApi;
   const git = createNodeLocalGitAdapter();
+  const stableHash = new NodeSha256StableHash();
   const selection = new CurrentContextCandidateSelection();
+  const exclusionPolicy = getActiveReviewFileExclusionPolicyService();
+  const readOpenDocuments = (owner: Readonly<T505GlobalUnderstandingOwner>) =>
+    vscode.workspace.textDocuments.flatMap((document) => {
+      if (document.isClosed || !FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
+        return [];
+      }
+      const relativePath = path.relative(owner.repositoryRoot, document.uri.fsPath);
+      if (
+        relativePath.length === 0 ||
+        path.isAbsolute(relativePath) ||
+        relativePath === ".." ||
+        relativePath.startsWith(`..${path.sep}`)
+      ) {
+        return [];
+      }
+      const repositoryPath = relativePath.split(path.sep).join("/");
+      const content = document.getText();
+      const contentHash = stableHash.digest(content);
+      const version = document.version;
+      const nonEmptyLines: number[] = [];
+      for (let line = 0; line < document.lineCount; line += 1) {
+        if (document.lineAt(line).text.trim().length > 0) nonEmptyLines.push(line);
+      }
+      return [{
+        path: repositoryPath,
+        revisionId: owner.currentRevisionId,
+        lineCount: document.lineCount,
+        nonEmptyLines,
+        contentHash,
+        cacheKey: `vscode:${document.uri.toString(true)}:${version}:${contentHash}`,
+        validateCurrent: async () => {
+          if (
+            document.isClosed ||
+            document.version !== version ||
+            stableHash.digest(document.getText()) !== contentHash
+          ) {
+            throw new Error(`Open document changed during Global recalculation: ${repositoryPath}`);
+          }
+        }
+      }];
+    });
   const globalSource = new T505GlobalUnderstandingSource({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
     },
-    readExcludeGlobs: () => [
-      ...vscode.workspace.getConfiguration("reviewRange").get<readonly string[]>(
-        "exclude",
-        DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS
-      )
-    ]
+    exclusionPolicy,
+    readOpenDocuments
   });
 
   const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
@@ -173,7 +217,6 @@ export function activate(context: vscode.ExtensionContext): unknown {
     }
   });
 
-  const runtimePort: ReviewRangeRuntimePort = baseApi;
   const globalRuntime = registerGlobalUnderstandingRuntime(context, {
     source: globalSource,
     readGlobalLayerEnabled: () =>
@@ -194,9 +237,21 @@ export function activate(context: vscode.ExtensionContext): unknown {
       );
     }
   });
-  context.subscriptions.push(runtimePort.onDidChangeReviewState(() => {
+  const refreshGlobalUnderstanding = (): void => {
     void globalRuntime.refreshWithErrorBoundary();
-  }));
+  };
+  const refreshForDocument = (document: vscode.TextDocument): void => {
+    if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) refreshGlobalUnderstanding();
+  };
+  context.subscriptions.push(
+    runtimePort.onDidChangeReviewState(refreshGlobalUnderstanding),
+    exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      refreshForDocument(event.document);
+    }),
+    vscode.workspace.onDidSaveTextDocument(refreshForDocument),
+    vscode.workspace.onDidCloseTextDocument(refreshForDocument)
+  );
 
   registerCurrentContextRuntime(
     context,

@@ -10,10 +10,14 @@ import {
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
 } from "./adapters/state-repository/index";
+import type { ReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import {
   GlobalUnderstandingBackgroundRecalculator,
-  InMemoryGlobalUnderstandingProgressCache
+  InMemoryGlobalUnderstandingProgressCache,
+  type GlobalUnderstandingFileSource,
+  type LoadedGlobalUnderstandingFile
 } from "./application/global-understanding/index";
+import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
 import {
   type FileSystemPathSemantics,
   type ResourceUri,
@@ -23,24 +27,31 @@ import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState
 } from "./core/contracts/index";
-import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
 import type {
   GlobalUnderstandingRuntimeSource,
   GlobalUnderstandingTreeSnapshot
 } from "./ui/global-understanding/index";
 
-export interface T505GlobalUnderstandingSourceDependencies {
-  readonly storageUris: ReviewStateStorageUris;
-  readonly readExcludeGlobs: () => readonly string[];
-  readonly fileSystemPathSemantics?: FileSystemPathSemantics;
-  readonly yieldControl?: () => void | Promise<void>;
-}
+export type T505GlobalUnderstandingExclusionPolicy = Pick<
+  ReviewFileExclusionPolicyService,
+  "evaluate" | "evaluateDirectory" | "getRevision"
+>;
 
-interface ResolvedGlobalUnderstandingOwner {
+export interface T505GlobalUnderstandingOwner {
   readonly repositoryRoot: string;
   readonly target: ReviewStateRepositoryTarget;
   readonly currentRevisionId: string;
+}
+
+export interface T505GlobalUnderstandingSourceDependencies {
+  readonly storageUris: ReviewStateStorageUris;
+  readonly exclusionPolicy: T505GlobalUnderstandingExclusionPolicy;
+  readonly readOpenDocuments?: (
+    owner: Readonly<T505GlobalUnderstandingOwner>
+  ) => readonly LoadedGlobalUnderstandingFile[];
+  readonly fileSystemPathSemantics?: FileSystemPathSemantics;
+  readonly yieldControl?: () => void | Promise<void>;
 }
 
 const syntheticWorkspaceDocument = (workspace: ResourceUri): ResourceUri => ({
@@ -65,7 +76,7 @@ const emptyGlobalState = (
   updatedAt: new Date(0).toISOString()
 });
 
-/** Composition-root source that joins T503 enumeration, T504 calculation, and persisted Global state. */
+/** Composition-root source that joins T503 enumeration, live editor evidence, T504 calculation, and persisted Global state. */
 export class T505GlobalUnderstandingSource
 implements GlobalUnderstandingRuntimeSource {
   private readonly repository: FileSystemReviewStateRepository;
@@ -96,12 +107,16 @@ implements GlobalUnderstandingRuntimeSource {
     const owner = this.resolveOwner(this.currentContext);
     if (owner === undefined) return undefined;
 
-    const policy = new ReviewFileExclusionPolicy({
-      userGlobs: this.dependencies.readExcludeGlobs()
+    const enumeration = await new NodeRepositoryFileEnumerator(
+      this.dependencies.exclusionPolicy
+    ).enumerate(owner.repositoryRoot);
+    const openByPath = this.captureOpenDocuments(owner);
+    const included = enumeration.included.map((file) => {
+      const open = openByPath.get(file.path);
+      return open === undefined
+        ? file
+        : { path: file.path, nonEmptyLineCount: open.nonEmptyLines.length };
     });
-    const enumeration = await new NodeRepositoryFileEnumerator(policy).enumerate(
-      owner.repositoryRoot
-    );
     const persisted = await this.repository.loadGlobal(owner.target);
     const globalState =
       persisted?.currentRevisionId === owner.currentRevisionId
@@ -110,18 +125,37 @@ implements GlobalUnderstandingRuntimeSource {
             owner.target.repositoryId,
             owner.currentRevisionId
           );
+    const diskSource = new NodeGlobalUnderstandingFileSource(
+      owner.repositoryRoot,
+      this.pathSemantics
+    );
+    const source: GlobalUnderstandingFileSource = {
+      load: async (repositoryPath, revisionId, options) => {
+        const open = openByPath.get(repositoryPath);
+        if (open !== undefined) {
+          if (open.revisionId !== revisionId) {
+            throw new Error(
+              `Open document revision does not match current owner revision: ${repositoryPath}`
+            );
+          }
+          return {
+            ...open,
+            nonEmptyLines: [...open.nonEmptyLines]
+          };
+        }
+        return diskSource.load(repositoryPath, revisionId, options);
+      }
+    };
     const recalculator = new GlobalUnderstandingBackgroundRecalculator({
-      source: new NodeGlobalUnderstandingFileSource(
-        owner.repositoryRoot,
-        this.pathSemantics
-      ),
+      source,
       cache: this.cache,
       yieldControl: this.yieldControl
     });
     const result = await recalculator.recalculate({
       globalState,
-      included: enumeration.included,
-      configurationKey: JSON.stringify(policy.getUserGlobs())
+      included,
+      openFilePaths: [...openByPath.keys()],
+      configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`
     });
 
     return {
@@ -131,9 +165,36 @@ implements GlobalUnderstandingRuntimeSource {
     };
   }
 
+  private captureOpenDocuments(
+    owner: T505GlobalUnderstandingOwner
+  ): ReadonlyMap<string, LoadedGlobalUnderstandingFile> {
+    const snapshots = this.dependencies.readOpenDocuments?.(owner) ?? [];
+    const byPath = new Map<string, LoadedGlobalUnderstandingFile>();
+    for (const snapshot of snapshots) {
+      const canonicalPath = requireCanonicalRepositoryRelativePath(
+        snapshot.path,
+        this.pathSemantics
+      );
+      if (snapshot.revisionId !== owner.currentRevisionId) {
+        throw new Error(
+          `Open document revision does not match current owner revision: ${canonicalPath}`
+        );
+      }
+      if (byPath.has(canonicalPath)) {
+        throw new Error(`Duplicate open document path: ${canonicalPath}`);
+      }
+      byPath.set(canonicalPath, {
+        ...snapshot,
+        path: canonicalPath,
+        nonEmptyLines: [...snapshot.nonEmptyLines]
+      });
+    }
+    return byPath;
+  }
+
   private resolveOwner(
     snapshot: CurrentContextUiSnapshot | undefined
-  ): ResolvedGlobalUnderstandingOwner | undefined {
+  ): T505GlobalUnderstandingOwner | undefined {
     const selection = snapshot?.context.selection;
     if (snapshot === undefined || selection === undefined) return undefined;
 
