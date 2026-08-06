@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import "./global-understanding-ui.test";
+
 test("T305 preserves every pre-existing unit suite exactly once while adding its focused suites", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     scripts: Record<string, string>;
