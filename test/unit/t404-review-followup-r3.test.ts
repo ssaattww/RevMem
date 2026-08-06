@@ -112,13 +112,7 @@ test("immutable diff/content mapper invalidates changed reviewed lines instead o
       ""
     ].join("\n"),
     oldTexts: { "src/example.ts": "one\nold\nthree\n" },
-    newFiles: {
-      "src/example.ts": {
-        fileId: "file",
-        lineCount: 3,
-        newText: "one\nchanged\nthree\n",
-      },
-    },
+    newFiles: { "src/example.ts": { fileId: "file", lineCount: 3, newText: "one\nchanged\nthree\n" } },
   }));
   const mapped = await mapper({
     current: { contextState: context(), globalState: globalState() },
@@ -148,22 +142,10 @@ test("mapped snapshots reject stale or foreign file revisions and PR descriptors
   const repository = new MemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };
   const service = new GitHubPullRequestContextStateService(repository, async ({ current, nextPullRequest }) => ({
-    contextState: {
-      ...current.contextState,
-      pullRequest: { ...nextPullRequest, owner: "other" },
-      files: { file: { ...current.contextState.files.file!, revisionId: B } },
-    },
-    globalState: {
-      ...current.globalState,
-      currentRevisionId: C,
-      files: { file: { ...current.globalState.files.file!, revisionId: B } },
-    },
+    contextState: { ...current.contextState, pullRequest: { ...nextPullRequest, owner: "other" }, files: { file: { ...current.contextState.files.file!, revisionId: B } } },
+    globalState: { ...current.globalState, currentRevisionId: C, files: { file: { ...current.globalState.files.file!, revisionId: B } } },
   }));
-  await assert.rejects(() => service.update({
-    repositoryId: REPOSITORY_ID,
-    identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 },
-    pullRequest: pr({ headSha: C }),
-  }), /mapped|revision|descriptor|identity/i);
+  await assert.rejects(() => service.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pr({ headSha: C }) }), /mapped|revision|descriptor|identity/i);
   assert.equal(repository.commits, 0);
 });
 
@@ -171,16 +153,8 @@ test("explicit closed override survives metadata refresh and revision transition
   const repository = new MemoryRepository();
   repository.current = { contextState: context(48, { pullRequest: pr({ state: "closed", decorationEnabled: true }) }), globalState: globalState() };
   const service = new GitHubPullRequestContextStateService(repository, async ({ current, nextPullRequest }) => ({
-    contextState: {
-      ...current.contextState,
-      pullRequest: nextPullRequest,
-      files: { file: { ...current.contextState.files.file!, revisionId: nextPullRequest.headSha } },
-    },
-    globalState: {
-      ...current.globalState,
-      currentRevisionId: nextPullRequest.headSha,
-      files: { file: { ...current.globalState.files.file!, revisionId: nextPullRequest.headSha } },
-    },
+    contextState: { ...current.contextState, pullRequest: nextPullRequest, files: { file: { ...current.contextState.files.file!, revisionId: nextPullRequest.headSha } } },
+    globalState: { ...current.globalState, currentRevisionId: nextPullRequest.headSha, files: { file: { ...current.globalState.files.file!, revisionId: nextPullRequest.headSha } } },
   }));
   const identity = { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 };
   const refreshed = await service.update({ repositoryId: REPOSITORY_ID, identity, pullRequest: pr({ state: "closed", title: "refresh" }) });
