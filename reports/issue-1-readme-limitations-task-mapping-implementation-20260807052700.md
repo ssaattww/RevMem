@@ -4,10 +4,12 @@
 
 - Repository: `ssaattww/RevMem`
 - Issue: `#1`
+- Pull Request: `#50`
 - Branch: `agent/readme-limitations-task-mapping`
 - Base: `main`
 - 作業種別: documentation-only implementation
 - README変更commit: `694525f61b8603326e020e2787e978bad29fe074`
+- PR作成時HEAD: `020e4dabccfa6fc1420dc98df3277cde24aa0cb2`
 - Merge: 実施しない
 
 ## 目的
@@ -71,6 +73,6 @@ READMEの「現在の制限」について、各制限がどのタスクの完�
 
 ## 次のアクション
 
-- PRを作成し、PR HEAD SHAと一致するCI runだけを確認する。
+- PR #50のcurrent HEAD SHAと一致するCI runだけを確認する。
 - CI結果と変更要約をPRコメントへ投稿する。
 - mergeは利用者が実施する。
