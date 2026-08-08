@@ -46,7 +46,10 @@ const requireMatchingEvidence = (
   ) {
     throw new Error("Immutable PR revision evidence does not match the requested revision transition");
   }
-  if (actual.diff.length === 0) throw new Error("Immutable PR revision evidence requires a complete diff");
+  const baseOnlyTransition =
+    expected.sourceHeadSha === expected.targetHeadSha &&
+    expected.sourceBaseSha !== expected.targetBaseSha;
+  if (actual.diff.length === 0 && !baseOnlyTransition) throw new Error("Immutable PR revision evidence requires a complete diff");
 
   const trackedPaths = new Set([
     ...Object.values(contextFiles).map((file) => file.currentPath),
@@ -89,6 +92,27 @@ const advanceRetainedContextFiles = (
   ])
 );
 
+const invalidateBaseDependentOriginalRanges = (
+  files: Readonly<Record<string, Readonly<FileReviewState>>>,
+  updatedAt: string
+): Record<string, FileReviewState> => Object.fromEntries(
+  Object.entries(files).map(([fileId, file]) => [fileId, {
+    ...file,
+    modifiedReviewed: file.modifiedReviewed.map((interval) => ({ ...interval })),
+    originalReviewedByDiff: {},
+    updatedAt,
+  }])
+);
+
+const cloneGlobalState = (
+  files: Readonly<Record<string, Readonly<GlobalFileReviewState>>>
+): Record<string, GlobalFileReviewState> => Object.fromEntries(
+  Object.entries(files).map(([fileId, file]) => [fileId, {
+    ...file,
+    reviewed: file.reviewed.map((interval) => ({ ...interval })),
+  }])
+);
+
 export function createImmutablePullRequestRevisionMapper(
   loadEvidence: ImmutablePullRequestRevisionEvidenceLoader,
   options: GitFileStateTransitionInput["options"] = DEFAULT_MAPPING_OPTIONS
@@ -102,6 +126,23 @@ export function createImmutablePullRequestRevisionMapper(
       current.globalState.files
     );
     const updatedAt = immutable.updatedAt ?? new Date().toISOString();
+    const baseOnlyTransition =
+      evidence.sourceHeadSha === evidence.targetHeadSha &&
+      evidence.sourceBaseSha !== evidence.targetBaseSha;
+    if (baseOnlyTransition) {
+      return {
+        contextState: {
+          ...current.contextState,
+          pullRequest: { ...nextPullRequest },
+          files: invalidateBaseDependentOriginalRanges(current.contextState.files, updatedAt),
+          updatedAt,
+        },
+        globalState: {
+          ...current.globalState,
+          files: cloneGlobalState(current.globalState.files),
+        },
+      };
+    }
     const parsed = parseZeroContextGitDiff(immutable.diff);
 
     const contextTransition = applyGitFileStateTransitions({

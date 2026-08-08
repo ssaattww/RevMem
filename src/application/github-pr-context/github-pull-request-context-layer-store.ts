@@ -7,6 +7,7 @@ import {
   canonicalizeHostedGitAuthority,
   canonicalizeHostedGitRepositoryIdentity,
 } from "../../core/repository-identity/index";
+import type { ReviewHistoryRecorder } from "../review-history/index";
 
 export interface GitHubPullRequestContextIdentity {
   readonly host: string;
@@ -47,6 +48,11 @@ export interface PullRequestRevisionMappingInput {
 
 export type PullRequestRevisionMapper = (input: PullRequestRevisionMappingInput) => Promise<PullRequestReviewStateCommit>;
 
+type PullRequestHistoryRecorder = Pick<
+  ReviewHistoryRecorder,
+  "recordContextCreated" | "recordRevisionMapping"
+>;
+
 export interface UpdatePullRequestContextInput {
   readonly repositoryId: string;
   readonly identity: GitHubPullRequestContextIdentity;
@@ -81,7 +87,11 @@ export function isPullRequestDecorationEnabled(pullRequest: PullRequestReviewCon
 }
 
 export class GitHubPullRequestContextStateService {
-  public constructor(private readonly repository: GitHubPullRequestContextRepositoryPort, private readonly mapRevision: PullRequestRevisionMapper) {}
+  public constructor(
+    private readonly repository: GitHubPullRequestContextRepositoryPort,
+    private readonly mapRevision: PullRequestRevisionMapper,
+    private readonly historyRecorder?: PullRequestHistoryRecorder
+  ) {}
 
   public async create(commit: PullRequestReviewStateCommit, expectedGlobalState: RepositoryGlobalState | undefined): Promise<void> {
     const pullRequest = requirePullRequestContext(commit.contextState);
@@ -90,8 +100,10 @@ export class GitHubPullRequestContextStateService {
     const canonicalContextId = createGitHubPullRequestContextIdFromRepositoryId(canonicalRepositoryId, pullRequest.number);
     if (commit.contextState.contextId !== canonicalContextId) throw new Error("Pull-request contextId does not match canonical repository identity");
     requirePullRequestDescriptor(pullRequest, canonicalRepositoryId, pullRequest.number);
+    if (commit.globalState.currentRevisionId !== pullRequest.headSha) throw new Error("Global state revision must match the pull-request head");
     requireSnapshotFileRevisions(commit, pullRequest.headSha);
     await this.repository.create({ repositoryId: canonicalRepositoryId, contextId: commit.contextState.contextId, expected: { contextState: undefined, globalState: expectedGlobalState }, next: cloneCommit(commit) });
+    await this.historyRecorder?.recordContextCreated(cloneValue(commit.contextState));
   }
 
   public async load(repositoryId: string, identity: GitHubPullRequestContextIdentity): Promise<PullRequestReviewStateCommit | undefined> {
@@ -119,6 +131,7 @@ export class GitHubPullRequestContextStateService {
       next = { contextState: { ...cloneValue(current.contextState), displayName: input.displayName ?? current.contextState.displayName, pullRequest: cloneValue(nextPullRequest), updatedAt: new Date().toISOString() }, globalState: cloneValue(current.globalState) };
     }
     await this.repository.commit({ repositoryId: canonicalRepositoryId, contextId, expected: cloneCommit(current), next: cloneCommit(next) });
+    if (revisionChanged) await this.historyRecorder?.recordRevisionMapping(cloneCommit(current), cloneCommit(next));
     return cloneCommit(next);
   }
 }
