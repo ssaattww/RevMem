@@ -112,3 +112,34 @@ test("CI executes the canonical T502 focused command", async () => {
 
   assert.match(workflow, /npm run test:t502\b/u);
 });
+
+test("T505 focused coverage executes each dedicated suite once and is required by CI", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+  const focused = requireScript(manifest.scripts ?? {}, "test:t505");
+
+  for (const suiteName of [
+    "global-understanding-ui",
+    "t505-global-understanding-source",
+    "t505-refresh-invalidation",
+    "t505-review-findings"
+  ]) {
+    const suitePath = new RegExp(
+      `test-dist/test/unit/${suiteName}\\.test\\.js`,
+      "gu"
+    );
+    assert.equal(
+      focused.match(suitePath)?.length ?? 0,
+      1,
+      `test:t505 must execute ${suiteName}.test.js exactly once`
+    );
+  }
+
+  const workflow = await readFile(workflowPath, "utf8");
+  assert.match(
+    workflow,
+    /- name: T505 Global understanding tests[\s\S]*?npm run test:t505\b[\s\S]*?tee test-output\/ci\/test-t505\.log/u,
+    "CI must invoke the package-owned T505 focused script and preserve its log"
+  );
+});

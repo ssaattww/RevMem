@@ -77,6 +77,10 @@ jobs:
           set -o pipefail
           npm run compile:test 2>&1 | tee test-output/ci/t504-compile-test.log
           node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js 2>&1 | tee test-output/ci/test-t504.log
+      - name: T505 Global understanding tests
+        run: |
+          set -o pipefail
+          npm run test:t505 2>&1 | tee test-output/ci/test-t505.log
       - name: Temporary Git integration tests
         run: |
           set -o pipefail
