@@ -24,6 +24,7 @@ import {
 
 const OLD_SHA = "1111111111111111111111111111111111111111";
 const NEW_SHA = "2222222222222222222222222222222222222222";
+const MISSING_GLOBAL_SHA = "3333333333333333333333333333333333333333";
 const OCCURRED_AT = "2026-08-06T11:00:00.000Z";
 const REPOSITORY_ID = "github.com/example/rewrite";
 const REPOSITORY_ROOT = "/repo";
@@ -31,6 +32,7 @@ const stableHash = new NodeSha256StableHash();
 
 class RewriteSource implements GitRevisionMappingSource {
   public oldObjectExists = false;
+  public readonly missingObjectIds = new Set<string>();
   public readonly texts = new Map<string, string>();
   public diffCalls = 0;
 
@@ -38,7 +40,9 @@ class RewriteSource implements GitRevisionMappingSource {
     _repositoryRoot: string,
     objectName: string
   ): Promise<boolean> {
-    return objectName === OLD_SHA ? this.oldObjectExists : true;
+    return objectName === OLD_SHA
+      ? this.oldObjectExists
+      : !this.missingObjectIds.has(objectName);
   }
 
   public async diffRevisions(): Promise<string> {
@@ -250,6 +254,41 @@ test("Git revision mapper fails closed when multiple current paths match one sav
     contextState(current.contextId, "src/old.ts"),
     globalState("src/old.ts"),
     ["src/one.ts", "src/two.ts"]
+  );
+
+  assert.deepEqual(result.contextState.files, {});
+  assert.deepEqual(result.globalState.files, {});
+  assert.deepEqual(result.unresolvedFileIds, ["file-1"]);
+});
+
+test("Git revision mapper clears a shared file when direct Context and recovered Global disagree", async () => {
+  const { source, snapshotTracker, current, mapper } = setup();
+  source.oldObjectExists = true;
+  source.missingObjectIds.add(MISSING_GLOBAL_SHA);
+  source.texts.set(`${NEW_SHA}\0src/context.ts`, "context");
+  source.texts.set(`${NEW_SHA}\0src/recovered.ts`, "global\nbeta\ngamma");
+  const global = globalState("src/global.ts");
+  const globalFile = global.files["file-1"];
+  assert.ok(globalFile);
+  global.currentRevisionId = MISSING_GLOBAL_SHA;
+  global.files["file-1"] = {
+    ...globalFile,
+    revisionId: MISSING_GLOBAL_SHA,
+    contentHash: stableHash.digest("global\nbeta\ngamma")
+  };
+  await snapshotTracker.saveLatest({
+    workspaceContextId: `git-global:${REPOSITORY_ID}`,
+    fileId: "file-1",
+    content: "global\nbeta\ngamma",
+    reviewedRanges: [{ startLine: 0, endLineExclusive: 1 }]
+  }, Date.parse(OCCURRED_AT));
+
+  const result = await map(
+    mapper,
+    current,
+    contextState(current.contextId, "src/context.ts"),
+    global,
+    ["src/context.ts", "src/recovered.ts"]
   );
 
   assert.deepEqual(result.contextState.files, {});

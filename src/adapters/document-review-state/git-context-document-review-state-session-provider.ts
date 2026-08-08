@@ -113,6 +113,7 @@ export class GitContextDocumentReviewStateSessionProvider {
   private readonly mapper: GitContextRevisionMapper | undefined;
   private readonly monitor: PollingGitStateMonitor;
   private readonly knownDescriptors = new Map<string, DocumentEditorReviewDescriptor>();
+  private readonly snapshotGenerations = new Map<string, number>();
   private readonly mappingOptions: Readonly<GitDiffMappingOptions>;
 
   /** Creates a provider that reuses existing persistence and reconciliation contracts. */
@@ -145,7 +146,15 @@ export class GitContextDocumentReviewStateSessionProvider {
         const snapshot = change.current;
         const descriptor = this.knownDescriptors.get(change.rootPath);
         if (snapshot !== undefined && descriptor !== undefined) {
-          await this.prepareSnapshot(descriptor, false, snapshot, false);
+          const current = this.resolver.resolve(snapshot);
+          await this.prepareSnapshot(
+            descriptor,
+            false,
+            snapshot,
+            current,
+            this.advanceSnapshotGeneration(current),
+            false
+          );
         }
       }
     });
@@ -167,7 +176,12 @@ export class GitContextDocumentReviewStateSessionProvider {
     }
     this.assertBranchSelection(inspection, selection);
     if (inspection.kind === "repository") {
-      await this.prepareSnapshot(descriptor, true, toSnapshot(inspection.repository));
+      const snapshot = toSnapshot(inspection.repository);
+      const current = this.resolver.resolve(snapshot);
+      const generation = this.advanceSnapshotGeneration(current);
+      if (!await this.prepareSnapshot(descriptor, true, snapshot, current, generation)) {
+        return this.open(descriptor, selection);
+      }
     }
     return this.createDelegate(inspection).open(descriptor);
   }
@@ -192,7 +206,15 @@ export class GitContextDocumentReviewStateSessionProvider {
       return undefined;
     }
     if (inspection.kind === "repository") {
-      await this.prepareSnapshot(descriptor, false, toSnapshot(inspection.repository));
+      const snapshot = toSnapshot(inspection.repository);
+      const current = this.resolver.resolve(snapshot);
+      await this.prepareSnapshot(
+        descriptor,
+        false,
+        snapshot,
+        current,
+        this.advanceSnapshotGeneration(current)
+      );
     }
     return this.createDelegate(inspection).loadForDecoration(descriptor);
   }
@@ -270,10 +292,14 @@ export class GitContextDocumentReviewStateSessionProvider {
   ): Promise<LocalGitRepositoryInspection> {
     const inspection = await this.inspect(descriptor);
     if (inspection.kind === "repository") {
+      const snapshot = toSnapshot(inspection.repository);
+      const current = this.resolver.resolve(snapshot);
       await this.prepareSnapshot(
         descriptor,
         initializeMissingContext,
-        toSnapshot(inspection.repository)
+        snapshot,
+        current,
+        this.advanceSnapshotGeneration(current)
       );
     }
     return clone(inspection);
@@ -292,25 +318,35 @@ export class GitContextDocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean,
     snapshot: GitReviewContextRepositorySnapshot,
+    current: ResolvedGitReviewContext,
+    generation: number,
     registerMonitorBaseline = true
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.knownDescriptors.set(snapshot.rootPath, clone(descriptor));
-    const current = this.resolver.resolve(snapshot);
+    if (!this.isCurrentSnapshotGeneration(current, generation)) {
+      return false;
+    }
     await this.ensureMapped(
       current,
       descriptor,
-      initializeMissingContext
+      initializeMissingContext,
+      () => this.isCurrentSnapshotGeneration(current, generation)
     );
+    if (!this.isCurrentSnapshotGeneration(current, generation)) {
+      return false;
+    }
     if (registerMonitorBaseline) {
       this.monitor.observe(snapshot.rootPath, snapshot);
     }
     this.options.gitStateObserver?.observe(snapshot.rootPath, snapshot);
+    return true;
   }
 
   private async ensureMapped(
     current: ResolvedGitReviewContext,
     descriptor: DocumentEditorReviewDescriptor,
-    initializeMissingContext: boolean
+    initializeMissingContext: boolean,
+    isCurrentGeneration: () => boolean
   ): Promise<void> {
     const target: ReviewStateRepositoryTarget = {
       kind: "git",
@@ -319,13 +355,16 @@ export class GitContextDocumentReviewStateSessionProvider {
     };
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!isCurrentGeneration()) {
+        return;
+      }
       const commit = await this.options.repository.load(target);
       try {
         if (commit === undefined) {
           if (!initializeMissingContext) {
             return;
           }
-          await this.initializeContext(current, target, descriptor);
+          await this.initializeContext(current, target, descriptor, isCurrentGeneration);
           return;
         }
         if (
@@ -335,6 +374,9 @@ export class GitContextDocumentReviewStateSessionProvider {
           return;
         }
         const mapped = await this.mapCommit(current, commit, descriptor);
+        if (!isCurrentGeneration()) {
+          return;
+        }
         const next = mapped.commit;
         const transaction: ReviewStateTransactionLike = {
           repositoryId: current.repositoryId,
@@ -364,7 +406,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         if (!(error instanceof StaleReviewStateError) || attempt === 2) {
           throw error;
         }
-        if (!(await this.isCurrentGitSnapshot(current))) {
+        if (!isCurrentGeneration() || !(await this.isCurrentGitSnapshot(current))) {
           return;
         }
       }
@@ -389,7 +431,8 @@ export class GitContextDocumentReviewStateSessionProvider {
   private async initializeContext(
     current: ResolvedGitReviewContext,
     target: ReviewStateRepositoryTarget,
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    isCurrentGeneration: () => boolean
   ): Promise<void> {
     const global = isGlobalLoader(this.options.repository)
       ? await this.options.repository.loadGlobal(target)
@@ -411,6 +454,9 @@ export class GitContextDocumentReviewStateSessionProvider {
       initial.globalState.currentRevisionId === current.revisionId
         ? { commit: initial, unresolvedFileIds: [] }
         : await this.mapCommit(current, initial, descriptor);
+    if (!isCurrentGeneration()) {
+      return;
+    }
     if (isGlobalCreator(this.options.repository)) {
       await this.options.repository.create({
         repositoryId: current.repositoryId,
@@ -461,5 +507,19 @@ export class GitContextDocumentReviewStateSessionProvider {
       },
       unresolvedFileIds: [...mapped.unresolvedFileIds]
     };
+  }
+
+  private advanceSnapshotGeneration(current: ResolvedGitReviewContext): number {
+    const key = `${current.repositoryId}\0${current.contextId}`;
+    const generation = (this.snapshotGenerations.get(key) ?? 0) + 1;
+    this.snapshotGenerations.set(key, generation);
+    return generation;
+  }
+
+  private isCurrentSnapshotGeneration(
+    current: ResolvedGitReviewContext,
+    generation: number
+  ): boolean {
+    return this.snapshotGenerations.get(`${current.repositoryId}\0${current.contextId}`) === generation;
   }
 }

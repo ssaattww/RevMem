@@ -1,4 +1,8 @@
-import type { ReviewContextState } from "../../core/contracts/index";
+import type {
+  FileReviewState,
+  GlobalFileReviewState,
+  ReviewContextState
+} from "../../core/contracts/index";
 import { GitContextRevisionMapper as DirectGitContextRevisionMapper } from "./git-context-revision-mapper";
 import type {
   GitContextRevisionMapperOptions,
@@ -100,27 +104,35 @@ export class GitContextRevisionMapper {
       occurredAt: direct.contextState.updatedAt
     });
 
+    const contextFiles = availability.contextMissing
+      ? clone(recovered.contextFiles)
+      : clone(direct.contextState.files);
+    const globalFiles = availability.globalMissing
+      ? clone(recovered.globalFiles)
+      : clone(direct.globalState.files);
+    const unresolvedFileIds = new Set([
+      ...(availability.contextMissing
+        ? []
+        : direct.unresolvedFileIds),
+      ...recovered.unresolvedFileIds
+    ]);
+    reconcileSharedRecoveryFiles(
+      input,
+      contextFiles,
+      globalFiles,
+      unresolvedFileIds
+    );
+
     return {
       contextState: {
         ...clone(direct.contextState),
-        files: availability.contextMissing
-          ? clone(recovered.contextFiles)
-          : clone(direct.contextState.files)
+        files: contextFiles
       },
       globalState: {
         ...clone(direct.globalState),
-        files: availability.globalMissing
-          ? clone(recovered.globalFiles)
-          : clone(direct.globalState.files)
+        files: globalFiles
       },
-      unresolvedFileIds: [
-        ...new Set([
-          ...(availability.contextMissing
-            ? []
-            : direct.unresolvedFileIds),
-          ...recovered.unresolvedFileIds
-        ])
-      ].sort()
+      unresolvedFileIds: [...unresolvedFileIds].sort()
     };
   }
 
@@ -231,5 +243,33 @@ export class GitContextRevisionMapper {
       }
       seen.add(path);
     }
+  }
+}
+
+function reconcileSharedRecoveryFiles(
+  input: Readonly<GitContextRevisionMappingInput>,
+  contextFiles: Record<string, FileReviewState>,
+  globalFiles: Record<string, GlobalFileReviewState>,
+  unresolved: Set<string>
+): void {
+  for (const fileId of Object.keys(input.contextState.files)) {
+    if (input.globalState.files[fileId] === undefined) {
+      continue;
+    }
+    const context = contextFiles[fileId];
+    const global = globalFiles[fileId];
+    if (
+      !unresolved.has(fileId) &&
+      context !== undefined &&
+      global !== undefined &&
+      context.currentPath === global.currentPath &&
+      context.revisionId === input.current.revisionId &&
+      global.revisionId === input.current.revisionId
+    ) {
+      continue;
+    }
+    delete contextFiles[fileId];
+    delete globalFiles[fileId];
+    unresolved.add(fileId);
   }
 }

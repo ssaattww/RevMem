@@ -35,6 +35,7 @@ const NEW_SHA = "2222222222222222222222222222222222222222";
 const NOW = "2026-08-06T11:40:00.000Z";
 const REPOSITORY_ID = "github.com/example/runtime-rewrite";
 const CONTENT = "alpha\nbeta\ngamma";
+const NEW_CONTENT = "delta\nepsilon\nzeta";
 const clone = <T>(value: unknown): T => JSON.parse(JSON.stringify(value)) as T;
 
 const keyOf = (target: ReviewStateRepositoryTarget): string =>
@@ -124,6 +125,7 @@ class MutableInspector implements DocumentGitInspector {
 
 class RuntimeSource implements GitRevisionMappingSource {
   public oldObjectExists = true;
+  public diff = "";
   public readonly texts = new Map<string, string>([
     [`${OLD_SHA}\0src/example.ts`, CONTENT],
     [`${NEW_SHA}\0src/example.ts`, CONTENT]
@@ -132,15 +134,18 @@ class RuntimeSource implements GitRevisionMappingSource {
     | {
         started: () => void;
         wait: Promise<void>;
+        revision: string;
       }
     | undefined;
 
-  public armNextRead(): { readonly started: Promise<void>; release(): void } {
+  public armNextRead(
+    revision: string = OLD_SHA
+  ): { readonly started: Promise<void>; release(): void } {
     let startedResolve!: () => void;
     let release!: () => void;
     const started = new Promise<void>((resolve) => { startedResolve = resolve; });
     const wait = new Promise<void>((resolve) => { release = resolve; });
-    this.readGate = { started: startedResolve, wait };
+    this.readGate = { started: startedResolve, wait, revision };
     return { started, release };
   }
 
@@ -149,7 +154,7 @@ class RuntimeSource implements GitRevisionMappingSource {
   }
 
   public async diffRevisions(): Promise<string> {
-    return "";
+    return this.diff;
   }
 
   public async listFilePathsAtRevision(): Promise<readonly string[]> {
@@ -167,7 +172,7 @@ class RuntimeSource implements GitRevisionMappingSource {
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
     const gate = this.readGate;
-    if (gate !== undefined && root === "/repo/src") {
+    if (gate !== undefined && root === "/repo/src" && revision === gate.revision) {
       this.readGate = undefined;
       gate.started();
       await gate.wait;
@@ -240,7 +245,9 @@ const setup = (tracker?: NonGitSnapshotTracker) => {
     identityService: new WorkspaceIdentityService(stableHash),
     repository,
     snapshotTracker: actualTracker,
-    resolveContent: () => CONTENT,
+    resolveContent: (value) => value.contentHash === stableHash.digest(NEW_CONTENT)
+      ? NEW_CONTENT
+      : CONTENT,
     now: () => new Date(NOW)
   });
   const provider = new DocumentReviewStateSessionProvider({
@@ -360,6 +367,61 @@ test("a stale open delayed before enqueue cannot overwrite a newer unreview comm
   source.oldObjectExists = false;
   inspector.head = NEW_SHA;
   const recovered = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  assert.deepEqual(
+    recovered.contextState.files[recovered.target.fileId]?.modifiedReviewed,
+    []
+  );
+  assert.deepEqual(
+    recovered.globalState.files[recovered.target.fileId]?.reviewed,
+    []
+  );
+  provider.dispose();
+});
+
+test("an older Git open completing after a newer revision open cannot republish its snapshot", async () => {
+  const tracker = new DelayedSnapshotTracker(
+    new InMemoryNonGitSnapshotStorage(),
+    new NodeNonGitSnapshotCodec(),
+    {
+      maxSnapshots: 64,
+      maxCompressedBytes: 1024 * 1024,
+      retentionMs: 24 * 60 * 60 * 1_000
+    }
+  );
+  const { stableHash, inspector, source, provider } = setup(tracker);
+  const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt: NOW
+  }));
+
+  const gate = source.armNextRead(OLD_SHA);
+  const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
+  await gate.started;
+  inspector.head = NEW_SHA;
+  source.texts.set(`${NEW_SHA}\0src/example.ts`, NEW_CONTENT);
+  source.diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "--- a/src/example.ts",
+    "+++ b/src/example.ts",
+    "@@ -1,3 +1,3 @@",
+    "-alpha",
+    "-beta",
+    "-gamma",
+    "+delta",
+    "+epsilon",
+    "+zeta",
+    ""
+  ].join("\n");
+  await provider.open(descriptor(stableHash.digest(NEW_CONTENT)));
+  gate.release();
+  await staleOpen;
+
+  source.oldObjectExists = false;
+  const recovered = await provider.open(descriptor(stableHash.digest(NEW_CONTENT)));
   assert.deepEqual(
     recovered.contextState.files[recovered.target.fileId]?.modifiedReviewed,
     []
