@@ -21,7 +21,10 @@
     "onCommand:reviewRange.unmarkFileReviewed",
     "onView:reviewRange.currentContext",
     "onCommand:reviewRange.refreshContext",
-    "onCommand:reviewRange.selectContext"
+    "onCommand:reviewRange.selectContext",
+    "onView:reviewRange.globalUnderstanding",
+    "onCommand:reviewRange.refreshGlobalUnderstanding",
+    "onCommand:reviewRange.toggleGlobalLayer"
   ],
   "main": "./dist/t305-extension.js",
   "extensionKind": ["workspace"],
@@ -33,7 +36,9 @@
       { "command": "reviewRange.unmarkFileReviewed", "title": "ファイル全体の確認済みを解除する", "category": "Review Range", "enablement": "editorTextFocus" },
       { "command": "reviewRange.refreshContext", "title": "現在のコンテキストを再計算", "category": "Review Range" },
       { "command": "reviewRange.selectContext", "title": "現在のコンテキストを選択", "category": "Review Range" },
-      { "command": "reviewRange.openPrProgressItem", "title": "PR Progress項目を開く", "category": "Review Range" }
+      { "command": "reviewRange.openPrProgressItem", "title": "PR Progress項目を開く", "category": "Review Range" },
+      { "command": "reviewRange.refreshGlobalUnderstanding", "title": "Global理解率を再計算", "category": "Review Range" },
+      { "command": "reviewRange.toggleGlobalLayer", "title": "Global確認済みレイヤーを切り替え", "category": "Review Range" }
     ],
     "menus": {
       "editor/context": [
@@ -44,7 +49,9 @@
       ],
       "view/title": [
         { "command": "reviewRange.refreshContext", "when": "view == reviewRange.currentContext", "group": "navigation@1" },
-        { "command": "reviewRange.selectContext", "when": "view == reviewRange.currentContext", "group": "navigation@2" }
+        { "command": "reviewRange.selectContext", "when": "view == reviewRange.currentContext", "group": "navigation@2" },
+        { "command": "reviewRange.refreshGlobalUnderstanding", "when": "view == reviewRange.globalUnderstanding", "group": "navigation@1" },
+        { "command": "reviewRange.toggleGlobalLayer", "when": "view == reviewRange.globalUnderstanding", "group": "navigation@2" }
       ],
       "view/item/context": [
         { "command": "reviewRange.openPrProgressItem", "when": "view == reviewRange.prProgress && viewItem == reviewRange.prProgressFile", "group": "inline" }
@@ -61,6 +68,13 @@
           "items": { "type": "string" },
           "default": ["**/.git/**", "**/node_modules/**", "**/bin/**", "**/obj/**", "**/dist/**", "**/build/**"],
           "description": "PR進捗とGlobal理解率の集計対象から除外するファイルglobです。有効な配列は既定値を上書きし、空配列ではbinaryと.git以外を再包含できます。単一backslashはseparator、literal backslashは二重backslashで指定します（settings.jsonでは \"a\\\\\\\\b.ts\"）。"
+        },
+        "reviewRange.maxSnapshotFileSizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "default": 5242880,
+          "description": "Git管理外ファイルの1 snapshotで許可する圧縮後の最大byte数です。変更はExtension Hostの再読み込み後に新規snapshotへ適用されます。"
         }
       }
     },
@@ -113,7 +127,8 @@
     "test:vscode-runner": "npm run compile:test && node --test test-dist/test/unit/owned-extension-host-launch.test.js test-dist/test/unit/owned-temporary-directory-cleanup.test.js",
     "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:t502 && npm run test:vscode",
     "test:t402": "npm run compile:test && node --test test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js",
-    "test:t305": "npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js"
+    "test:t305": "npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js",
+    "test:t505": "npm run compile:test && node --test test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/t505-refresh-invalidation.test.js test-dist/test/unit/t505-review-findings.test.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

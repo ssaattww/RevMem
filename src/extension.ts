@@ -20,6 +20,10 @@ import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/n
 import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
 import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
 import {
+  DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
+  resolveConfiguredNonGitSnapshotLimits
+} from "./application/non-git-snapshots/non-git-snapshot-settings";
+import {
   createNormalEditorDecorationModel,
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
@@ -80,6 +84,8 @@ export interface ReviewRangeRuntimePort {
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
   refreshVisibleEditorDecorations(): Promise<void>;
+  /** Subscribes UI projections that must be recalculated after review-state commands. */
+  onDidChangeReviewState(listener: () => void): vscode.Disposable;
 }
 
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
@@ -220,6 +226,8 @@ const uniqueVisibleIntervals = (
 export function activate(
   context: vscode.ExtensionContext
 ): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
+  const reviewStateChanged = new vscode.EventEmitter<void>();
+  context.subscriptions.push(reviewStateChanged);
   const stableHash = new NodeSha256StableHash();
   const fileExclusionPolicyService = new ReviewFileExclusionPolicyService();
   const fileExclusionConfigurationController =
@@ -281,11 +289,18 @@ export function activate(
     identityService: new WorkspaceIdentityService(stableHash),
     repository,
     historyRecorder,
-    snapshotTracker: new NonGitSnapshotTracker(snapshotStorage, new NodeNonGitSnapshotCodec(), {
-      maxSnapshots: 128,
-      maxCompressedBytes: 5 * 1024 * 1024,
-      retentionMs: 30 * 24 * 60 * 60 * 1_000
-    }),
+    snapshotTracker: new NonGitSnapshotTracker(
+      snapshotStorage,
+      new NodeNonGitSnapshotCodec(),
+      resolveConfiguredNonGitSnapshotLimits({
+        maxSnapshotFileSizeBytes: vscode.workspace
+          .getConfiguration("reviewRange")
+          .get<number>(
+            "maxSnapshotFileSizeBytes",
+            DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES
+          )
+      })
+    ),
     resolveContent: (descriptor) => {
       const resource = descriptor.documentUri;
       return vscode.workspace.textDocuments.find((document) =>
@@ -489,7 +504,10 @@ export function activate(
         throw new Error("Review Range diff editor is not available.");
       }
       const result = await service[operation](editor);
-      if (result === "applied") localBaseHeadTreeReference.current?.refresh();
+      if (result === "applied") {
+        localBaseHeadTreeReference.current?.refresh();
+        reviewStateChanged.fire();
+      }
       return result;
     },
     registerCommand: (commandId, handler) =>
@@ -509,10 +527,26 @@ export function activate(
     host,
     createRefreshingNormalEditorReviewCommandHandlers(
       {
-        markSelectionReviewed: (editor) => commandService.markSelectionReviewed(editor),
-        unmarkSelectionReviewed: (editor) => commandService.unmarkSelectionReviewed(editor),
-        markFileReviewed: (editor) => commandService.markFileReviewed(editor),
-        unmarkFileReviewed: (editor) => commandService.unmarkFileReviewed(editor)
+        markSelectionReviewed: async (editor) => {
+          const result = await commandService.markSelectionReviewed(editor);
+          if (result === "applied") reviewStateChanged.fire();
+          return result;
+        },
+        unmarkSelectionReviewed: async (editor) => {
+          const result = await commandService.unmarkSelectionReviewed(editor);
+          if (result === "applied") reviewStateChanged.fire();
+          return result;
+        },
+        markFileReviewed: async (editor) => {
+          const result = await commandService.markFileReviewed(editor);
+          if (result === "applied") reviewStateChanged.fire();
+          return result;
+        },
+        unmarkFileReviewed: async (editor) => {
+          const result = await commandService.unmarkFileReviewed(editor);
+          if (result === "applied") reviewStateChanged.fire();
+          return result;
+        }
       },
       decorationController
     )
@@ -536,7 +570,9 @@ export function activate(
       selectedContext = selection;
     },
     refreshVisibleEditorDecorations: () =>
-      decorationController.refreshVisibleEditors()
+      decorationController.refreshVisibleEditors(),
+    onDidChangeReviewState: (listener) =>
+      reviewStateChanged.event(listener)
   };
 
   const localBaseHeadRuntimeReference: {

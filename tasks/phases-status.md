@@ -30,16 +30,16 @@ Lを超える見込みになった場合は再分解する。
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T404はmainへ統合済み。Review Contexts UIと障害統合試験が未着手 |
-| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はmainへ統合済み。T602はPR #49で通常reviewと一度限りの独立review findingsをclosedし、squash merge待ち |
+| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。T505は通常reviewと一度限りの全範囲独立review findingsをclosedし、squash merge待ち |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601とT602はmainへ統合済み。T603以降が未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
-- 直近統合: T306 diff操作からPR Progress UIまでのExtension Host受入（PR #45）
-- 実装中タスク: T602（通常review・独立review・finding closure完了、merge待ち）
-- 次の工程: final report attestation後、PR #49の必須PR checkを確認してsquash mergeする
-- 後続候補: T505
+- 直近統合: T602 rebase・force-push回復（PR #49）
+- 実装中タスク: T505（通常review・独立review・finding closure完了、merge待ち）
+- 次の工程: final report attestation後、PR #43の必須PR checkを確認してsquash mergeする
+- 後続候補: T405またはT506
 
 ## P0 開発基盤
 
@@ -157,7 +157,7 @@ context確認状態とGlobalを同期し、PR進捗と分離した理解率を�
 - T502 Global mappingと表示優先順位: 完了・main統合済み
 - T503 repository file列挙とGlobal集計候補: 完了・main統合済み
 - T504 Global理解率の再計算基盤: 完了・main統合済み
-- T505 Global Understanding View、Status Bar、Global layer設定UI: 未着手
+- T505 Global Understanding View、Status Bar、Global layer設定UI: 実装・通常review・一度限りの全範囲独立reviewとfinding closureを完了、PR #43のsquash merge待ち
 - T506 複数contextとGlobal集計の統合・Extension Host試験: 未着手
 
 ### 終了チェックポイント
@@ -178,7 +178,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 ### 現在の進捗
 
 - T601 圧縮snapshotと非Git行追従: 完了・main統合済み
-- T602 rebase・force-push回復: 実装・通常review・一度限りの全範囲独立reviewとfinding closureを完了、PR #49のsquash merge待ち
+- T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603〜T608: 未着手
 
 ### 終了チェックポイント

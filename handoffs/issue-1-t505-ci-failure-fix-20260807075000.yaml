@@ -1,0 +1,293 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-07T08:35:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #43
+task_id: T505
+branch: feature/t505-global-understanding-ui
+base_ref: main
+target:
+  current_head: aa9116fd544f67ad32f82c98591e015856bb2cd8
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  commit_range: 247aff511bbb1e4d4785c15c362b47d259aa46c9..aa9116fd544f67ad32f82c98591e015856bb2cd8
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Poll CI, treat build/test failures as implementation defects, fix them, and continue until exact-head CI succeeds.
+  - source: report
+    reference: reports/issue-1-t505-fix-verification-20260807051700.md
+    summary: Address T505-R002/R005/R006/R007 and preserve finding identity/severity.
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: Use GitHub connector, TDD/failure diagnostics, exact current-HEAD CI, repository report, PR comment, and no merge.
+development_policy:
+  method: TDD and failure-driven correction
+  testing_order: inspect exact-head failure, fix smallest root cause, push, poll new exact-head CI, repeat until full success
+  governing_source: RevMem repository instructions and uploaded worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t505
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - stdout and stderr
+    - source/test trees
+    - generated output
+    - environment and Git state
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_configuration
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T505 implementation/tests/reports/handoffs and PR #43
+      reason: review follow-up and CI correction scope
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
+      reason: dedicated progress-management Skill unavailable
+    - path_or_operation: merge
+      reason: reserved for user
+scope:
+  - T505-R002 snapshot limit/cleanup invariants
+  - T505-R005 stale cancellation and refresh coalescing
+  - T505-R006 focused test discovery
+  - T505-R007 lossless schema v3 handoff
+  - exact-head CI failures introduced during those fixes
+non_goals:
+  - independent review verdict
+  - merge
+files:
+  changed:
+    - path: src/ui/global-understanding/index.ts
+      purpose: export refresh coalescer through the production barrel
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: satisfy lint after coalescer implementation
+    - path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+      purpose: preserve exact legacy source payload inline for R007
+    - path: reports/issue-1-t505-ci-failure-fix-20260807075000.md
+      purpose: detailed failure/fix evidence
+    - path: handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+      purpose: continuation packet
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: diagnostic artifact coverage
+    - path: test/unit/t505-review-findings.test.ts
+      purpose: R007 and finding regression contracts
+commands:
+  - command: GitHub Actions run 31130002258
+    purpose: inspect exact-head build failure
+    exit_code: 2
+    result: failed
+    head_sha: ce84bd2e52e8fcb527157ad5d58ae1a2f4bd7654
+    evidence: TS2724 missing GlobalUnderstandingRefreshCoalescer barrel export; linked TS7006 errors
+  - command: GitHub Actions run 31131591518
+    purpose: inspect exact-head lint failure after build fix
+    exit_code: 1
+    result: failed
+    head_sha: fb8d05315effcd6f05d8900abc7be3cb8624fa06
+    evidence: build/typecheck/architecture passed; prefer-const failed at global-understanding-ui-model.ts:171
+  - command: GitHub Actions run 31131700111
+    purpose: validate technical final HEAD
+    exit_code: 0
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: every workflow step succeeded including VS Code Extension Host
+tests:
+  - name: build and contract typecheck
+    phase: verification
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: run 31131700111
+  - name: lint
+    phase: verification
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: run 31131700111
+  - name: unit and focused T403/T304/T502/T503/T504
+    phase: verification
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: run 31131700111
+  - name: Git and GitHub integrations
+    phase: verification
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: run 31131700111
+  - name: VS Code Extension Host
+    phase: verification
+    result: passed
+    head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+    evidence: run 31131700111
+ci:
+  required: true
+  workflow: CI
+  run_id: 31131700111
+  head_sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+  conclusion: success
+  artifacts:
+    - id: 8975697119
+      name: ci-failure-diagnostics-31130002258-1
+      purpose: build failure diagnostics
+    - id: 8976211727
+      name: ci-failure-diagnostics-31131591518-1
+      purpose: lint failure diagnostics
+implementation:
+  outcome: completed
+  final_head: aa9116fd544f67ad32f82c98591e015856bb2cd8
+  commits:
+    - sha: 5204ea1737665f8b68937525d155560c12b2cc0a
+      purpose: embed legacy source packet inline for R007
+    - sha: fb8d05315effcd6f05d8900abc7be3cb8624fa06
+      purpose: export GlobalUnderstandingRefreshCoalescer through barrel
+    - sha: aa9116fd544f67ad32f82c98591e015856bb2cd8
+      purpose: satisfy coalescer prefer-const lint contract
+  addressed_findings:
+    - id: T505-R002
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: strict split limits, aggregate invariant, protected cleanup
+    - id: T505-R005
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: stale failure cancellation, immediate invalidation, debounce/coalesce
+    - id: T505-R006
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: test:t505 directly executes finding suite
+    - id: T505-R007
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: flat schema v3 handoff with exact original packet inline
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 8975697119
+      summary: exact build failure context
+    - type: artifact
+      location: GitHub Actions artifact 8976211727
+      summary: exact lint failure context
+  blocked_items: []
+review:
+  mode: not_applicable
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  reviewer:
+    identity: not_applicable
+    role: fix worker
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - This worker implemented fixes and does not issue the independent verdict.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Original reviewer fix verification remains required after final current-head CI.
+report:
+  report_type: implementation_report
+  outcome: updated
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t505-ci-failure-fix-20260807075000.md
+    - handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  attestation_head: aa9116fd544f67ad32f82c98591e015856bb2cd8
+  pr_comments: []
+  summary:
+    - Build and lint failures were corrected and technical final CI is green.
+findings:
+  - id: T505-R007
+    severity: low
+    origin: introduced_by_fix
+    location: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+    description: source_payloads originally preserved only a reference instead of exact payload
+    impact: handoff was not self-contained/lossless
+    evidence: R007 regression and corrected inline payload
+    required_action: preserve exact source packet inline
+held:
+  - item: Task/phase tracking synchronization
+    reason: dedicated progress-management Skill unavailable
+    owner: authorized progress manager
+    remaining_risk: tracking files remain stale
+    verdict_impact: held
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: reserved for user
+remaining_risks:
+  - Report/handoff commits move PR HEAD after the technical green run; final current-head CI must be checked separately.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: ci-failure-correction
+    content_type: application/yaml
+    payload:
+      technical_final_head: aa9116fd544f67ad32f82c98591e015856bb2cd8
+      technical_final_run: 31131700111
+      first_failure_run: 31130002258
+      second_failure_run: 31131591518
+extensions:
+  - namespace: revmem
+    payload:
+      pull_request: 43
+      report_parent_commit: 1f5773176654be1f02eeb342807b78f2d26cb7ec
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: After final current-head CI succeeds, independently verify T505-R002/R005/R006/R007.
+  instructions:
+    - Confirm PR current HEAD first.
+    - Use only matching-head CI.
+    - Preserve finding IDs/severities.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #43
+    - reports/issue-1-t505-ci-failure-fix-20260807075000.md
+    - reports/issue-1-t505-fix-verification-20260807051700.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t505-ci-failure-fix-20260807075000.yaml
+  packet_url: null
+  transport_note: Technical final CI is green; verify report/handoff current HEAD separately before review handoff.

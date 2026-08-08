@@ -2,7 +2,8 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TextDecoder } from "node:util";
 import {
-  ReviewFileExclusionPolicy,
+  type ReviewFileExclusionCandidate,
+  type ReviewFileExclusionDecision,
   type ReviewFileExclusionReason
 } from "../../core/file-exclusion/review-file-exclusion-policy";
 
@@ -136,8 +137,13 @@ const byRepositoryPath = <T extends { readonly path: string }>(left: T, right: T
   compareRepositoryPaths(left.path, right.path);
 
 /** Deterministically enumerates repository files for Global-understanding aggregation. */
+export interface RepositoryFileExclusionPolicy {
+  evaluate(candidate: Readonly<ReviewFileExclusionCandidate>): ReviewFileExclusionDecision;
+  evaluateDirectory(path: string): ReviewFileExclusionDecision;
+}
+
 export class NodeRepositoryFileEnumerator {
-  public constructor(private readonly exclusionPolicy: ReviewFileExclusionPolicy) {}
+  public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy) {}
 
   public static countNonEmptyLines(content: string): number {
     return content.split(/\r\n|\r|\n/u).reduce((count, line) => count + (line.trim().length > 0 ? 1 : 0), 0);

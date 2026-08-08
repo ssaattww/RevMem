@@ -1,0 +1,403 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-07T06:00:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #43
+task_id: T505
+branch: feature/t505-global-understanding-ui
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  commit_range: 247aff511bbb1e4d4785c15c362b47d259aa46c9..bca430848b9627add973136734569c88c60cfbc4
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Address all current PR #43 review findings autonomously.
+  - source: report
+    reference: reports/issue-1-t505-fix-verification-20260807051700.md
+    summary: T505-R002 remains open and T505-R005 through R007 require correction.
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: Use connector operations, TDD, exact-head CI, diagnostic artifacts, repository reports, PR comments, and no merge.
+
+development_policy:
+  method: test-driven development
+  testing_order: Add finding-specific RED tests, confirm local failure because exact-head workflow did not start, implement in logical commits, run targeted local verification, then require exact-head CI before review pass.
+  governing_source: RevMem repository instructions and uploaded worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t505
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - generated output
+    - source and test trees
+    - environment and Git state
+blocked:
+  - item: Exact-head GitHub Actions validation
+    reason: GitHub produced no pull-request workflow run for the current T505 branch HEAD after repeated connector checks.
+    required_input_or_decision: Wait for or restore workflow execution for the PR current HEAD; do not use a different SHA.
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T505 implementation, tests, reports, handoffs, and PR #43 metadata
+      reason: Required to address the current review findings.
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
+      reason: Required progress-management Skill is unavailable.
+    - path_or_operation: review verdict
+      reason: Fix worker cannot verify its own changes.
+    - path_or_operation: merge
+      reason: Reserved for the user.
+
+scope:
+  - Complete T505-R002 snapshot limit and cleanup invariants.
+  - Complete T505-R005 stale cancellation and document refresh coalescing.
+  - Complete T505-R006 focused test discovery.
+  - Complete T505-R007 schema v3 handoff correction.
+non_goals:
+  - Independent fix verification
+  - Progress tracking synchronization
+  - Merge
+
+files:
+  changed:
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: Required legacy/split union, aggregate invariant, and protected cleanup.
+    - path: src/application/non-git-snapshots/non-git-snapshot-settings.ts
+      purpose: Guarantee aggregate budget contains the configured per-snapshot limit.
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: Stale cancellation, coalescing, and generation invalidation.
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: Expose clear-free generation invalidation.
+    - path: src/t305-extension.ts
+      purpose: Invalidate in-flight calculation and debounce document changes.
+    - path: package.json
+      purpose: Execute review finding tests directly in test:t505.
+    - path: test/unit/t505-review-findings.test.ts
+      purpose: Finding-specific contracts.
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: Stale and coalescing regressions.
+    - path: test/unit/t505-refresh-invalidation.test.ts
+      purpose: Verify immediate invalidation before debounce.
+    - path: test/unit/t305-validation-wiring.test.ts
+      purpose: Include refresh invalidation regression in the default unit suite.
+    - path: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+      purpose: Correct the historical handoff to flat schema v3.
+    - path: reports/issue-1-t505-review-followup-r2-20260807060000.md
+      purpose: Detailed second follow-up report.
+    - path: handoffs/issue-1-t505-review-followup-r2-20260807060000.yaml
+      purpose: Lossless continuation packet.
+  inspected:
+    - path: reports/issue-1-t505-fix-verification-20260807051700.md
+      purpose: Source findings and required actions.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm diagnostic artifact coverage.
+    - path: reports/issue-1-t505-review-20260806195427.md
+      purpose: Preserve initial finding identities and severities.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Dedicated progress manager is unavailable.
+    - path_or_area: merge
+      reason: User-owned action.
+
+commands:
+  - command: TypeScript strict contract probes
+    purpose: Confirm RED and GREEN for required limit union and refresh coalescer API.
+    exit_code: 0
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: RED produced TS2578 and missing export; post-implementation probe compiled successfully.
+  - command: Targeted runtime probe
+    purpose: Validate aggregate invariant, saved snapshot retention, stale cancellation, and timer coalescing.
+    exit_code: 0
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: local-targeted-green.log reported targeted runtime contracts passed.
+  - command: Focused discovery static check
+    purpose: Confirm test:t505 includes t505-review-findings.test.js exactly once.
+    exit_code: 0
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: package script count assertion passed.
+  - command: GitHub Actions current-head lookup
+    purpose: Find an exact-head CI run for the technical and report HEADs.
+    exit_code: unknown
+    result: blocked
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: fetch_commit_workflow_runs returned no workflow runs after repeated checks and a 30-second wait.
+
+tests:
+  - name: T505-R002 strict limit variants and aggregate invariant
+    phase: regression
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: Type and targeted runtime probes passed.
+  - name: T505-R002 protected latest snapshot after cleanup
+    phase: regression
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: Targeted runtime probe retained the saved snapshot and latest pointer.
+  - name: T505-R005 stale error cancellation and refresh coalescing
+    phase: regression
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: Targeted controller/coalescer probes passed; repository tests were added.
+  - name: T505-R006 focused validation discovery
+    phase: regression
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: Static exact-once assertion passed.
+  - name: T505-R007 flat schema v3 handoff
+    phase: regression
+    result: passed
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: Required flat fields and source payload markers are asserted by the repository test.
+  - name: Full GitHub Actions suite
+    phase: verification
+    result: not_run
+    head_sha: bca430848b9627add973136734569c88c60cfbc4
+    evidence: No exact-head workflow run was generated.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: bca430848b9627add973136734569c88c60cfbc4
+  conclusion: unknown
+  artifacts:
+    - id: 8966755748
+      name: ci-failure-diagnostics-31099257410-1
+      purpose: Prior diagnostic environment used to reproduce targeted RED/Green probes; not current-head CI evidence.
+
+implementation:
+  outcome: partial
+  final_head: bca430848b9627add973136734569c88c60cfbc4
+  commits:
+    - sha: 27d865fd50f350fb10d2f1ea5350096e6d0a80e5
+      purpose: Add second fix verification regressions.
+    - sha: 6dfea83fa11fbe8e64d20d4f0eab0d8925fe2cb8
+      purpose: Add stale cancellation and coalescing RED contracts.
+    - sha: 316efab738703a9b318a94b8ae72585c3eb34f04
+      purpose: Merge nonconflicting current main.
+    - sha: 86601c940eb84f0e48eff7fe927ed0884677eabd
+      purpose: Enforce snapshot limits and cleanup invariants.
+    - sha: 446680137d350de51cdbbbcc6bf89283cce1ec6a
+      purpose: Add refresh coalescing to the T305 composition.
+    - sha: 8d3f275a91c8fa2f0d2b95447759b9470b394ff0
+      purpose: Include review-finding tests in focused validation.
+    - sha: 423deb8c927463611c7e092c8bcc4781ae91d9fc
+      purpose: Correct historical schema v3 handoff.
+    - sha: 87110d513f38ff6fa188ce78c3e4f792104069e2
+      purpose: Expose strict snapshot limit variants.
+    - sha: bca430848b9627add973136734569c88c60cfbc4
+      purpose: Complete immediate in-flight refresh invalidation and regressions.
+  addressed_findings:
+    - id: T505-R002
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: Required union, aggregate invariant, protected cleanup, and saved snapshot existence check.
+    - id: T505-R005
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: Stale errors are absorbed; edits invalidate immediately and debounce recalculation.
+    - id: T505-R006
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: test:t505 directly executes the review-finding suite exactly once.
+    - id: T505-R007
+      reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+      disposition: addressed
+      evidence: Historical handoff is a flat schema v3 packet with source payload preservation.
+  failure_diagnostics:
+    - type: standard_error
+      location: local-red-probes.log
+      summary: Incomplete split limits compiled and refresh coalescer export was missing before implementation.
+    - type: test_result
+      location: local-targeted-green.log
+      summary: Targeted runtime contracts passed after implementation.
+  blocked_items:
+    - item: Full exact-head CI
+      reason: No workflow run was generated for the PR current HEAD.
+      required_input_or_decision: Restore or await GitHub Actions execution, then verify only the matching HEAD.
+  summary:
+    - All four requested code, test, validation discovery, and handoff changes were implemented.
+    - Completion remains partial until exact-head CI succeeds.
+
+review:
+  mode: not_applicable
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - This worker implemented fixes and cannot issue the verification verdict.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Original reviewer fix verification is still required.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t505-review-followup-r2-20260807060000.md
+    - handoffs/issue-1-t505-review-followup-r2-20260807060000.yaml
+  reviewed_head: 571831f7ef687a0c4ecb9d65eb829fee50e590e2
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed implementation and validation limitations are persisted.
+
+findings:
+  - id: T505-R002
+    severity: medium
+    origin: introduced_by_change
+    location: src/application/non-git-snapshots/index.ts
+    description: Split limits lacked a complete type/runtime invariant and cleanup could delete the successful save result.
+    impact: saveLatest could publish a missing snapshot ID.
+    evidence: Second fix-verification report and RED type/runtime tests.
+    required_action: Require complete limit variants, aggregate >= per-snapshot, and retain the just-saved snapshot.
+  - id: T505-R005
+    severity: medium
+    origin: introduced_by_fix
+    location: src/ui/global-understanding and src/t305-extension.ts
+    description: Rapid document changes could report stale recalculation errors and start excessive work.
+    impact: Normal typing could clear UI or spam errors.
+    evidence: Second fix-verification report and stale/coalescing tests.
+    required_action: Treat stale failures as cancellation and debounce document changes with immediate generation invalidation.
+  - id: T505-R006
+    severity: low
+    origin: coverage_miss
+    location: package.json
+    description: test:t505 omitted the finding-specific suite.
+    impact: Focused validation could pass without testing review fixes.
+    evidence: Focused discovery contract.
+    required_action: Execute the review-finding suite directly exactly once.
+  - id: T505-R007
+    severity: low
+    origin: introduced_by_fix
+    location: handoffs/issue-1-t505-review-followup-20260806210039.yaml
+    description: The handoff claimed schema v3 but used an invalid wrapper and omitted required top-level fields.
+    impact: Automated continuation could lose context and evidence.
+    evidence: Schema v3 structural test.
+    required_action: Regenerate a flat packet and preserve the source packet.
+
+held:
+  - item: Task and phase tracking synchronization
+    reason: Required progress-management Skill is unavailable.
+    owner: authorized progress manager
+    remaining_risk: Repository tracking remains stale.
+    verdict_impact: Held; does not establish implementation correctness.
+  - item: Exact-head CI
+    reason: No matching workflow run exists.
+    owner: GitHub Actions / repository operator
+    remaining_risk: Full build, lint, integration, and Extension Host regressions remain unverified.
+    verdict_impact: Verification must remain incomplete.
+unexplored: []
+unknown:
+  - field_or_fact: Why GitHub did not generate a pull-request workflow run for new branch heads.
+    reason: Connector returned no run and exposes no workflow dispatch or repository Actions diagnostic endpoint.
+not_applicable:
+  - field_or_area: merge
+    reason: Reserved for the user.
+remaining_risks:
+  - Exact-head CI has not validated the complete repository suite.
+  - Independent fix verification may identify additional defects.
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: review-followup-v2
+    content_type: text/plain
+    payload: >-
+      Implemented T505-R002, T505-R005, T505-R006, and T505-R007 through tests-first changes,
+      strict limit variants, protected snapshot cleanup, stale cancellation, debounced refresh,
+      focused validation wiring, and a corrected schema v3 handoff. Full exact-head CI remains blocked.
+  - source_skill: report-writer
+    output_contract_version: implementation-report
+    content_type: text/markdown
+    payload: reports/issue-1-t505-review-followup-r2-20260807060000.md
+extensions:
+  - namespace: revmem
+    payload:
+      pull_request: 43
+      current_technical_head: bca430848b9627add973136734569c88c60cfbc4
+      exact_head_ci_available: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Verify R002/R005/R006/R007 after an exact-head CI run becomes available.
+  instructions:
+    - First identify the PR current HEAD.
+    - Use only a workflow run whose head SHA exactly matches that HEAD.
+    - Verify all four finding IDs and original severities.
+    - Keep the verdict incomplete while exact-head CI is unavailable.
+    - Do not merge.
+  required_attachments_or_references:
+    - PR #43
+    - reports/issue-1-t505-fix-verification-20260807051700.md
+    - reports/issue-1-t505-review-followup-r2-20260807060000.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t505-review-followup-r2-20260807060000.yaml
+  packet_url: null
+  transport_note: Flat schema v3 packet. CI is explicitly incomplete and no different SHA is substituted.
