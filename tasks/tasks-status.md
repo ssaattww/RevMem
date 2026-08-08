@@ -8,10 +8,10 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T306 diff操作からPR Progress UIまでのExtension Host受入（PR #45）をcurrent mainへ統合済み
-- 現在のタスク: T404（PR #48、fix verification R3 `fail`。`T404-R001`、`R002`、`R005`、`R006`、`R007`はclosed、`R003`、`R004`、`R008`は対応待ち）
-- 次のタスク: T404残存3 findingをTDDで修正し、同じ通常reviewerが再fix verificationする。新規product taskは選択しない
-- 実装状態: reviewed fix implementation/report/handoff HEAD `b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69`のexact-head CI run `31128238812`はsuccess。fix verification R3は`R006`をclosed、high 2件・medium 1件がopenのためfail
-- ブロッカー: `T404-R003` actual immutable diff/blob mapping evidenceとconcrete mapper未接続、`T404-R004` T404独自`:443`処理によるauthority alias/split、`T404-R008` production修正前のRed実行・失敗確認証跡不足
+- 現在のタスク: T404（PR #48、通常review findingsはすべてclosed。全範囲の独立review待ち）
+- 次のタスク: 別reviewerが固定HEADを一度だけ全範囲独立reviewし、必須PR check成功後にsquash mergeする
+- 実装状態: reviewed HEAD `9ef5702c956069243a3d208683bd55c1a7c0589c`で`T404-R001`〜`R008`をclosed。focused T404 14/14、compile、lint、architecture正負、diff checkは成功
+- ブロッカー: なし
 - Gitブランチ: `feature/t404-pr-context-layers`
 - Pull Request: PR #48（open、merge未実施）
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
@@ -29,6 +29,7 @@
 - T404通常review指摘対応R3 handoff: `reports/issue-1-t404-review-followup-r3-handoff-20260807054902.yaml`
 - T404 fix verification R3レポート: `reports/issue-1-t404-fix-verification-r3-20260807062200.md`
 - T404 fix verification R3 handoff: `reports/issue-1-t404-fix-verification-r3-handoff-20260807062200.yaml`
+- T404 fix verification R4レポート: `reports/issue-1-t404-fix-verification-r4-20260808124303.md`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -307,7 +308,7 @@
 | T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
-| T404 | 進行中 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する。PR #48のfix verification R3で`T404-R001`、`R002`、`R005`、`R006`、`R007`をclosedし、`R003`、`R004`、`R008`は対応待ち | T104、T205、T401、T403 | 同じPRのcommit追加でContext/Global stateをactual immutable diff/blob evidenceから継続し、別PRを分離し、closed PRは既定で装飾無効かつ明示overrideを復元し、再起動後も状態が一致する。残存3 finding closure、同じ通常reviewerの再fix verification、exact-head CI成功が必要 |
+| T404 | 進行中 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する。PR #48の通常review findings `T404-R001`〜`R008`はすべてclosed | T104、T205、T401、T403 | Context/Global stateをimmutable diff/blob evidenceから継続し、別PRを分離し、closed PRの既定無効と明示override、再起動復元を実装済み。全範囲独立review1回とmerge直前の必須PR check成功が残る |
 | T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
 
@@ -355,4 +356,4 @@
 
 ## 次回開始時の選択
 
-T404 PR #48のreviewed fix implementation/report/handoff HEAD `b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69`はexact-head CI run `31128238812`でsuccessしたが、fix verification R3は`fail`である。次は`T404-R003`、`R004`、`R008`をTDDで修正し、test-only HEADで実際のRed失敗を確認してからproduction fixを行う。同じ通常reviewerが残存findingだけを再fix verificationする。全finding closureまでT405、T602、T505を開始しない。
+T404 PR #48の通常review findingsはすべてclosedした。次は全実装・通常review証跡・trackingを固定し、別reviewerが一度だけ全範囲独立reviewする。通過後はmerge直前に必須PR checkだけを確認し、squash mergeする。
