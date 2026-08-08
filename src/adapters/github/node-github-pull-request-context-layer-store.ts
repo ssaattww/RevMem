@@ -1,6 +1,7 @@
 import {
+  createImmutablePullRequestRevisionMapper,
   GitHubPullRequestContextStateService,
-  type PullRequestRevisionMapper,
+  type ImmutablePullRequestRevisionEvidenceLoader,
 } from "../../application/github-pr-context/index";
 import { FileSystemReviewStateRepository } from "../state-repository/coherent-file-system-review-state-repository";
 import type { ReviewStateStorageUris } from "../state-repository/contracts";
@@ -12,10 +13,10 @@ import type { ReviewStateStorageUris } from "../state-repository/contracts";
  */
 export function createNodeGitHubPullRequestContextStateService(
   storageUris: ReviewStateStorageUris,
-  mapRevision: PullRequestRevisionMapper
+  loadRevisionEvidence: ImmutablePullRequestRevisionEvidenceLoader
 ): GitHubPullRequestContextStateService {
   return new GitHubPullRequestContextStateService(
     new FileSystemReviewStateRepository({ storageUris }),
-    mapRevision
+    createImmutablePullRequestRevisionMapper(loadRevisionEvidence)
   );
 }
