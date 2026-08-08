@@ -1,0 +1,367 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: "2026-08-07T05:30:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "PR #49"
+task_id: T602
+branch: agent/t602-rebase-force-push-recovery
+base_ref: main@112198c33823a5fc6681399a19e0c5361614143f
+target:
+  current_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  commit_range: d1a2b5ffd69ca5154a426072c63942cfb3b177a6..0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Re-review T602 using uploaded ZIP skills and inspect all findings completely.
+  - source: task
+    reference: tasks/tasks-status.md T602
+    summary: Recover after rebase or force-push using direct old-object diff, snapshot diff, unique mapping, then unreviewed; do not clear solely because SHA changed.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 sections 9.2, 10.3, 10.4
+    summary: Fatal Git failures must remain failures; copy does not inherit identity; ambiguous evidence remains unreviewed.
+  - source: report
+    reference: reports/issue-1-t602-review-20260806203300.md
+    summary: Previous normal review findings T602-R001 and T602-R003 through T602-R011; T602-R002 retracted by erratum.
+
+development_policy:
+  method: TDD
+  testing_order: Review fixes require regression tests and exact-head CI; reviewer does not implement.
+  governing_source: RevMem project instructions and uploaded chat review skills
+validation_plan:
+  commands:
+    - npm ci
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - T602 focused tests
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - Test result, stdout, stderr, and investigation logs in a failure artifact.
+blocked:
+  - item: exact-head CI validation
+    reason: No pull-request workflow run exists for reviewed implementation HEAD 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe.
+    required_input_or_decision: Push the next implementation HEAD and use only a workflow run whose head SHA matches it.
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t602-fix-verification-20260807053000.md
+      reason: Detailed fix-verification report.
+    - path_or_operation: reports/issue-1-t602-fix-verification-handoff-20260807053000.yaml
+      reason: Lossless review handoff.
+    - path_or_operation: PR #49 review comment
+      reason: Concise review result.
+  forbidden:
+    - path_or_operation: implementation, tests, design, workflow, configuration, tracking
+      reason: Reviewer must not implement fixes.
+    - path_or_operation: merge PR #49
+      reason: Merge is user-owned.
+
+scope:
+  - Verify previous findings on fix range d1a2b5f..0108703.
+  - Inspect direct impacts, sibling cases, newly changed files, tests, reports, and exact-head CI.
+non_goals:
+  - Implement findings.
+  - Independent final review.
+  - Merge.
+
+files:
+  changed:
+    - path: reports/issue-1-t602-fix-verification-20260807053000.md
+      purpose: Detailed verification result.
+    - path: reports/issue-1-t602-fix-verification-handoff-20260807053000.yaml
+      purpose: This handoff.
+  inspected:
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: R001/R010 snapshot publication failure and ordering.
+    - path: src/adapters/local-git/history-rewrite-local-git-adapter.ts
+      purpose: R004 fatal Git classification.
+    - path: src/application/history-rewrite-recovery/adapters.ts
+      purpose: R011 copy handling.
+    - path: src/application/history-rewrite-recovery/git-context-recovery.ts
+      purpose: R005/R007/R008 catalog, ownership, Context/Global consistency.
+    - path: src/application/history-rewrite-recovery/index.ts
+      purpose: R006 snapshot identity selection.
+    - path: src/application/review-context/history-rewrite-git-context-revision-mapper.ts
+      purpose: R005/R009 tree failure and availability observation.
+    - path: test/unit/history-rewrite-recovery-conservative.test.ts
+      purpose: Identity regression coverage.
+    - path: test/unit/history-rewrite-review-findings.test.ts
+      purpose: Copy rejection regression coverage.
+    - path: test/unit/local-git-tree-list.test.ts
+      purpose: Fatal exit regression coverage.
+    - path: reports/issue-1-t602-review-followup-20260807053500.md
+      purpose: Implementation claims and known validation state.
+  intentionally_untouched:
+    - path_or_area: implementation and tests
+      reason: Review-only mode.
+    - path_or_area: tasks/tasks-status.md
+      reason: Dedicated progress-management skill required.
+
+commands:
+  - command: GitHub compare d1a2b5ffd69ca5154a426072c63942cfb3b177a6..0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    purpose: Resolve complete fix file set.
+    exit_code: 0
+    result: passed
+    head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    evidence: 13 commits and 12 changed paths in the fix range.
+  - command: Fetch workflow runs for 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    purpose: Exact-head CI validation.
+    exit_code: unknown
+    result: not_run
+    head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    evidence: Connector returned an empty workflow run list.
+
+tests:
+  - name: Existing regression additions
+    phase: verification
+    result: not_run
+    head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    evidence: Source inspection completed; no matching CI run exists.
+  - name: Delayed open publication versus newer commit publication
+    phase: verification
+    result: not_run
+    head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    evidence: Required test is absent.
+  - name: Quoted copy metadata rejection
+    phase: verification
+    result: not_run
+    head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    evidence: Existing test covers only unquoted src/a.ts.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  conclusion: unknown
+  artifacts: []
+
+implementation:
+  outcome: partial
+  final_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  commits: []
+  addressed_findings:
+    - id: T602-R001
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Pre-commit invalidation removed and post-commit failures no longer report state commit failure.
+    - id: T602-R003
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: partial
+      evidence: PR/report corrected, but no current implementation handoff replaces the stale initial handoff.
+    - id: T602-R004
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Exit 1 only is missing; other failures throw.
+    - id: T602-R005
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Candidate enumeration and catalog read failures no longer shrink silently.
+    - id: T602-R006
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Reviewed-range survival no longer selects cross-path identity.
+    - id: T602-R007
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Shared Context/Global identities must resolve to one path on both sides.
+    - id: T602-R008
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Restored snapshot ownership is checked before mapping.
+    - id: T602-R009
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: addressed
+      evidence: Availability result Promise is shared per map invocation.
+    - id: T602-R010
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: partial
+      evidence: Commit publications are queued, but open publications remain outside the queue and can overwrite newer pointers.
+    - id: T602-R011
+      reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+      disposition: partial
+      evidence: Raw equality rejects unquoted copy metadata only; quoted copy paths bypass it.
+  failure_diagnostics: []
+  blocked_items:
+    - item: exact-head validation
+      reason: No matching CI run.
+      required_input_or_decision: Validate the next implementation HEAD through its own run.
+  summary:
+    - Seven required findings were addressed.
+    - R003 remains partial; R010 and R011 remain required.
+
+review:
+  mode: fix_verification
+  reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  reviewer:
+    identity: ChatGPT normal reviewer in the same project chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer in the same project chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat produced the prior normal review and did not implement the fixes.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: R010 and R011 remain.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Delayed open completion and quoted Git paths.
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: Fix changes stay within T602 review scope.
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: All fix implementation paths and direct snapshot/Git contracts inspected.
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_finding
+      evidence: latest pointer can still regress.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: Fatal Git errors remain fatal after the fix.
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: No credential or secret handling change.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: Missing concurrency and quoted-copy tests.
+    - criterion: current-head CI evidence
+      disposition: unexplored
+      evidence: No matching run exists.
+    - criterion: reports tracking documentation accuracy
+      disposition: checked_finding
+      evidence: No current implementation handoff.
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: Raw Git metadata matching and queue-external publication.
+  validation_assessment:
+    - item: exact-head CI
+      result: unavailable
+      evidence: No run for 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - Normal fix verification is not an independent-final-review attestation.
+  summary:
+    - Verdict fail due to remaining R010 and R011, partial R003, and unavailable exact-head CI.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t602-fix-verification-20260807053000.md
+    - reports/issue-1-t602-fix-verification-handoff-20260807053000.yaml
+  reviewed_head: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Full fix-verification report and handoff persisted.
+
+findings:
+  - id: T602-R003
+    severity: medium
+    origin: introduced_by_change
+    location: implementation handoff and current completion evidence
+    description: No updated implementation handoff transports the current implementation identity and finding dispositions.
+    impact: A later worker can consume the stale initial handoff and use incorrect target/CI evidence.
+    evidence: The initial handoff still targets 424fdd54; the follow-up adds only a prose report.
+    required_action: Persist a new implementation handoff for the final fix HEAD and matching CI.
+  - id: T602-R010
+    severity: high
+    origin: introduced_by_fix
+    location: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts open and enqueueSnapshotCommit
+    description: open snapshot publication is outside the queue used by commit publication.
+    impact: A delayed old open can overwrite the latest pointer after a newer commit, restoring already-unreviewed lines later.
+    evidence: open directly awaits replaceSnapshots while only committer.commit calls enqueueSnapshotCommit.
+    required_action: Order or generation-check open and commit publication for the same snapshot coordinates and add a reverse-completion test.
+  - id: T602-R011
+    severity: high
+    origin: introduced_by_fix
+    location: src/application/history-rewrite-recovery/adapters.ts containsCopyFrom
+    description: Copy rejection uses raw exact string equality and misses quoted Git metadata paths.
+    impact: A quoted-path copy can transfer stable identity and reviewed ranges to a copied file.
+    evidence: The only test uses unquoted src/a.ts; canonical decoding is not used by containsCopyFrom.
+    required_action: Structurally parse copy metadata and add quoted/escaped path tests.
+
+held: []
+unexplored:
+  - area: Exact-head CI execution
+    blocker: No workflow run for the reviewed implementation HEAD.
+    remaining_risk: Compile, lint, unit, integration, and Extension Host failures are unknown.
+    verdict_impact: Validation cannot support acceptance.
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: User-owned and forbidden to reviewer.
+remaining_risks:
+  - Snapshot publication lacks cross-window locking; T604 remains the eventual owner, but same-provider open/commit ordering must be fixed in T602.
+  - Git copy metadata should not be classified with ad-hoc raw string checks.
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: "See reports/issue-1-t602-fix-verification-20260807053000.md for the complete review output."
+extensions: []
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_fix
+  summary: Fix remaining T602-R010 and T602-R011, complete R003 evidence, then run exact-head CI.
+  instructions:
+    - Include open snapshot publication in the same ordering/generation guard as commit publication.
+    - Parse copy metadata canonically, including quoted and escaped paths.
+    - Add targeted Red/Green regression tests.
+    - Save an updated implementation handoff for the final fix HEAD.
+    - Use only CI whose head SHA equals the final implementation HEAD.
+  required_attachments_or_references:
+    - reports/issue-1-t602-fix-verification-20260807053000.md
+    - reports/issue-1-t602-fix-verification-handoff-20260807053000.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t602-fix-verification-handoff-20260807053000.yaml
+  packet_url: null
+  transport_note: Review handoff is committed to the PR branch. Technical verdict applies to reviewed implementation HEAD 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe, not the later report commits.

@@ -1,0 +1,419 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import type { FileReviewState } from "../../src/core/contracts/index";
+import {
+  HistoryRewriteRecoveryService,
+  type HistoryRewriteCurrentFile,
+  type HistoryRewriteGitObjectPort,
+  type HistoryRewriteGitObjectResult,
+  type HistoryRewriteSnapshotPort,
+  type HistoryRewriteSnapshotResult
+} from "../../src/application/history-rewrite-recovery/index";
+import {
+  GitRevisionMappingHistoryRewritePort,
+  NonGitSnapshotHistoryRewritePort
+} from "../../src/application/history-rewrite-recovery/adapters";
+import type {
+  GitRevisionMappingSource,
+  GitRevisionMappingTextReadResult
+} from "../../src/application/review-context/index";
+import type { FileSystemPathSemantics } from "../../src/application/workspace-identity/index";
+import type { NonGitSnapshotMappingResult } from "../../src/application/non-git-snapshots/index";
+
+const OLD_SHA = "1111111111111111111111111111111111111111";
+const NEW_SHA = "2222222222222222222222222222222222222222";
+const UPDATED_AT = "2026-08-06T09:50:00.000Z";
+const OPTIONS = { ignoreWhitespaceChanges: false, ignoreEolChanges: false } as const;
+
+function state(overrides: Partial<FileReviewState> = {}): FileReviewState {
+  return {
+    schemaVersion: 1,
+    fileId: "file-a",
+    currentPath: "src/a.ts",
+    previousPaths: [],
+    revisionId: OLD_SHA,
+    modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+    originalReviewedByDiff: {},
+    contentHash: "hash-a",
+    lineCount: 3,
+    updatedAt: "2026-08-06T09:00:00.000Z",
+    ...overrides
+  };
+}
+
+function current(overrides: Partial<HistoryRewriteCurrentFile> = {}): HistoryRewriteCurrentFile {
+  return {
+    fileId: "current-a",
+    path: "src/a.ts",
+    lineCount: 3,
+    contentHash: "hash-a",
+    content: "one\ntwo\nthree",
+    ...overrides
+  };
+}
+
+class StubGitObjectPort implements HistoryRewriteGitObjectPort {
+  public calls = 0;
+
+  public constructor(public result: HistoryRewriteGitObjectResult) {}
+
+  public async diff(): Promise<HistoryRewriteGitObjectResult> {
+    this.calls += 1;
+    return this.result;
+  }
+}
+
+class StubSnapshotPort implements HistoryRewriteSnapshotPort {
+  public readonly calls: HistoryRewriteCurrentFile[] = [];
+
+  public constructor(
+    private readonly mapper: (file: HistoryRewriteCurrentFile) => HistoryRewriteSnapshotResult
+  ) {}
+
+  public async map(
+    _snapshotId: string,
+    file: HistoryRewriteCurrentFile
+  ): Promise<HistoryRewriteSnapshotResult> {
+    this.calls.push(file);
+    return this.mapper(file);
+  }
+}
+
+function service(
+  gitResult: HistoryRewriteGitObjectResult,
+  snapshotMapper: (file: HistoryRewriteCurrentFile) => HistoryRewriteSnapshotResult = () => ({ kind: "missing" })
+): {
+  readonly recovery: HistoryRewriteRecoveryService;
+  readonly git: StubGitObjectPort;
+  readonly snapshots: StubSnapshotPort;
+} {
+  const git = new StubGitObjectPort(gitResult);
+  const snapshots = new StubSnapshotPort(snapshotMapper);
+  return {
+    recovery: new HistoryRewriteRecoveryService(git, snapshots),
+    git,
+    snapshots
+  };
+}
+
+const recover = (
+  recovery: HistoryRewriteRecoveryService,
+  currentFiles: readonly HistoryRewriteCurrentFile[],
+  overrides: Partial<Parameters<HistoryRewriteRecoveryService["recover"]>[0]> = {}
+) => recovery.recover({
+  file: state(),
+  newRevisionId: NEW_SHA,
+  updatedAt: UPDATED_AT,
+  currentFiles,
+  snapshotId: "snapshot-a",
+  now: 1_000,
+  options: OPTIONS,
+  ...overrides
+});
+
+test("uses old Git object evidence before snapshot and preserves review on a SHA-only rewrite", async () => {
+  const { recovery, git, snapshots } = service({ kind: "unchanged", newPath: "src/a.ts" }, () => {
+    throw new Error("snapshot fallback must not run");
+  });
+
+  const result = await recover(recovery, [current()]);
+
+  assert.equal(result.status, "recovered");
+  assert.equal(result.source, "git-object-diff");
+  assert.equal(git.calls, 1);
+  assert.equal(snapshots.calls.length, 0);
+  assert.equal(result.file.revisionId, NEW_SHA);
+  assert.deepEqual(result.file.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+});
+
+test("maps direct Git object diffs and invalidates only changed old lines", async () => {
+  const diff = [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -2 +2,2 @@",
+    "-two",
+    "+two changed",
+    "+inserted",
+    ""
+  ].join("\n");
+  const { recovery } = service({
+    kind: "diff",
+    oldPath: "src/a.ts",
+    newPath: "src/a.ts",
+    diff,
+    oldText: "one\ntwo\nthree",
+    newText: "one\ntwo changed\ninserted\nthree"
+  });
+
+  const result = await recover(recovery, [current({
+    lineCount: 4,
+    contentHash: "hash-b",
+    content: "one\ntwo changed\ninserted\nthree"
+  })]);
+
+  assert.equal(result.status, "recovered");
+  assert.equal(result.source, "git-object-diff");
+  assert.deepEqual(result.file.modifiedReviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+    { startLine: 3, endLineExclusive: 4 }
+  ]);
+});
+
+test("uses snapshot diff only after the old Git object is missing", async () => {
+  const { recovery, snapshots } = service(
+    { kind: "missing-old-revision" },
+    () => ({ kind: "mapped", reviewedRanges: [{ startLine: 0, endLineExclusive: 1 }] })
+  );
+
+  const result = await recover(recovery, [current({ contentHash: "hash-b" })]);
+
+  assert.equal(result.status, "recovered");
+  assert.equal(result.source, "snapshot-diff");
+  assert.equal(snapshots.calls.length, 1);
+  assert.deepEqual(result.file.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+});
+
+test("honors an authoritative empty snapshot after exact-content rename identity is proven", async () => {
+  const { recovery, snapshots } = service(
+    { kind: "missing-old-revision" },
+    () => ({ kind: "mapped", reviewedRanges: [] })
+  );
+
+  const result = await recover(recovery, [current({
+    fileId: "renamed",
+    path: "src/renamed.ts",
+    contentHash: "hash-a"
+  })]);
+
+  assert.equal(result.status, "recovered");
+  assert.equal(result.source, "snapshot-diff");
+  assert.equal(snapshots.calls.length, 1);
+  assert.equal(result.file.fileId, "file-a");
+  assert.equal(result.file.currentPath, "src/renamed.ts");
+  assert.deepEqual(result.file.previousPaths, ["src/a.ts"]);
+  assert.deepEqual(result.file.modifiedReviewed, []);
+});
+
+test("does not invent review state when exact-content rename candidates are duplicated", async () => {
+  const { recovery } = service(
+    { kind: "missing-old-revision" },
+    () => ({ kind: "mapped", reviewedRanges: [] })
+  );
+
+  const result = await recover(recovery, [
+    current({ fileId: "one", path: "src/one.ts", contentHash: "hash-a" }),
+    current({ fileId: "two", path: "src/two.ts", contentHash: "hash-a" })
+  ]);
+
+  assert.deepEqual(result, {
+    status: "unresolved",
+    source: "unreviewed",
+    reason: "ambiguous-file-mapping",
+    reviewedRanges: []
+  });
+});
+
+test("does not use snapshot evidence after a non-missing Git failure", async () => {
+  const { recovery, snapshots } = service(
+    { kind: "failure", reason: "permission-denied" },
+    () => ({ kind: "mapped", reviewedRanges: [{ startLine: 0, endLineExclusive: 3 }] })
+  );
+
+  const result = await recover(recovery, [current()]);
+
+  assert.deepEqual(result, {
+    status: "unresolved",
+    source: "unreviewed",
+    reason: "git-failure",
+    reviewedRanges: []
+  });
+  assert.equal(snapshots.calls.length, 0);
+});
+
+test("rejects multiple snapshot candidates with surviving reviewed evidence", async () => {
+  const { recovery } = service(
+    { kind: "missing-old-revision" },
+    () => ({ kind: "mapped", reviewedRanges: [{ startLine: 0, endLineExclusive: 1 }] })
+  );
+
+  const result = await recover(recovery, [
+    current({ fileId: "one", path: "src/one.ts", contentHash: "hash-one" }),
+    current({ fileId: "two", path: "src/two.ts", contentHash: "hash-two" })
+  ], { file: state({ contentHash: "hash-old" }) });
+
+  assert.deepEqual(result, {
+    status: "unresolved",
+    source: "unreviewed",
+    reason: "ambiguous-file-mapping",
+    reviewedRanges: []
+  });
+});
+
+test("fails closed when direct Git diff evidence is malformed", async () => {
+  const { recovery, snapshots } = service({
+    kind: "diff",
+    oldPath: "src/a.ts",
+    newPath: "src/a.ts",
+    diff: "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n"
+  }, () => ({ kind: "mapped", reviewedRanges: [{ startLine: 0, endLineExclusive: 3 }] }));
+
+  const result = await recover(recovery, [current()]);
+
+  assert.deepEqual(result, {
+    status: "unresolved",
+    source: "unreviewed",
+    reason: "invalid-git-diff",
+    reviewedRanges: []
+  });
+  assert.equal(snapshots.calls.length, 0);
+});
+
+class RecordingRevisionSource implements GitRevisionMappingSource {
+  public oldObjectExists = true;
+  public diff = "";
+  public readonly reads = new Map<string, GitRevisionMappingTextReadResult>();
+  public readonly calls: string[] = [];
+
+  public async objectExists(repositoryRoot: string, objectName: string): Promise<boolean> {
+    this.calls.push(`exists:${repositoryRoot}:${objectName}`);
+    return this.oldObjectExists;
+  }
+
+  public async diffRevisions(
+    repositoryRoot: string,
+    leftRevision: string,
+    rightRevision: string
+  ): Promise<string> {
+    this.calls.push(`diff:${repositoryRoot}:${leftRevision}:${rightRevision}`);
+    return this.diff;
+  }
+
+  public async readTextFileAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePath: string,
+    fileSystemPathSemantics: FileSystemPathSemantics
+  ): Promise<GitRevisionMappingTextReadResult> {
+    this.calls.push(`read:${repositoryRoot}:${revision}:${repositoryRelativePath}:${fileSystemPathSemantics}`);
+    return this.reads.get(`${revision}\0${repositoryRelativePath}`) ?? { kind: "missing-file" };
+  }
+}
+
+const gitAdapter = (source: RecordingRevisionSource) =>
+  new GitRevisionMappingHistoryRewritePort(source, "/repo", "posix");
+
+test("Git revision adapter returns missing-old-revision without requesting a diff", async () => {
+  const source = new RecordingRevisionSource();
+  source.oldObjectExists = false;
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, { kind: "missing-old-revision" });
+  assert.deepEqual(source.calls, [`exists:/repo:${OLD_SHA}`]);
+});
+
+test("Git revision adapter treats an absent file section as SHA-only unchanged evidence", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/other.ts b/src/other.ts",
+    "--- a/src/other.ts",
+    "+++ b/src/other.ts",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    ""
+  ].join("\n");
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, { kind: "unchanged", newPath: "src/a.ts" });
+  assert.equal(source.calls.filter((call) => call.startsWith("read:")).length, 0);
+});
+
+test("Git revision adapter resolves one rename and returns exact old and new text proof", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/renamed.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/renamed.ts",
+    ""
+  ].join("\n");
+  source.reads.set(`${OLD_SHA}\0src/a.ts`, { kind: "found", content: "one\ntwo\nthree" });
+  source.reads.set(`${NEW_SHA}\0src/renamed.ts`, { kind: "found", content: "one\ntwo\nthree" });
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.deepEqual(result, {
+    kind: "diff",
+    oldPath: "src/a.ts",
+    newPath: "src/renamed.ts",
+    diff: source.diff,
+    oldText: "one\ntwo\nthree",
+    newText: "one\ntwo\nthree"
+  });
+});
+
+test("Git revision adapter fails closed for multiple sections claiming the same old path", async () => {
+  const source = new RecordingRevisionSource();
+  source.diff = [
+    "diff --git a/src/a.ts b/src/one.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/one.ts",
+    "diff --git a/src/a.ts b/src/two.ts",
+    "similarity index 100%",
+    "rename from src/a.ts",
+    "rename to src/two.ts",
+    ""
+  ].join("\n");
+
+  const result = await gitAdapter(source).diff({
+    oldRevisionId: OLD_SHA,
+    newRevisionId: NEW_SHA,
+    oldPath: "src/a.ts"
+  });
+
+  assert.equal(result.kind, "failure");
+  assert.match(result.reason, /ambiguous/i);
+});
+
+test("T601 snapshot adapter maps complete current content and preserves fail-closed statuses", async () => {
+  const calls: Array<readonly [string, string, number]> = [];
+  let next: NonGitSnapshotMappingResult = {
+    status: "mapped",
+    reviewedRanges: [{ startLine: 1, endLineExclusive: 2 }]
+  };
+  const adapter = new NonGitSnapshotHistoryRewritePort({
+    map: async (snapshotId: string, content: string, now: number) => {
+      calls.push([snapshotId, content, now]);
+      return next;
+    }
+  });
+
+  assert.deepEqual(await adapter.map("snapshot-a", current(), 123), {
+    kind: "mapped",
+    reviewedRanges: [{ startLine: 1, endLineExclusive: 2 }]
+  });
+  next = { status: "ambiguous", reviewedRanges: [] };
+  assert.deepEqual(await adapter.map("snapshot-a", current(), 124), { kind: "ambiguous" });
+  assert.deepEqual(await adapter.map("snapshot-a", current({ content: undefined }), 125), { kind: "missing" });
+  assert.deepEqual(calls, [
+    ["snapshot-a", "one\ntwo\nthree", 123],
+    ["snapshot-a", "one\ntwo\nthree", 124]
+  ]);
+});

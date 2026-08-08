@@ -29,17 +29,17 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
-| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T403はmainへ統合済み。T404はPR #48で通常reviewと一度限りの独立review findingsをclosedし、squash merge待ち |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T404はmainへ統合済み。Review Contexts UIと障害統合試験が未着手 |
 | P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T504はmainへ統合済み。Global Understanding UIと複数context統合試験が未着手 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601の非Git snapshot追従はmainへ統合済み。rebase回復、migration、排他、multi-root/Remote、障害、性能、最終受入suiteが未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601はmainへ統合済み。T602はPR #49で通常reviewと一度限りの独立review findingsをclosedし、squash merge待ち |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T306 diff操作からPR Progress UIまでのExtension Host受入（PR #45）
-- 実装中タスク: T404（通常review・独立review・finding closure完了、merge待ち）
-- 次の工程: final report attestation後、PR #48の必須PR checkを確認してsquash mergeする
-- 後続候補: T602、T505
+- 実装中タスク: T602（通常review・独立review・finding closure完了、merge待ち）
+- 次の工程: final report attestation後、PR #49の必須PR checkを確認してsquash mergeする
+- 後続候補: T505
 
 ## P0 開発基盤
 
@@ -133,7 +133,7 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 - T401 GitHub PR context resolver: 完了・main統合済み
 - T402 local Git、PR files patch、base/head contentの3段差分取得fallback: 完了・main統合済み
 - T403 GitHub metadata・diff cacheとoffline読込: 完了・PR #44でmain統合済み
-- T404 永続PR context layer: 実装・通常review・一度限りの全範囲独立reviewとfinding closureを完了、PR #48のsquash merge待ち
+- T404 永続PR context layer: 完了・PR #48でmain統合済み
 - T405 Review Contexts ViewとPR管理UI: 未着手
 - T406 GitHub障害・複数PR・closed PR統合試験: 未着手
 
@@ -178,7 +178,8 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 ### 現在の進捗
 
 - T601 圧縮snapshotと非Git行追従: 完了・main統合済み
-- T602〜T608: 未着手
+- T602 rebase・force-push回復: 実装・通常review・一度限りの全範囲独立reviewとfinding closureを完了、PR #49のsquash merge待ち
+- T603〜T608: 未着手
 
 ### 終了チェックポイント
 

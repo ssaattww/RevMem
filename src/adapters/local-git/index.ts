@@ -4,7 +4,7 @@ export {
   GitExecutableNotFoundError
 } from "./contracts";
 export { normalizeGitRemoteUrl } from "./git-remote-normalization";
-export { LocalGitAdapter } from "./local-git-adapter";
+export { LocalGitAdapter } from "./history-rewrite-local-git-adapter";
 export {
   gitInspectionStartPath,
   type GitInspectionPathSemantics

@@ -7,13 +7,13 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T306 diff操作からPR Progress UIまでのExtension Host受入（PR #45）をcurrent mainへ統合済み
-- 現在のタスク: T404（PR #48、通常reviewと一度限りの全範囲独立reviewを完了。独立finding 3件も同じreviewerがclosure済み）
+- 直近完了タスク: T404 永続PR context layer（PR #48）をcurrent mainへsquash merge済み
+- 現在のタスク: T602（PR #49、通常reviewと一度限りの全範囲独立reviewを完了。独立finding 2件も同じreviewerがclosure済み）
 - 次のタスク: final report attestation後、merge直前に必須PR checkだけを確認してsquash mergeする
-- 実装状態: reviewed fix HEAD `47f0197e76f0e8cde8f4c25d1681e03fd12e9291`で`T404-IFR-P1`〜`P3`をclosedし、同じ独立reviewerのclosure verdictは`pass_with_held`。focused T404 18/18、compile、lint、architecture正負、diff checkは成功
+- 実装状態: technical fix HEAD `4d7e04b2f93336fca465edf36b7bc4c47c89e803`で`T602-IFR-P1`と`P2`をclosed。focused T602 30/30、compile、lint、architecture正負、diff checkは成功
 - ブロッカー: なし
-- Gitブランチ: `feature/t404-pr-context-layers`
-- Pull Request: PR #48（open、merge未実施）
+- Gitブランチ: `agent/t602-rebase-force-push-recovery`
+- Pull Request: PR #49（open、merge未実施）
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
 - T404 implementation handoff: `reports/issue-1-t404-handoff-20260806185200.yaml`
 - T404初回通常レビューレポート: `reports/issue-1-t404-review-20260806191327.md`
@@ -31,6 +31,11 @@
 - T404 fix verification R3 handoff: `reports/issue-1-t404-fix-verification-r3-handoff-20260807062200.yaml`
 - T404 fix verification R4レポート: `reports/issue-1-t404-fix-verification-r4-20260808124303.md`
 - T404独立最終reviewレポート（予約済み）: `reports/issue-1-t404-independent-final-review-20260808124303.md`
+- T404 merge commit: `b71db2f0f5230903c8fb5d4d92d4b8fcc7b5447b`
+- T602実装レポート: `reports/issue-1-t602-implementation-20260806195000.md`
+- T602通常reviewレポート: `reports/issue-1-t602-review-20260806203300.md`
+- T602 fix verification R3レポート: `reports/issue-1-t602-fix-verification-r3-20260808130824.md`
+- T602独立最終reviewレポート（予約済み）: `reports/issue-1-t602-independent-final-review-20260808130824.md`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -309,7 +314,7 @@
 | T401 | 完了 | L | VS Code認証APIとGitHub Adapter、remoteからのhost/owner/repository解決、認証sessionまたは公開repositoryの未認証APIによるHEAD対応PR検索、0・1・複数候補のresolverを実装する。PR #31で通常review済み後、独立reviewの7 findingを一括修正した | T202、T205 | 1件は自動選択、複数はユーザー選択、0件または選択取消はbranchへ戻る。認証なしでも公開repository APIを試し、rate limit・network・API失敗時だけbranchへフォールバックしてローカル操作を止めない。configured Enterprise authority以外へtokenを渡さず、T202 canonical remote identity（case/default・nondefault port）を共有し、malformed/cyclic API応答もbranch fallbackへ遷移する。独立review全7 findingをaddressed、exact-head CI成功済み |
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
-| T404 | 進行中 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装する。PR #48の通常review findingsと一度限りの独立review findingsはすべてclosed | T104、T205、T401、T403 | Context/Global stateをimmutable diff/blob evidenceから継続し、base-only更新、Global revision整合、durable lifecycle history、別PR分離、closed PRの既定無効と明示override、再起動復元を実装済み。merge直前の必須PR check成功とsquash mergeが残る |
+| T404 | 完了 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装した | T104、T205、T401、T403 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #48をcurrent mainへsquash merge済み |
 | T405 | 未着手 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装する | T302、T304、T305、T404 | 現在PR・branch・保存済みPRを並列表示し、履歴を消さずに表示だけ削除できる。AC-21を満たす |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
 
@@ -329,7 +334,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
-| T602 | 未着手 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない |
+| T602 | 進行中 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する。PR #49の通常review findingsと一度限りの独立review findingsはすべてclosed | T203、T204、T403、T601 | 片側object欠落時のContext/Global共有identityとconcurrent openのsnapshot generationをfail-closedにし、focused 30/30を確認済み。merge直前の必須PR check成功とsquash mergeが残る |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
@@ -357,4 +362,4 @@
 
 ## 次回開始時の選択
 
-T404 PR #48は通常reviewと一度限りの全範囲独立reviewを完了した。独立reviewの3 findingは同じreviewerが限定closureし、`pass_with_held`で残るheldはmerge直前のcurrent-head PR checkだけである。final report attestation後に必須PR checkを確認してsquash mergeする。
+T404 PR #48はcurrent mainへsquash merge済み。T602 PR #49は通常reviewと一度限りの全範囲独立reviewを完了し、独立finding 2件を同じreviewerが限定closureした。final report attestation後に必須PR checkだけを確認してsquash mergeする。
