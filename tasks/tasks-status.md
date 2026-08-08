@@ -8,12 +8,12 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T602 rebase・force-push回復（PR #49）をcurrent mainへsquash merge済み
-- 現在のタスク: T505（PR #43、通常review findings 7件をclosedし、現行main統合後の一度限りの全範囲独立review待ち）
-- 次のタスク: 独立reviewを一度だけ実施し、findingがあれば同じreviewerで限定closure後、必須PR checkを確認してsquash mergeする
-- 実装状態: 通常review closure HEAD `e5f7fbe070a90e855acbc12f51b04c15ce430458`で`T505-R001`〜`R007`をclosed。現行main統合後のfocused T505 18/18とdiff checkは成功
+- 現在のタスク: T505（PR #43、通常reviewと一度限りの全範囲独立reviewを完了。独立finding 1件も同じreviewerが限定closure済み）
+- 次のタスク: final report attestation後、merge直前に必須PR checkだけを確認してsquash mergeする
+- 実装状態: technical fix HEAD `11a7b6128de97493a4aafd2dee890d0c4349bddf`で`T505-IFR-001`をclosed。T505 focused suiteとCI contract計26件、lint、diff checkは成功
 - ブロッカー: なし
 - Gitブランチ: `feature/t505-global-understanding-ui`
-- Pull Request: PR #43（open、独立review待ち）
+- Pull Request: PR #43（open、独立review完了、merge待ち）
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
 - T404 implementation handoff: `reports/issue-1-t404-handoff-20260806185200.yaml`
 - T404初回通常レビューレポート: `reports/issue-1-t404-review-20260806191327.md`
@@ -329,7 +329,7 @@
 | T502 | 完了 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる。通常review・独立review findingをclosureし、PR #37をcurrent mainへ統合済み |
 | T503 | 完了 | M | T300の共通除外policyを使うrepository file列挙、gitignore、invalid encoding、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`、`excluded`、`excludedDirectories`を決定的に返し、pruneしたdirectoryを配下fileへ展開・推定しない。独立review findingをclosureし、PR #34をcurrent mainへ統合済み |
 | T504 | 完了 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | validated immutable evidenceから有効なGlobal非空行だけを集計し、malformed UTF-8を除外し、cooperative処理中のfile変更を再検証する。通常review・独立review findingをclosureし、PR #39をcurrent mainへ統合済み。AC-18のcore部分を満たす |
-| T505 | 進行中 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装した | T305、T502、T504 | 通常review findings 7件はclosed。現行main統合後のfocused T505 18/18を確認済み。一度限りの全範囲独立reviewとsquash mergeが残る |
+| T505 | 進行中 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装した | T305、T502、T504 | 通常review findings 7件と一度限りの全範囲独立review finding 1件をclosed。T505 4 suiteとCI接続を固定し、squash merge待ち |
 | T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
 
 ## P6 Gitなし対応と堅牢化
@@ -365,4 +365,4 @@
 
 ## 次回開始時の選択
 
-T404 PR #48とT602 PR #49はcurrent mainへsquash merge済み。T505 PR #43は通常review findings 7件をclosedし、現行mainを統合した。一度限りの全範囲独立review後に必須PR checkだけを確認してsquash mergeする。
+T404 PR #48とT602 PR #49はcurrent mainへsquash merge済み。T505 PR #43は通常reviewと一度限りの全範囲独立review findingsをすべてclosedした。final report attestation後に必須PR checkだけを確認してsquash mergeする。
