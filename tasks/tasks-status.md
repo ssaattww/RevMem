@@ -8,9 +8,9 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T404 永続PR context layer（PR #48）をcurrent mainへsquash merge済み
-- 現在のタスク: T602（PR #49、通常review findingsはすべてclosed。current main統合済みで全範囲独立review待ち）
-- 次のタスク: 別reviewerが固定HEADを一度だけ全範囲独立reviewし、必須PR check成功後にsquash mergeする
-- 実装状態: reviewed implementation HEAD `5a6904e8a46221a89adfbf1c27b2bd36e098f8e7`で`T602-R010`をclosedし、通常review cycleのopen findingはない。Exact-head PR CI run `31132016504`はsuccess
+- 現在のタスク: T602（PR #49、通常reviewと一度限りの全範囲独立reviewを完了。独立finding 2件も同じreviewerがclosure済み）
+- 次のタスク: final report attestation後、merge直前に必須PR checkだけを確認してsquash mergeする
+- 実装状態: technical fix HEAD `4d7e04b2f93336fca465edf36b7bc4c47c89e803`で`T602-IFR-P1`と`P2`をclosed。focused T602 30/30、compile、lint、architecture正負、diff checkは成功
 - ブロッカー: なし
 - Gitブランチ: `agent/t602-rebase-force-push-recovery`
 - Pull Request: PR #49（open、merge未実施）
@@ -334,7 +334,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
-| T602 | 進行中 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する。PR #49の通常review findingsはすべてclosed | T203、T204、T403、T601 | SHAだけの変化で全解除せず、object消失と複数候補では証拠のない範囲を確認済みにしない。current main統合済みHEADの全範囲独立review1回とmerge直前の必須PR check成功が残る |
+| T602 | 進行中 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する。PR #49の通常review findingsと一度限りの独立review findingsはすべてclosed | T203、T204、T403、T601 | 片側object欠落時のContext/Global共有identityとconcurrent openのsnapshot generationをfail-closedにし、focused 30/30を確認済み。merge直前の必須PR check成功とsquash mergeが残る |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
@@ -362,4 +362,4 @@
 
 ## 次回開始時の選択
 
-T404 PR #48はcurrent mainへsquash merge済み。T602 PR #49は通常review findingsをすべてclosedし、current mainを統合済みである。次は別reviewerが固定HEADを一度だけ全範囲独立reviewし、通過後に必須PR checkだけを確認してsquash mergeする。
+T404 PR #48はcurrent mainへsquash merge済み。T602 PR #49は通常reviewと一度限りの全範囲独立reviewを完了し、独立finding 2件を同じreviewerが限定closureした。final report attestation後に必須PR checkだけを確認してsquash mergeする。
