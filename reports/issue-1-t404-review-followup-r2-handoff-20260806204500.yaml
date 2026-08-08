@@ -1,0 +1,37 @@
+schema_version: 3
+repository: ssaattww/RevMem
+issue: 1
+task: T404
+pull_request: 48
+role: implementation_followup
+status: ready_for_fix_verification
+base_branch: main
+head_branch: feature/t404-pr-context-layers
+implementation_head_before_report: 26496b4e755b6e505f75616e8ea723a8da82a7d9
+findings:
+  T404-R003: addressed
+  T404-R004: addressed
+  T404-R006: addressed
+  T404-R008: addressed
+validation:
+  red_run:
+    id: 31097599124
+    conclusion: failure
+    artifact_id: 8966095298
+    reason: filesystem restart test expected no persisted commit envelope
+  green_run:
+    id: 31097756847
+    head_sha: 26496b4e755b6e505f75616e8ea723a8da82a7d9
+    conclusion: success
+  exact_head_only: true
+changed:
+  - src/application/github-pr-context/github-pull-request-context-layer-store.ts
+  - test/unit/github-pr-context-layer-store.test.ts
+  - reports/issue-1-t404-review-followup-r2-20260806204500.md
+  - reports/issue-1-t404-review-followup-r2-handoff-20260806204500.yaml
+notes:
+  - Context and Global mapping are one complete CAS commit.
+  - Canonical repositoryId is authoritative for PR context IDs.
+  - Closed/merged default visibility and explicit override are persisted in PR metadata.
+  - Existing history success/failure ordering tests remain in the standard unit suite.
+  - Merge not performed.

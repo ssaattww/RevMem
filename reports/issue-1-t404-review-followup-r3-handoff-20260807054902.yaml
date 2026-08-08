@@ -1,0 +1,317 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-07T05:49:02+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "PR #48"
+task_id: T404
+branch: feature/t404-pr-context-layers
+base_ref: main
+target:
+  current_head: 05d713336ec4316655c0af63e6fc290b4288eebf
+  reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+  commit_range: "033dbbe5b4d24d58bad9f1588dae41dd7ec44f40..05d713336ec4316655c0af63e6fc290b4288eebf"
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Address all current review findings autonomously; use GitHub connector; do not merge.
+  - source: pr
+    reference: PR #48 fix verification R2 review 4878042319
+    summary: R003/R004/R006/R008 remain open and require TDD follow-up.
+  - source: repository_instruction
+    reference: project instructions
+    summary: RevMem implementation uses TDD; matching current-HEAD CI only; failure diagnostics artifact required; detailed report and concise PR comment required.
+development_policy:
+  method: TDD
+  testing_order: test-first commit before production changes
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t404
+    - npm run test:unit
+    - npm test
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - failure investigation logs
+blocked:
+  - item: Matching GitHub Actions run for current implementation/report HEAD
+    reason: GitHub connector reported no pull-request workflow run for the exact SHA.
+    required_input_or_decision: null
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T404 implementation/tests/package/report/handoff and PR metadata/comment
+      reason: Required to address R003/R004/R006/R008.
+  forbidden:
+    - path_or_operation: merge
+      reason: Merge is reserved for the user.
+    - path_or_operation: tasks/tasks-status.md direct edit
+      reason: Repository file says only progress-management Skills may update it; those Skills are absent from uploaded worker Skills.
+scope:
+  - R003 mapped descriptor/file revision validation and immutable mapping evidence.
+  - R004 shared T202/T401/T404 canonical repository identity.
+  - R006 explicit closed/merged override preservation.
+  - R008 test-first ordering, focused suite, multiple-PR/restart, malformed identity, mapped snapshot, override, and PR history coverage.
+non_goals:
+  - T405 Review Contexts UI.
+  - Layer selection/deletion UI.
+  - Merge.
+files:
+  changed:
+    - path: test/unit/t404-review-followup-r3.test.ts
+      purpose: Test-first R003/R004/R006/R008 regression coverage.
+    - path: test/unit/t404-history-integration.test.ts
+      purpose: Pull-request history persistence/restart coverage.
+    - path: src/core/repository-identity/hosted-git-repository-identity.ts
+      purpose: Shared hosted repository canonicalization contract.
+    - path: src/core/repository-identity/index.ts
+      purpose: Export shared identity function.
+    - path: src/adapters/local-git/git-remote-normalization.ts
+      purpose: Reuse shared host/path canonicalization while preserving protocol-specific port semantics.
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: Mapping evidence, fail-closed mapped snapshot checks, canonical repository validation, and override preservation.
+    - path: package.json
+      purpose: Register T404 focused and standard regressions.
+    - path: reports/issue-1-t404-review-followup-r3-20260807054902.md
+      purpose: Detailed implementation report.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Confirm existing failure diagnostics capture/log artifact behavior.
+    - path: tasks/tasks-status.md
+      purpose: Confirm task state and protected update rule.
+    - path: src/adapters/local-git/git-remote-normalization.ts
+      purpose: Locate T202/T401 authoritative remote normalization behavior.
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing workflow already captures test/log/stdout/stderr diagnostic artifacts.
+    - path_or_area: tasks/tasks-status.md
+      reason: Protected by unavailable progress-management Skills.
+commands:
+  - command: GitHub connector fetch_commit_workflow_runs for 738e1a0e0e7c7442a02c7d7d8079047af75a914b
+    purpose: Check Red exact-head CI.
+    exit_code: unknown
+    result: not_run
+    head_sha: 738e1a0e0e7c7442a02c7d7d8079047af75a914b
+    evidence: No matching pull-request workflow run returned.
+  - command: GitHub connector fetch_commit_workflow_runs for 32eb6700465044419fb1d491f2ad094d0f2fdf41
+    purpose: Check implementation exact-head CI.
+    exit_code: unknown
+    result: not_run
+    head_sha: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+    evidence: No matching pull-request workflow run returned.
+tests:
+  - name: R2 review reproduction test-first commit
+    phase: red
+    result: failed
+    head_sha: 738e1a0e0e7c7442a02c7d7d8079047af75a914b
+    evidence: Test-only commit referenced src/core/repository-identity/index.js before that path existed; no matching Actions run was generated.
+  - name: test:t404
+    phase: verification
+    result: not_run
+    head_sha: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+    evidence: Registered in package.json; no exact-head Actions run exists.
+  - name: standard unit/full regression
+    phase: regression
+    result: not_run
+    head_sha: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+    evidence: T404 files registered in test:unit; no exact-head Actions run exists.
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+  commits:
+    - sha: 738e1a0e0e7c7442a02c7d7d8079047af75a914b
+      purpose: Test-first reproduction of R2 findings.
+    - sha: a3f213bfdfa16a9746d2fca58385d586a72dd8a9
+      purpose: Add shared hosted repository canonicalizer.
+    - sha: a4667fa0092cf866b89406a82a0a57f265383129
+      purpose: Export shared canonicalizer.
+    - sha: 4de47119256009113e68935e867467f6d73d358a
+      purpose: Reuse shared canonicalizer from Local Git normalization.
+    - sha: 3f6bad5400f4f07ff018ebc9b81c2ad92f63319b
+      purpose: Add mapped snapshot checks, mapping evidence, and override preservation.
+    - sha: 78c8e371b29af083716a62b694a19f292988ada8
+      purpose: Complete R2 regression cases.
+    - sha: 879caa4494dba10c787a8abcbe53c69828a310bb
+      purpose: Add T404 PR history integration test.
+    - sha: 3139689ab361f5e94949ebbaa13d0c30d5224a35
+      purpose: Register focused and standard T404 tests.
+    - sha: 88af0c59456161a8b673ff58b098f191255ae9c7
+      purpose: Keep protocol-specific default port handling outside shared core canonicalizer.
+    - sha: f385950ff15e639ff4ecaee75ce3a3e6daf9f33d
+      purpose: Apply PR HTTPS default-port handling at T404 boundary.
+    - sha: 32eb6700465044419fb1d491f2ad094d0f2fdf41
+      purpose: Align shared-canonicalizer regression expectations.
+  addressed_findings:
+    - id: T404-R003
+      reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+      disposition: addressed
+      evidence: PullRequestRevisionMappingEvidence plus mapped descriptor/top-level/all-file target-revision validation before commit.
+    - id: T404-R004
+      reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+      disposition: addressed
+      evidence: Shared core hosted repository canonicalizer used by Local Git and T404; canonical repositoryId validated.
+    - id: T404-R006
+      reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+      disposition: addressed
+      evidence: Persisted explicit override is carried forward when later metadata omits it, including revision transitions.
+    - id: T404-R008
+      reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+      disposition: partial
+      evidence: Test-first commit and requested focused/integration coverage exist; exact-head CI evidence remains unavailable.
+  failure_diagnostics:
+    - type: other
+      location: GitHub Actions
+      summary: No exact-head workflow run exists for the new Red or implementation HEAD; no foreign-SHA run was substituted.
+  blocked_items:
+    - item: Exact-head CI verification
+      reason: No run exists for implementation HEAD.
+      required_input_or_decision: null
+  summary:
+    - R003/R004/R006 implementation gaps were corrected.
+    - R008 test wiring and coverage were added with new test-first ordering; CI evidence remains absent.
+review:
+  mode: fix_verification
+  reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+  reviewer:
+    identity: ssaattww
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ssaattww
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence:
+        - PR review 4878042319
+  verdict: fail
+  required_coverage: []
+  validation_assessment:
+    - item: R2 fix verification
+      result: failed
+      evidence: PR review 4878042319 kept R003/R004/R006/R008 open.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Same normal reviewer must perform the next fix verification; implementation worker does not change the verdict.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t404-review-followup-r3-20260807054902.md
+    - reports/issue-1-t404-review-followup-r3-handoff-20260807054902.yaml
+  reviewed_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed R3 implementation follow-up persisted.
+findings:
+  - id: T404-R003
+    severity: high
+    origin: coverage_miss
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+    description: Mapped descriptor/file revision validation and immutable evidence were missing.
+    impact: A mapper could commit state not actually mapped to the target PR head.
+    evidence: PR review 4878042319
+    required_action: Re-run fix verification against the new implementation.
+  - id: T404-R004
+    severity: high
+    origin: coverage_miss
+    location: repository identity boundary
+    description: T404 did not share T202/T401 canonicalization.
+    impact: Repository identity drift could split equivalent PR contexts.
+    evidence: PR review 4878042319
+    required_action: Re-run fix verification against the shared canonicalizer implementation.
+  - id: T404-R006
+    severity: medium
+    origin: introduced_by_fix
+    location: PR lifecycle metadata update
+    description: Explicit closed override disappeared when omitted from a later refresh.
+    impact: User-selected visibility could be silently reset.
+    evidence: PR review 4878042319
+    required_action: Re-run fix verification against override carry-forward behavior.
+  - id: T404-R008
+    severity: medium
+    origin: coverage_miss
+    location: test/package/report evidence
+    description: TDD ordering and focused/integration coverage were incomplete.
+    impact: Prior fixes lacked required process and regression evidence.
+    evidence: PR review 4878042319
+    required_action: Verify new test-first ordering and focused/integration coverage; exact-head CI remains required when available.
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: Exact-head CI result for implementation/report HEAD
+    reason: No matching workflow run exists.
+not_applicable:
+  - field_or_area: merge
+    reason: User performs merge.
+remaining_risks:
+  - Exact-head CI is unavailable, so reviewer must not infer success from earlier SHA runs.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: runtime-neutral
+    content_type: text/markdown
+    payload: "Review follow-up implemented R003/R004/R006 and R008 test coverage. Test-first commit 738e1a0e preceded production changes. Implementation HEAD 32eb6700. No matching workflow run exists; no other SHA substituted."
+extensions:
+  - namespace: revmem
+    payload:
+      progress_tracking_update: blocked_by_missing_progress_management_skill
+      red_evidence_kind: deterministic_missing_module_at_test_first_commit
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Same normal reviewer should verify R003/R004/R006/R008 on the new lineage.
+  instructions:
+    - Resolve the final PR current HEAD before review.
+    - Use only CI whose head_sha equals that final HEAD; if none exists, report CI as unavailable.
+    - Verify test-first ordering from 738e1a0e forward.
+    - Do not reopen R001/R002/R005/R007 without new evidence.
+  required_attachments_or_references:
+    - reports/issue-1-t404-review-followup-r3-20260807054902.md
+    - reports/issue-1-t404-review-followup-r3-handoff-20260807054902.yaml
+    - PR #48 review 4878042319
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t404-review-followup-r3-handoff-20260807054902.yaml
+  packet_url: null
+  transport_note: Persisted on the PR branch; no merge performed.

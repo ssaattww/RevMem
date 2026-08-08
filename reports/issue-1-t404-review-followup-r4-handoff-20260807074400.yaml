@@ -1,0 +1,170 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: 2026-08-07T07:44:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "PR #48"
+task_id: T404
+branch: feature/t404-pr-context-layers
+base_ref: main
+target:
+  reviewed_head: b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69
+  review_evidence_head: 909665bbe269fb870a115bc54f4373ec59154405
+  test_only_head: e1d077b9f3bebb1758ac74fa2526f919dcb33184
+  implementation_head_before_report: c6a96390e36e13e2e77293d57b9cc203c9af586c
+  report_head: e1655228bdd49b57c3370dcbeb1ae75de94acf43
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Address the current T404 review findings autonomously.
+  - source: pr_review
+    reference: pullrequestreview-4878314014
+    summary: Fix only R003/R004/R008 using TDD; actual Red execution evidence is required before production fix.
+  - source: repository_instruction
+    reference: project instructions
+    summary: Use GitHub connector; TDD; exact-current-HEAD CI only; preserve failure diagnostics; write report/handoff and PR comment; never merge.
+development_policy:
+  method: TDD
+  testing_order: test-only commits preceded production commits
+  red_execution_requirement: required but not satisfied
+  red_execution_status: not_run
+  reason: No pull-request workflow run was generated for the exact test-only HEAD, including after a close/reopen trigger attempt.
+findings:
+  - id: T404-R003
+    severity: high
+    prior_status: open
+    implementation_status: addressed_pending_verification
+    summary: Added concrete immutable transition mapper backed by revision-bound diff and old/new blob text evidence; maps Context through T204 and Global through T502 and fails closed on missing evidence/unresolved transitions.
+  - id: T404-R004
+    severity: high
+    prior_status: open
+    implementation_status: addressed_pending_verification
+    summary: Replaced T404 suffix stripping with a shared hosted authority parser also used by T202/T401 Local Git normalization; malformed multi-colon authorities fail closed.
+  - id: T404-R008
+    severity: medium
+    prior_status: open
+    implementation_status: partially_addressed_blocked_on_red_execution_evidence
+    summary: Added defect-class tests before production, but an actual Red execution on the test-only HEAD could not be obtained.
+  - id: T404-R006
+    severity: medium
+    prior_status: closed
+    implementation_status: unchanged
+    summary: Explicit closed/merged override preservation remains in place and was not reopened.
+scope:
+  - T404-R003 immutable revision mapping.
+  - T404-R004 authority/default-port identity semantics.
+  - T404-R008 test-first and execution evidence.
+non_goals:
+  - T405 Review Contexts UI.
+  - Layer selection/deletion UI.
+  - Merge.
+files:
+  changed:
+    - path: test/unit/t404-review-followup-r3.test.ts
+      purpose: Test-first R003/R004 defect-class coverage.
+    - path: src/core/repository-identity/hosted-git-repository-identity.ts
+      purpose: Shared hosted Git authority parser and repository identity canonicalization.
+    - path: src/core/repository-identity/index.ts
+      purpose: Export shared authority parser.
+    - path: src/adapters/local-git/git-remote-normalization.ts
+      purpose: T202/T401 reuse shared authority parser with protocol-specific default ports.
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: T404 reuse shared authority parser with HTTPS default port semantics.
+    - path: src/application/github-pr-context/immutable-pull-request-revision-mapper.ts
+      purpose: Concrete immutable diff/blob/content-backed Context/Global revision mapper.
+    - path: src/application/github-pr-context/index.ts
+      purpose: Export concrete mapper.
+    - path: reports/issue-1-t404-review-followup-r4-20260807074400.md
+      purpose: Detailed R4 implementation report.
+    - path: reports/issue-1-t404-review-followup-r4-handoff-20260807074400.yaml
+      purpose: Review follow-up handoff.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Existing failure diagnostics workflow remains sufficient.
+    - path: src/core/git-diff/git-file-state-transition.ts
+      purpose: Reuse T204 transition engine and immutable text evidence contracts.
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: Reuse T502 Global Git-diff mapping.
+    - path: src/application/github-pr-diff/pull-request-diff-acquisition-service.ts
+      purpose: Confirm immutable base/head content acquisition semantics and boundary differences from PR-head transition mapping.
+    - path: tasks/tasks-status.md
+      purpose: Confirm protected update rule.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: File permits updates only through progress-management Skills that are absent from the uploaded worker skill set.
+    - path_or_area: T405 UI
+      reason: Outside T404 review follow-up scope.
+    - path_or_area: merge
+      reason: Reserved for the user.
+tdd:
+  test_only_commits:
+    - 0370ac03cccc4e9dc10646cfecdd78037e18fb6d
+    - 4a7aa6e14cef530e1759bb765331b66220e04154
+    - e1d077b9f3bebb1758ac74fa2526f919dcb33184
+  final_test_only_head: e1d077b9f3bebb1758ac74fa2526f919dcb33184
+  defects_encoded:
+    - malformed authority ghe.example:8443:443 must be rejected.
+    - immutable diff/content transition must invalidate a changed reviewed line in both Context and Global.
+  execution_attempts:
+    - operation: fetch_commit_workflow_runs
+      head_sha: e1d077b9f3bebb1758ac74fa2526f919dcb33184
+      result: no_matching_run
+    - operation: close_and_reopen_pr
+      head_sha: e1d077b9f3bebb1758ac74fa2526f919dcb33184
+      result: no_matching_run_after_reopen
+  red_result: not_run
+  statement: No Red failure was executed or observed; do not treat the Red phase as passed or failed.
+implementation:
+  commits:
+    - d2e7d037d5b3d9a19efa7387a2e8401aa7353f81
+    - 3cf77e40f6a8582a4d8ab0f343d7418194c66694
+    - 1532fbc54b659885d2fb9fd678fdcf27e8204898
+    - 83f1af68e3774facd513a2ee63e6b339e20e149d
+    - e70ba7dc3eae6af28df5239c526f239d02e8f8c1
+    - acf219381c259018b9bfca8b8fbcc635556f40ef
+    - 4371cd5877176f8fbe818b0f35d9d5c2eb1f2be0
+    - c6a96390e36e13e2e77293d57b9cc203c9af586c
+validation_plan:
+  focused: npm run test:t404
+  standard: npm run test:unit
+  full: npm test
+  ci_rule: Only a workflow run whose head SHA equals PR current HEAD may be used.
+ci:
+  test_only_head:
+    sha: e1d077b9f3bebb1758ac74fa2526f919dcb33184
+    matching_pull_request_run: none
+    conclusion: not_run
+  implementation_head_before_report:
+    sha: c6a96390e36e13e2e77293d57b9cc203c9af586c
+    matching_pull_request_run: none_at_report_time
+    conclusion: not_run
+  failure_diagnostics:
+    workflow_present: true
+    includes:
+      - test results
+      - stdout/stderr logs
+      - build/test diagnostic logs
+      - source/test/config/workflow context on failure
+base_sync:
+  old_base_sha: 112198c33823a5fc6681399a19e0c5361614143f
+  current_base_sha: d83d59a39de35e764bc025be661192847c2a1bcf
+  commits_behind: 1
+  main_changed_files:
+    - README.md
+    - reports/issue-1-readme-limitations-task-mapping-implementation-20260807052700.md
+  overlap_with_t404_production_files: false
+  pr_mergeable_reported: false
+blocked:
+  - item: R008 actual Red execution evidence
+    reason: No matching pull-request workflow run was generated for the exact test-only HEAD; connector does not expose a way to retroactively execute that old SHA.
+  - item: Exact-current-HEAD CI
+    reason: Must be checked after this handoff commit; no earlier SHA may be substituted.
+report:
+  path: reports/issue-1-t404-review-followup-r4-20260807074400.md
+next:
+  - Check PR current HEAD after handoff commit.
+  - Check only workflow runs matching that current HEAD.
+  - Update PR body/comment with exact CI status, including not_run if no matching run exists.
+  - Same normal reviewer re-verifies only R003/R004/R008.
+merge: false

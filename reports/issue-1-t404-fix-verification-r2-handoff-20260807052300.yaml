@@ -1,0 +1,79 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification_r2
+  generated_at: 2026-08-07T05:23:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #48"
+task_id: T404
+branch: feature/t404-pr-context-layers
+base_ref: main
+target:
+  previous_review_evidence_head: f80ce30f9c56a2084c96c719f253f04ab42a1e8e
+  reviewed_fix_implementation_head: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+  fix_range: f80ce30f9c56a2084c96c719f253f04ab42a1e8e..6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+review:
+  role: normal_reviewer
+  continuity: same_reviewer
+  verdict: fail
+  new_findings_added: false
+  previous_closed:
+    - T404-R001
+    - T404-R002
+    - T404-R005
+    - T404-R007
+  open:
+    - id: T404-R003
+      severity: high
+      disposition: open
+      reason: mapped commit validation remains top-level only; mapped PR descriptor and Context/Global file revisions are not fail-closed, and immutable mapping evidence is not required by the mapper contract.
+      required_action: Validate complete mapped descriptor and all file revisions against the new head, and require evidence-bearing conservative mapping with Red tests for stale files, wrong PR identity/state, rename and ambiguity.
+    - id: T404-R004
+      severity: high
+      disposition: open
+      reason: repositoryId is only weakly string-validated and the PR identity code still reimplements authority canonicalization instead of sharing T202/T401 canonicalGitHubAuthority/normalizeGitRemoteUrl.
+      required_action: Generate IDs only from the shared canonical identity contract and add Red tests for malformed multi-port, default-port variants and noncanonical repository IDs.
+    - id: T404-R006
+      severity: medium
+      disposition: open
+      reason: metadata-only update replaces the whole PR descriptor, so omitting decorationEnabled after an explicit closed-PR override erases the user preference; restart and revision-transition retention are untested.
+      required_action: Persist user visibility independently from GitHub metadata or preserve the previous override when omitted; add refresh, revision and filesystem restart Red tests.
+    - id: T404-R008
+      severity: medium
+      disposition: open
+      reason: production changes preceded the test-only Red commit e101d2a; test:t404 and required multiple-PR, override round-trip, mapped snapshot, malformed identity and T404 history integration coverage remain absent; follow-up evidence overstates closure.
+      required_action: Add test-only commits and intentional Red runs before production fixes, add an owned test:t404 command and missing integration boundaries, then correct report/handoff evidence.
+validation:
+  exact_head_ci:
+    head_sha: 6d5d23ac736b019ec8e7dc8c8be9a9d1edfa063a
+    run_id: 31097954937
+    status: completed
+    conclusion: success
+  prior_red_run:
+    head_sha: e101d2add0756c8804c6ba5e0a3c91f8ce8dc45e
+    run_id: 31097599124
+    conclusion: failure
+    artifact_id: 8966095298
+    assessment: The commit itself is test-only, but a production source commit already precedes it in f80ce30..e101d2a, so it is not test-first TDD evidence.
+  exact_head_only: true
+failure_diagnostics:
+  workflow_present: true
+  captures:
+    - test results
+    - stdout and stderr logs
+    - generated files
+    - source and tests
+    - configuration and environment
+    - Git status
+report:
+  path: reports/issue-1-t404-fix-verification-r2-20260807052300.md
+next_action:
+  type: implementation_followup
+  findings:
+    - T404-R003
+    - T404-R004
+    - T404-R006
+    - T404-R008
+  method: TDD
+  instruction: Add intentional failing tests in a test-only commit before production changes, then request the same normal reviewer for another closure-only verification.
+merge: forbidden
