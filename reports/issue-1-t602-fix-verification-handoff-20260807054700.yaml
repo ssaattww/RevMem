@@ -1,0 +1,316 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: "2026-08-07T05:47:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "PR #49"
+task_id: T602
+branch: agent/t602-rebase-force-push-recovery
+base_ref: main@112198c33823a5fc6681399a19e0c5361614143f
+target:
+  current_head: 015411655ac5fc70356a7da4e77c74d51521682c
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  commit_range: 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe..77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Re-review T602 completely using the uploaded ZIP skills.
+  - source: task
+    reference: tasks/tasks-status.md T602
+    summary: Recover after rebase/force-push using direct Git evidence, snapshot diff, unique mapping, then unreviewed; do not restore uncertain evidence.
+  - source: previous_review
+    reference: reports/issue-1-t602-fix-verification-20260807053000.md
+    summary: Remaining findings were T602-R010 high, T602-R011 high, and T602-R003 medium partial.
+
+development_policy:
+  method: TDD
+  testing_order: Implementation worker adds regression tests first; reviewer verifies immutable fix HEAD and exact-head CI.
+  governing_source: RevMem project instructions and uploaded chat review skills
+validation_plan:
+  commands:
+    - npm ci
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - T602 focused tests
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test-output/ci stdout/stderr logs
+    - generated dist/test-dist evidence
+    - source/tests/tools/workflow/environment evidence
+    - ci-failure-diagnostics artifact on CI failure
+blocked:
+  - item: exact-head CI validation
+    reason: No pull-request workflow run exists for reviewed implementation HEAD 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7.
+    required_input_or_decision: Produce/check a workflow run whose head_sha exactly matches the next implementation HEAD.
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t602-fix-verification-20260807054700.md
+      reason: Detailed fix-verification report.
+    - path_or_operation: reports/issue-1-t602-fix-verification-handoff-20260807054700.yaml
+      reason: Lossless normal-review handoff.
+    - path_or_operation: PR #49 review comment
+      reason: Concise review result.
+  forbidden:
+    - path_or_operation: implementation/test/design/workflow changes
+      reason: Reviewer must not implement findings.
+    - path_or_operation: merge PR #49
+      reason: Merge is user-owned.
+
+scope:
+  - Verify T602-R010 stale-open snapshot publication ordering.
+  - Verify T602-R011 copy metadata classification for quoted/escaped paths.
+  - Verify T602-R003 current implementation handoff/evidence currency.
+  - Inspect sibling cases introduced by these fixes.
+non_goals:
+  - Implement findings.
+  - Independent final review.
+  - Merge.
+
+files:
+  changed:
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: R010 publication ordering fix.
+    - path: src/application/history-rewrite-recovery/adapters.ts
+      purpose: R011 structural copy rejection.
+    - path: test/unit/document-git-history-rewrite-runtime.test.ts
+      purpose: R010 race regression.
+    - path: test/unit/history-rewrite-review-findings.test.ts
+      purpose: R011 quoted/escaped path regressions.
+    - path: reports/issue-1-t602-review-followup-20260807054400.md
+      purpose: Implementation follow-up evidence.
+    - path: reports/issue-1-t602-implementation-handoff-20260807054400.yaml
+      purpose: Updated implementation handoff.
+  inspected:
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: Trace asynchronous ordering from delegate.open through readProvenContent to queued publication.
+    - path: src/application/history-rewrite-recovery/adapters.ts
+      purpose: Verify copy metadata is rejected by matched section independent of path quoting.
+    - path: test/unit/document-git-history-rewrite-runtime.test.ts
+      purpose: Check which race ordering is actually exercised.
+    - path: test/unit/history-rewrite-review-findings.test.ts
+      purpose: Verify quoted, tab, and octal path coverage.
+    - path: reports/issue-1-t602-implementation-handoff-20260807054400.yaml
+      purpose: Verify technical HEAD and CI-unavailable state are current.
+  intentionally_untouched:
+    - path_or_area: implementation/test files
+      reason: Reviewer does not implement fixes.
+    - path_or_area: merge
+      reason: User-owned.
+
+commands:
+  - command: GitHub compare 0108703fa9e7ab3e2aa8d8ef32e2288a4de155fe..77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+    purpose: Resolve fix implementation diff.
+    exit_code: unknown
+    result: passed
+    head_sha: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+    evidence: Six implementation/test/report files changed in technical fix range.
+  - command: GitHub exact-head workflow lookup
+    purpose: Validate reviewed implementation HEAD.
+    exit_code: unknown
+    result: not_run
+    head_sha: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+    evidence: No pull-request workflow run returned; no other SHA substituted.
+
+tests:
+  - name: quoted and escaped copy metadata rejection
+    phase: verification
+    result: not_run
+    head_sha: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+    evidence: Test source inspected; exact-head CI unavailable.
+  - name: delayed stale open versus newer unreview commit
+    phase: verification
+    result: not_run
+    head_sha: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+    evidence: Test source inspected. It delays saveLatest after the stale open is already queued, but does not cover stale open delayed before enqueue by readProvenContent.
+
+ci:
+  required: true
+  workflow: .github/workflows/ci.yml
+  run_id: null
+  head_sha: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  conclusion: unknown
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary: []
+
+review:
+  mode: fix_verification
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  reviewer:
+    identity: ChatGPT normal reviewer in same T602 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer in same T602 review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Same chat performed initial review and all fix-verification passes.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement/design conformance
+      disposition: checked_finding
+      evidence: T602-R010 remains through a different async arrival order.
+    - criterion: correctness/edge cases
+      disposition: checked_finding
+      evidence: readProvenContent may delay stale open before queue insertion.
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: Fix range remains within R010/R011/R003 scope.
+    - criterion: changed files/direct dependencies
+      disposition: checked_finding
+      evidence: Provider, recovery adapter, tests, and handoff inspected.
+    - criterion: tests/validation adequacy
+      disposition: checked_finding
+      evidence: R010 regression does not cover newer commit enqueue/completion before stale open enqueue.
+    - criterion: current-head CI evidence
+      disposition: unexplored
+      evidence: Exact-head workflow run absent.
+    - criterion: reports/tracking/documentation accuracy
+      disposition: checked_no_finding
+      evidence: Updated implementation handoff accurately records technical HEAD and unavailable CI.
+  validation_assessment:
+    - item: exact-head CI
+      result: unavailable
+      evidence: No run for 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7.
+    - item: T602-R011 source fix
+      result: supported
+      evidence: Matched diff section rejects copy from/copy to metadata regardless of quoted path spelling.
+    - item: T602-R010 source fix
+      result: failed
+      evidence: Queue insertion occurs only after readProvenContent completes, permitting stale open to enqueue after a newer commit.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T602-R011 is addressed.
+    - T602-R003 evidence-currency issue is addressed; Green CI remains unavailable.
+    - T602-R010 remains high because stale open can be delayed before queue insertion.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t602-fix-verification-20260807054700.md
+    - reports/issue-1-t602-fix-verification-handoff-20260807054700.yaml
+  reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed fix verification persisted.
+
+findings:
+  - id: T602-R010
+    severity: high
+    origin: introduced_by_fix
+    location: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts open/readProvenContent/enqueueSnapshotCommit
+    description: A stale open can wait in readProvenContent outside the publication queue; a newer commit can enqueue and publish first, after which the stale open enqueues its older state and overwrites the latest snapshot pointer.
+    impact: Explicitly unreviewed ranges may be restored as reviewed after a later rebase or force-push.
+    evidence: open awaits readProvenContent before enqueueSnapshotCommit. Added race test delays saveLatest only after stale open is already queued and therefore misses the reverse-arrival ordering.
+    required_action: Add generation/expected-state validation covering open from state capture through publication, and test delayed readProvenContent where newer commit completes before stale open enqueue.
+
+held: []
+unexplored:
+  - area: exact-head automated validation
+    blocker: No matching pull-request workflow run exists.
+    remaining_risk: Compile/lint/test regressions are unverified.
+    verdict_impact: Validation cannot support a passing verdict.
+unknown:
+  - field_or_fact: exact-head CI run ID/conclusion
+    reason: No matching run exists.
+not_applicable:
+  - field_or_area: merge
+    reason: User-owned.
+remaining_risks:
+  - R010 stale snapshot generation race remains.
+  - Exact-head CI has not run.
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+      verdict: fail
+      findings:
+        - T602-R010
+      addressed:
+        - T602-R003
+        - T602-R011
+      validation: exact-head CI unavailable
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      path: reports/issue-1-t602-fix-verification-20260807054700.md
+      reviewed_head: 77d25c9da0e554e7ceec10ab3bc585bcb6bccfe7
+
+extensions:
+  - namespace: chatgpt.review_continuity
+    payload:
+      same_normal_review_chat: true
+
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: review follow-up
+  summary: Fix T602-R010 reverse-arrival stale-open publication race, add the missing regression, then run exact-head CI and return for normal fix verification.
+  instructions:
+    - Preserve T602-R010 finding identity and severity.
+    - Test readProvenContent delay before queue insertion, with newer unreview commit completing first.
+    - Do not substitute CI from another SHA.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t602-fix-verification-20260807054700.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t602-fix-verification-handoff-20260807054700.yaml
+  packet_url: null
+  transport_note: Persisted on PR branch; report and handoff commits are administrative and not part of the reviewed implementation HEAD.

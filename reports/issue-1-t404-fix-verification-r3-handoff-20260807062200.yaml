@@ -1,0 +1,70 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification_r3
+  generated_at: 2026-08-07T06:22:00+09:00
+repository: ssaattww/RevMem
+issue: 1
+task: T404
+pull_request: 48
+branch: feature/t404-pr-context-layers
+base_ref: main
+reviewer:
+  role: normal_reviewer
+  continuity: same reviewer as initial T404 review and prior fix verifications
+  implemented_change: false
+  implemented_review_fix: false
+target:
+  previous_review_evidence_head: 033dbbe5b4d24d58bad9f1588dae41dd7ec44f40
+  reviewed_fix_head: b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69
+  commit_range: 033dbbe5b4d24d58bad9f1588dae41dd7ec44f40..b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69
+ci:
+  required: true
+  run_id: 31128238812
+  head_sha: b0c03c8c1b1c2a9e1b290ce54a041c9c5b61cb69
+  conclusion: success
+  exact_head_only: true
+tdd:
+  test_first_head: 738e1a0e0e7c7442a02c7d7d8079047af75a914b
+  test_first_change: test/unit/t404-review-followup-r3.test.ts only
+  production_followed_test_commit: true
+  red_execution_confirmed: false
+  evidence: implementation report states no matching CI run and no local Red execution result; missing-module failure is static source evidence only
+findings:
+  - id: T404-R003
+    severity: high
+    disposition: open
+    reason: mapper contract still lacks actual immutable diff/blob/content mapping evidence and a concrete T203/T204/T205 mapping implementation; bumping file revisions while preserving reviewed ranges can still pass validation
+    required_action: add a concrete evidence-bound PR revision mapper and Red tests proving changed/rename/delete/ambiguous ranges are conservatively remapped or invalidated
+  - id: T404-R004
+    severity: high
+    disposition: open
+    reason: shared hosted repository path canonicalizer exists, but T404 still strips trailing :443 by suffix before parsing; malformed multi-port and default-port variants can alias or split from T202/T401 identity
+    required_action: share one authority parser/default-port canonicalizer with T202/T401 and add malformed/default-port boundary Red tests
+  - id: T404-R006
+    severity: medium
+    disposition: closed
+    reason: explicit decoration override is preserved across metadata refresh and revision transition and persisted in authoritative PR context state
+  - id: T404-R008
+    severity: medium
+    disposition: open
+    reason: focused/standard/history/multiple-PR coverage is improved and current-head CI succeeds, but project-required Red failure was not actually executed/confirmed before production implementation; R003/R004 regressions also remain
+    required_action: add R003/R004 Red tests in a test-only commit, actually execute them before production fix, record command/output/exit status, then make focused/unit/full CI Green
+previously_closed:
+  - T404-R001
+  - T404-R002
+  - T404-R005
+  - T404-R007
+verdict: fail
+new_findings: []
+report:
+  path: reports/issue-1-t404-fix-verification-r3-20260807062200.md
+next_action:
+  type: implementation_followup
+  findings:
+    - T404-R003
+    - T404-R004
+    - T404-R008
+  tdd_required: true
+  same_normal_reviewer_for_next_verification: true
+merge: forbidden

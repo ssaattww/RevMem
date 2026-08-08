@@ -46,10 +46,19 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+      - name: T602 history rewrite recovery tests
+        run: |
+          set -o pipefail
+          node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js test-dist/test/unit/history-rewrite-tree-enumeration.test.js test-dist/test/unit/local-git-tree-list.test.js test-dist/test/unit/document-git-history-rewrite-runtime.test.js 2>&1 | tee test-output/ci/test-t602.log
       - name: T403 GitHub cache tests
         run: |
           set -o pipefail
           npm run test:t403 2>&1 | tee test-output/ci/test-t403.log
+      - name: T404 GitHub PR context layer tests
+        run: |
+          set -o pipefail
+          npm run compile:test 2>&1 | tee test-output/ci/t404-compile-test.log
+          node --test test-dist/test/unit/github-pr-context-layer-store.test.js 2>&1 | tee test-output/ci/test-t404.log
       - name: T304 PR progress tree tests
         run: |
           set -o pipefail

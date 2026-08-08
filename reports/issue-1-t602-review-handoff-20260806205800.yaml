@@ -1,0 +1,378 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: review
+  generated_at: "2026-08-06T20:58:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "PR #49"
+task_id: T602
+branch: agent/t602-rebase-force-push-recovery
+base_ref: main@112198c33823a5fc6681399a19e0c5361614143f
+target:
+  current_head: 631a34472f974d3d21b9eecf54347b4ec6f1aaee
+  reviewed_head: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+  commit_range: 112198c33823a5fc6681399a19e0c5361614143f..d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current conversation
+    summary: Review T602 using the uploaded skill definitions and identify all findings in one complete pass.
+  - source: task
+    reference: tasks/tasks-status.md T602
+    summary: Recover in the order direct old Git object diff, snapshot diff, unique mapping, then unreviewed; do not clear everything for a SHA-only rewrite and do not preserve ranges without evidence.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 sections 9.2, 10.3, 10.4
+    summary: Fatal Git failures must remain failures; direct immutable evidence has priority; ambiguous or incomplete mapping must be unreviewed.
+
+development_policy:
+  method: TDD
+  testing_order: Add a failing regression test for each finding before implementation, then validate the exact new HEAD.
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm ci
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - T602 focused tests
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - Complete stdout and stderr logs under test-output/ci.
+    - Test results, generated output, source, tests, tools, configuration, workflow and environment evidence.
+    - Failure artifact for every required Red run.
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T602 implementation, tests, workflow diagnostics, implementation report, handoff and PR metadata required to close the findings
+      reason: Required review follow-up.
+  forbidden:
+    - path_or_operation: merge PR #49
+      reason: Merge is user-owned.
+    - path_or_operation: unrelated task implementation
+      reason: Keep the fix reviewable and scoped.
+
+scope:
+  - T602 history rewrite recovery correctness and conservative evidence handling.
+  - Snapshot publication, ownership, generation and Context/Global consistency.
+  - Local Git tree enumeration and fatal error classification.
+  - Exact-head evidence and report/handoff accuracy.
+non_goals:
+  - Merge.
+  - General T604 multi-window locking beyond the generation safety required to prevent T602 false recovery.
+  - General T606 retry/UI policy beyond preserving correct evidence semantics.
+
+files:
+  changed:
+    - path: reports/issue-1-t602-review-20260806203300.md
+      purpose: Complete initial review report and erratum.
+    - path: reports/issue-1-t602-review-handoff-20260806205800.yaml
+      purpose: Lossless review follow-up packet.
+  inspected:
+    - path: all 20 implementation changed files at reviewed_head
+      purpose: Complete diff review.
+    - path: tasks/tasks-status.md
+      purpose: T602 requirements.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Git failure and history rewrite contracts.
+    - path: src/application/review-context/git-context-revision-mapper.ts
+      purpose: Existing direct mapping and availability behavior.
+    - path: src/core/git-diff/git-diff-interval-mapping.ts
+      purpose: copy/rename parser semantics.
+    - path: src/core/git-diff/git-file-state-transition.ts
+      purpose: copy transition contract.
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: snapshot ownership and latest pointer behavior.
+    - path: src/adapters/document-review-state/git-context-document-review-state-session-provider.ts
+      purpose: persistence and mapping integration.
+  intentionally_untouched:
+    - path_or_area: implementation and tests
+      reason: Reviewer does not implement fixes.
+    - path_or_area: tasks/tasks-status.md
+      reason: Tracking update requires the repository-defined progress skill.
+
+commands:
+  - command: GitHub Actions CI run 31097483947
+    purpose: Validate reviewed implementation HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+    evidence: Workflow conclusion success; no other SHA substituted.
+
+tests:
+  - name: Existing complete and focused suites
+    phase: verification
+    result: passed
+    head_sha: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+    evidence: CI run 31097483947.
+  - name: Failure, race, ownership, candidate completeness and cross-scope regressions required by findings
+    phase: red
+    result: not_run
+    head_sha: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+    evidence: Tests do not yet exist.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31097483947
+  head_sha: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer did not modify implementation.
+
+review:
+  mode: initial_review
+  reviewed_head: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+  reviewer:
+    identity: ChatGPT normal reviewer in this conversation
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer in this conversation
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat did not implement T602; it performed the normal initial review.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T602-R004, R005, R006, R009
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: T602-R001, R005 through R010
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: Implementation diff stayed within T602, tests, workflow and reports.
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: All implementation changed files and primary direct dependencies inspected.
+    - criterion: API, data, configuration and workflow effects
+      disposition: checked_finding
+      evidence: Snapshot ownership/generation and Local Git error contract findings.
+    - criterion: error handling and diagnostics
+      disposition: checked_finding
+      evidence: T602-R001, R004, R005
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: No new source or secret logging path was introduced.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: Missing failure, race, ownership, candidate completeness and cross-scope tests.
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: Exact reviewed-head run 31097483947 succeeded.
+    - criterion: report, tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: T602-R003
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: T602-R009 through R011
+  validation_assessment:
+    - item: exact-head CI
+      result: supported
+      evidence: run 31097483947 at d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+    - item: manual force-push acceptance
+      result: unavailable
+      evidence: Not performed.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: false
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Complete initial review failed with ten required findings.
+    - T602-R002 from the preliminary report was retracted by explicit erratum.
+
+report:
+  report_type: review_report
+  outcome: updated
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t602-review-20260806203300.md
+    - reports/issue-1-t602-review-handoff-20260806205800.yaml
+  reviewed_head: d1a2b5ffd69ca5154a426072c63942cfb3b177a6
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed report persisted.
+
+findings:
+  - id: T602-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+    description: Snapshot generation invalidation/publication is not coordinated with durable state commit.
+    impact: Valid old evidence can be lost and a persisted commit can be reported as failed.
+    evidence: invalidate then delegate commit then publish, without rollback or prepared generation.
+    required_action: Use a two-stage generation switch and add failure-boundary tests.
+  - id: T602-R003
+    severity: medium
+    origin: introduced_by_change
+    location: PR body/comments and T602 implementation report/handoff
+    description: Final HEAD and CI identities are stale and inconsistent.
+    impact: Later workers can use validation from the wrong SHA.
+    evidence: d1a2b5f current implementation versus f42bdb and 424fdd records.
+    required_action: Synchronize all records to the post-fix implementation HEAD and exact matching CI.
+  - id: T602-R004
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/local-git/history-rewrite-local-git-adapter.ts
+    description: rev-parse exit 128 is classified as missing revision.
+    impact: Fatal Git failure enables fallback with incomplete evidence.
+    evidence: Code accepts exit 1 or 128; design 9.2 forbids blanket 128 missing classification.
+    required_action: Only exit 1 is missing; preserve all other failures and test them.
+  - id: T602-R005
+    severity: high
+    origin: introduced_by_change
+    location: history-rewrite-git-context-revision-mapper.ts and git-context-recovery.ts
+    description: Candidate enumeration/read failures silently shrink the candidate set.
+    impact: A remaining candidate can be falsely treated as unique.
+    evidence: Exceptions and non-found results are dropped without unknown evidence state.
+    required_action: Distinguish proven absence from unknown and reject cross-path recovery when candidate completeness is unavailable.
+  - id: T602-R006
+    severity: high
+    origin: introduced_by_change
+    location: src/application/history-rewrite-recovery/index.ts
+    description: Cross-file identity is selected by non-empty surviving reviewed ranges.
+    impact: An unrelated file retaining one reviewed line can be selected over the actual renamed file.
+    evidence: Candidate filtering uses reviewedRanges.length greater than zero.
+    required_action: Add a separate unique file-identity proof contract.
+  - id: T602-R007
+    severity: high
+    origin: introduced_by_change
+    location: src/application/history-rewrite-recovery/git-context-recovery.ts
+    description: Context and Global can recover the same file ID to different destinations or only one side.
+    impact: Atomic persisted snapshots become internally inconsistent.
+    evidence: Independent loops and only per-map destination conflict checks.
+    required_action: Resolve destination identity once and apply it consistently to both sides.
+  - id: T602-R008
+    severity: high
+    origin: introduced_by_change
+    location: snapshot recovery coordinator and adapter
+    description: Snapshot envelope scope/file ownership is not validated by the mapping port.
+    impact: A valid snapshot for another file can transfer reviewed ranges.
+    evidence: map accepts only snapshotId/currentContent/now; Global mismatch does not necessarily discard the ID.
+    required_action: Include expected scope/file ID in restore/map validation and test wrong-owner pointers.
+  - id: T602-R009
+    severity: high
+    origin: introduced_by_change
+    location: src/application/review-context/history-rewrite-git-context-revision-mapper.ts
+    description: Availability precheck and direct mapper independently query object existence.
+    impact: TOCTOU can skip fallback or override authoritative direct mapping.
+    evidence: Separate objectExists observations drive separate decisions.
+    required_action: Share one observation or return structured missing evidence from the direct mapper.
+  - id: T602-R010
+    severity: high
+    origin: introduced_by_change
+    location: persisted document provider and NonGitSnapshotTracker latest pointer
+    description: Latest snapshot publication has no generation CAS or serialization.
+    impact: An older reviewed snapshot can overwrite a newer unreviewed snapshot and later resurrect cleared ranges.
+    evidence: setLatest is last-writer-wins and is not tied to repository transaction generation.
+    required_action: Add generation-aware CAS/serialization and race tests.
+  - id: T602-R011
+    severity: medium
+    origin: introduced_by_change
+    location: src/application/history-rewrite-recovery/adapters.ts
+    description: The new direct Git adapter can treat copy as a destination mapping and is not used by production recovery.
+    impact: Test and production paths diverge; future wiring can violate the copy-unreviewed contract.
+    evidence: oldPath-only selection ignores copy classification; coordinator injects a missing-object stub.
+    required_action: Reuse the existing validated mapper or fully classify copy and wire one implementation path.
+
+held: []
+unexplored:
+  - area: manual force-push and Git GC acceptance
+    blocker: No manual environment was used in this review.
+    remaining_risk: Runtime integration may expose additional issues.
+    verdict_impact: Does not weaken the required findings; not verdict-blocking.
+unknown: []
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: This is a failing normal initial review.
+remaining_risks:
+  - Additional runtime defects may be found after the required failure and race tests are added.
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: current uploaded skill
+    content_type: text/markdown
+    payload: reports/issue-1-t602-review-20260806203300.md
+extensions:
+  - namespace: review_errata
+    payload:
+      finding_id: T602-R002
+      source_severity: medium
+      disposition: retracted
+      reason: Fail-stop exception behavior does not preserve incorrect reviewed state; the preliminary review conflated availability with safety.
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review finding follow-up
+  summary: Add Red tests and fix all required findings before returning to this normal review chat.
+  instructions:
+    - Preserve finding IDs and source severities.
+    - Add failing tests for every defect class before implementation.
+    - Keep candidate completeness, snapshot ownership and Context/Global identity fail-closed.
+    - Use only CI whose head SHA equals the new PR implementation HEAD.
+    - Update implementation report, handoff, PR body and implementation comment after fixes.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t602-review-20260806203300.md
+    - reports/issue-1-t602-review-handoff-20260806205800.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - edit_configuration
+    - edit_workflows
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t602-review-handoff-20260806205800.yaml
+  packet_url: null
+  transport_note: Use this packet and the detailed report for implementation follow-up; the reviewed implementation identity remains d1a2b5ffd69ca5154a426072c63942cfb3b177a6.

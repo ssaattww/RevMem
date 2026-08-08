@@ -1,0 +1,330 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-06T19:48:58+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #48"
+task_id: T404
+branch: feature/t404-pr-context-layers
+base_ref: main
+
+target:
+  current_head_before_handoff: 53edd2d5aa3826e6f577ef43091c72655cc3b472
+  source_reviewed_implementation_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  source_review_evidence_head: 787e6796229813a8ee842f10833ec8457a0ddc37
+  reviewed_fix_implementation_head: 228fd4082a462a51f2bc44ea5590423a485161a2
+  fix_commit_range: 787e6796229813a8ee842f10833ec8457a0ddc37..228fd4082a462a51f2bc44ea5590423a485161a2
+
+reviewer:
+  identity: ChatGPT normal reviewer in the T404 review chat
+  role: normal_reviewer
+  continuity:
+    previous_reviewer_identity: ChatGPT normal reviewer in the same T404 review chat
+    changed: false
+    reason: null
+  independence:
+    implemented_original_change: false
+    implemented_review_fix: false
+    served_as_initial_normal_reviewer: true
+    served_as_fix_verifier: true
+
+review_policy:
+  finding_identity_preserved: true
+  severity_preserved: true
+  new_broad_review_pass: false
+  sibling_cases_checked_within_source_defect_classes: true
+  merge_performed: false
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Re-review T404 autonomously using the uploaded worker skills, update task status under the explicit exception, and do not merge.
+  - source: source_review
+    reference: reports/issue-1-t404-review-20260806191327.md
+    summary: Verify T404-R001 through T404-R008 while preserving IDs and severities.
+  - source: task
+    reference: tasks/tasks-status.md T404
+    summary: Stable PR identity, complete Context/Global revision continuity, multiple PR isolation, closed-layer policy, and restart restoration are required.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: T104 Review State is authoritative; Context and Global update atomically; canonical GitHub identity is shared; closed PR is default-disabled but explicitly re-enableable.
+  - source: repository_instruction
+    reference: project instructions
+    summary: TDD for fixes, failure diagnostics artifacts, exact-current-HEAD CI only, detailed report, concise PR comment, handoff, tracking update, and no merge.
+
+development_policy:
+  method: TDD
+  testing_order: Add and demonstrate a failing regression test before each remaining production fix.
+  required_failure_diagnostics:
+    - test result
+    - standard output
+    - standard error
+    - generated files
+    - source and test snapshot
+    - immutable mapping evidence
+
+scope:
+  - Verify source findings T404-R001 through T404-R008 against fix HEAD 228fd4082a462a51f2bc44ea5590423a485161a2.
+  - Inspect direct state, mapping, identity, persistence, history, test, workflow, report, and tracking dependencies.
+  - Close only findings whose root defect class is removed.
+  - Return remaining findings to implementation with lossless evidence.
+non_goals:
+  - New broad normal review after source finding closure scope.
+  - T405 Review Contexts UI implementation.
+  - T604 cross-process locking implementation.
+  - Merge.
+
+files:
+  fix_changed:
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: PR state service, identity, metadata and revision update contract.
+    - path: src/adapters/github/node-github-pull-request-context-layer-store.ts
+      purpose: T104 repository adapter composition.
+    - path: test/unit/github-pr-context-layer-store.test.ts
+      purpose: T404 regression tests.
+    - path: test/unit/core-contracts.test.ts
+      purpose: Standard unit entrypoint connection.
+    - path: reports/issue-1-t404-review-followup-20260806194000.md
+      purpose: Implementation response evidence.
+  verification_created:
+    - path: reports/issue-1-t404-fix-verification-20260806194858.md
+      purpose: Detailed fix verification report.
+    - path: tasks/tasks-status.md
+      purpose: Track four closed and four open findings under the user exception.
+    - path: reports/issue-1-t404-fix-verification-handoff-20260806194858.yaml
+      purpose: Lossless implementation handoff for remaining findings.
+  direct_dependencies_inspected:
+    - src/core/contracts/review-state.ts
+    - src/application/review-context/contracts.ts
+    - src/application/review-context/git-context-revision-mapper.ts
+    - src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+    - src/adapters/state-repository/file-system-review-state-repository.ts
+    - src/adapters/state-repository/atomic-text-file-store.ts
+    - src/adapters/github/git-remote.ts
+    - src/adapters/local-git/git-remote-normalization.ts
+    - src/application/review-history/**
+    - src/extension.ts
+    - package.json
+    - .github/workflows/ci.yml
+    - doc/design/vscode-review-range-tracker-design.md
+    - tasks/tasks-status.md
+
+commands:
+  - command: GitHub compare 787e6796229813a8ee842f10833ec8457a0ddc37..228fd4082a462a51f2bc44ea5590423a485161a2
+    purpose: Resolve immutable fix diff and changed files.
+    result: passed
+    evidence: Five fix commits changed the PR state service, adapter, tests, and follow-up report.
+  - command: GitHub fetch_commit_workflow_runs 228fd4082a462a51f2bc44ea5590423a485161a2
+    purpose: Resolve exact implementation-head CI only.
+    result: passed
+    evidence: CI run 31094047777 completed successfully and matches the reviewed fix implementation HEAD.
+  - command: Reviewer local tests
+    purpose: Independent local reproduction.
+    result: not_run
+    evidence: Connector-backed immutable source and exact-head CI were inspected; remaining contract defects are directly established by source behavior.
+
+ci:
+  required: true
+  workflow: CI
+  implementation_run_id: 31094047777
+  implementation_head_sha: 228fd4082a462a51f2bc44ea5590423a485161a2
+  implementation_conclusion: success
+  later_review_evidence_head_run: pending
+  alternate_sha_substitution: false
+
+validation_assessment:
+  - item: exact reviewed-fix-HEAD CI
+    result: supported
+    evidence: Run 31094047777 matches 228fd4082a462a51f2bc44ea5590423a485161a2 and succeeded.
+  - item: authoritative state integration
+    result: partially_supported
+    evidence: Parallel custom store was removed, but revision mapping still does not advance complete Context and Global snapshots.
+  - item: TDD fix order
+    result: unknown
+    evidence: Follow-up report does not provide Red commit SHA, Red run/result, failing assertions, or production-fix ordering.
+  - item: focused T404 command
+    result: failed
+    evidence: package.json does not define test:t404; CI invokes a direct node command.
+
+review:
+  mode: fix_verification
+  source_reviewed_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  reviewed_fix_head: 228fd4082a462a51f2bc44ea5590423a485161a2
+  verdict: fail
+  summary:
+    - Four findings are closed: T404-R001, T404-R002, T404-R005, T404-R007.
+    - Four findings remain open: T404-R003, T404-R004, T404-R006, T404-R008.
+    - Exact-head CI success does not override remaining required findings.
+
+finding_dispositions:
+  - id: T404-R001
+    severity: blocking
+    disposition: closed
+    evidence:
+      - Parallel GitHubPullRequestContextLayer/path-range document was removed.
+      - PullRequestReviewStateCommit uses existing ReviewContextState and RepositoryGlobalState.
+      - Node adapter delegates to T104 FileSystemReviewStateRepository.
+    residual_risk:
+      - Actual persistence and history integration coverage remains under T404-R008.
+  - id: T404-R002
+    severity: high
+    disposition: closed
+    evidence:
+      - Old unsynchronized read-modify-write store was removed.
+      - T104 same-storage-root serialization and complete persisted-snapshot CAS are used within the service repository instance.
+    residual_risk:
+      - Cross-instance/window/process locking remains T604 scope.
+  - id: T404-R003
+    severity: high
+    disposition: open
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+    description: Revision mapping still handles Context only and commits the prior owner-wide Global state unchanged.
+    evidence:
+      - PullRequestRevisionMapper accepts current Context and next PR descriptor and returns only ReviewContextState.
+      - update builds next.globalState by cloning current.globalState after a revision change.
+      - requireMappedContext checks only context/repository IDs and top-level base/head SHA.
+      - Existing GitContextRevisionMapper requires and returns complete Context and Global snapshots with immutable mapping evidence.
+    impact:
+      - Global currentRevisionId and file revisions remain stale after a PR head change.
+      - A mapper can relabel top-level PR SHAs while leaving stale file evidence and reviewed ranges.
+    required_action:
+      - Change the mapper boundary to complete before/after PullRequestReviewStateCommit snapshots.
+      - Use immutable diff/blob evidence, filesystem semantics, and mapping options.
+      - Validate PR descriptor identity/lifecycle, every mapped file revision, Context revision, and Global revision before commit.
+      - Add Red tests for Global mapping, changed lines, rename, ambiguity, binary, missing old object, and mismatched file revisions.
+  - id: T404-R004
+    severity: high
+    disposition: open
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+    description: GitHub authority canonicalization is independently reimplemented and create permits noncanonical or unreachable context IDs.
+    evidence:
+      - The implementation strips a final :443 before validating the whole authority.
+      - A malformed authority such as ghe.example:8443:443 can alias ghe.example:8443.
+      - create checks context kind and SHAs but does not derive and compare the canonical context ID from the PR descriptor.
+      - T202/T401 canonicalGitHubAuthority and canonical remote policy are not reused.
+    impact:
+      - The same PR can split into multiple stored contexts or be stored under an ID that load(identity) cannot recover.
+    required_action:
+      - Reuse canonicalGitHubAuthority and the T202/T401 canonical repository identity policy.
+      - Validate descriptor, context ID, and repository ID at create/update/load boundaries.
+      - Add Red tests for malformed multi-port authority, default-port variants, and create identity mismatches.
+  - id: T404-R005
+    severity: high
+    disposition: closed
+    evidence:
+      - Existing FileReviewState supplies stable file ID, current/previous paths, modified/original ranges, content hash, and line count.
+      - Custom path-keyed interval persistence was removed.
+    residual_risk:
+      - Revision-mapping correctness remains T404-R003.
+  - id: T404-R006
+    severity: medium
+    disposition: open
+    location: src/core/contracts/review-state.ts; src/application/github-pr-context/github-pull-request-context-layer-store.ts
+    description: Lifecycle persistence exists, but no persisted layer visibility contract represents closed-default false and explicit user override true.
+    evidence:
+      - PullRequestReviewContext records only open/closed/merged lifecycle.
+      - ReviewContextState has no PR-layer enablement/default override field.
+      - Tests verify closed metadata only, not default disable, explicit enable, or restart restoration.
+    impact:
+      - T405 can add a toggle UI but has no authoritative state to persist its value.
+    required_action:
+      - Separate lifecycle state from persisted user-selected visibility/decoration enablement.
+      - Apply default false at closed/merged context creation while preserving explicit override.
+      - Test default, override, restart, and reopen behavior.
+  - id: T404-R007
+    severity: high
+    disposition: closed
+    evidence:
+      - The custom writeFile/Date.now temp/direct rename path was removed.
+      - T104 NodeAtomicTextFileStore provides unique temp, file sync, close, replace, and failure cleanup.
+    residual_risk:
+      - Cross-process lock and directory durability remain T604 scope.
+  - id: T404-R008
+    severity: medium
+    disposition: open
+    location: package.json; .github/workflows/ci.yml; test/unit/github-pr-context-layer-store.test.ts; reports/issue-1-t404-review-followup-20260806194000.md
+    description: Standard-unit wiring improved, but focused command, critical integration tests, test-first evidence, final evidence, and implementation handoff remain incomplete.
+    evidence:
+      - core-contracts.test imports the T404 test so standard unit executes it.
+      - package.json still has no test:t404 script and CI uses a direct node invocation.
+      - No actual T104 filesystem/restart/multiple-PR/CAS/history/failure test exists.
+      - Follow-up report lacks Red commit/run/assertions, production fix ordering, final implementation HEAD, and exact-head CI run.
+      - No schema-v3 implementation follow-up handoff corrects prior stale evidence.
+    impact:
+      - Green CI does not prove the remaining T404 contracts and a later worker cannot reconstruct TDD or final evidence reliably.
+    required_action:
+      - Add test:t404 and use it from CI.
+      - Add actual T104 adapter, restart, multiple PR, CAS, history, identity, Global mapping, and closed override tests.
+      - Record Red/Green commits and results, final implementation HEAD, exact-head CI, and a schema-v3 implementation handoff.
+
+required_coverage:
+  - criterion: requirement and design conformance
+    disposition: checked_finding
+    evidence: T404-R003, T404-R004, T404-R006 remain.
+  - criterion: correctness and edge cases
+    disposition: checked_finding
+    evidence: Complete revision mapping, canonical create, and closed override remain deficient.
+  - criterion: scope discipline and unrelated changes
+    disposition: checked_no_finding
+    evidence: Fix files are limited to T404 and review evidence.
+  - criterion: changed files and direct dependency impact
+    disposition: checked_finding
+    evidence: Existing T205 mapper, T104 repository, core state, history, runtime composition, and test entrypoints were inspected.
+  - criterion: API, data, workflow, and compatibility
+    disposition: checked_finding
+    evidence: Mapper API, identity API, layer state, and test command remain incomplete.
+  - criterion: error handling and failure diagnostics
+    disposition: checked_finding
+    evidence: Workflow artifact collection is adequate; mapped snapshot fail-closed validation is not.
+  - criterion: security and secret handling
+    disposition: checked_no_finding
+    evidence: No new token or source-text persistence field exists.
+  - criterion: tests and validation adequacy
+    disposition: checked_finding
+    evidence: T404-R008 remains.
+  - criterion: current-HEAD CI evidence
+    disposition: checked_no_finding
+    evidence: Run 31094047777 matches the reviewed fix implementation HEAD.
+  - criterion: report, tracking, and documentation accuracy
+    disposition: checked_finding
+    evidence: Reviewer tracking is synchronized; implementation Red/Green and handoff evidence remain absent.
+  - criterion: regression and maintainability risks
+    disposition: checked_finding
+    evidence: Incomplete mapper and duplicate canonicalization policy remain.
+
+report:
+  report_type: fix_verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t404-fix-verification-20260806194858.md
+    - reports/issue-1-t404-fix-verification-handoff-20260806194858.yaml
+    - tasks/tasks-status.md
+  reviewed_fix_head: 228fd4082a462a51f2bc44ea5590423a485161a2
+  exact_head_ci_run: 31094047777
+
+unknown:
+  - Exact test-first commit sequence and Red failure output for the implementation follow-up are not recorded.
+
+held: []
+blocked: []
+
+next_action:
+  type: implementation_followup
+  target_skill: chat-implementation-worker
+  finding_ids:
+    - T404-R003
+    - T404-R004
+    - T404-R006
+    - T404-R008
+  testing_order: Red tests first, then production fixes, then complete validation.
+  summary: Complete Context/Global revision mapping, shared canonical identity and create validation, persisted closed-layer override, and focused/integration/TDD evidence.
+
+transport:
+  method: repository_file
+  report_path: reports/issue-1-t404-fix-verification-20260806194858.md
+  packet_path: reports/issue-1-t404-fix-verification-handoff-20260806194858.yaml
+  tracking_path: tasks/tasks-status.md
+  transport_note: Use the PR current HEAD after this handoff commit for future work. Do not substitute CI from any other SHA and do not merge.

@@ -1,0 +1,275 @@
+import type {
+  FileReviewState,
+  GlobalFileReviewState,
+  ReviewContextState
+} from "../../core/contracts/index";
+import { GitContextRevisionMapper as DirectGitContextRevisionMapper } from "./git-context-revision-mapper";
+import type {
+  GitContextRevisionMapperOptions,
+  GitContextRevisionMappingInput,
+  GitContextRevisionMappingResult,
+  GitHistoryRewriteRecoveryPort,
+  GitRevisionMappingSource
+} from "./contracts";
+
+const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const registeredHistoryRewriteRecovery = new WeakMap<
+  GitRevisionMappingSource,
+  GitHistoryRewriteRecoveryPort
+>();
+
+interface GitRevisionTreePathSource extends GitRevisionMappingSource {
+  listFilePathsAtRevision(
+    repositoryRoot: string,
+    revision: string
+  ): Promise<readonly string[] | undefined>;
+}
+
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const contextRevision = (state: ReviewContextState): string => {
+  if (state.kind !== "branch" || state.branch === undefined) {
+    throw new Error("Git context mapping requires branch-schema persistence.");
+  }
+  return state.branch.headRevision;
+};
+
+const hasTreePathSource = (
+  source: GitRevisionMappingSource
+): source is GitRevisionTreePathSource =>
+  "listFilePathsAtRevision" in source &&
+  typeof source.listFilePathsAtRevision === "function";
+
+/** Registers one source-local runtime recovery before constructing its mapper. */
+export function registerGitHistoryRewriteRecovery(
+  source: GitRevisionMappingSource,
+  recovery: GitHistoryRewriteRecoveryPort
+): void {
+  registeredHistoryRewriteRecovery.set(source, recovery);
+}
+
+/**
+ * Keeps direct immutable Git mapping authoritative and invokes T602 snapshot
+ * recovery only for the snapshot side whose old object is proven missing.
+ */
+export class GitContextRevisionMapper {
+  private readonly historyRewriteRecovery: GitHistoryRewriteRecoveryPort | undefined;
+
+  public constructor(
+    private readonly options: GitContextRevisionMapperOptions
+  ) {
+    this.historyRewriteRecovery = options.historyRewriteRecovery ??
+      registeredHistoryRewriteRecovery.get(options.source);
+  }
+
+  public async map(
+    input: GitContextRevisionMappingInput
+  ): Promise<GitContextRevisionMappingResult> {
+    this.validateCandidatePaths(input.currentCandidatePaths ?? []);
+    const oldContextRevisionId = contextRevision(input.contextState);
+    const oldGlobalRevisionId = input.globalState.currentRevisionId;
+    const observation = this.createObservedSource();
+    const availability = await this.oldObjectAvailability(
+      observation.source,
+      input.current.repositoryRoot,
+      oldContextRevisionId,
+      oldGlobalRevisionId
+    );
+
+    const direct = await new DirectGitContextRevisionMapper({
+      ...this.options,
+      source: observation.source
+    }).map(input);
+    if (
+      this.historyRewriteRecovery === undefined ||
+      (!availability.contextMissing && !availability.globalMissing)
+    ) {
+      return direct;
+    }
+
+    const currentCandidatePaths = await this.currentCandidatePaths(input);
+    const recovered = await this.historyRewriteRecovery.recover({
+      current: input.current,
+      contextFiles: availability.contextMissing
+        ? clone(input.contextState.files)
+        : {},
+      globalFiles: availability.globalMissing
+        ? clone(input.globalState.files)
+        : {},
+      oldContextRevisionId,
+      oldGlobalRevisionId,
+      fileSystemPathSemantics: input.fileSystemPathSemantics,
+      options: input.options,
+      currentCandidatePaths,
+      occurredAt: direct.contextState.updatedAt
+    });
+
+    const contextFiles = availability.contextMissing
+      ? clone(recovered.contextFiles)
+      : clone(direct.contextState.files);
+    const globalFiles = availability.globalMissing
+      ? clone(recovered.globalFiles)
+      : clone(direct.globalState.files);
+    const unresolvedFileIds = new Set([
+      ...(availability.contextMissing
+        ? []
+        : direct.unresolvedFileIds),
+      ...recovered.unresolvedFileIds
+    ]);
+    reconcileSharedRecoveryFiles(
+      input,
+      contextFiles,
+      globalFiles,
+      unresolvedFileIds
+    );
+
+    return {
+      contextState: {
+        ...clone(direct.contextState),
+        files: contextFiles
+      },
+      globalState: {
+        ...clone(direct.globalState),
+        files: globalFiles
+      },
+      unresolvedFileIds: [...unresolvedFileIds].sort()
+    };
+  }
+
+  private createObservedSource(): {
+    readonly source: GitRevisionMappingSource;
+  } {
+    const availability = new Map<string, Promise<boolean>>();
+    const original = this.options.source;
+    const source: GitRevisionMappingSource = {
+      objectExists: (repositoryRoot, objectName) => {
+        const key = `${repositoryRoot}\0${objectName}`;
+        let observed = availability.get(key);
+        if (observed === undefined) {
+          observed = original.objectExists(repositoryRoot, objectName);
+          availability.set(key, observed);
+        }
+        return observed;
+      },
+      diffRevisions: (repositoryRoot, leftRevision, rightRevision) =>
+        original.diffRevisions(repositoryRoot, leftRevision, rightRevision),
+      readTextFileAtRevision: (
+        repositoryRoot,
+        revision,
+        repositoryRelativePath,
+        fileSystemPathSemantics
+      ) => original.readTextFileAtRevision(
+        repositoryRoot,
+        revision,
+        repositoryRelativePath,
+        fileSystemPathSemantics
+      )
+    };
+    return { source };
+  }
+
+  private async currentCandidatePaths(
+    input: GitContextRevisionMappingInput
+  ): Promise<readonly string[]> {
+    if (input.currentCandidatePaths !== undefined) {
+      return [...input.currentCandidatePaths];
+    }
+    if (!hasTreePathSource(this.options.source)) {
+      return [];
+    }
+
+    const paths = await this.options.source.listFilePathsAtRevision(
+      input.current.repositoryRoot,
+      input.current.revisionId
+    );
+    if (paths === undefined) {
+      throw new Error("Current immutable revision disappeared during history-rewrite recovery.");
+    }
+    this.validateCandidatePaths(paths);
+    return [...paths];
+  }
+
+  private async oldObjectAvailability(
+    source: GitRevisionMappingSource,
+    repositoryRoot: string,
+    oldContextRevisionId: string,
+    oldGlobalRevisionId: string
+  ): Promise<{
+    readonly contextMissing: boolean;
+    readonly globalMissing: boolean;
+  }> {
+    const contextEligible = FULL_OBJECT_ID.test(oldContextRevisionId);
+    const globalEligible = FULL_OBJECT_ID.test(oldGlobalRevisionId);
+    if (!contextEligible && !globalEligible) {
+      return { contextMissing: false, globalMissing: false };
+    }
+
+    if (
+      contextEligible &&
+      globalEligible &&
+      oldContextRevisionId === oldGlobalRevisionId
+    ) {
+      const exists = await source.objectExists(
+        repositoryRoot,
+        oldContextRevisionId
+      );
+      return {
+        contextMissing: !exists,
+        globalMissing: !exists
+      };
+    }
+
+    const [contextExists, globalExists] = await Promise.all([
+      contextEligible
+        ? source.objectExists(repositoryRoot, oldContextRevisionId)
+        : Promise.resolve(true),
+      globalEligible
+        ? source.objectExists(repositoryRoot, oldGlobalRevisionId)
+        : Promise.resolve(true)
+    ]);
+    return {
+      contextMissing: contextEligible && !contextExists,
+      globalMissing: globalEligible && !globalExists
+    };
+  }
+
+  private validateCandidatePaths(paths: readonly string[]): void {
+    const seen = new Set<string>();
+    for (const path of paths) {
+      if (path.length === 0 || path.includes("\0") || seen.has(path)) {
+        throw new TypeError(
+          "currentCandidatePaths must contain unique non-empty paths without null characters."
+        );
+      }
+      seen.add(path);
+    }
+  }
+}
+
+function reconcileSharedRecoveryFiles(
+  input: Readonly<GitContextRevisionMappingInput>,
+  contextFiles: Record<string, FileReviewState>,
+  globalFiles: Record<string, GlobalFileReviewState>,
+  unresolved: Set<string>
+): void {
+  for (const fileId of Object.keys(input.contextState.files)) {
+    if (input.globalState.files[fileId] === undefined) {
+      continue;
+    }
+    const context = contextFiles[fileId];
+    const global = globalFiles[fileId];
+    if (
+      !unresolved.has(fileId) &&
+      context !== undefined &&
+      global !== undefined &&
+      context.currentPath === global.currentPath &&
+      context.revisionId === input.current.revisionId &&
+      global.revisionId === input.current.revisionId
+    ) {
+      continue;
+    }
+    delete contextFiles[fileId];
+    delete globalFiles[fileId];
+    unresolved.add(fileId);
+  }
+}

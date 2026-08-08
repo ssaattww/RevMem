@@ -1,4 +1,6 @@
 import type {
+  FileReviewState,
+  GlobalFileReviewState,
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
@@ -104,6 +106,8 @@ export interface GitContextRevisionMappingInput {
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
   /** Conservative whitespace/EOL equivalence policy. */
   readonly options: Readonly<GitDiffMappingOptions>;
+  /** Known current paths that may prove a unique rename after history rewriting. */
+  readonly currentCandidatePaths?: readonly string[];
 }
 
 /** Complete next snapshots after revision mapping. */
@@ -116,12 +120,50 @@ export interface GitContextRevisionMappingResult {
   readonly unresolvedFileIds: readonly string[];
 }
 
+/** Complete fallback input used only after both old context and Global objects are proven missing. */
+export interface GitHistoryRewriteRecoveryInput {
+  /** Current resolved Git context and immutable destination revision. */
+  readonly current: ResolvedGitReviewContext;
+  /** Complete persisted context files at the missing old context revision. */
+  readonly contextFiles: Readonly<Record<string, FileReviewState>>;
+  /** Complete owner-wide files at the missing old Global revision. */
+  readonly globalFiles: Readonly<Record<string, GlobalFileReviewState>>;
+  /** Missing old immutable context revision. */
+  readonly oldContextRevisionId: string;
+  /** Missing old immutable Global revision. */
+  readonly oldGlobalRevisionId: string;
+  /** Repository path semantics used for current immutable reads. */
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+  /** Conservative line equivalence policy. */
+  readonly options: Readonly<GitDiffMappingOptions>;
+  /** Current paths that may prove a unique rename. */
+  readonly currentCandidatePaths: readonly string[];
+  /** UTC timestamp applied to the complete recovered snapshots. */
+  readonly occurredAt: string;
+}
+
+/** Complete file snapshots returned by a missing-object recovery boundary. */
+export interface GitHistoryRewriteRecoveryResult {
+  readonly contextFiles: Readonly<Record<string, FileReviewState>>;
+  readonly globalFiles: Readonly<Record<string, GlobalFileReviewState>>;
+  readonly unresolvedFileIds: readonly string[];
+}
+
+/** Snapshot-backed fallback used only when direct old-object mapping is impossible. */
+export interface GitHistoryRewriteRecoveryPort {
+  recover(
+    input: Readonly<GitHistoryRewriteRecoveryInput>
+  ): Promise<GitHistoryRewriteRecoveryResult>;
+}
+
 /** Constructor dependencies for the revision mapper. */
 export interface GitContextRevisionMapperOptions {
   /** Immutable content and complete diff source. */
   readonly source: GitRevisionMappingSource;
   /** Stable hash used for new file IDs and content identities. */
   readonly stableHash: StableHash;
+  /** Optional missing-object recovery. Direct Git mapping always has priority. */
+  readonly historyRewriteRecovery?: GitHistoryRewriteRecoveryPort;
   /** Optional clock for mapped state timestamps. */
   readonly now?: () => Date;
 }
