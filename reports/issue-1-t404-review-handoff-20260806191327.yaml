@@ -1,0 +1,451 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-08-06T19:13:27+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #1 / PR #48"
+task_id: T404
+branch: feature/t404-pr-context-layers
+base_ref: main
+target:
+  current_head: 7468832fc768fd3888aef5c6a5acf19ede366874
+  reviewed_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  commit_range: 112198c33823a5fc6681399a19e0c5361614143f..3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Review T404 autonomously, follow uploaded worker Skills, emit all initial findings in one pass, update tasks/tasks-status.md, and do not merge.
+  - source: task
+    reference: tasks/tasks-status.md T404
+    summary: Persist stable GitHub PR contexts and multiple PR layers through globalStorageUri while preserving state across PR commits, separating different PRs, restoring after restart, and default-disabling closed PR decoration.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 sections 6, 7, 14, 15, 16, 21
+    summary: Reuse canonical repository/context identity, filesystem semantics, common Review State persistence, temp-write/flush/replace, and allow explicit closed PR layer enablement.
+  - source: repository_instruction
+    reference: project instructions
+    summary: Use TDD for fixes, preserve failure diagnostic artifacts, make small logical commits, persist a detailed report, post a concise PR review, update the PR, use only exact-head CI evidence, and never merge.
+
+development_policy:
+  method: TDD
+  testing_order: Add a failing regression test for each finding before the production fix.
+  governing_source: project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t404
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - generated files and source snapshot
+    - concurrency, persistence failure, and mapping evidence for T404 findings
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/application/github-pr-context/**
+      reason: T404 PR context identity and lifecycle application logic.
+    - path_or_operation: src/adapters/state-repository/**
+      reason: Reuse or minimally extend the authoritative T104 persistence boundary when required by T404 tests.
+    - path_or_operation: src/adapters/github/**
+      reason: GitHub identity adapter integration; remove or replace the parallel T404 store as needed.
+    - path_or_operation: src/core/contracts/**
+      reason: Only if a missing reusable PR-layer contract is demonstrated; preserve existing state compatibility.
+    - path_or_operation: test/unit/** and test/integration/**
+      reason: TDD regressions for every finding and affected sibling cases.
+    - path_or_operation: package.json and .github/workflows/ci.yml
+      reason: Add test:t404 and ensure the standard/full test path and failure diagnostics execute it.
+    - path_or_operation: reports/issue-1-t404-*
+      reason: Follow-up implementation, validation, and handoff evidence.
+    - path_or_operation: tasks/tasks-status.md
+      reason: Synchronize T404 finding-response and fix-verification state.
+    - path_or_operation: PR #48 metadata and comments
+      reason: Summarize fixes and exact-head validation.
+  forbidden:
+    - path_or_operation: merge PR #48
+      reason: Merge is reserved for the user.
+    - path_or_operation: unrelated task implementation or cleanup
+      reason: Keep the fix limited to T404 and direct defect-class dependencies.
+    - path_or_operation: rewriting historical review reports
+      reason: Preserve review evidence; use follow-up reports and explicit corrections.
+
+scope:
+  - Close T404-R001 through T404-R008 in one implementation pass.
+  - Reuse the existing authoritative Review State repository and canonical identity/path/range contracts.
+  - Add comprehensive Red/Green evidence and exact-current-HEAD CI evidence.
+  - Update tracking, report, handoff, PR body/comment, commit, and push.
+non_goals:
+  - T405 Review Contexts View UI beyond contracts needed to prove explicit closed-layer enablement.
+  - T406 broad GitHub outage integration suite.
+  - T603 schema migration chain or T604 cross-process lock, except same-process serialization required to prevent T404 lost updates.
+  - Merge.
+
+files:
+  changed:
+    - path: reports/issue-1-t404-review-20260806191327.md
+      purpose: Detailed initial review report with eight findings and exact reviewed identity.
+    - path: tasks/tasks-status.md
+      purpose: Mark T404 in progress and record initial review failure and required next action.
+    - path: reports/issue-1-t404-review-handoff-20260806191327.yaml
+      purpose: Lossless transfer to the implementation chat.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Validate T404 log capture and failure diagnostic artifact coverage.
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: Review PR identity, lifecycle, path, interval, and persisted model validation.
+    - path: src/adapters/github/node-github-pull-request-context-layer-store.ts
+      purpose: Review storage layout, atomicity, durability, concurrency, and replacement semantics.
+    - path: test/unit/github-pr-context-layer-store.test.ts
+      purpose: Assess TDD and requirement coverage.
+    - path: src/core/contracts/review-state.ts
+      purpose: Compare the new model with the existing authoritative context/file/Global state contracts.
+    - path: src/core/review-state/review-state-service.ts
+      purpose: Verify existing canonical interval and atomic context/Global mutation contracts.
+    - path: src/adapters/state-repository/atomic-text-file-store.ts
+      purpose: Compare required flush and unique-temp behavior.
+    - path: src/adapters/state-repository/storage-router.ts
+      purpose: Confirm repository-hash globalStorageUri routing.
+    - path: src/adapters/state-repository/file-system-review-state-repository.ts
+      purpose: Confirm manifest-last multi-context persistence and schema validation.
+    - path: src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+      purpose: Confirm same-instance serialization and full-snapshot CAS behavior.
+    - path: src/adapters/local-git/git-remote-normalization.ts
+      purpose: Confirm canonical GitHub.com case and default-port policy.
+    - path: src/adapters/github/git-remote.ts
+      purpose: Confirm canonical authority and T401 identity integration.
+    - path: src/application/github-pr-context/contracts.ts
+      purpose: Confirm reusable GitHubRepositoryIdentity contract.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Check storage, path, closed layer, and acceptance requirements.
+    - path: tasks/tasks-status.md
+      purpose: Check T404 task scope, dependencies, and completion conditions.
+  intentionally_untouched:
+    - path_or_area: product implementation files
+      reason: Reviewer does not implement fixes.
+    - path_or_area: tasks/phases-status.md
+      reason: User requested the task-status exception only; Phase remains P4 in progress.
+    - path_or_area: PR merge state
+      reason: User performs merge.
+
+commands:
+  - command: GitHub compare 112198c33823a5fc6681399a19e0c5361614143f..3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    purpose: Confirm the complete immutable implementation diff and changed-file set.
+    exit_code: 0
+    result: passed
+    head_sha: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    evidence: PR #48 is ahead by 11 commits, behind by 0, with eight implementation/review-evidence files changed.
+  - command: GitHub fetch_commit_workflow_runs 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    purpose: Resolve exact-head CI only.
+    exit_code: 0
+    result: passed
+    head_sha: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    evidence: CI run 31091033499 completed successfully.
+  - command: Local test execution
+    purpose: Reviewer-side reproduction.
+    exit_code: unknown
+    result: not_run
+    head_sha: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    evidence: Findings are established from source and contract inspection; fix verification requires new Red/Green tests.
+
+tests:
+  - name: T404 original TDD Red commit
+    phase: red
+    result: passed
+    head_sha: 58124757929214ed8a566b39d420b7b08355719a
+    evidence: Test-only commit predates production implementation.
+  - name: Existing exact-head CI suite
+    phase: verification
+    result: passed
+    head_sha: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+    evidence: Run 31091033499.
+  - name: Finding regression tests
+    phase: red
+    result: not_run
+    head_sha: unknown
+    evidence: Required next implementation action for T404-R001 through T404-R008.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31091033499
+  head_sha: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer made no product implementation change.
+
+review:
+  mode: initial_review
+  reviewed_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  reviewer:
+    identity: ChatGPT normal reviewer in this chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - T404 implementation was performed in another chat.
+        - This chat only inspected and persisted review/tracking/handoff evidence.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: R001, R004, R005, R006, R007.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: R002 through R007.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_finding
+      evidence: R001 parallel source of truth.
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: T104/T205/T401 contracts were inspected and are bypassed.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: R001, R004, R005, R006, R007.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: CI diagnostics are present; production serialization/durability is deficient in R002/R007.
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: Persisted normalized model does not include token or source text.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: R008.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Exact reviewed HEAD run 31091033499 success.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: R008; task tracking was updated by this reviewer.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: R001 through R008.
+  validation_assessment:
+    - item: exact reviewed-HEAD CI
+      result: supported
+      evidence: Run 31091033499 matches 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3.
+    - item: original TDD order
+      result: supported
+      evidence: Test commit 58124757929214ed8a566b39d420b7b08355719a precedes implementation.
+    - item: requirements coverage
+      result: failed
+      evidence: Eight findings remain; Green CI does not exercise the missing contracts.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Verdict fail on reviewed implementation HEAD 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3.
+    - Eight findings were emitted together: one blocking, five high, two medium.
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t404-review-20260806191327.md
+    - reports/issue-1-t404-review-handoff-20260806191327.yaml
+    - tasks/tasks-status.md
+  reviewed_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed review and task tracking are persisted.
+    - Concise REQUEST_CHANGES review must be posted after this handoff commit.
+
+findings:
+  - id: T404-R001
+    severity: blocking
+    origin: introduced_by_change
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts:1-5; src/adapters/github/node-github-pull-request-context-layer-store.ts:11-33
+    description: A second GitHubPullRequestContextLayer model and root-level JSON store bypass the existing ReviewContextState, FileReviewState, RepositoryGlobalState, and T104 manifest-last repository.
+    impact: Existing commands, decoration, progress, Global state, original-side state, history, repository isolation, and T405 cannot share one authoritative state; AC-11/AC-21 core is not delivered on the product state path.
+    evidence: No changed production file uses or extends T104 persistence; the new model omits stable file IDs, original ranges, content hashes, line counts, Global atomicity, and history.
+    required_action: Use the existing pull-request ReviewContextState and T104 storage route/repository as the only source of truth; derive any list metadata from it and add integrated context/Global/original-side tests.
+  - id: T404-R002
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/node-github-pull-request-context-layer-store.ts:25-33
+    description: upsert and remove perform unsynchronized read-modify-write operations without same-instance serialization or CAS.
+    impact: Concurrent PR updates, revision updates, and removals lose layers in a single Extension Host before T604 cross-process concerns apply.
+    evidence: Two operations can read the same document and publish conflicting complete replacements; T104-2 already provides storage-root serialization.
+    required_action: Reuse T104 or serialize/CAS same-owner operations; add Promise.all and update/remove interleaving Red tests.
+  - id: T404-R003
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/node-github-pull-request-context-layer-store.ts:25-30; test/unit/github-pr-context-layer-store.test.ts:28-34
+    description: A PR revision update replaces the entire caller-supplied layer and does not map or preserve existing state.
+    impact: Metadata refresh can erase ranges, while replaying old ranges can mark changed lines as reviewed.
+    evidence: The test resubmits identical files from its fixture, so it proves caller repetition rather than store continuity.
+    required_action: Add an evidence-bound revision transition using existing mapping/fail-closed logic and tests for metadata-only updates, changed lines, rename, and mapping failure.
+  - id: T404-R004
+    severity: high
+    origin: introduced_by_change
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts:7-20
+    description: Context identity lowercases only host and accepts noncanonical/default ports, diverging from T202/T401 canonical identity.
+    impact: The same GitHub.com PR splits between RevMem/revmem or github.com/github.com:443 contexts.
+    evidence: Existing normalizeGitRemoteUrl lowercases GitHub.com path and canonicalGitHubAuthority removes default ports; new normalizeIdentity does neither.
+    required_action: Reuse the canonical GitHubRepositoryIdentity path and test case/default/non-default/invalid-port variants.
+  - id: T404-R005
+    severity: high
+    origin: introduced_by_change
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts:1-5,22
+    description: The custom path/range record omits stable file identity and filesystem semantics, rejects valid POSIX backslash names, accepts invalid Windows/control paths, does not canonicalize adjacent intervals, and uses unsafe plain-object path keys.
+    impact: Valid files may be lost, invalid or ambiguous files may be persisted, rename/original-side certainty metadata is lost, and special names such as __proto__ cannot be represented safely.
+    evidence: Existing core FileReviewState and canonical path contracts already model these requirements; the new code reimplements only a subset.
+    required_action: Reuse core LineInterval/FileReviewState and canonical semantics-aware path validation; use safe indexing and add POSIX, Windows, interval, and special-key tests.
+  - id: T404-R006
+    severity: medium
+    origin: introduced_by_change
+    location: src/application/github-pr-context/github-pull-request-context-layer-store.ts:17
+    description: Normalization always forces closed or merged layer decorationEnabled to false.
+    impact: T405 cannot persist a user-explicit closed PR layer enablement required by design rev4.
+    evidence: The value is computed as state === open AND requested true on every save/load.
+    required_action: Separate creation default from persisted user override and test closed-layer explicit enablement across restart.
+  - id: T404-R007
+    severity: high
+    origin: introduced_by_change
+    location: src/adapters/github/node-github-pull-request-context-layer-store.ts:33
+    description: The claimed atomic publication writes and renames without file sync and uses a timestamp-only same-process temp suffix.
+    impact: Successful state may be lost after a crash, and same-millisecond writes can collide.
+    evidence: Design 15.2 and NodeAtomicTextFileStore require/open/sync/close/replace with a unique temp path.
+    required_action: Reuse T104 atomic file/repository implementation or implement equivalent durable publication and failure-injection tests.
+  - id: T404-R008
+    severity: medium
+    origin: coverage_miss
+    location: test/unit/github-pr-context-layer-store.test.ts; package.json; reports/issue-1-t404-implementation-20260806185200.md; reports/issue-1-t404-handoff-20260806185200.yaml
+    description: Tests and reports overstate identity/schema/persistence coverage, omit R001-R007 boundaries, and do not include T404 in the standard unit/full local suite.
+    impact: Green CI does not protect the task's main contracts and the next worker receives stale HEAD/coverage evidence.
+    evidence: The broad invalid-input test checks only HEAD and an inverted interval; T404 runs only through an ad-hoc CI step.
+    required_action: Add Red tests for every finding, define test:t404 and wire it into standard regression, then publish evidence-faithful follow-up reports/handoff.
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final post-handoff branch HEAD and matching CI run
+    reason: The handoff file commit is created after the packet body; resolve the resulting PR current HEAD and use only its matching run for branch-head status.
+not_applicable:
+  - field_or_area: independent final review report attestation
+    reason: This is an initial normal review.
+remaining_risks:
+  - The detailed verdict remains attached to reviewed implementation HEAD 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3; later report/tracking/handoff commits are administrative review evidence, not reviewed product fixes.
+  - Fixes may touch central T104 state contracts; sibling branch/workspace/external-file behavior requires regression coverage.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      task_id: T404
+      mode: review
+      current_head: 7468832fc768fd3888aef5c6a5acf19ede366874
+      reviewed_head: 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3
+      ci_matching_run: 31091033499
+  - source_skill: review-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      review_mode: initial_review
+      verdict: fail
+      finding_ids:
+        - T404-R001
+        - T404-R002
+        - T404-R003
+        - T404-R004
+        - T404-R005
+        - T404-R006
+        - T404-R007
+        - T404-R008
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: text/markdown
+    payload: reports/issue-1-t404-review-20260806191327.md
+extensions:
+  - namespace: reviewer_instruction
+    payload:
+      all_initial_findings_emitted_in_one_pass: true
+      finding_identity_must_be_preserved: true
+      same_normal_reviewer_required_for_fix_verification: true
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: Fix T404-R001 through T404-R008 together using TDD, update evidence and tracking, and return to the same normal reviewer for fix verification.
+  instructions:
+    - Start from PR #48 current HEAD, but preserve reviewed source finding identity and severity from reviewed implementation HEAD 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3.
+    - Add failing tests for every finding before production fixes and commit in small logical units.
+    - Resolve R001 by reusing the authoritative T104/core state model first; do not patch the parallel store into a second source of truth.
+    - Run the complete validation plan and confirm only a workflow run whose head SHA equals the new PR current HEAD.
+    - Update the implementation follow-up report, handoff, tasks/tasks-status.md, PR body/comment, commit, and push.
+    - Do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t404-review-20260806191327.md
+    - reports/issue-1-t404-review-handoff-20260806191327.yaml
+    - PR #48
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - edit_configuration
+    - edit_workflows
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: reports/issue-1-t404-review-handoff-20260806191327.yaml
+  packet_url: null
+  transport_note: Use PR #48 current HEAD for the implementation continuation. The technical findings apply to reviewed implementation HEAD 3dec4352c2bd8ad1ddf0303eed698b49c0cfa5d3; do not substitute another SHA's CI evidence.
