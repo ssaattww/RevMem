@@ -7,13 +7,13 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T404 永続PR context layer（PR #48）をcurrent mainへsquash merge済み
-- 現在のタスク: T602（PR #49、通常reviewと一度限りの全範囲独立reviewを完了。独立finding 2件も同じreviewerがclosure済み）
-- 次のタスク: final report attestation後、merge直前に必須PR checkだけを確認してsquash mergeする
-- 実装状態: technical fix HEAD `4d7e04b2f93336fca465edf36b7bc4c47c89e803`で`T602-IFR-P1`と`P2`をclosed。focused T602 30/30、compile、lint、architecture正負、diff checkは成功
+- 直近完了タスク: T602 rebase・force-push回復（PR #49）をcurrent mainへsquash merge済み
+- 現在のタスク: T505（PR #43、通常review findings 7件をclosedし、現行main統合後の一度限りの全範囲独立review待ち）
+- 次のタスク: 独立reviewを一度だけ実施し、findingがあれば同じreviewerで限定closure後、必須PR checkを確認してsquash mergeする
+- 実装状態: 通常review closure HEAD `e5f7fbe070a90e855acbc12f51b04c15ce430458`で`T505-R001`〜`R007`をclosed。現行main統合後のfocused T505 18/18とdiff checkは成功
 - ブロッカー: なし
-- Gitブランチ: `agent/t602-rebase-force-push-recovery`
-- Pull Request: PR #49（open、merge未実施）
+- Gitブランチ: `feature/t505-global-understanding-ui`
+- Pull Request: PR #43（open、独立review待ち）
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
 - T404 implementation handoff: `reports/issue-1-t404-handoff-20260806185200.yaml`
 - T404初回通常レビューレポート: `reports/issue-1-t404-review-20260806191327.md`
@@ -36,6 +36,9 @@
 - T602通常reviewレポート: `reports/issue-1-t602-review-20260806203300.md`
 - T602 fix verification R3レポート: `reports/issue-1-t602-fix-verification-r3-20260808130824.md`
 - T602独立最終reviewレポート（予約済み）: `reports/issue-1-t602-independent-final-review-20260808130824.md`
+- T602 merge commit: `3ec96646442e8b05c39eb8c68b15918b0a038536`
+- T505通常review finding closureレポート: `reports/issue-1-t505-fix-verification-r2-20260808135616.md`
+- T505独立最終reviewレポート（予約済み）: `reports/issue-1-t505-independent-final-review-20260808135616.md`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -326,7 +329,7 @@
 | T502 | 完了 | L | edit、Git diff、renameによるGlobal mappingと、現在PR未確認変更を最優先する6段階の表示優先順位を実装する | T106、T201、T203、T204、T501 | 現在PR変更行はGlobalだけでグレーにならず、曖昧・変更済みは通常背景になる。通常review・独立review findingをclosureし、PR #37をcurrent mainへ統合済み |
 | T503 | 完了 | M | T300の共通除外policyを使うrepository file列挙、gitignore、invalid encoding、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`、`excluded`、`excludedDirectories`を決定的に返し、pruneしたdirectoryを配下fileへ展開・推定しない。独立review findingをclosureし、PR #34をcurrent mainへ統合済み |
 | T504 | 完了 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | validated immutable evidenceから有効なGlobal非空行だけを集計し、malformed UTF-8を除外し、cooperative処理中のfile変更を再検証する。通常review・独立review findingをclosureし、PR #39をcurrent mainへ統合済み。AC-18のcore部分を満たす |
-| T505 | 未着手 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装する | T305、T502、T504 | PR進捗と別セクションに全体・file別率、確認数、対象数を表示する。除外file数は`excluded.length`だけを表示し、`excludedDirectories.length`を加算せず、pruneした除外directory数を別の診断項目として表示する。AC-18を満たす |
+| T505 | 進行中 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装した | T305、T502、T504 | 通常review findings 7件はclosed。現行main統合後のfocused T505 18/18を確認済み。一度限りの全範囲独立reviewとsquash mergeが残る |
 | T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
 
 ## P6 Gitなし対応と堅牢化
@@ -334,7 +337,7 @@
 | ID | 状態 | 規模 | タスクと変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
-| T602 | 進行中 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する。PR #49の通常review findingsと一度限りの独立review findingsはすべてclosed | T203、T204、T403、T601 | 片側object欠落時のContext/Global共有identityとconcurrent openのsnapshot generationをfail-closedにし、focused 30/30を確認済み。merge直前の必須PR check成功とsquash mergeが残る |
+| T602 | 完了 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #49をcurrent mainへsquash merge済み |
 | T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
@@ -362,4 +365,4 @@
 
 ## 次回開始時の選択
 
-T404 PR #48はcurrent mainへsquash merge済み。T602 PR #49は通常reviewと一度限りの全範囲独立reviewを完了し、独立finding 2件を同じreviewerが限定closureした。final report attestation後に必須PR checkだけを確認してsquash mergeする。
+T404 PR #48とT602 PR #49はcurrent mainへsquash merge済み。T505 PR #43は通常review findings 7件をclosedし、現行mainを統合した。一度限りの全範囲独立review後に必須PR checkだけを確認してsquash mergeする。
