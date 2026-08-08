@@ -141,7 +141,7 @@ export class DocumentReviewStateSessionProvider {
     }
 
     const coordinates = coordinatesOf(session.contextState, session.target);
-    const capturedGeneration = this.snapshotGenerationOf(coordinates);
+    const capturedGeneration = this.advanceSnapshotGeneration(coordinates);
     const content = await this.readProvenContent(descriptor, session.target);
     await this.enqueueSnapshotCommit(async () => {
       if (this.snapshotGenerationOf(coordinates) !== capturedGeneration) {
@@ -198,9 +198,11 @@ export class DocumentReviewStateSessionProvider {
     return this.snapshotGenerations.get(snapshotGenerationKey(coordinates)) ?? 0;
   }
 
-  private advanceSnapshotGeneration(coordinates: SnapshotCoordinates): void {
+  private advanceSnapshotGeneration(coordinates: SnapshotCoordinates): number {
     const key = snapshotGenerationKey(coordinates);
-    this.snapshotGenerations.set(key, (this.snapshotGenerations.get(key) ?? 0) + 1);
+    const generation = (this.snapshotGenerations.get(key) ?? 0) + 1;
+    this.snapshotGenerations.set(key, generation);
+    return generation;
   }
 
   private enqueueSnapshotCommit(operation: () => Promise<void>): Promise<void> {

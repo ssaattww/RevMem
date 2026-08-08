@@ -32,6 +32,7 @@ import {
 
 const OLD_SHA = "1111111111111111111111111111111111111111";
 const NEW_SHA = "2222222222222222222222222222222222222222";
+const LATEST_SHA = "3333333333333333333333333333333333333333";
 const NOW = "2026-08-06T11:40:00.000Z";
 const REPOSITORY_ID = "github.com/example/runtime-rewrite";
 const CONTENT = "alpha\nbeta\ngamma";
@@ -125,6 +126,7 @@ class MutableInspector implements DocumentGitInspector {
 
 class RuntimeSource implements GitRevisionMappingSource {
   public oldObjectExists = true;
+  public readonly unavailableObjectIds = new Set<string>();
   public diff = "";
   public readonly texts = new Map<string, string>([
     [`${OLD_SHA}\0src/example.ts`, CONTENT],
@@ -150,7 +152,9 @@ class RuntimeSource implements GitRevisionMappingSource {
   }
 
   public async objectExists(_root: string, objectName: string): Promise<boolean> {
-    return objectName === OLD_SHA ? this.oldObjectExists : true;
+    return objectName === OLD_SHA
+      ? this.oldObjectExists
+      : !this.unavailableObjectIds.has(objectName);
   }
 
   public async diffRevisions(): Promise<string> {
@@ -378,7 +382,7 @@ test("a stale open delayed before enqueue cannot overwrite a newer unreview comm
   provider.dispose();
 });
 
-test("an older Git open completing after a newer revision open cannot republish its snapshot", async () => {
+test("an older Git open completing after a newer revision open cannot revive ranges during a later history rewrite", async () => {
   const tracker = new DelayedSnapshotTracker(
     new InMemoryNonGitSnapshotStorage(),
     new NodeNonGitSnapshotCodec(),
@@ -420,8 +424,10 @@ test("an older Git open completing after a newer revision open cannot republish 
   gate.release();
   await staleOpen;
 
-  source.oldObjectExists = false;
-  const recovered = await provider.open(descriptor(stableHash.digest(NEW_CONTENT)));
+  source.unavailableObjectIds.add(NEW_SHA);
+  source.texts.set(`${LATEST_SHA}\0src/example.ts`, CONTENT);
+  inspector.head = LATEST_SHA;
+  const recovered = await provider.open(descriptor(stableHash.digest(CONTENT)));
   assert.deepEqual(
     recovered.contextState.files[recovered.target.fileId]?.modifiedReviewed,
     []
