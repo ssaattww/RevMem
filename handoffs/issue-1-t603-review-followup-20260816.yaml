@@ -1,0 +1,177 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_date: "2026-08-16"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #53"
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+  review_artifact_head: 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7
+  technical_head: 1f118bcd77b6481b65d8bff303684b0920322c63
+  current_head: post_report_commit_recorded_in_pr
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "t603 指摘対応 / RevMem project instructions"
+    summary: Address T603 review findings autonomously, use uploaded skills and GitHub connector, TDD implementation fixes, exact-head CI only, diagnostic artifacts, repository report, PR comment, and no merge.
+  - source: review
+    reference: "PR #53 R2 findings T603-R001..R014 and T603-B001"
+    summary: Repair persistence migration/corruption defects and evidence gaps; retain the authority conflict concerning corrupt JSONL behavior for explicit resolution if needed.
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev4 section 15.4"
+    summary: Existing corrupt JSONL must prevent append; retain evidence and reject rather than salvage and append.
+
+development_policy:
+  method: TDD
+  diagnostic_workflow_verified: true
+  merge_allowed: false
+
+findings:
+  - id: T603-R001
+    disposition: addressed
+    evidence: Deep current-schema corruption, stale cache hiding and owner-wide Global uncertainty have focused regressions and pass at technical exact-head CI run 31940328280.
+  - id: T603-R002
+    disposition: addressed
+    evidence: Explicit adjacent migration chain regression supports 0->1->2 target advancement.
+  - id: T603-R003
+    disposition: addressed
+    evidence: All manifest-referenced contexts are migrated before advanced references are published.
+  - id: T603-R004
+    disposition: addressed
+    evidence: Nested future schema is rejected without downgrade/quarantine.
+  - id: T603-R005
+    disposition: addressed
+    evidence: Malformed version metadata and explicit null snapshot schema are treated as corruption rather than legacy absence.
+  - id: T603-R006
+    disposition: addressed
+    evidence: gzip/hash/envelope snapshot corruption is quarantined and latest state invalidated.
+  - id: T603-R007
+    disposition: addressed_by_erratum
+    evidence: reports/issue-1-t603-review-followup-20260816.md contains authoritative GitHub identifier corrections while preserving older historical files.
+  - id: T603-R008
+    disposition: addressed_against_accepted_design
+    evidence: Corrupt monthly JSONL is quarantined as evidence and append rejects without salvage+append.
+  - id: T603-R009
+    disposition: addressed
+    evidence: Misreferenced/cross-subtree manifest corruption no longer quarantines or deletes valid sibling/global child evidence.
+  - id: T603-R010
+    disposition: addressed
+    evidence: Startup migration covers state, historical JSONL, snapshot entries and latest pointers; ESM test import fixed in 37f16bfc73636e1d4767f626376a0bbe8f4a7a82.
+  - id: T603-R011
+    disposition: addressed
+    evidence: T603 CI executes review-finding, JSONL store and multi-context history regressions.
+  - id: T603-R012
+    disposition: addressed_for_review_followup
+    evidence: Comprehensive review Red at 1803fd389971230a582c6ef2c555611798cf387f/run 31933261892 and sibling Red at b55c18098734d09a1ad3762cf11d77343365281c/run 31940277506 preceded their fixes.
+  - id: T603-R013
+    disposition: addressed
+    evidence: Wrong repository owner, wrong month and duplicate eventId reject; new event exact target identity remains required; existing repository history permits multiple contexts after 1f118bcd77b6481b65d8bff303684b0920322c63.
+  - id: T603-R014
+    disposition: addressed
+    evidence: Quarantine deletion uses AtomicTextFileStore abstraction and virtual-store regression.
+
+held:
+  - id: T603-B001
+    disposition: authority_decision_not_found
+    current_implementation: "Preserve accepted design rev4 section 15.4: quarantine evidence and reject append; do not salvage+append."
+    reason: No explicit user/owner decision choosing between broader task wording and accepted design wording was found in available prior context.
+    owner: user_or_reviewer
+    implementation_blocked: false
+    process_closure_blocked: true
+
+review_followup_tdd:
+  comprehensive_red:
+    head_sha: 1803fd389971230a582c6ef2c555611798cf387f
+    run_id: 31933261892
+    job_id: 95131183615
+    conclusion: failure
+    artifact_id: 9259902656
+    artifact_name: ci-failure-diagnostics-31933261892-1
+    summary: T603 review suite produced 17 failures before review fixes.
+  sibling_red:
+    head_sha: b55c18098734d09a1ad3762cf11d77343365281c
+    run_id: 31940277506
+    job_id: 95148328727
+    conclusion: failure
+    artifact_id: 9261824947
+    artifact_name: ci-failure-diagnostics-31940277506-1
+    summary: New multi-context repository-history regression failed before implementation fix.
+  technical_green:
+    head_sha: 1f118bcd77b6481b65d8bff303684b0920322c63
+    run_id: 31940328280
+    job_id: 95148441713
+    conclusion: success
+    summary: Full CI passed including T603, T207 Git integration, GitHub integration and VS Code Extension Host.
+
+failure_diagnostics:
+  - head_sha: 1803fd389971230a582c6ef2c555611798cf387f
+    run_id: 31933261892
+    artifact_id: 9259902656
+    purpose: comprehensive review-finding Red
+  - head_sha: bc9c291693d3f545833d5789be89749ced140ffe
+    run_id: 31934906491
+    artifact_id: 9260356423
+    purpose: R010 compiled ESM dynamic-import diagnosis
+  - head_sha: 37f16bfc73636e1d4767f626376a0bbe8f4a7a82
+    run_id: 31940145917
+    artifact_id: 9261796682
+    purpose: existing T207 multi-context history regression diagnosis
+  - head_sha: b55c18098734d09a1ad3762cf11d77343365281c
+    run_id: 31940277506
+    artifact_id: 9261824947
+    purpose: test-first sibling regression Red
+
+evidence_erratum:
+  supersedes_conflicting_identifiers_in:
+    - reports/issue-1-t603-implementation-20260816145900.md
+    - handoffs/issue-1-t603-implementation-20260816150000.yaml
+    - earlier PR description
+  corrections:
+    - run_id: 31929190714
+      head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+      job_id: 95121366762
+      artifact_id: 9258779700
+      artifact_name: ci-failure-diagnostics-31929190714-1
+    - run_id: 31929450198
+      head_sha: ac2f13c0fcaf0a7ac32988d636e640b64aef4a0c
+      job_id: 95121963562
+      artifact_id: 9258848153
+      artifact_name: ci-failure-diagnostics-31929450198-1
+    - run_id: 31929675591
+      head_sha: 4e9a09be675bdd3c83312a2717db5f75d4691a8c
+      job_id: 95122502746
+      artifact_id: 9258909583
+      artifact_name: ci-failure-diagnostics-31929675591-1
+    - run_id: 31929798612
+      head_sha: f9dd96383cb17400210e95d8e21ac6e378baf531
+      job_id: 95122794408
+      conclusion: success
+    - run_id: 31929935759
+      head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+      job_id: 95123109494
+      conclusion: success
+
+commits:
+  - sha: 37f16bfc73636e1d4767f626376a0bbe8f4a7a82
+    purpose: Fix R010 compiled ESM startup-migration test import.
+  - sha: b55c18098734d09a1ad3762cf11d77343365281c
+    purpose: Add TDD regression proving one repository monthly history can contain multiple contexts.
+  - sha: 1f118bcd77b6481b65d8bff303684b0920322c63
+    purpose: Correct R013 owner validation to repository scope while preserving exact identity validation for newly appended events.
+
+report:
+  path: reports/issue-1-t603-review-followup-20260816.md
+  type: review_followup_implementation_report
+  historical_reports_preserved: true
+
+next_actions:
+  - Update PR #53 description with corrected evidence and current review-followup status.
+  - Record post-report current HEAD and exact matching CI in PR comment.
+  - Independent reviewer may re-review the final current HEAD.
+  - User/reviewer may explicitly decide T603-B001 authority wording if process closure requires it.
+  - Do not merge PR #53.
