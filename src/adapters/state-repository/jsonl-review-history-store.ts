@@ -41,6 +41,7 @@ interface PreparedHistory {
   readonly content: string;
   readonly migrated: boolean;
   readonly corrupt: boolean;
+  readonly eventIds: ReadonlySet<string>;
 }
 
 interface HistoryIdentity {
@@ -54,11 +55,12 @@ const expectedMonthFromPath = (filePath: string): string | undefined => {
 
 const prepareExistingHistory = (
   content: string,
-  expectedTarget?: ReviewStateRepositoryTarget,
+  expectedRepositoryId?: string,
   expectedMonth?: string
 ): PreparedHistory => {
+  const eventIds = new Set<string>();
   if (content.length === 0) {
-    return { content: "", migrated: false, corrupt: false };
+    return { content: "", migrated: false, corrupt: false, eventIds };
   }
 
   const terminated = content.endsWith("\n");
@@ -68,7 +70,6 @@ const prepareExistingHistory = (
   }
   const completeSegments = terminated ? segments : segments.slice(0, -1);
   const canonicalLines: string[] = [];
-  const eventIds = new Set<string>();
   let migrated = false;
   let corrupt = !terminated;
   let observedIdentity: HistoryIdentity | undefined;
@@ -97,8 +98,8 @@ const prepareExistingHistory = (
         corrupt = true;
       }
       if (
-        expectedTarget !== undefined &&
-        event.repositoryId !== expectedTarget.repositoryId
+        expectedRepositoryId !== undefined &&
+        event.repositoryId !== expectedRepositoryId
       ) {
         corrupt = true;
       }
@@ -125,14 +126,16 @@ const prepareExistingHistory = (
   return {
     content: canonicalLines.map((line) => `${line}\n`).join(""),
     migrated,
-    corrupt
+    corrupt,
+    eventIds
   };
 };
 
 /** Migrates one existing monthly JSONL file without appending new evidence. Corruption is quarantined and removed from the active path so later history can restart cleanly. */
 export const migratePersistedReviewHistoryFile = async (
   store: AtomicTextFileStore,
-  filePath: string
+  filePath: string,
+  expectedRepositoryId?: string
 ): Promise<"absent" | "ready" | "reset"> => {
   const existing = await store.readText(filePath);
   if (existing === undefined) {
@@ -143,7 +146,7 @@ export const migratePersistedReviewHistoryFile = async (
     await quarantinePersistedText(store, filePath, existing);
     return "reset";
   }
-  const prepared = prepareExistingHistory(existing, undefined, month);
+  const prepared = prepareExistingHistory(existing, expectedRepositoryId, month);
   if (prepared.corrupt) {
     if (existing.length > 0) {
       await quarantinePersistedText(store, filePath, existing);
@@ -181,7 +184,7 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     const previous = this.tails.get(route.rootPath) ?? Promise.resolve();
     const operation = previous.then(async () => {
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
-      const prepared = prepareExistingHistory(existing, target, month);
+      const prepared = prepareExistingHistory(existing, target.repositoryId, month);
       if (prepared.corrupt) {
         if (existing.length > 0) {
           await quarantinePersistedText(
@@ -192,6 +195,9 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
         }
         await this.atomicFileStore.writeTextAtomically(filePath, `${canonical}\n`);
         return;
+      }
+      if (prepared.eventIds.has(event.eventId)) {
+        throw new Error(`Review history eventId must be unique: ${event.eventId}`);
       }
       const next = `${prepared.content}${canonical}\n`;
       if (prepared.migrated) {
