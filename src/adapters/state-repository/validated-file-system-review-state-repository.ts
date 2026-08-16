@@ -7,6 +7,7 @@ import {
 } from "./coherent-file-system-review-state-repository";
 import type {
   FileSystemReviewStateRepositoryOptions,
+  PersistenceOperation,
   ReviewStateCommit,
   ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
@@ -55,7 +56,7 @@ extends CoherentFileSystemReviewStateRepository {
   public override async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
-    const preparation = await this.prepareTarget(target);
+    const preparation = await this.prepareTarget(target, "load");
     if (preparation === "uncertain") {
       return undefined;
     }
@@ -71,7 +72,7 @@ extends CoherentFileSystemReviewStateRepository {
   public async loadGlobal(
     target: ReviewStateRepositoryTarget
   ): Promise<RepositoryGlobalState | undefined> {
-    const preparation = await this.prepareTarget(target);
+    const preparation = await this.prepareTarget(target, "load");
     if (preparation === "uncertain") {
       return undefined;
     }
@@ -91,7 +92,7 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, async () => {
-      const preparation = await this.prepareTarget(target);
+      const preparation = await this.prepareTarget(target, "save");
       const currentContext =
         preparation === "uncertain" ? undefined : await super.load(target);
       const persistedGlobal = await loadPersistedOwnerGlobal(
@@ -155,7 +156,7 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, async () => {
-      if (await this.prepareTarget(target) === "uncertain") {
+      if (await this.prepareTarget(target, "commit") === "uncertain") {
         throw new StaleReviewStateError(target);
       }
       await super.commit(transaction);
@@ -186,7 +187,7 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, async () => {
-      if (await this.prepareTarget(target) === "uncertain") {
+      if (await this.prepareTarget(target, "commit") === "uncertain") {
         throw new StaleReviewStateError(target);
       }
       await super.create(transaction);
@@ -195,7 +196,8 @@ extends CoherentFileSystemReviewStateRepository {
   }
 
   private async prepareTarget(
-    target: ReviewStateRepositoryTarget
+    target: ReviewStateRepositoryTarget,
+    operation: PersistenceOperation
   ): Promise<PersistedReviewStatePreparation> {
     const key = this.targetKey(target);
     try {
@@ -211,6 +213,19 @@ extends CoherentFileSystemReviewStateRepository {
       return preparation;
     } catch (error) {
       this.uncertainTargets.add(key);
+      const route = resolveReviewStateStorageRoute(
+        this.repositoryOptions.storageUris,
+        target
+      );
+      await Promise.resolve(
+        this.repositoryOptions.notifyPersistenceFailure?.({
+          operation,
+          target: { ...target },
+          route: { ...route },
+          filePath: route.statePointerPath,
+          error
+        })
+      ).catch(() => undefined);
       throw error;
     }
   }
