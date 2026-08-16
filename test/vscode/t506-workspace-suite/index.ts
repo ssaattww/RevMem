@@ -81,11 +81,28 @@ const expectedMappedIntervals: readonly ReviewedIntervalSnapshot[] = [
   { startLine: 2, endLineExclusive: 3 }
 ];
 
+const waitForMappedUnderstanding = async (
+  api: ReviewRangeT506WorkspaceTestApi
+): Promise<GlobalUnderstandingFileSnapshot> => {
+  const deadline = Date.now() + 5_000;
+  let latest = await globalFile(api);
+  while (
+    latest.reviewedNonEmptyLineCount !== 2 ||
+    latest.totalNonEmptyLineCount !== 3 ||
+    latest.progress !== 2 / 3
+  ) {
+    if (Date.now() >= deadline) return latest;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    latest = await globalFile(api);
+  }
+  return latest;
+};
+
 const assertMappedState = async (
   api: ReviewRangeT506WorkspaceTestApi,
   editor: vscode.TextEditor
 ): Promise<void> => {
-  const understanding = await globalFile(api);
+  const understanding = await waitForMappedUnderstanding(api);
   assert.equal(understanding.reviewedNonEmptyLineCount, 2);
   assert.equal(understanding.totalNonEmptyLineCount, 3);
   assert.equal(understanding.progress, 2 / 3);
@@ -155,7 +172,6 @@ export async function run(): Promise<void> {
     ),
     true
   );
-  await new Promise((resolve) => setTimeout(resolve, 150));
   await assertMappedState(api, editor);
   assert.equal(
     await within("save non-Git workspace edit", editor.document.save()),
