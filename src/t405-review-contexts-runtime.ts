@@ -47,6 +47,7 @@ import {
 } from "./core/contracts/index";
 import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
 import {
+  VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
   type RegisteredReviewContextsRuntime,
@@ -196,6 +197,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   public constructor(
     uris: ReviewStateStorageUris,
     private readonly visibility: VscodeReviewContextVisibilityStore,
+    private readonly currentPullRequestSelection: VscodeCurrentPullRequestSelectionStore,
     private readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>,
     private readonly synchronizeRepository: (
       owner: LocalRepositoryOwner,
@@ -234,10 +236,15 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           );
           current.push(branch ?? this.syntheticBranch(snapshot, owner.repositoryId, owner.branchRef));
         }
+        const preferredContextId = this.currentPullRequestSelection.read(
+          owner.repositoryId,
+          owner.headRevision,
+        );
         const currentPullRequest = findCurrentPullRequestContext(
           persisted,
           owner.repositoryId,
-          owner.headRevision
+          owner.headRevision,
+          preferredContextId,
         );
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
@@ -271,10 +278,15 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
       await this.synchronizeRepository(owner, persisted);
       persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      const preferredContextId = this.currentPullRequestSelection.read(
+        owner.repositoryId,
+        owner.headRevision,
+      );
       const pullRequest = findCurrentPullRequestContext(
         persisted,
         owner.repositoryId,
-        owner.headRevision
+        owner.headRevision,
+        preferredContextId,
       );
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
       const progress = await this.progressFor(pullRequest, owner.repositoryRoot);
@@ -414,6 +426,9 @@ export function registerT405ReviewContextsRuntime(
   const uris = storageUris(options.context);
   const repository = new FileSystemReviewStateRepository({ storageUris: uris });
   const visibility = new VscodeReviewContextVisibilityStore(options.context.workspaceState);
+  const currentPullRequestSelection = new VscodeCurrentPullRequestSelectionStore(
+    options.context.workspaceState,
+  );
   const stableHash = new NodeSha256StableHash();
   const gitExecutor = new NodeGitCommandExecutor();
   const auth = new VsCodeGitHubAuthenticationProvider(
@@ -618,6 +633,7 @@ export function registerT405ReviewContextsRuntime(
   const source = new T405ReviewContextsSource(
     uris,
     visibility,
+    currentPullRequestSelection,
     options.enumerateCurrentContexts,
     synchronizeRepository,
     progressFor,
@@ -728,6 +744,11 @@ export function registerT405ReviewContextsRuntime(
             expectedGlobal
           );
         }
+        await currentPullRequestSelection.select(
+          local.repositoryId,
+          local.head,
+          state.contextId,
+        );
       } else if (resolution.reason === "unavailable") {
         throw new Error("GitHubからPRを再検出できませんでした。");
       }
