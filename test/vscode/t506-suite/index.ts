@@ -38,6 +38,13 @@ interface ReviewedIntervalSnapshot {
   readonly endLineExclusive: number;
 }
 
+interface GlobalUnderstandingFileSnapshot {
+  readonly path: string;
+  readonly reviewedNonEmptyLineCount: number;
+  readonly totalNonEmptyLineCount: number;
+  readonly progress: number;
+}
+
 interface ReviewRangeT506TestApi {
   initializeLocalBaseHeadRuntime(input: {
     readonly baseSha: string;
@@ -59,6 +66,11 @@ interface ReviewRangeT506TestApi {
   }>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   refreshVisibleEditorDecorations(): Promise<void>;
+  getGlobalUnderstandingSnapshot(): Promise<{
+    readonly progress: {
+      readonly files: readonly GlobalUnderstandingFileSnapshot[];
+    };
+  } | undefined>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
 
@@ -189,6 +201,16 @@ const reviewGlobalFile = (
   return file;
 };
 
+const globalUnderstandingReviewFile = async (
+  api: ReviewRangeT506TestApi
+): Promise<GlobalUnderstandingFileSnapshot> => {
+  const snapshot = await api.getGlobalUnderstandingSnapshot();
+  assert.ok(snapshot, "T506 Global Understanding source must resolve the current repository.");
+  const file = snapshot.progress.files.find((candidate) => candidate.path === "review.ts");
+  assert.ok(file, "T506 Global Understanding must include review.ts.");
+  return file;
+};
+
 const openReviewDiff = async (file: PullRequestProgressTreeFile): Promise<void> => {
   await within(
     "open PR Progress review file",
@@ -213,6 +235,15 @@ const expectedMappedIntervals: readonly ReviewedIntervalSnapshot[] = [
   { startLine: 2, endLineExclusive: 3 }
 ];
 
+const assertMappedGlobalUnderstanding = async (
+  api: ReviewRangeT506TestApi
+): Promise<void> => {
+  const file = await globalUnderstandingReviewFile(api);
+  assert.equal(file.reviewedNonEmptyLineCount, 2);
+  assert.equal(file.totalNonEmptyLineCount, 3);
+  assert.equal(file.progress, 2 / 3);
+};
+
 const assertMappedNormalEditorAfterRestart = async (
   api: ReviewRangeT506TestApi,
   workspaceFolder: vscode.WorkspaceFolder
@@ -221,6 +252,11 @@ const assertMappedNormalEditorAfterRestart = async (
     "open mapped normal editor after restart",
     openNormalReviewEditor(workspaceFolder)
   );
+  await within(
+    "refresh current context after restart",
+    vscode.commands.executeCommand("reviewRange.refreshContext")
+  );
+  await assertMappedGlobalUnderstanding(api);
   await within("refresh mapped normal editor decorations", api.refreshVisibleEditorDecorations());
   assert.deepEqual(
     api.getVisibleReviewedIntervals(editor.document.uri.toString()),
@@ -279,6 +315,10 @@ export async function run(): Promise<void> {
       "open production normal editor",
       openNormalReviewEditor(workspaceFolder)
     );
+    await within(
+      "select production current context",
+      vscode.commands.executeCommand("reviewRange.refreshContext")
+    );
     normalEditor.selections = [
       new vscode.Selection(0, 0, 0, 0),
       new vscode.Selection(1, 0, 1, 0)
@@ -293,6 +333,10 @@ export async function run(): Promise<void> {
       [{ startLine: 0, endLineExclusive: 2 }],
       "The production normal editor must start with both non-empty lines reviewed."
     );
+    const initialUnderstanding = await globalUnderstandingReviewFile(api);
+    assert.equal(initialUnderstanding.reviewedNonEmptyLineCount, 2);
+    assert.equal(initialUnderstanding.totalNonEmptyLineCount, 2);
+    assert.equal(initialUnderstanding.progress, 1);
 
     await within(
       "insert an unreviewed normal-editor line",
@@ -301,6 +345,7 @@ export async function run(): Promise<void> {
       })
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
+    await assertMappedGlobalUnderstanding(api);
     await within("refresh edited normal-editor decorations", api.refreshVisibleEditorDecorations());
     assert.deepEqual(
       api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
