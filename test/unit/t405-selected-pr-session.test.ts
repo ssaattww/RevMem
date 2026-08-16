@@ -153,10 +153,11 @@ test("R405-7 selected PR owns normal-editor command and decoration sessions with
   const writable = await provider.open(descriptor, selection());
   const decoration = await provider.loadForDecoration(descriptor, selection());
 
-  assert.equal(writable.owner, "pull-request");
+  assert.equal(writable.owner, "git");
+  assert.equal(writable.contextState.kind, "pull-request");
   assert.equal(writable.contextState.contextId, CONTEXT_ID);
   assert.equal(writable.target.fileId, FILE_ID);
-  assert.equal(decoration?.owner, "pull-request");
+  assert.equal(decoration?.contextState.kind, "pull-request");
   assert.equal(decoration?.contextState.contextId, CONTEXT_ID);
   assert.deepEqual(repository.saves, []);
   provider.dispose();
