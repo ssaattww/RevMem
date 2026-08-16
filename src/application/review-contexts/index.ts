@@ -2,6 +2,7 @@
 export {
   InMemoryReviewContextVisibilityStore,
   ReviewContextsController,
+  formatReviewContextProgress,
   projectReviewContexts,
   type ReviewContextListGroup,
   type ReviewContextListItem,
