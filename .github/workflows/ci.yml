@@ -54,6 +54,8 @@ jobs:
           node tools/run-ci-command.mjs test-t504 node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js
       - name: T505 Global understanding tests
         run: node tools/run-ci-command.mjs test-t505 npm run test:t505
+      - name: T506 Global multi-context integration
+        run: node tools/run-ci-command.mjs test-t506 xvfb-run -a npm run test:t506
       - name: Temporary Git integration tests
         run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests

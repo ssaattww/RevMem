@@ -11,6 +11,11 @@ const testPhases = [
   "restore-confirmed-and-unmark",
   "restore-unmarked"
 ] as const;
+const t506Phases = [
+  "mark-context-a",
+  "restore-context-b-unmark-global",
+  "restore-context-a"
+] as const;
 const DEFAULT_LAUNCH_TIMEOUT_MS = 120_000;
 const FIXTURE_CLEANUP_TIMEOUT_MS = 10_000;
 
@@ -26,6 +31,7 @@ const launchTimeout = (): number => {
 
 async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
+  const focusedT506 = process.argv.includes("--t506");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workerPath = join(__dirname, "run-extension-host-launch-worker.js");
@@ -46,6 +52,11 @@ async function main(): Promise<void> {
     workspace: join(temporaryDirectory.path, "t306-workspace"),
     userData: join(temporaryDirectory.path, "t306-user-data"),
     extensions: join(temporaryDirectory.path, "t306-extensions")
+  };
+  const t506Paths = {
+    workspace: join(temporaryDirectory.path, "t506-workspace"),
+    userData: join(temporaryDirectory.path, "t506-user-data"),
+    extensions: join(temporaryDirectory.path, "t506-extensions")
   };
   const t302Paths = {
     workspace: join(temporaryDirectory.path, "t302-workspace"),
@@ -85,9 +96,17 @@ async function main(): Promise<void> {
   try {
     await Promise.all([
       ...Object.values(t306Paths),
+      ...Object.values(t506Paths),
       ...Object.values(t302Paths),
       ...Object.values(lifecyclePaths)
     ].map((path) => mkdir(path)));
+
+    if (focusedT506) {
+      for (const phase of t506Phases) {
+        await launch(`t506-${phase}`, t506Paths, join(__dirname, "t506-suite"), phase);
+      }
+      return;
+    }
 
     await launch("t306", t306Paths, join(__dirname, "t306-suite"));
 

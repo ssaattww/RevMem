@@ -191,7 +191,7 @@ test("T506 integration and Extension Host acceptance are exposed as one required
   assert.match(extensionHostRunner, /t506-suite/u);
   assert.match(
     workflow,
-    /- name: T506 Global multi-context integration[\s\S]*?node tools\/run-ci-command\.mjs test-t506 npm run test:t506\b/u,
-    "CI must execute the package-owned T506 focused command through the diagnostic runner."
+    /- name: T506 Global multi-context integration[\s\S]*?node tools\/run-ci-command\.mjs test-t506 xvfb-run -a npm run test:t506\b/u,
+    "CI must execute the package-owned T506 focused command under Xvfb through the diagnostic runner."
   );
 });
