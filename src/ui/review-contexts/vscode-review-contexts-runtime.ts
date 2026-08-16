@@ -70,8 +70,8 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     return item;
   }
 
-  public getChildren(): readonly ReviewContextListItem[] {
-    return this.items;
+  public getChildren(): ReviewContextListItem[] {
+    return [...this.items];
   }
 
   public async refresh(): Promise<void> {
