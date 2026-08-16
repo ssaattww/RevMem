@@ -218,7 +218,7 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   assert.deepEqual(restored?.contextState.files[FILE_ID]?.modifiedReviewed, [
     { startLine: 0, endLineExclusive: 1 },
   ]);
-  assert.equal(restored?.contextState.pullRequest?.decorationEnabled, false);
+  assert.equal(isPullRequestDecorationEnabled(restored!.contextState.pullRequest!), false);
 });
 
 test("R405-2 open PR lifecycle transition persists closed/merged saved grouping with layer OFF", async () => {
