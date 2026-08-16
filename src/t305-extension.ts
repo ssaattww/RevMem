@@ -259,8 +259,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
     ),
     diffHost: {
       parseUri: (value) => vscode.Uri.parse(value, true),
-      openDiff: (original, modified, title) =>
-        vscode.commands.executeCommand("vscode.diff", original, modified, title),
+      openDiff: async (original, modified, title) => {
+        await vscode.commands.executeCommand("vscode.diff", original, modified, title);
+      },
     },
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: exclusionPolicy.getUserGlobs(),
