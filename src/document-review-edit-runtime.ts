@@ -10,19 +10,16 @@ import {
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
 } from "./adapters/state-repository/index";
-import {
-  mapRepositoryGlobalStateThroughDocumentChanges
-} from "./application/global-review-mapping/index";
+import { mapRepositoryGlobalStateThroughDocumentChanges } from "./application/global-review-mapping/index";
 import type {
   FileSystemPathSemantics,
   ResourceUri,
   StableHash
 } from "./application/workspace-identity/index";
 import type {
+  FileReviewState,
   GlobalFileReviewState,
-  LineInterval,
-  ReviewContextState,
-  FileReviewState
+  LineInterval
 } from "./core/contracts/index";
 import {
   mapReviewedRangesThroughDocumentChanges,
@@ -90,10 +87,8 @@ const pathApiFor = (semantics: FileSystemPathSemantics): typeof path.posix =>
   semantics === "windows" ? path.win32 : path.posix;
 
 /**
- * Serializes live editor changes per document and persists certain Git-owned
- * Context/Global mappings through the same manifest-last CAS repository used by
- * normal review commands. Unsupported non-Git owners keep the existing
- * fail-closed read path instead of inventing reviewed evidence.
+ * Maps live Git working-tree edits through persisted Context and owner-wide Global state.
+ * Each document is serialized independently and each state replacement is a complete CAS.
  */
 export class DocumentReviewEditRuntime {
   private readonly repository: FileSystemReviewStateRepository;
@@ -107,26 +102,18 @@ export class DocumentReviewEditRuntime {
     this.repository = new FileSystemReviewStateRepository({
       storageUris: options.storageUris
     });
-    this.history = new JsonlReviewHistoryStore({
-      storageUris: options.storageUris
-    });
+    this.history = new JsonlReviewHistoryStore({ storageUris: options.storageUris });
     this.now = options.now ?? (() => new Date());
   }
 
-  /** Seeds or replaces the immediate pre-change snapshot for one open document. */
   public observe(snapshot: DocumentReviewEditSnapshot): void {
     this.observed.set(snapshot.documentKey, clone(snapshot));
   }
 
-  /** Drops an editor snapshot after the document closes. */
   public forget(documentKey: string): void {
     this.observed.delete(documentKey);
   }
 
-  /**
-   * Captures the already-observed pre-change snapshot synchronously, advances
-   * the observation to `after`, and queues persistence in document order.
-   */
   public apply(request: DocumentReviewEditRequest): Promise<DocumentReviewEditResult> {
     const before = this.observed.get(request.after.documentKey);
     this.observed.set(request.after.documentKey, clone(request.after));
@@ -134,7 +121,7 @@ export class DocumentReviewEditRuntime {
       return Promise.resolve("no-op");
     }
 
-    const captured = {
+    const input = {
       before: clone(before),
       after: clone(request.after),
       changes: request.changes.map((change) => ({
@@ -149,9 +136,7 @@ export class DocumentReviewEditRuntime {
       options: { ...request.options }
     };
     const previous = this.tails.get(request.after.documentKey) ?? Promise.resolve();
-    const operation = previous
-      .catch(() => undefined)
-      .then(() => this.persist(captured));
+    const operation = previous.catch(() => undefined).then(() => this.persist(input));
     const tail = operation.then(() => undefined, () => undefined);
     this.tails.set(request.after.documentKey, tail);
     void tail.finally(() => {
@@ -162,7 +147,6 @@ export class DocumentReviewEditRuntime {
     return operation;
   }
 
-  /** Waits for every queued document mapping before extension deactivation. */
   public async drain(): Promise<void> {
     await Promise.all([...this.tails.values()]);
   }
@@ -178,24 +162,18 @@ export class DocumentReviewEditRuntime {
     const inspection = await this.options.gitInspector.inspectRepository(
       pathApi.dirname(input.after.documentFsPath)
     );
-    if (inspection.kind !== "repository") {
-      return "unsupported-owner";
-    }
+    if (inspection.kind !== "repository") return "unsupported-owner";
 
     const owner = this.resolveGitOwner(input.after, inspection.repository);
     let current = await this.repository.load(owner.repositoryTarget);
-    if (current === undefined) {
-      return "no-op";
-    }
+    if (current === undefined) return "no-op";
 
     for (;;) {
       this.validateCommitIdentity(current, owner);
       const fileId = this.resolveFileId(current, owner);
       const contextFile = current.contextState.files[fileId];
       const globalFile = current.globalState.files[fileId];
-      if (contextFile === undefined && globalFile === undefined) {
-        return "no-op";
-      }
+      if (contextFile === undefined && globalFile === undefined) return "no-op";
 
       const contextDisposition = this.contextDisposition(
         contextFile,
@@ -212,9 +190,7 @@ export class DocumentReviewEditRuntime {
       if (
         (contextDisposition === "missing" || contextDisposition === "after") &&
         (globalDisposition === "missing" || globalDisposition === "after")
-      ) {
-        return "no-op";
-      }
+      ) return "no-op";
 
       const updatedAt = this.now().toISOString();
       const next = this.mapNextCommit({
@@ -232,10 +208,8 @@ export class DocumentReviewEditRuntime {
 
       try {
         await this.repository.commit({
-          operation: "unmark-file-reviewed",
           repositoryId: owner.repositoryId,
           contextId: owner.contextId,
-          fileId,
           expected: {
             contextState: current.contextState,
             globalState: current.globalState
@@ -256,9 +230,7 @@ export class DocumentReviewEditRuntime {
         );
         return "applied";
       } catch (error) {
-        if (!(error instanceof StaleReviewStateError)) {
-          throw error;
-        }
+        if (!(error instanceof StaleReviewStateError)) throw error;
         const latest = await this.repository.load(owner.repositoryTarget);
         if (latest === undefined) {
           throw new Error(
@@ -328,7 +300,8 @@ export class DocumentReviewEditRuntime {
       };
     }
 
-    const contextChanged = input.contextDisposition === "before" || input.contextDisposition === "stale";
+    const contextChanged =
+      input.contextDisposition === "before" || input.contextDisposition === "stale";
     return {
       schemaVersion: input.current.schemaVersion,
       contextState: {
@@ -365,9 +338,7 @@ export class DocumentReviewEditRuntime {
       !metadataChanged &&
       sameIntervals(previousRanges, nextRanges) &&
       sameIntervals(globalPreviousRanges, globalNextRanges)
-    ) {
-      return;
-    }
+    ) return;
 
     await this.history.append(
       {
@@ -410,9 +381,7 @@ export class DocumentReviewEditRuntime {
       relativePath === ".." ||
       relativePath.startsWith(`..${pathApi.sep}`) ||
       pathApi.isAbsolute(relativePath)
-    ) {
-      throw new Error("document path is outside the resolved Git working tree.");
-    }
+    ) throw new Error("document path is outside the resolved Git working tree.");
     if (repository.head === undefined) {
       throw new Error("live edit mapping requires a concrete Git HEAD revision.");
     }
@@ -440,11 +409,7 @@ export class DocumentReviewEditRuntime {
       revisionId: repository.head,
       branchRef,
       currentPath,
-      defaultFileId: this.createId(
-        "repository-file",
-        repository.repositoryId,
-        currentPath
-      )
+      defaultFileId: this.createId("repository-file", repository.repositoryId, currentPath)
     };
   }
 
@@ -498,10 +463,7 @@ export class DocumentReviewEditRuntime {
     return "stale";
   }
 
-  private validateCommitIdentity(
-    commit: ReviewStateCommit,
-    owner: GitOwnerMapping
-  ): void {
+  private validateCommitIdentity(commit: ReviewStateCommit, owner: GitOwnerMapping): void {
     if (
       commit.contextState.repositoryId !== owner.repositoryId ||
       commit.globalState.repositoryId !== owner.repositoryId ||
@@ -528,9 +490,7 @@ export class DocumentReviewEditRuntime {
       before.documentUri.scheme !== after.documentUri.scheme ||
       before.documentUri.authority !== after.documentUri.authority ||
       before.documentUri.path !== after.documentUri.path
-    ) {
-      throw new Error("document identity changed within one content-change transaction.");
-    }
+    ) throw new Error("document identity changed within one content-change transaction.");
   }
 
   private createId(domain: string, ...parts: readonly string[]): string {
