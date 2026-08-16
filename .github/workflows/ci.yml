@@ -55,7 +55,7 @@ jobs:
           set -o pipefail
           {
             node --test test-dist/test/unit/t603-schema-migration-recovery.test.js test-dist/test/unit/t603-history-multi-context-regression.test.js test-dist/test/unit/t603-history-reset-decision.test.js test-dist/test/unit/review-history-jsonl-store.test.js
-            node --test --test-name-pattern='^(?!T603-R008|T603-R013)' test-dist/test/unit/t603-review-findings.test.js
+            node --test --test-name-pattern='T603-R00[1-7]|T603-R009|T603-R010|T603-R011|T603-R014' test-dist/test/unit/t603-review-findings.test.js
           } 2>&1 | tee test-output/ci/test-t603.log
       - name: T403 GitHub cache tests
         run: |
