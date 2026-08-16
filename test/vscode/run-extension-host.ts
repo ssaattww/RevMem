@@ -115,14 +115,6 @@ async function main(): Promise<void> {
     ].map((path) => mkdir(path)));
 
     if (focusedT506) {
-      await execFileAsync(
-        process.execPath,
-        [
-          "--test",
-          join(__dirname, "../integration/t506-live-edit-concurrency.integration.test.js")
-        ],
-        { cwd: projectRoot, windowsHide: true }
-      );
       for (const phase of t506Phases) {
         await launch(`t506-${phase}`, t506Paths, join(__dirname, "t506-suite"), phase);
       }
@@ -134,6 +126,14 @@ async function main(): Promise<void> {
           phase
         );
       }
+      await execFileAsync(
+        process.execPath,
+        [
+          "--test",
+          join(__dirname, "../integration/t506-live-edit-concurrency.integration.test.js")
+        ],
+        { cwd: projectRoot, windowsHide: true }
+      );
       return;
     }
 
