@@ -9,7 +9,6 @@ import type {
   ReviewStateRepositoryTarget,
   ReviewStateStorageRoute
 } from "./contracts";
-import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 type JsonRecord = Record<string, unknown>;
@@ -352,7 +351,6 @@ const validateContextDescriptor = (value: JsonRecord, name: string): void => {
     const descriptor = requireRecord(value.pullRequest, `${name}.pullRequest`);
     requireString(descriptor.host, `${name}.pullRequest.host`);
     requireString(descriptor.owner, `${name}.pullRequest.owner`);
-    requireString(descriptor.repository, `${name}.pullRequest.repository`);
     requireNonNegativeSafeInteger(descriptor.number, `${name}.pullRequest.number`);
     if (descriptor.state !== "open" && descriptor.state !== "closed" && descriptor.state !== "merged") {
       throw new TypeError(`${name}.pullRequest.state is invalid`);
@@ -410,7 +408,6 @@ const validateContextDocument = (
   }
   requireIsoTimestamp(value.createdAt, "contextState.createdAt");
   requireIsoTimestamp(value.updatedAt, "contextState.updatedAt");
-  validateOwnerReconciliation(value);
 };
 
 const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void => {
