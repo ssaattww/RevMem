@@ -234,22 +234,23 @@ extends CoherentFileSystemReviewStateRepository {
     operation: PersistenceOperation
   ): Promise<PersistedReviewStatePreparation> {
     const key = this.targetKey(target);
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
     try {
       const preparation = await preparePersistedReviewState(
         this.repositoryOptions,
         target
       );
       if (preparation === "uncertain") {
-        this.markUncertain(target);
+        this.markUncertain(target, route.rootPath);
       } else {
         this.uncertainTargets.delete(key);
+        this.uncertainStorageRoots.delete(route.rootPath);
       }
       return preparation;
     } catch (error) {
-      const route = resolveReviewStateStorageRoute(
-        this.repositoryOptions.storageUris,
-        target
-      );
       this.markUncertain(target, route.rootPath);
       await Promise.resolve(
         this.repositoryOptions.notifyPersistenceFailure?.({
