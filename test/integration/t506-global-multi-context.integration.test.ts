@@ -125,7 +125,7 @@ const targetFile = {
   contentHash: CONTENT_HASH
 } as const;
 
-const understandingFor = (globalState: Readonly<RepositoryGlobalState>) => {
+const understandingFor = (globalState: unknown) => {
   const mutableGlobalState = JSON.parse(
     JSON.stringify(globalState)
   ) as RepositoryGlobalState;
