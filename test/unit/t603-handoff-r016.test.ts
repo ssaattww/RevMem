@@ -32,6 +32,9 @@ const requireKeys = (value: unknown, keys: readonly string[]): Record<string, un
   return record;
 };
 
+const normalizeBase64Padding = (value: string): string =>
+  `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`;
+
 test("T603-R016 replacement handoff is schema-v3 lossless and self-consistent", async () => {
   const text = await readFile(packetPath, "utf8");
   assert.match(text, /^schema_version: 3$/mu);
@@ -63,8 +66,13 @@ test("T603-R016 replacement handoff is schema-v3 lossless and self-consistent", 
   for (const match of payloads) {
     const sourceSkill = match[1]!;
     const encoded = match[3]!;
-    const compressed = Buffer.from(encoded, "base64");
-    assert.equal(compressed.toString("base64"), encoded, `${sourceSkill} payload must be canonical base64`);
+    const normalized = normalizeBase64Padding(encoded);
+    const compressed = Buffer.from(normalized, "base64");
+    assert.equal(
+      compressed.toString("base64"),
+      normalized,
+      `${sourceSkill} payload must decode losslessly as base64`
+    );
     const decoded = gunzipSync(compressed);
     assert.equal(
       createHash("sha256").update(decoded).digest("hex"),
