@@ -46,7 +46,7 @@ CI failure時は加えてenvironment、Git status、生成物一覧、`dist/`、
 | Commit | 内容 |
 | --- | --- |
 | `8f9015278566a1eff60ae8ef1a16edbcc14f3e99` | 通常editorを実production経路で開き、確認済み化後に編集する回帰シナリオを追加 |
-| `4d5f2df078a85f3f620a5e7ac85b1edf35614e5` | Test mode APIからproduction Global Understanding snapshotを観測できるようにした |
+| `4d5f2df078a85f3f620a5f0e7dec846b543e0c3a` | Test mode APIからproduction Global Understanding snapshotを観測できるようにした |
 | `02a3aba262f90a2d918998c3eb5a39c7bb1cd106` | live edit後にGlobal Understandingが2/3を維持することを要求 |
 
 最終test-only HEAD `02a3aba262f90a2d918998c3eb5a39c7bb1cd106`に完全一致するCI run `31933264222`は`failure`だった。job `95131189016`のうち、Build、typecheck、architecture、lint、unit、T505まで全て成功し、`T506 Global multi-context integration`だけが失敗した。
