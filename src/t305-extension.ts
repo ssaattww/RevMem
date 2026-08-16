@@ -61,11 +61,18 @@ export function activate(context: vscode.ExtensionContext): unknown {
   activeDocumentReviewEditRuntime = documentEditRuntime;
   const toEditSnapshot = (document: vscode.TextDocument): DocumentReviewEditSnapshot => {
     const text = document.getText();
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     return {
       documentKey: document.uri.toString(true),
       documentUri: toResourceUri(document.uri),
       documentFsPath: document.uri.fsPath,
       fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+      ...(workspaceFolder === undefined ? {} : {
+        workspace: {
+          workspaceFolderUri: toResourceUri(workspaceFolder.uri),
+          relativePath: vscode.workspace.asRelativePath(document.uri, false)
+        }
+      }),
       text,
       lineCount: document.lineCount,
       contentHash: stableHash.digest(text)
