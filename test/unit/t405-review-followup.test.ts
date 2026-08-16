@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  findCurrentPullRequestContext,
   projectReviewContexts,
 } from "../../src/application/review-contexts/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
@@ -17,6 +18,7 @@ import {
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
+const C = "c".repeat(40);
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const PR_CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 
@@ -119,6 +121,24 @@ test("R405-7 pull-request Current Context identity is stable across rediscovery 
 
   assert.equal(currentContextSelectionKey(snapshot), currentContextSelectionKey(rediscovered));
   assert.match(currentContextSelectionKey(snapshot), /github-pr:github\.com\/ssaattww\/revmem#52/u);
+});
+
+test("R405-7/R405-8 current PR is inferred only from persisted open state at the local HEAD", () => {
+  assert.equal(
+    findCurrentPullRequestContext([pullRequest], REPOSITORY_ID, B)?.contextId,
+    PR_CONTEXT_ID,
+  );
+  assert.equal(
+    findCurrentPullRequestContext([
+      {
+        ...pullRequest,
+        pullRequest: { ...pullRequest.pullRequest!, state: "closed" },
+      },
+    ], REPOSITORY_ID, B),
+    undefined,
+  );
+  assert.equal(findCurrentPullRequestContext([pullRequest], REPOSITORY_ID, C), undefined);
+  assert.equal(findCurrentPullRequestContext([pullRequest], "github.com/other/repo", B), undefined);
 });
 
 test("R405-6/R405-9 remove the dead closed-layer setting and document connected Review Contexts", async () => {
