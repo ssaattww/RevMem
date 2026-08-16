@@ -59,9 +59,10 @@ test("T405 contributes Review Contexts activation, commands, menus, and closed P
   );
 });
 
-test("T405 production entry registers the Review Contexts runtime", async () => {
-  const source = await readFile("src/t305-extension.ts", "utf8");
-  assert.match(source, /registerReviewContextsRuntime/u);
-  assert.match(source, /reviewRange\.reviewContexts/u);
-  assert.match(source, /ReviewContextsController/u);
+test("T405 production entry delegates Review Contexts composition to the T405 runtime boundary", async () => {
+  const entry = await readFile("src/t305-extension.ts", "utf8");
+  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  assert.match(entry, /registerT405ReviewContextsRuntime/u);
+  assert.match(composition, /registerReviewContextsRuntime/u);
+  assert.match(composition, /ReviewContextsController/u);
 });
