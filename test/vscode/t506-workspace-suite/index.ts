@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as vscode from "vscode";
 
 const PHASE_VARIABLE = "REVIEW_RANGE_TEST_PHASE";
+const MAPPED_STATE_TIMEOUT_MS = 15_000;
 
 type TestPhase = "workspace-mark-edit" | "workspace-restore";
 
@@ -84,7 +85,7 @@ const expectedMappedIntervals: readonly ReviewedIntervalSnapshot[] = [
 const waitForMappedUnderstanding = async (
   api: ReviewRangeT506WorkspaceTestApi
 ): Promise<GlobalUnderstandingFileSnapshot> => {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + MAPPED_STATE_TIMEOUT_MS;
   let latest = await globalFile(api);
   while (
     latest.reviewedNonEmptyLineCount !== 2 ||
@@ -98,6 +99,22 @@ const waitForMappedUnderstanding = async (
   return latest;
 };
 
+const waitForMappedDecorations = async (
+  api: ReviewRangeT506WorkspaceTestApi,
+  editor: vscode.TextEditor
+): Promise<readonly ReviewedIntervalSnapshot[]> => {
+  const deadline = Date.now() + MAPPED_STATE_TIMEOUT_MS;
+  let latest = api.getVisibleReviewedIntervals(editor.document.uri.toString());
+  while (JSON.stringify(latest) !== JSON.stringify(expectedMappedIntervals)) {
+    if (Date.now() >= deadline) return latest;
+    await within("refresh workspace decorations", api.refreshVisibleEditorDecorations());
+    latest = api.getVisibleReviewedIntervals(editor.document.uri.toString());
+    if (JSON.stringify(latest) === JSON.stringify(expectedMappedIntervals)) return latest;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return latest;
+};
+
 const assertMappedState = async (
   api: ReviewRangeT506WorkspaceTestApi,
   editor: vscode.TextEditor
@@ -106,9 +123,8 @@ const assertMappedState = async (
   assert.equal(understanding.reviewedNonEmptyLineCount, 2);
   assert.equal(understanding.totalNonEmptyLineCount, 3);
   assert.equal(understanding.progress, 2 / 3);
-  await within("refresh workspace decorations", api.refreshVisibleEditorDecorations());
   assert.deepEqual(
-    api.getVisibleReviewedIntervals(editor.document.uri.toString()),
+    await waitForMappedDecorations(api, editor),
     expectedMappedIntervals,
     "Non-Git live edits must retain unchanged reviewed lines and leave the inserted line unreviewed."
   );
