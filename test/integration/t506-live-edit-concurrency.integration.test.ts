@@ -101,10 +101,8 @@ const createInitialCommit = (): ReviewStateCommit => {
     currentRevisionId: REVISION_ID,
     files: {
       [FILE_A_ID]: {
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
         fileId: FILE_A_ID,
         currentPath: FILE_A_PATH,
-        previousPaths: [],
         revisionId: REVISION_ID,
         reviewed: [{ startLine: 0, endLineExclusive: 2 }],
         contentHash: BEFORE_HASH,
