@@ -18,10 +18,12 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 - UNC 共有上のファイルも、VS Code から開ける場合は server authority を含む URI で識別します。
 - 状態は owner に応じた VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
 - 確認・解除、context 作成、Git revision mapping の履歴を JSON Lines 形式で保存します。
-- Activity Bar の **Review Range** から **Current Context** View を開き、現在の branch または workspace context を確認できます。
-- Current Context View と Status Bar は同じ context を表示します。View の操作から再計算や候補選択を行うと、通常エディタの確認操作と装飾にも選択結果が反映されます。
+- Activity Bar の **Review Range** から **Current Context** View を開き、現在の PR、branch、または workspace context を確認できます。
+- Current Context View と Status Bar は同じ context を表示します。View の操作から再計算や候補選択を行うと、通常エディタの確認操作と装飾にも選択結果が反映されます。保存済み PR が現在の repository/HEAD に一致する場合は PR context を候補として扱います。
+- **Review Contexts** View では、現在の PR/branch、保存済み open・closed・merged PR、workspace context を並列表示できます。PR の再検出、GitHub 再接続、cache 更新、PR layer 切替、表示だけの削除、進捗確認、PR diff の表示を行えます。
+- Review Contexts から開く PR diff は通常の review diff と同じ canonical virtual document を使用し、original・modified 両側の確認・解除操作と永続状態を共有します。
 
-main には、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR 進捗計算、PR Progress Tree、Global 理解率計算の内部コンポーネントも実装されています。local base/head を使った Extension Host 受け入れ試験では、PR Progress Tree から実際の diff editor を開き、original・modified 両側でファイル全体の確認・全解除を行い、進捗表示と永続状態が同期することを検証しています。ただし、GitHub PR context の永続管理と利用者向け選択経路はまだ実装途中です。
+現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算が production runtime へ接続されています。local base/head を使った Extension Host 受け入れ試験では、PR Progress Tree から実際の diff editor を開き、original・modified 両側でファイル全体の確認・全解除を行い、進捗表示と永続状態が同期することを検証しています。GitHub の障害系、複数候補、closed PR を含む end-to-end 統合の残りは `T406` で扱います。
 
 ## インストール方法
 
@@ -45,6 +47,7 @@ code --install-extension review-range-tracker-<version>.vsix
 3. 右クリックメニューまたはコマンドパレットで、`Review Range: 選択範囲を確認済みにする` または `Review Range: 選択範囲の確認済みを解除する` を実行します。
 4. ファイル全体を対象にするには、`Review Range: ファイル全体を確認済みにする` または `Review Range: ファイル全体の確認済みを解除する` を実行し、確認ダイアログを承認します。
 5. 現在の context は、Activity Bar の **Review Range** にある **Current Context** View または Status Bar で確認します。候補を選び直す場合は View の選択操作、最新状態を取り直す場合は再計算操作を使います。
+6. PR context の一覧・進捗・layer・cache・diff を操作する場合は **Review Contexts** View を使います。現在の branch に対応する PR を取り直す場合は `PRを再検出`、認証状態を含めて接続し直す場合は `GitHubへ再接続` を使います。
 
 Git working tree 内では、ファイルの親ディレクトリから repository root を検出します。Git 管理下かどうかを先に判定し、workspace membership は非 Git 時の保存先選択にだけ使用します。
 
@@ -52,8 +55,8 @@ Git working tree 内では、ファイルの親ディレクトリから reposito
 
 以下のタスク ID は [`tasks/tasks-status.md`](tasks/tasks-status.md) の定義を指します。複数タスクを記載している項目は、最後のタスクまで完了した時点を解消条件とします。
 
-- 確認・解除の4コマンドは、利用者向けには通常エディタで使用します。PR Progress の実diff経路はExtension Host受け入れ試験で検証済みですが、GitHub PR contextを選択するproduction runtimeは未完成です。**この制限は、`T404`でPR contextの永続管理、`T405`で利用者向けの選択・再検出・layer管理を実装し、`T406`の統合試験が完了すると解消します。** untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
-- Activity Bar、Current Context View、Status Bar、contextの再計算・選択はruntimeへ接続済みです。PR Progress Treeはlocal base/head受け入れ経路まで検証済みですが、通常利用時にGitHub PR contextを初期化する経路は未実装です。Global Understanding ViewとReview Contexts Viewも未接続です。**GitHub PR contextとReview Contexts Viewは`T404`〜`T406`、Global Understanding Viewは`T505`と`T506`が完了すると解消します。**
+- 確認・解除の4コマンドは、通常エディタと canonical PR diff で使用できます。選択中の保存済み PR context は通常エディタの確認操作と装飾にも反映されます。GitHub 未認証・401/403/404/429・network 断・patch 欠落・複数 PR 候補・closed PR を含む end-to-end 境界ケースの統合確認は未完了です。**この制限は `T406` の統合試験が完了すると解消します。** untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
+- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。GitHub PR の障害系・複数候補・closed PR の統合受け入れは `T406`、複数 context の変更追従と Global 集計の統合は `T506` に残っています。**これらはそれぞれ `T406`、`T506` が完了すると解消します。**
 - 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。**この制限は、複数contextの変更追従をruntimeへ統合してExtension Host試験を行う`T506`が完了すると解消します。**
 - 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。**履歴UIは初期版の現行タスク範囲外で、解消予定タスクはありません。`T603`はschema migrationと破損回復、`T604`は複数window競合とatomic history appendを扱いますが、履歴UIは追加しません。**
 - 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。**この制限は`T605`が完了すると解消し、初期版全体の最終受け入れは`T608`で確認します。**
@@ -91,3 +94,4 @@ VSIX を作成するには次を実行します。
 ```powershell
 npm run package -- --pre-release --out artifacts/review-range-tracker-0.0.1-pre.vsix
 ```
+
