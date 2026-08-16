@@ -59,9 +59,9 @@ extends CoherentFileSystemReviewStateRepository {
         validateOwnerReconciliation(current.contextState);
       }
       return current;
-    } catch {
+    } catch (error) {
       this.markUncertain(target, route.rootPath);
-      return undefined;
+      throw error;
     }
   }
 
@@ -261,7 +261,6 @@ extends CoherentFileSystemReviewStateRepository {
         })
       ).catch(() => undefined);
       throw error;
-    }
   }
 
   private markUncertain(
