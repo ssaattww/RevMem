@@ -33,6 +33,11 @@ interface GlobalFileStateSnapshot {
   readonly reviewed: readonly unknown[];
 }
 
+interface ReviewedIntervalSnapshot {
+  readonly startLine: number;
+  readonly endLineExclusive: number;
+}
+
 interface ReviewRangeT506TestApi {
   initializeLocalBaseHeadRuntime(input: {
     readonly baseSha: string;
@@ -52,6 +57,8 @@ interface ReviewRangeT506TestApi {
       readonly files: Readonly<Record<string, GlobalFileStateSnapshot>>;
     };
   }>;
+  getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  refreshVisibleEditorDecorations(): Promise<void>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
 
@@ -193,6 +200,35 @@ const openReviewDiff = async (file: PullRequestProgressTreeFile): Promise<void> 
   );
 };
 
+const openNormalReviewEditor = async (
+  workspaceFolder: vscode.WorkspaceFolder
+): Promise<vscode.TextEditor> => {
+  const uri = vscode.Uri.joinPath(workspaceFolder.uri, "review.ts");
+  const document = await vscode.workspace.openTextDocument(uri);
+  return vscode.window.showTextDocument(document, { preview: false });
+};
+
+const expectedMappedIntervals: readonly ReviewedIntervalSnapshot[] = [
+  { startLine: 0, endLineExclusive: 1 },
+  { startLine: 2, endLineExclusive: 3 }
+];
+
+const assertMappedNormalEditorAfterRestart = async (
+  api: ReviewRangeT506TestApi,
+  workspaceFolder: vscode.WorkspaceFolder
+): Promise<void> => {
+  const editor = await within(
+    "open mapped normal editor after restart",
+    openNormalReviewEditor(workspaceFolder)
+  );
+  await within("refresh mapped normal editor decorations", api.refreshVisibleEditorDecorations());
+  assert.deepEqual(
+    api.getVisibleReviewedIntervals(editor.document.uri.toString()),
+    expectedMappedIntervals,
+    "Normal-editor mapped ranges must survive an Extension Host restart."
+  );
+};
+
 /** Exercises T506 multiple-context Global persistence and PR isolation through real Extension Host restarts. */
 export async function run(): Promise<void> {
   const phase = readPhase();
@@ -238,10 +274,49 @@ export async function run(): Promise<void> {
       reviewGlobalFile(persistence).reviewed.length > 0,
       "Context A mark must also persist owner-wide Global reviewed state."
     );
+
+    const normalEditor = await within(
+      "open production normal editor",
+      openNormalReviewEditor(workspaceFolder)
+    );
+    normalEditor.selections = [
+      new vscode.Selection(0, 0, 0, 0),
+      new vscode.Selection(1, 0, 1, 0)
+    ];
+    await within(
+      "mark production normal-editor lines",
+      vscode.commands.executeCommand("reviewRange.markSelectionReviewed")
+    );
+    await within("refresh initial normal-editor decorations", api.refreshVisibleEditorDecorations());
+    assert.deepEqual(
+      api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
+      [{ startLine: 0, endLineExclusive: 2 }],
+      "The production normal editor must start with both non-empty lines reviewed."
+    );
+
+    await within(
+      "insert an unreviewed normal-editor line",
+      normalEditor.edit((edit) => {
+        edit.insert(new vscode.Position(1, 0), "const inserted = 9;\n");
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await within("refresh edited normal-editor decorations", api.refreshVisibleEditorDecorations());
+    assert.deepEqual(
+      api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
+      expectedMappedIntervals,
+      "A live edit must keep unchanged reviewed lines, shift the suffix, and leave the inserted line unreviewed."
+    );
+    assert.equal(
+      await within("save edited normal editor", normalEditor.document.save()),
+      true,
+      "The mapped working-tree content must be saved for restart verification."
+    );
     return;
   }
 
   if (phase === "restore-context-b-unmark-global") {
+    await assertMappedNormalEditorAfterRestart(api, workspaceFolder);
     await within(
       "initialize context B",
       api.initializeLocalBaseHeadRuntime({ baseSha: fixture.baseB, headSha: fixture.head })
@@ -288,6 +363,7 @@ export async function run(): Promise<void> {
     return;
   }
 
+  await assertMappedNormalEditorAfterRestart(api, workspaceFolder);
   await within(
     "restore context A",
     api.initializeLocalBaseHeadRuntime({ baseSha: fixture.baseA, headSha: fixture.head })
