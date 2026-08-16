@@ -125,19 +125,23 @@ const targetFile = {
   contentHash: CONTENT_HASH
 } as const;
 
-const understandingFor = (globalState: RepositoryGlobalState) =>
-  calculateRepositoryGlobalUnderstandingProgress({
+const understandingFor = (globalState: Readonly<RepositoryGlobalState>) => {
+  const mutableGlobalState = JSON.parse(
+    JSON.stringify(globalState)
+  ) as RepositoryGlobalState;
+  return calculateRepositoryGlobalUnderstandingProgress({
     repositoryId: REPOSITORY_ID,
-    currentRevisionId: globalState.currentRevisionId,
-    globalState,
+    currentRevisionId: mutableGlobalState.currentRevisionId,
+    globalState: mutableGlobalState,
     files: [{
       path: FILE_PATH,
-      revisionId: globalState.currentRevisionId,
+      revisionId: mutableGlobalState.currentRevisionId,
       lineCount: 4,
       nonEmptyLines: [0, 1, 2, 3],
       contentHash: CONTENT_HASH
     }]
   });
+};
 
 const contextBDiff = (): PullRequestDiffSnapshot => ({
   contextId: "context-b",
