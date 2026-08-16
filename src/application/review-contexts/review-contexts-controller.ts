@@ -16,6 +16,13 @@ export interface ReviewContextListProgress {
   readonly progress: number;
 }
 
+/** Formats one PR progress snapshot for a user-visible Review Contexts row or tooltip. */
+export const formatReviewContextProgress = (
+  progress: ReviewContextListProgress | undefined
+): string | undefined => progress === undefined
+  ? undefined
+  : `進捗: ${Math.round(progress.progress * 100)}% (${progress.reviewedLineCount}/${progress.totalLineCount})`;
+
 /** One context projected for the T405 Review Contexts View. */
 export interface ReviewContextListItem {
   readonly context: ReviewContextState;
