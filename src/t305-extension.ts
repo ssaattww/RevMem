@@ -1,9 +1,16 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
+import {
+  FileSystemReviewStateRepository,
+  JsonlReviewHistoryStore,
+} from "./adapters/state-repository/index";
+import { ReviewHistoryRecorder } from "./application/review-history/index";
+import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
@@ -20,7 +27,10 @@ import {
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
 } from "./t305-current-context-git";
-import { registerCurrentContextRuntime } from "./ui/current-context/vscode-current-context-runtime";
+import {
+  registerCurrentContextRuntime,
+  type RegisteredCurrentContextRuntime,
+} from "./ui/current-context/vscode-current-context-runtime";
 import {
   GlobalUnderstandingRefreshCoalescer,
   registerGlobalUnderstandingRuntime
@@ -29,9 +39,15 @@ import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
 } from "./t505-global-understanding-source";
-import { registerT405ReviewContextsRuntime } from "./t405-review-contexts-runtime";
+import {
+  registerT405ReviewContextsRuntime,
+  type RegisteredT405ReviewContextsRuntime,
+} from "./t405-review-contexts-runtime";
+import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
+const MARK_FILE_CONFIRMATION = "確認済みにする";
+const UNMARK_FILE_CONFIRMATION = "すべて解除";
 
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
@@ -83,7 +99,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     readOpenDocuments
   });
 
-  const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
+  const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
@@ -144,6 +160,14 @@ export function activate(context: vscode.ExtensionContext): unknown {
     );
   };
 
+  let reviewContextsRuntime: RegisteredT405ReviewContextsRuntime | undefined;
+  const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
+    const local = await enumerateLocalContexts();
+    return reviewContextsRuntime === undefined
+      ? local
+      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local)];
+  };
+
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[]): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
@@ -151,6 +175,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
+          candidate.context.selection?.kind === "pull-request" &&
+          candidate.context.selection.repositoryRoot === inspection.repository.rootPath
+        ) ?? candidates.find((candidate) =>
           candidate.context.kind === "branch" && candidate.context.detail === inspection.repository.rootPath
         );
       } else {
@@ -205,12 +232,123 @@ export function activate(context: vscode.ExtensionContext): unknown {
       );
     }
   });
-  const reviewContextsRuntime = registerT405ReviewContextsRuntime({
+
+  const prRepository = new FileSystemReviewStateRepository({
+    storageUris: {
+      globalStorageUri: context.globalStorageUri,
+      storageUri: context.storageUri,
+    },
+  });
+  const prHistory = new ReviewHistoryRecorder({
+    sessionId: randomUUID(),
+    createEventId: randomUUID,
+    appender: new JsonlReviewHistoryStore({
+      storageUris: {
+        globalStorageUri: context.globalStorageUri,
+        storageUri: context.storageUri,
+      },
+    }),
+  });
+  const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
+    repository: prRepository,
+    requestHistory: (transaction) => prHistory.recordTransaction(
+      transaction,
+      transaction.operation === "mark-ranges-reviewed" || transaction.operation === "unmark-ranges-reviewed"
+        ? "user-selection"
+        : "user-file"
+    ),
+    diffHost: {
+      parseUri: (value) => vscode.Uri.parse(value, true),
+      openDiff: (original, modified, title) =>
+        vscode.commands.executeCommand("vscode.diff", original, modified, title),
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({
+      userGlobs: exclusionPolicy.getUserGlobs(),
+    }),
+  });
+  const pullRequestCommandService = pullRequestReviewRuntime.createCommandService<vscode.TextEditor>({
+    getDocumentUri: (editor) => editor.document.uri.toString(true),
+    getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(
+      editor.document.uri.toString(true)
+    ),
+    getLineCount: (editor) => editor.document.lineCount,
+    getSelections: (editor) => editor.selections.map((selected) => ({
+      anchor: {
+        line: selected.anchor.line,
+        character: selected.anchor.character,
+      },
+      active: {
+        line: selected.active.line,
+        character: selected.active.character,
+      },
+    })),
+    confirmWholeFileOperation: async (operation) => {
+      if (operation === "mark-file-reviewed") {
+        const result = await vscode.window.showWarningMessage(
+          "このファイルの全行を確認済みにします。",
+          { modal: true },
+          MARK_FILE_CONFIRMATION
+        );
+        return result === MARK_FILE_CONFIRMATION;
+      }
+      const result = await vscode.window.showWarningMessage(
+        "このファイルのすべての確認済み状態を解除します。",
+        { modal: true, detail: "Global確認済み状態も解除されます。" },
+        UNMARK_FILE_CONFIRMATION
+      );
+      return result === UNMARK_FILE_CONFIRMATION;
+    },
+  });
+  context.subscriptions.push(runtimePort.registerReviewDiffRuntime({
+    ownsDocumentUri: (uri) => pullRequestReviewRuntime.ownsDiffDocumentUri(uri),
+    provideTextDocumentContent: (uri) =>
+      pullRequestReviewRuntime.documentContentProvider.provideTextDocumentContent(uri),
+    invokeCommand: (operation, editor) => pullRequestCommandService[operation](editor),
+  }));
+
+  let currentContextRuntime: RegisteredCurrentContextRuntime | undefined;
+  currentContextRuntime = registerCurrentContextRuntime(
+    context,
+    {
+      recompute: () => currentContextComposition.recompute(),
+      acceptRecomputed: (snapshot) => {
+        currentContextComposition.acceptRecomputed(snapshot);
+        globalSource.setContext(snapshot);
+      },
+      acceptExplicit: (snapshot) => {
+        currentContextComposition.acceptExplicit(snapshot);
+        globalSource.setContext(snapshot);
+      },
+      selectContext: () => currentContextComposition.selectContext()
+    },
+    {
+      setSelectedContext: (selected) => runtimePort.setSelectedContext(selected),
+      refreshDependents: async () => {
+        await runtimePort.refreshVisibleEditorDecorations();
+        await globalRuntime.refresh();
+        await reviewContextsRuntime?.refresh();
+      }
+    },
+    async (error) => {
+      await vscode.window.showErrorMessage(
+        `現在のレビューコンテキストを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  );
+
+  reviewContextsRuntime = registerT405ReviewContextsRuntime({
     context,
     git,
-    enumerateCurrentContexts: enumerateContexts,
-    refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations()
+    enumerateCurrentContexts: enumerateLocalContexts,
+    refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+    refreshCurrentContext: () => currentContextRuntime?.refresh() ?? Promise.resolve(),
+    registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
+    openPullRequestReviewDiff: (contextId, fileId, title) =>
+      pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
+    getPullRequestReviewProgress: (contextId) =>
+      pullRequestReviewRuntime.getProgress(contextId),
   });
+
   const refreshGlobalUnderstanding = (): void => {
     void globalRuntime.refreshWithErrorBoundary();
   };
@@ -231,7 +369,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       refreshGlobalUnderstanding();
-      void reviewContextsRuntime.refreshWithErrorBoundary();
+      void reviewContextsRuntime?.refreshWithErrorBoundary();
     }),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
     vscode.workspace.onDidChangeTextDocument((event) => requestRefreshForDocumentChange(event.document)),
@@ -240,34 +378,11 @@ export function activate(context: vscode.ExtensionContext): unknown {
     documentChangeRefresh
   );
 
-  registerCurrentContextRuntime(
-    context,
-    {
-      recompute: () => currentContextComposition.recompute(),
-      acceptRecomputed: (snapshot) => {
-        currentContextComposition.acceptRecomputed(snapshot);
-        globalSource.setContext(snapshot);
-      },
-      acceptExplicit: (snapshot) => {
-        currentContextComposition.acceptExplicit(snapshot);
-        globalSource.setContext(snapshot);
-      },
-      selectContext: () => currentContextComposition.selectContext()
-    },
-    {
-      setSelectedContext: (selection) => runtimePort.setSelectedContext(selection),
-      refreshDependents: async () => {
-        await runtimePort.refreshVisibleEditorDecorations();
-        await globalRuntime.refresh();
-        await reviewContextsRuntime.refresh();
-      }
-    },
-    async (error) => {
-      await vscode.window.showErrorMessage(
-        `現在のレビューコンテキストを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  );
+  void currentContextRuntime.refresh().catch(async (error) => {
+    await vscode.window.showErrorMessage(
+      `現在のPRコンテキストを復元できませんでした: ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
 
   return baseApi;
 }
