@@ -1,7 +1,6 @@
 import path from "node:path";
 
 import {
-  REVIEW_RANGE_SCHEMA_VERSION,
   type ReviewHistoryEvent
 } from "../../core/contracts/index";
 import {
@@ -9,6 +8,7 @@ import {
 } from "../../core/review-history/index";
 import { NodeAtomicTextFileStore } from "./atomic-text-file-store";
 import type {
+  AtomicTextFileStore,
   JsonlReviewHistoryStoreOptions,
   ReviewHistoryEventAppender,
   ReviewStateRepositoryTarget
@@ -32,7 +32,7 @@ const HISTORY_MIGRATION_STEPS = [
     toVersion: 1,
     migrate: (value: Record<string, unknown>): Record<string, unknown> => ({
       ...value,
-      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
+      schemaVersion: 1
     })
   }
 ] as const;
@@ -43,7 +43,21 @@ interface PreparedHistory {
   readonly corrupt: boolean;
 }
 
-const prepareExistingHistory = (content: string): PreparedHistory => {
+interface HistoryIdentity {
+  readonly repositoryId: string;
+  readonly contextId: string;
+}
+
+const expectedMonthFromPath = (filePath: string): string | undefined => {
+  const match = /^events-(\d{4}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
+  return match?.[1];
+};
+
+const prepareExistingHistory = (
+  content: string,
+  expectedTarget?: ReviewStateRepositoryTarget,
+  expectedMonth?: string
+): PreparedHistory => {
   if (content.length === 0) {
     return { content: "", migrated: false, corrupt: false };
   }
@@ -55,8 +69,10 @@ const prepareExistingHistory = (content: string): PreparedHistory => {
   }
   const completeSegments = terminated ? segments : segments.slice(0, -1);
   const canonicalLines: string[] = [];
+  const eventIds = new Set<string>();
   let migrated = false;
   let corrupt = !terminated;
+  let observedIdentity: HistoryIdentity | undefined;
 
   for (const line of completeSegments) {
     try {
@@ -73,6 +89,32 @@ const prepareExistingHistory = (content: string): PreparedHistory => {
         HISTORY_MIGRATION_STEPS
       );
       const canonical = serializeReviewHistoryEvent(migration.value);
+      const event = JSON.parse(canonical) as ReviewHistoryEvent;
+      const identity = {
+        repositoryId: event.repositoryId,
+        contextId: event.contextId
+      };
+      observedIdentity ??= identity;
+      if (
+        identity.repositoryId !== observedIdentity.repositoryId ||
+        identity.contextId !== observedIdentity.contextId
+      ) {
+        corrupt = true;
+      }
+      if (
+        expectedTarget !== undefined &&
+        (event.repositoryId !== expectedTarget.repositoryId ||
+          event.contextId !== expectedTarget.contextId)
+      ) {
+        corrupt = true;
+      }
+      if (expectedMonth !== undefined && event.occurredAt.slice(0, 7) !== expectedMonth) {
+        corrupt = true;
+      }
+      if (eventIds.has(event.eventId)) {
+        corrupt = true;
+      }
+      eventIds.add(event.eventId);
       canonicalLines.push(canonical);
       migrated ||= migration.migrated;
       if (!migration.migrated && canonical !== line) {
@@ -93,6 +135,37 @@ const prepareExistingHistory = (content: string): PreparedHistory => {
   };
 };
 
+/** Migrates one existing monthly JSONL file without appending new evidence. Corruption is copied to quarantine and left active so append continues to reject. */
+export const migratePersistedReviewHistoryFile = async (
+  store: AtomicTextFileStore,
+  filePath: string
+): Promise<"absent" | "ready" | "corrupt"> => {
+  const existing = await store.readText(filePath);
+  if (existing === undefined) {
+    return "absent";
+  }
+  const month = expectedMonthFromPath(filePath);
+  if (month === undefined) {
+    await quarantinePersistedText(store, filePath, existing, false);
+    return "corrupt";
+  }
+  const prepared = prepareExistingHistory(existing, undefined, month);
+  if (prepared.corrupt) {
+    if (existing.length > 0) {
+      await quarantinePersistedText(store, filePath, existing, false);
+    }
+    return "corrupt";
+  }
+  if (prepared.migrated) {
+    await publishSchemaMigration(store, [{
+      filePath,
+      original: existing,
+      migrated: prepared.content
+    }]);
+  }
+  return "ready";
+};
+
 /** Appends canonical validated JSONL events through migration and corruption-recovery boundaries. */
 export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
   private readonly tails = new Map<string, Promise<void>>();
@@ -102,25 +175,29 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
   }
 
-  /** Validates, migrates legacy records, isolates corrupt bytes, and appends one canonical event. */
+  /** Validates/migrates legacy records and rejects append when any existing monthly evidence is corrupt or misrouted. */
   public async append(target: ReviewStateRepositoryTarget, event: ReviewHistoryEvent): Promise<void> {
     const canonical = serializeReviewHistoryEvent(event);
     if (event.repositoryId !== target.repositoryId || event.contextId !== target.contextId) {
       throw new Error("Review history event identity must match its storage target.");
     }
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
+    const month = event.occurredAt.slice(0, 7);
     const filePath = path.join(route.historyDirectory, monthFileName(event.occurredAt));
     const previous = this.tails.get(route.rootPath) ?? Promise.resolve();
     const operation = previous.then(async () => {
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
-      const prepared = prepareExistingHistory(existing);
-      if (prepared.corrupt && existing.length > 0) {
-        await quarantinePersistedText(
-          this.atomicFileStore,
-          filePath,
-          existing,
-          false
-        );
+      const prepared = prepareExistingHistory(existing, target, month);
+      if (prepared.corrupt) {
+        if (existing.length > 0) {
+          await quarantinePersistedText(
+            this.atomicFileStore,
+            filePath,
+            existing,
+            false
+          );
+        }
+        throw new Error(`Review history is corrupt or inconsistent: ${filePath}`);
       }
       const next = `${prepared.content}${canonical}\n`;
       if (prepared.migrated) {

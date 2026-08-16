@@ -56,6 +56,8 @@ export interface NonGitSnapshotStorage {
   put(snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void>;
   get(snapshotId: string): Promise<NonGitSnapshotStoredValue | undefined>;
   delete(snapshotId: string): Promise<void>;
+  /** Isolates a corrupt persisted snapshot and invalidates authoritative latest pointers to it. */
+  quarantine(snapshotId: string): Promise<void>;
   entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]>;
   getLatest(workspaceContextId: string, fileId: string): Promise<string | undefined>;
   setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void>;
@@ -77,6 +79,15 @@ export class InMemoryNonGitSnapshotStorage implements NonGitSnapshotStorage {
 
   public async delete(snapshotId: string): Promise<void> {
     this.snapshots.delete(snapshotId);
+  }
+
+  public async quarantine(snapshotId: string): Promise<void> {
+    this.snapshots.delete(snapshotId);
+    for (const [key, latestSnapshotId] of this.latest.entries()) {
+      if (latestSnapshotId === snapshotId) {
+        this.latest.delete(key);
+      }
+    }
   }
 
   public async entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]> {
@@ -216,11 +227,20 @@ export class NonGitSnapshotTracker {
     }
     try {
       const payload = await this.codec.decompress(stored.bytes);
-      if (this.codec.sha256(payload) !== snapshotId) return { status: "corrupt" };
+      if (this.codec.sha256(payload) !== snapshotId) {
+        await this.storage.quarantine(snapshotId).catch(() => undefined);
+        return { status: "corrupt" };
+      }
       const value = JSON.parse(payload) as Partial<SnapshotEnvelope>;
-      if (!isSnapshotEnvelope(value, stored.createdAt)) return { status: "corrupt" };
+      if (!isSnapshotEnvelope(value, stored.createdAt)) {
+        await this.storage.quarantine(snapshotId).catch(() => undefined);
+        return { status: "corrupt" };
+      }
       return { status: "ok", state: { workspaceContextId: value.workspaceContextId, fileId: value.fileId, content: value.content, reviewedRanges: normalizeLineIntervals(value.reviewedRanges) } };
-    } catch { return { status: "corrupt" }; }
+    } catch {
+      await this.storage.quarantine(snapshotId).catch(() => undefined);
+      return { status: "corrupt" };
+    }
   }
 
   private async cleanup(now: number, protectedSnapshotId?: string): Promise<void> {

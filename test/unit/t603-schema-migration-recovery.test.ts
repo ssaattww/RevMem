@@ -131,6 +131,10 @@ class FailMigratedStateWriteStore implements AtomicTextFileStore {
     return this.delegate.readText(filePath);
   }
 
+  public deleteText(filePath: string): Promise<void> {
+    return this.delegate.deleteText(filePath);
+  }
+
   public async writeTextAtomically(filePath: string, content: string): Promise<void> {
     if (
       filePath === this.statePath &&
@@ -218,7 +222,7 @@ test("T603 quarantines corrupt state and exposes no reviewed ranges from uncerta
   }
 });
 
-test("T603 migrates valid legacy JSONL records, quarantines corrupt records, and continues history", async () => {
+test("T603 rejects corrupt JSONL without salvaging uncertain history", async () => {
   const temporary = await createTemporaryStorage();
   try {
     const route = resolveReviewStateStorageRoute(temporary.storageUris, historyTarget);
@@ -229,18 +233,39 @@ test("T603 migrates valid legacy JSONL records, quarantines corrupt records, and
     await writeFile(historyPath, rawHistory, "utf8");
 
     const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
+    await assert.rejects(
+      () => store.append(historyTarget, createHistoryEvent("new-event")),
+      /history is corrupt/iu
+    );
+
+    assert.equal(await readFile(historyPath, "utf8"), rawHistory);
+    await assert.rejects(() => readFile(`${historyPath}.pre-migration.bak`, "utf8"), /ENOENT/u);
+    const quarantines = await findQuarantineSidecars(historyPath);
+    assert.equal(quarantines.length, 1);
+    assert.equal(await readFile(quarantines[0]!, "utf8"), rawHistory);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603 migrates valid legacy JSONL records before appending current history", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, historyTarget);
+    const historyPath = path.join(route.historyDirectory, "events-2026-08.jsonl");
+    const legacyEvent = createHistoryEvent("legacy-event", 0);
+    const rawHistory = `${JSON.stringify(legacyEvent)}\n`;
+    await mkdir(route.historyDirectory, { recursive: true });
+    await writeFile(historyPath, rawHistory, "utf8");
+
+    const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
     await store.append(historyTarget, createHistoryEvent("new-event"));
 
     const lines = (await readFile(historyPath, "utf8")).trimEnd().split("\n");
     assert.equal(lines.length, 2);
     assert.equal((JSON.parse(lines[0]!) as ReviewHistoryEvent).schemaVersion, REVIEW_RANGE_SCHEMA_VERSION);
-    assert.equal((JSON.parse(lines[0]!) as ReviewHistoryEvent).eventId, "legacy-event");
     assert.equal((JSON.parse(lines[1]!) as ReviewHistoryEvent).eventId, "new-event");
     assert.equal(await readFile(`${historyPath}.pre-migration.bak`, "utf8"), rawHistory);
-
-    const quarantines = await findQuarantineSidecars(historyPath);
-    assert.equal(quarantines.length, 1);
-    assert.equal(await readFile(quarantines[0]!, "utf8"), rawHistory);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

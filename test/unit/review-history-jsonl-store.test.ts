@@ -99,7 +99,7 @@ test("rejects an invalid event and preserves existing history", async () => {
   }
 });
 
-test("quarantines corrupt existing JSONL and resumes from recoverable records", async () => {
+test("quarantines corrupt existing JSONL, rejects append, and preserves the active evidence", async () => {
   const temporary = await temporaryStorage();
   try {
     const route = resolveReviewStateStorageRoute(temporary.storageUris, target);
@@ -109,11 +109,8 @@ test("quarantines corrupt existing JSONL and resumes from recoverable records", 
     await writeFile(historyPath, corrupt, { encoding: "utf8", flush: true });
     const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
 
-    await store.append(target, event());
-    assert.deepEqual(
-      JSON.parse((await readFile(historyPath, "utf8")).trim()),
-      event()
-    );
+    await assert.rejects(() => store.append(target, event()), /history is corrupt/iu);
+    assert.equal(await readFile(historyPath, "utf8"), corrupt);
     const quarantineName = (await readdir(route.historyDirectory)).find(
       (name) =>
         name.startsWith("events-2026-08.jsonl.corrupt-") &&

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, rm } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
@@ -31,7 +31,7 @@ const SNAPSHOT_MIGRATION_STEPS = [
     toVersion: 1,
     migrate: (value: Record<string, unknown>): Record<string, unknown> => ({
       ...value,
-      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
+      schemaVersion: 1
     })
   }
 ] as const;
@@ -53,6 +53,14 @@ const parseMigratedRecord = (
     SNAPSHOT_MIGRATION_STEPS,
     0
   );
+};
+
+const decodeBase64 = (value: string): Uint8Array => {
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.toString("base64") !== value) {
+    throw new Error("Invalid persisted snapshot bytes");
+  }
+  return Uint8Array.from(decoded);
 };
 
 /** Node Extension Host codec for the application-level snapshot port. */
@@ -83,6 +91,7 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   public async put(snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void> {
     await this.atomicFileStore.writeTextAtomically(this.snapshotPath(snapshotId), JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot));
   }
+
   public async get(snapshotId: string): Promise<NonGitSnapshotStoredValue | undefined> {
     const filePath = this.snapshotPath(snapshotId);
     const text = await this.atomicFileStore.readText(filePath);
@@ -98,64 +107,126 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
       if (typeof createdAt !== "number" || !Number.isSafeInteger(createdAt) || createdAt < 0 || typeof bytes !== "string") {
         throw new Error("Invalid persisted snapshot");
       }
+      const decoded = decodeBase64(bytes);
+      if (migration.migrated) {
+        await publishSchemaMigration(this.atomicFileStore, [{
+          filePath,
+          original: text,
+          migrated: JSON.stringify(migration.value)
+        }]);
+      }
+      return { createdAt, bytes: decoded };
     } catch (error) {
       if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
       await quarantinePersistedText(this.atomicFileStore, filePath, text);
       return undefined;
     }
+  }
 
-    if (migration.migrated) {
-      await publishSchemaMigration(this.atomicFileStore, [{
-        filePath,
-        original: text,
-        migrated: JSON.stringify(migration.value)
-      }]);
+  public async delete(snapshotId: string): Promise<void> {
+    await this.deletePersistedText(this.snapshotPath(snapshotId));
+  }
+
+  /** Quarantines one corrupt snapshot wrapper and every valid latest pointer that names it. */
+  public async quarantine(snapshotId: string): Promise<void> {
+    const filePath = this.snapshotPath(snapshotId);
+    const text = await this.atomicFileStore.readText(filePath);
+    if (text !== undefined) {
+      await quarantinePersistedText(this.atomicFileStore, filePath, text);
     }
-    return { createdAt, bytes: Uint8Array.from(Buffer.from(bytes, "base64")) };
+    for (const name of await this.readDirectoryNames(this.latestDirectory)) {
+      if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
+      const pointerPath = path.join(this.latestDirectory, name);
+      const pointerText = await this.atomicFileStore.readText(pointerPath);
+      if (pointerText === undefined) continue;
+      try {
+        const migration = parseMigratedRecord(pointerText, "Snapshot generation pointer");
+        if (migration.value.snapshotId === snapshotId) {
+          await quarantinePersistedText(this.atomicFileStore, pointerPath, pointerText);
+        }
+      } catch (error) {
+        if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
+        // Unrelated malformed pointers are handled by their own get/startup migration boundary.
+      }
+    }
   }
-  public async delete(snapshotId: string): Promise<void> { await rm(this.snapshotPath(snapshotId), { force: true }); }
+
   public async entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]> {
-    try {
-      const names = await readdir(this.snapshotsDirectory);
-      const values = await Promise.all(names.filter((name) => /^[0-9a-f]{64}\.json$/u.test(name)).map(async (name) => {
-        const id = name.slice(0, -5); const value = await this.get(id); return value === undefined ? undefined : [id, value] as const;
-      }));
-      return values.filter((value): value is readonly [string, NonGitSnapshotStoredValue] => value !== undefined);
-    } catch (error) { if (isNotFound(error)) return []; throw error; }
+    const names = await this.readDirectoryNames(this.snapshotsDirectory);
+    const values = await Promise.all(names.filter((name) => /^[0-9a-f]{64}\.json$/u.test(name)).map(async (name) => {
+      const id = name.slice(0, -5); const value = await this.get(id); return value === undefined ? undefined : [id, value] as const;
+    }));
+    return values.filter((value): value is readonly [string, NonGitSnapshotStoredValue] => value !== undefined);
   }
+
   public async getLatest(workspaceContextId: string, fileId: string): Promise<string | undefined> {
     const filePath = this.latestPath(workspaceContextId, fileId);
+    return this.readLatestPointer(filePath);
+  }
+
+  public async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
+    const pointerPath = this.latestPath(workspaceContextId, fileId);
+    if (snapshotId === undefined) {
+      await this.deletePersistedText(pointerPath);
+      return;
+    }
+    await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, snapshotId } satisfies PersistedLatest));
+  }
+
+  /** Eagerly migrates every persisted wrapper under this snapshot root, including hashed latest pointers. */
+  public async migratePersistedMetadata(): Promise<void> {
+    for (const name of await this.readDirectoryNames(this.snapshotsDirectory)) {
+      if (/^[0-9a-f]{64}\.json$/u.test(name)) {
+        await this.get(name.slice(0, -5));
+      }
+    }
+    for (const name of await this.readDirectoryNames(this.latestDirectory)) {
+      if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
+      await this.readLatestPointer(path.join(this.latestDirectory, name));
+    }
+  }
+
+  private async readLatestPointer(filePath: string): Promise<string | undefined> {
     const text = await this.atomicFileStore.readText(filePath);
     if (text === undefined) return undefined;
 
-    let migration: ReturnType<typeof runSchemaMigrationChain>;
-    let snapshotId: unknown;
     try {
-      migration = parseMigratedRecord(text, "Snapshot generation pointer");
-      snapshotId = migration.value.snapshotId;
+      const migration = parseMigratedRecord(text, "Snapshot generation pointer");
+      const snapshotId = migration.value.snapshotId;
       if (typeof snapshotId !== "string" || !/^[0-9a-f]{64}$/u.test(snapshotId)) {
         throw new Error("Invalid snapshot generation pointer");
       }
+      if (migration.migrated) {
+        await publishSchemaMigration(this.atomicFileStore, [{
+          filePath,
+          original: text,
+          migrated: JSON.stringify(migration.value)
+        }]);
+      }
+      return snapshotId;
     } catch (error) {
       if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
       await quarantinePersistedText(this.atomicFileStore, filePath, text);
       return undefined;
     }
+  }
 
-    if (migration.migrated) {
-      await publishSchemaMigration(this.atomicFileStore, [{
-        filePath,
-        original: text,
-        migrated: JSON.stringify(migration.value)
-      }]);
+  private async deletePersistedText(filePath: string): Promise<void> {
+    if (this.atomicFileStore.deleteText === undefined) {
+      throw new Error("AtomicTextFileStore.deleteText is required to remove snapshot persistence.");
     }
-    return snapshotId;
+    await this.atomicFileStore.deleteText(filePath);
   }
-  public async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
-    const pointerPath = this.latestPath(workspaceContextId, fileId);
-    if (snapshotId === undefined) { await rm(pointerPath, { force: true }); return; }
-    await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, snapshotId } satisfies PersistedLatest));
+
+  private async readDirectoryNames(directory: string): Promise<string[]> {
+    try {
+      return await readdir(directory);
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
   }
+
   private snapshotPath(snapshotId: string): string { return path.join(this.snapshotsDirectory, `${assertSnapshotId(snapshotId)}.json`); }
   private latestPath(workspaceContextId: string, fileId: string): string {
     const key = `${workspaceContextId}\0${fileId}`;

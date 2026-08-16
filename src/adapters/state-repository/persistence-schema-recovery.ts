@@ -537,6 +537,9 @@ export const quarantinePersistedText = async (
   const destination = quarantinePath(filePath, raw);
   await store.writeTextAtomically(destination, raw);
   if (removeOriginal) {
+    if (store.deleteText === undefined) {
+      throw new Error("AtomicTextFileStore.deleteText is required to quarantine active persistence.");
+    }
     await store.deleteText(filePath);
   }
   return destination;
