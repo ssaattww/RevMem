@@ -197,7 +197,10 @@ test("R405-3 Review Contexts canonical original/modified commands persist mark a
   ]);
 
   assert.equal(await commands.unmarkSelectionReviewed(original), "applied");
-  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff, {});
+  assert.deepEqual(
+    repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [] },
+  );
   assert.equal(await commands.unmarkSelectionReviewed(modified), "applied");
   assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, []);
   assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, []);
