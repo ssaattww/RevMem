@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import "./t405-composition-regression.test.js";
+
 import {
   findCurrentPullRequestContext,
   formatReviewContextProgress,
