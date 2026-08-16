@@ -18,6 +18,9 @@ import {
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
 import {
+  migratePersistedReviewHistoryFile
+} from "../../src/adapters/state-repository/jsonl-review-history-store";
+import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type ReviewHistoryEvent
 } from "../../src/core/contracts/index";
@@ -222,7 +225,7 @@ test("T603 quarantines corrupt state and exposes no reviewed ranges from uncerta
   }
 });
 
-test("T603 rejects corrupt JSONL without salvaging uncertain history", async () => {
+test("T603 restarts corrupt JSONL without salvaging uncertain history", async () => {
   const temporary = await createTemporaryStorage();
   try {
     const route = resolveReviewStateStorageRoute(temporary.storageUris, historyTarget);
@@ -233,16 +236,39 @@ test("T603 rejects corrupt JSONL without salvaging uncertain history", async () 
     await writeFile(historyPath, rawHistory, "utf8");
 
     const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
-    await assert.rejects(
-      () => store.append(historyTarget, createHistoryEvent("new-event")),
-      /history is corrupt/iu
-    );
+    await store.append(historyTarget, createHistoryEvent("new-event"));
 
-    assert.equal(await readFile(historyPath, "utf8"), rawHistory);
+    const lines = (await readFile(historyPath, "utf8")).trimEnd().split("\n");
+    assert.equal(lines.length, 1);
+    assert.equal((JSON.parse(lines[0]!) as ReviewHistoryEvent).eventId, "new-event");
     await assert.rejects(() => readFile(`${historyPath}.pre-migration.bak`, "utf8"), /ENOENT/u);
     const quarantines = await findQuarantineSidecars(historyPath);
     assert.equal(quarantines.length, 1);
     assert.equal(await readFile(quarantines[0]!, "utf8"), rawHistory);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603 startup migration quarantines corrupt history and removes it from the active path", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, historyTarget);
+    const historyPath = path.join(route.historyDirectory, "events-2026-08.jsonl");
+    const corrupt = "{broken-json}\n";
+    await mkdir(route.historyDirectory, { recursive: true });
+    await writeFile(historyPath, corrupt, "utf8");
+
+    const result = await migratePersistedReviewHistoryFile(
+      new NodeAtomicTextFileStore(),
+      historyPath
+    );
+
+    assert.equal(result, "reset");
+    await assert.rejects(() => readFile(historyPath, "utf8"), /ENOENT/u);
+    const quarantines = await findQuarantineSidecars(historyPath);
+    assert.equal(quarantines.length, 1);
+    assert.equal(await readFile(quarantines[0]!, "utf8"), corrupt);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
