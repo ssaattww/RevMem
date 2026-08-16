@@ -107,8 +107,8 @@ const migrateRepositoryStateRoot = async (
     repositoryId,
     contextId
   };
-  const preparation = await preparePersistedReviewState({ storageUris, atomicFileStore: store }, target);
-  return preparation === "ready" ? repositoryId : undefined;
+  await preparePersistedReviewState({ storageUris, atomicFileStore: store }, target);
+  return repositoryId;
 };
 
 const migrateHistoryRoot = async (
