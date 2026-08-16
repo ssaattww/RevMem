@@ -1,0 +1,370 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: '2026-08-17T07:24:00+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'PR #53'
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  current_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  commit_range: 06b606e66935adbae7a9e7260b3d5b35d736f385..767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+authoritative_requirements:
+- source: user_instruction
+  reference: 再レビュー
+  summary: Same normal-review fix verification.
+- source: user_instruction
+  reference: 履歴破損時のowner decision
+  summary: Quarantine whole corrupt history; restart without salvage.
+- source: repository_instruction
+  reference: RevMem project instruction / AGENTS.md
+  summary: Skills, connector, TDD diagnostics, exact-head CI, no merge.
+- source: task
+  reference: tasks/tasks-status.md T603
+  summary: Migration, backup, corruption recovery, fail-closed uncertainty.
+- source: design
+  reference: rev4 §15 + Design/BreakingChanges.md
+  summary: Startup migration and owner-bound persistence.
+- source: report
+  reference: R4 verification / R5 implementation reports
+  summary: R013/R015/R016 closure evidence.
+development_policy:
+  method: TDD
+  testing_order: Red before behavior fix; exact-head Green after; actual packet CI validation.
+  governing_source: RevMem instructions + uploaded Skills
+validation_plan:
+  commands:
+  - Review 06b606e66935adbae7a9e7260b3d5b35d736f385..767a552ba5fe799b7cc0ef80ae3d14f734db1c45 and direct impact.
+  - Verify R5 Red 31975272825/95233672580/9270872259.
+  - Verify R016 failure chronology and Green 31976731455/95237234962.
+  - Verify final exact-head 31976858155/95237539493.
+  required_failure_diagnostics:
+  - test results
+  - stdout/stderr
+  - environment/Git status
+  - generated/source/test/config context
+blocked: []
+authorized_actions:
+- read_repository
+- write_handoff
+- write_report
+- commit
+- push
+- comment_pr
+write_boundary:
+  allowed:
+  - path_or_operation: reports/issue-1-t603-fix-verification-r5-20260817072400.md
+    reason: Normal verification report.
+  - path_or_operation: handoffs/issue-1-t603-fix-verification-r5-20260817072400.yaml
+    reason: Normal review handoff.
+  - path_or_operation: 'PR #53 comment'
+    reason: Closure + post-artifact CI.
+  forbidden:
+  - path_or_operation: src/**, test/**, workflows/design/tracking
+    reason: Reviewer does not implement or update tracking.
+  - path_or_operation: 'merge PR #53'
+    reason: User-owned.
+scope:
+- Verify R013/R015/R016 closure and sibling impact.
+- Verify actual packet, diagnostics, reports and exact-head CI.
+non_goals:
+- Implementation.
+- T604/T606/future-v2 owned work.
+- Independent final review or merge.
+files:
+  changed:
+  - path: reports/issue-1-t603-fix-verification-r5-20260817072400.md
+    purpose: R5 verification report.
+  - path: handoffs/issue-1-t603-fix-verification-r5-20260817072400.yaml
+    purpose: R5 closing normal-review packet.
+  inspected:
+  - path: src/adapters/persistence-startup-migration.ts
+    purpose: R013.
+  - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    purpose: R015.
+  - path: src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+    purpose: R015 dependency.
+  - path: test/unit/t603-fix-verification-r5.test.ts
+    purpose: R013/R015 regressions.
+  - path: test/unit/t603-handoff-r016.test.ts
+    purpose: R016 actual packet validator.
+  - path: handoffs/issue-1-t603-fix-followup-r4-20260817.yaml
+    purpose: R016 replacement packet.
+  - path: reports/issue-1-t603-fix-followup-r4-20260817.md
+    purpose: Evidence accuracy.
+  - path: .github/workflows/ci.yml
+    purpose: Focused CI wiring.
+  intentionally_untouched:
+  - path_or_area: implementation/tracking/merge
+    reason: Outside normal reviewer write boundary.
+commands:
+- command: Review R5 fix range
+  purpose: Fix/sibling verification.
+  exit_code: 0
+  result: passed
+  head_sha: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  evidence: R013/R015/R016 closed; no new finding.
+- command: Inspect R5 Red
+  purpose: TDD/diagnostics.
+  exit_code: 1
+  result: failed
+  head_sha: 418d7e6a8efde0dd8617063580ff82bb61f61925
+  evidence: Exactly R013/R015 fail; artifact 9270872259.
+- command: Inspect final current CI
+  purpose: Exact-head validation.
+  exit_code: 0
+  result: passed
+  head_sha: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  evidence: 31976858155/95237539493 success.
+tests:
+- name: R013/R015 Red
+  phase: red
+  result: failed
+  head_sha: 418d7e6a8efde0dd8617063580ff82bb61f61925
+  evidence: 31975272825/95233672580; 2 intended failures.
+- name: R016 actual packet validation
+  phase: verification
+  result: passed
+  head_sha: d12180ab4242140837446e301a309155063b18b5
+  evidence: 31976731455/95237234962 success.
+- name: Full final CI
+  phase: verification
+  result: passed
+  head_sha: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  evidence: 31976858155/95237539493 success.
+ci:
+  required: true
+  workflow: CI
+  run_id: 31976858155
+  head_sha: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  commits:
+  - sha: 418d7e6a8efde0dd8617063580ff82bb61f61925
+    purpose: R013/R015 Red.
+  - sha: 41e997a9e08fae53b7ba1258d4920d82e2e2a2b7
+    purpose: R013 fix.
+  - sha: ce761bf229d17e7f2d4659b7c4b05d99fbed0ade
+    purpose: R015 fix/technical Green.
+  - sha: d12180ab4242140837446e301a309155063b18b5
+    purpose: R016 packet validator Green.
+  - sha: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+    purpose: Final R016 evidence/current Green.
+  addressed_findings:
+  - id: T603-R013
+    reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+    disposition: addressed
+    evidence: Absent-context owner regression Green.
+  - id: T603-R015
+    reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+    disposition: addressed
+    evidence: Gated recovery concurrency regression Green.
+  - id: T603-R016
+    reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+    disposition: addressed
+    evidence: Actual packet contract/lossless validator Green.
+  failure_diagnostics:
+  - type: artifact
+    location: '9270872259'
+    summary: R013/R015 Red.
+  - type: artifact
+    location: '9271171295'
+    summary: R016 validator lint failure.
+  - type: artifact
+    location: '9271187834'
+    summary: R016 validator first failure.
+  - type: artifact
+    location: '9271234944'
+    summary: R016 normalization failure.
+  blocked_items: []
+  summary:
+  - All T603 required findings closed.
+  - Failure chronology retained.
+review:
+  mode: fix_verification
+  reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  reviewer:
+    identity: ChatGPT T603 normal reviewer (R2→R5)
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same T603 normal reviewer
+      changed: false
+      reason: Required same-chat fix verification.
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+      - Reviewer did not implement T603/fixes.
+  verdict: pass_with_held
+  required_coverage:
+  - criterion: requirement_and_design_conformance
+    disposition: checked_no_finding
+    evidence: R013/R015/R016 now meet T603, owner and handoff requirements.
+  - criterion: correctness_and_edge_cases
+    disposition: checked_no_finding
+    evidence: Absent-context owner, gated recovery concurrency and actual packet decode are covered.
+  - criterion: scope_discipline_and_unrelated_changes
+    disposition: checked_no_finding
+    evidence: Fixes are limited to residual findings, validation and evidence.
+  - criterion: changed_files_and_direct_dependency_impact
+    disposition: checked_no_finding
+    evidence: Startup/state/coherent repository, tests, workflow, handoff/report and direct dependencies inspected.
+  - criterion: api_data_configuration_workflow_compatibility
+    disposition: checked_no_finding
+    evidence: Owner propagation, load contract, packet transport and focused CI wiring are compatible.
+  - criterion: error_handling_and_failure_diagnostics
+    disposition: checked_no_finding
+    evidence: Red/intermediate failures retain diagnostic artifacts; failure chronology is explicit.
+  - criterion: security_and_secret_handling
+    disposition: checked_no_finding
+    evidence: No new secret/token persistence or unsafe diagnostic logging introduced.
+  - criterion: tests_and_validation_adequacy
+    disposition: checked_no_finding
+    evidence: R013/R015 exact-head Red, actual R016 packet validator and full current exact-head CI verified.
+  - criterion: current_head_ci_evidence
+    disposition: checked_no_finding
+    evidence: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45 exactly matches run 31976858155 / job 95237539493 and succeeds.
+  - criterion: report_tracking_and_documentation_accuracy
+    disposition: checked_no_finding
+    evidence: Implementation report and PR body retain failure chronology and final HEAD/CI; tracking direct edit omitted per rules.
+  - criterion: regression_and_maintainability_risks
+    disposition: held
+    evidence: Only explicitly owned T604/T606/future-v2 risks remain.
+  validation_assessment:
+  - item: R013/R015/R016 closure
+    result: supported
+    evidence: Red/Green and actual packet validation verified.
+  - item: current-head CI
+    result: supported
+    evidence: 31976858155 exact-head success.
+  - item: coverage
+    result: supported
+    evidence: 11/11 dispositioned; unexplored empty.
+  reserved_report_paths:
+  - reports/issue-1-t603-independent-final-review-20260817072400.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+    - Fresh independent reviewer must establish attestation conditions after freezing post-normal-review-artifact HEAD.
+  summary:
+  - R001-R016 closed; B001 owner-resolved.
+  - Only T604/T606/future-v2 held.
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+  - reports/issue-1-t603-fix-verification-r5-20260817072400.md
+  reviewed_head: 767a552ba5fe799b7cc0ef80ae3d14f734db1c45
+  attestation_head: null
+  pr_comments:
+  - target: 'PR #53'
+    url_or_id: unknown
+  summary:
+  - Closing normal verification; independent-final path reserved.
+findings: []
+held:
+- item: T604 cross-window/process lock, atomic history append and cleanup/retention
+  reason: Owned by T604.
+  owner: T604
+  remaining_risk: Cross-process races and retention policy remain until T604.
+  verdict_impact: Non-blocking held.
+- item: Generalized persistence/startup I/O retry and partial-availability policy
+  reason: Owned by T606.
+  owner: T606
+  remaining_risk: Generalized storage failure policy remains until T606.
+  verdict_impact: Non-blocking held.
+- item: Concrete future schema-v2 semantic transform
+  reason: No accepted v2 transform exists yet.
+  owner: future schema task
+  remaining_risk: Future schema semantics must be defined when schema advances.
+  verdict_impact: Non-blocking held; adjacent migration foundation is already closed.
+unexplored: []
+unknown:
+- field_or_fact: post-normal-review artifact HEAD/CI
+  reason: Known only after this report/handoff commit.
+- field_or_fact: R5 PR comment ID
+  reason: Posted after persistence/CI.
+not_applicable:
+- field_or_area: independent-final attestation
+  reason: Fresh chat required.
+- field_or_area: merge
+  reason: User-owned.
+- field_or_area: task-status reviewer edit
+  reason: Reserved for progress-management.
+remaining_risks:
+- Cross-process races and retention policy remain until T604.
+- Generalized storage failure policy remains until T606.
+- Future schema semantics must be defined when schema advances.
+source_payloads:
+- source_skill: work-context-manager
+  output_contract_version: '1'
+  content_type: other
+  payload: gzip+base64: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
+- source_skill: review-worker
+  output_contract_version: '1'
+  content_type: other
+  payload: gzip+base64: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
+- source_skill: report-writer
+  output_contract_version: '1'
+  content_type: other
+  payload: gzip+base64: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
+extensions:
+- namespace: closure
+  payload:
+    closed:
+    - T603-R013
+    - T603-R015
+    - T603-R016
+    all_R001_R016_closed: true
+    B001: resolved_by_owner
+- namespace: source_payload_hashes
+  payload:
+    work-context-manager: 465904cc6802f2f19e3cc742e1cfafbe4a82b782856f9821857bd07c93286562
+    review-worker: e1a2166a0b31fd27354cace8685a78ed9ef94891bc49b0af6042cd109afea1ac
+    report-writer: 066ba3a20d3a8f5f4433ae59ef9e38b6eaf7e74a4213864092fb6d4ea1885bf4
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: Fresh independent final review after post-normal-review artifact exact-head CI.
+  instructions:
+  - Use a fresh chat.
+  - 'Reserved report path: reports/issue-1-t603-independent-final-review-20260817072400.md.'
+  - 'Fetch PR #53 after this report/handoff commit; freeze that actual current HEAD.'
+  - Use only CI whose head_sha exactly equals the frozen HEAD.
+  - Independently re-review; do not inherit substantive normal-review conclusions.
+  - If passing, follow one-commit reserved-path report-attestation rule; no handoff commit after attestation.
+  - Do not merge.
+  required_attachments_or_references:
+  - reports/issue-1-t603-fix-verification-r5-20260817072400.md
+  - handoffs/issue-1-t603-fix-verification-r5-20260817072400.yaml
+  - reports/issue-1-t603-fix-followup-r4-20260817.md
+  - handoffs/issue-1-t603-fix-followup-r4-20260817.yaml
+  - 'PR #53'
+  requested_authorized_actions:
+  - read_repository
+  - write_report
+  - commit
+  - push
+  - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t603-fix-verification-r5-20260817072400.yaml
+  packet_url: null
+  transport_note: Closing normal-review packet. Fresh independent reviewer must freeze post-persistence PR HEAD.
