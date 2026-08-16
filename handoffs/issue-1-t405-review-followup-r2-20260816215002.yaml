@@ -1,0 +1,205 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-16T21:50:02+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+target:
+  source_verification_head: b0f3184a629945ed62d2a9d300f505b907e086f4
+  technical_final_head: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+  base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+
+source_review:
+  report: reports/2026-08-16-t405-fix-verification.md
+  handoff: handoffs/issue-1-t405-fix-verification-20260816193628.yaml
+  remaining_findings:
+    - id: R405-1
+      severity: medium
+      summary: revision mapping/layer/restart regression evidence missing
+    - id: R405-2
+      severity: medium
+      summary: open-to-closed-or-merged durable transition regression evidence missing
+    - id: R405-3
+      severity: medium
+      summary: canonical original/modified mark-unmark persistence regression missing
+    - id: R405-5
+      severity: medium
+      summary: projected PR progress not rendered in Review Contexts Tree
+    - id: R405-7
+      severity: high
+      summary: multiple PRs sharing one HEAD lose the explicitly redetected PR identity
+    - id: R405-9
+      severity: low
+      summary: README progress claim was inaccurate while R405-5 remained
+
+policies:
+  development_method: TDD
+  ci_identity_rule: only workflow runs whose head_sha equals current PR HEAD may be used
+  merge: forbidden
+  task_status_write: held because required task manager skill is unavailable
+
+diagnostic_workflow:
+  status: already_present
+  workflow: .github/workflows/ci.yml
+  captures:
+    - test results
+    - standard output and standard error via tee
+    - environment and git status
+    - generated files
+    - source, tests, build outputs, and config
+  change_required: false
+
+tdd:
+  red:
+    head_sha: 4fac6706d184e41865aade724d50c2fd3814f7ed
+    run_id: 31947458446
+    artifact_id: 9263698972
+    result: failed_as_expected
+    failures:
+      - R405-5 Tree progress not rendered
+      - R405-7 preferred PR not retained for same-HEAD multiple PRs
+  green:
+    head_sha: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+    run_id: 31947993979
+    result: success
+
+implementation:
+  changes:
+    - finding: R405-5
+      files:
+        - src/application/review-contexts/review-contexts-controller.ts
+        - src/application/review-contexts/index.ts
+        - src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      summary: user-visible PR progress formatter wired into Tree row description and tooltip
+    - finding: R405-7
+      files:
+        - src/application/review-contexts/current-pull-request-context.ts
+        - src/ui/review-contexts/vscode-review-contexts-runtime.ts
+        - src/ui/review-contexts/index.ts
+        - src/t405-review-contexts-runtime.ts
+      summary: persist explicit redetected PR contextId by repository and immutable HEAD, and reuse it in Review/Current Context projection
+    - finding: R405-1
+      files:
+        - test/unit/t405-github-lifecycle.test.ts
+      summary: durable B-to-C revision map, layer operation, and restart regression using real state service and immutable mapper
+    - finding: R405-2
+      files:
+        - test/unit/t405-github-lifecycle.test.ts
+      summary: closed/merged persistence, restart, saved grouping, and default layer OFF regression
+    - finding: R405-3
+      files:
+        - test/unit/t405-pull-request-review-runtime.test.ts
+      summary: canonical original/modified mark and unmark persistence regression, including binary rejection
+    - finding: R405-9
+      files: []
+      summary: resolved by R405-5 implementation; existing README progress statement now matches production behavior
+  commits:
+    - sha: 4fac6706d184e41865aade724d50c2fd3814f7ed
+      message: "test: reproduce remaining T405 UI and multi-PR findings"
+    - sha: a1d05aaded4d23adb77abccc3986a37eef685d78
+      message: "feat: format Review Contexts PR progress"
+    - sha: 74e7beffa1e9f85c22551ca4e19b10833980afec
+      message: "refactor: export Review Contexts progress formatter"
+    - sha: e77cb3e652884e015b460704a1172f64a11ee0c1
+      message: "feat: render PR progress and store explicit PR choice"
+    - sha: 298437fc1aaf1e3ecbfec35662ad318c0777ba5d
+      message: "refactor: export explicit PR selection store"
+    - sha: 03663a4b75341c60477878f60420465799a322dd
+      message: "fix: honor explicit PR choice for shared HEAD"
+    - sha: 0b9232bf45fcc853fdafa4282883ff489935895d
+      message: "fix: retain redetected PR selection across refreshes"
+    - sha: bf2541a56eb77be82225cadfa56c94a5a5ac7ad4
+      message: "test: cover T405 revision and lifecycle durable transitions"
+    - sha: 25c5682d6f033049f4fbdc50117a1880bdadc727
+      message: "test: verify canonical PR diff review persistence"
+    - sha: 5a89182d664372282900cefb57f8a01627e02a59
+      message: "test: cover visible progress and durable multi-PR selection"
+    - sha: 8b4ed2a6641485a7be0cda52016045bdaff92eb5
+      message: "test: assert persisted PR layer through public visibility contract"
+    - sha: 028754fcd4a195e8623626f1061a518c1ea452a9
+      message: "test: fix immutable revision evidence fixture"
+    - sha: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+      message: "test: align canonical unmark persistence expectation"
+
+intermediate_failures:
+  - head_sha: 5a89182d664372282900cefb57f8a01627e02a59
+    run_id: 31947783365
+    artifact_id: 9263785235
+    cause: test type assertion accessed visibility override through the base PR context type
+    resolution: assert via isPullRequestDecorationEnabled public behavior
+  - head_sha: 8b4ed2a6641485a7be0cda52016045bdaff92eb5
+    run_id: 31947862342
+    artifact_id: 9263810158
+    cause:
+      - invalid zero-context diff fixture included a context line
+      - canonical original unmark representation retains diff key with empty intervals
+    resolution:
+      - change only line 2 with zero-context hunk
+      - expect an empty interval array under the canonical diff key
+
+validation:
+  technical_final:
+    head_sha: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+    run_id: 31947993979
+    status: completed
+    conclusion: success
+    exact_head_match: true
+    steps:
+      build: success
+      contract_typecheck: success
+      architecture: success
+      architecture_negative: success
+      lint: success
+      unit: success
+      t602: success
+      t403: success
+      t404: success
+      t405: success
+      t304: success
+      t502: success
+      t503: success
+      t504: success
+      t505: success
+      git_integration: success
+      mock_github: success
+      vscode_extension_host: success
+
+finding_disposition:
+  - id: R405-1
+    result: addressed
+    evidence: durable revision-map -> layer -> restart regression passes
+  - id: R405-2
+    result: addressed
+    evidence: closed and merged durable lifecycle regressions pass with saved group and layer OFF
+  - id: R405-3
+    result: addressed
+    evidence: canonical original and modified mark/unmark persistence regression passes
+  - id: R405-5
+    result: addressed
+    evidence: Tree row and tooltip render T304-compatible progress; formatter tests pass
+  - id: R405-7
+    result: addressed
+    evidence: redetected PR choice is persisted by repo+HEAD and reused; multiple candidate fail-closed behavior retained without preference
+  - id: R405-9
+    result: addressed
+    evidence: existing README progress claim now matches production UI
+
+held:
+  - T406 GitHub error/public/multiple-candidate/closed-PR end-to-end matrix
+  - T506 multi-context change tracking and Global aggregation integration
+  - tasks/tasks-status.md update due unavailable manager skill
+  - merge
+
+report:
+  path: reports/2026-08-16-t405-review-followup-r2.md
+  status: prepared
+
+next_action:
+  - persist this report and handoff in one administrative commit
+  - verify a new CI run whose head_sha exactly matches that administrative PR HEAD
+  - update PR body and post concise PR comment

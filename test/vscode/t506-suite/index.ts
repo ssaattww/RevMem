@@ -66,6 +66,7 @@ interface ReviewRangeT506TestApi {
   }>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   refreshVisibleEditorDecorations(): Promise<void>;
+  drainDocumentReviewEdits(): Promise<void>;
   getGlobalUnderstandingSnapshot(): Promise<{
     readonly progress: {
       readonly files: readonly GlobalUnderstandingFileSnapshot[];
@@ -244,6 +245,14 @@ const assertMappedGlobalUnderstanding = async (
   assert.equal(file.progress, 2 / 3);
 };
 
+const waitForMappedLiveEdit = async (api: ReviewRangeT506TestApi): Promise<void> => {
+  await within(
+    "persist mapped live edit and invalidated-by-edit history",
+    api.drainDocumentReviewEdits()
+  );
+  await within("recalculate mapped Global Understanding", assertMappedGlobalUnderstanding(api));
+};
+
 const assertMappedNormalEditorAfterRestart = async (
   api: ReviewRangeT506TestApi,
   workspaceFolder: vscode.WorkspaceFolder
@@ -344,8 +353,7 @@ export async function run(): Promise<void> {
         edit.insert(new vscode.Position(1, 0), "const inserted = 9;\n");
       })
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await assertMappedGlobalUnderstanding(api);
+    await waitForMappedLiveEdit(api);
     await within("refresh edited normal-editor decorations", api.refreshVisibleEditorDecorations());
     assert.deepEqual(
       api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),

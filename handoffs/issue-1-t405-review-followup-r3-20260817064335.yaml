@@ -1,0 +1,211 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-17T06:43:35+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+
+target:
+  source_verification_head: 699656897f1bb403290ab5528908be85c1fc4370
+  technical_head: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+  administrative_head: pending_after_handoff_commit
+  implementation_range: 699656897f1bb403290ab5528908be85c1fc4370..4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+
+source_review:
+  report: reports/2026-08-16-t405-fix-verification-r2.md
+  handoff: handoffs/issue-1-t405-fix-verification-r2-20260816224800.yaml
+  verdict: fail
+  remaining_findings:
+    - { id: R405-1, severity: medium }
+    - { id: R405-2, severity: medium }
+    - { id: R405-3, severity: medium }
+    - { id: R405-7, severity: high }
+  already_addressed:
+    - R405-4
+    - R405-5
+    - R405-6
+    - R405-8
+    - R405-9
+
+requirements:
+  - source: user_instruction
+    summary: "T405の最新レビュー指摘へ対応し、uploaded skillsに従って自立して完了まで進める。"
+  - source: project_instruction
+    summary: "GitHub connectorでrepository/PRを更新し、RevMem実装はTDD、current PR HEADとrun head SHAが一致するCIだけを判定に使う。mergeは利用者所有。"
+  - source: source_verification
+    reference: reports/2026-08-16-t405-fix-verification-r2.md
+    summary: "R405-1/R405-2/R405-3/R405-7は下位service証拠ではなくT405 composition seamの実行回帰がclosure条件。"
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md
+    summary: "PR revision continuity、Review Contexts lifecycle/canonical diff、Current Context selected PR ownershipを維持する。"
+
+development_policy:
+  method: TDD
+  artificial_red_forbidden: true
+  diagnostic_workflow_checked: true
+  diagnostic_workflow_change_required: false
+  diagnostic_evidence:
+    - ".github/workflows/ci.yml records combined stdout/stderr for each command via tee"
+    - "failure artifacts include test-output, generated output, source/tests and investigation context"
+
+work_summary:
+  - "T405 production composition regressionを新規追加し、既存test:t405 focused CIへ接続した。"
+  - "実temporary Git、実filesystem Review State、実T405 runtime、実PR review runtime、実Current Context coordinatorを1 fixtureで接続した。"
+  - "composition Redでactive editor file pathをGit cwdとして渡すproduction defectを検出した。"
+  - "Node production Git adapterがfile inputを親directoryへ正規化するよう修正した。"
+  - "R405-1/2/3/7の要求flowをcomposition testでGreenにした。"
+
+files:
+  changed:
+    - path: test/unit/t405-composition-regression.test.ts
+      purpose: "R405-1/R405-2/R405-3/R405-7 T405 production composition regression"
+    - path: test/unit/t405-review-followup.test.ts
+      purpose: "composition regressionを既存test:t405 focused suiteへ接続"
+    - path: src/adapters/local-git/node-local-git-adapter.ts
+      purpose: "normal active file pathからrepository inspection可能にするproduction fix"
+  reports:
+    - reports/2026-08-17-t405-review-followup-r3.md
+    - handoffs/issue-1-t405-review-followup-r3-20260817064335.yaml
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "uploaded skill setにmanager-authorized tracking writerがない"
+    - path_or_area: tasks/phases-status.md
+      reason: "uploaded skill setにmanager-authorized tracking writerがない"
+    - path_or_area: T406 full GitHub integration matrix
+      reason: "held ownership"
+    - path_or_area: T506 multi-context/global integration
+      reason: "held ownership"
+    - path_or_area: merge
+      reason: "user-owned"
+
+commits:
+  - sha: 148bebd2f89bc5355c13e92222b8f3dd5dfed226
+    message: "test: add T405 composition regression coverage"
+    logical_unit: test
+  - sha: 78b80d0f5ea138d2942529bfdda42ae3e1a0ccad
+    message: "test: run T405 composition regression in focused suite"
+    logical_unit: test_wiring
+  - sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+    message: "test: fix selected PR narrowing in composition regression"
+    logical_unit: test_fixture_fix
+  - sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+    message: "fix: allow Node Git inspection from active file paths"
+    logical_unit: production_fix
+
+red_evidence:
+  non_behavioral_fixture_failure:
+    head_sha: 78b80d0f5ea138d2942529bfdda42ae3e1a0ccad
+    run_id: 31973790259
+    conclusion: failure
+    artifact_id: 9270502488
+    cause: "SelectedReviewContext narrowing error in new test compile; not used as product Red"
+  valid_behavior_red:
+    head_sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+    run_id: 31973885788
+    conclusion: failure
+    failed_step: T405 Review Contexts follow-up tests
+    artifact_id: 9270528839
+    failure: "Review Contexts操作に失敗しました: Git command cwd must identify a directory."
+    root_cause: "T405 redetect starts repository inspection from an active normal file path while Node Git command cwd requires a directory"
+
+green_evidence:
+  technical:
+    head_sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+    run_id: 31974161050
+    conclusion: success
+    exact_head: true
+    successful_steps:
+      - build
+      - contract_typecheck
+      - architecture_validation
+      - architecture_negative_contract
+      - lint
+      - unit_tests
+      - t602_history_rewrite
+      - t403_cache
+      - t404_pr_context
+      - t405_review_contexts_followup_with_composition
+      - t304_pr_progress
+      - t502_global_mapping
+      - t503_repository_enumeration
+      - t504_global_understanding
+      - t505_global_understanding
+      - git_integration
+      - mock_github_integration
+      - vscode_extension_host
+  administrative:
+    head_sha: pending_after_handoff_commit
+    run_id: pending
+    conclusion: pending
+    note: "report/handoff commit後のcurrent HEADと一致するrunのみ最終判定に使用する"
+
+finding_dispositions:
+  - id: R405-1
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "actual redetect/synchronize maps persisted PR B->C through T404 immutable mapping"
+      - "durable Context/Global/file revision C asserted"
+      - "actual layer command succeeds and persists"
+      - "T405 runtime reconstruction restores C and layer override"
+  - id: R405-2
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "actual T405 source.load/synchronize transitions open PRs to closed/merged"
+      - "durable lifecycle state asserted"
+      - "saved-closed group and default layer OFF asserted"
+      - "runtime reconstruction restores lifecycle projection"
+  - id: R405-3
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "actual reviewRange.openReviewContextDiff command used"
+      - "canonical review-range-diff URIs asserted"
+      - "original and modified mark/unmark executed via actual PR review command service"
+      - "durable state and progress transitions asserted"
+  - id: R405-7
+    severity: high
+    disposition: addressed
+    evidence:
+      - "same local HEAD returns PR #52 and #53"
+      - "actual resolver Quick Pick selects #53"
+      - "workspaceState preference consumed by augmentCurrentContextCandidates"
+      - "Current Context composition/controller/coordinator publishes selected PR #53 into downstream runtime ownership"
+
+production_defect_found:
+  id: T405-active-file-git-cwd
+  relation: "revealed by required composition coverage; blocks PR redetection flow"
+  symptom: "Git command cwd must identify a directory"
+  fix: "NodeLocalGitAdapter.inspectRepository preserves directory input and converts normal file input to its parent via gitInspectionStartPath"
+  compatibility: "directory callers unchanged; stat-failure path preserves prior lower-boundary error behavior"
+
+ci_policy:
+  exact_head_only: true
+  alternate_sha_substitution: false
+
+held:
+  - id: T406_full_integration_matrix
+    blocking: false
+  - id: T506_multi_context_global_integration
+    blocking: false
+  - id: task_tracking_manager_write
+    blocking: false
+  - id: merge
+    blocking: false
+
+report:
+  path: reports/2026-08-17-t405-review-followup-r3.md
+  outcome: created
+  administrative_commit: pending
+  pr_comment: pending
+
+next_action:
+  destination: normal_review_chat
+  instruction: "R405-1/R405-2/R405-3/R405-7を同じID/severityで再度fix verificationし、今回追加されたT405 production composition regressionとexact-head CIをclosure evidenceとして確認する。"
