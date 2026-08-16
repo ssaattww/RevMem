@@ -19,13 +19,12 @@ import { resolveReviewStateStorageRoute } from "./storage-router";
 export { StaleReviewStateError };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const sharedOuterWriteTailByStorageRoot = new Map<string, Promise<void>>();
 
 /** Public filesystem repository with validated metadata and owner-wide Global preservation. */
 export class FileSystemReviewStateRepository
 extends CoherentFileSystemReviewStateRepository {
-  private readonly outerWriteTailByStorageRoot = new Map<string, Promise<void>>();
-
-  /** Creates a repository that serializes writes per storage root while retaining the complete atomic snapshot contract. */
+  /** Creates a repository that serializes all same-process writes per storage root while retaining the complete atomic snapshot contract. */
   public constructor(
     private readonly repositoryOptions: FileSystemReviewStateRepositoryOptions
   ) {
@@ -158,20 +157,20 @@ extends CoherentFileSystemReviewStateRepository {
     storageRoot: string,
     operation: () => Promise<T>
   ): Promise<T> {
-    const previous = this.outerWriteTailByStorageRoot.get(storageRoot);
+    const previous = sharedOuterWriteTailByStorageRoot.get(storageRoot);
     let release: () => void = () => undefined;
     const tail = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.outerWriteTailByStorageRoot.set(storageRoot, tail);
+    sharedOuterWriteTailByStorageRoot.set(storageRoot, tail);
 
     await previous;
     try {
       return await operation();
     } finally {
       release();
-      if (this.outerWriteTailByStorageRoot.get(storageRoot) === tail) {
-        this.outerWriteTailByStorageRoot.delete(storageRoot);
+      if (sharedOuterWriteTailByStorageRoot.get(storageRoot) === tail) {
+        sharedOuterWriteTailByStorageRoot.delete(storageRoot);
       }
     }
   }
