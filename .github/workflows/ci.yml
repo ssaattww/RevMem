@@ -131,3 +131,4 @@ jobs:
             tsconfig.test.json
             eslint.config.mjs
             .github/workflows/ci.yml
+            npm-debug.log*
