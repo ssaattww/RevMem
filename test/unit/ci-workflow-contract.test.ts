@@ -6,6 +6,7 @@ import test from "node:test";
 const projectRoot = path.resolve(__dirname, "../../..");
 const packageJsonPath = path.join(projectRoot, "package.json");
 const workflowPath = path.join(projectRoot, ".github", "workflows", "ci.yml");
+const diagnosticRunnerPath = path.join(projectRoot, "tools", "run-ci-command.mjs");
 
 interface PackageManifest {
   readonly scripts?: Readonly<Record<string, string>>;
@@ -142,4 +143,22 @@ test("T505 focused coverage executes each dedicated suite once and is required b
     /- name: T505 Global understanding tests[\s\S]*?npm run test:t505\b[\s\S]*?tee test-output\/ci\/test-t505\.log/u,
     "CI must invoke the package-owned T505 focused script and preserve its log"
   );
+});
+
+test("CI diagnostics preserve stdout, stderr, combined logs, and result metadata", async () => {
+  const [workflow, runner] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(diagnosticRunnerPath, "utf8")
+  ]);
+
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs/u,
+    "CI commands must execute through the diagnostic runner"
+  );
+  assert.match(workflow, /test-output\/ci\//u);
+  assert.match(runner, /\.stdout\.log/u);
+  assert.match(runner, /\.stderr\.log/u);
+  assert.match(runner, /\.log/u);
+  assert.match(runner, /\.result\.json/u);
 });
