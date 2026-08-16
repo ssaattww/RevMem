@@ -118,7 +118,7 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
       return { createdAt, bytes: decoded };
     } catch (error) {
       if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
-      await quarantinePersistedText(this.atomicFileStore, filePath, text);
+      await this.quarantine(snapshotId);
       return undefined;
     }
   }
