@@ -41,18 +41,18 @@ test("T603-R016 replacement handoff is schema-v3 lossless and self-consistent", 
   assert.equal(new Set(topLevel).size, topLevel.length, "duplicate top-level YAML mapping key");
   assert.deepEqual([...topLevel].sort(), [...requiredTopLevel].sort());
 
-  const currentHead = /^  current_head: ([0-9a-f]{40})$/mu.exec(text)?.[1];
-  const reviewedHead = /^  reviewed_head: ([0-9a-f]{40})$/mu.exec(text)?.[1];
-  const ciHead = /^  head_sha: ([0-9a-f]{40})$/gmu;
+  const currentHead = /^ {2}current_head: ([0-9a-f]{40})$/mu.exec(text)?.[1];
+  const reviewedHead = /^ {2}reviewed_head: ([0-9a-f]{40})$/mu.exec(text)?.[1];
+  const ciHead = /^ {2}head_sha: ([0-9a-f]{40})$/gmu;
   assert.equal(currentHead, "ce761bf229d17e7f2d4659b7c4b05d99fbed0ade");
   assert.equal(reviewedHead, "80f96d523614cea4eb6d0213450a7a456b0d47bf");
   const ciHeads = [...text.matchAll(ciHead)].map((match) => match[1]!);
   assert.ok(ciHeads.includes(currentHead!));
-  assert.match(text, /^  run_id: 31975462211$/mu);
-  assert.match(text, /^  conclusion: success$/mu);
-  assert.match(text, /^  final_head: ce761bf229d17e7f2d4659b7c4b05d99fbed0ade$/mu);
+  assert.match(text, /^ {2}run_id: 31975462211$/mu);
+  assert.match(text, /^ {2}conclusion: success$/mu);
+  assert.match(text, /^ {2}final_head: ce761bf229d17e7f2d4659b7c4b05d99fbed0ade$/mu);
 
-  const payloadPattern = /^- source_skill: ([^\n]+)\n  output_contract_version: ([^\n]+)\n  content_type: other\n  payload: gzip\+base64:([A-Za-z0-9+/=]+)$/gmu;
+  const payloadPattern = /^- source_skill: ([^\n]+)\n {2}output_contract_version: ([^\n]+)\n {2}content_type: other\n {2}payload: gzip\+base64:([A-Za-z0-9+/=]+)$/gmu;
   const payloads = [...text.matchAll(payloadPattern)];
   assert.equal(payloads.length, 4);
   assert.deepEqual(
