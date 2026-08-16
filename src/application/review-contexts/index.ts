@@ -5,7 +5,14 @@ export {
   projectReviewContexts,
   type ReviewContextListGroup,
   type ReviewContextListItem,
+  type ReviewContextListProgress,
   type ReviewContextVisibilityStore,
   type ReviewContextsControllerDependencies,
   type ReviewContextsProjectionInput,
 } from "./review-contexts-controller";
+export { findCurrentPullRequestContext } from "./current-pull-request-context";
+export {
+  PullRequestRevisionEvidenceLoader,
+  type PullRequestRevisionEvidenceLoaderDependencies,
+  type PullRequestRevisionTextReadResult,
+} from "./pull-request-revision-evidence-loader";
