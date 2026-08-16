@@ -68,6 +68,22 @@ const DECORATION_CONFIGURATION_KEYS = [
 ] as const;
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
+type ReviewDiffEditorCommandOperation =
+  | "markSelectionReviewed"
+  | "unmarkSelectionReviewed"
+  | "markFileReviewed"
+  | "unmarkFileReviewed";
+
+/** Additional owner of canonical `review-range-diff` documents and commands. */
+export interface ReviewDiffRuntimePort {
+  ownsDocumentUri(uri: string): boolean;
+  provideTextDocumentContent(uri: vscode.Uri): string | Promise<string>;
+  invokeCommand(
+    operation: ReviewDiffEditorCommandOperation,
+    editor: vscode.TextEditor
+  ): Promise<unknown>;
+}
+
 interface ReviewedIntervalSnapshot {
   readonly startLine: number;
   readonly endLineExclusive: number;
@@ -86,6 +102,8 @@ export interface ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   /** Subscribes UI projections that must be recalculated after review-state commands. */
   onDidChangeReviewState(listener: () => void): vscode.Disposable;
+  /** Registers another canonical review-diff owner without registering a second URI scheme provider. */
+  registerReviewDiffRuntime(runtime: ReviewDiffRuntimePort): vscode.Disposable;
 }
 
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
@@ -228,6 +246,11 @@ export function activate(
 ): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
   const reviewStateChanged = new vscode.EventEmitter<void>();
   context.subscriptions.push(reviewStateChanged);
+  const additionalReviewDiffRuntimes = new Set<ReviewDiffRuntimePort>();
+  const matchingAdditionalReviewDiffRuntime = (
+    uri: string
+  ): ReviewDiffRuntimePort | undefined =>
+    [...additionalReviewDiffRuntimes].find((runtime) => runtime.ownsDocumentUri(uri));
   const stableHash = new NodeSha256StableHash();
   const fileExclusionPolicyService = new ReviewFileExclusionPolicyService();
   const fileExclusionConfigurationController =
@@ -499,6 +522,13 @@ export function activate(
     isDiffEditor: (editor) =>
       isActiveDiffEditor() || editor.document.uri.scheme === "review-range-diff",
     invokeDiffEditorCommand: async (operation, editor) => {
+      const documentUri = editor.document.uri.toString(true);
+      const additional = matchingAdditionalReviewDiffRuntime(documentUri);
+      if (additional !== undefined) {
+        const result = await additional.invokeCommand(operation, editor);
+        if (result === "applied") reviewStateChanged.fire();
+        return result;
+      }
       const service = localBaseHeadCommandServiceReference.current;
       if (service === undefined || editor.document.uri.scheme !== "review-range-diff") {
         throw new Error("Review Range diff editor is not available.");
@@ -572,7 +602,11 @@ export function activate(
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),
     onDidChangeReviewState: (listener) =>
-      reviewStateChanged.event(listener)
+      reviewStateChanged.event(listener),
+    registerReviewDiffRuntime: (runtime) => {
+      additionalReviewDiffRuntimes.add(runtime);
+      return new vscode.Disposable(() => additionalReviewDiffRuntimes.delete(runtime));
+    }
   };
 
   const localBaseHeadRuntimeReference: {
@@ -675,7 +709,14 @@ export function activate(
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
       "review-range-diff",
-      localBaseHeadRuntime.documentContentProvider
+      {
+        provideTextDocumentContent: (uri) => {
+          const additional = matchingAdditionalReviewDiffRuntime(uri.toString(true));
+          return additional === undefined
+            ? localBaseHeadRuntime.documentContentProvider.provideTextDocumentContent(uri)
+            : additional.provideTextDocumentContent(uri);
+        }
+      }
     )
   );
 
