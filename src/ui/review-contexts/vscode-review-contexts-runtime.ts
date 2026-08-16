@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import {
+  formatReviewContextProgress,
   type ReviewContextListItem,
   type ReviewContextVisibilityStore,
   type ReviewContextsController,
@@ -8,6 +9,7 @@ import {
 
 const VIEW_ID = "reviewRange.reviewContexts";
 const HIDDEN_CONTEXTS_KEY = "reviewRange.hiddenReviewContexts.v1";
+const CURRENT_PULL_REQUEST_SELECTIONS_KEY = "reviewRange.currentPullRequestSelections.v1";
 
 export interface ReviewContextsRuntimeSource {
   load(): Promise<readonly ReviewContextListItem[]>;
@@ -40,6 +42,39 @@ export class VscodeReviewContextVisibilityStore implements ReviewContextVisibili
   }
 }
 
+/** Remembers an explicit PR choice for one immutable local repository HEAD. */
+export class VscodeCurrentPullRequestSelectionStore {
+  public constructor(private readonly state: vscode.Memento) {}
+
+  public read(repositoryId: string, headRevision: string): string | undefined {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+    const value = (raw as Record<string, unknown>)[this.key(repositoryId, headRevision)];
+    return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+  }
+
+  public async select(
+    repositoryId: string,
+    headRevision: string,
+    contextId: string,
+  ): Promise<void> {
+    if (contextId.trim().length === 0) throw new TypeError("contextId must not be empty");
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    const selections: Record<string, string> = {};
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === "string" && value.trim().length > 0) selections[key] = value;
+      }
+    }
+    selections[this.key(repositoryId, headRevision)] = contextId;
+    await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
+  private key(repositoryId: string, headRevision: string): string {
+    return `${repositoryId}\0${headRevision}`;
+  }
+}
+
 class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
   private readonly changed = new vscode.EventEmitter<ReviewContextListItem | undefined | null | void>();
   private items: readonly ReviewContextListItem[] = [];
@@ -52,6 +87,7 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     const descriptionParts = [
       element.current ? "現在" : undefined,
       element.description,
+      formatReviewContextProgress(element.progress),
       element.layerEnabled === undefined ? undefined : `Layer: ${element.layerEnabled ? "ON" : "OFF"}`,
     ].filter((value): value is string => value !== undefined);
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
@@ -88,6 +124,8 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     const lines = [item.label];
     if (item.description !== undefined) lines.push(item.description);
     if (context.pullRequest !== undefined) {
+      const progress = formatReviewContextProgress(item.progress);
+      if (progress !== undefined) lines.push(progress);
       lines.push(`Base: ${context.pullRequest.baseSha}`);
       lines.push(`Head: ${context.pullRequest.headSha}`);
       lines.push(`Layer: ${item.layerEnabled === true ? "ON" : "OFF"}`);
