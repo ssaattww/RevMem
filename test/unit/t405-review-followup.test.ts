@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   findCurrentPullRequestContext,
+  formatReviewContextProgress,
   projectReviewContexts,
 } from "../../src/application/review-contexts/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
@@ -103,6 +104,25 @@ test("R405-5 Review Contexts projects T304-compatible PR progress", () => {
   assert.deepEqual(items[0]?.progress, progress);
 });
 
+test("R405-5 progress formatter covers zero, partial, and complete PR states", () => {
+  assert.equal(formatReviewContextProgress(undefined), undefined);
+  assert.equal(formatReviewContextProgress({
+    reviewedLineCount: 0,
+    totalLineCount: 4,
+    progress: 0,
+  }), "進捗: 0% (0/4)");
+  assert.equal(formatReviewContextProgress({
+    reviewedLineCount: 3,
+    totalLineCount: 4,
+    progress: 0.75,
+  }), "進捗: 75% (3/4)");
+  assert.equal(formatReviewContextProgress({
+    reviewedLineCount: 4,
+    totalLineCount: 4,
+    progress: 1,
+  }), "進捗: 100% (4/4)");
+});
+
 test("R405-5 Review Contexts Tree renders projected progress to users", async () => {
   const ui = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
 
@@ -161,15 +181,8 @@ test("R405-7/R405-8 current PR is inferred only from persisted open state at the
 });
 
 test("R405-7 multiple current-head PRs retain the PR explicitly chosen by redetection", () => {
-  const resolveWithPreference = findCurrentPullRequestContext as (
-    contexts: readonly ReviewContextState[],
-    repositoryId: string,
-    headRevision: string,
-    preferredContextId?: string,
-  ) => ReviewContextState | undefined;
-
   assert.equal(
-    resolveWithPreference(
+    findCurrentPullRequestContext(
       [pullRequest, secondPullRequest],
       REPOSITORY_ID,
       B,
@@ -178,9 +191,16 @@ test("R405-7 multiple current-head PRs retain the PR explicitly chosen by redete
     secondPullRequest.contextId,
   );
   assert.equal(
-    resolveWithPreference([pullRequest, secondPullRequest], REPOSITORY_ID, B),
+    findCurrentPullRequestContext([pullRequest, secondPullRequest], REPOSITORY_ID, B),
     undefined,
   );
+});
+
+test("R405-7 redetection persists and reloads explicit current PR identity", async () => {
+  const runtime = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+
+  assert.match(runtime, /currentPullRequestSelection\.select\([\s\S]*state\.contextId/u);
+  assert.match(runtime, /currentPullRequestSelection\.read\([\s\S]*findCurrentPullRequestContext/u);
 });
 
 test("R405-6/R405-9 remove the dead closed-layer setting and document connected Review Contexts", async () => {
