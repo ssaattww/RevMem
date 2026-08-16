@@ -1,0 +1,539 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-17T07:06:10+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+target:
+  current_head: 8559b804db79ec51c07b6e20bcc4e5daadfe077f
+  reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+  commit_range: 699656897f1bb403290ab5528908be85c1fc4370..a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "current chat: 再レビュー"
+    summary: "T405の残存review findingsを同じnormal review chatでfix verificationする。"
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "uploaded Skills、GitHub connector、RevMem TDD、diagnostic artifact、exact-head CIのみ使用、詳細report+PR短評、merge禁止。"
+  - source: report
+    reference: reports/2026-08-16-t405-fix-verification-r2.md
+    summary: "R405-1/R405-2/R405-3/R405-7はT405 production composition seamを実行するregressionがclosure条件。"
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md
+    summary: "PR revision continuity、canonical review diff、Review Contexts lifecycle、Current Context selected PR ownershipを維持する。"
+
+development_policy:
+  method: TDD
+  testing_order: "failure regression before production fix"
+  governing_source: "RevMem project instructions"
+validation_plan:
+  commands:
+    - npm run test:t405
+    - npm run test:unit
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - CI Temporary Git integration tests
+    - CI Mock GitHub integration tests
+    - CI VS Code Extension Host tests
+  required_failure_diagnostics:
+    - test results
+    - combined stdout/stderr logs under test-output/ci
+    - environment and git status
+    - generated file inventory
+    - source/tests/build/config in failure artifact
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/2026-08-17-t405-fix-verification-r3.md
+      reason: "detailed fix-verification report"
+    - path_or_operation: handoffs/issue-1-t405-fix-verification-r3-20260817070610.yaml
+      reason: "lossless review handoff"
+    - path_or_operation: "PR #54 comment/body metadata"
+      reason: "concise review result and superseded-comment correction"
+  forbidden:
+    - path_or_operation: "product source/tests/workflows/config/design"
+      reason: "normal reviewer must not implement findings"
+    - path_or_operation: tasks/tasks-status.md
+      reason: "manager-authorized tracking Skill unavailable"
+    - path_or_operation: tasks/phases-status.md
+      reason: "manager-authorized tracking Skill unavailable"
+    - path_or_operation: merge
+      reason: "user-owned merge boundary"
+
+scope:
+  - "Verify R405-1 Medium closure at T405 redetect/synchronize -> mapping -> layer -> restart seam."
+  - "Verify R405-2 Medium closure at T405 lifecycle synchronize -> durable state -> saved group/layer -> restart seam."
+  - "Verify R405-3 Medium closure from Review Contexts openDiff -> canonical both-side command persistence/progress."
+  - "Verify R405-7 High closure for same-HEAD multiple PR user selection -> Current Context -> normal-editor ownership."
+  - "Check R405-4/5/6/8/9 remain addressed."
+  - "Inspect the newly discovered active-file Git cwd production fix and sibling compatibility."
+non_goals:
+  - T406 full GitHub public/auth/error/network/patch/multiple-candidate/closed-PR E2E matrix
+  - T506 multi-context change tracking / Global integration
+  - manager-owned task tracking writes
+  - merge
+
+files:
+  changed:
+    - path: src/adapters/local-git/node-local-git-adapter.ts
+      purpose: "normalize normal active file input to parent directory for Node Git inspection"
+    - path: test/unit/t405-composition-regression.test.ts
+      purpose: "actual T405 production composition regression for R405-1/2/3/7"
+    - path: test/unit/t405-review-followup.test.ts
+      purpose: "include composition regression in focused test:t405 suite"
+    - path: reports/2026-08-17-t405-review-followup-r3.md
+      purpose: "implementation follow-up evidence"
+    - path: handoffs/issue-1-t405-review-followup-r3-20260817064335.yaml
+      purpose: "implementation follow-up handoff"
+  inspected:
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "redetect/lifecycle/openDiff/current-context composition seam"
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "canonical diff command and progress ownership"
+    - path: src/adapters/local-git/local-git-adapter.ts
+      purpose: "inspectRepository public contract"
+    - path: src/adapters/local-git/git-inspection-start-path.ts
+      purpose: "existing platform-aware parent-directory helper"
+    - path: reports/2026-08-16-t405-fix-verification-r2.md
+      purpose: "source findings and exact required actions"
+    - path: reports/2026-08-17-t405-fix-verification-r3.md
+      purpose: "current detailed review report"
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "manager Skill unavailable"
+    - path_or_area: tasks/phases-status.md
+      reason: "manager Skill unavailable"
+    - path_or_area: T406 full integration matrix
+      reason: "separate task owner"
+    - path_or_area: T506 multi-context/global integration
+      reason: "separate task owner"
+    - path_or_area: merge
+      reason: "user-owned"
+
+commands:
+  - command: "GitHub compare 699656897f1bb403290ab5528908be85c1fc4370...a7f6e6fa2d1e674276371f35d012e9fcbecf5c08"
+    purpose: "resolve R3 delta"
+    exit_code: unknown
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "5 commits / 5 files, ahead"
+  - command: "CI npm run test:t405 at Red HEAD"
+    purpose: "verify behavior Red"
+    exit_code: unknown
+    result: failed
+    head_sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+    evidence: "run 31973885788; T405 composition test fails at active-file Git cwd"
+  - command: "CI full workflow at technical HEAD"
+    purpose: "verify production fix Green"
+    exit_code: 0
+    result: passed
+    head_sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+    evidence: "run 31974161050 success"
+  - command: "CI full workflow at reviewed implementation-side administrative HEAD"
+    purpose: "current reviewed-head evidence"
+    exit_code: 0
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "run 31974436723 success"
+  - command: "CI full workflow at review report commit"
+    purpose: "handoff packet target evidence"
+    exit_code: 0
+    result: passed
+    head_sha: 8559b804db79ec51c07b6e20bcc4e5daadfe077f
+    evidence: "run 31975292950 success"
+
+tests:
+  - name: "T405 production composition seam"
+    phase: red
+    result: failed
+    head_sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+    evidence: "Review Contexts操作に失敗しました: Git command cwd must identify a directory."
+  - name: "T405 production composition seam"
+    phase: green
+    result: passed
+    head_sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+    evidence: "exact-head run 31974161050 success"
+  - name: "R405-1 redetect mapping/layer/restart"
+    phase: verification
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "actual registerT405ReviewContextsRuntime + filesystem state + Git composition fixture"
+  - name: "R405-2 lifecycle synchronize/group/layer/restart"
+    phase: verification
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "actual runtime refresh/source.load/synchronizeRepository composition"
+  - name: "R405-3 Review Contexts canonical both-side mark/unmark"
+    phase: verification
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "actual reviewRange.openReviewContextDiff + PR command service + durable progress/state"
+  - name: "R405-7 same-HEAD multiple PR selection ownership"
+    phase: verification
+    result: passed
+    head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+    evidence: "actual resolver Quick Pick #53 -> workspace preference -> Current Context coordinator -> selected runtime"
+
+ci:
+  required: true
+  workflow: .github/workflows/ci.yml
+  run_id: 31975292950
+  head_sha: 8559b804db79ec51c07b6e20bcc4e5daadfe077f
+  conclusion: success
+  artifacts:
+    - id: 9270528839
+      name: ci-failure-diagnostics-31973885788-1
+      purpose: "behavior Red diagnostics; artifact itself is bound to Red HEAD d69f9b9b... and is retained as historical TDD evidence"
+
+implementation:
+  outcome: completed
+  final_head: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+  commits:
+    - sha: 148bebd2f89bc5355c13e92222b8f3dd5dfed226
+      purpose: "add T405 production composition regression"
+    - sha: 78b80d0f5ea138d2942529bfdda42ae3e1a0ccad
+      purpose: "wire composition regression into focused suite"
+    - sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+      purpose: "fix test narrowing so behavior Red reaches production flow"
+    - sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+      purpose: "fix Node Git inspection from active file paths"
+  addressed_findings:
+    - id: R405-1
+      reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      disposition: addressed
+      evidence: "actual redetect/synchronize -> immutable mapping -> durable C -> layer -> restart"
+    - id: R405-2
+      reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      disposition: addressed
+      evidence: "actual lifecycle synchronize -> durable closed/merged -> saved group/layer OFF -> restart"
+    - id: R405-3
+      reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      disposition: addressed
+      evidence: "Review Contexts command -> canonical URI -> both-side mark/unmark -> state/progress"
+    - id: R405-7
+      reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      disposition: addressed
+      evidence: "same-HEAD PR #53 user choice reaches Current Context and normal-editor selected ownership"
+  failure_diagnostics:
+    - type: artifact
+      location: "GitHub Actions artifact 9270528839"
+      summary: "T405 composition Red captured test result, stdout/stderr, environment and repository investigation evidence"
+  blocked_items: []
+  summary:
+    - "All remaining source findings are addressed with actual T405 composition regression evidence."
+    - "Required Red revealed and fixed a real active-file Git cwd defect."
+
+review:
+  mode: fix_verification
+  reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+  reviewer:
+    identity: "ChatGPT normal reviewer / T405 review chat"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: "ChatGPT normal reviewer / T405 review chat"
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - "Same normal-review chat used for initial review and all fix verification rounds as required by chat-review-worker."
+        - "Reviewer changed only review report/handoff/comment artifacts, never product code/tests/config/workflows."
+  verdict: pass_with_held
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: "All R405 source required actions now cross actual T405 composition seams."
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: "B->C, same-HEAD multiple PR, closed/merged, both-side commands and restart covered."
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: "Product delta is limited to the Red-discovered Node Git active-file cwd fix."
+    - criterion: changed files and direct dependency impact
+      disposition: checked_no_finding
+      evidence: "T401/T302/T303/T304/T305/T404/state/local-Git seams inspected."
+    - criterion: API data configuration workflow compatibility effects
+      disposition: checked_no_finding
+      evidence: "Node adapter keeps directory callers unchanged and adds normal file support; no config/workflow schema change."
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: "Behavior Red surfaced through actual command error and generated exact-head diagnostic artifact."
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: "No credential/token persistence or shell-string construction change."
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: "Previously missing four composition regressions are now in focused CI with valid Red->Green."
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: "Reviewed head a7f6e6fa... run 31974436723 success; packet target 8559b804... run 31975292950 success."
+    - criterion: report tracking and documentation accuracy
+      disposition: held
+      evidence: "Implementation/report evidence consistent; manager-owned task tracking write remains unavailable."
+    - criterion: regression and maintainability risks
+      disposition: checked_no_finding
+      evidence: "Actual production composition fixture locks the integration seams that previously regressed."
+  validation_assessment:
+    - item: R405-1 closure evidence
+      result: supported
+      evidence: "composition test + exact-head CI"
+    - item: R405-2 closure evidence
+      result: supported
+      evidence: "composition test + exact-head CI"
+    - item: R405-3 closure evidence
+      result: supported
+      evidence: "Review Contexts command path + command service persistence + progress"
+    - item: R405-7 closure evidence
+      result: supported
+      evidence: "same-HEAD Quick Pick through Current Context coordinator to downstream selection"
+    - item: Node Git active-file fix
+      result: supported
+      evidence: "valid behavior Red 31973885788 -> Green 31974161050 -> reviewed/admin runs green"
+  reserved_report_paths:
+    - reports/2026-08-17-t405-fix-verification-r3.md
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "R405-1/R405-2/R405-3/R405-7 addressed; prior closures R405-4/5/6/8/9 maintained."
+    - "No required findings and no unexplored areas remain."
+    - "Verdict pass_with_held because T406/T506/tracking/merge retain explicit owners."
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/2026-08-17-t405-fix-verification-r3.md
+    - handoffs/issue-1-t405-fix-verification-r3-20260817070610.yaml
+  reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed fix-verification report persisted at report commit 8559b804db79ec51c07b6e20bcc4e5daadfe077f."
+    - "Concise PR comment is posted after final handoff commit and final exact-head CI."
+
+findings: []
+
+held:
+  - item: T406 full GitHub integration matrix
+    reason: "separate task ownership"
+    owner: T406
+    remaining_risk: "public/auth/error/network/patch/multiple-candidate/closed-PR E2E coverage remains to be completed by T406"
+    verdict_impact: "nonblocking held item"
+  - item: T506 multi-context / Global integration
+    reason: "separate task ownership"
+    owner: T506
+    remaining_risk: "multi-context change tracking and Global aggregation integration remains to be completed by T506"
+    verdict_impact: "nonblocking held item"
+  - item: task tracking write
+    reason: "uploaded Skill set lacks manager-authorized writer"
+    owner: "task tracking manager"
+    remaining_risk: "tasks status may require later synchronization"
+    verdict_impact: "nonblocking held item"
+  - item: merge
+    reason: "user owns merge"
+    owner: user
+    remaining_risk: "PR remains unmerged until user action"
+    verdict_impact: "nonblocking held item"
+
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: independent final review report attestation
+    reason: "this packet is normal fix verification, not independent final review"
+remaining_risks:
+  - "T406 and T506 held integration work remains outside T405 closure."
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: "PR #54"
+      task_id: T405
+      mode: review
+      branch: feature/t405-review-contexts
+      base_ref: main
+      current_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      reviewed_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      scope:
+        - R405-1/R405-2/R405-3/R405-7 fix verification
+        - new local Git adapter fix sibling impact review
+      non_goals:
+        - T406 full integration matrix
+        - T506 multi-context/global integration
+        - manager-owned tracking
+        - merge
+      authoritative_requirements:
+        - "source verification report R2 required actual T405 composition regression"
+        - "exact-head CI only"
+        - "reviewer cannot implement"
+      write_boundary:
+        allowed:
+          - review report
+          - handoff
+          - PR comment
+        forbidden:
+          - product implementation
+          - tracking without manager Skill
+          - merge
+      development_policy:
+        method: TDD
+        testing_order: test Red before production fix
+      validation:
+        commands:
+          - npm run test:t405
+          - full CI
+        required_failure_diagnostics:
+          - test result
+          - stdout/stderr
+          - diagnostic logs/artifact
+      ci:
+        matching_run: "31974436723"
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - T406/T506 held ownership
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      source_findings:
+        - { id: R405-1, severity: medium, disposition: addressed }
+        - { id: R405-2, severity: medium, disposition: addressed }
+        - { id: R405-3, severity: medium, disposition: addressed }
+        - { id: R405-4, severity: medium, disposition: addressed }
+        - { id: R405-5, severity: medium, disposition: addressed }
+        - { id: R405-6, severity: low, disposition: addressed }
+        - { id: R405-7, severity: high, disposition: addressed }
+        - { id: R405-8, severity: medium, disposition: addressed }
+        - { id: R405-9, severity: low, disposition: addressed }
+      severity_reclassification: []
+      required_findings: []
+      required_coverage:
+        requirement_and_design_conformance: checked_no_finding
+        correctness_and_edge_cases: checked_no_finding
+        scope_discipline_and_unrelated_changes: checked_no_finding
+        changed_files_and_direct_dependency_impact: checked_no_finding
+        api_data_configuration_workflow_compatibility_effects: checked_no_finding
+        error_handling_and_failure_diagnostics: checked_no_finding
+        security_and_secret_handling: checked_no_finding
+        tests_and_validation_adequacy: checked_no_finding
+        current_head_ci_evidence: checked_no_finding
+        report_tracking_documentation_accuracy: held
+        regression_and_maintainability_risks: checked_no_finding
+      held:
+        - T406 full integration matrix
+        - T506 multi-context/global integration
+        - manager-owned task tracking
+        - merge
+      unexplored: []
+      validation:
+        behavior_red:
+          head_sha: d69f9b9bdaacebdc4c00a6ad05417a88393f9a9b
+          run_id: 31973885788
+          artifact_id: 9270528839
+          conclusion: failure
+        technical_green:
+          head_sha: 4f7071a0ae9b588b32ffe21fefae206d4d36a7e6
+          run_id: 31974161050
+          conclusion: success
+        reviewed_head:
+          head_sha: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+          run_id: 31974436723
+          conclusion: success
+      verdict: pass_with_held
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      target_identity:
+        branch: feature/t405-review-contexts
+        base_ref: main
+        current_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+        reviewed_implementation_head: a7f6e6fa2d1e674276371f35d012e9fcbecf5c08
+      severity_records:
+        - { finding_id: R405-1, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-2, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-3, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-4, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-5, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-6, source_severity: low, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-7, source_severity: high, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-8, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: R405-9, source_severity: low, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/2026-08-17-t405-fix-verification-r3.md
+        report_attestation_head: null
+      concise_pr_comment_body: "T405 fix verification R3: pass_with_held. R405-1/2/3/7 closure verified through actual T405 production composition; all R405-1..9 addressed; exact reviewed-head CI 31974436723 success. T406/T506/tracking/merge remain held."
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: review_runtime_state
+    payload:
+      initial_no_change_comment_id: 5309886065
+      status: superseded
+      reason: "PR HEAD changed from 699656897f1bb403290ab5528908be85c1fc4370 to a7f6e6fa2d1e674276371f35d012e9fcbecf5c08 during review; review restarted against new head."
+      final_administrative_head: pending_after_handoff_commit
+      final_exact_head_ci: pending_after_handoff_commit
+
+next_action:
+  type: review
+  target_skill: none
+  mode: independent_final_review
+  summary: "T405 normal fix verification completed with pass_with_held; if desired, proceed to a fresh independent final review chat before user merge."
+  instructions:
+    - "Do not reuse this normal reviewer as the independent final reviewer."
+    - "Freeze the implementation/admin target required by the independent-final-review workflow before starting."
+    - "User retains merge ownership."
+  required_attachments_or_references:
+    - reports/2026-08-17-t405-fix-verification-r3.md
+    - handoffs/issue-1-t405-fix-verification-r3-20260817070610.yaml
+    - "PR #54"
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t405-fix-verification-r3-20260817070610.yaml
+  packet_url: null
+  transport_note: "Packet target/current CI is the report commit 8559b804...; the handoff commit and its final exact-head CI are recorded externally in the PR comment because the handoff commit SHA cannot exist inside its own file."

@@ -1,9 +1,13 @@
+import { stat } from "node:fs/promises";
+
 import type { GitRevisionMappingSource } from "../../application/review-context/index";
 import {
   GitCommandFailedError,
   type GitCommandExecutor,
-  type GitCommandInvocation
+  type GitCommandInvocation,
+  type LocalGitRepositoryInspection
 } from "./contracts";
+import { gitInspectionStartPath } from "./git-inspection-start-path";
 import { LocalGitAdapter } from "./history-rewrite-local-git-adapter";
 import { NodeGitBlobReader } from "./node-git-blob-reader";
 import {
@@ -44,6 +48,15 @@ const requireRoot = (value: string): string => {
   return value;
 };
 
+const normalizeInspectionStartPath = async (startPath: string): Promise<string> => {
+  try {
+    const details = await stat(startPath);
+    return details.isDirectory() ? startPath : gitInspectionStartPath(startPath);
+  } catch {
+    return startPath;
+  }
+};
+
 class NodeLocalGitAdapter extends LocalGitAdapter
 implements GitRevisionMappingSource {
   public constructor(
@@ -51,6 +64,13 @@ implements GitRevisionMappingSource {
     blobReader: NodeGitBlobReader
   ) {
     super(metadataExecutor, blobReader);
+  }
+
+  /** Accepts either a directory or a normal file as the repository-inspection starting resource. */
+  public override async inspectRepository(
+    startPath: string
+  ): Promise<LocalGitRepositoryInspection> {
+    return super.inspectRepository(await normalizeInspectionStartPath(startPath));
   }
 
   /** Returns one complete zero-context repository diff without constructing a shell command string. */

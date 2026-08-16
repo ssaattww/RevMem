@@ -1,0 +1,224 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-16T22:48:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+
+target:
+  source_reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  previous_verification_administrative_head: b0f3184a629945ed62d2a9d300f505b907e086f4
+  implementation_r2_technical_head: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+  fix_verification_reviewed_head: d68882e2fb5971247ac651ecc047b42420353d3e
+  verification_report_head: 6053c844ad0a8a5d4dbaffeed8253f93f4f8f739
+  final_administrative_head: pending_after_handoff_commit
+  verification_range: b0f3184a629945ed62d2a9d300f505b907e086f4..d68882e2fb5971247ac651ecc047b42420353d3e
+
+reviewer_continuity:
+  reviewer: "ChatGPT normal reviewer / T405 review chat 2026-08-16"
+  same_reviewer_chat: true
+  implemented_fixes: false
+  merged: false
+
+source_verification:
+  report: reports/2026-08-16-t405-fix-verification.md
+  handoff: handoffs/issue-1-t405-fix-verification-20260816193628.yaml
+  verdict: fail
+  remaining_findings:
+    - { id: R405-1, severity: medium }
+    - { id: R405-2, severity: medium }
+    - { id: R405-3, severity: medium }
+    - { id: R405-5, severity: medium }
+    - { id: R405-7, severity: high }
+    - { id: R405-9, severity: low }
+
+implementation_followup_r2:
+  report: reports/2026-08-16-t405-review-followup-r2.md
+  handoff: handoffs/issue-1-t405-review-followup-r2-20260816215002.yaml
+  claimed_outcome: addressed_all_remaining_findings
+  technical_head: fcdae7d5121dc74459a20c148bdf9da0bfb1d6e2
+
+requirements:
+  - source: user_instruction
+    summary: "T405を再レビューし、前回残存findingのclosureを同じnormal reviewerで確認する。"
+  - source: project_instruction
+    summary: "uploaded worker Skills、GitHub connector、exact current-head CI、reviewer no-fix/no-mergeを守る。"
+  - source: source_verification
+    reference: reports/2026-08-16-t405-fix-verification.md
+    summary: "R405-1/2/3/5/7/9のID、severity、required actionをclosure authorityとして維持する。"
+
+review_scope:
+  changed_files:
+    - src/application/review-contexts/current-pull-request-context.ts
+    - src/application/review-contexts/index.ts
+    - src/application/review-contexts/review-contexts-controller.ts
+    - src/t405-review-contexts-runtime.ts
+    - src/ui/review-contexts/index.ts
+    - src/ui/review-contexts/vscode-review-contexts-runtime.ts
+    - test/unit/t405-github-lifecycle.test.ts
+    - test/unit/t405-pull-request-review-runtime.test.ts
+    - test/unit/t405-review-followup.test.ts
+    - reports/2026-08-16-t405-review-followup-r2.md
+    - handoffs/issue-1-t405-review-followup-r2-20260816215002.yaml
+  direct_dependencies:
+    - T401 PR resolver/multiple-candidate contract
+    - T302/T303 canonical diff command path
+    - T304 PR progress
+    - T305 Current Context composition
+    - T404 PR state service/revision mapping
+    - normal-editor selected-context ownership
+  unexplored: []
+
+verification:
+  verdict: fail
+  severity_reclassifications: []
+  blocking_unexplored: []
+  finding_dispositions:
+    - id: R405-1
+      severity: medium
+      disposition: partial
+      product_status: "production mapper/update path appears corrected"
+      remaining: "new test exercises GitHubPullRequestContextStateService + mapper directly and only source-matches redetect; it does not execute registerT405ReviewContextsRuntime redetect/synchronization -> mapped durable state -> layer -> restart as required"
+    - id: R405-2
+      severity: medium
+      disposition: partial
+      product_status: "lifecycle adapter and state service behavior appear corrected"
+      remaining: "new test performs state-service metadata update directly; it does not execute T405 synchronizeRepository lifecycle path -> durable state -> saved group/layer as required"
+    - id: R405-3
+      severity: medium
+      disposition: partial
+      product_status: "PullRequestReviewRuntime canonical mark/unmark persistence is now tested"
+      remaining: "new test starts directly at PullRequestReviewRuntime; it does not execute Review Contexts openDiff / T405 composition origin as required"
+    - id: R405-4
+      severity: medium
+      disposition: addressed
+      evidence: "previous closure retained; no regression in R2 delta"
+    - id: R405-5
+      severity: medium
+      disposition: addressed
+      evidence: "formatReviewContextProgress is used in ReviewContextsTreeProvider row description and tooltip; zero/partial/complete contracts added"
+    - id: R405-6
+      severity: low
+      disposition: addressed
+      evidence: "previous closure retained; dead setting not reintroduced"
+    - id: R405-7
+      severity: high
+      disposition: partial
+      product_status: "preferred contextId store/read/write by repository+immutable HEAD is implemented after authoritative persistence"
+      remaining: "tests only cover helper selection and source-string wiring; no same-HEAD multi-PR resolver redetect -> refresh -> Current Context -> normal-editor ownership flow as required"
+    - id: R405-8
+      severity: medium
+      disposition: addressed
+      evidence: "previous closure retained; selection publication occurs only after context create/update"
+    - id: R405-9
+      severity: low
+      disposition: addressed
+      evidence: "R405-5 user-visible progress now makes existing README progress statement accurate"
+  remaining_required_findings:
+    - R405-1
+    - R405-2
+    - R405-3
+    - R405-7
+  addressed_findings:
+    - R405-4
+    - R405-5
+    - R405-6
+    - R405-8
+    - R405-9
+
+coverage:
+  requirement_and_design_conformance: checked_finding
+  correctness_and_edge_cases: checked_no_finding
+  scope_discipline_and_unrelated_changes: checked_no_finding
+  changed_files_and_direct_dependency_impact: checked_finding
+  api_data_configuration_workflow_compatibility: checked_no_finding
+  error_handling_and_failure_diagnostics: checked_no_finding
+  security_and_secret_handling: checked_no_finding
+  tests_and_validation_adequacy: checked_finding
+  current_head_ci_evidence: checked_no_finding
+  report_tracking_documentation_accuracy: checked_finding
+  regression_and_maintainability_risks: checked_finding
+
+failure_diagnostic_workflow:
+  checked: true
+  path: .github/workflows/ci.yml
+  sufficient: true
+  change_required_by_reviewer: false
+
+tdd:
+  red:
+    head_sha: 4fac6706d184e41865aade724d50c2fd3814f7ed
+    run_id: 31947458446
+    conclusion: failure
+    artifact_id: 9263698972
+    artifact_head_sha_match: true
+    intended_failures:
+      - R405-5 Tree progress not rendered
+      - R405-7 same-HEAD preferred PR helper unresolved
+  ordering_verified: true
+
+ci:
+  exact_head_policy: enforced
+  technical_reviewed_head:
+    head_sha: d68882e2fb5971247ac651ecc047b42420353d3e
+    run_id: 31948207308
+    status: completed
+    conclusion: success
+    successful_steps:
+      - build
+      - contract_typecheck
+      - architecture_validation
+      - architecture_negative_contract
+      - lint
+      - unit
+      - t602
+      - t403
+      - t404
+      - t405
+      - t304
+      - t502
+      - t503
+      - t504
+      - t505
+      - temporary_git
+      - mock_github
+      - vscode_extension_host
+  final_administrative_validation:
+    head_sha: pending_after_handoff_commit
+    run_id: pending
+    conclusion: pending
+
+report:
+  path: reports/2026-08-16-t405-fix-verification-r2.md
+  commit: 6053c844ad0a8a5d4dbaffeed8253f93f4f8f739
+  verdict: fail
+
+held:
+  - T406 full GitHub public/auth/error/network/patch/multiple-candidate/closed-PR E2E matrix
+  - T506 multi-context/Global integration
+  - task tracking write because manager Skill is unavailable
+  - merge because user owns merge
+
+write_boundary:
+  reviewer_writes:
+    - reports/2026-08-16-t405-fix-verification-r2.md
+    - handoffs/issue-1-t405-fix-verification-r2-20260816224800.yaml
+    - "PR #54 concise verification comment"
+  untouched:
+    - product implementation
+    - tests
+    - design
+    - workflow
+    - configuration
+    - task tracking
+    - merge
+
+next_action:
+  destination: implementation_chat
+  instruction: "R405-1/2/3/7の前回required actionどおり、T405 composition seamを実行する回帰testを追加する。下位service/runtime単体やsource文字列assertではなく、redetect/synchronize/openDiff/Current Context ownershipの実flowを固定する。testがproduction defectを示した場合のみproduct codeを修正し、その後このsame normal-review chatで再verificationする。"

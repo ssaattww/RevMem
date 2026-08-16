@@ -6,6 +6,14 @@ import type { ResourceUri } from "../workspace-identity/index";
  */
 export type SelectedReviewContext =
   | {
+      readonly kind: "pull-request";
+      readonly repositoryId: string;
+      readonly repositoryRoot: string;
+      readonly contextId: string;
+      readonly pullRequestNumber: number;
+      readonly headRevision: string;
+    }
+  | {
       readonly kind: "branch";
       readonly repositoryId: string;
       readonly repositoryRoot: string;

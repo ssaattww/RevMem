@@ -59,6 +59,10 @@ jobs:
           set -o pipefail
           npm run compile:test 2>&1 | tee test-output/ci/t404-compile-test.log
           node --test test-dist/test/unit/github-pr-context-layer-store.test.js 2>&1 | tee test-output/ci/test-t404.log
+      - name: T405 Review Contexts follow-up tests
+        run: |
+          set -o pipefail
+          npm run test:t405 2>&1 | tee test-output/ci/test-t405.log
       - name: T304 PR progress tree tests
         run: |
           set -o pipefail

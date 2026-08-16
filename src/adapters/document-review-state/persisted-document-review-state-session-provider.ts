@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { gitInspectionStartPath } from "../local-git/index";
 import type { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
 import {
@@ -39,6 +41,8 @@ interface SnapshotCoordinates {
   readonly globalScope: string;
   readonly fileId: string;
 }
+
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const isRevisionSource = (
   value: unknown
@@ -107,7 +111,9 @@ export class DocumentReviewStateSessionProvider {
   private readonly snapshotGenerations = new Map<string, number>();
   private snapshotCommitQueue: Promise<void> = Promise.resolve();
 
-  public constructor(options: DocumentReviewStateSessionProviderOptions) {
+  public constructor(
+    private readonly options: DocumentReviewStateSessionProviderOptions
+  ) {
     this.revisionSource = options.gitRevisionSource ??
       (isRevisionSource(options.gitInspector) ? options.gitInspector : undefined);
     this.snapshotTracker = historyRewriteSnapshotTrackerOf(options.workspaceProvider);
@@ -131,7 +137,9 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorReviewStateSession> {
-    const session = await this.delegate.open(descriptor, selection);
+    const session = selection?.kind === "pull-request"
+      ? await this.openSelectedPullRequest(descriptor, selection)
+      : await this.delegate.open(descriptor, selection);
     if (
       session.owner !== "git" ||
       this.revisionSource === undefined ||
@@ -183,15 +191,139 @@ export class DocumentReviewStateSessionProvider {
     };
   }
 
-  public loadForDecoration(
+  public async loadForDecoration(
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
+    if (selection?.kind === "pull-request") {
+      return this.loadSelectedPullRequest(descriptor, selection);
+    }
     return this.delegate.loadForDecoration(descriptor, selection);
   }
 
   public dispose(): void {
     this.delegate.dispose();
+  }
+
+  private async openSelectedPullRequest(
+    descriptor: DocumentEditorReviewDescriptor,
+    selection: Extract<SelectedReviewContext, { readonly kind: "pull-request" }>
+  ): Promise<DocumentNormalEditorReviewStateSession> {
+    const loaded = await this.loadSelectedPullRequest(descriptor, selection);
+    if (loaded === undefined) {
+      throw new Error("The selected pull-request context does not own the active editor.");
+    }
+    return {
+      ...loaded,
+      committer: this.options.repository
+    };
+  }
+
+  private async loadSelectedPullRequest(
+    descriptor: DocumentEditorReviewDescriptor,
+    selection: Extract<SelectedReviewContext, { readonly kind: "pull-request" }>
+  ): Promise<DocumentNormalEditorDecorationState | undefined> {
+    const inspection = await this.options.gitInspector.inspectRepository(
+      gitInspectionStartPath(
+        descriptor.documentFsPath,
+        descriptor.fileSystemPathSemantics
+      )
+    );
+    if (
+      inspection.kind !== "repository" ||
+      inspection.repository.repositoryId !== selection.repositoryId ||
+      inspection.repository.rootPath !== selection.repositoryRoot ||
+      inspection.repository.head !== selection.headRevision
+    ) {
+      return undefined;
+    }
+
+    const target = {
+      kind: "pull-request" as const,
+      repositoryId: selection.repositoryId,
+      contextId: selection.contextId
+    };
+    const commit = await this.options.repository.load(target);
+    const pullRequest = commit?.contextState.pullRequest;
+    if (
+      commit === undefined ||
+      commit.contextState.kind !== "pull-request" ||
+      commit.contextState.repositoryId !== selection.repositoryId ||
+      commit.contextState.contextId !== selection.contextId ||
+      pullRequest === undefined ||
+      pullRequest.number !== selection.pullRequestNumber ||
+      pullRequest.headSha !== selection.headRevision ||
+      commit.globalState.repositoryId !== selection.repositoryId ||
+      commit.globalState.currentRevisionId !== selection.headRevision
+    ) {
+      return undefined;
+    }
+
+    const pathApi = descriptor.fileSystemPathSemantics === "windows"
+      ? path.win32
+      : path.posix;
+    const relativePath = pathApi.relative(
+      pathApi.resolve(inspection.repository.rootPath),
+      pathApi.resolve(descriptor.documentFsPath)
+    );
+    if (
+      relativePath.length === 0 ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${pathApi.sep}`) ||
+      pathApi.isAbsolute(relativePath)
+    ) {
+      return undefined;
+    }
+    const normalized = relativePath.split(pathApi.sep).join("/");
+    const currentPath = descriptor.fileSystemPathSemantics === "windows"
+      ? normalized.toLowerCase()
+      : normalized;
+    const matchingIds = new Set<string>();
+    for (const [fileId, file] of Object.entries(commit.contextState.files)) {
+      if (file.currentPath === currentPath) matchingIds.add(fileId);
+    }
+    for (const [fileId, file] of Object.entries(commit.globalState.files)) {
+      if (file.currentPath === currentPath) matchingIds.add(fileId);
+    }
+    if (matchingIds.size > 1) {
+      throw new Error("Persisted pull-request state has conflicting file identities.");
+    }
+    const persistedId = matchingIds.values().next().value as string | undefined;
+    const fileId = persistedId ?? `repository-file:${this.stableHash.digest([
+      "repository-file",
+      selection.repositoryId,
+      currentPath
+    ].join("\0"))}`;
+    const contextFile = commit.contextState.files[fileId];
+    const globalFile = commit.globalState.files[fileId];
+    if (
+      (contextFile !== undefined && (
+        contextFile.currentPath !== currentPath ||
+        contextFile.revisionId !== selection.headRevision ||
+        contextFile.lineCount !== descriptor.lineCount ||
+        (contextFile.contentHash !== undefined && contextFile.contentHash !== descriptor.contentHash)
+      )) ||
+      (globalFile !== undefined && (
+        globalFile.currentPath !== currentPath ||
+        globalFile.revisionId !== selection.headRevision ||
+        (globalFile.contentHash !== undefined && globalFile.contentHash !== descriptor.contentHash)
+      ))
+    ) {
+      return undefined;
+    }
+
+    return {
+      owner: "git",
+      contextState: clone(commit.contextState),
+      globalState: clone(commit.globalState),
+      target: {
+        fileId,
+        currentPath,
+        revisionId: selection.headRevision,
+        lineCount: descriptor.lineCount,
+        contentHash: descriptor.contentHash
+      }
+    };
   }
 
   private snapshotGenerationOf(coordinates: SnapshotCoordinates): number {
