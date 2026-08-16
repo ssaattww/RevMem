@@ -51,6 +51,18 @@ const pullRequest = context(PR_CONTEXT_ID, "pull-request", "PR #52", {
     headSha: B,
   },
 });
+const secondPullRequest = context(`github-pr:${REPOSITORY_ID}#53`, "pull-request", "PR #53", {
+  pullRequest: {
+    host: "github.com",
+    owner: "ssaattww",
+    repository: "revmem",
+    number: 53,
+    state: "open",
+    title: "Second current-head PR",
+    baseSha: A,
+    headSha: B,
+  },
+});
 const branch = context("branch:main", "branch", "main", {
   branch: { refName: "refs/heads/main", headRevision: B },
 });
@@ -89,6 +101,13 @@ test("R405-5 Review Contexts projects T304-compatible PR progress", () => {
   });
 
   assert.deepEqual(items[0]?.progress, progress);
+});
+
+test("R405-5 Review Contexts Tree renders projected progress to users", async () => {
+  const ui = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
+
+  assert.match(ui, /formatReviewContextProgress\(element\.progress\)/u);
+  assert.match(ui, /formatReviewContextProgress\(item\.progress\)/u);
 });
 
 test("R405-7 pull-request Current Context identity is stable across rediscovery and not label-derived", () => {
@@ -139,6 +158,29 @@ test("R405-7/R405-8 current PR is inferred only from persisted open state at the
   );
   assert.equal(findCurrentPullRequestContext([pullRequest], REPOSITORY_ID, C), undefined);
   assert.equal(findCurrentPullRequestContext([pullRequest], "github.com/other/repo", B), undefined);
+});
+
+test("R405-7 multiple current-head PRs retain the PR explicitly chosen by redetection", () => {
+  const resolveWithPreference = findCurrentPullRequestContext as (
+    contexts: readonly ReviewContextState[],
+    repositoryId: string,
+    headRevision: string,
+    preferredContextId?: string,
+  ) => ReviewContextState | undefined;
+
+  assert.equal(
+    resolveWithPreference(
+      [pullRequest, secondPullRequest],
+      REPOSITORY_ID,
+      B,
+      secondPullRequest.contextId,
+    )?.contextId,
+    secondPullRequest.contextId,
+  );
+  assert.equal(
+    resolveWithPreference([pullRequest, secondPullRequest], REPOSITORY_ID, B),
+    undefined,
+  );
 });
 
 test("R405-6/R405-9 remove the dead closed-layer setting and document connected Review Contexts", async () => {
