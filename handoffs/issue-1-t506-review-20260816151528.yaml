@@ -2,7 +2,7 @@ schema_version: 3
 producer:
   skill: chat-review-worker
   mode: initial_review
-  generated_at: 2026-08-16T15:15:28+09:00
+  generated_at: 2026-08-16T15:22:00+09:00
 
 repository: ssaattww/RevMem
 issue_or_pr: PR #55
@@ -10,31 +10,34 @@ task_id: T506
 branch: task/t506-global-integration
 base_ref: main
 target:
-  current_head: a6bd4d21477d4a32795acf3e762812971ca0216b
+  current_head: cba73824b6185a0d9e169f3c8d1dce77e6126da1
   reviewed_head: a6bd4d21477d4a32795acf3e762812971ca0216b
   commit_range: 146aec15783294da1795f268315c85d1a0dffa56..a6bd4d21477d4a32795acf3e762812971ca0216b
 
 authoritative_requirements:
   - source: user_instruction
-    reference: current chat
-    summary: T506をZIP内worker Skillとproject instructionに従い、自立して通常reviewする。
+    reference: current T506 review chat
+    summary: T506をinstructionとuploaded worker Skillsに従い、自立して通常reviewし、全指摘を一度で洗い出す。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector、diagnostic artifact、TDD for fixes、small logical commits、detailed report、concise PR comment、exact current-HEAD CI、non-mergeを要求する。
   - source: task
     reference: tasks/tasks-status.md T506
-    summary: 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加し、GlobalのPR進捗非混入と再起動後の同一理解率を確認する。
+    summary: 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加し、AC-18〜AC-20、GlobalのPR進捗非混入、再起動後の同一理解率を満たす。
   - source: design
     reference: doc/design/vscode-review-range-tracker-design.md rev4
-    summary: PR ProgressとGlobal理解率を分離し、確認・解除をGlobalへ一貫反映し、編集では確実な未変更範囲だけを維持する。
+    summary: PR進捗とGlobal理解率を分離し、確認・解除をGlobalへ一貫反映し、編集では確実な未変更範囲だけを維持する。
+  - source: documentation
+    reference: README.md current limitations
+    summary: 通常editor編集eventの逐次runtime追従は未実装で、複数context変更追従をruntimeへ統合してExtension Host試験するT506完了で解消すると明記する。
   - source: prior_review
     reference: reports/issue-1-t505-independent-final-review-20260808135616.md
-    summary: 複数context・再起動・Extension Host統合をT506へheldしている。
-  - source: project_instruction
-    reference: RevMem project instructions
-    summary: diagnostic artifact、GitHub connector、exact current-HEAD CI、詳細report、PR簡易report、非mergeを要求する。
+    summary: T506に複数context・再起動・Extension Host統合をheldする。
 
 development_policy:
-  method: review only; finding fix must use TDD
-  testing_order: add failing runtime/Extension Host regression before production wiring fix, then focused and full exact-head CI
-  governing_source: RevMem project instructions
+  method: review-only; finding fix is TDD
+  testing_order: T506-REV-001のproduction editor-edit Red regressionを先に追加し、runtime mapping実装後にfocused/full validationとexact new-HEAD CIを実行する。
+  governing_source: RevMem project instructions and tasks/tasks-status.md
 
 validation_plan:
   commands:
@@ -49,14 +52,13 @@ validation_plan:
     - npm run test:github
     - npm run test:vscode
   required_failure_diagnostics:
-    - test results
-    - standard output
-    - standard error
-    - combined command log
-    - result metadata
+    - test results and exit metadata
+    - separated standard output
+    - separated standard error
+    - combined per-command log
     - generated build and test output
-    - source and test files
-    - environment and Git state
+    - source, tests, tools, workflow, configuration
+    - environment and Git status
 
 blocked: []
 
@@ -72,106 +74,140 @@ authorized_actions:
 write_boundary:
   allowed:
     - path_or_operation: reports/issue-1-t506-review-20260816151528.md
-      reason: required detailed normal-review report
+      reason: detailed normal-review report and coverage-completion correction
     - path_or_operation: handoffs/issue-1-t506-review-20260816151528.yaml
-      reason: required schema-v3 review handoff
-    - path_or_operation: PR #55 inline review and concise summary comment
-      reason: required review feedback
+      reason: lossless schema-v3 normal-review continuation packet
+    - path_or_operation: PR #55 review/comment metadata
+      reason: concise review summary and finding continuity
   forbidden:
-    - path_or_operation: product source, tests, workflow, design, or task tracking
-      reason: normal reviewer must not implement its finding
+    - path_or_operation: product source, tests, design, workflow, configuration
+      reason: normal reviewer must not implement its own finding
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: repository requires a specialized progress-management Skill unavailable in this worker set
     - path_or_operation: merge
       reason: user-owned action
 
 scope:
-  - inspect T506 task and design requirements
-  - inspect every PR #55 changed file
-  - inspect T501-T505 and T306 direct production dependencies needed to validate the acceptance claim
-  - validate diagnostic workflow and exact current-head CI
-  - identify all actionable findings in one pass
+  - inspect immutable T506 implementation HEAD and every changed file
+  - verify accepted task/design/README requirements and T505 held scope
+  - trace production consumers for multi-context Global persistence, document edit mapping, PR progress isolation, Global understanding and restart
+  - inspect API/data/config/workflow/compatibility/error/security/test/report/tracking/maintainability effects
+  - validate failure diagnostic artifact content and exact reviewed-HEAD CI
+  - preserve finding identity/severity and produce complete normal-review evidence
 
 non_goals:
   - implement T506-REV-001
   - independent final review
-  - task status synchronization without required progress-management Skill
+  - T604 cross-process locking acceptance
+  - T605 remote/multi-root acceptance
+  - T607 scale benchmark
   - merge
 
 files:
   changed:
     - path: .github/workflows/ci.yml
-      purpose: diagnostic wrapper and T506 CI step
+      purpose: diagnostic wrapper and T506 focused CI step
     - path: tools/run-ci-command.mjs
       purpose: stdout/stderr/combined/result diagnostic capture
     - path: package.json
-      purpose: focused test command
+      purpose: focused T506 command
     - path: test/unit/ci-workflow-contract.test.ts
-      purpose: CI contract
+      purpose: diagnostics/focused CI contract
     - path: test/integration/t506-global-multi-context.integration.test.ts
-      purpose: multi-context persistence, PR isolation, restart, direct edit mapping calculation
+      purpose: multi-context persistence, PR isolation, restart, direct edit mapping and Global calculation
     - path: test/vscode/t506-suite/index.ts
-      purpose: three-phase Extension Host persistence scenario
+      purpose: 3-phase Extension Host multi-context persistence scenario
     - path: test/vscode/run-extension-host.ts
-      purpose: repeated Extension Host launches with shared storage
+      purpose: focused repeated Extension Host launches with shared storage
     - path: reports/issue-1-t506-implementation-20260816150255.md
       purpose: implementation evidence
     - path: handoffs/issue-1-t506-implementation-20260816150255.yaml
-      purpose: implementation handoff
+      purpose: implementation continuation evidence
   inspected:
     - path: tasks/tasks-status.md
-      purpose: task scope and exit criteria
+      purpose: T506 scope, dependencies, exit criteria and tracking governance
+    - path: tasks/phases-status.md
+      purpose: P5 objective and other-task boundaries
+    - path: README.md
+      purpose: explicit T506 runtime edit-wiring limitation mapping
     - path: doc/design/vscode-review-range-tracker-design.md
-      purpose: Global semantics and certainty rules
+      purpose: Global, edit mapping, persistence, progress and acceptance contracts
     - path: reports/issue-1-t505-independent-final-review-20260808135616.md
-      purpose: held acceptance scope
+      purpose: inherited held scope
     - path: src/t305-extension.ts
-      purpose: production document-change and Global Understanding wiring
+      purpose: production document-change / Global Understanding composition
     - path: src/t505-global-understanding-source.ts
-      purpose: persisted Global state and live evidence recalculation
-    - path: src/adapters/document-review-state/document-review-state-session-provider.ts
-      purpose: stale editor state handling
+      purpose: real enumeration/persisted Global/open-document evidence source
     - path: src/application/global-understanding/global-understanding-background-recalculator.ts
-      purpose: file progress composition
+      purpose: Global recalculation composition
     - path: src/application/global-understanding/cooperative-global-understanding-calculation.ts
       purpose: stale content-hash behavior
-    - path: src/application/global-review-mapping/
-      purpose: T502 edit mapping contract
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: T502 document-edit Global mapper
+    - path: src/adapters/document-review-state/document-review-state-session-provider.ts
+      purpose: stale editor state handling and persistence
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: owner-wide Global preservation for new context
+    - path: src/adapters/state-repository/debounced-review-state-repository.ts
+      purpose: save/commit/loadGlobal lifecycle and serialization
     - path: src/t306-local-base-head-runtime.ts
-      purpose: Extension Host PR-like runtime used by T506 suite
+      purpose: internal PR-like fixture runtime used by T506 Extension Host suite
     - path: src/extension.ts
-      purpose: base extension runtime and test API
+      purpose: base runtime and ExtensionMode.Test API
+    - path: test/vscode/owned-extension-host-launch.ts
+      purpose: finite launch/process-tree diagnostics
+    - path: test/vscode/run-extension-host-launch-worker.ts
+      purpose: @vscode/test-electron phase launch behavior
   intentionally_untouched:
-    - path_or_area: product source and tests
+    - path_or_area: all product source and tests
       reason: reviewer boundary
     - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
-      reason: dedicated progress-management Skill required
+      reason: dedicated progress-management Skill unavailable
     - path_or_area: merge
       reason: user-owned action
 
 commands:
-  - command: GitHub PR #55 changed-file and direct dependency inspection
-    purpose: immutable review coverage
+  - command: GitHub compare 146aec15783294da1795f268315c85d1a0dffa56..a6bd4d21477d4a32795acf3e762812971ca0216b
+    purpose: immutable full implementation diff and changed-file set
     exit_code: 0
     result: passed
     head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
-    evidence: all 9 PR changed files inspected; production edit/Global wiring traced
-  - command: GitHub Actions CI run 31930590638 / job 95124635710
+    evidence: ahead 8 commits, 9 implementation changed files
+  - command: repository-wide usage inspection of mapRepositoryGlobalStateThroughDocumentChanges from exact-source failure artifact
+    purpose: prove whether the T502 mapper has a production consumer
+    exit_code: 0
+    result: passed
+    head_sha: a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+    evidence: production src was unchanged between this RED and reviewed HEAD; usages were mapper definition/export plus T502/T506 tests only
+  - command: GitHub Actions failure run 31930146724 artifact 9259032727 download and inspection
+    purpose: validate diagnostic artifact content rather than workflow text only
+    exit_code: 0
+    result: passed
+    head_sha: a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+    evidence: stdout/stderr/combined/result plus source/test/tools/dist/test-dist/config/environment/Git state present
+  - command: GitHub Actions run 31930590638 / job 95124635710
     purpose: reviewed implementation HEAD exact-match validation
     exit_code: 0
     result: passed
     head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
-    evidence: T506 focused step and full CI succeeded
+    evidence: complete CI including T506 focused and standard Extension Host succeeded
 
 tests:
-  - name: T506 focused integration and Extension Host suite
+  - name: T506 direct multi-context integration
     phase: verification
     result: passed
     head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
     evidence: exact-head CI run 31930590638
-  - name: production document edit to Global mapping and restart
+  - name: T506 three-phase Extension Host persistence acceptance
+    phase: verification
+    result: passed
+    head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
+    evidence: context A mark; restart/context B Global unmark; restart/context A restore succeeded
+  - name: production normal-editor document edit mapping through persisted Global and Global Understanding restart
     phase: missing_regression
     result: not_run
     head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
-    evidence: T506-REV-001; current test calls pure mapper directly instead of real TextDocument edit path
+    evidence: T506-REV-001; current acceptance invokes pure mapper directly and never exercises real TextDocument changes
 
 ci:
   required: true
@@ -180,8 +216,12 @@ ci:
   head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
   conclusion: success
   artifacts: []
-  exact_head_policy: another SHA was not substituted
-  diagnostic_workflow: sufficient
+  exact_head_policy: only the run associated with reviewed implementation HEAD was used for technical validation
+  diagnostic_workflow:
+    result: supported
+    failure_run: 31930146724
+    failure_artifact_id: 9259032727
+    evidence: artifact content independently inspected during coverage-completion audit
 
 implementation:
   outcome: not_applicable
@@ -191,7 +231,7 @@ implementation:
   failure_diagnostics: []
   blocked_items: []
   summary:
-    - reviewer did not implement the finding
+    - normal reviewer did not change product, tests, workflow, design or task tracking
 
 review:
   mode: initial_review
@@ -199,76 +239,337 @@ review:
   reviewer:
     identity: ChatGPT normal review worker in current T506 review chat
     role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: initial normal review; coverage-completion audit was performed by the same reviewer in the same chat
     independence:
       implemented_change: false
       implemented_review_fix: false
       served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - current chat was opened for T506 review after implementation PR #55 existed
+        - reviewer inspected implementation report/handoff as evidence only
+        - reviewer repository writes are limited to review report/handoff artifacts and PR comments
   verdict: fail
-  github_review:
-    review_id: 4945571377
-    submission_action: COMMENT
-    requested_action: REQUEST_CHANGES
-    requested_action_result: rejected_by_github_for_self_authored_pr
   required_coverage:
     - criterion: requirement and design conformance
       disposition: checked_finding
-      evidence: T506-REV-001
-    - criterion: correctness and regression risk
+      evidence: T506-REV-001; README/tasks/design explicitly require production edit tracking in T506
+    - criterion: correctness and edge cases
       disposition: checked_finding
-      evidence: actual editor edit path does not persist T502 Global mapping
-    - criterion: scope discipline
+      evidence: a one-line content-hash change makes the whole persisted Global file stale instead of mapping only changed lines
+    - criterion: scope discipline and unrelated changes
       disposition: checked_no_finding
-      evidence: no unrelated product change introduced by PR #55
-    - criterion: all changed files and direct dependencies
+      evidence: workflow diagnostic refactor is required by project instruction; remaining implementation changes are T506 test/wiring/report scoped
+    - criterion: changed files and direct dependency impact
       disposition: checked_finding
-      evidence: all 9 changed paths and T501-T505/T306 runtime dependencies inspected
-    - criterion: security and privacy
+      evidence: all 9 implementation changed paths and direct production consumers were inspected; missing mapper consumer is T506-REV-001
+    - criterion: API data configuration workflow and compatibility effects
       disposition: checked_no_finding
-      evidence: no new secret handling or source exfiltration observed
-    - criterion: failure diagnostics
+      evidence: no production schema/config/public API change; focused script/CI additions are additive and exact-head CI succeeds
+    - criterion: error handling and failure diagnostics
       disposition: checked_no_finding
-      evidence: stdout stderr combined result source test generated and environment evidence retained on failure
-    - criterion: exact current-head CI
+      evidence: artifact 9259032727 contains separated stdout/stderr, combined log, result metadata and investigation context
+    - criterion: security and secret handling
       disposition: checked_no_finding
-      evidence: run 31930590638 belongs to reviewed head and succeeded
-    - criterion: test adequacy
+      evidence: diagnostic runner uses shell=false; no new secret injection, persistence, or source exfiltration path was added
+    - criterion: tests and validation adequacy
       disposition: checked_finding
-      evidence: pure mapper direct call bypasses production TextDocument event/wiring
+      evidence: T506 pure mapper/direct calculator call bypasses production TextDocument mapping and persistence
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: run 31930590638 matches reviewed implementation HEAD and succeeds
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: implementation report production-src-not-needed claim conflicts with README/T506 requirement and T506-REV-001; tracking is held by specialized skill governance
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: current acceptance can remain green while production edit wiring is absent; real EH Red regression is required
+  validation_assessment:
+    - item: complete implementation changed-file set
+      result: supported
+      evidence: GitHub compare reports 9 implementation changed files and all were inspected
+    - item: production document-edit Global mapping
+      result: failed
+      evidence: no src consumer of mapRepositoryGlobalStateThroughDocumentChanges; T305 change event only refreshes Global Understanding
+    - item: PR Progress isolation across contexts
+      result: supported
+      evidence: integration and Extension Host assertions plus exact-head focused CI
+    - item: owner-wide Global mark/unmark across restart
+      result: supported
+      evidence: real Extension Host three-phase scenario and filesystem integration
+    - item: Global understanding after direct mapped snapshot
+      result: supported
+      evidence: pure calculator integration passes
+    - item: Global understanding after real editor edit and restart
+      result: unsupported
+      evidence: required production-path regression does not exist; T506-REV-001
+    - item: diagnostic artifact workflow
+      result: supported
+      evidence: failure artifact 9259032727 independently inspected
+    - item: reviewed implementation exact-head CI
+      result: supported
+      evidence: run 31930590638 / job 95124635710 / success / head a6bd4d21477d4a32795acf3e762812971ca0216b
+    - item: task tracking synchronization
+      result: unavailable
+      evidence: dedicated progress-management Skill required by repository but unavailable in uploaded worker set
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
   summary:
-    - one high required finding identified in one complete initial review
-    - technical verdict applies to reviewed implementation head a6bd4d21477d4a32795acf3e762812971ca0216b
+    - one high required technical finding T506-REV-001 remains open
+    - coverage-completion audit found no second independent technical finding
+    - technical verdict remains bound to reviewed implementation HEAD a6bd4d21477d4a32795acf3e762812971ca0216b
 
 report:
   report_type: review_report
-  outcome: prepared
+  outcome: updated
   persistence_mode: repository_file
   paths:
     - reports/issue-1-t506-review-20260816151528.md
     - handoffs/issue-1-t506-review-20260816151528.yaml
   reviewed_head: a6bd4d21477d4a32795acf3e762812971ca0216b
-  pr_comments: []
+  attestation_head: null
+  pr_comments:
+    - target: PR #55 inline review
+      url_or_id: review_id 4945571377
+    - target: PR #55 concise summary
+      url_or_id: issue_comment_id 5306097555
+  summary:
+    - detailed report and handoff record the complete initial-review coverage and sole high finding
 
 findings:
   - id: T506-REV-001
     severity: high
-    status: open
-    origin: review_of_acceptance_coverage_and_runtime_integration
+    origin: coverage_miss
     location: test/integration/t506-global-multi-context.integration.test.ts; src/t305-extension.ts; src/adapters/document-review-state/document-review-state-session-provider.ts
-    description: T506 directly invokes the pure document-change mapper, while the production VS Code document-change path only refreshes Global Understanding and never maps/persists owner-wide Global ranges.
-    impact: after an editor change, unchanged reviewed Global prefix/suffix ranges are not conservatively preserved; the file becomes stale/zero and can later be removed wholesale, so T506 change-following acceptance is not satisfied.
-    evidence: current onDidChangeTextDocument requests only GlobalUnderstanding refresh; T505 source reads persisted state; calculator rejects changed content hash as stale; session provider removes stale file state; T506 test manually calls the mapper without repository commit.
-    required_action: wire actual TextDocument changes through T502 mapping and atomic persistence/history, then add a Red Extension Host regression that edits a reviewed file and verifies mapped Global ranges plus same Global Understanding after restart.
+    description: T506 directly invokes the pure document-change mapper, while the production VS Code document-change path only refreshes Global Understanding and never maps/persists context/owner-wide Global ranges.
+    impact: after an editor change, unchanged reviewed ranges are not conservatively preserved; the file becomes stale/zero and may be removed wholesale, so T506 change-following and restart-understanding acceptance is not satisfied.
+    evidence: repository-wide exact-source inspection finds no production mapper consumer; T305 onDidChangeTextDocument only requests refresh; calculator requires matching content hash; session provider removes stale file state; README assigns this wiring to T506.
+    required_action: add a failing real Extension Host editor-edit regression, wire TextDocument changes through T502 mapping with atomic context/Global persistence and T206 history, then verify Global Understanding and restart through production composition.
 
 held:
-  - item: task status synchronization
-    reason: tasks-status declares a dedicated progress-management Skill requirement and that Skill is unavailable to this reviewer
+  - item: task status and phase status synchronization
+    reason: repository requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager and uploaded worker set does not include them
     owner: progress-management worker
-    remaining_risk: tracking remains unchanged until authorized synchronization
+    remaining_risk: repository tracking remains T506未着手 until authorized synchronization
     verdict_impact: administrative; technical verdict already fails on T506-REV-001
   - item: merge
-    reason: user-owned action
+    reason: merge is explicitly user-owned
     owner: user
-    remaining_risk: do not merge while finding is open
-    verdict_impact: blocking until finding closure and exact-head CI success
+    remaining_risk: merging with an open high finding would accept unmet T506 behavior
+    verdict_impact: blocking until finding closure and new exact-head CI success
 
 unexplored: []
+
+unknown:
+  - field_or_fact: post-fix implementation HEAD
+    reason: no fix exists yet
+
+not_applicable:
+  - field_or_area: T604 cross-process multi-window lock and atomic history append
+    reason: separately assigned task outside T506 accepted scope
+  - field_or_area: T605 multi-root Remote SSH Dev Containers Codespaces acceptance
+    reason: separately assigned task outside T506 accepted scope
+  - field_or_area: T607 scale/performance benchmark
+    reason: separately assigned task outside T506 accepted scope
+  - field_or_area: independent final review report attestation
+    reason: current mode is normal initial review and verdict is fail
+
+remaining_risks:
+  - production document edits currently lose all Global certainty for the changed file rather than only changed lines
+  - implementation report/handoff overstate T506 completion until T506-REV-001 is fixed
+  - task tracking remains administratively stale until the required progress-management worker updates it
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #55
+      task_id: T506
+      mode: review
+      branch: task/t506-global-integration
+      base_ref: main
+      current_head: a6bd4d21477d4a32795acf3e762812971ca0216b
+      reviewed_head: a6bd4d21477d4a32795acf3e762812971ca0216b
+      scope:
+        - multi-context Global mark/unmark, PR isolation, edit following, Global aggregation, restart, Extension Host acceptance
+        - complete diff and direct production dependencies
+        - validation/diagnostic/report/tracking evidence
+      non_goals:
+        - implementation fix
+        - independent final review
+        - T604/T605/T607 work
+        - merge
+      authoritative_requirements:
+        - source: user
+          reference: current chat
+          summary: self-directed complete T506 review using uploaded skills
+        - source: task
+          reference: tasks/tasks-status.md T506
+          summary: integration/EH acceptance and AC-18..20 exit criteria
+        - source: documentation
+          reference: README current limitations
+          summary: T506 owns normal-editor edit runtime wiring
+      write_boundary:
+        allowed:
+          - review report/handoff
+          - PR review/comment
+        forbidden:
+          - product/test/workflow/design/config changes
+          - governed task tracking
+          - merge
+      development_policy:
+        method: review; fixes use TDD
+        testing_order: Red real editor-edit acceptance before implementation
+      validation:
+        commands:
+          - npm run build
+          - npm run typecheck:contracts
+          - npm run validate:architecture
+          - npm run validate:architecture:negative
+          - npm run lint
+          - npm run test:unit
+          - npm run test:t506
+          - npm run test:git
+          - npm run test:github
+          - npm run test:vscode
+        required_failure_diagnostics:
+          - test results
+          - stdout
+          - stderr
+          - combined logs and metadata
+          - source/test/generated/config/environment/Git state
+      ci:
+        matching_run: '31930590638'
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - T506 runtime edit wiring required independent verification
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review_mode: initial_review
+      reviewed_implementation_head: a6bd4d21477d4a32795acf3e762812971ca0216b
+      base: 146aec15783294da1795f268315c85d1a0dffa56
+      commit_range: 146aec15783294da1795f268315c85d1a0dffa56..a6bd4d21477d4a32795acf3e762812971ca0216b
+      reviewer_identity: ChatGPT normal review worker in current T506 review chat
+      independence_evidence:
+        implemented_change: false
+        implemented_review_fix: false
+        served_as_normal_reviewer: true
+      required_coverage:
+        - criterion: requirement and design conformance
+          disposition: checked_finding
+          evidence: T506-REV-001
+        - criterion: correctness and edge cases
+          disposition: checked_finding
+          evidence: one-line edit causes whole-file stale behavior
+        - criterion: scope discipline and unrelated changes
+          disposition: checked_no_finding
+          evidence: scoped test/wiring/report plus required diagnostics
+        - criterion: changed files and direct dependency impact
+          disposition: checked_finding
+          evidence: all 9 files and production consumers inspected
+        - criterion: API data configuration workflow compatibility
+          disposition: checked_no_finding
+          evidence: additive test/CI wiring only
+        - criterion: error handling and failure diagnostics
+          disposition: checked_no_finding
+          evidence: artifact 9259032727 independently inspected
+        - criterion: security and secret handling
+          disposition: checked_no_finding
+          evidence: shell=false and no new secrets/source transfer
+        - criterion: tests and validation adequacy
+          disposition: checked_finding
+          evidence: pure mapper bypasses production edit path
+        - criterion: current-HEAD CI evidence
+          disposition: checked_no_finding
+          evidence: exact reviewed-head run 31930590638 success
+        - criterion: report tracking documentation accuracy
+          disposition: checked_finding
+          evidence: implementation completion claim conflicts with README/runtime evidence; tracking held
+        - criterion: regression and maintainability risks
+          disposition: checked_finding
+          evidence: acceptance remains green without production mapper consumer
+      findings:
+        - id: T506-REV-001
+          severity: high
+          origin: coverage_miss
+          location: test/integration/t506-global-multi-context.integration.test.ts; src/t305-extension.ts; src/adapters/document-review-state/document-review-state-session-provider.ts
+          description: production TextDocument edit path never maps/persists Global ranges; acceptance invokes mapper directly
+          impact: changed file loses unchanged reviewed Global ranges and restart understanding contract is unmet
+          evidence: no production mapper consumer plus stale hash behavior and README task mapping
+          required_action: real EH Red regression then atomic mapping/history/persistence fix and restart verification
+      severity_reclassification_records: []
+      held:
+        - task tracking synchronization due missing governed skill
+        - merge remains user-owned
+      unexplored: []
+      validation_assessment:
+        - reviewed-head CI supported
+        - failure artifact supported
+        - production edit mapping failed
+      verdict: fail
+      remaining_risks:
+        - whole-file Global certainty loss after normal-editor edit
+      next_action: implementation fix then same-reviewer fix verification
+      reserved_report_paths: []
+      report_attestation_allowed: false
+      report_attestation_conditions: not applicable to normal failing review
+
+extensions:
+  - namespace: t506_coverage_completion
+    payload:
+      initial_review_artifact_head: ff6c4ae567dbb4cc09e2873b4a4b8bf3f17d5b2f
+      reason: user requested confirmation that all review coverage had been exhausted
+      result: all review-worker required criteria now have explicit dispositions; no additional independent technical finding discovered
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review finding follow-up
+  summary: Fix T506-REV-001 with TDD and production Extension Host edit/restart acceptance, then return to the same normal reviewer for closure verification.
+  instructions:
+    - preserve finding ID T506-REV-001 and severity high
+    - add failing real TextDocument edit regression before source changes
+    - wire edit changes through T502 mapper with atomic context/Global persistence and T206 history
+    - verify Global Understanding and restart through production path
+    - update implementation report/handoff and governed tracking when the appropriate skill is available
+    - check only workflow runs whose head_sha matches the new PR current HEAD
+    - do not merge
+  required_attachments_or_references:
+    - PR #55
+    - reports/issue-1-t506-review-20260816151528.md
+    - handoffs/issue-1-t506-review-20260816151528.yaml
+    - finding T506-REV-001
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t506-review-20260816151528.yaml
+  packet_url: null
+  transport_note: Packet is persisted on the PR branch. Technical verdict remains bound to implementation HEAD a6bd4d21477d4a32795acf3e762812971ca0216b; review-artifact commits are not implementation fixes.
