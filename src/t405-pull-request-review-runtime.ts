@@ -184,8 +184,7 @@ export class PullRequestReviewRuntime<Uri> {
     return new DiffEditorReviewCommandService({
       ...dependencies,
       openSession: async (editor) => this.openSession(
-        dependencies.getDocumentUri(editor),
-        dependencies.fileIdFor(editor)
+        dependencies.getDocumentUri(editor)
       ),
       requestHistory: (transaction) => this.options.requestHistory(transaction),
     });
