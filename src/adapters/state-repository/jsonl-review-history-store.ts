@@ -129,26 +129,26 @@ const prepareExistingHistory = (
   };
 };
 
-/** Migrates one existing monthly JSONL file without appending new evidence. Corruption is copied to quarantine and left active so append continues to reject. */
+/** Migrates one existing monthly JSONL file without appending new evidence. Corruption is quarantined and removed from the active path so later history can restart cleanly. */
 export const migratePersistedReviewHistoryFile = async (
   store: AtomicTextFileStore,
   filePath: string
-): Promise<"absent" | "ready" | "corrupt"> => {
+): Promise<"absent" | "ready" | "reset"> => {
   const existing = await store.readText(filePath);
   if (existing === undefined) {
     return "absent";
   }
   const month = expectedMonthFromPath(filePath);
   if (month === undefined) {
-    await quarantinePersistedText(store, filePath, existing, false);
-    return "corrupt";
+    await quarantinePersistedText(store, filePath, existing);
+    return "reset";
   }
   const prepared = prepareExistingHistory(existing, undefined, month);
   if (prepared.corrupt) {
     if (existing.length > 0) {
-      await quarantinePersistedText(store, filePath, existing, false);
+      await quarantinePersistedText(store, filePath, existing);
     }
-    return "corrupt";
+    return "reset";
   }
   if (prepared.migrated) {
     await publishSchemaMigration(store, [{
@@ -160,7 +160,7 @@ export const migratePersistedReviewHistoryFile = async (
   return "ready";
 };
 
-/** Appends canonical validated JSONL events through migration and corruption-recovery boundaries. */
+/** Appends canonical validated JSONL events. Corrupt existing history is preserved in quarantine and the active history restarts from the new event without salvaging uncertain records. */
 export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
   private readonly tails = new Map<string, Promise<void>>();
   private readonly atomicFileStore;
@@ -169,7 +169,7 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
   }
 
-  /** Validates/migrates legacy records and rejects append when any existing monthly evidence is corrupt or misrouted. */
+  /** Validates/migrates legacy records and restarts the active monthly history after quarantining corrupt or misrouted evidence. */
   public async append(target: ReviewStateRepositoryTarget, event: ReviewHistoryEvent): Promise<void> {
     const canonical = serializeReviewHistoryEvent(event);
     if (event.repositoryId !== target.repositoryId || event.contextId !== target.contextId) {
@@ -187,11 +187,11 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
           await quarantinePersistedText(
             this.atomicFileStore,
             filePath,
-            existing,
-            false
+            existing
           );
         }
-        throw new Error(`Review history is corrupt or inconsistent: ${filePath}`);
+        await this.atomicFileStore.writeTextAtomically(filePath, `${canonical}\n`);
+        return;
       }
       const next = `${prepared.content}${canonical}\n`;
       if (prepared.migrated) {
