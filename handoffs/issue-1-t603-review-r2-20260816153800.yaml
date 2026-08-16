@@ -1,0 +1,867 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: "2026-08-16T15:38:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #53"
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+  reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+  commit_range: 146aec15783294da1795f268315c85d1a0dffa56..6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+
+authoritative_requirements: &authoritative_requirements
+  - source: user_instruction
+    reference: "t603レビュー / 網羅してください"
+    summary: Review T603 autonomously and exhaustively using every applicable item in the uploaded skills; use the GitHub connector for repository/PR work; persist a detailed report and concise PR comment; do not merge.
+  - source: repository_instruction
+    reference: "AGENTS.md and RevMem project instruction"
+    summary: Use repository Skills; breaking changes must be recorded in Design/BreakingChanges.md; RevMem behavior implementation uses TDD; CI failures must preserve diagnostic artifacts; only exact-head CI may be used.
+  - source: task
+    reference: "tasks/tasks-status.md T603"
+    summary: Implement schema migration chain, pre-migration backup, JSON/JSONL/snapshot corruption detection/isolation/recovery, restore after migration failure, and keep uncertain ranges unreviewed.
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev4 §§15.3-15.4"
+    summary: Persisted models carry schemaVersion and are staged-migrated at startup with backup; corrupt data is isolated; uncertain ranges are not reviewed; existing corrupt JSONL currently specifies reject-without-append.
+  - source: handoff
+    reference: "handoffs/issue-1-t603-implementation-20260816150000.yaml"
+    summary: Implementation requires separate normal review before any independent-final lifecycle.
+  - source: report
+    reference: "reports/issue-1-t603-review-20260816151902.md"
+    summary: Previous normal review established R001-R007 but did not exhaust every direct dependency and its handoff was not schema-v3 compliant; R2 preserves finding identities/severities and completes coverage.
+
+development_policy:
+  method: TDD
+  testing_order: Add behavior/regression tests first, confirm exact-head Red, then implement and confirm exact-head Green; documentation-only reviewer artifacts do not require new behavior TDD.
+  governing_source: RevMem project instruction and tasks/phases-status.md
+
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - node --test test-dist/test/unit/t603-schema-migration-recovery.test.js
+    - npm run test:t206 or equivalent wiring for review-history-jsonl-store.test.js after R011 fix
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - merged standard output and standard error logs
+    - environment and git status
+    - generated outputs
+    - source, tests, tools and relevant configuration/workflow context
+
+blocked:
+  - item: "T603-B001 JSONL corruption recovery contract conflict"
+    reason: Current task asks corruption recovery, while accepted design rev4 §15.4 explicitly says a corrupt existing JSONL must reject and must not append. PR #53 chooses quarantine/salvage/append success without an accepted design change.
+    required_input_or_decision: Owner/user must explicitly choose design-conformant reject behavior or approve salvage+append and update design/BreakingChanges.
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t603-review-r2-20260816153800.md
+      reason: Durable exhaustive normal-review report.
+    - path_or_operation: handoffs/issue-1-t603-review-r2-20260816153800.yaml
+      reason: Correct schema-v3 lossless handoff packet.
+    - path_or_operation: PR #53 review comment
+      reason: Concise exhaustive review summary transport.
+  forbidden:
+    - path_or_operation: src/**
+      reason: Normal reviewer does not implement findings.
+    - path_or_operation: test/**
+      reason: Finding regression tests belong to implementation worker.
+    - path_or_operation: package.json or .github/workflows/**
+      reason: R011/R012 fixes belong to implementation worker.
+    - path_or_operation: doc/** or Design/BreakingChanges.md
+      reason: R008 design decision/documentation fix belongs to implementation/owner flow, not reviewer.
+    - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+      reason: Repository rules reserve tracking edits for designated progress-management skills.
+    - path_or_operation: merge PR #53
+      reason: Merge is reserved for the user.
+
+scope:
+  - Exhaustive normal review of T603 implementation HEAD 6a7d66e2cfbdfe226b8e958151b318ced83e6d13 against task, phase and design.
+  - All nine implementation changed files, every internal direct import dependency, direct consumers/runtime composition, tests/config/workflow/report/tracking/documentation evidence.
+  - TDD Red artifact and exact-head implementation/current-PR CI evidence.
+  - Preservation of R001-R007 continuity plus newly discovered sibling/coverage findings.
+non_goals:
+  - Implementing findings.
+  - Merging PR #53.
+  - Defining the concrete semantic transform of an as-yet nonexistent schema v2.
+  - Implementing T604 cross-process locks/cleanup or T606 generalized retry/error policy.
+
+files:
+  changed:
+    - path: reports/issue-1-t603-review-r2-20260816153800.md
+      purpose: Exhaustive R2 review report with 14 findings and complete coverage dispositions.
+    - path: handoffs/issue-1-t603-review-r2-20260816153800.yaml
+      purpose: Corrected schema-v3 lossless normal-review handoff.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Exact CI commands, T603 focused suite and failure artifact collection.
+    - path: package.json
+      purpose: Unit/focused test execution wiring and R011 coverage proof.
+    - path: package-lock.json
+      purpose: Confirm no dependency change in PR scope.
+    - path: tsconfig.test.json
+      purpose: Confirm changed tests compile even when not executed.
+    - path: test/unit/ci-workflow-contract.test.ts
+      purpose: Existing CI script contract and absence of T603/history-store wiring assertion.
+    - path: test/unit/t603-schema-migration-recovery.test.ts
+      purpose: Exact six Red/Green scenarios and TDD coverage boundary.
+    - path: test/unit/review-history-jsonl-store.test.ts
+      purpose: Changed corrupt-history regression and proof that its corrupt-only path differs from T603 mixed fixture.
+    - path: src/adapters/state-repository/persistence-schema-recovery.ts
+      purpose: Migration chain, validation, reference resolution, backup/rollback and quarantine core.
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: Migration preflight integration and uncertain-cache behavior.
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: History migration/salvage/quarantine behavior.
+    - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+      purpose: Snapshot entry/latest pointer schema migration and wrapper corruption recovery.
+    - path: src/adapters/state-repository/atomic-text-file-store.ts
+      purpose: Direct storage write/flush/rename dependency and file-mode semantics.
+    - path: src/adapters/state-repository/contracts.ts
+      purpose: Persistence and manifest reference contracts.
+    - path: src/adapters/state-repository/storage-router.ts
+      purpose: Owner/storage routing dependency.
+    - path: src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+      purpose: Owner-wide Global cache and CAS behavior.
+    - path: src/adapters/state-repository/file-system-review-state-repository.ts
+      purpose: Low-level load/cache/manifest validation behavior.
+    - path: src/adapters/state-repository/owner-global-state-loader.ts
+      purpose: Direct Global load validation dependency.
+    - path: src/adapters/state-repository/owner-reconciliation-validation.ts
+      purpose: Downstream context validation after preflight.
+    - path: src/adapters/state-repository/index.ts
+      purpose: Public persistence barrel.
+    - path: src/adapters/non-git-snapshots/index.ts
+      purpose: Snapshot adapter barrel.
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: Snapshot payload integrity, latest-pointer authority and cleanup consumer.
+    - path: src/core/contracts/index.ts
+      purpose: Contract barrel used by changed code.
+    - path: src/core/contracts/review-state.ts
+      purpose: Persisted state model and file/global fields.
+    - path: src/core/contracts/review-history.ts
+      purpose: History event model.
+    - path: src/core/contracts/schema-version.ts
+      purpose: Current schema constant.
+    - path: src/core/review-history/index.ts
+      purpose: History codec barrel.
+    - path: src/core/review-history/review-history-event-codec.ts
+      purpose: Strict per-line event validation/canonicalization.
+    - path: src/extension.ts
+      purpose: Production composition and startup migration integration check.
+    - path: src/t305-extension.ts
+      purpose: Higher-level runtime activation and Global source composition.
+    - path: src/t505-global-understanding-source.ts
+      purpose: Separate persistence instance and loadGlobal direct consumer.
+    - path: src/adapters/state-repository/debounced-review-state-repository.ts
+      purpose: Main runtime serialization/debounce consumer.
+    - path: src/adapters/workspace-review-state/workspace-review-state-session-provider.ts
+      purpose: Workspace load/save recovery consumer.
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: Snapshot latest pointer/payload recovery consumer.
+    - path: src/adapters/document-review-state/document-review-state-session-provider.ts
+      purpose: Git/external state consumer and downstream validation.
+    - path: src/application/review-history/review-history-recorder.ts
+      purpose: New-event target/ID producer and history appender consumer.
+    - path: src/application/global-understanding/global-understanding-background-recalculator.ts
+      purpose: Global state consumer-side validation.
+    - path: src/application/global-understanding/cooperative-global-understanding-calculation.ts
+      purpose: Global file/range validation before understanding calculation.
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: Consumer-side reviewed range certainty checks.
+    - path: AGENTS.md
+      purpose: Skill and BreakingChanges repository instructions.
+    - path: Design/BreakingChanges.md
+      purpose: Verify R008 behavior break is not recorded.
+    - path: README.md
+      purpose: User-facing T603/T604 limitations wording.
+    - path: tasks/tasks-status.md
+      purpose: T603 scope/dependencies/exit conditions and T604/T606 boundaries.
+    - path: tasks/phases-status.md
+      purpose: P6 TDD/certainty and persistence-hardening checkpoints.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Accepted persistence/history requirements, including startup migration and corrupt-history reject contract.
+    - path: GitHub Issue #1
+      purpose: Confirm it is a closed Phase-0 parent and adds no T603-specific criteria.
+    - path: reports/issue-1-t603-implementation-20260816145900.md
+      purpose: Implementation evidence fidelity.
+    - path: handoffs/issue-1-t603-implementation-20260816150000.yaml
+      purpose: Implementation evidence and review lifecycle handoff.
+    - path: reports/issue-1-t603-review-20260816151902.md
+      purpose: Previous R001-R007 continuity and coverage erratum basis.
+    - path: handoffs/issue-1-t603-review-20260816151902.yaml
+      purpose: Previous invalid schema-v3 handoff erratum basis.
+    - path: PR #53 metadata/comments/commits/Actions jobs/artifacts
+      purpose: Exact-head and evidence-fidelity checks.
+  intentionally_untouched:
+    - path_or_area: implementation/tests/workflow/package scripts
+      reason: Normal reviewer reports findings only.
+    - path_or_area: design and BreakingChanges
+      reason: R008 requires owner/implementation decision before modification.
+    - path_or_area: task/phase tracking
+      reason: Direct reviewer edits are forbidden by repository rule.
+    - path_or_area: merge
+      reason: User-owned action.
+
+commands:
+  - command: "Unpack and read uploaded chatgpt-worker-skills.zip review-related Skills"
+    purpose: Apply work-context-manager, review-worker, chat-review-worker, report-writer and chat-handoff-manager literally.
+    exit_code: 0
+    result: passed
+    head_sha: unknown
+    evidence: All five applicable Skill files were read; required discovery, 11 review criteria, report structure and schema-v3 lossless handoff requirements were extracted.
+  - command: "GitHub connector exhaustive source/diff/dependency/runtime/config review"
+    purpose: Inspect all changed files, every internal direct import dependency and direct runtime consumers.
+    exit_code: 0
+    result: passed
+    head_sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    evidence: Required coverage now has a disposition for every review-worker criterion; no unexplored area remains.
+  - command: "Inspect exact-head Red run 31929190714 and artifact 9258779700"
+    purpose: Validate test-first failure and required diagnostic artifact content.
+    exit_code: 0
+    result: passed
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: Actual job 95121366762 failed at T603 focused tests after prior gates passed; artifact includes T603/stdout-stderr logs, environment, git status, generated/source/test/config context.
+  - command: "Inspect exact implementation-head run 31930532442"
+    purpose: Validate technical target only with matching head SHA.
+    exit_code: 0
+    result: passed
+    head_sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    evidence: Job 95124484220 completed successfully across all configured CI gates.
+  - command: "Inspect exact previous-review-head run 31931358963"
+    purpose: Verify no nonmatching run is used after prior reviewer artifact commit.
+    exit_code: 0
+    result: passed
+    head_sha: 8dca8376bf29332f219fdc4323b98d67709506ba
+    evidence: Job 95126587128 completed successfully; this head adds only prior review artifacts over the technical implementation head.
+  - command: "Persist exhaustive R2 report"
+    purpose: Save durable evidence-faithful review report before handoff.
+    exit_code: 0
+    result: passed
+    head_sha: de54a83f48a96d5103ed1c646cc392492485fa4b
+    evidence: reports/issue-1-t603-review-r2-20260816153800.md created on PR branch.
+
+tests:
+  - name: T603 exact-head pre-implementation Red suite
+    phase: red
+    result: failed
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: Expected Red; run 31929190714 actual job 95121366762 failed the six T603 focused tests and uploaded artifact 9258779700.
+  - name: T603 focused suite on reviewed implementation HEAD
+    phase: regression
+    result: passed
+    head_sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    evidence: Run 31930532442 T603 step succeeded.
+  - name: Full configured CI on reviewed implementation HEAD
+    phase: regression
+    result: passed
+    head_sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    evidence: Run 31930532442 job 95124484220 succeeded.
+  - name: Modified review-history-jsonl-store regression test in PR CI
+    phase: regression
+    result: not_run
+    head_sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    evidence: package test:unit excludes it, CI does not run test:t206, and T603 focused step runs only t603-schema-migration-recovery.test.js; see R011.
+  - name: Repository-style manifest/context/global migration Red fixture
+    phase: pre_implementation
+    result: not_run
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: No such fixture exists in the test-only Red commit; see R012.
+  - name: Snapshot latest-pointer migration/quarantine Red fixture
+    phase: pre_implementation
+    result: not_run
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: No such fixture exists in the test-only Red commit; see R012.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31932441612
+  head_sha: de54a83f48a96d5103ed1c646cc392492485fa4b
+  conclusion: in_progress
+  artifacts: []
+
+implementation:
+  outcome: partial
+  final_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+  commits:
+    - sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+      purpose: Test-first T603 focused suite and CI Red step.
+    - sha: 5fa3b0c2c86f335851fb0b4dd29c0364c5a6133a
+      purpose: Persisted review-state migration/recovery.
+    - sha: c77e375cab5e17787d7c8e36ca5b869982276f87
+      purpose: Review-history migration/recovery.
+    - sha: ac2f13c0fcaf0a7ac32988d636e640b64aef4a0c
+      purpose: Non-Git snapshot migration/recovery.
+    - sha: 4e9a09be675bdd3c83312a2717db5f75d4691a8c
+      purpose: Preserve migration rollback cause.
+    - sha: f9dd96383cb17400210e95d8e21ac6e378baf531
+      purpose: Preserve persistence failure notification behavior.
+    - sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+      purpose: Restore existing CI diagnostics pattern.
+    - sha: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+      purpose: Persist implementation report/handoff.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: "GitHub Actions run 31929190714 / job 95121366762"
+      summary: Test-only exact-head Red failed at the new T603 focused behavior.
+    - type: standard_output
+      location: "artifact 9258779700 test-output/ci/*.log"
+      summary: CI command output is retained through 2>&1 | tee.
+    - type: standard_error
+      location: "artifact 9258779700 test-output/ci/*.log"
+      summary: Standard error is merged into the same retained diagnostic logs.
+    - type: artifact
+      location: "GitHub Actions artifact 9258779700"
+      summary: Required environment, source/test/generated/configuration context was inspected and is sufficient for Red failure diagnosis.
+  blocked_items:
+    - item: JSONL corruption append semantics
+      reason: Task recovery wording and design reject contract conflict.
+      required_input_or_decision: Owner/user accepted decision required before R008 can be closed.
+  summary:
+    - Technical implementation HEAD remains 6a7d66e2cfbdfe226b8e958151b318ced83e6d13.
+    - Fourteen required review findings are open after exhaustive re-audit.
+    - Exact-head CI success does not cover the newly identified contract/edge/coverage defects.
+
+review:
+  mode: initial_review
+  reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+  reviewer:
+    identity: "ChatGPT T603 normal reviewer (same chat, 2026-08-16)"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: "ChatGPT T603 normal reviewer (same chat, 2026-08-16)"
+      changed: false
+      reason: Same normal-review chat completed the missing exhaustive coverage after the user identified the previous skill-compliance gap.
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat did not implement PR #53 product changes or finding fixes.
+        - This chat produced the previous normal review and now preserves R001-R007 identity/severity while expanding coverage.
+        - No implementation, test, workflow, design, tracking or merge action was performed by this reviewer.
+  verdict: fail
+  required_coverage: &required_coverage
+    - criterion: requirement_and_design_conformance
+      disposition: checked_finding
+      evidence: R001-R006 and R008-R010; B001 records the task/design JSONL conflict without silently resolving it.
+    - criterion: correctness_and_edge_cases
+      disposition: checked_finding
+      evidence: R001-R006, R009, R013 and R014.
+    - criterion: scope_discipline_and_unrelated_changes
+      disposition: checked_no_finding
+      evidence: The technical implementation diff is limited to T603 persistence/recovery code, focused tests/CI and required implementation artifacts.
+    - criterion: changed_files_and_direct_dependency_impact
+      disposition: checked_finding
+      evidence: All nine implementation changed files, every internal direct import dependency and direct runtime consumers were inspected; R001/R006/R009/R010/R013/R014 result.
+    - criterion: api_data_configuration_workflow_and_compatibility
+      disposition: checked_finding
+      evidence: R002-R005, R008-R011 and R013; no separate public TypeScript source break was found.
+    - criterion: error_handling_and_failure_diagnostics
+      disposition: checked_finding
+      evidence: R001/R005/R006/R009/R014; the CI diagnostic artifact mechanism itself is sufficient and was directly inspected.
+    - criterion: security_and_secret_handling
+      disposition: checked_no_finding
+      evidence: No new token/source-body diagnostic logging was introduced; persistence sidecars remain within extension storage and Node atomic writes use restricted temporary file mode.
+    - criterion: tests_and_validation_adequacy
+      disposition: checked_finding
+      evidence: R001-R006 boundary gaps, R011, R012 and R013.
+    - criterion: current_head_ci_evidence
+      disposition: checked_no_finding
+      evidence: Implementation 6a7d... has exact run 31930532442 success; prior review head 8dca... has exact run 31931358963 success; report head de54... has matching run 31932441612 currently in progress at packet generation. No other SHA is substituted.
+    - criterion: report_tracking_and_documentation_accuracy
+      disposition: checked_finding
+      evidence: R007 and R008; task/phase tracking is intentionally not edited by this reviewer under repository rules.
+    - criterion: regression_and_maintainability_risks
+      disposition: checked_finding
+      evidence: R002/R003/R004/R009/R010/R014.
+  validation_assessment: &validation_assessment
+    - item: reviewed implementation exact-head CI
+      result: supported
+      evidence: Run 31930532442 / job 95124484220 exactly matches 6a7d66e2cfbdfe226b8e958151b318ced83e6d13 and succeeded.
+    - item: TDD Red existence and diagnostic artifact
+      result: supported
+      evidence: Run 31929190714 exactly matches 3c88a86bd0e1a47a43a259b53db431cc8724d40e; T603 tests failed and artifact 9258779700 contains required diagnostics.
+    - item: TDD completeness across implemented T603 behaviors
+      result: failed
+      evidence: Repository-style migration and latest-pointer behaviors lack pre-implementation Red fixtures; R012.
+    - item: changed review-history-jsonl-store test execution in CI
+      result: failed
+      evidence: The changed test is compiled but not executed by any current workflow step; R011.
+    - item: requirements completion
+      result: failed
+      evidence: Fourteen required findings remain open.
+    - item: exhaustive review-worker coverage
+      result: supported
+      evidence: All 11 required criteria have explicit dispositions and no unexplored area remains after direct dependency/runtime/config/document review.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - This is a normal initial-review continuation, not an independent final review; report-attestation mode does not apply.
+  summary:
+    - Exhaustive R2 review preserves R001-R007 and adds R008-R014.
+    - Verdict remains fail with 14 required findings: high 3, medium 10, low 1.
+    - The current JSONL recovery behavior also has an unresolved task/design authority conflict B001.
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t603-review-r2-20260816153800.md
+    - handoffs/issue-1-t603-review-r2-20260816153800.yaml
+  reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+  attestation_head: null
+  pr_comments:
+    - target: "PR #53 previous initial-review comment"
+      url_or_id: "5306117196"
+  summary:
+    - The R2 report supersedes the prior review only for coverage completeness; historical R001-R007 remain unchanged.
+    - This handoff supersedes the prior handoff for continuation because the prior packet violated schema-v3 typed enum/shape and lossless source-payload requirements.
+
+findings: &findings
+  - id: T603-R001
+    severity: high
+    origin: introduced_by_change
+    location: "persistence-schema-recovery.ts validation; validated-file-system-review-state-repository.ts uncertainty/load; coherent and low-level repository caches"
+    description: Preflight incompletely validates current-schema persisted state and clears target uncertainty before downstream load validation; downstream failures leave prior caches intact. Manifest/global uncertainty is owner-wide but uncertainTargets is context-local, allowing sibling cached targets to expose stale owner Global evidence.
+    impact: Uncertain or corrupt persistence can still appear reviewed, directly violating T603 and AC-24.
+    evidence: Preflight omits context kind/descriptors/timestamps/deep file/range validation; low-level load failures do not clear cache; coherent repository overlays cached owner Global by storage root; current tests only cover malformed JSON on first load.
+    required_action: Fully canonical-validate before ready, retain/propagate uncertainty on downstream failure, make manifest/global uncertainty owner-wide, hide/clear stale caches, and add cached-load structural/deep/owner-sibling regression tests.
+  - id: T603-R002
+    severity: high
+    origin: introduced_by_change
+    location: "All v0->v1 migration steps in persistence-schema-recovery.ts, jsonl-review-history-store.ts and node-non-git-snapshot-adapters.ts"
+    description: Historical steps declare toVersion 1 but emit REVIEW_RANGE_SCHEMA_VERSION, so a future current schema 2 makes the old 0->1 step emit 2 and fail its own target-version assertion.
+    impact: The adjacent migration chain fails at the first future schema bump for state, history and snapshot data.
+    evidence: runSchemaMigrationChain requires migrated schemaVersion to equal step.toVersion; every production v0->v1 step writes the global current constant.
+    required_action: Make historical steps emit immutable target version 1 and add multi-step migration coverage.
+  - id: T603-R003
+    severity: medium
+    origin: introduced_by_change
+    location: "MANIFEST_STEPS and repository prepare branch; RepositoryStateManifestContextReference contract"
+    description: Manifest migration marks every context reference as current v1 while only the selected context document is migrated, or none when the target is absent.
+    impact: Manifest metadata can claim v1 for untouched v0 immutable context documents.
+    evidence: MANIFEST_STEPS maps schemaVersion across every reference; preparePersistedReviewState reads only targetReference before publishing the manifest.
+    required_action: Migrate/validate all referenced contexts before publishing current manifest or represent mixed versions truthfully; add multi-context/target-absent fixtures.
+  - id: T603-R004
+    severity: medium
+    origin: introduced_by_change
+    location: "migrateContextV0ToV1, WORKSPACE_STEPS and MANIFEST_STEPS"
+    description: Parent v0 migration blindly overwrites nested schemaVersion fields with v1, including a nested future schema such as v2.
+    impact: Newer/unsupported nested persisted data can be silently downgraded and reinterpreted.
+    evidence: Nested file/context/global/reference versions are assigned directly without individual source-version validation/migration.
+    required_action: Validate/migrate nested models individually and preserve/reject future nested versions; add root-v0+nested-v2 tests.
+  - id: T603-R005
+    severity: medium
+    origin: introduced_by_change
+    location: "runSchemaMigrationChain/decodeOrQuarantine and snapshot parseMigratedRecord"
+    description: Invalid schema metadata (string, negative, non-integer) uses the same Unsupported error as a valid future version and therefore bypasses quarantine; snapshot null is treated as missing legacy schema through nullish fallback.
+    impact: Corrupt metadata repeatedly blocks recovery, while explicit null can be silently rewritten as legacy.
+    evidence: Invalid rawVersion values throw UnsupportedPersistedSchemaVersionError; recovery rethrows that class; snapshot passes absentSchemaVersion 0 via nullish selection.
+    required_action: Distinguish corrupt metadata from valid future integer versions, quarantine invalid values, and allow legacy fallback only for undefined.
+  - id: T603-R006
+    severity: medium
+    origin: introduced_by_change
+    location: "NodeNonGitSnapshotStorage.get and NonGitSnapshotTracker.read"
+    description: Wrapper corruption is quarantined, but gzip/hash/inner-envelope corruption detected by the tracker only returns corrupt and leaves the active persisted entry in place.
+    impact: Corrupt snapshot payloads remain repeatedly selectable through the authoritative latest pointer.
+    evidence: Storage validates wrapper fields then returns bytes; tracker detects decompression/hash/envelope failure without delete/quarantine; focused test covers malformed wrapper JSON only.
+    required_action: Connect payload integrity failure to quarantine/delete and conservatively handle the latest pointer; add damaged payload/hash/envelope tests.
+  - id: T603-R007
+    severity: medium
+    origin: introduced_by_change
+    location: "T603 implementation report/handoff and PR body/completion comment"
+    description: Durable implementation evidence records multiple job/artifact/commit identities and lifecycle wording that do not match authoritative GitHub data.
+    impact: Later workers can follow nonexistent/wrong evidence and violate exact-head/reviewer-continuity rules.
+    evidence: Actual Red job/artifact are 95121366762/9258779700, not 95120961967/5717201218; additional run/job/artifact and commit SHA mismatches are enumerated in the R2 report; reviewed-head run 31930532442/job95124484220 is correct.
+    required_action: Correct implementation report/handoff/PR evidence from GitHub authoritative values and align normal-review/finding-closure/independent-final lifecycle wording.
+  - id: T603-R008
+    severity: medium
+    origin: introduced_by_change
+    location: "jsonl-review-history-store.ts, changed history test, design rev4 §15.4, Design/BreakingChanges.md"
+    description: PR changes corrupt-history behavior from reject-without-append to quarantine/salvage/append success, contradicting accepted design; the observable behavior break is not recorded in BreakingChanges.
+    impact: Audit failure semantics are ambiguous between task/design/implementation and consumer expectations.
+    evidence: Design explicitly says corrupt existing JSONL must reject without subsequent append; the PR rewrites the prior rejection test to successful append; BreakingChanges has no T603 entry.
+    required_action: Obtain owner/user decision; either restore design-conformant reject behavior or update accepted design and BreakingChanges for salvage+append, then test that contract.
+  - id: T603-R009
+    severity: high
+    origin: introduced_by_change
+    location: "resolveReferencedFile and repository child-validation quarantine paths"
+    description: A corrupt manifest reference can resolve outside its declared subtree while remaining under storage root, or point one context to another valid context file; validation failure then quarantines/removes the valid child rather than the corrupt manifest/reference.
+    impact: One corrupt manifest can destroy valid sibling-context or Global evidence; cross-type references can also be misinterpreted under shallow validation.
+    evidence: Prefix check occurs before path.resolve and only root containment is checked afterward; context/global validation failures call quarantinePersistedText on the referenced child with removeOriginal=true.
+    required_action: Enforce canonical post-resolve subtree containment, classify reference mismatch as manifest corruption, preserve valid child data, and add sibling/cross-subtree preservation tests.
+  - id: T603-R010
+    severity: medium
+    origin: introduced_by_change
+    location: "extension.ts production composition and lazy state/history/snapshot migration entrypoints"
+    description: Accepted design requires staged migration at startup, but production only constructs adapters; migration occurs on later target access/append/get. Historical monthly JSONL files have no startup sweep and may remain legacy indefinitely.
+    impact: Saved models can remain mixed-version instead of being migrated at startup, prolonging metadata inconsistency and leaving old history untouched.
+    evidence: activate constructs repositories/history/snapshot tracker; state migration is in load/save/commit, history migration only in append for that month, snapshot migration only in get/getLatest/entries.
+    required_action: Add a startup storage migration/sweep or explicitly change accepted design to lazy migration; add restart/startup integration coverage over history/repository contexts/snapshot entries+pointers.
+  - id: T603-R011
+    severity: medium
+    origin: coverage_miss
+    location: "package.json, .github/workflows/ci.yml, test/unit/review-history-jsonl-store.test.ts"
+    description: The PR-modified review-history-jsonl-store test is not executed by current CI: test:unit excludes it, CI does not run test:t206, and T603 focused CI runs only the T603 file.
+    impact: The corrupt-only prepared.migrated=false path changed by the PR can regress without CI failure.
+    evidence: package scripts and workflow were inspected directly; tsconfig.test compiles all tests but execution lists omit this test.
+    required_action: Wire the test into default/focused CI and add a workflow contract assertion for T603/history coverage.
+  - id: T603-R012
+    severity: medium
+    origin: coverage_miss
+    location: "test-only Red commit 3c88a86... and later repository/snapshot implementation"
+    description: The six pre-implementation Red fixtures do not specify repository-style manifest/global/context migration, target-absent/multi-document publication, or latest-pointer migration/quarantine although those behaviors were later implemented.
+    impact: Significant T603 behavior lacks the project-required test-first Red evidence and contains several of the uncovered defects found in R003/R009/R010.
+    evidence: The entire Red test file was inspected; only workspace state, workspace rollback, malformed workspace JSON, mixed JSONL, snapshot entry migration and snapshot wrapper corruption are covered.
+    required_action: Add missing regression tests before behavior fixes, confirm Red on an exact head, then implement and re-run exact-head Green.
+  - id: T603-R013
+    severity: medium
+    origin: introduced_by_change
+    location: "prepareExistingHistory and JsonlReviewHistoryStore.append"
+    description: Salvage validates each line only as a canonical event; it does not verify existing repositoryId/contextId against storage target, occurredAt month against the filename, or eventId uniqueness across retained/new records.
+    impact: Recovery can republish wrong-owner, wrong-month, or duplicate-ID events as supposedly certain audit evidence.
+    evidence: Existing-line loop calls migration+serializeReviewHistoryEvent only; target identity is checked only for the newly appended event; design requires monthly routing and globally unique opaque event IDs.
+    required_action: Add file-level target/month/eventId integrity checks and wrong-owner/wrong-context/wrong-month/duplicate-ID recovery fixtures.
+  - id: T603-R014
+    severity: low
+    origin: introduced_by_change
+    location: "quarantinePersistedText"
+    description: Quarantine writes through injected AtomicTextFileStore but removes the original with direct node:fs rm, bypassing the persistence abstraction.
+    impact: Custom/deterministic stores can retain the active corrupt original even after the helper claims quarantine, and future alternate persistence adapters are unsafe.
+    evidence: AtomicTextFileStore exposes read/write only; quarantinePersistedText calls store.writeTextAtomically then rm(filePath) directly.
+    required_action: Add deletion to the persistence abstraction or make quarantine explicitly Node-filesystem-only, with a custom-store regression test.
+
+held: &held
+  - item: T604 cross-window/process locking, migration-write serialization, atomic history append and cache/snapshot/sidecar cleanup
+    reason: T604 explicitly owns exclusive lock, multi-window conflicts, atomic history append and cache/snapshot cleanup.
+    owner: T604
+    remaining_risk: Read paths now perform migration writes and sidecars accumulate; cross-instance/process races and retention remain until T604.
+    verdict_impact: Held scope does not excuse R001/R009 same-target/owner fail-closed and collateral-deletion defects.
+  - item: Concrete semantic transform for future schema v2
+    reason: No v2 persisted contract currently exists.
+    owner: future schema-bump task
+    remaining_risk: Future work must define v1->v2 semantics after R002 makes historical steps version-stable.
+    verdict_impact: None; R002 remains a current required finding.
+  - item: Generalized storage retry/stale-UI/privacy-safe diagnostic policy
+    reason: T606 owns generalized failure policy and full fault matrix.
+    owner: T606
+    remaining_risk: Non-T603-specific capacity/retry UX remains open.
+    verdict_impact: None for T603-specific corruption findings.
+
+unexplored: &unexplored []
+
+unknown:
+  - field_or_fact: final PR HEAD after this handoff file is committed
+    reason: A handoff cannot contain the SHA of the commit that creates itself; it must be recorded externally after persistence.
+  - field_or_fact: exact-head CI result for the final handoff commit
+    reason: The run can exist only after this packet is committed; the wrapper must poll the run for the new HEAD and record it in the PR comment/final response.
+  - field_or_fact: comprehensive R2 PR comment ID
+    reason: The concise comment is posted only after this packet is persisted.
+
+not_applicable:
+  - field_or_area: independent-final report attestation
+    reason: This is normal initial-review continuation; no independent-final reserved path is active.
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+  - field_or_area: reviewer task-tracking update
+    reason: Repository rules reserve direct tracking edits for designated progress-management skills.
+
+remaining_risks:
+  - Stale reviewed cache exposure remains possible until R001 is fixed.
+  - Corrupt manifest references can cause collateral deletion until R009 is fixed.
+  - Mixed-version/lazy persistence remains until R002-R004/R010 are fixed or design is changed.
+  - History recovery contract and salvage integrity remain ambiguous/incomplete until B001/R008/R013 are resolved.
+  - T604/T606 held concurrency/cleanup/error-policy work remains after T603 closure.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: "PR #53"
+      task_id: T603
+      mode: review
+      branch: task/t603-schema-migration-recovery
+      base_ref: main
+      current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+      reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+      scope:
+        - Exhaustive T603 normal review of immutable implementation HEAD 6a7d... and exact implementation diff.
+        - All implementation changed files, internal direct imports, runtime consumers, tests/config/workflow/docs/tracking and evidence.
+      non_goals:
+        - Implement fixes.
+        - Merge.
+        - T604/T606 owned generalized work.
+      authoritative_requirements: *authoritative_requirements
+      write_boundary:
+        allowed:
+          - reports/issue-1-t603-review-r2-20260816153800.md
+          - handoffs/issue-1-t603-review-r2-20260816153800.yaml
+          - PR #53 concise review comment
+        forbidden:
+          - implementation/tests/workflow/package/design/tracking edits by reviewer
+          - merge
+      development_policy:
+        method: TDD
+        testing_order: Behavior tests must fail first on an exact head, then implementation and exact-head Green; reviewer documentation itself is validation-only.
+      validation:
+        commands:
+          - npm run build
+          - npm run typecheck:contracts
+          - npm run validate:architecture
+          - npm run validate:architecture:negative
+          - npm run lint
+          - npm run test:unit
+          - T603/history focused suites
+          - npm run test:git
+          - npm run test:github
+          - xvfb-run -a npm run test:vscode
+        required_failure_diagnostics:
+          - test results
+          - merged stdout/stderr
+          - environment/git status
+          - generated/source/test/config/workflow context
+      ci:
+        matching_run: "31932441612"
+        conclusion: in_progress
+      unknown:
+        - Final post-handoff commit SHA and its exact-head CI are future facts at packet generation.
+        - Comprehensive PR comment ID is unavailable until post-persistence comment creation.
+      blocked:
+        - T603-B001 task/design conflict on corrupt JSONL append semantics.
+      remaining_risks:
+        - Fourteen required findings remain open.
+        - T604/T606 held work remains separately owned.
+  - source_skill: review-worker
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      review_mode: initial_review
+      reviewed_implementation_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+      base: 146aec15783294da1795f268315c85d1a0dffa56
+      commit_range: 146aec15783294da1795f268315c85d1a0dffa56..6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+      reviewer_identity: "ChatGPT T603 normal reviewer (same chat, 2026-08-16)"
+      reviewer_independence_evidence:
+        - Reviewer did not implement product changes or review fixes.
+        - Same normal-review chat preserves finding continuity from R001-R007.
+      required_coverage: *required_coverage
+      findings: *findings
+      severity_reclassification_records: []
+      held_items: *held
+      unexplored_areas: *unexplored
+      validation_assessment: *validation_assessment
+      verdict: fail
+      remaining_risks:
+        - R001 stale cache safety violation.
+        - R009 collateral valid-document deletion.
+        - R002-R004/R010 migration compatibility/startup gaps.
+        - R008/R013 history contract/audit recovery integrity gaps.
+        - R011/R012 validation/TDD gaps.
+      next_action:
+        type: implementation
+        summary: Fix R001-R014 under TDD after resolving B001; return to this same normal-review lineage for fix verification.
+      reserved_report_paths: []
+      report_attestation_allowed: false
+      report_attestation_conditions:
+        - Not applicable to this normal-review round; independent-final attestation requires a separately frozen implementation head and pre-reserved path.
+  - source_skill: report-writer
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      report_type: review_report
+      complete_body: |
+        The complete evidence-faithful report body is persisted verbatim at reports/issue-1-t603-review-r2-20260816153800.md in commit de54a83f48a96d5103ed1c646cc392492485fa4b. Its full content is part of this handoff's typed projection through the complete findings, coverage, target identity, validation, held/blocked/unknown state and next action above; the repository report remains the canonical complete_body transport for the report-writer output.
+      evidence_sources:
+        - uploaded chatgpt-worker-skills.zip applicable Skills
+        - PR #53 complete implementation diff and GitHub metadata
+        - tasks/tasks-status.md T603 and tasks/phases-status.md P6
+        - design rev4 §§15.3-15.4 and Design/BreakingChanges.md
+        - all changed files/direct dependencies/runtime consumers listed in files.inspected
+        - exact-head GitHub Actions runs/jobs/artifact
+      target_identity:
+        branch: task/t603-schema-migration-recovery
+        base_ref: main
+        current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+        reviewed_implementation_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
+      severity_records:
+        - finding_id: T603-R001
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R002
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R003
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R004
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R005
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R006
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R007
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R008
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R009
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R010
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R011
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R012
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R013
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: T603-R014
+          source_severity: low
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t603-review-r2-20260816153800.md
+        report_attestation_head: null
+      concise_pr_comment_body: |
+        T603 exhaustive normal review R2: FAIL. The same implementation HEAD 6a7d66e2... now has complete skill coverage. R001-R007 are preserved; R008-R014 are newly added. Total findings: 14 (high 3 / medium 10 / low 1). Key blockers: stale reviewed caches under uncertain persistence (R001), broken future adjacent chain (R002), collateral deletion through corrupt manifest references (R009), current design conflicts with salvage+append history behavior (R008/B001), startup migration missing (R010), modified history test not executed (R011), incomplete TDD Red coverage (R012), and salvage identity/month/eventId gaps (R013). Detailed report: reports/issue-1-t603-review-r2-20260816153800.md. Corrected handoff: handoffs/issue-1-t603-review-r2-20260816153800.yaml. Merge not performed.
+      unresolved_discrepancies:
+        - T603-B001 task/design conflict on corrupt JSONL append semantics.
+        - Previous review handoff is not schema-v3 compliant and is superseded for continuation by this R2 packet.
+
+extensions:
+  - namespace: t603.review_r2.prior_packet_errata
+    payload:
+      previous_report: reports/issue-1-t603-review-20260816151902.md
+      previous_handoff: handoffs/issue-1-t603-review-20260816151902.yaml
+      previous_review_commit: 8dca8376bf29332f219fdc4323b98d67709506ba
+      corrections:
+        - Previous review had not read the uploaded ZIP Skills before execution.
+        - Previous changed-files/direct-dependencies coverage was only major dependencies, not exhaustive.
+        - Previous schema-v3 handoff used invalid enum/shape values and incomplete core source_payloads.
+      finding_continuity: R001-R007 identities and severities remain unchanged.
+  - namespace: t603.review_r2.post_persistence_gate
+    payload:
+      required: true
+      instruction: After this handoff commit, resolve the new PR HEAD and inspect only a workflow run whose head SHA exactly matches it; post the final head/run/job/conclusion externally in the PR comment and final response.
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_findings_followup
+  summary: Resolve B001, then fix T603-R001 through T603-R014 using TDD and authoritative evidence; return to this same normal review chat for fix verification.
+  instructions:
+    - Preserve R001-R014 finding identities and source severities unless an explicit reclassification record is approved.
+    - Resolve B001 without silently choosing between task wording and design §15.4; update design/BreakingChanges if salvage+append is accepted.
+    - Add regression tests first for behavior findings, including cached/owner uncertainty, multi-context repository migration, path-reference preservation, startup migration, payload corruption, invalid schema metadata and history file-level integrity.
+    - Wire review-history-jsonl-store.test.ts into CI and add contract coverage for the focused script/workflow.
+    - Correct implementation report/handoff/PR evidence using actual GitHub commit/job/artifact IDs.
+    - Use only CI whose head SHA exactly matches the new implementation HEAD; do not substitute older success runs.
+    - Persist implementation follow-up report/handoff and concise PR comment; do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t603-review-r2-20260816153800.md
+    - handoffs/issue-1-t603-review-r2-20260816153800.yaml
+    - PR #53
+    - tasks/tasks-status.md T603
+    - doc/design/vscode-review-range-tracker-design.md rev4 §§15.3-15.4
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - edit_configuration
+    - edit_workflows
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t603-review-r2-20260816153800.yaml
+  packet_url: null
+  transport_note: This schema-v3 packet supersedes the previous T603 normal-review handoff for continuation. The final self-commit SHA, exact-head CI, and comprehensive PR comment reference are necessarily recorded externally after persistence; no merge is authorized.
