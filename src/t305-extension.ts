@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
+import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
@@ -32,7 +33,13 @@ import {
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
-export function activate(context: vscode.ExtensionContext): unknown {
+export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
+  await runPersistenceStartupMigration({
+    storageUris: {
+      globalStorageUri: context.globalStorageUri,
+      storageUri: context.storageUri
+    }
+  });
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   const git = createNodeLocalGitAdapter();
