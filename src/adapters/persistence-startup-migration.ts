@@ -72,7 +72,7 @@ const migrateWorkspaceState = async (
     { storageUris, atomicFileStore: store },
     { kind: "workspace", repositoryId, contextId }
   );
-  return preparation.state === "ready" ? repositoryId : undefined;
+  return preparation === "ready" ? repositoryId : undefined;
 };
 
 const migrateRepositoryStateRoot = async (
@@ -108,7 +108,7 @@ const migrateRepositoryStateRoot = async (
     contextId
   };
   const preparation = await preparePersistedReviewState({ storageUris, atomicFileStore: store }, target);
-  return preparation.state === "ready" ? repositoryId : undefined;
+  return preparation === "ready" ? repositoryId : undefined;
 };
 
 const migrateHistoryRoot = async (
