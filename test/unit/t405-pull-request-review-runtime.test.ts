@@ -137,6 +137,72 @@ test("R405-3 saved/closed PR opens through the canonical T302 review-range-diff 
   assert.notEqual(opened[0]!.original, opened[0]!.modified);
 });
 
+test("R405-3 Review Contexts canonical original/modified commands persist mark and unmark", async () => {
+  const repository = new MemoryRepository();
+  const opened: Array<{ original: string; modified: string; title: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified, title) => {
+        opened.push({ original, modified, title });
+      },
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.revision === A ? "old" : "new",
+    }),
+  });
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID, "src/example.ts");
+  const diff = opened[0]!;
+
+  interface Editor {
+    readonly uri: string;
+    readonly side: "original" | "modified";
+  }
+  const selection = [{
+    anchor: { line: 0, character: 0 },
+    active: { line: 0, character: 0 },
+  }];
+  const commands = runtime.createCommandService<Editor>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => selection,
+    confirmWholeFileOperation: async () => true,
+  });
+  const original = { uri: diff.original, side: "original" as const };
+  const modified = { uri: diff.modified, side: "modified" as const };
+
+  assert.equal(await commands.markSelectionReviewed(original), "applied");
+  assert.deepEqual(
+    repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+
+  assert.equal(await commands.markSelectionReviewed(modified), "applied");
+  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+  ]);
+  assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, [
+    { startLine: 0, endLineExclusive: 1 },
+  ]);
+
+  assert.equal(await commands.unmarkSelectionReviewed(original), "applied");
+  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff, {});
+  assert.equal(await commands.unmarkSelectionReviewed(modified), "applied");
+  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, []);
+  assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, []);
+});
+
 test("R405-5 PR runtime exposes T304 progress for Review Contexts", async () => {
   const runtime = new PullRequestReviewRuntime<string>({
     repository: new MemoryRepository(),
