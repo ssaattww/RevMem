@@ -10,6 +10,10 @@ import {
   type ReviewRangeRuntimePort
 } from "./extension";
 import {
+  DocumentReviewEditRuntime,
+  type DocumentReviewEditSnapshot
+} from "./document-review-edit-runtime";
+import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
@@ -31,12 +35,48 @@ import {
 } from "./t505-global-understanding-source";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
+let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
+
+const toResourceUri = (uri: vscode.Uri) => ({
+  scheme: uri.scheme,
+  authority: uri.authority,
+  path: uri.path,
+  query: uri.query,
+  fragment: uri.fragment
+});
 
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   const git = createNodeLocalGitAdapter();
   const stableHash = new NodeSha256StableHash();
+  const documentEditRuntime = new DocumentReviewEditRuntime({
+    storageUris: {
+      globalStorageUri: context.globalStorageUri,
+      storageUri: context.storageUri
+    },
+    gitInspector: git,
+    stableHash
+  });
+  activeDocumentReviewEditRuntime = documentEditRuntime;
+  const toEditSnapshot = (document: vscode.TextDocument): DocumentReviewEditSnapshot => {
+    const text = document.getText();
+    return {
+      documentKey: document.uri.toString(true),
+      documentUri: toResourceUri(document.uri),
+      documentFsPath: document.uri.fsPath,
+      fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+      text,
+      lineCount: document.lineCount,
+      contentHash: stableHash.digest(text)
+    };
+  };
+  for (const document of vscode.workspace.textDocuments) {
+    if (!document.isClosed && FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
+      documentEditRuntime.observe(toEditSnapshot(document));
+    }
+  }
+
   const selection = new CurrentContextCandidateSelection();
   const exclusionPolicy = getActiveReviewFileExclusionPolicyService();
   const readOpenDocuments = (owner: Readonly<T505GlobalUnderstandingOwner>) =>
@@ -213,8 +253,39 @@ export function activate(context: vscode.ExtensionContext): unknown {
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     run: refreshGlobalUnderstanding
   });
-  const requestRefreshForDocumentChange = (document: vscode.TextDocument): void => {
-    if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) documentChangeRefresh.request();
+  const requestRefreshForDocumentChange = (event: vscode.TextDocumentChangeEvent): void => {
+    if (!FILESYSTEM_SCHEMES.has(event.document.uri.scheme)) return;
+    documentChangeRefresh.request();
+    void documentEditRuntime.apply({
+      after: toEditSnapshot(event.document),
+      changes: event.contentChanges.map((change) => ({
+        range: {
+          start: {
+            line: change.range.start.line,
+            character: change.range.start.character
+          },
+          end: {
+            line: change.range.end.line,
+            character: change.range.end.character
+          }
+        },
+        rangeOffset: change.rangeOffset,
+        rangeLength: change.rangeLength,
+        text: change.text
+      })),
+      options: {
+        ignoreWhitespaceChanges: false,
+        ignoreEolChanges: false
+      }
+    }).then(async (result) => {
+      if (result !== "applied") return;
+      await runtimePort.refreshVisibleEditorDecorations();
+      await globalRuntime.refreshWithErrorBoundary();
+    }).catch(async (error: unknown) => {
+      await vscode.window.showErrorMessage(
+        `編集後のレビュー状態を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+      );
+    });
   };
   const refreshForSavedOrClosedDocument = (document: vscode.TextDocument): void => {
     if (!FILESYSTEM_SCHEMES.has(document.uri.scheme)) return;
@@ -224,9 +295,19 @@ export function activate(context: vscode.ExtensionContext): unknown {
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(refreshGlobalUnderstanding),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
-    vscode.workspace.onDidChangeTextDocument((event) => requestRefreshForDocumentChange(event.document)),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
+        documentEditRuntime.observe(toEditSnapshot(document));
+      }
+    }),
+    vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
     vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
-    vscode.workspace.onDidCloseTextDocument(refreshForSavedOrClosedDocument),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
+        documentEditRuntime.forget(document.uri.toString(true));
+      }
+      refreshForSavedOrClosedDocument(document);
+    }),
     documentChangeRefresh
   );
 
@@ -245,7 +326,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
       selectContext: () => currentContextComposition.selectContext()
     },
     {
-      setSelectedContext: (selection) => runtimePort.setSelectedContext(selection),
+      setSelectedContext: (selected) => runtimePort.setSelectedContext(selected),
       refreshDependents: async () => {
         await runtimePort.refreshVisibleEditorDecorations();
         await globalRuntime.refresh();
@@ -267,4 +348,9 @@ export function activate(context: vscode.ExtensionContext): unknown {
   return baseApi;
 }
 
-export const deactivate = deactivateBaseExtension;
+export async function deactivate(): Promise<void> {
+  const editRuntime = activeDocumentReviewEditRuntime;
+  activeDocumentReviewEditRuntime = undefined;
+  await editRuntime?.drain();
+  await deactivateBaseExtension();
+}
