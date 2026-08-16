@@ -53,7 +53,7 @@ jobs:
       - name: T603 schema migration and corruption recovery tests
         run: |
           set -o pipefail
-          node --test test-dist/test/unit/t603-schema-migration-recovery.test.js test-dist/test/unit/t603-review-findings.test.js test-dist/test/unit/review-history-jsonl-store.test.js 2>&1 | tee test-output/ci/test-t603.log
+          node --test test-dist/test/unit/t603-schema-migration-recovery.test.js test-dist/test/unit/t603-review-findings.test.js test-dist/test/unit/t603-history-multi-context-regression.test.js test-dist/test/unit/review-history-jsonl-store.test.js 2>&1 | tee test-output/ci/test-t603.log
       - name: T403 GitHub cache tests
         run: |
           set -o pipefail
