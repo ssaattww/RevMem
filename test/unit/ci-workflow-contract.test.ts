@@ -65,8 +65,8 @@ test("unit, npm test, focused CI execute the complete T304 tree contract", async
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(
     workflow,
-    /- name: T304 PR progress tree tests[\s\S]*?npm run test:t304\b[\s\S]*?tee test-output\/ci\/test-t304\.log/u,
-    "CI must invoke the package-owned T304 focused script and preserve its log"
+    /- name: T304 PR progress tree tests[\s\S]*?node tools\/run-ci-command\.mjs test-t304 npm run test:t304\b/u,
+    "CI must invoke the package-owned T304 focused script through the diagnostic runner"
   );
 });
 
@@ -101,11 +101,15 @@ test("CI executes positive and negative architecture gates with diagnostic logs"
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /- name: Architecture validation/u);
-  assert.match(workflow, /npm run validate:architecture\b/u);
-  assert.match(workflow, /tee test-output\/ci\/architecture\.log/u);
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs architecture npm run validate:architecture\b/u
+  );
   assert.match(workflow, /- name: Architecture negative contract/u);
-  assert.match(workflow, /npm run validate:architecture:negative\b/u);
-  assert.match(workflow, /tee test-output\/ci\/architecture-negative\.log/u);
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs architecture-negative npm run validate:architecture:negative\b/u
+  );
 });
 
 test("CI executes the canonical T502 focused command", async () => {
@@ -140,8 +144,8 @@ test("T505 focused coverage executes each dedicated suite once and is required b
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(
     workflow,
-    /- name: T505 Global understanding tests[\s\S]*?npm run test:t505\b[\s\S]*?tee test-output\/ci\/test-t505\.log/u,
-    "CI must invoke the package-owned T505 focused script and preserve its log"
+    /- name: T505 Global understanding tests[\s\S]*?node tools\/run-ci-command\.mjs test-t505 npm run test:t505\b/u,
+    "CI must invoke the package-owned T505 focused script through the diagnostic runner"
   );
 });
 
