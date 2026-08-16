@@ -261,6 +261,7 @@ extends CoherentFileSystemReviewStateRepository {
         })
       ).catch(() => undefined);
       throw error;
+    }
   }
 
   private markUncertain(
