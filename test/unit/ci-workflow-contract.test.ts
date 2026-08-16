@@ -184,6 +184,11 @@ test("T506 integration and Extension Host acceptance are exposed as one required
   );
   assert.match(
     focused,
+    /test-dist\/test\/integration\/t506-real-multi-instance-concurrency\.integration\.test\.js/u,
+    "test:t506 must execute the real multi-instance state/history concurrency regression."
+  );
+  assert.match(
+    focused,
     /run-extension-host\.js --t506/u,
     "test:t506 must execute the focused T506 Extension Host phases."
   );
