@@ -25,6 +25,7 @@ const ROOT = path.resolve("/repo");
 const FILE_ID = "file-pr";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const cloneCommit = (value: unknown): ReviewStateCommit => JSON.parse(JSON.stringify(value)) as ReviewStateCommit;
 const key = (target: ReviewStateRepositoryTarget): string =>
   `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
 
@@ -42,11 +43,11 @@ class MemoryRepository implements DocumentReviewStateRepository {
   }
   public async commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void> {
     const target = { kind: "pull-request" as const, repositoryId: transaction.repositoryId, contextId: transaction.contextId };
-    this.data.set(key(target), {
+    this.data.set(key(target), cloneCommit({
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-      contextState: clone(transaction.next.contextState),
-      globalState: clone(transaction.next.globalState),
-    });
+      contextState: transaction.next.contextState,
+      globalState: transaction.next.globalState,
+    }));
   }
 }
 
