@@ -1,5 +1,6 @@
 /** Public UI API for the Review Contexts View. */
 export {
+  VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
   type RegisteredReviewContextsRuntime,
