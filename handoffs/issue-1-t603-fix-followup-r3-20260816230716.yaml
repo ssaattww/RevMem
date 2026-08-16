@@ -1,0 +1,1344 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: '2026-08-16T23:07:16+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'PR #53'
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  current_head: cea2dba75aa13593de2723e9269f324fe7498ebf
+  reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  commit_range: 3b3fc007159fba3120f47c1b06ef7060281ed9ed..cea2dba75aa13593de2723e9269f324fe7498ebf
+authoritative_requirements:
+- source: user_instruction
+  reference: 指摘対応
+  summary: Address the latest T603 verification findings autonomously.
+- source: repository_instruction
+  reference: RevMem project instructions / uploaded worker skills
+  summary: GitHub connector writes, TDD, diagnostics, small commits, detailed report, concise PR comment, lossless handoff,
+    exact-head CI, no merge.
+- source: task
+  reference: tasks/tasks-status.md T603
+  summary: Staged persistence migration, backup, corruption isolation/recovery, rollback and fail-closed uncertainty.
+- source: design
+  reference: Design/BreakingChanges.md owner decision
+  summary: Corrupt history is preserved in quarantine and active history restarts without salvage.
+- source: report
+  reference: reports/issue-1-t603-fix-verification-20260816214122.md
+  summary: Normal fix verification left R006/R013/R015/R016 open at medium severity.
+- source: handoff
+  reference: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+  summary: Lossless source review lineage and next implementation instructions.
+development_policy:
+  method: TDD
+  testing_order: Add focused regression tests first, confirm exact-head Red, implement in small logical commits, then require
+    exact-head full Green.
+  governing_source: RevMem project instruction and uploaded chat worker Skills
+validation_plan:
+  commands:
+  - 'GitHub Actions CI: Build'
+  - Contract typecheck
+  - Architecture validation and negative contract
+  - Lint
+  - Unit tests
+  - T602 history rewrite recovery tests
+  - T603 migration/corruption/finding regressions including R006/R013/R015
+  - T403/T404/T304/T502/T503/T504/T505 focused suites
+  - Temporary Git integration tests
+  - Mock GitHub integration tests
+  - VS Code Extension Host tests
+  required_failure_diagnostics:
+  - test result logs
+  - combined standard output and standard error via 2>&1 | tee
+  - environment and Git status
+  - generated-file inventory
+  - source, tests, generated outputs and relevant configuration/workflow context
+blocked: []
+authorized_actions:
+- read_repository
+- edit_code
+- edit_tests
+- edit_workflows
+- write_handoff
+- write_report
+- commit
+- push
+- update_pr
+- comment_pr
+write_boundary:
+  allowed:
+  - path_or_operation: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    reason: R006 direct/startup snapshot pointer consistency.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    reason: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
+  - path_or_operation: .github/workflows/ci.yml
+    reason: Run new T603 regressions under existing diagnostic artifact boundary.
+  - path_or_operation: reports/issue-1-t603-fix-followup-r3-20260816230518.md
+    reason: Required durable implementation report.
+  - path_or_operation: handoffs/issue-1-t603-fix-followup-r3-20260816230716.yaml
+    reason: Required replacement lossless schema-v3 handoff.
+  - path_or_operation: 'PR #53 metadata/comments'
+    reason: Required concise completion/evidence transport.
+  forbidden:
+  - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+    reason: Reserved by repository progress-management workflow.
+  - path_or_operation: unrelated implementation/design
+    reason: Outside T603 remaining-finding scope.
+  - path_or_operation: 'merge PR #53'
+    reason: Reserved for the user.
+scope: &id001
+- Address T603-R006 snapshot latest-pointer consistency for wrapper/base64 corruption.
+- Address T603-R013 new-event ID collision and startup repository-owner history validation while preserving same-repository
+  multi-context history.
+- Address T603-R015 read-only recovery from owner-wide uncertainty.
+- Address T603-R016 by generating a literal schema-v3 lossless handoff after implementation report and PR comment references
+  exist.
+non_goals: &id002
+- T604 cross-process locking, stale lock handling, retention and cleanup.
+- T606 generalized startup I/O/retry/partial-availability policy.
+- Future schema-v2 semantic transformations.
+- Task/phase tracking updates.
+- Merge.
+files:
+  changed: &id003
+  - path: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for R006/R013/R015.
+  - path: test/unit/t603-r013-startup-owner-regression.test.ts
+    purpose: Direct startup owner-boundary Red/Green for R013.
+  - path: .github/workflows/ci.yml
+    purpose: Execute new T603 regressions under existing diagnostic artifact boundary.
+  - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    purpose: Invalidate matching latest pointers whenever wrapper/base64 snapshot corruption is quarantined.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD, diagnostics, small commits, detailed report, lossless handoff, exact-head CI, no merge.
+  - source: task
+    reference: tasks/tasks-status.md T603
+    summary: Staged persistence migration, backup, corruption isolation/recovery, rollback and fail-closed uncertainty.
+- source: design
+    reference: Design/BreakingChanges.md owner decision
+    summary: Corrupt history is preserved in quarantine and active history restarts without salvage.
+- source: report
+    reference: reports/issue-1-t603-fix-verification-20260816214122.md
+    summary: Normal fix verification left R006/R013/R015/R016 open at medium severity.
+- source: handoff
+    reference: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+    summary: Lossless source review lineage and next implementation instructions.
+development_policy:
+  method: TDD
+  testing_order: Add focused regression tests first, confirm exact-head Red, implement in small logical commits, then require
+    exact-head full Green.
+  governing_source: RevMem project instruction and uploaded chat worker Skills
+validation_plan:
+  commands:
+  - 'GitHub Actions CI: Build'
+  - Contract typecheck
+  - Architecture validation and negative contract
+  - Lint
+  - Unit tests
+  - T602 history rewrite recovery tests
+  - T603 migration/corruption/finding regressions including R006/R013/R015
+  - T403/T404/T304/T502/T503/T504/T505 focused suites
+  - Temporary Git integration tests
+  - Mock GitHub integration tests
+  - VS Code Extension Host tests
+  required_failure_diagnostics:
+  - test result logs
+  - combined standard output and standard error via 2>&1 | tee
+  - environment and Git status
+  - generated-file inventory
+  - source, tests, generated outputs and relevant configuration/workflow context
+blocked: []
+authorized_actions:
+- read_repository
+- edit_code
+- edit_tests
+- edit_workflows
+- write_handoff
+- write_report
+- commit
+- push
+- update_pr
+- comment_pr
+write_boundary:
+  allowed:
+  - path_or_operation: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+    reason: R006 direct/startup snapshot pointer consistency.
+  - path_or_operation: src/adapters/state-repository/jsonl-review-history-store.ts
+    reason: R013 event ID and owner validation.
+  - path_or_operation: src/adapters/persistence-startup-migration.ts
+    reason: R013 startup owner propagation.
+  - path_or_operation: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    reason: R015 read-only recovery.
+  - path_or_operation: test/unit/t603-fix-verification-r3.test.ts
+    purpose: TDD regressions for remaining behavior findings.
+  - path_or_operation: test/unit/t603-r013-startup-owner-regression.test.ts
+    reason: Direct startup owner regression.
