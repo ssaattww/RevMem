@@ -69,6 +69,10 @@ extends CoherentFileSystemReviewStateRepository {
   public override async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
     const preparation = await this.prepareTarget(target, "load");
     if (preparation === "uncertain") {
       return undefined;
@@ -77,14 +81,10 @@ extends CoherentFileSystemReviewStateRepository {
       const loaded = await super.load(target);
       if (loaded !== undefined) {
         validateOwnerReconciliation(loaded.contextState);
+        this.clearUncertain(target, route.rootPath);
       }
-      this.uncertainTargets.delete(this.targetKey(target));
       return loaded;
     } catch (error) {
-      const route = resolveReviewStateStorageRoute(
-        this.repositoryOptions.storageUris,
-        target
-      );
       this.markUncertain(target, route.rootPath);
       throw error;
     }
@@ -94,18 +94,21 @@ extends CoherentFileSystemReviewStateRepository {
   public async loadGlobal(
     target: ReviewStateRepositoryTarget
   ): Promise<RepositoryGlobalState | undefined> {
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
     const preparation = await this.prepareTarget(target, "load");
     if (preparation === "uncertain") {
       return undefined;
     }
     try {
       const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
+      if (loaded !== undefined) {
+        this.clearUncertain(target, route.rootPath);
+      }
       return loaded === undefined ? undefined : clone(loaded);
     } catch (error) {
-      const route = resolveReviewStateStorageRoute(
-        this.repositoryOptions.storageUris,
-        target
-      );
       this.markUncertain(target, route.rootPath);
       throw error;
     }
@@ -159,8 +162,7 @@ extends CoherentFileSystemReviewStateRepository {
       }
 
       await super.save(target, nextCommit);
-      this.uncertainTargets.delete(this.targetKey(target));
-      this.uncertainStorageRoots.delete(route.rootPath);
+      this.clearUncertain(target, route.rootPath);
     });
   }
 
@@ -192,8 +194,7 @@ extends CoherentFileSystemReviewStateRepository {
         throw new StaleReviewStateError(target);
       }
       await super.commit(transaction);
-      this.uncertainTargets.delete(this.targetKey(target));
-      this.uncertainStorageRoots.delete(route.rootPath);
+      this.clearUncertain(target, route.rootPath);
     });
   }
 
@@ -224,8 +225,7 @@ extends CoherentFileSystemReviewStateRepository {
         throw new StaleReviewStateError(target);
       }
       await super.create(transaction);
-      this.uncertainTargets.delete(this.targetKey(target));
-      this.uncertainStorageRoots.delete(route.rootPath);
+      this.clearUncertain(target, route.rootPath);
     });
   }
 
@@ -233,7 +233,6 @@ extends CoherentFileSystemReviewStateRepository {
     target: ReviewStateRepositoryTarget,
     operation: PersistenceOperation
   ): Promise<PersistedReviewStatePreparation> {
-    const key = this.targetKey(target);
     const route = resolveReviewStateStorageRoute(
       this.repositoryOptions.storageUris,
       target
@@ -245,9 +244,6 @@ extends CoherentFileSystemReviewStateRepository {
       );
       if (preparation === "uncertain") {
         this.markUncertain(target, route.rootPath);
-      } else {
-        this.uncertainTargets.delete(key);
-        this.uncertainStorageRoots.delete(route.rootPath);
       }
       return preparation;
     } catch (error) {
@@ -263,6 +259,14 @@ extends CoherentFileSystemReviewStateRepository {
       ).catch(() => undefined);
       throw error;
     }
+  }
+
+  private clearUncertain(
+    target: ReviewStateRepositoryTarget,
+    storageRoot: string
+  ): void {
+    this.uncertainTargets.delete(this.targetKey(target));
+    this.uncertainStorageRoots.delete(storageRoot);
   }
 
   private markUncertain(
