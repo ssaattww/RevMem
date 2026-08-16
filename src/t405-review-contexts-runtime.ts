@@ -95,11 +95,32 @@ const diffRequest = (context: ReviewContextState) => {
     throw new TypeError("pull-request context is required");
   }
   return {
+    contextId: context.contextId,
     repository: repositoryIdentity(context),
     number: pullRequest.number,
     baseSha: pullRequest.baseSha,
     headSha: pullRequest.headSha,
   };
+};
+
+const createPullRequestSearch = (
+  identity: GitHubRepositoryIdentity,
+  token: string | undefined,
+): FetchGitHubPullRequestAdapter => {
+  const apiBaseUrl = gitHubApiBaseUrl(identity.host);
+  return token === undefined
+    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl })
+    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token });
+};
+
+const createPullRequestRemote = (
+  identity: GitHubRepositoryIdentity,
+  token: string | undefined,
+): FetchGitHubPullRequestDiffAdapter => {
+  const apiBaseUrl = gitHubApiBaseUrl(identity.host);
+  return token === undefined
+    ? new FetchGitHubPullRequestDiffAdapter({ apiBaseUrl })
+    : new FetchGitHubPullRequestDiffAdapter({ apiBaseUrl, token });
 };
 
 class ReviewContextDiffDocumentProvider implements vscode.TextDocumentContentProvider {
@@ -128,15 +149,17 @@ class ReviewContextDiffDocumentProvider implements vscode.TextDocumentContentPro
 }
 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
-  private readonly repository = new FileSystemReviewStateRepository({ storageUris: this.uris });
+  private readonly repository: FileSystemReviewStateRepository;
   private readonly currentPullRequests = new Map<string, ReviewContextState>();
   private readonly roots = new Map<string, string>();
 
   public constructor(
-    private readonly uris: ReviewStateStorageUris,
+    uris: ReviewStateStorageUris,
     private readonly visibility: VscodeReviewContextVisibilityStore,
     private readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>,
-  ) {}
+  ) {
+    this.repository = new FileSystemReviewStateRepository({ storageUris: uris });
+  }
 
   public setCurrentPullRequest(repositoryId: string, context: ReviewContextState | undefined): void {
     if (context === undefined) this.currentPullRequests.delete(repositoryId);
@@ -313,10 +336,7 @@ export function registerT405ReviewContextsRuntime(
     const token = await auth.getAccessToken(identity.host);
     const acquisition = new PullRequestDiffAcquisitionService({
       local: new LocalGitPullRequestDiffAdapter(gitExecutor, root),
-      remote: new FetchGitHubPullRequestDiffAdapter({
-        apiBaseUrl: gitHubApiBaseUrl(identity.host),
-        token,
-      }),
+      remote: createPullRequestRemote(identity, token),
     });
     const route = resolveReviewStateStorageRoute(uris, {
       kind: "pull-request",
@@ -341,12 +361,8 @@ export function registerT405ReviewContextsRuntime(
     if (path === undefined) return "";
     const local = await gitExecutor.execute({ cwd: root, argumentsList: ["show", `${revision}:${path}`] });
     if (local.exitCode === 0) return local.stdout;
-    const remote = new FetchGitHubPullRequestDiffAdapter({
-      apiBaseUrl: gitHubApiBaseUrl(identity.host),
-      token,
-    });
-    const loaded = await remote.readFile(identity, revision, path);
-    if (loaded.kind === "text") return loaded.content;
+    const loaded = await createPullRequestRemote(identity, token).readFile(identity, revision, path);
+    if (loaded.kind === "found") return loaded.content;
     if (loaded.kind === "binary") throw new Error(`binary file cannot be opened as text diff: ${path}`);
     throw new Error(`revision content is unavailable: ${path}`);
   };
@@ -382,7 +398,8 @@ export function registerT405ReviewContextsRuntime(
         ? choices[0]
         : await vscode.window.showQuickPick(choices, { placeHolder: "PR diffを開くファイルを選択" });
       if (selected === undefined) return;
-      const pullRequest = context.pullRequest!;
+      const pullRequest = context.pullRequest;
+      if (pullRequest === undefined) throw new Error("PR context is required");
       const originalText = await readRevisionText(root, identity, token, pullRequest.baseSha, selected.file.oldPath);
       const modifiedText = await readRevisionText(root, identity, token, pullRequest.headSha, selected.file.newPath);
       const original = diffDocuments.create(originalText, selected.file.oldPath ?? selected.label, "base");
@@ -397,20 +414,19 @@ export function registerT405ReviewContextsRuntime(
       const identity = parseGitHubRemote(local.remote.rawUrl);
       if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
       const token = await auth.getAccessToken(identity.host);
-      const resolver = new GitHubPullRequestContextResolver(
-        new FetchGitHubPullRequestAdapter({ apiBaseUrl: gitHubApiBaseUrl(identity.host), token }),
-        {
-          chooseCandidate: async (candidates) => {
-            const items = candidates.map((candidate) => ({
-              label: `PR #${candidate.number}: ${candidate.title}`,
-              description: candidate.url,
-              candidate,
-            }));
-            return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
-          },
+      const search = createPullRequestSearch(identity, token);
+      const searchResult = await search.findOpenByHead(identity, local.head);
+      const resolver = new GitHubPullRequestContextResolver({
+        chooseCandidate: async (candidates) => {
+          const items = candidates.map((candidate) => ({
+            label: `PR #${candidate.number}: ${candidate.title}`,
+            description: candidate.url,
+            candidate,
+          }));
+          return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
         },
-      );
-      const resolution = await resolver.resolve(identity, local.head);
+      });
+      const resolution = await resolver.resolveSearchResult(searchResult);
       if (resolution.kind !== "pull-request") {
         source.setCurrentPullRequest(local.repositoryId, undefined);
         if (resolution.reason === "unavailable") throw new Error("GitHubからPRを再検出できませんでした。");
