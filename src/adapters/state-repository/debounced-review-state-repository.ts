@@ -4,6 +4,7 @@ import type {
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
+import type { ReviewContextState } from "../../core/contracts/index";
 
 /** Persistence surface wrapped by the lifecycle-aware debounce adapter. */
 export interface ReviewStatePersistenceDelegate {
@@ -16,6 +17,8 @@ export interface ReviewStatePersistenceDelegate {
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
   /** Optionally creates an absent context after comparing its owner-wide Global snapshot. */
   create?(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
+  /** Optionally enumerates the contexts sharing one repository storage owner. */
+  listRepositoryContexts?(repositoryId: string): Promise<ReviewContextState[]>;
 }
 
 /** Timer boundary injected to make debounce and deactivation behavior deterministic in tests. */
@@ -142,6 +145,22 @@ export class DebouncedReviewStateRepository {
           ? Promise.resolve(undefined)
           : loadGlobal.call(this.options.delegate, target)
       );
+    })();
+    return this.trackOperation(operation);
+  }
+
+  /** Enumerates repository contexts after pending owner writes become durable. */
+  public listRepositoryContexts(repositoryId: string): Promise<ReviewContextState[]> {
+    this.assertNotDisposed();
+    const operation = (async (): Promise<ReviewContextState[]> => {
+      await this.flush();
+      return this.enqueue(`repository\u0000${repositoryId}`, () => {
+        const list = this.options.delegate.listRepositoryContexts;
+        if (list === undefined) {
+          throw new Error("Review-state persistence delegate does not support repository context enumeration.");
+        }
+        return list.call(this.options.delegate, repositoryId);
+      });
     })();
     return this.trackOperation(operation);
   }

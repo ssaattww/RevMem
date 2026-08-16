@@ -8,7 +8,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
-import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
+import { FileSystemReviewStateRepository, JsonlReviewHistoryStore } from "../../src/adapters/state-repository/index.js";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
 import {
@@ -195,6 +196,11 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
       storageUri: { fsPath: workspaceStorageRoot },
     };
     const stateRepository = new FileSystemReviewStateRepository({ storageUris });
+    const historyRecorder = new ReviewHistoryRecorder({
+      sessionId: "t405-composition",
+      createEventId: () => "t405-composition-event",
+      appender: new JsonlReviewHistoryStore({ storageUris }),
+    });
     const contextId52 = `github-pr:${REPOSITORY_ID}#52`;
     const contextId53 = `github-pr:${REPOSITORY_ID}#53`;
     await stateRepository.save(
@@ -240,6 +246,7 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     const providers: CapturedReviewContextsProvider[] = [];
     const errors: string[] = [];
     const workspaceState = new MemoryMemento();
+    let redetectChoice: 52 | 53 | undefined = 53;
     const fakeVscode = {
       EventEmitter: FakeEventEmitter,
       TreeItem: FakeTreeItem,
@@ -264,7 +271,7 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
         showQuickPick: async (items: readonly unknown[], options?: { placeHolder?: string }): Promise<unknown> => {
           if (options?.placeHolder === "現在HEADのPRを選択") {
             return items.find((item) =>
-              (item as { candidate?: { number?: number } }).candidate?.number === 53
+              (item as { candidate?: { number?: number } }).candidate?.number === redetectChoice
             );
           }
           return items[0];
@@ -383,6 +390,8 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
         openPullRequestReviewDiff: (contextId, fileId, title) =>
           pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
         getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
+        reviewStateRepository: stateRepository,
+        reviewHistoryRecorder: historyRecorder,
       });
       registered = runtime;
       enumerateEnabled = true;
@@ -514,6 +523,14 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     assert.equal(findPullRequestItem(current.provider, 52).group, "saved-closed-pull-request");
     assert.equal(findPullRequestItem(current.provider, 53).group, "saved-closed-pull-request");
     assert.equal(findPullRequestItem(current.provider, 53).layerEnabled, false);
+
+    // T405-IFR-3: a cancelled same-HEAD re-detection must clear PR preference and return normal editor ownership to branch.
+    redetectChoice = undefined;
+    lifecycle52 = "open";
+    lifecycle53 = "open";
+    await invoke("reviewRange.redetectPullRequest");
+    const selectedAfterCancellation = selectedContexts.at(-1);
+    assert.equal(selectedAfterCancellation?.kind, "branch");
   } finally {
     moduleLoader._load = originalModuleLoad;
     globalThis.fetch = originalFetch;

@@ -6,6 +6,7 @@ import "./t405-composition-regression.test.js";
 
 import {
   findCurrentPullRequestContext,
+  formatReviewContextCacheStatus,
   formatReviewContextProgress,
   projectReviewContexts,
 } from "../../src/application/review-contexts/index.js";
@@ -123,6 +124,30 @@ test("R405-5 progress formatter covers zero, partial, and complete PR states", (
     totalLineCount: 4,
     progress: 1,
   }), "進捗: 100% (4/4)");
+});
+
+test("T405-IFR-2 keeps cache origin, freshness, and last successful update in the View projection", () => {
+  const cache = {
+    origin: "offline" as const,
+    freshness: "stale" as const,
+    updatedAt: "2026-08-17T08:14:00.000Z",
+  };
+  const item = projectReviewContexts({
+    current: [pullRequest],
+    saved: [],
+    hiddenContextIds: new Set(),
+    cacheByContextId: { [pullRequest.contextId]: cache },
+  })[0];
+
+  assert.deepEqual(item?.cache, cache);
+  assert.equal(
+    formatReviewContextCacheStatus(cache),
+    "Cache: offline · stale · 更新: 2026-08-17T08:14:00.000Z",
+  );
+  assert.equal(
+    formatReviewContextCacheStatus({ origin: "unavailable", freshness: "unavailable" }),
+    "Cache: 更新失敗",
+  );
 });
 
 test("R405-5 Review Contexts Tree renders projected progress to users", async () => {

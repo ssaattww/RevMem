@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import {
+  formatReviewContextCacheStatus,
   formatReviewContextProgress,
   type ReviewContextListItem,
   type ReviewContextVisibilityStore,
@@ -70,6 +71,19 @@ export class VscodeCurrentPullRequestSelectionStore {
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
+  /** 指定repository/HEADの明示PR選択を解除し、branch候補へ戻す。 */
+  public async clear(repositoryId: string, headRevision: string): Promise<void> {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+    const selections: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (key !== this.key(repositoryId, headRevision) && typeof value === "string" && value.trim().length > 0) {
+        selections[key] = value;
+      }
+    }
+    await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
   private key(repositoryId: string, headRevision: string): string {
     return `${repositoryId}\0${headRevision}`;
   }
@@ -88,6 +102,7 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
       element.current ? "現在" : undefined,
       element.description,
       formatReviewContextProgress(element.progress),
+      formatReviewContextCacheStatus(element.cache),
       element.layerEnabled === undefined ? undefined : `Layer: ${element.layerEnabled ? "ON" : "OFF"}`,
     ].filter((value): value is string => value !== undefined);
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
@@ -126,6 +141,8 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     if (context.pullRequest !== undefined) {
       const progress = formatReviewContextProgress(item.progress);
       if (progress !== undefined) lines.push(progress);
+      const cache = formatReviewContextCacheStatus(item.cache);
+      if (cache !== undefined) lines.push(cache);
       lines.push(`Base: ${context.pullRequest.baseSha}`);
       lines.push(`Head: ${context.pullRequest.headSha}`);
       lines.push(`Layer: ${item.layerEnabled === true ? "ON" : "OFF"}`);
@@ -159,8 +176,12 @@ export function registerReviewContextsRuntime(
   const refreshWithErrorBoundary = (): Promise<void> => report(() => provider.refresh());
   const mutate = (operation: () => Promise<void>, refreshDecorations = false): Promise<void> =>
     report(async () => {
-      await operation();
-      if (refreshDecorations) await dependencies.refreshDecorations();
+      try {
+        await operation();
+        if (refreshDecorations) await dependencies.refreshDecorations();
+      } catch (error) {
+        await dependencies.reportError(error);
+      }
       await provider.refresh();
     });
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {

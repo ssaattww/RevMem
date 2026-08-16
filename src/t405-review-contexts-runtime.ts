@@ -18,12 +18,16 @@ import {
   type LocalGitRepository,
 } from "./adapters/local-git/index";
 import {
-  FileSystemReviewStateRepository,
   resolveReviewStateStorageRoute,
+  type ReviewStateCommit,
+  type ReviewStateCreateTransactionLike,
+  type ReviewStateRepositoryTarget,
+  type ReviewStateTransactionLike,
   type ReviewStateStorageUris,
 } from "./adapters/state-repository/index";
 import type { RevisionTextContentReadResult } from "./application/diff-document/index";
 import { GitHubPullRequestCacheService } from "./application/github-pr-cache/index";
+import type { ReviewHistoryRecorder } from "./application/review-history/index";
 import {
   GitHubPullRequestContextResolver,
   createGitHubPullRequestContextIdFromRepositoryId,
@@ -37,6 +41,7 @@ import {
   ReviewContextsController,
   findCurrentPullRequestContext,
   projectReviewContexts,
+  type ReviewContextCacheStatus,
   type ReviewContextListItem,
   type ReviewContextListProgress,
 } from "./application/review-contexts/index";
@@ -75,6 +80,18 @@ export interface T405ReviewContextsRuntimeOptions {
   readonly getPullRequestReviewProgress: (
     contextId: string
   ) => Promise<ReviewContextListProgress>;
+  /** 同一Extension Hostで通常editor/PR diff/Review Contextsが共有するstate serialization owner。 */
+  readonly reviewStateRepository: T405ReviewStateRepository;
+  /** 同一Extension Hostで通常editor/PR diff/Review Contextsが共有するhistory serialization owner。 */
+  readonly reviewHistoryRecorder: Pick<ReviewHistoryRecorder, "recordContextCreated" | "recordRevisionMapping">;
+}
+
+interface T405ReviewStateRepository {
+  load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
+  loadGlobal(target: ReviewStateRepositoryTarget): Promise<RepositoryGlobalState | undefined>;
+  listRepositoryContexts(repositoryId: string): Promise<ReviewContextState[]>;
+  commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
+  create(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
 
 export interface RegisteredT405ReviewContextsRuntime
@@ -191,11 +208,10 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
 };
 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
-  private readonly repository: FileSystemReviewStateRepository;
   private readonly roots = new Map<string, string>();
 
   public constructor(
-    uris: ReviewStateStorageUris,
+    private readonly repository: T405ReviewStateRepository,
     private readonly visibility: VscodeReviewContextVisibilityStore,
     private readonly currentPullRequestSelection: VscodeCurrentPullRequestSelectionStore,
     private readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>,
@@ -207,9 +223,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       context: ReviewContextState,
       repositoryRoot: string
     ) => Promise<ReviewContextListProgress | undefined>,
-  ) {
-    this.repository = new FileSystemReviewStateRepository({ storageUris: uris });
-  }
+    private readonly cacheStatusByContextId: ReadonlyMap<string, ReviewContextCacheStatus>,
+  ) {}
 
   public repositoryRoot(repositoryId: string): string | undefined {
     return this.roots.get(repositoryId);
@@ -263,6 +278,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       saved: [...saved.values()],
       hiddenContextIds: new Set(await this.visibility.readHiddenContextIds()),
       progressByContextId,
+      cacheByContextId: Object.fromEntries(this.cacheStatusByContextId),
     });
   }
 
@@ -401,7 +417,7 @@ const pullRequestState = (
 };
 
 const currentGlobalForNewPullRequest = async (
-  repository: FileSystemReviewStateRepository,
+  repository: T405ReviewStateRepository,
   repositoryId: string,
   headSha: string,
 ): Promise<RepositoryGlobalState | undefined> => {
@@ -424,7 +440,7 @@ export function registerT405ReviewContextsRuntime(
   options: T405ReviewContextsRuntimeOptions,
 ): RegisteredT405ReviewContextsRuntime {
   const uris = storageUris(options.context);
-  const repository = new FileSystemReviewStateRepository({ storageUris: uris });
+  const repository = options.reviewStateRepository;
   const visibility = new VscodeReviewContextVisibilityStore(options.context.workspaceState);
   const currentPullRequestSelection = new VscodeCurrentPullRequestSelectionStore(
     options.context.workspaceState,
@@ -460,7 +476,8 @@ export function registerT405ReviewContextsRuntime(
   };
 
   const contextStateService = createNodeGitHubPullRequestContextStateService(
-    uris,
+    repository,
+    options.reviewHistoryRecorder,
     async (evidence) => {
       const current = await repository.load({
         kind: "pull-request",
@@ -574,6 +591,18 @@ export function registerT405ReviewContextsRuntime(
       freshnessMs: CACHE_FRESHNESS_MS,
     });
     const result = await cache.acquire(diffRequest(context));
+    if (forceRemote || !cacheStatusByContextId.has(context.contextId)) {
+      cacheStatusByContextId.set(
+        context.contextId,
+        result.kind === "acquired"
+          ? {
+              origin: result.cache.origin,
+              freshness: result.cache.freshness,
+              ...("updatedAt" in result.cache ? { updatedAt: result.cache.updatedAt } : {}),
+            }
+          : { origin: "unavailable", freshness: "unavailable" },
+      );
+    }
     if (result.kind === "acquired") {
       options.registerPullRequestReviewDiff({
         repositoryId: context.repositoryId,
@@ -590,6 +619,8 @@ export function registerT405ReviewContextsRuntime(
     }
     return { result, root, identity, token };
   };
+
+  const cacheStatusByContextId = new Map<string, ReviewContextCacheStatus>();
 
   const progressFor = async (
     context: ReviewContextState
@@ -631,12 +662,13 @@ export function registerT405ReviewContextsRuntime(
   };
 
   const source = new T405ReviewContextsSource(
-    uris,
+    repository,
     visibility,
     currentPullRequestSelection,
     options.enumerateCurrentContexts,
     synchronizeRepository,
     progressFor,
+    cacheStatusByContextId,
   );
   sourceRef.current = source;
 
@@ -655,6 +687,12 @@ export function registerT405ReviewContextsRuntime(
       const { result } = await acquire(context, true);
       if (result.kind !== "acquired") {
         throw new Error(`PR cacheを更新できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
+      }
+      if (result.cache.origin === "offline") {
+        throw new Error(`PR cacheを更新できませんでした: offline cache (${result.cache.freshness}) を表示しています。`);
+      }
+      if (result.cache.freshness !== "fresh") {
+        throw new Error("PR cacheを更新できませんでした: live取得結果をcacheへ保存できませんでした。");
       }
     },
     openPullRequestDiff: async (context) => {
@@ -751,6 +789,8 @@ export function registerT405ReviewContextsRuntime(
         );
       } else if (resolution.reason === "unavailable") {
         throw new Error("GitHubからPRを再検出できませんでした。");
+      } else {
+        await currentPullRequestSelection.clear(local.repositoryId, local.head);
       }
       await options.refreshCurrentContext();
     },

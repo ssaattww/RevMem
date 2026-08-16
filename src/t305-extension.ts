@@ -1,15 +1,9 @@
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
-import {
-  FileSystemReviewStateRepository,
-  JsonlReviewHistoryStore,
-} from "./adapters/state-repository/index";
-import { ReviewHistoryRecorder } from "./application/review-history/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
@@ -233,22 +227,8 @@ export function activate(context: vscode.ExtensionContext): unknown {
     }
   });
 
-  const prRepository = new FileSystemReviewStateRepository({
-    storageUris: {
-      globalStorageUri: context.globalStorageUri,
-      storageUri: context.storageUri,
-    },
-  });
-  const prHistory = new ReviewHistoryRecorder({
-    sessionId: randomUUID(),
-    createEventId: randomUUID,
-    appender: new JsonlReviewHistoryStore({
-      storageUris: {
-        globalStorageUri: context.globalStorageUri,
-        storageUri: context.storageUri,
-      },
-    }),
-  });
+  const prRepository = runtimePort.reviewStateRepository;
+  const prHistory = runtimePort.reviewHistoryRecorder;
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
     repository: prRepository,
     requestHistory: (transaction) => prHistory.recordTransaction(
@@ -347,6 +327,8 @@ export function activate(context: vscode.ExtensionContext): unknown {
       pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
     getPullRequestReviewProgress: (contextId) =>
       pullRequestReviewRuntime.getProgress(contextId),
+    reviewStateRepository: runtimePort.reviewStateRepository,
+    reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
   });
 
   const refreshGlobalUnderstanding = (): void => {

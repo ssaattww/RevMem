@@ -96,6 +96,10 @@ interface FileExclusionPolicySnapshot {
 
 /** Production runtime boundary shared with Current Context composition. */
 export interface ReviewRangeRuntimePort {
+  /** 同一Extension Hostで共有するReview Stateのserialization owner。 */
+  readonly reviewStateRepository: DebouncedReviewStateRepository;
+  /** 同一Extension Hostで共有するReview Historyのserialization owner。 */
+  readonly reviewHistoryRecorder: ReviewHistoryRecorder;
   /** Applies an explicit Current Context identity to commands and decorations. */
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
@@ -596,6 +600,8 @@ export function activate(
   void decorationController.start().catch(reportDecorationError);
 
   const runtimePort: ReviewRangeRuntimePort = {
+    reviewStateRepository: repository,
+    reviewHistoryRecorder: historyRecorder,
     setSelectedContext: (selection) => {
       selectedContext = selection;
     },

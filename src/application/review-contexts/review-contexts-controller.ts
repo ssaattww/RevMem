@@ -16,12 +16,35 @@ export interface ReviewContextListProgress {
   readonly progress: number;
 }
 
+/** Review Contexts Viewへ表示するPR cacheの取得元・鮮度・最終成功時刻。 */
+export type ReviewContextCacheStatus =
+  | {
+      readonly origin: "live" | "offline";
+      readonly freshness: "fresh" | "stale" | "not-cached";
+      readonly updatedAt?: string;
+    }
+  | {
+      readonly origin: "unavailable";
+      readonly freshness: "unavailable";
+    };
+
 /** Formats one PR progress snapshot for a user-visible Review Contexts row or tooltip. */
 export const formatReviewContextProgress = (
   progress: ReviewContextListProgress | undefined
 ): string | undefined => progress === undefined
   ? undefined
   : `進捗: ${Math.round(progress.progress * 100)}% (${progress.reviewedLineCount}/${progress.totalLineCount})`;
+
+/** PR cacheの取得状態をReview Contexts Viewで判別可能な文言へ整形する。 */
+export const formatReviewContextCacheStatus = (
+  cache: ReviewContextCacheStatus | undefined
+): string | undefined => {
+  if (cache === undefined) return undefined;
+  if (cache.origin === "unavailable") return "Cache: 更新失敗";
+  const parts = [`Cache: ${cache.origin}`, cache.freshness];
+  if (cache.updatedAt !== undefined) parts.push(`更新: ${cache.updatedAt}`);
+  return parts.join(" · ");
+};
 
 /** One context projected for the T405 Review Contexts View. */
 export interface ReviewContextListItem {
@@ -32,6 +55,8 @@ export interface ReviewContextListItem {
   readonly description?: string;
   readonly layerEnabled?: boolean;
   readonly progress?: ReviewContextListProgress;
+  /** PR cacheの取得元・鮮度・最終成功時刻。 */
+  readonly cache?: ReviewContextCacheStatus;
 }
 
 /** Inputs for deterministic current/saved context projection. */
@@ -40,6 +65,8 @@ export interface ReviewContextsProjectionInput {
   readonly saved: readonly ReviewContextState[];
   readonly hiddenContextIds: ReadonlySet<string>;
   readonly progressByContextId?: Readonly<Record<string, ReviewContextListProgress>>;
+  /** contextId単位で保持したPR cacheの表示状態。 */
+  readonly cacheByContextId?: Readonly<Record<string, ReviewContextCacheStatus>>;
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -91,7 +118,8 @@ const toItem = (
   context: ReviewContextState,
   current: boolean,
   group: ReviewContextListGroup,
-  progress: ReviewContextListProgress | undefined
+  progress: ReviewContextListProgress | undefined,
+  cache: ReviewContextCacheStatus | undefined
 ): ReviewContextListItem => ({
   context: clone(context),
   current,
@@ -102,6 +130,7 @@ const toItem = (
     ? {
         layerEnabled: isPullRequestDecorationEnabled(context.pullRequest),
         ...(progress === undefined ? {} : { progress: { ...progress } }),
+        ...(cache === undefined ? {} : { cache: { ...cache } }),
       }
     : {}),
 });
@@ -125,7 +154,8 @@ export const projectReviewContexts = (
         context,
         true,
         group,
-        input.progressByContextId?.[context.contextId]
+        input.progressByContextId?.[context.contextId],
+        input.cacheByContextId?.[context.contextId]
       ));
     }
   }
@@ -140,7 +170,8 @@ export const projectReviewContexts = (
         context,
         false,
         group,
-        input.progressByContextId?.[context.contextId]
+        input.progressByContextId?.[context.contextId],
+        input.cacheByContextId?.[context.contextId]
       ));
     }
   }
