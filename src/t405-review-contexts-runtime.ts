@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 
+import { NodeSha256StableHash } from "./adapters/crypto/index";
 import {
   FetchGitHubPullRequestAdapter,
   FetchGitHubPullRequestDiffAdapter,
+  FetchGitHubPullRequestLifecycleAdapter,
   NodeGitHubPullRequestCacheStorage,
   VsCodeGitHubAuthenticationProvider,
   createNodeGitHubPullRequestContextStateService,
@@ -21,6 +22,7 @@ import {
   resolveReviewStateStorageRoute,
   type ReviewStateStorageUris,
 } from "./adapters/state-repository/index";
+import type { RevisionTextContentReadResult } from "./application/diff-document/index";
 import { GitHubPullRequestCacheService } from "./application/github-pr-cache/index";
 import {
   GitHubPullRequestContextResolver,
@@ -29,14 +31,17 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+import type { GitRevisionMappingSource } from "./application/review-context/index";
 import {
+  PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
+  findCurrentPullRequestContext,
   projectReviewContexts,
   type ReviewContextListItem,
+  type ReviewContextListProgress,
 } from "./application/review-contexts/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
-  type PullRequestReviewContext,
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "./core/contracts/index";
@@ -47,16 +52,43 @@ import {
   type RegisteredReviewContextsRuntime,
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
+import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
-const DIFF_SCHEME = "review-range-pr-context";
-const MAX_DIFF_DOCUMENTS = 64;
+const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
 
-interface T405ReviewContextsRuntimeOptions {
+export interface T405ReviewContextsRuntimeOptions {
   readonly context: vscode.ExtensionContext;
-  readonly git: LocalGitAdapter;
+  readonly git: LocalGitAdapter & GitRevisionMappingSource;
   readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>;
   readonly refreshDecorations: () => Promise<void>;
+  readonly refreshCurrentContext: () => Promise<void>;
+  readonly registerPullRequestReviewDiff: (
+    registration: PullRequestReviewRuntimeRegistration
+  ) => void;
+  readonly openPullRequestReviewDiff: (
+    contextId: string,
+    fileId: string,
+    title?: string
+  ) => Promise<void>;
+  readonly getPullRequestReviewProgress: (
+    contextId: string
+  ) => Promise<ReviewContextListProgress>;
+}
+
+export interface RegisteredT405ReviewContextsRuntime
+extends RegisteredReviewContextsRuntime {
+  augmentCurrentContextCandidates(
+    localCandidates: readonly CurrentContextUiSnapshot[]
+  ): Promise<readonly CurrentContextUiSnapshot[]>;
+}
+
+interface LocalRepositoryOwner {
+  readonly repositoryId: string;
+  readonly repositoryRoot: string;
+  readonly headRevision: string;
+  readonly branchRef?: string;
+  readonly snapshot: CurrentContextUiSnapshot;
 }
 
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
@@ -123,47 +155,58 @@ const createPullRequestRemote = (
     : new FetchGitHubPullRequestDiffAdapter({ apiBaseUrl, token });
 };
 
-class ReviewContextDiffDocumentProvider implements vscode.TextDocumentContentProvider {
-  private readonly contents = new Map<string, string>();
-  private sequence = 0;
+const createPullRequestLifecycle = (
+  identity: GitHubRepositoryIdentity,
+  token: string | undefined,
+): FetchGitHubPullRequestLifecycleAdapter => {
+  const apiBaseUrl = gitHubApiBaseUrl(identity.host);
+  return token === undefined
+    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl })
+    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token });
+};
 
-  public provideTextDocumentContent(uri: vscode.Uri): string {
-    return this.contents.get(uri.toString(true)) ?? "";
+const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | undefined => {
+  const selection = snapshot.context.selection;
+  if (selection?.kind === "branch") {
+    const headRevision = snapshot.context.headRevision;
+    if (headRevision === undefined) return undefined;
+    return {
+      repositoryId: selection.repositoryId,
+      repositoryRoot: selection.repositoryRoot,
+      headRevision,
+      branchRef: selection.branchRef,
+      snapshot,
+    };
   }
-
-  public create(content: string, displayPath: string, side: string): vscode.Uri {
-    const token = `${Date.now()}-${this.sequence++}-${randomUUID()}`;
-    const uri = vscode.Uri.from({
-      scheme: DIFF_SCHEME,
-      path: `/${encodeURIComponent(displayPath)}`,
-      query: `side=${encodeURIComponent(side)}&token=${encodeURIComponent(token)}`,
-    });
-    this.contents.set(uri.toString(true), content);
-    while (this.contents.size > MAX_DIFF_DOCUMENTS) {
-      const first = this.contents.keys().next().value as string | undefined;
-      if (first === undefined) break;
-      this.contents.delete(first);
-    }
-    return uri;
+  if (selection?.kind === "detached") {
+    return {
+      repositoryId: selection.repositoryId,
+      repositoryRoot: selection.repositoryRoot,
+      headRevision: selection.headRevision,
+      snapshot,
+    };
   }
-}
+  return undefined;
+};
 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly repository: FileSystemReviewStateRepository;
-  private readonly currentPullRequests = new Map<string, ReviewContextState>();
   private readonly roots = new Map<string, string>();
 
   public constructor(
     uris: ReviewStateStorageUris,
     private readonly visibility: VscodeReviewContextVisibilityStore,
     private readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>,
+    private readonly synchronizeRepository: (
+      owner: LocalRepositoryOwner,
+      persisted: readonly ReviewContextState[]
+    ) => Promise<void>,
+    private readonly progressFor: (
+      context: ReviewContextState,
+      repositoryRoot: string
+    ) => Promise<ReviewContextListProgress | undefined>,
   ) {
     this.repository = new FileSystemReviewStateRepository({ storageUris: uris });
-  }
-
-  public setCurrentPullRequest(repositoryId: string, context: ReviewContextState | undefined): void {
-    if (context === undefined) this.currentPullRequests.delete(repositoryId);
-    else this.currentPullRequests.set(repositoryId, context);
   }
 
   public repositoryRoot(repositoryId: string): string | undefined {
@@ -173,27 +216,36 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   public async load(): Promise<readonly ReviewContextListItem[]> {
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
+    const progressByContextId: Record<string, ReviewContextListProgress> = {};
     this.roots.clear();
 
     for (const snapshot of await this.enumerateCurrentContexts()) {
-      const selection = snapshot.context.selection;
-      if (selection?.kind === "branch") {
-        this.roots.set(selection.repositoryId, selection.repositoryRoot);
-        const persisted = await this.repository.listRepositoryContexts(selection.repositoryId);
+      const owner = localOwner(snapshot);
+      if (owner !== undefined) {
+        this.roots.set(owner.repositoryId, owner.repositoryRoot);
+        let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+        await this.synchronizeRepository(owner, persisted);
+        persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
         for (const context of persisted) saved.set(context.contextId, context);
-        const branch = persisted.find((context) =>
-          context.kind === "branch" && context.branch?.refName === selection.branchRef
-        );
-        current.push(branch ?? this.syntheticBranch(snapshot, selection.repositoryId, selection.branchRef));
-        const pullRequest = this.currentPullRequests.get(selection.repositoryId);
-        if (pullRequest !== undefined) current.unshift(pullRequest);
-      } else if (selection?.kind === "detached") {
-        this.roots.set(selection.repositoryId, selection.repositoryRoot);
-        for (const context of await this.repository.listRepositoryContexts(selection.repositoryId)) {
-          saved.set(context.contextId, context);
+
+        if (owner.branchRef !== undefined) {
+          const branch = persisted.find((context) =>
+            context.kind === "branch" && context.branch?.refName === owner.branchRef
+          );
+          current.push(branch ?? this.syntheticBranch(snapshot, owner.repositoryId, owner.branchRef));
         }
-        const pullRequest = this.currentPullRequests.get(selection.repositoryId);
-        if (pullRequest !== undefined) current.unshift(pullRequest);
+        const currentPullRequest = findCurrentPullRequestContext(
+          persisted,
+          owner.repositoryId,
+          owner.headRevision
+        );
+        if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
+
+        for (const context of persisted) {
+          if (context.kind !== "pull-request") continue;
+          const progress = await this.progressFor(context, owner.repositoryRoot);
+          if (progress !== undefined) progressByContextId[context.contextId] = progress;
+        }
       } else if (snapshot.context.kind === "workspace") {
         current.push(this.syntheticWorkspace(snapshot));
       }
@@ -203,7 +255,69 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       current,
       saved: [...saved.values()],
       hiddenContextIds: new Set(await this.visibility.readHiddenContextIds()),
+      progressByContextId,
     });
+  }
+
+  public async augmentCurrentContextCandidates(
+    localCandidates: readonly CurrentContextUiSnapshot[]
+  ): Promise<readonly CurrentContextUiSnapshot[]> {
+    const candidates = new Map<string, CurrentContextUiSnapshot>();
+    for (const candidate of localCandidates) {
+      candidates.set(this.candidateKey(candidate), candidate);
+      const owner = localOwner(candidate);
+      if (owner === undefined) continue;
+      this.roots.set(owner.repositoryId, owner.repositoryRoot);
+      let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      await this.synchronizeRepository(owner, persisted);
+      persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      const pullRequest = findCurrentPullRequestContext(
+        persisted,
+        owner.repositoryId,
+        owner.headRevision
+      );
+      if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
+      const progress = await this.progressFor(pullRequest, owner.repositoryRoot);
+      const pr = pullRequest.pullRequest;
+      const projected: CurrentContextUiSnapshot = {
+        context: {
+          kind: "pull-request",
+          label: `#${pr.number}`,
+          detail: pr.title ?? pullRequest.displayName,
+          baseRevision: pr.baseSha,
+          headRevision: pr.headSha,
+          selection: {
+            kind: "pull-request",
+            repositoryId: owner.repositoryId,
+            repositoryRoot: owner.repositoryRoot,
+            contextId: pullRequest.contextId,
+            pullRequestNumber: pr.number,
+            headRevision: pr.headSha,
+          },
+        },
+        progress,
+      };
+      candidates.set(this.candidateKey(projected), projected);
+    }
+    return [...candidates.values()].sort((left, right) =>
+      this.kindOrder(left) - this.kindOrder(right) ||
+      left.context.label.localeCompare(right.context.label)
+    );
+  }
+
+  private candidateKey(snapshot: CurrentContextUiSnapshot): string {
+    const selection = snapshot.context.selection;
+    if (selection?.kind === "pull-request") return `pr\0${selection.contextId}`;
+    if (selection?.kind === "branch") return `branch\0${selection.repositoryId}\0${selection.branchRef}`;
+    if (selection?.kind === "detached") return `detached\0${selection.repositoryId}\0${selection.headRevision}`;
+    if (selection?.kind === "workspace") return `workspace\0${JSON.stringify(selection.workspaceFolderUri)}`;
+    return `${snapshot.context.kind}\0${snapshot.context.detail ?? ""}\0${snapshot.context.label}`;
+  }
+
+  private kindOrder(snapshot: CurrentContextUiSnapshot): number {
+    if (snapshot.context.kind === "pull-request") return 0;
+    if (snapshot.context.kind === "branch") return 1;
+    return 2;
   }
 
   private syntheticBranch(
@@ -294,31 +408,21 @@ const currentGlobalForNewPullRequest = async (
   };
 };
 
-/** Composes T401/T402/T403/T404 boundaries into the T405 VS Code View. */
 export function registerT405ReviewContextsRuntime(
   options: T405ReviewContextsRuntimeOptions,
-): RegisteredReviewContextsRuntime {
+): RegisteredT405ReviewContextsRuntime {
   const uris = storageUris(options.context);
   const repository = new FileSystemReviewStateRepository({ storageUris: uris });
   const visibility = new VscodeReviewContextVisibilityStore(options.context.workspaceState);
-  const source = new T405ReviewContextsSource(uris, visibility, options.enumerateCurrentContexts);
+  const stableHash = new NodeSha256StableHash();
   const gitExecutor = new NodeGitCommandExecutor();
-  const diffDocuments = new ReviewContextDiffDocumentProvider();
-  options.context.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffDocuments),
-  );
-
   const auth = new VsCodeGitHubAuthenticationProvider(
     vscode.authentication,
     ["repo"],
     vscode.workspace.getConfiguration("github-enterprise").get<string>("uri"),
   );
-  const contextStateService = createNodeGitHubPullRequestContextStateService(
-    uris,
-    async () => {
-      throw new Error("Revision remapping is not a layer-toggle operation");
-    },
-  );
+
+  let source: T405ReviewContextsSource;
 
   const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
     const editor = vscode.window.activeTextEditor;
@@ -330,12 +434,115 @@ export function registerT405ReviewContextsRuntime(
     return inspection.repository;
   };
 
-  const acquire = async (context: ReviewContextState) => {
-    const root = source.repositoryRoot(context.repositoryId) ?? (await inspectActiveRepository()).rootPath;
+  const resolveRepositoryRoot = async (repositoryId: string): Promise<string> => {
+    const known = source?.repositoryRoot(repositoryId);
+    if (known !== undefined) return known;
+    const active = await inspectActiveRepository();
+    if (active.repositoryId !== repositoryId) {
+      throw new Error("対象PRのローカルGitリポジトリを解決できません。");
+    }
+    return active.rootPath;
+  };
+
+  const contextStateService = createNodeGitHubPullRequestContextStateService(
+    uris,
+    async (evidence) => {
+      const current = await repository.load({
+        kind: "pull-request",
+        repositoryId: evidence.repositoryId,
+        contextId: evidence.contextId,
+      });
+      if (current === undefined || current.contextState.pullRequest === undefined) {
+        throw new Error("Revision mapping requires persisted pull-request state.");
+      }
+      const root = await resolveRepositoryRoot(evidence.repositoryId);
+      const context = current.contextState;
+      const identity = repositoryIdentity(context);
+      const token = await auth.getAccessToken(identity.host);
+      const lifecycle = createPullRequestLifecycle(identity, token);
+      const remote = createPullRequestRemote(identity, token);
+      return new PullRequestRevisionEvidenceLoader({
+        loadCurrent: async () => ({
+          contextState: current.contextState,
+          globalState: current.globalState,
+        }),
+        loadDiff: async (request) => {
+          const local = await new LocalGitPullRequestDiffAdapter(gitExecutor, root).loadDiff({
+            contextId: request.contextId,
+            repository: identity,
+            number: context.pullRequest!.number,
+            baseSha: request.sourceHeadSha,
+            headSha: request.targetHeadSha,
+          });
+          if (local.kind === "available") return local.diff;
+          const fallback = await lifecycle.compareRevisions(
+            identity,
+            request.sourceHeadSha,
+            request.targetHeadSha
+          );
+          if (fallback.kind === "available") return fallback.diff;
+          throw new Error(`PR revision diff is unavailable: ${fallback.reason}`);
+        },
+        readText: async (revision, repositoryPath) => {
+          const local = await options.git.readTextFileAtRevision(
+            root,
+            revision,
+            repositoryPath,
+            PATH_SEMANTICS
+          );
+          if (local.kind === "found") return local;
+          if (local.kind === "invalid-encoding") return { kind: "binary" as const };
+          const fallback = await remote.readFile(identity, revision, repositoryPath);
+          if (fallback.kind === "found") return fallback;
+          if (fallback.kind === "binary") return { kind: "binary" as const };
+          return { kind: "unavailable" as const };
+        },
+        createFileId: (repositoryId, repositoryPath) =>
+          `repository-file:${stableHash.digest(["repository-file", repositoryId, repositoryPath].join("\0"))}`,
+        hashText: (text) => stableHash.digest(text),
+      }).load(evidence);
+    },
+  );
+
+  const readReviewDiffContent = async (
+    root: string,
+    identity: GitHubRepositoryIdentity,
+    token: string | undefined,
+    descriptor: Parameters<PullRequestReviewRuntimeRegistration["readTextContent"]>[0]
+  ): Promise<RevisionTextContentReadResult> => {
+    const local = await options.git.readTextFileAtRevision(
+      root,
+      descriptor.revision,
+      descriptor.filePath,
+      descriptor.fileSystemPathSemantics
+    );
+    if (local.kind === "found") return local;
+    if (local.kind === "invalid-encoding") return local;
+    const remote = await createPullRequestRemote(identity, token).readFile(
+      identity,
+      descriptor.revision,
+      descriptor.filePath
+    );
+    if (remote.kind === "found") return remote;
+    if (remote.kind === "binary") return { kind: "invalid-encoding", encoding: "utf-8" };
+    if (remote.reason === "missing-file") return { kind: "missing-file" };
+    if (remote.reason === "missing-revision") return { kind: "missing-revision" };
+    return local.kind === "missing-revision"
+      ? { kind: "missing-revision" }
+      : { kind: "missing-file" };
+  };
+
+  const acquire = async (
+    context: ReviewContextState,
+    forceRemote = false,
+  ) => {
+    const root = await resolveRepositoryRoot(context.repositoryId);
     const identity = repositoryIdentity(context);
     const token = await auth.getAccessToken(identity.host);
     const acquisition = new PullRequestDiffAcquisitionService({
-      local: new LocalGitPullRequestDiffAdapter(gitExecutor, root),
+      local: forceRemote
+        ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
+        : new LocalGitPullRequestDiffAdapter(gitExecutor, root),
       remote: createPullRequestRemote(identity, token),
     });
     const route = resolveReviewStateStorageRoute(uris, {
@@ -343,33 +550,79 @@ export function registerT405ReviewContextsRuntime(
       repositoryId: context.repositoryId,
       contextId: context.contextId,
     });
-    const cacheDirectory = route.cacheDirectory;
-    if (cacheDirectory === undefined) {
+    if (route.cacheDirectory === undefined) {
       throw new Error("Pull-request cache requires a repository storage route");
     }
     const cache = new GitHubPullRequestCacheService({
       acquisition,
-      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory }),
+      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory: route.cacheDirectory }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
-    return { result: await cache.acquire(diffRequest(context)), root, identity, token };
+    const result = await cache.acquire(diffRequest(context));
+    if (result.kind === "acquired") {
+      options.registerPullRequestReviewDiff({
+        repositoryId: context.repositoryId,
+        repositoryRoot: root,
+        fileSystemPathSemantics: PATH_SEMANTICS,
+        snapshot: result.snapshot,
+        readTextContent: (descriptor) => readReviewDiffContent(
+          root,
+          identity,
+          token,
+          descriptor
+        ),
+      });
+    }
+    return { result, root, identity, token };
   };
 
-  const readRevisionText = async (
-    root: string,
-    identity: GitHubRepositoryIdentity,
-    token: string | undefined,
-    revision: string,
-    path: string | undefined,
-  ): Promise<string> => {
-    if (path === undefined) return "";
-    const local = await gitExecutor.execute({ cwd: root, argumentsList: ["show", `${revision}:${path}`] });
-    if (local.exitCode === 0) return local.stdout;
-    const loaded = await createPullRequestRemote(identity, token).readFile(identity, revision, path);
-    if (loaded.kind === "found") return loaded.content;
-    if (loaded.kind === "binary") throw new Error(`binary file cannot be opened as text diff: ${path}`);
-    throw new Error(`revision content is unavailable: ${path}`);
+  const progressFor = async (
+    context: ReviewContextState,
+    _repositoryRoot: string
+  ): Promise<ReviewContextListProgress | undefined> => {
+    try {
+      const { result } = await acquire(context);
+      if (result.kind !== "acquired") return undefined;
+      return await options.getPullRequestReviewProgress(context.contextId);
+    } catch {
+      return undefined;
+    }
   };
+
+  const synchronizeRepository = async (
+    owner: LocalRepositoryOwner,
+    persisted: readonly ReviewContextState[]
+  ): Promise<void> => {
+    for (const context of persisted) {
+      if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
+      const identity = repositoryIdentity(context);
+      const token = await auth.getAccessToken(identity.host);
+      const lifecycle = createPullRequestLifecycle(identity, token);
+      const latest = await lifecycle.fetchCurrent(identity, context.pullRequest.number);
+      if (latest.kind !== "available") continue;
+      await contextStateService.update({
+        repositoryId: context.repositoryId,
+        identity: pullRequestIdentity(context),
+        displayName: `PR #${latest.metadata.number}`,
+        pullRequest: {
+          ...context.pullRequest,
+          state: latest.metadata.state,
+          title: latest.metadata.title,
+          baseSha: latest.metadata.baseSha,
+          headSha: latest.metadata.headSha,
+        },
+      });
+    }
+    void owner;
+  };
+
+  source = new T405ReviewContextsSource(
+    uris,
+    visibility,
+    options.enumerateCurrentContexts,
+    synchronizeRepository,
+    progressFor,
+  );
 
   const controller = new ReviewContextsController({
     visibility,
@@ -383,32 +636,37 @@ export function registerT405ReviewContextsRuntime(
       });
     },
     refreshPullRequestCache: async (context) => {
-      const { result } = await acquire(context);
+      const { result } = await acquire(context, true);
       if (result.kind !== "acquired") {
         throw new Error(`PR cacheを更新できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }
     },
     openPullRequestDiff: async (context) => {
-      const { result, root, identity, token } = await acquire(context);
+      const { result } = await acquire(context);
       if (result.kind !== "acquired") {
         throw new Error(`PR diffを取得できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }
-      const choices = result.snapshot.files.map((file) => ({
-        label: file.newPath ?? file.oldPath ?? file.fileId,
-        description: file.status,
-        file,
-      }));
+      const choices = result.snapshot.files
+        .filter((file) => file.status !== "binary")
+        .map((file) => ({
+          label: file.newPath ?? file.oldPath ?? file.fileId,
+          description: file.status,
+          file,
+        }));
+      if (choices.length === 0) {
+        throw new Error("このPRにはテキストとして開ける変更ファイルがありません。");
+      }
       const selected = choices.length === 1
         ? choices[0]
         : await vscode.window.showQuickPick(choices, { placeHolder: "PR diffを開くファイルを選択" });
       if (selected === undefined) return;
       const pullRequest = context.pullRequest;
       if (pullRequest === undefined) throw new Error("PR context is required");
-      const originalText = await readRevisionText(root, identity, token, pullRequest.baseSha, selected.file.oldPath);
-      const modifiedText = await readRevisionText(root, identity, token, pullRequest.headSha, selected.file.newPath);
-      const original = diffDocuments.create(originalText, selected.file.oldPath ?? selected.label, "base");
-      const modified = diffDocuments.create(modifiedText, selected.file.newPath ?? selected.label, "head");
-      await vscode.commands.executeCommand("vscode.diff", original, modified, `${selected.label} (PR #${pullRequest.number})`);
+      await options.openPullRequestReviewDiff(
+        context.contextId,
+        selected.file.fileId,
+        `${selected.label} (PR #${pullRequest.number})`
+      );
     },
     redetectPullRequest: async () => {
       const local = await inspectActiveRepository();
@@ -417,9 +675,18 @@ export function registerT405ReviewContextsRuntime(
       }
       const identity = parseGitHubRemote(local.remote.rawUrl);
       if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
+      const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
+      await synchronizeRepository({
+        repositoryId: local.repositoryId,
+        repositoryRoot: local.rootPath,
+        headRevision: local.head,
+        snapshot: {
+          context: { kind: "branch", label: "active", headRevision: local.head },
+          progress: undefined,
+        },
+      }, persistedBefore);
+
       const token = await auth.getAccessToken(identity.host);
-      const search = createPullRequestSearch(identity, token);
-      const searchResult = await search.findOpenByHead(identity, local.head);
       const resolver = new GitHubPullRequestContextResolver({
         chooseCandidate: async (candidates) => {
           const items = candidates.map((candidate) => ({
@@ -430,38 +697,41 @@ export function registerT405ReviewContextsRuntime(
           return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
         },
       });
-      const resolution = await resolver.resolveSearchResult(searchResult);
-      if (resolution.kind !== "pull-request") {
-        source.setCurrentPullRequest(local.repositoryId, undefined);
-        if (resolution.reason === "unavailable") throw new Error("GitHubからPRを再検出できませんでした。");
-        return;
-      }
-
-      const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
-      source.setCurrentPullRequest(local.repositoryId, state);
-      const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
-      if (existing !== undefined) {
-        if (
-          existing.contextState.pullRequest?.baseSha === state.pullRequest?.baseSha &&
-          existing.contextState.pullRequest?.headSha === state.pullRequest?.headSha
-        ) {
+      const search = await createPullRequestSearch(identity, token).findOpenByHead(identity, local.head);
+      const resolution = await resolver.resolveSearchResult(search);
+      if (resolution.kind === "pull-request") {
+        const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
+        const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+        if (existing !== undefined) {
           await contextStateService.update({
             repositoryId: local.repositoryId,
             identity: pullRequestIdentity(state),
-            pullRequest: state.pullRequest as PullRequestReviewContext,
+            pullRequest: state.pullRequest!,
             displayName: state.displayName,
           });
+        } else {
+          const global = await currentGlobalForNewPullRequest(
+            repository,
+            local.repositoryId,
+            resolution.pullRequest.headSha
+          );
+          if (global === undefined) {
+            throw new Error("現在のGlobal stateをPR headへ安全に対応付けできません。");
+          }
+          const expectedGlobal = await repository.loadGlobal({
+            kind: "git",
+            repositoryId: local.repositoryId,
+            contextId: state.contextId,
+          });
+          await contextStateService.create(
+            { contextState: state, globalState: global },
+            expectedGlobal
+          );
         }
-        return;
+      } else if (resolution.reason === "unavailable") {
+        throw new Error("GitHubからPRを再検出できませんでした。");
       }
-      const global = await currentGlobalForNewPullRequest(repository, local.repositoryId, resolution.pullRequest.headSha);
-      if (global === undefined) return;
-      const expectedGlobal = await repository.loadGlobal({
-        kind: "git",
-        repositoryId: local.repositoryId,
-        contextId: state.contextId,
-      });
-      await contextStateService.create({ contextState: state, globalState: global }, expectedGlobal);
+      await options.refreshCurrentContext();
     },
     reconnectGitHub: async () => {
       const local = await inspectActiveRepository();
@@ -473,7 +743,7 @@ export function registerT405ReviewContextsRuntime(
     },
   });
 
-  return registerReviewContextsRuntime(options.context, {
+  const registered = registerReviewContextsRuntime(options.context, {
     source,
     controller,
     refreshDecorations: options.refreshDecorations,
@@ -483,4 +753,10 @@ export function registerT405ReviewContextsRuntime(
       );
     },
   });
+
+  return {
+    ...registered,
+    augmentCurrentContextCandidates: (localCandidates) =>
+      source.augmentCurrentContextCandidates(localCandidates),
+  };
 }
