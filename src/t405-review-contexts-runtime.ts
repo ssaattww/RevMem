@@ -422,7 +422,7 @@ export function registerT405ReviewContextsRuntime(
     vscode.workspace.getConfiguration("github-enterprise").get<string>("uri"),
   );
 
-  let source: T405ReviewContextsSource;
+  const sourceRef: { current?: T405ReviewContextsSource } = {};
 
   const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
     const editor = vscode.window.activeTextEditor;
@@ -435,7 +435,7 @@ export function registerT405ReviewContextsRuntime(
   };
 
   const resolveRepositoryRoot = async (repositoryId: string): Promise<string> => {
-    const known = source?.repositoryRoot(repositoryId);
+    const known = sourceRef.current?.repositoryRoot(repositoryId);
     if (known !== undefined) return known;
     const active = await inspectActiveRepository();
     if (active.repositoryId !== repositoryId) {
@@ -577,8 +577,7 @@ export function registerT405ReviewContextsRuntime(
   };
 
   const progressFor = async (
-    context: ReviewContextState,
-    _repositoryRoot: string
+    context: ReviewContextState
   ): Promise<ReviewContextListProgress | undefined> => {
     try {
       const { result } = await acquire(context);
@@ -616,13 +615,14 @@ export function registerT405ReviewContextsRuntime(
     void owner;
   };
 
-  source = new T405ReviewContextsSource(
+  const source = new T405ReviewContextsSource(
     uris,
     visibility,
     options.enumerateCurrentContexts,
     synchronizeRepository,
     progressFor,
   );
+  sourceRef.current = source;
 
   const controller = new ReviewContextsController({
     visibility,

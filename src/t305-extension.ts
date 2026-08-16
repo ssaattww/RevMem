@@ -160,9 +160,10 @@ export function activate(context: vscode.ExtensionContext): unknown {
     );
   };
 
-  let reviewContextsRuntime: RegisteredT405ReviewContextsRuntime | undefined;
+  const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
   const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const local = await enumerateLocalContexts();
+    const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     return reviewContextsRuntime === undefined
       ? local
       : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local)];
@@ -307,8 +308,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
     invokeCommand: (operation, editor) => pullRequestCommandService[operation](editor),
   }));
 
-  let currentContextRuntime: RegisteredCurrentContextRuntime | undefined;
-  currentContextRuntime = registerCurrentContextRuntime(
+  const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
       recompute: () => currentContextComposition.recompute(),
@@ -327,7 +327,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
       refreshDependents: async () => {
         await runtimePort.refreshVisibleEditorDecorations();
         await globalRuntime.refresh();
-        await reviewContextsRuntime?.refresh();
+        await reviewContextsRuntimeRef.current?.refresh();
       }
     },
     async (error) => {
@@ -337,12 +337,12 @@ export function activate(context: vscode.ExtensionContext): unknown {
     }
   );
 
-  reviewContextsRuntime = registerT405ReviewContextsRuntime({
+  reviewContextsRuntimeRef.current = registerT405ReviewContextsRuntime({
     context,
     git,
     enumerateCurrentContexts: enumerateLocalContexts,
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
-    refreshCurrentContext: () => currentContextRuntime?.refresh() ?? Promise.resolve(),
+    refreshCurrentContext: () => currentContextRuntime.refresh(),
     registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
     openPullRequestReviewDiff: (contextId, fileId, title) =>
       pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
@@ -370,7 +370,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       refreshGlobalUnderstanding();
-      void reviewContextsRuntime?.refreshWithErrorBoundary();
+      void reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
     }),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
     vscode.workspace.onDidChangeTextDocument((event) => requestRefreshForDocumentChange(event.document)),
