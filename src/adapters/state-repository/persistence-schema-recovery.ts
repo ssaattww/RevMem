@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { rm } from "node:fs/promises";
 import path from "node:path";
 
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
@@ -10,11 +9,12 @@ import type {
   ReviewStateRepositoryTarget,
   ReviewStateStorageRoute
 } from "./contracts";
+import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 type JsonRecord = Record<string, unknown>;
 
-type SchemaMigrationStep = {
+export type SchemaMigrationStep = {
   readonly fromVersion: number;
   readonly toVersion: number;
   readonly migrate: (value: JsonRecord) => JsonRecord;
@@ -35,7 +35,7 @@ interface MigrationWrite {
 
 export type PersistedReviewStatePreparation = "absent" | "ready" | "uncertain";
 
-/** Raised for persisted data written by a newer or unsupported migration lineage. */
+/** Raised only when a syntactically valid schema version is newer than, or disconnected from, this reader. */
 export class UnsupportedPersistedSchemaVersionError extends Error {
   public constructor(documentName: string, version: unknown) {
     super(`${documentName} schema version ${String(version)} is not supported.`);
@@ -57,6 +57,28 @@ const requireString = (value: unknown, name: string): string => {
   return value;
 };
 
+const requireArray = (value: unknown, name: string): unknown[] => {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${name} must be an array`);
+  }
+  return value;
+};
+
+const requireNonNegativeSafeInteger = (value: unknown, name: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer`);
+  }
+  return value as number;
+};
+
+const requireIsoTimestamp = (value: unknown, name: string): string => {
+  const timestamp = requireString(value, name);
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new TypeError(`${name} must be an ISO 8601 timestamp`);
+  }
+  return timestamp;
+};
+
 const requireCurrentSchema = (value: unknown, name: string): void => {
   if (value !== REVIEW_RANGE_SCHEMA_VERSION) {
     throw new UnsupportedPersistedSchemaVersionError(name, value);
@@ -66,33 +88,52 @@ const requireCurrentSchema = (value: unknown, name: string): void => {
 const cloneRecord = (value: JsonRecord): JsonRecord =>
   JSON.parse(JSON.stringify(value)) as JsonRecord;
 
-/**
- * Applies one-version-at-a-time schema steps and rejects gaps, cycles, and future versions.
- * The function is intentionally runtime-neutral so later schema revisions can append steps
- * without replacing older decoders.
- */
-export const runSchemaMigrationChain = (
+const schemaVersionOf = (
   value: JsonRecord,
   documentName: string,
-  steps: readonly SchemaMigrationStep[],
-  absentSchemaVersion?: number
-): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } => {
-  const rawVersion = value.schemaVersion ?? absentSchemaVersion;
+  absentSchemaVersion: number | undefined,
+  targetSchemaVersion: number
+): number => {
+  const rawVersion = value.schemaVersion === undefined
+    ? absentSchemaVersion
+    : value.schemaVersion;
   if (
     typeof rawVersion !== "number" ||
     !Number.isSafeInteger(rawVersion) ||
     rawVersion < 0
   ) {
+    throw new TypeError(`${documentName} schemaVersion must be a non-negative safe integer.`);
+  }
+  if (rawVersion > targetSchemaVersion) {
     throw new UnsupportedPersistedSchemaVersionError(documentName, rawVersion);
   }
-  if (rawVersion > REVIEW_RANGE_SCHEMA_VERSION) {
-    throw new UnsupportedPersistedSchemaVersionError(documentName, rawVersion);
-  }
+  return rawVersion;
+};
 
-  let currentVersion = rawVersion;
+/**
+ * Applies one-version-at-a-time schema steps and rejects gaps, cycles, malformed versions,
+ * and future versions. `targetSchemaVersion` exists so historical migration steps can be
+ * regression-tested independently of the process-wide current schema constant.
+ */
+export const runSchemaMigrationChain = (
+  value: JsonRecord,
+  documentName: string,
+  steps: readonly SchemaMigrationStep[],
+  absentSchemaVersion?: number,
+  targetSchemaVersion = REVIEW_RANGE_SCHEMA_VERSION
+): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } => {
+  if (!Number.isSafeInteger(targetSchemaVersion) || targetSchemaVersion < 0) {
+    throw new TypeError("targetSchemaVersion must be a non-negative safe integer.");
+  }
+  const sourceVersion = schemaVersionOf(
+    value,
+    documentName,
+    absentSchemaVersion,
+    targetSchemaVersion
+  );
+  let currentVersion = sourceVersion;
   let current = cloneRecord(value);
-  const sourceVersion = rawVersion;
-  while (currentVersion < REVIEW_RANGE_SCHEMA_VERSION) {
+  while (currentVersion < targetSchemaVersion) {
     const candidates = steps.filter((step) => step.fromVersion === currentVersion);
     if (candidates.length !== 1) {
       throw new UnsupportedPersistedSchemaVersionError(documentName, currentVersion);
@@ -114,101 +155,234 @@ export const runSchemaMigrationChain = (
 
   return {
     value: current,
-    migrated: sourceVersion !== REVIEW_RANGE_SCHEMA_VERSION,
+    migrated: sourceVersion !== targetSchemaVersion,
     sourceVersion
   };
 };
 
-const migrateContextV0ToV1 = (value: JsonRecord): JsonRecord => {
-  const files = requireRecord(value.files, "Context state files");
+const ROOT_V0_TO_V1: SchemaMigrationStep = {
+  fromVersion: 0,
+  toVersion: 1,
+  migrate: (value) => ({ ...value, schemaVersion: 1 })
+};
+
+const ROOT_STEPS: readonly SchemaMigrationStep[] = [ROOT_V0_TO_V1];
+const FILE_STEPS: readonly SchemaMigrationStep[] = [ROOT_V0_TO_V1];
+const REFERENCE_STEPS: readonly SchemaMigrationStep[] = [ROOT_V0_TO_V1];
+
+const migrateContextRecord = (
+  input: JsonRecord,
+  documentName: string,
+  absentNestedVersion?: number
+): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } => {
+  const root = runSchemaMigrationChain(input, documentName, ROOT_STEPS);
+  const files = requireRecord(root.value.files, `${documentName} files`);
+  let nestedMigrated = false;
   const migratedFiles = Object.fromEntries(
-    Object.entries(files).map(([fileId, fileValue]) => [
-      fileId,
-      {
-        ...requireRecord(fileValue, `Context file ${fileId}`),
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
-      }
-    ])
+    Object.entries(files).map(([fileId, fileValue]) => {
+      const migration = runSchemaMigrationChain(
+        requireRecord(fileValue, `${documentName} file ${fileId}`),
+        `${documentName} file ${fileId}`,
+        FILE_STEPS,
+        absentNestedVersion
+      );
+      nestedMigrated ||= migration.migrated;
+      return [fileId, migration.value];
+    })
   );
   return {
-    ...value,
-    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-    files: migratedFiles
+    value: { ...root.value, files: migratedFiles },
+    migrated: root.migrated || nestedMigrated,
+    sourceVersion: root.sourceVersion
   };
 };
 
-const CONTEXT_STEPS: readonly SchemaMigrationStep[] = [
-  {
-    fromVersion: 0,
-    toVersion: 1,
-    migrate: migrateContextV0ToV1
-  }
-];
+const migrateGlobalRecord = (
+  input: JsonRecord,
+  documentName: string
+): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } =>
+  runSchemaMigrationChain(input, documentName, ROOT_STEPS);
 
-const GLOBAL_STEPS: readonly SchemaMigrationStep[] = [
-  {
-    fromVersion: 0,
-    toVersion: 1,
-    migrate: (value) => ({
-      ...value,
-      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
-    })
-  }
-];
+const migrateWorkspaceRecord = (
+  input: JsonRecord
+): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } => {
+  const root = runSchemaMigrationChain(input, "Workspace review state", ROOT_STEPS);
+  const legacyNestedVersion = root.sourceVersion === 0 ? 0 : undefined;
+  const context = migrateContextRecord(
+    requireRecord(root.value.contextState, "Workspace context state"),
+    "Workspace context state",
+    legacyNestedVersion
+  );
+  const global = runSchemaMigrationChain(
+    requireRecord(root.value.globalState, "Workspace Global state"),
+    "Workspace Global state",
+    ROOT_STEPS,
+    legacyNestedVersion
+  );
+  return {
+    value: {
+      ...root.value,
+      contextState: context.value,
+      globalState: global.value
+    },
+    migrated: root.migrated || context.migrated || global.migrated,
+    sourceVersion: root.sourceVersion
+  };
+};
 
-const WORKSPACE_STEPS: readonly SchemaMigrationStep[] = [
-  {
-    fromVersion: 0,
-    toVersion: 1,
-    migrate: (value) => ({
-      ...value,
-      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-      contextState: migrateContextV0ToV1(
-        requireRecord(value.contextState, "Workspace context state")
-      ),
-      globalState: {
-        ...requireRecord(value.globalState, "Workspace Global state"),
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
-      }
-    })
-  }
-];
+const migrateManifestRecord = (
+  input: JsonRecord
+): { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number } => {
+  const root = runSchemaMigrationChain(input, "Repository manifest", ROOT_STEPS);
+  const contexts = requireArray(root.value.contexts, "Repository manifest contexts");
+  const nestedAbsentVersion = root.sourceVersion === 0 ? 0 : undefined;
+  let nestedMigrated = false;
+  const migratedContexts = contexts.map((entry, index) => {
+    const migration = runSchemaMigrationChain(
+      requireRecord(entry, `Repository manifest context ${index}`),
+      `Repository manifest context ${index}`,
+      REFERENCE_STEPS,
+      nestedAbsentVersion
+    );
+    nestedMigrated ||= migration.migrated;
+    return migration.value;
+  });
+  const globalMigration = runSchemaMigrationChain(
+    requireRecord(root.value.globalState, "Repository manifest Global reference"),
+    "Repository manifest Global reference",
+    REFERENCE_STEPS,
+    nestedAbsentVersion
+  );
+  return {
+    value: {
+      ...root.value,
+      contexts: migratedContexts,
+      globalState: globalMigration.value
+    },
+    migrated: root.migrated || nestedMigrated || globalMigration.migrated,
+    sourceVersion: root.sourceVersion
+  };
+};
 
-const MANIFEST_STEPS: readonly SchemaMigrationStep[] = [
-  {
-    fromVersion: 0,
-    toVersion: 1,
-    migrate: (value) => {
-      if (!Array.isArray(value.contexts)) {
-        throw new TypeError("Repository manifest contexts must be an array");
-      }
-      return {
-        ...value,
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-        contexts: value.contexts.map((entry, index) => ({
-          ...requireRecord(entry, `Repository manifest context ${index}`),
-          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
-        })),
-        globalState: {
-          ...requireRecord(value.globalState, "Repository manifest Global reference"),
-          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
-        }
-      };
-    }
-  }
-];
+const serializeMigrated = (
+  result: { readonly value: JsonRecord; readonly migrated: boolean; readonly sourceVersion: number }
+): MigratedDocument => ({
+  ...result,
+  serialized: `${JSON.stringify(result.value, null, 2)}\n`
+});
 
 const parseAndMigrate = (
   raw: string,
-  documentName: string,
-  steps: readonly SchemaMigrationStep[]
+  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state"
 ): MigratedDocument => {
   const parsed = requireRecord(JSON.parse(raw) as unknown, documentName);
-  const result = runSchemaMigrationChain(parsed, documentName, steps);
-  return {
-    ...result,
-    serialized: `${JSON.stringify(result.value, null, 2)}\n`
-  };
+  if (documentName === "Workspace review state") {
+    return serializeMigrated(migrateWorkspaceRecord(parsed));
+  }
+  if (documentName === "Repository manifest") {
+    return serializeMigrated(migrateManifestRecord(parsed));
+  }
+  if (documentName === "Context state") {
+    return serializeMigrated(migrateContextRecord(parsed, documentName));
+  }
+  return serializeMigrated(migrateGlobalRecord(parsed, documentName));
+};
+
+const validateIntervals = (
+  value: unknown,
+  name: string,
+  lineCount?: number
+): void => {
+  const intervals = requireArray(value, name);
+  let previousEnd = 0;
+  for (const [index, intervalValue] of intervals.entries()) {
+    const interval = requireRecord(intervalValue, `${name}[${index}]`);
+    const startLine = requireNonNegativeSafeInteger(
+      interval.startLine,
+      `${name}[${index}].startLine`
+    );
+    const endLineExclusive = requireNonNegativeSafeInteger(
+      interval.endLineExclusive,
+      `${name}[${index}].endLineExclusive`
+    );
+    if (endLineExclusive <= startLine || (index > 0 && startLine < previousEnd)) {
+      throw new RangeError(`${name} must contain ordered, non-overlapping half-open intervals`);
+    }
+    if (lineCount !== undefined && endLineExclusive > lineCount) {
+      throw new RangeError(`${name}[${index}] exceeds lineCount`);
+    }
+    previousEnd = endLineExclusive;
+  }
+};
+
+const validateFileDocument = (
+  value: JsonRecord,
+  mapKey: string,
+  name: string
+): void => {
+  requireCurrentSchema(value.schemaVersion, name);
+  if (requireString(value.fileId, `${name}.fileId`) !== mapKey) {
+    throw new Error(`${name}.fileId does not match its map key`);
+  }
+  requireString(value.currentPath, `${name}.currentPath`);
+  const previousPaths = requireArray(value.previousPaths, `${name}.previousPaths`);
+  for (const [index, previousPath] of previousPaths.entries()) {
+    requireString(previousPath, `${name}.previousPaths[${index}]`);
+  }
+  requireString(value.revisionId, `${name}.revisionId`);
+  const lineCount = requireNonNegativeSafeInteger(value.lineCount, `${name}.lineCount`);
+  validateIntervals(value.modifiedReviewed, `${name}.modifiedReviewed`, lineCount);
+  const originalReviewedByDiff = requireRecord(
+    value.originalReviewedByDiff,
+    `${name}.originalReviewedByDiff`
+  );
+  for (const [diffId, intervals] of Object.entries(originalReviewedByDiff)) {
+    requireString(diffId, `${name}.originalReviewedByDiff key`);
+    validateIntervals(intervals, `${name}.originalReviewedByDiff.${diffId}`);
+  }
+  if (value.contentHash !== undefined) {
+    requireString(value.contentHash, `${name}.contentHash`);
+  }
+  requireIsoTimestamp(value.updatedAt, `${name}.updatedAt`);
+};
+
+const validateContextDescriptor = (value: JsonRecord, name: string): void => {
+  const kind = requireString(value.kind, `${name}.kind`);
+  if (kind === "pull-request") {
+    const descriptor = requireRecord(value.pullRequest, `${name}.pullRequest`);
+    requireString(descriptor.host, `${name}.pullRequest.host`);
+    requireString(descriptor.owner, `${name}.pullRequest.owner`);
+    requireString(descriptor.repository, `${name}.pullRequest.repository`);
+    requireNonNegativeSafeInteger(descriptor.number, `${name}.pullRequest.number`);
+    if (descriptor.state !== "open" && descriptor.state !== "closed" && descriptor.state !== "merged") {
+      throw new TypeError(`${name}.pullRequest.state is invalid`);
+    }
+    requireString(descriptor.baseSha, `${name}.pullRequest.baseSha`);
+    requireString(descriptor.headSha, `${name}.pullRequest.headSha`);
+    return;
+  }
+  if (kind === "branch") {
+    const descriptor = requireRecord(value.branch, `${name}.branch`);
+    requireString(descriptor.refName, `${name}.branch.refName`);
+    if (descriptor.baseRevision !== undefined) {
+      requireString(descriptor.baseRevision, `${name}.branch.baseRevision`);
+    }
+    requireString(descriptor.headRevision, `${name}.branch.headRevision`);
+    return;
+  }
+  if (kind === "workspace") {
+    const descriptor = requireRecord(value.workspace, `${name}.workspace`);
+    requireString(descriptor.workspaceId, `${name}.workspace.workspaceId`);
+    requireString(descriptor.snapshotRevision, `${name}.workspace.snapshotRevision`);
+    return;
+  }
+  if (kind === "external-file") {
+    const descriptor = requireRecord(value.externalFile, `${name}.externalFile`);
+    requireString(descriptor.canonicalUri, `${name}.externalFile.canonicalUri`);
+    requireString(descriptor.snapshotRevision, `${name}.externalFile.snapshotRevision`);
+    return;
+  }
+  throw new TypeError(`${name}.kind is unsupported`);
 };
 
 const validateContextDocument = (
@@ -224,11 +398,19 @@ const validateContextDocument = (
   if (expectedContextId !== undefined && contextId !== expectedContextId) {
     throw new Error("Context state contextId does not match its repository manifest reference.");
   }
+  requireString(value.displayName, "contextState.displayName");
+  validateContextDescriptor(value, "contextState");
   const files = requireRecord(value.files, "contextState.files");
   for (const [fileId, fileValue] of Object.entries(files)) {
-    const file = requireRecord(fileValue, `contextState.files.${fileId}`);
-    requireCurrentSchema(file.schemaVersion, `contextState.files.${fileId}`);
+    validateFileDocument(
+      requireRecord(fileValue, `contextState.files.${fileId}`),
+      fileId,
+      `contextState.files.${fileId}`
+    );
   }
+  requireIsoTimestamp(value.createdAt, "contextState.createdAt");
+  requireIsoTimestamp(value.updatedAt, "contextState.updatedAt");
+  validateOwnerReconciliation(value);
 };
 
 const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void => {
@@ -236,7 +418,22 @@ const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void =
   if (requireString(value.repositoryId, "globalState.repositoryId") !== repositoryId) {
     throw new Error("Global state repositoryId does not match its storage owner.");
   }
-  requireRecord(value.files, "globalState.files");
+  requireString(value.currentRevisionId, "globalState.currentRevisionId");
+  const files = requireRecord(value.files, "globalState.files");
+  for (const [fileId, fileValue] of Object.entries(files)) {
+    const file = requireRecord(fileValue, `globalState.files.${fileId}`);
+    if (requireString(file.fileId, `globalState.files.${fileId}.fileId`) !== fileId) {
+      throw new Error(`globalState.files.${fileId}.fileId does not match its map key`);
+    }
+    requireString(file.currentPath, `globalState.files.${fileId}.currentPath`);
+    requireString(file.revisionId, `globalState.files.${fileId}.revisionId`);
+    validateIntervals(file.reviewed, `globalState.files.${fileId}.reviewed`);
+    if (file.contentHash !== undefined) {
+      requireString(file.contentHash, `globalState.files.${fileId}.contentHash`);
+    }
+    requireIsoTimestamp(file.updatedAt, `globalState.files.${fileId}.updatedAt`);
+  }
+  requireIsoTimestamp(value.updatedAt, "globalState.updatedAt");
 };
 
 const validateWorkspaceDocument = (
@@ -247,12 +444,16 @@ const validateWorkspaceDocument = (
   const context = requireRecord(value.contextState, "Workspace context state");
   const global = requireRecord(value.globalState, "Workspace Global state");
   validateContextDocument(context, target.repositoryId, target.contextId);
+  if (context.kind !== "workspace") {
+    throw new Error("Workspace persistence requires a workspace review context.");
+  }
   validateGlobalDocument(global, target.repositoryId);
 };
 
 interface ManifestReference {
   readonly contextId: string;
   readonly file: string;
+  readonly updatedAt: string;
 }
 
 const validateManifestDocument = (
@@ -266,36 +467,52 @@ const validateManifestDocument = (
   if (requireString(value.repositoryId, "manifest.repositoryId") !== target.repositoryId) {
     throw new Error("Repository manifest repositoryId does not match the storage target.");
   }
-  if (!Array.isArray(value.contexts)) {
-    throw new TypeError("manifest.contexts must be an array");
-  }
-  const contexts = value.contexts.map((entry, index) => {
+  const contextsValue = requireArray(value.contexts, "manifest.contexts");
+  const contexts = contextsValue.map((entry, index) => {
     const reference = requireRecord(entry, `manifest.contexts[${index}]`);
     requireCurrentSchema(reference.schemaVersion, `manifest.contexts[${index}]`);
     return {
       contextId: requireString(reference.contextId, `manifest.contexts[${index}].contextId`),
-      file: requireString(reference.file, `manifest.contexts[${index}].file`)
+      file: requireString(reference.file, `manifest.contexts[${index}].file`),
+      updatedAt: requireIsoTimestamp(reference.updatedAt, `manifest.contexts[${index}].updatedAt`)
     };
   });
+  if (new Set(contexts.map((reference) => reference.contextId)).size !== contexts.length) {
+    throw new Error("Repository manifest contains duplicate context IDs.");
+  }
   const globalReference = requireRecord(value.globalState, "manifest.globalState");
   requireCurrentSchema(globalReference.schemaVersion, "manifest.globalState");
+  requireIsoTimestamp(globalReference.updatedAt, "manifest.globalState.updatedAt");
+  requireIsoTimestamp(value.updatedAt, "manifest.updatedAt");
   return {
     contexts,
     globalFile: requireString(globalReference.file, "manifest.globalState.file")
   };
 };
 
+const hashIdentifier = (value: string): string =>
+  createHash("sha256").update(value, "utf8").digest("hex");
+
 const resolveReferencedFile = (
   route: ReviewStateStorageRoute,
   relativeFile: string,
-  expectedDirectory: "contexts" | "global-state"
+  expectedDirectory: "contexts" | "global-state",
+  contextId?: string
 ): string => {
-  const normalized = relativeFile.replaceAll("\\", "/");
-  if (!normalized.startsWith(`${expectedDirectory}/`)) {
-    throw new Error(`Persisted reference must stay inside ${expectedDirectory}.`);
+  if (relativeFile.includes("\\") || path.posix.isAbsolute(relativeFile)) {
+    throw new Error("Persisted reference must use a canonical relative POSIX path.");
+  }
+  if (path.posix.normalize(relativeFile) !== relativeFile || relativeFile.split("/").includes("..")) {
+    throw new Error("Persisted reference contains non-canonical path segments.");
+  }
+  const expectedPattern = expectedDirectory === "contexts"
+    ? new RegExp(`^contexts/${hashIdentifier(requireString(contextId, "manifest contextId"))}/[0-9a-f]{64}\\.json$`, "u")
+    : /^global-state\/[0-9a-f]{64}\.json$/u;
+  if (!expectedPattern.test(relativeFile)) {
+    throw new Error(`Persisted reference must stay inside its canonical ${expectedDirectory} location.`);
   }
   const root = path.resolve(route.rootPath);
-  const resolved = path.resolve(root, normalized);
+  const resolved = path.resolve(root, relativeFile);
   if (resolved === root || !resolved.startsWith(`${root}${path.sep}`)) {
     throw new Error("Persisted reference escapes its storage root.");
   }
@@ -320,7 +537,7 @@ export const quarantinePersistedText = async (
   const destination = quarantinePath(filePath, raw);
   await store.writeTextAtomically(destination, raw);
   if (removeOriginal) {
-    await rm(filePath, { force: true });
+    await store.deleteText(filePath);
   }
   return destination;
 };
@@ -364,11 +581,10 @@ const decodeOrQuarantine = async (
   store: AtomicTextFileStore,
   filePath: string,
   raw: string,
-  documentName: string,
-  steps: readonly SchemaMigrationStep[]
+  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state"
 ): Promise<MigratedDocument | undefined> => {
   try {
-    return parseAndMigrate(raw, documentName, steps);
+    return parseAndMigrate(raw, documentName);
   } catch (error) {
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
@@ -378,10 +594,34 @@ const decodeOrQuarantine = async (
   }
 };
 
+const quarantineManifest = async (
+  store: AtomicTextFileStore,
+  route: ReviewStateStorageRoute,
+  raw: string
+): Promise<PersistedReviewStatePreparation> => {
+  await quarantinePersistedText(store, route.statePointerPath, raw);
+  return "uncertain";
+};
+
+const hasMatchingIdentity = (
+  value: JsonRecord,
+  repositoryId: string,
+  contextId?: string
+): boolean =>
+  typeof value.repositoryId === "string" &&
+  value.repositoryId.trim().length > 0 &&
+  value.repositoryId === repositoryId &&
+  (contextId === undefined || (
+    typeof value.contextId === "string" &&
+    value.contextId.trim().length > 0 &&
+    value.contextId === contextId
+  ));
+
 /**
  * Prepares current state before any public repository load/CAS operation.
- * Legacy data is migrated with manifest-last publication. Corrupt or missing evidence
- * returns `uncertain`, allowing callers to expose no reviewed ranges from that state.
+ * Repository-style storage validates and migrates every manifest-referenced document
+ * before publishing a migrated manifest. Corrupt evidence returns `uncertain` so no
+ * reviewed ranges are exposed from it.
  */
 export const preparePersistedReviewState = async (
   options: FileSystemReviewStateRepositoryOptions,
@@ -399,8 +639,7 @@ export const preparePersistedReviewState = async (
       store,
       route.statePointerPath,
       pointerRaw,
-      "Workspace review state",
-      WORKSPACE_STEPS
+      "Workspace review state"
     );
     if (decoded === undefined) {
       return "uncertain";
@@ -428,8 +667,7 @@ export const preparePersistedReviewState = async (
     store,
     route.statePointerPath,
     pointerRaw,
-    "Repository manifest",
-    MANIFEST_STEPS
+    "Repository manifest"
   );
   if (manifest === undefined) {
     return "uncertain";
@@ -442,24 +680,33 @@ export const preparePersistedReviewState = async (
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
     }
-    await quarantinePersistedText(store, route.statePointerPath, pointerRaw);
-    return "uncertain";
+    return quarantineManifest(store, route, pointerRaw);
   }
 
-  const globalPath = resolveReferencedFile(route, references.globalFile, "global-state");
+  let globalPath: string;
+  const contextPaths = new Map<string, string>();
+  try {
+    globalPath = resolveReferencedFile(route, references.globalFile, "global-state");
+    for (const reference of references.contexts) {
+      contextPaths.set(
+        reference.contextId,
+        resolveReferencedFile(route, reference.file, "contexts", reference.contextId)
+      );
+    }
+  } catch {
+    return quarantineManifest(store, route, pointerRaw);
+  }
+
   const globalRaw = await store.readText(globalPath);
   if (globalRaw === undefined) {
     return "uncertain";
   }
-  const global = await decodeOrQuarantine(
-    store,
-    globalPath,
-    globalRaw,
-    "Global state",
-    GLOBAL_STEPS
-  );
+  const global = await decodeOrQuarantine(store, globalPath, globalRaw, "Global state");
   if (global === undefined) {
     return "uncertain";
+  }
+  if (!hasMatchingIdentity(global.value, target.repositoryId)) {
+    return quarantineManifest(store, route, pointerRaw);
   }
   try {
     validateGlobalDocument(global.value, target.repositoryId);
@@ -471,54 +718,38 @@ export const preparePersistedReviewState = async (
     return "uncertain";
   }
 
-  const targetReference = references.contexts.find(
-    (reference) => reference.contextId === target.contextId
-  );
-  if (targetReference === undefined) {
-    const writes: MigrationWrite[] = [];
-    if (global.migrated) {
-      writes.push({ filePath: globalPath, original: globalRaw, migrated: global.serialized });
+  const writes: MigrationWrite[] = [];
+  for (const reference of references.contexts) {
+    const contextPath = contextPaths.get(reference.contextId)!;
+    const contextRaw = await store.readText(contextPath);
+    if (contextRaw === undefined) {
+      return "uncertain";
     }
-    if (manifest.migrated) {
+    const context = await decodeOrQuarantine(store, contextPath, contextRaw, "Context state");
+    if (context === undefined) {
+      return "uncertain";
+    }
+    if (!hasMatchingIdentity(context.value, target.repositoryId, reference.contextId)) {
+      return quarantineManifest(store, route, pointerRaw);
+    }
+    try {
+      validateContextDocument(context.value, target.repositoryId, reference.contextId);
+    } catch (error) {
+      if (error instanceof UnsupportedPersistedSchemaVersionError) {
+        throw error;
+      }
+      await quarantinePersistedText(store, contextPath, contextRaw);
+      return "uncertain";
+    }
+    if (context.migrated) {
       writes.push({
-        filePath: route.statePointerPath,
-        original: pointerRaw,
-        migrated: manifest.serialized
+        filePath: contextPath,
+        original: contextRaw,
+        migrated: context.serialized
       });
     }
-    await publishSchemaMigration(store, writes);
-    return "absent";
   }
 
-  const contextPath = resolveReferencedFile(route, targetReference.file, "contexts");
-  const contextRaw = await store.readText(contextPath);
-  if (contextRaw === undefined) {
-    return "uncertain";
-  }
-  const context = await decodeOrQuarantine(
-    store,
-    contextPath,
-    contextRaw,
-    "Context state",
-    CONTEXT_STEPS
-  );
-  if (context === undefined) {
-    return "uncertain";
-  }
-  try {
-    validateContextDocument(context.value, target.repositoryId, target.contextId);
-  } catch (error) {
-    if (error instanceof UnsupportedPersistedSchemaVersionError) {
-      throw error;
-    }
-    await quarantinePersistedText(store, contextPath, contextRaw);
-    return "uncertain";
-  }
-
-  const writes: MigrationWrite[] = [];
-  if (context.migrated) {
-    writes.push({ filePath: contextPath, original: contextRaw, migrated: context.serialized });
-  }
   if (global.migrated) {
     writes.push({ filePath: globalPath, original: globalRaw, migrated: global.serialized });
   }
@@ -530,5 +761,7 @@ export const preparePersistedReviewState = async (
     });
   }
   await publishSchemaMigration(store, writes);
-  return "ready";
+  return references.contexts.some((reference) => reference.contextId === target.contextId)
+    ? "ready"
+    : "absent";
 };

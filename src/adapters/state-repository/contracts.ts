@@ -99,7 +99,7 @@ export interface ReviewStateTransactionLike {
   readonly contextId: string;
   /** Complete snapshots that must equal current persisted state or the commit rejects as stale. */
   readonly expected: ReviewStateTransactionSnapshotPair;
-  /** Complete snapshots written only after `expected` matches current state; context kind cannot change from `expected`. */
+  /** Complete snapshots written only after `expected` matches current persisted state; context kind cannot change from `expected`. */
   readonly next: ReviewStateTransactionSnapshotPair;
 }
 
@@ -176,6 +176,8 @@ export interface AtomicTextFileStore {
    * @throws Rejects when directory creation, temporary writing, flushing, replacement, or cleanup cannot complete.
    */
   writeTextAtomically(filePath: string, content: string): Promise<void>;
+  /** Removes a persisted path through the same injected storage boundary. */
+  deleteText(filePath: string): Promise<void>;
 }
 
 /** Append-only persistence boundary for one validated review-history event. */
