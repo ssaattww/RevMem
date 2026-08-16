@@ -1,0 +1,521 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import Module, { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import test from "node:test";
+
+import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
+import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
+import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
+import {
+  CurrentContextCandidateSelection,
+  CurrentContextRuntimeComposition,
+  CurrentContextRuntimeCoordinator,
+  CurrentContextUiController,
+  type CurrentContextUiSnapshot,
+} from "../../src/ui/current-context/index.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState,
+} from "../../src/core/contracts/index.js";
+import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
+import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
+
+const execFileAsync = promisify(execFile);
+const runtimeRequire = createRequire(__filename);
+const REPOSITORY_ID = "github.com/ssaattww/revmem";
+const FILE_ID = "src/example.ts";
+
+interface DisposableLike {
+  dispose(): void;
+}
+
+interface CapturedReviewContextsProvider {
+  getChildren(): ReviewContextListItem[];
+}
+
+class MemoryMemento {
+  private readonly values = new Map<string, unknown>();
+
+  public get<T>(key: string, defaultValue?: T): T | undefined {
+    return this.values.has(key)
+      ? this.values.get(key) as T
+      : defaultValue;
+  }
+
+  public async update(key: string, value: unknown): Promise<void> {
+    if (value === undefined) this.values.delete(key);
+    else this.values.set(key, structuredClone(value));
+  }
+}
+
+class FakeEventEmitter<Value> {
+  private readonly listeners: Array<(value: Value) => void> = [];
+
+  public readonly event = (listener: (value: Value) => void): DisposableLike => {
+    this.listeners.push(listener);
+    return { dispose: () => undefined };
+  };
+
+  public fire(value: Value): void {
+    for (const listener of this.listeners) listener(value);
+  }
+
+  public dispose(): void {
+    this.listeners.length = 0;
+  }
+}
+
+class FakeTreeItem {
+  public description: string | undefined;
+  public tooltip: string | undefined;
+  public contextValue: string | undefined;
+  public iconPath: unknown;
+
+  public constructor(
+    public readonly label: string,
+    public readonly collapsibleState: number,
+  ) {}
+}
+
+class FakeThemeIcon {
+  public constructor(public readonly id: string) {}
+}
+
+const runGit = async (repositoryRoot: string, argumentsList: readonly string[]): Promise<string> => {
+  const result = await execFileAsync("git", [...argumentsList], { cwd: repositoryRoot });
+  return result.stdout.trim();
+};
+
+const pullRequestContext = (
+  baseSha: string,
+  headSha: string,
+): ReviewContextState => ({
+  schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+  contextId: `github-pr:${REPOSITORY_ID}#52`,
+  kind: "pull-request",
+  repositoryId: REPOSITORY_ID,
+  displayName: "PR #52",
+  pullRequest: {
+    host: "github.com",
+    owner: "ssaattww",
+    repository: "revmem",
+    number: 52,
+    state: "open",
+    title: "PR 52",
+    baseSha,
+    headSha,
+  },
+  files: {
+    [FILE_ID]: {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      fileId: FILE_ID,
+      currentPath: FILE_ID,
+      previousPaths: [],
+      revisionId: headSha,
+      modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
+      originalReviewedByDiff: {},
+      lineCount: 2,
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+  },
+  createdAt: "2026-08-17T00:00:00.000Z",
+  updatedAt: "2026-08-17T00:00:00.000Z",
+});
+
+const repositoryGlobal = (revisionId: string): RepositoryGlobalState => ({
+  schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+  repositoryId: REPOSITORY_ID,
+  currentRevisionId: revisionId,
+  files: {
+    [FILE_ID]: {
+      fileId: FILE_ID,
+      currentPath: FILE_ID,
+      revisionId,
+      reviewed: [{ startLine: 0, endLineExclusive: 1 }],
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+  },
+  updatedAt: "2026-08-17T00:00:00.000Z",
+});
+
+const jsonResponse = (value: unknown): Response => new Response(JSON.stringify(value), {
+  status: 200,
+  headers: { "content-type": "application/json" },
+});
+
+const findPullRequestItem = (
+  provider: CapturedReviewContextsProvider,
+  number: number,
+): ReviewContextListItem => {
+  const item = provider.getChildren().find((candidate) => candidate.context.pullRequest?.number === number);
+  assert.ok(item, `PR #${number} should be projected by Review Contexts.`);
+  return item;
+};
+
+test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-composition-"));
+  const repositoryRoot = path.join(temporaryRoot, "repository");
+  const globalStorageRoot = path.join(temporaryRoot, "global-storage");
+  const workspaceStorageRoot = path.join(temporaryRoot, "workspace-storage");
+  const sourcePath = path.join(repositoryRoot, FILE_ID);
+  const contexts: Array<{ subscriptions: DisposableLike[] }> = [];
+  const originalFetch = globalThis.fetch;
+  const moduleLoader = Module as unknown as {
+    _load(request: string, parent: unknown, isMain: boolean): unknown;
+  };
+  const originalModuleLoad = moduleLoader._load;
+
+  try {
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await mkdir(globalStorageRoot, { recursive: true });
+    await mkdir(workspaceStorageRoot, { recursive: true });
+    await runGit(repositoryRoot, ["init", "-b", "main"]);
+    await runGit(repositoryRoot, ["config", "user.email", "review-range@example.invalid"]);
+    await runGit(repositoryRoot, ["config", "user.name", "Review Range Test"]);
+    await writeFile(sourcePath, "keep\nold", "utf8");
+    await runGit(repositoryRoot, ["add", FILE_ID]);
+    await runGit(repositoryRoot, ["commit", "-m", "base"]);
+    const baseSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    await runGit(repositoryRoot, ["commit", "--allow-empty", "-m", "source head"]);
+    const sourceHeadSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    await writeFile(sourcePath, "keep\nnew", "utf8");
+    await runGit(repositoryRoot, ["commit", "-am", "target head"]);
+    const targetHeadSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    await runGit(repositoryRoot, ["remote", "add", "origin", "https://github.com/ssaattww/revmem.git"]);
+
+    const storageUris = {
+      globalStorageUri: { fsPath: globalStorageRoot },
+      storageUri: { fsPath: workspaceStorageRoot },
+    };
+    const stateRepository = new FileSystemReviewStateRepository({ storageUris });
+    const contextId52 = `github-pr:${REPOSITORY_ID}#52`;
+    const contextId53 = `github-pr:${REPOSITORY_ID}#53`;
+    await stateRepository.save(
+      { kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: contextId52 },
+      {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: pullRequestContext(baseSha, sourceHeadSha),
+        globalState: repositoryGlobal(sourceHeadSha),
+      },
+    );
+
+    let lifecycle52: "open" | "closed" | "merged" = "open";
+    let lifecycle53: "open" | "closed" | "merged" = "open";
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
+        return jsonResponse([52, 53].map((number) => ({
+          number,
+          title: `PR ${number}`,
+          html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+          head: { sha: targetHeadSha },
+          base: { ref: "main", sha: baseSha },
+        })));
+      }
+      const lifecycleMatch = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
+      if (lifecycleMatch !== null) {
+        const number = Number(lifecycleMatch[1]);
+        const lifecycle = number === 52 ? lifecycle52 : lifecycle53;
+        return jsonResponse({
+          number,
+          title: `PR ${number}`,
+          html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+          state: lifecycle === "open" ? "open" : "closed",
+          merged_at: lifecycle === "merged" ? "2026-08-17T00:30:00Z" : null,
+          base: { sha: baseSha },
+          head: { sha: targetHeadSha },
+        });
+      }
+      throw new Error(`Unexpected GitHub request in T405 composition regression: ${url}`);
+    };
+
+    const commands = new Map<string, (...argumentsList: unknown[]) => unknown>();
+    const providers: CapturedReviewContextsProvider[] = [];
+    const errors: string[] = [];
+    const workspaceState = new MemoryMemento();
+    const fakeVscode = {
+      EventEmitter: FakeEventEmitter,
+      TreeItem: FakeTreeItem,
+      ThemeIcon: FakeThemeIcon,
+      TreeItemCollapsibleState: { None: 0 },
+      commands: {
+        registerCommand: (id: string, handler: (...argumentsList: unknown[]) => unknown): DisposableLike => {
+          commands.set(id, handler);
+          return { dispose: () => undefined };
+        },
+      },
+      window: {
+        activeTextEditor: {
+          document: {
+            uri: { scheme: "file", fsPath: sourcePath },
+          },
+        },
+        createTreeView: (_id: string, options: { treeDataProvider: CapturedReviewContextsProvider }): DisposableLike => {
+          providers.push(options.treeDataProvider);
+          return { dispose: () => undefined };
+        },
+        showQuickPick: async (items: readonly unknown[], options?: { placeHolder?: string }): Promise<unknown> => {
+          if (options?.placeHolder === "現在HEADのPRを選択") {
+            return items.find((item) =>
+              (item as { candidate?: { number?: number } }).candidate?.number === 53
+            );
+          }
+          return items[0];
+        },
+        showErrorMessage: async (message: string): Promise<undefined> => {
+          errors.push(message);
+          return undefined;
+        },
+      },
+      workspace: {
+        getConfiguration: () => ({ get: () => undefined }),
+      },
+      authentication: {
+        getSession: async () => undefined,
+      },
+    };
+
+    moduleLoader._load = (request, parent, isMain) => request === "vscode"
+      ? fakeVscode
+      : Reflect.apply(originalModuleLoad, Module, [request, parent, isMain]) as unknown;
+    const runtimeModulePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+    delete runtimeRequire.cache[runtimeModulePath];
+    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+    moduleLoader._load = originalModuleLoad;
+
+    const localGit = createNodeLocalGitAdapter();
+    const openedDiffs: Array<{ original: string; modified: string; title: string }> = [];
+    const pullRequestReviewRuntime = new PullRequestReviewRuntime<string>({
+      repository: stateRepository,
+      requestHistory: async () => undefined,
+      diffHost: {
+        parseUri: (value) => value,
+        openDiff: async (original, modified, title) => {
+          openedDiffs.push({ original, modified, title });
+        },
+      },
+      getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    });
+    const branchSnapshot: CurrentContextUiSnapshot = {
+      context: {
+        kind: "branch",
+        label: "main",
+        detail: repositoryRoot,
+        headRevision: targetHeadSha,
+        selection: {
+          kind: "branch",
+          repositoryId: REPOSITORY_ID,
+          repositoryRoot,
+          branchRef: "refs/heads/main",
+        },
+      },
+      progress: undefined,
+    };
+    let enumerateEnabled = false;
+    let registered: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime> | undefined;
+    const selectedContexts: Array<SelectedReviewContext | undefined> = [];
+
+    const refreshCurrentContext = async (): Promise<void> => {
+      assert.ok(registered);
+      const selection = new CurrentContextCandidateSelection();
+      const composition = new CurrentContextRuntimeComposition(selection, {
+        enumerateCandidates: () => registered!.augmentCurrentContextCandidates([branchSnapshot]),
+        resolveFallback: async (available) =>
+          available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+        requestSelection: async () => undefined,
+      });
+      const controller = new CurrentContextUiController(
+        {
+          setCurrentContext: () => undefined,
+          setStatusBar: () => undefined,
+          clearCurrentContext: () => undefined,
+          clearStatusBar: () => undefined,
+        },
+        {
+          recompute: () => composition.recompute(),
+          selectContext: () => composition.selectContext(),
+          acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+          acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot),
+        },
+      );
+      const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+        setSelectedContext: (selected) => selectedContexts.push(selected),
+        refreshDependents: () => undefined,
+      });
+      await coordinator.refresh();
+    };
+
+    const createExtensionContext = (): {
+      context: Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]["context"];
+      subscriptions: DisposableLike[];
+    } => {
+      const subscriptions: DisposableLike[] = [];
+      const context = {
+        globalStorageUri: { fsPath: globalStorageRoot },
+        storageUri: { fsPath: workspaceStorageRoot },
+        workspaceState,
+        subscriptions,
+      } as unknown as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]["context"];
+      contexts.push({ subscriptions });
+      return { context, subscriptions };
+    };
+
+    const registerRuntime = (): {
+      runtime: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime>;
+      provider: CapturedReviewContextsProvider;
+    } => {
+      enumerateEnabled = false;
+      const extensionContext = createExtensionContext();
+      const runtime = runtimeModule.registerT405ReviewContextsRuntime({
+        context: extensionContext.context,
+        git: localGit,
+        enumerateCurrentContexts: async () => enumerateEnabled ? [branchSnapshot] : [],
+        refreshDecorations: async () => undefined,
+        refreshCurrentContext,
+        registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
+        openPullRequestReviewDiff: (contextId, fileId, title) =>
+          pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
+        getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
+      });
+      registered = runtime;
+      enumerateEnabled = true;
+      const provider = providers.at(-1);
+      assert.ok(provider);
+      return { runtime, provider };
+    };
+
+    const invoke = async (id: string, ...argumentsList: unknown[]): Promise<void> => {
+      const handler = commands.get(id);
+      assert.ok(handler, `${id} should be registered by the T405 production runtime.`);
+      await handler(...argumentsList);
+      assert.deepEqual(errors, [], `T405 command ${id} should not report an error.`);
+    };
+
+    // R405-1 + R405-7: redetect itself must cross the T405 synchronization/resolver seam.
+    let current = registerRuntime();
+    await invoke("reviewRange.redetectPullRequest");
+    const mapped = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.equal(mapped?.contextState.pullRequest?.headSha, targetHeadSha);
+    assert.equal(mapped?.globalState.currentRevisionId, targetHeadSha);
+    assert.equal(mapped?.contextState.files[FILE_ID]?.revisionId, targetHeadSha);
+    assert.equal(mapped?.globalState.files[FILE_ID]?.revisionId, targetHeadSha);
+    assert.deepEqual(mapped?.contextState.files[FILE_ID]?.modifiedReviewed, [
+      { startLine: 0, endLineExclusive: 1 },
+    ]);
+    assert.equal(selectedContexts.at(-1)?.kind, "pull-request");
+    assert.equal(
+      selectedContexts.at(-1)?.kind === "pull-request" ? selectedContexts.at(-1)?.contextId : undefined,
+      contextId53,
+      "same-HEAD redetection must preserve the user-selected PR into normal-editor ownership",
+    );
+
+    const pr52BeforeToggle = findPullRequestItem(current.provider, 52);
+    assert.equal(pr52BeforeToggle.layerEnabled, true);
+    await invoke("reviewRange.toggleReviewContextLayer", pr52BeforeToggle);
+    const layerDisabled = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.equal(isPullRequestDecorationEnabled(layerDisabled!.contextState.pullRequest!), false);
+
+    // R405-1 restart proof: rebuild the actual T405 runtime over the same durable storage.
+    current = registerRuntime();
+    await current.runtime.refresh();
+    const restarted = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.equal(restarted?.contextState.pullRequest?.headSha, targetHeadSha);
+    assert.equal(restarted?.globalState.currentRevisionId, targetHeadSha);
+    assert.equal(isPullRequestDecorationEnabled(restarted!.contextState.pullRequest!), false);
+
+    // R405-3: start at the real Review Contexts command, then execute canonical both-side commands.
+    await invoke("reviewRange.openReviewContextDiff", findPullRequestItem(current.provider, 52));
+    const opened = openedDiffs.at(-1);
+    assert.ok(opened);
+    assert.match(opened.original, /^review-range-diff:\/\/document\/v1\//u);
+    assert.match(opened.modified, /^review-range-diff:\/\/document\/v1\//u);
+    const commandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
+      getDocumentUri: (editor) => editor.uri,
+      getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(editor.uri),
+      getLineCount: () => 2,
+      getSelections: () => [{
+        anchor: { line: 1, character: 0 },
+        active: { line: 1, character: 0 },
+      }],
+      confirmWholeFileOperation: async () => true,
+    });
+    const originalEditor = { uri: opened.original };
+    const modifiedEditor = { uri: opened.modified };
+    assert.equal(await commandService.markSelectionReviewed(originalEditor), "applied");
+    assert.equal(await commandService.markSelectionReviewed(modifiedEditor), "applied");
+    assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
+      reviewedLineCount: 2,
+      totalLineCount: 2,
+      progress: 1,
+    });
+    assert.equal(await commandService.unmarkSelectionReviewed(originalEditor), "applied");
+    assert.equal(await commandService.unmarkSelectionReviewed(modifiedEditor), "applied");
+    assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
+      reviewedLineCount: 0,
+      totalLineCount: 2,
+      progress: 0,
+    });
+    const reviewStateAfterUnmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(reviewStateAfterUnmark?.contextState.files[FILE_ID]?.modifiedReviewed, [
+      { startLine: 0, endLineExclusive: 1 },
+    ]);
+    assert.deepEqual(
+      reviewStateAfterUnmark?.contextState.files[FILE_ID]?.originalReviewedByDiff[`${baseSha}..${targetHeadSha}`],
+      [],
+    );
+
+    // R405-2: lifecycle changes must enter through Review Contexts load/synchronize, then survive restart.
+    lifecycle52 = "closed";
+    lifecycle53 = "merged";
+    await current.runtime.refresh();
+    const closed52 = findPullRequestItem(current.provider, 52);
+    const merged53 = findPullRequestItem(current.provider, 53);
+    assert.equal(closed52.group, "saved-closed-pull-request");
+    assert.equal(merged53.group, "saved-closed-pull-request");
+    assert.equal(closed52.layerEnabled, false);
+    assert.equal(merged53.layerEnabled, false);
+    const durable53 = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    assert.equal(durable53?.contextState.pullRequest?.state, "merged");
+    assert.equal(isPullRequestDecorationEnabled(durable53!.contextState.pullRequest!), false);
+
+    current = registerRuntime();
+    await current.runtime.refresh();
+    assert.equal(findPullRequestItem(current.provider, 52).group, "saved-closed-pull-request");
+    assert.equal(findPullRequestItem(current.provider, 53).group, "saved-closed-pull-request");
+    assert.equal(findPullRequestItem(current.provider, 53).layerEnabled, false);
+  } finally {
+    moduleLoader._load = originalModuleLoad;
+    globalThis.fetch = originalFetch;
+    for (const context of contexts) {
+      for (const subscription of context.subscriptions) subscription.dispose();
+    }
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
