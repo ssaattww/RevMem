@@ -29,6 +29,7 @@ import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
 } from "./t505-global-understanding-source";
+import { registerT405ReviewContextsRuntime } from "./t405-review-contexts-runtime";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
@@ -204,6 +205,12 @@ export function activate(context: vscode.ExtensionContext): unknown {
       );
     }
   });
+  const reviewContextsRuntime = registerT405ReviewContextsRuntime({
+    context,
+    git,
+    enumerateCurrentContexts: enumerateContexts,
+    refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations()
+  });
   const refreshGlobalUnderstanding = (): void => {
     void globalRuntime.refreshWithErrorBoundary();
   };
@@ -222,7 +229,10 @@ export function activate(context: vscode.ExtensionContext): unknown {
     refreshGlobalUnderstanding();
   };
   context.subscriptions.push(
-    runtimePort.onDidChangeReviewState(refreshGlobalUnderstanding),
+    runtimePort.onDidChangeReviewState(() => {
+      refreshGlobalUnderstanding();
+      void reviewContextsRuntime.refreshWithErrorBoundary();
+    }),
     exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
     vscode.workspace.onDidChangeTextDocument((event) => requestRefreshForDocumentChange(event.document)),
     vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
@@ -249,6 +259,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
       refreshDependents: async () => {
         await runtimePort.refreshVisibleEditorDecorations();
         await globalRuntime.refresh();
+        await reviewContextsRuntime.refresh();
       }
     },
     async (error) => {
