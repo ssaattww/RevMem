@@ -1,0 +1,400 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: "2026-08-16T15:00:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #53"
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  current_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+  reviewed_head: null
+  commit_range: 146aec15783294da1795f268315c85d1a0dffa56..95650f72632fa482a08f32a6bf3f6cefeaa7340f
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "t603開始 / RevMem project instruction"
+    summary: Implement T603 autonomously using the uploaded Skills and GitHub connector, with TDD, exact-head CI, diagnostic artifacts, durable report/handoff, PR completion comment, and no merge.
+  - source: task
+    reference: tasks/tasks-status.md T603
+    summary: Perform staged persistent schema migration at startup, create pre-migration backups, detect/quarantine/recover corrupt JSON, JSONL and snapshots, restore on migration failure, and keep uncertain ranges unreviewed.
+  - source: design
+    reference: docs/design/review-range-tracker-design.md
+    summary: Preserve schemaVersion, migration, backup and corruption-recovery semantics for persistent review state.
+  - source: repository_workflow
+    reference: .github/workflows/ci.yml
+    summary: Preserve failure diagnostics containing test logs, merged stdout/stderr, environment, generated outputs, source/test/configuration context and workflow data.
+
+development_policy:
+  method: TDD
+  testing_order: Add T603 tests first, confirm an exact-head Red CI failure, then implement in small logical commits and confirm exact-head full Green CI.
+  governing_source: RevMem project instruction and uploaded chat worker Skills
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - node --test test-dist/test/unit/t603-schema-migration-recovery.test.js
+    - repository focused task suites wired in CI
+    - npm run test:git
+    - npm run test:github
+    - xvfb-run -a npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - merged standard output and standard error logs under test-output/ci
+    - environment and git status
+    - generated dist/test-dist context
+    - source, test, tools, configuration, workflow and npm debug logs where present
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/adapters/state-repository/**
+      reason: T603 persistent review-state and history migration/recovery scope
+    - path_or_operation: src/adapters/non-git-snapshots/**
+      reason: T603 non-Git snapshot migration/recovery scope
+    - path_or_operation: test/unit/t603-schema-migration-recovery.test.ts
+      reason: TDD regression scope
+    - path_or_operation: test/unit/review-history-jsonl-store.test.ts
+      reason: Existing history corruption contract must reflect T603 recovery behavior
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Execute focused T603 test while preserving existing diagnostic artifacts
+    - path_or_operation: reports/issue-1-t603-implementation-*.md
+      reason: Required durable implementation report
+    - path_or_operation: handoffs/issue-1-t603-implementation-*.yaml
+      reason: Required lossless cross-chat handoff
+    - path_or_operation: PR #53 metadata and comments
+      reason: Required completion/update transport
+  forbidden:
+    - path_or_operation: merge PR #53
+      reason: Merge is reserved for the user
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edits
+      reason: Existing repository workflow reserves task tracking updates for designated progress management handling rather than this implementation worker
+    - path_or_operation: unrelated runtime features
+      reason: Outside T603 scope
+
+scope:
+  - One-version-at-a-time schema migration chain for persisted review data.
+  - Legacy v0 to current v1 migration for state, history records and non-Git snapshots.
+  - Pre-migration backups and rollback on migration publish failure.
+  - Corruption detection, deterministic quarantine and conservative recovery.
+  - Fail-closed uncertain target behavior that does not expose stale reviewed memory.
+  - Focused T603 regression coverage and full repository CI validation.
+non_goals:
+  - Future schema v2+ migration definitions before a schema bump exists.
+  - General backup/quarantine retention policy.
+  - Independent review verdict.
+  - Direct task tracking edits.
+  - PR merge.
+
+files:
+  changed:
+    - path: test/unit/t603-schema-migration-recovery.test.ts
+      purpose: Red/Green coverage for workspace migration, rollback, corruption quarantine, history recovery and non-Git snapshot migration/recovery.
+    - path: test/unit/review-history-jsonl-store.test.ts
+      purpose: Update the existing corruption behavior expectation to the T603 recovery contract.
+    - path: src/adapters/state-repository/persistence-schema-recovery.ts
+      purpose: Shared adjacent migration chain, backup/rollback, quarantine and persisted review-state preparation.
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: Integrate persistence preflight, uncertain fail-closed semantics and failure notification.
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: Migrate legacy history records and quarantine/salvage corrupt JSONL.
+    - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+      purpose: Persist schemaVersion, migrate legacy snapshots and quarantine corrupt snapshot data.
+    - path: .github/workflows/ci.yml
+      purpose: Add focused T603 test logging; final net workflow patch preserves all pre-existing diagnostics.
+    - path: reports/issue-1-t603-implementation-20260816145900.md
+      purpose: Detailed evidence-faithful implementation report.
+    - path: handoffs/issue-1-t603-implementation-20260816150000.yaml
+      purpose: Lossless schema-v3 continuation packet.
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: Resolve T603 dependencies, scope and completion conditions.
+    - path: docs/design/review-range-tracker-design.md
+      purpose: Resolve persistence schema, backup and corruption recovery design.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm diagnostic artifact coverage before implementation and validate the final workflow diff.
+    - path: existing state repository, history and non-Git snapshot adapters
+      purpose: Preserve existing persistence contracts and error notification boundaries.
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: Direct task tracking edits are outside this implementation worker boundary.
+    - path_or_area: persistence design documentation
+      reason: Existing design already specifies the implemented migration/recovery semantics.
+    - path_or_area: merge operation
+      reason: Reserved for the user.
+
+commands:
+  - command: GitHub Actions CI run 31929190714
+    purpose: Confirm TDD Red on the test-only HEAD.
+    exit_code: 1
+    result: failed
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: Job 95120961967 kept the existing Unit/T602 path green and failed the newly added T603 step; failure artifact 5717201218 was uploaded.
+  - command: GitHub Actions CI run 31929450198
+    purpose: Validate initial implementation and diagnose lint regression.
+    exit_code: 1
+    result: failed
+    head_sha: ac2f13c0fcaf0a7ac32988d636e640b64aef4a0f
+    evidence: Job 95121963562 failed preserve-caught-error lint; artifact 5717346948 retained the failure context.
+  - command: GitHub Actions CI run 31929675591
+    purpose: Validate lint fix and diagnose existing persistence notification contract regression.
+    exit_code: 1
+    result: failed
+    head_sha: 4e9a09be675bdd3c83312a2717db5f75d4691a8c
+    evidence: Job 95122672378 passed lint but failed one existing schema-mismatch notification unit test; artifact 5717460644 retained the failure context.
+  - command: GitHub Actions CI run 31929798612
+    purpose: Confirm full Green after preserving the notification boundary.
+    exit_code: 0
+    result: passed
+    head_sha: f9dd96383cb17400210e95d8e21ac6e378baf531
+    evidence: Full repository CI completed successfully.
+  - command: GitHub Actions CI run 31929935759
+    purpose: Confirm the technical implementation HEAD after restoring the existing CI diagnostics pattern.
+    exit_code: 0
+    result: passed
+    head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+    evidence: Job 95123412884 completed successfully across build, contracts, architecture, lint, unit/focused suites, Git, GitHub and VS Code Extension Host validation.
+
+tests:
+  - name: T603 migration/recovery Red suite
+    phase: red
+    result: failed
+    head_sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+    evidence: Exact-head run 31929190714, job 95120961967; diagnostic artifact 5717201218.
+  - name: T603 schema migration and corruption recovery focused suite
+    phase: green
+    result: passed
+    head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+    evidence: Exact-head run 31929935759, T603 focused step.
+  - name: full repository regression suite
+    phase: regression
+    result: passed
+    head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+    evidence: Exact-head run 31929935759, job 95123412884.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31929935759
+  head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+  conclusion: success
+  artifacts:
+    - id: 5717201218
+      name: ci-failure-diagnostics-31929190714-1
+      purpose: TDD Red test results, stdout/stderr and diagnostic context.
+    - id: 5717346948
+      name: ci-failure-diagnostics-31929450198-1
+      purpose: Lint failure diagnostics used to preserve the original migration restoration cause.
+    - id: 5717460644
+      name: ci-failure-diagnostics-31929675591-1
+      purpose: Existing unit contract failure diagnostics used to restore persistence failure notification behavior.
+
+implementation:
+  outcome: completed
+  final_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+  commits:
+    - sha: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+      purpose: Add T603 tests first and wire focused CI for the Red phase.
+    - sha: 8e5851ab81c9b16f9cb1320e6c4fcdaaf853fa96
+      purpose: Implement persisted review-state migration, backups, rollback and corruption recovery.
+    - sha: 9dda6c74c8b55432c9b26418d303f6582b82f0cd
+      purpose: Implement review-history migration, quarantine and salvage recovery.
+    - sha: ac2f13c0fcaf0a7ac32988d636e640b64aef4a0f
+      purpose: Implement non-Git snapshot migration and corruption quarantine.
+    - sha: 4e9a09be675bdd3c83312a2717db5f75d4691a8c
+      purpose: Preserve the original error as the migration restoration cause.
+    - sha: f9dd96383cb17400210e95d8e21ac6e378baf531
+      purpose: Preserve existing persistence failure notification behavior during migration preflight.
+    - sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+      purpose: Preserve the existing CI failure diagnostics pattern so the workflow net diff remains T603-only.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: GitHub Actions run 31929190714, job 95120961967
+      summary: New T603 behavior failed on the test-only Red HEAD before implementation.
+    - type: artifact
+      location: GitHub Actions artifact 5717201218
+      summary: Required Red failure logs and investigation context were retained.
+    - type: lint
+      location: GitHub Actions run 31929450198 / artifact 5717346948
+      summary: preserve-caught-error identified loss of the original rollback cause and drove the targeted fix.
+    - type: regression_test
+      location: GitHub Actions run 31929675591 / artifact 5717460644
+      summary: Existing schema-mismatch notification contract caught a preflight reporting regression and drove the targeted fix.
+  blocked_items: []
+  summary:
+    - Added adjacent schema migration with backup and transactional rollback for persisted review state.
+    - Added deterministic corruption quarantine and conservative uncertain-state handling so stale reviewed ranges are not inferred.
+    - Added JSONL migration/recovery and legacy non-Git snapshot migration/recovery.
+    - Confirmed Red and full Green only with workflow runs whose head SHA exactly matched the tested commit.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - This packet is produced by the implementation worker for independent handoff, not by a reviewer.
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment:
+    - item: independent review
+      result: not_applicable
+      evidence: Implementation workers do not issue an independent review verdict for their own changes.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - PR #53 requires a separate normal review against its current post-report HEAD.
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t603-implementation-20260816145900.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed implementation, TDD, failure diagnosis, exact-head CI, scope and risk evidence is persisted in the repository.
+
+findings: []
+held:
+  - item: Future schema version migrations beyond v1
+    reason: No future schema version exists in the current contract; T603 provides the adjacent-chain mechanism and the required v0-to-v1 step.
+    owner: future schema-bump task
+    remaining_risk: Every future schema bump must add an explicit adjacent migration step before persisted data using that version can be accepted.
+    verdict_impact: none for T603 implementation completion.
+unexplored: []
+unknown:
+  - field_or_fact: final administrative PR HEAD after report and handoff persistence
+    reason: A repository file cannot contain the SHA of the commit that creates itself; the post-persistence current HEAD and its exact matching CI run are recorded in the PR completion comment.
+not_applicable:
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+remaining_risks:
+  - A separate reviewer must review the PR current HEAD after this handoff is persisted and use only a workflow run whose head SHA exactly matches that HEAD.
+  - Future schema versions require explicit adjacent migration definitions; unsupported future versions intentionally fail rather than being treated as corruption.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #53
+      task_id: T603
+      mode: implementation
+      branch: task/t603-schema-migration-recovery
+      base_ref: main
+      current_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+      reviewed_head: null
+      scope:
+        - Implement persistent schema migration chain, pre-migration backups, rollback, JSON/JSONL/snapshot corruption quarantine and conservative recovery.
+      non_goals:
+        - Future schema definitions, task tracking edits, independent review and merge.
+      development_policy:
+        method: TDD
+        testing_order: Exact-head Red before implementation; focused and full exact-head Green after implementation.
+      ci:
+        matching_run: "31929935759"
+        head_sha: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+        conclusion: success
+      blocked: []
+      remaining_risks:
+        - Future schema bumps must define each adjacent migration explicitly.
+  - source_skill: implementation-worker
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      mode: initial implementation
+      changed_files:
+        - test/unit/t603-schema-migration-recovery.test.ts
+        - test/unit/review-history-jsonl-store.test.ts
+        - src/adapters/state-repository/persistence-schema-recovery.ts
+        - src/adapters/state-repository/validated-file-system-review-state-repository.ts
+        - src/adapters/state-repository/jsonl-review-history-store.ts
+        - src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+        - .github/workflows/ci.yml
+      validation:
+        red_run: 31929190714
+        red_head: 3c88a86bd0e1a47a43a259b53db431cc8724d40e
+        red_artifact: 5717201218
+        intermediate_failure_runs:
+          - run_id: 31929450198
+            head_sha: ac2f13c0fcaf0a7ac32988d636e640b64aef4a0f
+            artifact: 5717346948
+          - run_id: 31929675591
+            head_sha: 4e9a09be675bdd3c83312a2717db5f75d4691a8c
+            artifact: 5717460644
+        green_run: 31929935759
+        green_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+        green_result: success
+      final_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+      blocked_items: []
+      next_required_action: Persist report/handoff, verify exact CI for the resulting PR current HEAD, post PR completion report, then hand off to an independent normal reviewer; do not merge.
+  - source_skill: report-writer
+    output_contract_version: 1
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body_path: reports/issue-1-t603-implementation-20260816145900.md
+      target_identity:
+        branch: task/t603-schema-migration-recovery
+        base_ref: main
+        current_head: 95650f72632fa482a08f32a6bf3f6cefeaa7340f
+        reviewed_implementation_head: null
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t603-implementation-20260816145900.md
+        report_attestation_head: null
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: chatgpt.runtime.persistence
+    payload:
+      report_path: reports/issue-1-t603-implementation-20260816145900.md
+      handoff_path: handoffs/issue-1-t603-implementation-20260816150000.yaml
+      post_persistence_current_head: recorded_in_pr_completion_comment
+      post_persistence_matching_ci: recorded_in_pr_completion_comment
+      merge_performed: false
