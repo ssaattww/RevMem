@@ -32,8 +32,11 @@ const requireKeys = (value: unknown, keys: readonly string[]): Record<string, un
   return record;
 };
 
-const normalizeBase64Padding = (value: string): string =>
-  `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`;
+const normalizeBase64Padding = (value: string): string => {
+  assert.match(value, /^[A-Za-z0-9+/]+={0,4}$/u, "base64 payload may contain padding only at the end");
+  const unpadded = value.replace(/=+$/u, "");
+  return `${unpadded}${"=".repeat((4 - (unpadded.length % 4)) % 4)}`;
+};
 
 test("T603-R016 replacement handoff is schema-v3 lossless and self-consistent", async () => {
   const text = await readFile(packetPath, "utf8");
