@@ -8,18 +8,20 @@ import {
   StaleReviewStateError,
   type ReviewStateCommit,
   type ReviewStateRepositoryTarget,
-  type ReviewStateStorageUris
+  type ReviewStateStorageUris,
+  type ReviewStateTransactionLike
 } from "./adapters/state-repository/index";
 import { mapRepositoryGlobalStateThroughDocumentChanges } from "./application/global-review-mapping/index";
-import type {
-  FileSystemPathSemantics,
-  ResourceUri,
-  StableHash
+import { ReviewHistoryRecorder } from "./application/review-history/index";
+import {
+  WorkspaceIdentityService,
+  type FileSystemPathSemantics,
+  type ResourceUri,
+  type StableHash
 } from "./application/workspace-identity/index";
 import type {
   FileReviewState,
-  GlobalFileReviewState,
-  LineInterval
+  GlobalFileReviewState
 } from "./core/contracts/index";
 import {
   mapReviewedRangesThroughDocumentChanges,
@@ -27,12 +29,19 @@ import {
   type RangeMappingOptions
 } from "./core/range-mapping/index";
 
+/** Workspace ownership evidence captured at the VS Code document boundary. */
+export interface DocumentReviewEditWorkspaceSnapshot {
+  readonly workspaceFolderUri: ResourceUri;
+  readonly relativePath: string;
+}
+
 /** Immutable text snapshot captured synchronously at the VS Code document-event boundary. */
 export interface DocumentReviewEditSnapshot {
   readonly documentKey: string;
   readonly documentUri: ResourceUri;
   readonly documentFsPath: string;
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
+  readonly workspace?: DocumentReviewEditWorkspaceSnapshot;
   readonly text: string;
   readonly lineCount: number;
   readonly contentHash: string;
@@ -48,8 +57,20 @@ export interface DocumentReviewEditRequest {
 /** Observable disposition of one live-edit persistence request. */
 export type DocumentReviewEditResult = "applied" | "no-op" | "unsupported-owner";
 
+type DocumentReviewEditRepository = {
+  load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
+  commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
+};
+
+type DocumentReviewEditHistoryRecorder = Pick<
+  ReviewHistoryRecorder,
+  "recordDocumentEditMapping"
+>;
+
 interface DocumentReviewEditRuntimeOptions {
   readonly storageUris: ReviewStateStorageUris;
+  readonly repository?: DocumentReviewEditRepository;
+  readonly historyRecorder?: DocumentReviewEditHistoryRecorder;
   readonly gitInspector: Pick<LocalGitAdapter, "inspectRepository">;
   readonly stableHash: StableHash;
   readonly now?: () => Date;
@@ -57,15 +78,26 @@ interface DocumentReviewEditRuntimeOptions {
 
 type FileDisposition = "missing" | "before" | "after" | "stale";
 
-interface GitOwnerMapping {
+interface OwnerMappingBase {
   readonly repositoryTarget: ReviewStateRepositoryTarget;
   readonly repositoryId: string;
   readonly contextId: string;
   readonly revisionId: string;
-  readonly branchRef: string;
   readonly currentPath: string;
   readonly defaultFileId: string;
 }
+
+interface GitOwnerMapping extends OwnerMappingBase {
+  readonly kind: "git";
+  readonly branchRef: string;
+}
+
+interface WorkspaceOwnerMapping extends OwnerMappingBase {
+  readonly kind: "workspace";
+  readonly workspaceId: string;
+}
+
+type OwnerMapping = GitOwnerMapping | WorkspaceOwnerMapping;
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -78,42 +110,46 @@ const withoutKey = <Value>(
     .map(([entryKey, value]) => [entryKey, clone(value)])
 );
 
-const sameIntervals = (
-  left: readonly LineInterval[],
-  right: readonly LineInterval[]
-): boolean => JSON.stringify(left) === JSON.stringify(right);
-
 const pathApiFor = (semantics: FileSystemPathSemantics): typeof path.posix =>
   semantics === "windows" ? path.win32 : path.posix;
 
 /**
- * Maps live Git working-tree edits through persisted Context and owner-wide Global state.
- * Each document is serialized independently and each state replacement is a complete CAS.
+ * Maps live filesystem edits through persisted Context and owner-wide Global state.
+ * Same-document work is ordered locally while the persistence/history adapters provide
+ * the shared same-process serialization boundary used by command and edit runtimes.
  */
 export class DocumentReviewEditRuntime {
-  private readonly repository: FileSystemReviewStateRepository;
-  private readonly history: JsonlReviewHistoryStore;
-  private readonly sessionId = randomUUID();
+  private readonly repository: DocumentReviewEditRepository;
+  private readonly historyRecorder: DocumentReviewEditHistoryRecorder;
+  private readonly workspaceIdentityService: WorkspaceIdentityService;
   private readonly now: () => Date;
   private readonly observed = new Map<string, DocumentReviewEditSnapshot>();
   private readonly tails = new Map<string, Promise<void>>();
 
   public constructor(private readonly options: DocumentReviewEditRuntimeOptions) {
-    this.repository = new FileSystemReviewStateRepository({
+    this.repository = options.repository ?? new FileSystemReviewStateRepository({
       storageUris: options.storageUris
     });
-    this.history = new JsonlReviewHistoryStore({ storageUris: options.storageUris });
+    this.historyRecorder = options.historyRecorder ?? new ReviewHistoryRecorder({
+      sessionId: randomUUID(),
+      createEventId: randomUUID,
+      appender: new JsonlReviewHistoryStore({ storageUris: options.storageUris })
+    });
+    this.workspaceIdentityService = new WorkspaceIdentityService(options.stableHash);
     this.now = options.now ?? (() => new Date());
   }
 
+  /** Seeds or replaces the immediate pre-change snapshot for one open document. */
   public observe(snapshot: DocumentReviewEditSnapshot): void {
     this.observed.set(snapshot.documentKey, clone(snapshot));
   }
 
+  /** Drops an editor snapshot after the document closes. */
   public forget(documentKey: string): void {
     this.observed.delete(documentKey);
   }
 
+  /** Captures the already-observed pre-change snapshot and queues mapping in document order. */
   public apply(request: DocumentReviewEditRequest): Promise<DocumentReviewEditResult> {
     const before = this.observed.get(request.after.documentKey);
     this.observed.set(request.after.documentKey, clone(request.after));
@@ -147,6 +183,7 @@ export class DocumentReviewEditRuntime {
     return operation;
   }
 
+  /** Waits for every queued document mapping before extension deactivation. */
   public async drain(): Promise<void> {
     await Promise.all([...this.tails.values()]);
   }
@@ -162,9 +199,11 @@ export class DocumentReviewEditRuntime {
     const inspection = await this.options.gitInspector.inspectRepository(
       pathApi.dirname(input.after.documentFsPath)
     );
-    if (inspection.kind !== "repository") return "unsupported-owner";
+    const owner = inspection.kind === "repository"
+      ? this.resolveGitOwner(input.after, inspection.repository)
+      : this.resolveWorkspaceOwner(input.after);
+    if (owner === undefined) return "unsupported-owner";
 
-    const owner = this.resolveGitOwner(input.after, inspection.repository);
     let current = await this.repository.load(owner.repositoryTarget);
     if (current === undefined) return "no-op";
 
@@ -219,14 +258,11 @@ export class DocumentReviewEditRuntime {
             globalState: next.globalState
           }
         });
-        await this.recordHistory(
-          owner,
-          fileId,
+        await this.historyRecorder.recordDocumentEditMapping(
           current,
           next,
-          updatedAt,
-          input.after.lineCount,
-          input.after.contentHash
+          fileId,
+          updatedAt
         );
         return "applied";
       } catch (error) {
@@ -245,7 +281,7 @@ export class DocumentReviewEditRuntime {
 
   private mapNextCommit(input: {
     readonly current: ReviewStateCommit;
-    readonly owner: GitOwnerMapping;
+    readonly owner: OwnerMapping;
     readonly fileId: string;
     readonly contextDisposition: FileDisposition;
     readonly globalDisposition: FileDisposition;
@@ -313,60 +349,6 @@ export class DocumentReviewEditRuntime {
     };
   }
 
-  private async recordHistory(
-    owner: GitOwnerMapping,
-    fileId: string,
-    previous: ReviewStateCommit,
-    next: ReviewStateCommit,
-    occurredAt: string,
-    lineCount: number,
-    contentHash: string
-  ): Promise<void> {
-    const previousContext = previous.contextState.files[fileId];
-    const nextContext = next.contextState.files[fileId];
-    const previousGlobal = previous.globalState.files[fileId];
-    const nextGlobal = next.globalState.files[fileId];
-    const previousRanges = previousContext?.modifiedReviewed ?? [];
-    const nextRanges = nextContext?.modifiedReviewed ?? [];
-    const globalPreviousRanges = previousGlobal?.reviewed ?? [];
-    const globalNextRanges = nextGlobal?.reviewed ?? [];
-    const metadataChanged =
-      previousContext?.contentHash !== contentHash ||
-      previousContext?.lineCount !== lineCount ||
-      previousGlobal?.contentHash !== contentHash;
-    if (
-      !metadataChanged &&
-      sameIntervals(previousRanges, nextRanges) &&
-      sameIntervals(globalPreviousRanges, globalNextRanges)
-    ) return;
-
-    await this.history.append(
-      {
-        kind: "git",
-        repositoryId: owner.repositoryId,
-        contextId: owner.contextId
-      },
-      {
-        schemaVersion: next.contextState.schemaVersion,
-        eventId: randomUUID(),
-        occurredAt,
-        sessionId: this.sessionId,
-        repositoryId: owner.repositoryId,
-        contextId: owner.contextId,
-        revisionId: owner.revisionId,
-        type: "invalidated-by-edit",
-        reason: "document-content-changed",
-        filePath: owner.currentPath,
-        diffSide: "modified",
-        previousRanges: previousRanges.map((range) => ({ ...range })),
-        nextRanges: nextRanges.map((range) => ({ ...range })),
-        rangeRepresentation: "context-and-global",
-        globalPreviousRanges: globalPreviousRanges.map((range) => ({ ...range })),
-        globalNextRanges: globalNextRanges.map((range) => ({ ...range }))
-      }
-    );
-  }
-
   private resolveGitOwner(
     snapshot: DocumentReviewEditSnapshot,
     repository: LocalGitRepository
@@ -399,6 +381,7 @@ export class DocumentReviewEditRuntime {
       branchRef
     );
     return {
+      kind: "git",
       repositoryTarget: {
         kind: "git",
         repositoryId: repository.repositoryId,
@@ -413,7 +396,34 @@ export class DocumentReviewEditRuntime {
     };
   }
 
-  private resolveFileId(commit: ReviewStateCommit, owner: GitOwnerMapping): string {
+  private resolveWorkspaceOwner(
+    snapshot: DocumentReviewEditSnapshot
+  ): WorkspaceOwnerMapping | undefined {
+    if (snapshot.workspace === undefined) return undefined;
+    const identity = this.workspaceIdentityService.resolve({
+      workspaceFolderUri: snapshot.workspace.workspaceFolderUri,
+      documentUri: snapshot.documentUri,
+      fileSystemPathSemantics: snapshot.fileSystemPathSemantics,
+      relativePath: snapshot.workspace.relativePath
+    });
+    const revisionId = `workspace-live:${identity.workspaceId}`;
+    return {
+      kind: "workspace",
+      repositoryTarget: {
+        kind: "workspace",
+        repositoryId: identity.repositoryId,
+        contextId: identity.workspaceContextId
+      },
+      repositoryId: identity.repositoryId,
+      contextId: identity.workspaceContextId,
+      revisionId,
+      workspaceId: identity.workspaceId,
+      currentPath: identity.relativePath,
+      defaultFileId: identity.fileId
+    };
+  }
+
+  private resolveFileId(commit: ReviewStateCommit, owner: OwnerMapping): string {
     const contextMatches = Object.entries(commit.contextState.files)
       .filter(([, file]) => file.currentPath === owner.currentPath)
       .map(([fileId]) => fileId);
@@ -426,12 +436,16 @@ export class DocumentReviewEditRuntime {
         "live edit mapping found conflicting persisted file identities for one current path."
       );
     }
-    return identities.values().next().value as string | undefined ?? owner.defaultFileId;
+    const resolved = identities.values().next().value as string | undefined ?? owner.defaultFileId;
+    if (owner.kind === "workspace" && resolved !== owner.defaultFileId) {
+      throw new Error("workspace live edit mapping found a persisted file identity mismatch.");
+    }
+    return resolved;
   }
 
   private contextDisposition(
     file: FileReviewState | undefined,
-    owner: GitOwnerMapping,
+    owner: OwnerMapping,
     before: DocumentReviewEditSnapshot,
     after: DocumentReviewEditSnapshot
   ): FileDisposition {
@@ -450,7 +464,7 @@ export class DocumentReviewEditRuntime {
 
   private globalDisposition(
     file: GlobalFileReviewState | undefined,
-    owner: GitOwnerMapping,
+    owner: OwnerMapping,
     before: DocumentReviewEditSnapshot,
     after: DocumentReviewEditSnapshot
   ): FileDisposition {
@@ -463,18 +477,36 @@ export class DocumentReviewEditRuntime {
     return "stale";
   }
 
-  private validateCommitIdentity(commit: ReviewStateCommit, owner: GitOwnerMapping): void {
+  private validateCommitIdentity(commit: ReviewStateCommit, owner: OwnerMapping): void {
     if (
       commit.contextState.repositoryId !== owner.repositoryId ||
       commit.globalState.repositoryId !== owner.repositoryId ||
       commit.contextState.contextId !== owner.contextId ||
-      commit.contextState.kind !== "branch" ||
-      commit.contextState.branch?.refName !== owner.branchRef ||
-      commit.contextState.branch?.headRevision !== owner.revisionId ||
       commit.globalState.currentRevisionId !== owner.revisionId
     ) {
       throw new Error(
-        "persisted review state no longer matches the Git owner observed for the live edit."
+        "persisted review state no longer matches the owner observed for the live edit."
+      );
+    }
+    if (owner.kind === "git") {
+      if (
+        commit.contextState.kind !== "branch" ||
+        commit.contextState.branch?.refName !== owner.branchRef ||
+        commit.contextState.branch?.headRevision !== owner.revisionId
+      ) {
+        throw new Error(
+          "persisted review state no longer matches the Git owner observed for the live edit."
+        );
+      }
+      return;
+    }
+    if (
+      commit.contextState.kind !== "workspace" ||
+      commit.contextState.workspace?.workspaceId !== owner.workspaceId ||
+      commit.contextState.workspace?.snapshotRevision !== owner.revisionId
+    ) {
+      throw new Error(
+        "persisted review state no longer matches the workspace owner observed for the live edit."
       );
     }
   }
@@ -489,7 +521,8 @@ export class DocumentReviewEditRuntime {
       before.fileSystemPathSemantics !== after.fileSystemPathSemantics ||
       before.documentUri.scheme !== after.documentUri.scheme ||
       before.documentUri.authority !== after.documentUri.authority ||
-      before.documentUri.path !== after.documentUri.path
+      before.documentUri.path !== after.documentUri.path ||
+      JSON.stringify(before.workspace ?? null) !== JSON.stringify(after.workspace ?? null)
     ) throw new Error("document identity changed within one content-change transaction.");
   }
 

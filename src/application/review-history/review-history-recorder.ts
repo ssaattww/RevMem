@@ -135,6 +135,46 @@ export class ReviewHistoryRecorder {
     for (const event of events) await this.options.appender.append(targetFor(nextContext), event);
   }
 
+  /** Records one already committed live-document edit with lossless Context and Global ranges. */
+  public async recordDocumentEditMapping(
+    previous: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
+    next: Readonly<{ contextState: ReviewContextState; globalState: RepositoryGlobalState }>,
+    fileId: string,
+    occurredAt: string,
+    reason = "document-content-changed"
+  ): Promise<void> {
+    const previousContextFile = previous.contextState.files[fileId];
+    const nextContextFile = next.contextState.files[fileId];
+    const previousGlobalFile = previous.globalState.files[fileId];
+    const nextGlobalFile = next.globalState.files[fileId];
+    const filePath =
+      nextContextFile?.currentPath ??
+      nextGlobalFile?.currentPath ??
+      previousContextFile?.currentPath ??
+      previousGlobalFile?.currentPath;
+    if (filePath === undefined) {
+      throw new Error("Committed document edit history requires an affected file identity.");
+    }
+    await this.options.appender.append(targetFor(next.contextState), {
+      schemaVersion: next.contextState.schemaVersion,
+      eventId: this.options.createEventId(),
+      occurredAt,
+      sessionId: this.options.sessionId,
+      repositoryId: next.contextState.repositoryId,
+      contextId: next.contextState.contextId,
+      revisionId: revisionOf(next.contextState),
+      type: "invalidated-by-edit",
+      reason,
+      filePath,
+      diffSide: "modified",
+      previousRanges: (previousContextFile?.modifiedReviewed ?? []).map((range) => ({ ...range })),
+      nextRanges: (nextContextFile?.modifiedReviewed ?? []).map((range) => ({ ...range })),
+      rangeRepresentation: "context-and-global",
+      globalPreviousRanges: (previousGlobalFile?.reviewed ?? []).map((range) => ({ ...range })),
+      globalNextRanges: (nextGlobalFile?.reviewed ?? []).map((range) => ({ ...range }))
+    });
+  }
+
   /**
    * Appends the lifecycle event for a newly created review context.
    * @returns A promise that resolves after the append succeeds.
