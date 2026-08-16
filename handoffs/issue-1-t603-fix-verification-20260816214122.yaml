@@ -1,0 +1,834 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: "2026-08-16T21:41:22+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #53"
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  current_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  commit_range: 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7..56b7b7de4eb4377eca501549268a7d15a7caf127
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー"
+    summary: Reuse the same normal-review lineage and verify the T603 review fixes completely.
+  - source: user_instruction
+    reference: "壊れたら、履歴は1からで良いよ。ただし、壊れたやつは隔離して捨てないこと"
+    summary: Corrupt history must be preserved in quarantine, not salvaged into active history, and active history restarts from the next valid event.
+  - source: repository_instruction
+    reference: AGENTS.md and RevMem project instruction
+    summary: Follow installed/uploaded Skills; use GitHub connector for repository/PR writes; preserve diagnostics; use exact-head CI; do not merge; record breaking changes.
+  - source: task
+    reference: tasks/tasks-status.md T603
+    summary: Provide schema migration chain, pre-migration backup, JSON/JSONL/snapshot corruption detection/isolation/recovery, rollback on failure, and fail-closed uncertain ranges.
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4 section 15.3 plus Design/BreakingChanges.md 2026-08-16 override
+    summary: Startup-staged persistence migration and isolation remain required; owner decision supersedes the former corrupt-history append rejection rule.
+  - source: report
+    reference: reports/issue-1-t603-review-r2-20260816153800.md
+    summary: Source normal review established T603-R001 through T603-R014 and B001.
+  - source: report
+    reference: reports/issue-1-t603-review-followup-20260816.md and reports/issue-1-t603-history-reset-followup-20260816.md
+    summary: Implementation follow-up evidence, errata, Red/Green chronology and owner-decision implementation input for this verification.
+
+development_policy:
+  method: TDD
+  testing_order: Behavior fixes add regression tests first and confirm exact-head Red before implementation; then exact-head Green. Review artifacts do not modify behavior.
+  governing_source: RevMem project instruction, tasks/phases-status.md, uploaded chat worker Skills
+
+validation_plan:
+  commands:
+    - Review fix range 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7..56b7b7de4eb4377eca501549268a7d15a7caf127 and all changed files/direct dependencies.
+    - Verify comprehensive review Red run 31933261892 / job 95131183615 / artifact 9259902656.
+    - Verify R013 sibling Red run 31940277506 / job 95148328727 / artifact 9261824947.
+    - Verify owner-decision Red run 31941969296 / job 95152361908 / artifact 9262264629.
+    - Verify only current exact-head CI run 31942897772 / job 95154522013 for reviewed HEAD 56b7b7de4eb4377eca501549268a7d15a7caf127.
+    - Verify every source finding R001-R014 by identity/severity and inspect sibling cases/new fix areas.
+  required_failure_diagnostics:
+    - focused test result logs
+    - standard output and standard error captured by 2>&1 | tee
+    - environment and Git status
+    - generated-file inventory
+    - source, tests, generated outputs and relevant configuration/workflow context
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t603-fix-verification-20260816214122.md
+      reason: Required durable normal fix-verification report.
+    - path_or_operation: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+      reason: Required lossless schema-v3 continuation packet.
+    - path_or_operation: PR #53 verification comment
+      reason: Required concise review summary after persistence.
+  forbidden:
+    - path_or_operation: src/**
+      reason: Reviewer does not implement findings.
+    - path_or_operation: test/**
+      reason: Regression fixes belong to implementation worker.
+    - path_or_operation: .github/workflows/** or package/configuration files
+      reason: Reviewer only reports findings.
+    - path_or_operation: doc/** or Design/**
+      reason: Owner decision documentation is already implementation-owned; reviewer does not edit design.
+    - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+      reason: Repository tracking rules reserve these updates for designated progress-management Skills.
+    - path_or_operation: merge PR #53
+      reason: Merge is reserved for the user.
+
+scope:
+  - Fix verification of R2 findings T603-R001 through T603-R014 on current immutable implementation HEAD 56b7b7de4eb4377eca501549268a7d15a7caf127.
+  - Verify owner resolution of T603-B001 and the replacement history-reset semantics.
+  - Inspect the entire 21-commit fix range, every changed file, direct dependencies/consumers, TDD diagnostics, CI, reports and handoffs.
+  - Add sibling/new findings only when directly evidenced by the fix diff or affected contracts.
+non_goals:
+  - Implementing R006, R013, R015 or R016.
+  - T604 cross-process locking/cleanup implementation.
+  - T606 generalized error/retry policy implementation.
+  - Defining future schema-v2 semantic transforms.
+  - Independent final review or merge.
+
+files:
+  changed:
+    - path: reports/issue-1-t603-fix-verification-20260816214122.md
+      purpose: Detailed fix-verification report.
+    - path: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+      purpose: Lossless schema-v3 handoff for the next implementation/fix-verification round.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Current T603 test selection and failure-diagnostic wiring.
+    - path: Design/BreakingChanges.md
+      purpose: Verify owner decision supersedes old rev4 history-corruption behavior.
+    - path: reports/issue-1-t603-review-followup-20260816.md
+      purpose: R001-R014 implementation follow-up and evidence erratum.
+    - path: reports/issue-1-t603-history-reset-followup-20260816.md
+      purpose: Owner-decision TDD/implementation evidence.
+    - path: handoffs/issue-1-t603-review-followup-20260816.yaml
+      purpose: Verify implementation continuation evidence and schema-v3 transport compliance.
+    - path: handoffs/issue-1-t603-history-reset-followup-20260816.yaml
+      purpose: Verify latest owner-decision continuation evidence and schema-v3 transport compliance.
+    - path: src/adapters/state-repository/persistence-schema-recovery.ts
+      purpose: R002-R005/R009/R014 migration, validation, reference and quarantine fixes.
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: R001 fix and new sticky owner-root recovery sibling R015.
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: R008/R013 and owner-decision history recovery behavior.
+    - path: src/adapters/persistence-startup-migration.ts
+      purpose: R010 and R013 startup owner validation boundary.
+    - path: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts
+      purpose: R005/R006/R014 snapshot wrapper/pointer recovery.
+    - path: src/application/non-git-snapshots/index.ts
+      purpose: R006 direct snapshot integrity consumer.
+    - path: src/adapters/state-repository/atomic-text-file-store.ts
+      purpose: R014 deletion abstraction.
+    - path: src/adapters/state-repository/contracts.ts
+      purpose: Persistence and delete/quarantine contract.
+    - path: src/t305-extension.ts
+      purpose: Startup migration runtime integration.
+    - path: test/unit/t603-review-findings.test.ts
+      purpose: Review-finding regression coverage and missing residual cases.
+    - path: test/unit/t603-schema-migration-recovery.test.ts
+      purpose: Base T603 migration/recovery and owner-reset coverage.
+    - path: test/unit/t603-history-multi-context-regression.test.ts
+      purpose: R013 same-repository multi-context contract erratum.
+    - path: test/unit/t603-history-reset-decision.test.ts
+      purpose: Owner-decision corruption reset coverage.
+    - path: test/unit/review-history-jsonl-store.test.ts
+      purpose: Current JSONL storage behavior.
+    - path: src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+      purpose: Direct dependency for R015 load -> virtual getCurrent behavior.
+    - path: src/adapters/state-repository/file-system-review-state-repository.ts
+      purpose: Low-level load/cache and canonical persistence paths.
+    - path: src/adapters/state-repository/owner-global-state-loader.ts
+      purpose: Owner-wide Global direct load dependency.
+    - path: src/adapters/state-repository/owner-reconciliation-validation.ts
+      purpose: Downstream validation that can mark a storage root uncertain.
+    - path: src/application/review-history/review-history-recorder.ts
+      purpose: History event identity producer.
+    - path: tasks/tasks-status.md and tasks/phases-status.md
+      purpose: T603 exit conditions and T604/T606 ownership boundaries.
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Persistence/history accepted design baseline.
+    - path: PR #53 metadata, comments, commits and Actions runs/jobs/artifacts
+      purpose: Current identity, owner decision, TDD, evidence and exact-head validation.
+  intentionally_untouched:
+    - path_or_area: implementation, tests, workflow, design
+      reason: Normal reviewer reports findings only.
+    - path_or_area: task/phase tracking
+      reason: Direct updates are reserved by repository rules.
+    - path_or_area: merge
+      reason: User-owned action.
+
+commands:
+  - command: Read uploaded work-context-manager, review-worker, report-writer, chat-handoff-manager and chat-review-worker Skills
+    purpose: Apply the required normal fix-verification lifecycle literally.
+    exit_code: 0
+    result: passed
+    head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    evidence: Required discovery, finding continuity, 11 coverage criteria, report and schema-v3 lossless handoff requirements were re-read before finalization.
+  - command: Compare 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7..56b7b7de4eb4377eca501549268a7d15a7caf127
+    purpose: Freeze and inspect the complete normal-review fix range.
+    exit_code: 0
+    result: passed
+    head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    evidence: 21 commits ahead, merge-base exactly the source review artifact HEAD, 20 changed paths.
+  - command: Inspect comprehensive Red run 31933261892 and artifact 9259902656
+    purpose: Verify review-fix TDD and diagnostics.
+    exit_code: 1
+    result: failed
+    head_sha: 1803fd389971230a582c6ef2c555611798cf387f
+    evidence: Exact-head T603 step failed 17/29; artifact contains focused log, other CI logs, environment, Git status, generated/source/test/config context.
+  - command: Inspect R013 sibling Red run 31940277506 and artifact 9261824947
+    purpose: Verify test-first correction of the accidental single-context repository-history regression.
+    exit_code: 1
+    result: failed
+    head_sha: b55c18098734d09a1ad3762cf11d77343365281c
+    evidence: Exact-head failure artifact exists; regression establishes same-repository monthly history may contain multiple contexts.
+  - command: Inspect owner-decision Red run 31941969296, job 95152361908 and artifact 9262264629
+    purpose: Verify test-first corrupt-history reset behavior and required diagnostic evidence.
+    exit_code: 1
+    result: failed
+    head_sha: d1dbe39c574fbe2bda683b466950c8777ff411a3
+    evidence: Build/typecheck/architecture/lint/unit/T602 passed before T603 failed; artifact T603 log has 32 tests, 29 pass / 3 new-behavior failures and complete diagnostic context.
+  - command: Inspect current exact-head CI run 31942897772 / job 95154522013
+    purpose: Validate only the current reviewed implementation HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    evidence: Full configured CI completed successfully; no other SHA substituted.
+
+tests:
+  - name: Comprehensive T603 review-finding Red
+    phase: red
+    result: failed
+    head_sha: 1803fd389971230a582c6ef2c555611798cf387f
+    evidence: Run 31933261892 / job 95131183615 / artifact 9259902656; 17 review regressions failed before fixes.
+  - name: R013 multi-context sibling Red
+    phase: red
+    result: failed
+    head_sha: b55c18098734d09a1ad3762cf11d77343365281c
+    evidence: Run 31940277506 / job 95148328727 / artifact 9261824947.
+  - name: Owner-decision corrupt-history reset Red
+    phase: red
+    result: failed
+    head_sha: d1dbe39c574fbe2bda683b466950c8777ff411a3
+    evidence: Run 31941969296 / job 95152361908 / artifact 9262264629; new reset/startup behavior failed before implementation.
+  - name: Full repository CI at reviewed current HEAD
+    phase: verification
+    result: passed
+    head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    evidence: Run 31942897772 / job 95154522013 successful through VS Code Extension Host.
+  - name: Reviewer static contract analysis
+    phase: verification
+    result: failed
+    head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    evidence: R006 and R013 retain uncovered source defects; fix introduces R015 and R016.
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31942897772
+  head_sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  commits:
+    - sha: 8b0735dea303adc1043d816e709a1848aeb25dba
+      purpose: Add T603 review-finding regressions.
+    - sha: 1803fd389971230a582c6ef2c555611798cf387f
+      purpose: Execute review regressions in CI and establish comprehensive Red.
+    - sha: d306ff34059dde765eb8b7dc3b4c4455604b692c
+      purpose: Harden persisted state recovery.
+    - sha: e8df6e1ffd03fb6c8e235b7e6c381baecf2b714f
+      purpose: Preserve corrupt T603 history and snapshots.
+    - sha: 6115633657e8732e3d7c165ae8aee7d5892df5ef
+      purpose: Run T603 migrations during startup.
+    - sha: e1af77af11b4dc2dcb56d63da695d8adb123f82a
+      purpose: Preserve owner-reconciliation rejection semantics.
+    - sha: 09c50c1797ee51eb783d6305083171299b33b515
+      purpose: Reject initial owner-reconciliation validation failure.
+    - sha: bc9c291693d3f545833d5789be89749ced140ffe
+      purpose: Restore review repository method boundary.
+    - sha: 37f16bfc73636e1d4767f626376a0bbe8f4a7a82
+      purpose: Fix startup migration test module import.
+    - sha: b55c18098734d09a1ad3762cf11d77343365281c
+      purpose: Add multi-context repository-history regression first.
+    - sha: 1f118bcd77b6481b65d8bff303684b0920322c63
+      purpose: Permit multiple contexts within one repository monthly history while retaining owner validation.
+    - sha: d1dbe39c574fbe2bda683b466950c8777ff411a3
+      purpose: Define owner-decision corrupt-history reset behavior test-first.
+    - sha: 83e7f614630c1ee37b924254f520e4aec55698d3
+      purpose: Implement quarantine and active-history restart without salvage.
+    - sha: ec296cf1f8a185eb956efbebbafbb008a7977b79
+      purpose: Add owner-decision focused regression suite.
+    - sha: 12fb1c772eb2861e58e99875247ddf4884fb9745
+      purpose: Correct T603 CI test selection.
+    - sha: c3e7d230e8a5f47d33933dea553e9f0b695ef904
+      purpose: Record owner decision in Design/BreakingChanges.md.
+    - sha: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      purpose: Persist owner-decision report/handoff and become the reviewed current HEAD.
+  addressed_findings:
+    - id: T603-R001
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Original stale-reviewed exposure is closed; new recovery sibling is T603-R015.
+    - id: T603-R002
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Adjacent immutable migration steps and future-target regression.
+    - id: T603-R003
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: All manifest referenced contexts migrate before publication.
+    - id: T603-R004
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Nested future versions are preserved/rejected, not downgraded.
+    - id: T603-R005
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Malformed vs future schema classification fixed.
+    - id: T603-R006
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: partial
+      evidence: Payload gzip/hash/envelope fixed, but wrapper/base64 corruption leaves latest pointer active.
+    - id: T603-R007
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Historical GitHub evidence is corrected by explicit erratum and current PR evidence.
+    - id: T603-R008
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Higher-authority owner decision supersedes old rev4 behavior and BreakingChanges records it.
+    - id: T603-R009
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Canonical reference validation preserves valid child evidence.
+    - id: T603-R010
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Startup persistence migration is wired before runtime use.
+    - id: T603-R011
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: T603 CI executes JSONL and replacement owner-decision suites plus non-superseded regressions.
+    - id: T603-R012
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Exact-head comprehensive/sibling/owner Red evidence and diagnostics verified.
+    - id: T603-R013
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: partial
+      evidence: Existing-file owner/month/duplicate checks fixed, but new-event ID collision and startup owner validation remain.
+    - id: T603-R014
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      disposition: addressed
+      evidence: Quarantine deletion uses AtomicTextFileStore.deleteText.
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 9259902656
+      summary: Comprehensive review Red diagnostics inspected and complete.
+    - type: artifact
+      location: GitHub Actions artifact 9261824947
+      summary: R013 sibling Red diagnostics exist at exact sibling-test HEAD.
+    - type: artifact
+      location: GitHub Actions artifact 9262264629
+      summary: Owner-decision Red diagnostics inspected and complete.
+  blocked_items: []
+  summary:
+    - Twelve source findings are closed, two source findings remain partial/open.
+    - Owner decision resolves B001 and supersedes the old R008 history behavior requirement.
+    - Fixes introduce two new medium findings, R015 and R016.
+
+review:
+  mode: fix_verification
+  reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  reviewer:
+    identity: "ChatGPT T603 normal reviewer (same normal-review chat, 2026-08-16)"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: "ChatGPT T603 normal reviewer (same chat, R2)"
+      changed: false
+      reason: Same normal review chat is reused as required for fix verification.
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - This chat produced the R2 normal review but did not implement any T603 changes or fixes.
+        - Fix implementation/report/handoffs were produced separately and were treated only as evidence.
+  verdict: fail
+  required_coverage:
+    - criterion: requirement_and_design_conformance
+      disposition: checked_finding
+      evidence: R006, R013, R015 remain; B001 resolved by owner and BreakingChanges.
+    - criterion: correctness_and_edge_cases
+      disposition: checked_finding
+      evidence: R006, R013, R015.
+    - criterion: scope_discipline_and_unrelated_changes
+      disposition: checked_no_finding
+      evidence: Fix range remains within T603 behavior/tests/CI/owner policy/reports/handoffs; incidental placeholder has no net tree effect.
+    - criterion: changed_files_and_direct_dependency_impact
+      disposition: checked_finding
+      evidence: All 20 fix-range paths and affected state/history/snapshot/runtime dependencies inspected; R006/R013/R015.
+    - criterion: api_data_configuration_workflow_compatibility
+      disposition: checked_finding
+      evidence: R006/R013 persistence contracts and R016 handoff schema; CI wiring itself is compliant.
+    - criterion: error_handling_and_failure_diagnostics
+      disposition: checked_finding
+      evidence: R006/R015; diagnostic artifacts themselves satisfy required contents.
+    - criterion: security_and_secret_handling
+      disposition: checked_no_finding
+      evidence: No added token/source-body logging; quarantine removal uses injected persistence boundary.
+    - criterion: tests_and_validation_adequacy
+      disposition: checked_finding
+      evidence: Current CI is green but residual R006/R013/R015/R016 cases are not covered.
+    - criterion: current_head_ci_evidence
+      disposition: checked_no_finding
+      evidence: Run 31942897772/job 95154522013 head SHA exactly equals reviewed HEAD and succeeds.
+    - criterion: report_tracking_and_documentation_accuracy
+      disposition: checked_finding
+      evidence: R016; R007 erratum and owner BreakingChanges record are otherwise accurate. Tracking direct edit correctly omitted.
+    - criterion: regression_and_maintainability_risks
+      disposition: checked_finding
+      evidence: R015 sticky uncertainty, R013 startup identity, R016 transport continuity.
+  validation_assessment:
+    - item: owner_decision_authority
+      result: supported
+      evidence: Explicit user decision was recovered and is recorded in PR/BreakingChanges; B001 is resolved.
+    - item: comprehensive_review_fix_tdd
+      result: supported
+      evidence: Exact-head run 31933261892 and artifact 9259902656 verified.
+    - item: owner_decision_tdd
+      result: supported
+      evidence: Exact-head run 31941969296/job 95152361908/artifact 9262264629 verified, including focused failure log and diagnostics.
+    - item: current_implementation_ci
+      result: supported
+      evidence: Exact-head run 31942897772/job 95154522013 success at 56b7b7de4eb4377eca501549268a7d15a7caf127.
+    - item: source_finding_closure
+      result: failed
+      evidence: R006 and R013 remain open.
+    - item: sibling_defect_scan
+      result: failed
+      evidence: New R015 and R016 found in fix/runtime/reporting paths.
+    - item: required_review_coverage
+      result: supported
+      evidence: All 11 required criteria have explicit disposition; unexplored is empty.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - This is normal fix verification, not independent final review.
+  summary:
+    - Verdict fail with four medium required findings open.
+    - All high source findings are closed; owner authority conflict is resolved.
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t603-fix-verification-20260816214122.md
+  reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+  attestation_head: null
+  pr_comments:
+    - target: PR #53
+      url_or_id: unknown
+  summary:
+    - Detailed normal fix-verification report with all source dispositions, four open findings, TDD/CI evidence and owner-decision resolution.
+
+findings:
+  - id: T603-R006
+    severity: medium
+    origin: introduced_by_change
+    location: src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts get/quarantine; src/application/non-git-snapshots/index.ts NonGitSnapshotTracker.read
+    description: Snapshot wrapper or invalid-base64 corruption is quarantined inside storage.get and returned as undefined, so the tracker classifies it missing and never invokes storage.quarantine to invalidate valid latest pointers that still name the removed snapshot.
+    impact: The authoritative latest pointer remains active/dangling after wrapper-level corruption, so snapshot corruption isolation/recovery and latest-pointer consistency are incomplete.
+    evidence: Current R006 tests cover gzip/hash/envelope + latest invalidation, not malformed wrapper/invalid base64 + latest; startup metadata migration similarly does not validate pointer target existence after entry quarantine.
+    required_action: Invalidate/quarantine every latest pointer naming a wrapper/base64-corrupt snapshot for both direct reads and startup migration; add valid-latest plus malformed-wrapper/invalid-base64 regressions.
+  - id: T603-R013
+    severity: medium
+    origin: introduced_by_change
+    location: src/adapters/state-repository/jsonl-review-history-store.ts prepareExistingHistory/append/migratePersistedReviewHistoryFile; src/adapters/persistence-startup-migration.ts migrateHistoryRoot
+    description: Existing-line duplicate IDs are checked, but a new event ID is never compared with IDs already in the valid active history. Startup history migration also lacks the expected repository owner, so an internally consistent wrong-owner history can be migrated/published under another repository root.
+    impact: History event uniqueness and startup owner integrity remain incomplete under the owner-selected reset policy.
+    evidence: Owner-decision tests cover wrong owner/month/duplicate existing lines at append time but not existing-vs-new eventId collision or startup wrong-owner. Same-repository multiple contexts are valid and are not part of the remaining defect.
+    required_action: Compare the new event ID against active history IDs and pass expected repository owner into startup history migration; add both regressions while preserving multi-context repository history.
+  - id: T603-R015
+    severity: medium
+    origin: introduced_by_fix
+    location: src/adapters/state-repository/validated-file-system-review-state-repository.ts load/loadGlobal/prepareTarget/markUncertain and coherent repository load/getCurrent
+    description: Owner-wide uncertainStorageRoots is set after downstream validation failure but is only cleared by save/commit/create. A later successful read preparation does not clear it, and coherent load calls the overridden getCurrent, which returns undefined while the root flag remains set.
+    impact: After persisted data is repaired, read-only reload can remain permanently fail-closed for the Extension Host lifetime, violating T603 recovery even though stale reviewed state is no longer exposed.
+    evidence: prepareTarget clears only uncertainTargets on ready/absent; loadGlobal never clears root on success; save/commit/create are the only root-clear sites. No repair-then-read-only-reload regression exists.
+    required_action: Clear owner-root uncertainty only after a fully validated read succeeds without transient stale exposure; add valid-load -> downstream corruption -> hidden -> repair -> reload/getCurrent recovery and sibling-context tests.
+  - id: T603-R016
+    severity: medium
+    origin: introduced_by_fix
+    location: handoffs/issue-1-t603-review-followup-20260816.yaml and handoffs/issue-1-t603-history-reset-followup-20260816.yaml
+    description: The implementation follow-up handoffs label themselves schema v3 but do not satisfy the uploaded chat-handoff-manager v3 typed schema/lossless rules. The latest uses producer.generated_date, a non-SHA target.current_head placeholder, custom shapes, and lacks required complete source_payloads.
+    impact: A later chat cannot safely reconstruct exact target/CI, findings, permissions, blocked/held state, diagnostics and core Skill outputs from the handoff, risking review-continuity or exact-head errors.
+    evidence: Uploaded schema requires generated_at, full-SHA target identity, standard typed sections and complete producing core Skill outputs under source_payloads; both follow-up files omit or replace those fields.
+    required_action: Regenerate a literal schema-v3 lossless packet after the remaining fixes, with final implementation HEAD/matching CI, complete core Skill outputs, findings and PR references; recheck exact-head CI after the handoff commit.
+
+held:
+  - item: T604 cross-window/process lock, atomic append and cleanup/retention
+    reason: Explicitly owned by T604.
+    owner: T604
+    remaining_risk: Cross-process migration/history races and backup/quarantine retention remain until T604.
+    verdict_impact: Held only; does not replace T603 required findings.
+  - item: Generalized storage/startup retry and partial-availability policy
+    reason: T606 owns generalized storage/GitHub/error policy and retry.
+    owner: T606
+    remaining_risk: One owner failure may affect startup availability until generalized error policy is completed.
+    verdict_impact: Held; R006/R013/R015 are specific T603 correctness issues and remain blocking.
+  - item: Concrete semantic transform for future schema v2
+    reason: No future v2 contract exists yet.
+    owner: future schema task
+    remaining_risk: Future transform semantics still need definition when schema advances.
+    verdict_impact: None; R002 chain foundation is closed.
+
+unexplored: []
+
+unknown:
+  - field_or_fact: final PR HEAD after this verification report/handoff persistence commit
+    reason: The review artifacts are generated against implementation HEAD 56b7b7de4eb4377eca501549268a7d15a7caf127 before the review persistence commit exists; the post-persistence HEAD and matching CI will be recorded in the PR comment.
+  - field_or_fact: verification PR comment ID
+    reason: The concise PR comment is posted only after report/handoff persistence and post-persistence exact-head CI validation.
+
+not_applicable:
+  - field_or_area: independent-final report attestation
+    reason: This is normal fix verification and required findings remain open.
+  - field_or_area: merge result
+    reason: Merge is explicitly reserved for the user.
+  - field_or_area: task-status direct reviewer edit
+    reason: Repository rules reserve task/phase tracking changes for designated progress-management Skills.
+
+remaining_risks:
+  - Wrapper/base64 snapshot corruption can leave dangling authoritative latest pointers.
+  - History new-event uniqueness and startup repository-owner validation are incomplete.
+  - Owner-wide state uncertainty can remain sticky after persisted data is repaired.
+  - Implementation handoff transport is not schema-v3/lossless and cannot be trusted as a standalone continuation packet.
+  - T604/T606 held risks remain under their existing owners.
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: "PR #53"
+      task_id: T603
+      mode: review
+      branch: task/t603-schema-migration-recovery
+      base_ref: main
+      current_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      reviewed_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      scope:
+        - Fix verification for T603-R001 through T603-R014 and B001 on current HEAD.
+        - Complete 21-commit fix range, changed files, direct dependencies, TDD/diagnostics, CI, reports and handoffs.
+      non_goals:
+        - Implement findings or merge.
+        - T604/T606/future-v2 owned work.
+      authoritative_requirements:
+        - source: user_instruction
+          reference: "再レビュー"
+          summary: Verify fixes in the same normal-review lineage.
+        - source: user_instruction
+          reference: "壊れたら、履歴は1からで良いよ。ただし、壊れたやつは隔離して捨てないこと"
+          summary: Owner-selected corrupt-history reset policy.
+        - source: repository_instruction
+          reference: AGENTS.md / RevMem project instruction
+          summary: Skills, connector, TDD diagnostics, exact-head CI and no merge.
+        - source: task
+          reference: tasks/tasks-status.md T603
+          summary: Migration, backup, isolation/recovery and fail-closed exit conditions.
+        - source: design
+          reference: rev4 section 15.3 plus BreakingChanges owner override
+          summary: Startup migration remains; owner policy supersedes old JSONL reject rule.
+      write_boundary:
+        allowed:
+          - reports/issue-1-t603-fix-verification-20260816214122.md
+          - handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+          - PR #53 verification comment
+        forbidden:
+          - implementation/tests/workflow/design/tracking edits
+          - merge
+      development_policy:
+        method: TDD
+        testing_order: Regression Red before behavior fix, exact-head Green after implementation.
+      validation:
+        commands:
+          - fix-range and direct-dependency review
+          - comprehensive/sibling/owner Red artifact verification
+          - current exact-head CI verification
+        required_failure_diagnostics:
+          - test results
+          - stdout/stderr logs
+          - environment/Git status
+          - generated/source/test/config context
+      ci:
+        matching_run: "31942897772"
+        conclusion: success
+      unknown:
+        - post-review-artifact HEAD/CI and comment ID until persisted
+      blocked: []
+      remaining_risks:
+        - Four medium required findings remain.
+  - source_skill: review-worker
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      base_ref: main
+      commit_range: 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7..56b7b7de4eb4377eca501549268a7d15a7caf127
+      reviewer:
+        identity: "ChatGPT T603 normal reviewer (same normal-review chat, 2026-08-16)"
+        independence_evidence:
+          - Did not implement the original change or any review fix.
+          - Same normal reviewer is intentionally reused for fix verification.
+      finding_verification:
+        - { id: T603-R001, source_severity: high, disposition: closed, evidence: "Original stale-reviewed exposure fixed; recovery sibling separated as R015." }
+        - { id: T603-R002, source_severity: high, disposition: closed, evidence: "Adjacent immutable migration chain fixed." }
+        - { id: T603-R003, source_severity: medium, disposition: closed, evidence: "All referenced contexts migrated before manifest publication." }
+        - { id: T603-R004, source_severity: medium, disposition: closed, evidence: "Nested future schema no longer downgraded." }
+        - { id: T603-R005, source_severity: medium, disposition: closed, evidence: "Malformed/future schema classification fixed." }
+        - { id: T603-R006, source_severity: medium, disposition: open, evidence: "Wrapper/base64 corruption still leaves latest pointer active." }
+        - { id: T603-R007, source_severity: medium, disposition: closed, evidence: "Historical evidence corrected by explicit erratum; current PR evidence authoritative." }
+        - { id: T603-R008, source_severity: medium, disposition: closed_by_authority_change, evidence: "Owner decision supersedes old rev4 behavior and BreakingChanges records it." }
+        - { id: T603-R009, source_severity: high, disposition: closed, evidence: "Canonical references and child-preservation regressions pass." }
+        - { id: T603-R010, source_severity: medium, disposition: closed, evidence: "Startup migration implemented and wired." }
+        - { id: T603-R011, source_severity: medium, disposition: closed, evidence: "Current T603 CI executes changed/replacement suites." }
+        - { id: T603-R012, source_severity: medium, disposition: closed, evidence: "Review-fix, sibling and owner Red evidence verified." }
+        - { id: T603-R013, source_severity: medium, disposition: open, evidence: "New-vs-existing ID collision and startup owner validation remain; wrong-context part corrected by erratum." }
+        - { id: T603-R014, source_severity: low, disposition: closed, evidence: "Deletion uses injected store boundary." }
+      severity_errata:
+        - finding_id: T603-R013
+          source_severity: medium
+          record_type: erratum
+          reason: "R2 required action incorrectly treated different context IDs as invalid within one repository monthly history. Existing T207 contract proves multiple contexts are valid. Severity remains medium; owner/month/eventId integrity remains the finding."
+          approved_by: null
+      new_findings:
+        - id: T603-R015
+          severity: medium
+          origin: introduced_by_fix
+          location: validated state repository owner-wide uncertainty lifecycle
+          description: Storage-root uncertainty cannot be cleared by a successful read-only reload after repair.
+          impact: Repaired review state can remain falsely unavailable for the Extension Host lifetime.
+          evidence: Root is marked on downstream failure; ready prepare clears target only; coherent load re-enters overridden getCurrent while root remains uncertain; only writes clear root.
+          required_action: Safe root recovery after fully validated read plus repair/reload regressions.
+        - id: T603-R016
+          severity: medium
+          origin: introduced_by_fix
+          location: implementation follow-up handoff files
+          description: Claimed schema-v3 handoffs violate the uploaded typed/lossless schema and omit complete source payloads.
+          impact: Standalone continuation cannot reproduce exact target/CI/findings/permissions safely.
+          evidence: generated_date/non-SHA current_head/custom shapes/no source_payloads in latest follow-up packet.
+          required_action: Regenerate literal schema-v3 lossless packet after fixes and revalidate current-head CI.
+      required_coverage:
+        - { criterion: requirement_and_design_conformance, disposition: checked_finding, evidence: "R006/R013/R015; B001 resolved." }
+        - { criterion: correctness_and_edge_cases, disposition: checked_finding, evidence: "R006/R013/R015." }
+        - { criterion: scope_discipline_and_unrelated_changes, disposition: checked_no_finding, evidence: "Fix range stays within T603." }
+        - { criterion: changed_files_and_direct_dependency_impact, disposition: checked_finding, evidence: "All fix files/dependencies inspected; R006/R013/R015." }
+        - { criterion: api_data_configuration_workflow_compatibility, disposition: checked_finding, evidence: "R006/R013/R016." }
+        - { criterion: error_handling_and_failure_diagnostics, disposition: checked_finding, evidence: "R006/R015; diagnostics compliant." }
+        - { criterion: security_and_secret_handling, disposition: checked_no_finding, evidence: "No new secret/source logging." }
+        - { criterion: tests_and_validation_adequacy, disposition: checked_finding, evidence: "Residual/new cases untested despite green CI." }
+        - { criterion: current_head_ci_evidence, disposition: checked_no_finding, evidence: "31942897772 exact-head success." }
+        - { criterion: report_tracking_and_documentation_accuracy, disposition: checked_finding, evidence: "R016; erratum/BreakingChanges otherwise accurate." }
+        - { criterion: regression_and_maintainability_risks, disposition: checked_finding, evidence: "R013/R015/R016." }
+      held:
+        - T604 concurrency/cleanup
+        - T606 generalized error policy
+        - future v2 semantic transform
+      unexplored: []
+      validation_assessment:
+        - { item: owner_decision, result: supported, evidence: "Explicit user decision + BreakingChanges." }
+        - { item: tdd_diagnostics, result: supported, evidence: "Exact Red runs/artifacts verified." }
+        - { item: current_ci, result: supported, evidence: "Exact-head full CI success." }
+        - { item: finding_closure, result: failed, evidence: "R006/R013/R015/R016 open." }
+      verdict: fail
+      remaining_risks:
+        - dangling snapshot latest pointers after wrapper corruption
+        - history identity gaps
+        - sticky state-root uncertainty
+        - invalid implementation handoff transport
+      next_action: Fix R006/R013/R015/R016 with TDD for behavior issues, then reuse the same normal review chat.
+  - source_skill: report-writer
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      evidence_sources:
+        - PR #53 current metadata/body/comments
+        - R2 review report/handoff
+        - implementation follow-up reports/handoffs
+        - current source/tests/workflow/design/task files
+        - exact-head Actions runs/jobs/artifacts
+      target_identity:
+        branch: task/t603-schema-migration-recovery
+        base_ref: main
+        current_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+        reviewed_implementation_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      severity_records:
+        - { finding_id: T603-R001, source_severity: high, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R002, source_severity: high, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R003, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R004, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R005, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R006, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R007, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R008, source_severity: medium, new_severity: null, reason: "Closed by higher-authority owner requirement change; historical severity remains medium.", approved_by: "user/owner", record_type: preserved }
+        - { finding_id: T603-R009, source_severity: high, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R010, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R011, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R012, source_severity: medium, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+        - { finding_id: T603-R013, source_severity: medium, new_severity: null, reason: "Wrong-context clause corrected; same-repository multi-context is valid. Remaining finding severity unchanged.", approved_by: null, record_type: erratum }
+        - { finding_id: T603-R014, source_severity: low, new_severity: null, reason: null, approved_by: null, record_type: preserved }
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t603-fix-verification-20260816214122.md
+        report_attestation_head: null
+      concise_pr_comment_body: null
+      unresolved_discrepancies:
+        - Implementation follow-up handoffs claim schema v3 but are structurally/losslessly noncompliant; current R016.
+      complete_body: |
+        # T603 fix verification レポート
+
+        ## 1. メタデータ
+
+        - Repository: `ssaattww/RevMem`
+        - Pull Request: #53 `T603 schema migration・破損隔離・回復`
+        - Review mode: `fix_verification`（同一normal review lineage）
+        - Branch: `task/t603-schema-migration-recovery`
+        - Base: `main` (`146aec15783294da1795f268315c85d1a0dffa56`)
+        - Source review artifact HEAD: `8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7`
+        - Reviewed implementation HEAD: `56b7b7de4eb4377eca501549268a7d15a7caf127`
+        - Fix range: `8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7..56b7b7de4eb4377eca501549268a7d15a7caf127`
+        - Fix-range commits: 21
+        - Reviewer: ChatGPT T603 normal reviewer（前回R2と同一chat）
+        - Verdict: **fail**
+        - Generated at: `2026-08-16T21:41:22+09:00`
+
+        このverificationでは、R2で確定した `T603-R001`〜`T603-R014` のidentity/severityを維持し、各findingの修正をcurrent HEADで個別確認した。修正差分と同defect classのsiblingを再走査し、新規finding `T603-R015`、`T603-R016` を追加した。
+
+        Authorityは利用者の「壊れたら履歴は1からで良い。ただし壊れたやつは隔離して捨てない」を最上位として扱い、B001をresolved by ownerとした。current exact-head CI `31942897772` / `95154522013` はsuccess。
+
+        Source finding verification: R001/R002/R003/R004/R005/R007/R008/R009/R010/R011/R012/R014 closed、R006/R013 open。R013のwrong-context clauseはerratumで、same repository monthly historyはmulti-contextを許容する。
+
+        Open findings:
+        - T603-R006 medium: wrapper/base64 snapshot corruptionがentryを隔離してもlatest pointerをinvalidateしない。
+        - T603-R013 medium: new event IDとexisting IDの衝突未検出、startup history migrationのexpected owner未検証。
+        - T603-R015 medium: R001修正のowner-wide uncertaintyがread-only repair/reload後もstickyになる。
+        - T603-R016 medium: implementation follow-up handoffがuploaded schema-v3/lossless contractを満たさない。
+
+        Required coverage 11/11をdispositionし、unexploredは0。T604 concurrency/cleanup、T606 generalized error policy、future v2 transformはheld。Verdictはopen required findings 4件のためfail。次はR006/R013/R015をTDDで修正し、R016のlossless v3 packetを生成後、同じnormal review chatでfix verificationする。Mergeは利用者が行う。
+  - source_skill: chat-review-worker
+    output_contract_version: "1"
+    content_type: application/yaml
+    payload:
+      selected_mode: fix_verification
+      mode_reason: Same normal review chat is available and source findings require closure verification.
+      reviewed_implementation_head: 56b7b7de4eb4377eca501549268a7d15a7caf127
+      source_review_artifact_head: 8a4f79eaa46f3fc98bf71bc3ee6ea588ae21e6e7
+      exact_head_ci_run: 31942897772
+      exact_head_ci_job: 95154522013
+      exact_head_ci_conclusion: success
+      source_findings_closed: 12
+      source_findings_open: 2
+      new_findings:
+        - T603-R015
+        - T603-R016
+      verdict: fail
+      report_path: reports/issue-1-t603-fix-verification-20260816214122.md
+      handoff_path: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+      pr_comment_status: pending_after_persistence
+      merge_performed: false
+
+extensions:
+  - namespace: t603_owner_decision
+    payload:
+      blocker: T603-B001
+      status: resolved_by_owner
+      decision: Corrupt history is retained whole in quarantine; active history does not salvage it and restarts from the next valid event.
+      documentation: Design/BreakingChanges.md 2026-08-16 entry
+  - namespace: source_finding_dispositions
+    payload:
+      closed:
+        - T603-R001
+        - T603-R002
+        - T603-R003
+        - T603-R004
+        - T603-R005
+        - T603-R007
+        - T603-R008
+        - T603-R009
+        - T603-R010
+        - T603-R011
+        - T603-R012
+        - T603-R014
+      open:
+        - T603-R006
+        - T603-R013
+      new:
+        - T603-R015
+        - T603-R016
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_finding_fix
+  summary: Fix T603-R006, T603-R013, T603-R015 and T603-R016, then return to this same normal review lineage.
+  instructions:
+    - Preserve R006 and R013 identities and medium severities.
+    - Add failing regressions first for wrapper/base64 + latest pointer, new-vs-existing history eventId/startup wrong-owner, and repair-after-root-uncertainty recovery.
+    - Implement only after exact-head Red evidence is captured with diagnostics.
+    - Generate the final implementation handoff by literally following uploaded chat-handoff-manager schema v3 and source_payload rules.
+    - Record only CI whose head_sha equals the new current implementation HEAD; do not substitute another SHA.
+    - Persist implementation report/handoff, update PR/comment, do not merge.
+  required_attachments_or_references:
+    - reports/issue-1-t603-fix-verification-20260816214122.md
+    - handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+    - reports/issue-1-t603-review-r2-20260816153800.md
+    - PR #53
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t603-fix-verification-20260816214122.yaml
+  packet_url: null
+  transport_note: Use this packet, not the invalid implementation follow-up handoffs, as the authoritative normal-review continuation packet for the next fix round.
