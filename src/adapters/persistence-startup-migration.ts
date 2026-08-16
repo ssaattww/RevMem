@@ -49,12 +49,12 @@ const readIdentity = (raw: string): Record<string, unknown> | undefined => {
 const migrateWorkspaceState = async (
   storageUris: ReviewStateStorageUris,
   store: AtomicTextFileStore
-): Promise<void> => {
+): Promise<string | undefined> => {
   const workspaceRoot = storageUris.storageUri?.fsPath;
-  if (workspaceRoot === undefined || workspaceRoot.trim().length === 0) return;
+  if (workspaceRoot === undefined || workspaceRoot.trim().length === 0) return undefined;
   const statePath = path.join(path.resolve(workspaceRoot), "workspace-state.json");
   const raw = await store.readText(statePath);
-  if (raw === undefined) return;
+  if (raw === undefined) return undefined;
   const value = readIdentity(raw);
   const contextState = value === undefined || !isRecord(value.contextState)
     ? undefined
@@ -66,12 +66,13 @@ const migrateWorkspaceState = async (
     typeof contextId !== "string" || contextId.trim().length === 0
   ) {
     await quarantinePersistedText(store, statePath, raw);
-    return;
+    return undefined;
   }
-  await preparePersistedReviewState(
+  const preparation = await preparePersistedReviewState(
     { storageUris, atomicFileStore: store },
     { kind: "workspace", repositoryId, contextId }
   );
+  return preparation.state === "ready" ? repositoryId : undefined;
 };
 
 const migrateRepositoryStateRoot = async (
@@ -79,12 +80,12 @@ const migrateRepositoryStateRoot = async (
   store: AtomicTextFileStore,
   collection: "repositories" | "external-files",
   rootName: string
-): Promise<void> => {
+): Promise<string | undefined> => {
   const globalRoot = path.resolve(storageUris.globalStorageUri.fsPath);
   const rootPath = path.join(globalRoot, collection, rootName);
   const manifestPath = path.join(rootPath, "manifest.json");
   const raw = await store.readText(manifestPath);
-  if (raw === undefined) return;
+  if (raw === undefined) return undefined;
   const manifest = readIdentity(raw);
   const repositoryId = manifest?.repositoryId;
   if (
@@ -92,7 +93,7 @@ const migrateRepositoryStateRoot = async (
     hashIdentifier(repositoryId) !== rootName
   ) {
     await quarantinePersistedText(store, manifestPath, raw);
-    return;
+    return undefined;
   }
   const contexts = Array.isArray(manifest?.contexts) ? manifest.contexts : [];
   const firstContext = contexts.find((entry) =>
@@ -106,34 +107,23 @@ const migrateRepositoryStateRoot = async (
     repositoryId,
     contextId
   };
-  await preparePersistedReviewState({ storageUris, atomicFileStore: store }, target);
-};
-
-const persistenceRoots = async (storageUris: ReviewStateStorageUris): Promise<string[]> => {
-  const roots: string[] = [];
-  if (storageUris.storageUri?.fsPath !== undefined && storageUris.storageUri.fsPath.trim().length > 0) {
-    roots.push(path.resolve(storageUris.storageUri.fsPath));
-  }
-  const globalRoot = path.resolve(storageUris.globalStorageUri.fsPath);
-  for (const collection of ["repositories", "external-files"] as const) {
-    const collectionRoot = path.join(globalRoot, collection);
-    for (const name of await readDirectoryNames(collectionRoot)) {
-      if (/^[0-9a-f]{64}$/u.test(name)) {
-        roots.push(path.join(collectionRoot, name));
-      }
-    }
-  }
-  return roots;
+  const preparation = await preparePersistedReviewState({ storageUris, atomicFileStore: store }, target);
+  return preparation.state === "ready" ? repositoryId : undefined;
 };
 
 const migrateHistoryRoot = async (
   rootPath: string,
-  store: AtomicTextFileStore
+  store: AtomicTextFileStore,
+  expectedRepositoryId?: string
 ): Promise<void> => {
   const historyDirectory = path.join(rootPath, "history");
   for (const name of await readDirectoryNames(historyDirectory)) {
     if (/^events-\d{4}-\d{2}\.jsonl$/u.test(name)) {
-      await migratePersistedReviewHistoryFile(store, path.join(historyDirectory, name));
+      await migratePersistedReviewHistoryFile(
+        store,
+        path.join(historyDirectory, name),
+        expectedRepositoryId
+      );
     }
   }
 };
@@ -147,19 +137,30 @@ export const runPersistenceStartupMigration = async (
   options: StartupMigrationOptions
 ): Promise<void> => {
   const store = options.atomicFileStore ?? new NodeAtomicTextFileStore();
-  await migrateWorkspaceState(options.storageUris, store);
+  const roots = new Map<string, string | undefined>();
+  const workspaceRoot = options.storageUris.storageUri?.fsPath;
+  if (workspaceRoot !== undefined && workspaceRoot.trim().length > 0) {
+    roots.set(
+      path.resolve(workspaceRoot),
+      await migrateWorkspaceState(options.storageUris, store)
+    );
+  }
 
   const globalRoot = path.resolve(options.storageUris.globalStorageUri.fsPath);
   for (const collection of ["repositories", "external-files"] as const) {
     const collectionRoot = path.join(globalRoot, collection);
     for (const name of await readDirectoryNames(collectionRoot)) {
       if (!/^[0-9a-f]{64}$/u.test(name)) continue;
-      await migrateRepositoryStateRoot(options.storageUris, store, collection, name);
+      const rootPath = path.join(collectionRoot, name);
+      roots.set(
+        rootPath,
+        await migrateRepositoryStateRoot(options.storageUris, store, collection, name)
+      );
     }
   }
 
-  for (const rootPath of await persistenceRoots(options.storageUris)) {
-    await migrateHistoryRoot(rootPath, store);
+  for (const [rootPath, expectedRepositoryId] of roots) {
+    await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
     await new NodeNonGitSnapshotStorage({
       snapshotDirectory: path.join(rootPath, "snapshots"),
       atomicFileStore: store
