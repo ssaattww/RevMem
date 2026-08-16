@@ -9,14 +9,51 @@ import type {
   NonGitSnapshotStorage,
   NonGitSnapshotStoredValue,
 } from "../../application/non-git-snapshots/index";
+import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
 import { NodeAtomicTextFileStore } from "../state-repository/index";
 import type { AtomicTextFileStore } from "../state-repository/index";
+import {
+  publishSchemaMigration,
+  quarantinePersistedText,
+  runSchemaMigrationChain,
+  UnsupportedPersistedSchemaVersionError
+} from "../state-repository/persistence-schema-recovery";
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-interface PersistedSnapshot { readonly createdAt: number; readonly bytes: string; }
-interface PersistedLatest { readonly snapshotId: string; }
+interface PersistedSnapshot { readonly schemaVersion: number; readonly createdAt: number; readonly bytes: string; }
+interface PersistedLatest { readonly schemaVersion: number; readonly snapshotId: string; }
+
+const SNAPSHOT_MIGRATION_STEPS = [
+  {
+    fromVersion: 0,
+    toVersion: 1,
+    migrate: (value: Record<string, unknown>): Record<string, unknown> => ({
+      ...value,
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION
+    })
+  }
+] as const;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const parseMigratedRecord = (
+  text: string,
+  documentName: string
+): ReturnType<typeof runSchemaMigrationChain> => {
+  const parsed = JSON.parse(text) as unknown;
+  if (!isRecord(parsed)) {
+    throw new TypeError(`${documentName} must be an object`);
+  }
+  return runSchemaMigrationChain(
+    parsed,
+    documentName,
+    SNAPSHOT_MIGRATION_STEPS,
+    0
+  );
+};
 
 /** Node Extension Host codec for the application-level snapshot port. */
 export class NodeNonGitSnapshotCodec implements NonGitSnapshotCodec {
@@ -44,15 +81,36 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   private readonly atomicFileStore: AtomicTextFileStore;
 
   public async put(snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void> {
-    await this.atomicFileStore.writeTextAtomically(this.snapshotPath(snapshotId), JSON.stringify({ createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot));
+    await this.atomicFileStore.writeTextAtomically(this.snapshotPath(snapshotId), JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot));
   }
   public async get(snapshotId: string): Promise<NonGitSnapshotStoredValue | undefined> {
-    const text = await this.atomicFileStore.readText(this.snapshotPath(snapshotId));
+    const filePath = this.snapshotPath(snapshotId);
+    const text = await this.atomicFileStore.readText(filePath);
     if (text === undefined) return undefined;
-    const value = JSON.parse(text) as Partial<PersistedSnapshot>;
-    const createdAt = value.createdAt;
-    const bytes = value.bytes;
-    if (typeof createdAt !== "number" || !Number.isSafeInteger(createdAt) || createdAt < 0 || typeof bytes !== "string") throw new Error("Invalid persisted snapshot");
+
+    let migration: ReturnType<typeof runSchemaMigrationChain>;
+    let createdAt: unknown;
+    let bytes: unknown;
+    try {
+      migration = parseMigratedRecord(text, "Persisted snapshot");
+      createdAt = migration.value.createdAt;
+      bytes = migration.value.bytes;
+      if (typeof createdAt !== "number" || !Number.isSafeInteger(createdAt) || createdAt < 0 || typeof bytes !== "string") {
+        throw new Error("Invalid persisted snapshot");
+      }
+    } catch (error) {
+      if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
+      await quarantinePersistedText(this.atomicFileStore, filePath, text);
+      return undefined;
+    }
+
+    if (migration.migrated) {
+      await publishSchemaMigration(this.atomicFileStore, [{
+        filePath,
+        original: text,
+        migrated: JSON.stringify(migration.value)
+      }]);
+    }
     return { createdAt, bytes: Uint8Array.from(Buffer.from(bytes, "base64")) };
   }
   public async delete(snapshotId: string): Promise<void> { await rm(this.snapshotPath(snapshotId), { force: true }); }
@@ -66,16 +124,37 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
     } catch (error) { if (isNotFound(error)) return []; throw error; }
   }
   public async getLatest(workspaceContextId: string, fileId: string): Promise<string | undefined> {
-    const text = await this.atomicFileStore.readText(this.latestPath(workspaceContextId, fileId));
+    const filePath = this.latestPath(workspaceContextId, fileId);
+    const text = await this.atomicFileStore.readText(filePath);
     if (text === undefined) return undefined;
-    const value = JSON.parse(text) as Partial<PersistedLatest>;
-    if (typeof value.snapshotId !== "string" || !/^[0-9a-f]{64}$/u.test(value.snapshotId)) throw new Error("Invalid snapshot generation pointer");
-    return value.snapshotId;
+
+    let migration: ReturnType<typeof runSchemaMigrationChain>;
+    let snapshotId: unknown;
+    try {
+      migration = parseMigratedRecord(text, "Snapshot generation pointer");
+      snapshotId = migration.value.snapshotId;
+      if (typeof snapshotId !== "string" || !/^[0-9a-f]{64}$/u.test(snapshotId)) {
+        throw new Error("Invalid snapshot generation pointer");
+      }
+    } catch (error) {
+      if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
+      await quarantinePersistedText(this.atomicFileStore, filePath, text);
+      return undefined;
+    }
+
+    if (migration.migrated) {
+      await publishSchemaMigration(this.atomicFileStore, [{
+        filePath,
+        original: text,
+        migrated: JSON.stringify(migration.value)
+      }]);
+    }
+    return snapshotId;
   }
   public async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
     const pointerPath = this.latestPath(workspaceContextId, fileId);
     if (snapshotId === undefined) { await rm(pointerPath, { force: true }); return; }
-    await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ snapshotId } satisfies PersistedLatest));
+    await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, snapshotId } satisfies PersistedLatest));
   }
   private snapshotPath(snapshotId: string): string { return path.join(this.snapshotsDirectory, `${assertSnapshotId(snapshotId)}.json`); }
   private latestPath(workspaceContextId: string, fileId: string): string {
