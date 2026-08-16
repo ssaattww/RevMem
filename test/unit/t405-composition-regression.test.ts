@@ -413,9 +413,13 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     assert.deepEqual(mapped?.contextState.files[FILE_ID]?.modifiedReviewed, [
       { startLine: 0, endLineExclusive: 1 },
     ]);
-    assert.equal(selectedContexts.at(-1)?.kind, "pull-request");
+    const selectedAfterRedetect = selectedContexts.at(-1);
+    assert.equal(selectedAfterRedetect?.kind, "pull-request");
+    if (selectedAfterRedetect?.kind !== "pull-request") {
+      throw new Error("same-HEAD redetection did not publish a pull-request Current Context");
+    }
     assert.equal(
-      selectedContexts.at(-1)?.kind === "pull-request" ? selectedContexts.at(-1)?.contextId : undefined,
+      selectedAfterRedetect.contextId,
       contextId53,
       "same-HEAD redetection must preserve the user-selected PR into normal-editor ownership",
     );
