@@ -1,0 +1,423 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-16T19:24:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #55
+task_id: T506
+branch: task/t506-global-integration
+base_ref: main
+target:
+  current_head: 3c9f6055acf9752908c7fb49a4686c5bcec84299
+  reviewed_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+  commit_range: 8e830c51742e5cdbd6e110716cf0c5d30b0f1232..03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T506を同じ通常reviewerで再レビューし、前回finding closureとfix差分の新規defectを確認する。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector、diagnostic artifact、fix実装はTDD、detailed report、PR concise report、exact current-HEAD CI、non-mergeを要求する。
+  - source: task
+    reference: tasks/tasks-status.md T506
+    summary: 複数contextの確認・解除・変更追従とGlobal集計を統合・Extension Hostで検証し、AC-18〜AC-20を満たす。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: PR/branch/Gitなしworkspace context、編集時の変更部分のみ未確認化、Context/Global atomicity、同一storage owner history orderingを要求する。
+  - source: report
+    reference: reports/issue-1-t506-review-20260816151528.md
+    summary: source finding T506-REV-001 Highを継承する。
+  - source: report
+    reference: reports/issue-1-t506-review-followup-20260816184900.md
+    summary: Git production live-edit pathのfixとRED/GREEN evidenceを提示する。
+
+development_policy:
+  method: review only; implementation fixes must use TDD
+  testing_order: failing non-Git workspace and same-process concurrency regressions first, then implementation and exact-head validation
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t506
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - combined command logs
+    - result metadata
+    - generated build/test output
+    - source/test/configuration
+    - environment and Git state
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-1-t506-fix-verification-20260816192400.md
+      reason: required detailed fix-verification report
+    - path_or_operation: handoffs/issue-1-t506-fix-verification-20260816192400.yaml
+      reason: required lossless fix-verification handoff
+    - path_or_operation: PR #55 review thread/comment
+      reason: finding disposition and new finding feedback
+  forbidden:
+    - path_or_operation: product source, tests, workflow, design or task tracking
+      reason: reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user-owned action
+
+scope:
+  - verify T506-REV-001 at current implementation HEAD
+  - inspect 8e830c..03ac8d fix diff and all five changed files
+  - inspect affected state/history/workspace/Global Understanding contracts and sibling cases
+  - inspect newly changed areas for additional defects
+  - validate fix RED artifact and exact current-head CI
+non_goals:
+  - implement findings
+  - independent final review
+  - T604 cross-process lock implementation
+  - T605 environment acceptance
+  - T607 performance optimization
+  - merge
+
+files:
+  changed:
+    - path: src/document-review-edit-runtime.ts
+      purpose: production live document edit mapping and persistence
+    - path: src/t305-extension.ts
+      purpose: VS Code event wiring and refresh/deactivation
+    - path: test/vscode/t506-suite/index.ts
+      purpose: real Git editor edit/restart acceptance
+    - path: reports/issue-1-t506-review-followup-20260816184900.md
+      purpose: implementation response evidence
+    - path: handoffs/issue-1-t506-review-followup-20260816184900.yaml
+      purpose: implementation response handoff
+  inspected:
+    - path: src/extension.ts
+      purpose: base persistence/history instance ownership
+    - path: src/adapters/state-repository/coherent-file-system-review-state-repository.ts
+      purpose: instance-local CAS serialization
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: instance-local outer write serialization
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: instance-local history append ordering
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: non-Git workspace mapping boundary
+    - path: src/t505-global-understanding-source.ts
+      purpose: persisted Global/open-document recalculation
+    - path: src/application/global-review-mapping/
+      purpose: Global edit mapping contract
+    - path: src/core/range-mapping/
+      purpose: document change interval mapping
+    - path: tasks/tasks-status.md
+      purpose: T506 scope and AC traceability
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: authoritative context/edit/atomic/history contracts
+    - path: README.md
+      purpose: T506 live-edit limitation ownership
+  intentionally_untouched:
+    - path_or_area: product/test/workflow/design
+      reason: reviewer boundary
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: dedicated progress-management Skill required and unavailable
+    - path_or_area: merge
+      reason: user-owned
+
+commands:
+  - command: GitHub compare 8e830c51742e5cdbd6e110716cf0c5d30b0f1232..03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    purpose: fix changed-file set
+    exit_code: 0
+    result: passed
+    head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    evidence: 8 commits, 5 changed files
+  - command: GitHub Actions run 31933264222 artifact inspection
+    purpose: verify TDD RED and failure diagnostics
+    exit_code: 1
+    result: failed
+    head_sha: 02a3aba262f90a2d918998c3eb5a39c7bb1cd106
+    evidence: artifact 9259917030; T506 EH assertion 0 != 2; separated diagnostics present
+  - command: GitHub Actions run 31940480479 / job 95148798221
+    purpose: exact reviewed implementation HEAD validation
+    exit_code: 0
+    result: passed
+    head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    evidence: all CI steps including T506 and standard Extension Host succeeded
+
+tests:
+  - name: T506 real Git normal-editor live edit and restart
+    phase: verification
+    result: passed
+    head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    evidence: exact-head CI run 31940480479
+  - name: T506 non-Git workspace live edit and restart
+    phase: verification
+    result: not_run
+    head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    evidence: runtime returns unsupported-owner; required by partial T506-REV-001 closure
+  - name: concurrent edit mapping and normal-editor command atomicity/history
+    phase: verification
+    result: not_run
+    head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+    evidence: separate repository/history instances bypass same-instance serialization; T506-REV-002
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31940480479
+  head_sha: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+  commits: []
+  addressed_findings:
+    - id: T506-REV-001
+      reviewed_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+      disposition: partial
+      evidence: Git working-tree live edit path fixed; non-Git workspace sibling case remains unsupported
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - reviewer performed no implementation
+
+review:
+  mode: fix_verification
+  reviewed_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+  reviewer:
+    identity: ChatGPT normal review worker in current T506 review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal review worker in current T506 review chat
+      changed: false
+      reason: same chat and reviewer as initial T506 review
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - same T506 normal-review chat
+        - implementation response inspected as evidence only
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: T506-REV-001 remains partial for non-Git workspace
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: unsupported workspace owner and same-process writer race
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: fix diff limited to implementation/test/report/handoff for review response
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: all five fix files plus persistence/history/workspace consumers inspected
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_finding
+      evidence: T506-REV-002 violates atomic persistence/history ordering contract
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: RED artifact 9259917030 has required diagnostics
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no new secrets, token storage or external source transfer
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: missing non-Git and concurrent-writer regressions
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: run 31940480479 matches 03ac8ded... and succeeds
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: follow-up/PR completion claim overstates T506-REV-001 closure; tracking held by governance
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: duplicate owner persistence instances create race and duplicate lifecycle logic
+  validation_assessment:
+    - item: Git live-edit production mapping
+      result: supported
+      evidence: real TextEditor.edit + exact-head CI
+    - item: non-Git workspace live-edit mapping
+      result: failed
+      evidence: DocumentReviewEditRuntime returns unsupported-owner for non-repository inspection
+    - item: same-process state/history atomicity between edit and command runtimes
+      result: failed
+      evidence: repository/history serialization is instance-local but fix creates independent instances
+    - item: fix TDD RED
+      result: supported
+      evidence: run 31933264222 and artifact 9259917030
+    - item: exact reviewed-head CI
+      result: supported
+      evidence: run 31940480479 / job 95148798221 success
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - T506-REV-001 High is partial/open: Git closed, workspace remains
+    - T506-REV-002 High introduced by fix
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t506-fix-verification-20260816192400.md
+    - handoffs/issue-1-t506-fix-verification-20260816192400.yaml
+  reviewed_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+  attestation_head: null
+  pr_comments:
+    - target: T506-REV-001 review thread
+      url_or_id: reply 3791531193
+    - target: T506-REV-002 inline review
+      url_or_id: review 4945969443
+  summary:
+    - fix verification verdict fail with two open High findings
+
+findings:
+  - id: T506-REV-001
+    severity: high
+    origin: coverage_miss
+    location: src/document-review-edit-runtime.ts:120-124; src/t305-extension.ts; non-Git workspace live-edit path
+    description: Git live-edit path is fixed, but non-Git workspace returns unsupported-owner and never maps/persists live Context/Global edits.
+    impact: T506 live edit/change-following and Global Understanding/restart behavior remains incomplete for a designed workspace context.
+    evidence: task/design/README include workspace/live-edit semantics; runtime explicitly returns unsupported-owner for non-repository inspection; current EH regression creates a Git repository only.
+    required_action: wire non-Git workspace live edits through snapshot-authoritative mapping/persistence and add real EH edit/restart regression.
+  - id: T506-REV-002
+    severity: high
+    origin: introduced_by_fix
+    location: src/document-review-edit-runtime.ts:89-94; src/t305-extension.ts; state/history persistence adapters
+    description: fix creates independent state repository and history store instances, bypassing base runtime's instance-local storage-owner serialization.
+    impact: concurrent live edit mapping and command/state transition can both accept the same old snapshot and last-writer-win the manifest; history read-modify-replace can lose an event.
+    evidence: base and edit runtime instantiate separate repository/history objects; state write tails and history tails are instance fields; cross-process T604 does not cover this same-Extension-Host instance race.
+    required_action: share one serialized repository/history boundary or shared owner mutex and add concurrent edit+command state/history regression.
+
+held:
+  - item: task/phase tracking synchronization
+    reason: repository requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager; unavailable in uploaded worker set
+    owner: progress-management worker
+    remaining_risk: T506 remains administratively stale in tasks-status
+    verdict_impact: administrative; technical verdict already fail
+  - item: merge
+    reason: user-owned action
+    owner: user
+    remaining_risk: do not merge with open High findings
+    verdict_impact: blocking
+
+unexplored: []
+unknown:
+  - field_or_fact: post-fix HEAD for next implementation round
+    reason: fixes for current findings do not exist yet
+not_applicable:
+  - field_or_area: T604 cross-window/cross-process locking
+    reason: separate later task; T506-REV-002 concerns same Extension Host separate instances
+  - field_or_area: T605 full remote/multi-root acceptance
+    reason: separate later task
+  - field_or_area: T607 performance benchmark
+    reason: separate later task
+remaining_risks:
+  - non-Git workspace live edits remain outside T506 production mapping
+  - same-process concurrent edit/command can lose state/history
+  - follow-up completion claims remain overstated until both findings close
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: PR #55
+      task_id: T506
+      mode: review
+      branch: task/t506-global-integration
+      base_ref: main
+      current_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+      reviewed_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+      scope:
+        - T506-REV-001 fix verification
+        - fix diff and sibling/new defect inspection
+        - exact-head CI and RED artifact validation
+      non_goals:
+        - implementation
+        - merge
+      ci:
+        matching_run: '31940480479'
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - workspace live edit unsupported
+        - duplicate same-process persistence boundaries
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 03ac8dedb7c92aa9000da03248b3985f57dcaaf2
+      previous_finding: T506-REV-001
+      finding_disposition: partial
+      findings:
+        - T506-REV-001 High partial/open
+        - T506-REV-002 High introduced_by_fix
+      verdict: fail
+      unexplored: []
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: detailed verification report at reports/issue-1-t506-fix-verification-20260816192400.md
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review follow-up
+  summary: Fix T506-REV-001 workspace live-edit remainder and T506-REV-002 same-process persistence race using TDD.
+  instructions:
+    - Add failing non-Git workspace live edit/restart Extension Host regression.
+    - Share or globally serialize state/history owner boundary between base runtime and edit runtime.
+    - Add deterministic concurrent edit mapping plus review command state/history regression.
+    - Update follow-up report/handoff and PR summary after exact new-HEAD CI.
+  required_attachments_or_references:
+    - PR #55
+    - reports/issue-1-t506-fix-verification-20260816192400.md
+    - handoffs/issue-1-t506-fix-verification-20260816192400.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t506-fix-verification-20260816192400.yaml
+  packet_url: null
+  transport_note: Continue in the T506 implementation/fix chat; use this same normal-review chat again for the next fix verification.
