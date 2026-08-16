@@ -9,9 +9,9 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T505 Global Understanding UIと設定（PR #43）をcurrent mainへsquash merge済み
 - 現在のタスク: T405 Review Contexts ViewとPR管理UI（PR #54）
-- 次のタスク: 一度限りの全範囲独立review finding 3件を同じreviewerで限定closureし、必須PR check成功後にsquash mergeする
-- 実装状態: `T405-IFR-1` High、`T405-IFR-2` Medium、`T405-IFR-3` MediumをTDD修正。focused 11/11とcomposition regression 1/1、diff checkは成功
-- 独立review verdict: source HEAD `b16c5c46d9d1511f68f6fc76e6ee09a404c76f58`では`fail`。修正HEADのfinding限定closure待ち
+- 次のタスク: openの`T405-IFR-1`と`T405-IFR-2`を同じreviewerで限定closureし、必須PR check成功後にsquash mergeする
+- 実装状態: `T405-IFR-3`はclosed。`T405-IFR-1` Highと`T405-IFR-2` Mediumの不足回帰を追加し、composition regression 2/2は成功
+- 独立review verdict: source HEAD `b16c5c46d9d1511f68f6fc76e6ee09a404c76f58`では`fail`。残る2 findingの限定closure待ち
 - ブロッカー: なし
 - Gitブランチ: `feature/t405-review-contexts`
 - Pull Request: PR #54（open、finding限定closure待ち）
@@ -43,6 +43,7 @@
 - T505 merge commit: `c4788314cec0dc1d05c86451caa33ba3f9554cb0`
 - T405独立reviewレポート: `reports/issue-1-t405-independent-final-review-20260817080505.md`
 - T405独立review finding対応レポート: `reports/issue-1-t405-independent-review-followup-20260817081448.md`
+- T405独立review finding対応R2レポート: `reports/issue-1-t405-independent-review-followup-r2-20260817083317.md`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -322,7 +323,7 @@
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
 | T404 | 完了 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装した | T104、T205、T401、T403 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #48をcurrent mainへsquash merge済み |
-| T405 | 進行中 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常review findingsをclosed。一度限りの全範囲独立review finding 3件をTDD修正し、同じreviewerの限定closureとsquash mergeが残る |
+| T405 | 進行中 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常review findingsと独立review IFR-3をclosed。IFR-1/2の不足回帰を追加し、同じreviewerの限定closureとsquash mergeが残る |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
 
 ## P5 Global確認済みと理解率

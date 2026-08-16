@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,7 +8,12 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
-import { FileSystemReviewStateRepository, JsonlReviewHistoryStore } from "../../src/adapters/state-repository/index.js";
+import {
+  DebouncedReviewStateRepository,
+  FileSystemReviewStateRepository,
+  JsonlReviewHistoryStore,
+  resolveReviewStateStorageRoute,
+} from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
@@ -25,6 +30,11 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
+import {
+  markReviewedRanges,
+  unmarkReviewedRanges,
+  type ReviewStateTransaction,
+} from "../../src/core/review-state/index.js";
 import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 
@@ -160,6 +170,101 @@ const findPullRequestItem = (
   return item;
 };
 
+test("T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history", async () => {
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-ifr1-"));
+  const storageUris = { globalStorageUri: { fsPath: storageRoot } };
+  const target = {
+    kind: "pull-request" as const,
+    repositoryId: REPOSITORY_ID,
+    contextId: `github-pr:${REPOSITORY_ID}#52`,
+  };
+  const owner = new DebouncedReviewStateRepository({
+    delegate: new FileSystemReviewStateRepository({ storageUris }),
+    debounceMilliseconds: 0,
+  });
+  const historyEvents: string[] = [];
+  const history = new ReviewHistoryRecorder({
+    sessionId: "t405-ifr1",
+    createEventId: (() => {
+      let next = 0;
+      return () => `t405-ifr1-${++next}`;
+    })(),
+    appender: {
+      append: async (_target, event) => { historyEvents.push(event.type); },
+    },
+  });
+
+  try {
+    await owner.save(target, {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: pullRequestContext("a".repeat(40), "b".repeat(40)),
+      globalState: repositoryGlobal("b".repeat(40)),
+    });
+    await owner.flush();
+    const before = await owner.load(target);
+    assert.ok(before);
+    const mark = markReviewedRanges({
+      contextState: before.contextState,
+      globalState: before.globalState,
+      target: { fileId: FILE_ID, currentPath: FILE_ID, revisionId: "b".repeat(40), lineCount: 2 },
+      intervals: [{ startLine: 1, endLineExclusive: 2 }],
+      occurredAt: "2026-08-17T08:33:17.000Z",
+    });
+    const lifecycle: ReviewStateTransaction = {
+      ...mark,
+      next: {
+        contextState: {
+          ...mark.expected.contextState,
+          displayName: "PR #52 (lifecycle refreshed)",
+          updatedAt: "2026-08-17T08:33:16.000Z",
+        },
+        globalState: mark.expected.globalState,
+      },
+    };
+
+    const raced = await Promise.allSettled([owner.commit(lifecycle), owner.commit(mark)]);
+    assert.equal(raced.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(raced.filter((result) => result.status === "rejected").length, 1);
+
+    const afterRace = await owner.load(target);
+    assert.ok(afterRace);
+    const retryMark = markReviewedRanges({
+      contextState: afterRace.contextState,
+      globalState: afterRace.globalState,
+      target: { fileId: FILE_ID, currentPath: FILE_ID, revisionId: "b".repeat(40), lineCount: 2 },
+      intervals: [{ startLine: 1, endLineExclusive: 2 }],
+      occurredAt: "2026-08-17T08:33:18.000Z",
+    });
+    await owner.commit(retryMark);
+    await history.recordTransaction(retryMark, "user-selection");
+    const afterMark = await owner.load(target);
+    assert.deepEqual(afterMark?.contextState.files[FILE_ID]?.modifiedReviewed, [
+      { startLine: 0, endLineExclusive: 2 },
+    ]);
+    assert.deepEqual(afterMark?.globalState.files[FILE_ID]?.reviewed, [
+      { startLine: 0, endLineExclusive: 2 },
+    ]);
+
+    const unmark = unmarkReviewedRanges({
+      contextState: afterMark!.contextState,
+      globalState: afterMark!.globalState,
+      target: { fileId: FILE_ID, currentPath: FILE_ID, revisionId: "b".repeat(40), lineCount: 2 },
+      intervals: [{ startLine: 1, endLineExclusive: 2 }],
+      occurredAt: "2026-08-17T08:33:19.000Z",
+    });
+    await owner.commit(unmark);
+    await history.recordTransaction(unmark, "user-selection");
+    await owner.flush();
+    const durable = await new FileSystemReviewStateRepository({ storageUris }).load(target);
+    assert.equal(durable?.contextState.displayName, "PR #52 (lifecycle refreshed)");
+    assert.equal(durable?.globalState.repositoryId, REPOSITORY_ID);
+    assert.deepEqual(historyEvents, ["marked-reviewed", "unmarked-reviewed"]);
+  } finally {
+    await owner.dispose();
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-composition-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -214,6 +319,7 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
 
     let lifecycle52: "open" | "closed" | "merged" = "open";
     let lifecycle53: "open" | "closed" | "merged" = "open";
+    let refreshTransport: "live" | "offline" = "live";
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
@@ -225,8 +331,21 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
           base: { ref: "main", sha: baseSha },
         })));
       }
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52/files") {
+        if (refreshTransport === "offline") throw new Error("offline for cache fallback");
+        return jsonResponse([{
+          filename: FILE_ID,
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          patch: "@@ -1,2 +1,2 @@\n keep\n-old\n+new",
+        }]);
+      }
       const lifecycleMatch = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
       if (lifecycleMatch !== null) {
+        if (refreshTransport === "offline" && lifecycleMatch[1] === "52") {
+          throw new Error("offline for cache fallback");
+        }
         const number = Number(lifecycleMatch[1]);
         const lifecycle = number === 52 ? lifecycle52 : lifecycle53;
         return jsonResponse({
@@ -235,6 +354,7 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
           html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
           state: lifecycle === "open" ? "open" : "closed",
           merged_at: lifecycle === "merged" ? "2026-08-17T00:30:00Z" : null,
+          changed_files: number === 52 ? 1 : 0,
           base: { sha: baseSha },
           head: { sha: targetHeadSha },
         });
@@ -461,6 +581,57 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     assert.ok(opened);
     assert.match(opened.original, /^review-range-diff:\/\/document\/v1\//u);
     assert.match(opened.modified, /^review-range-diff:\/\/document\/v1\//u);
+
+    // T405-IFR-2: explicit refresh distinguishes live+write success, stale offline fallback, and cache-write failure at the command/UI boundary.
+    const refreshCache = async (item: ReviewContextListItem): Promise<readonly string[]> => {
+      errors.length = 0;
+      const handler = commands.get("reviewRange.refreshReviewContextCache");
+      assert.ok(handler);
+      await handler(item);
+      return [...errors];
+    };
+    const liveRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
+    assert.deepEqual(liveRefreshErrors, []);
+    const liveCache = findPullRequestItem(current.provider, 52).cache;
+    assert.equal(liveCache?.origin, "live");
+    assert.equal(liveCache?.freshness, "fresh");
+    assert.ok(liveCache !== undefined && "updatedAt" in liveCache);
+
+    const cacheDirectory = resolveReviewStateStorageRoute(storageUris, {
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    }).cacheDirectory;
+    assert.ok(cacheDirectory);
+    for (const relativePath of await readdir(cacheDirectory, { recursive: true })) {
+      if (!relativePath.endsWith(".json")) continue;
+      const filePath = path.join(cacheDirectory, relativePath);
+      const value = JSON.parse(await readFile(filePath, "utf8")) as Record<string, unknown>;
+      value.updatedAt = "2000-01-01T00:00:00.000Z";
+      value.expiresAt = "2000-01-01T00:00:01.000Z";
+      await writeFile(filePath, JSON.stringify(value), "utf8");
+    }
+    refreshTransport = "offline";
+    const offlineRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
+    assert.equal(offlineRefreshErrors.length, 1);
+    assert.match(offlineRefreshErrors[0]!, /offline cache \(stale\)/u);
+    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
+      origin: "offline",
+      freshness: "stale",
+      updatedAt: "2000-01-01T00:00:00.000Z",
+    });
+
+    refreshTransport = "live";
+    await rm(cacheDirectory, { recursive: true, force: true });
+    await writeFile(cacheDirectory, "cache write blocked", "utf8");
+    const writeFailureErrors = await refreshCache(findPullRequestItem(current.provider, 52));
+    assert.equal(writeFailureErrors.length, 1);
+    assert.match(writeFailureErrors[0]!, /live取得結果をcacheへ保存できませんでした/u);
+    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
+      origin: "live",
+      freshness: "not-cached",
+    });
+    errors.length = 0;
     const commandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
       getDocumentUri: (editor) => editor.uri,
       getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(editor.uri),
