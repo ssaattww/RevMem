@@ -10,7 +10,7 @@ task_id: T603
 branch: task/t603-schema-migration-recovery
 base_ref: main
 target:
-  current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+  current_head: 115766711037ea4d06250119920e9d4d8e83d5d4
   reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
   commit_range: 146aec15783294da1795f268315c85d1a0dffa56..6a7d66e2cfbdfe226b8e958151b318ced83e6d13
 
@@ -258,6 +258,12 @@ commands:
     result: passed
     head_sha: de54a83f48a96d5103ed1c646cc392492485fa4b
     evidence: reports/issue-1-t603-review-r2-20260816153800.md created on PR branch.
+  - command: "Persist initial R2 handoff packet before lossless correction"
+    purpose: Record schema-v3 typed packet and detect its report-writer complete_body transport deficiency during self-validation.
+    exit_code: 0
+    result: passed
+    head_sha: 115766711037ea4d06250119920e9d4d8e83d5d4
+    evidence: Packet was committed, then immediately subjected to schema/lossless self-review; the same file is being corrected rather than treating the deficient packet as final.
 
 tests:
   - name: T603 exact-head pre-implementation Red suite
@@ -294,8 +300,8 @@ tests:
 ci:
   required: true
   workflow: CI
-  run_id: 31932441612
-  head_sha: de54a83f48a96d5103ed1c646cc392492485fa4b
+  run_id: 31932558161
+  head_sha: 115766711037ea4d06250119920e9d4d8e83d5d4
   conclusion: in_progress
   artifacts: []
 
@@ -389,7 +395,7 @@ review:
       evidence: R001-R006 boundary gaps, R011, R012 and R013.
     - criterion: current_head_ci_evidence
       disposition: checked_no_finding
-      evidence: Implementation 6a7d... has exact run 31930532442 success; prior review head 8dca... has exact run 31931358963 success; report head de54... has matching run 31932441612 currently in progress at packet generation. No other SHA is substituted.
+      evidence: Implementation 6a7d... has exact run 31930532442 success; prior review head 8dca... has exact run 31931358963 success; pre-correction packet head 115766... has matching run 31932558161 in progress at generation. No other SHA is substituted.
     - criterion: report_tracking_and_documentation_accuracy
       disposition: checked_finding
       evidence: R007 and R008; task/phase tracking is intentionally not edited by this reviewer under repository rules.
@@ -582,12 +588,12 @@ held: &held
 unexplored: &unexplored []
 
 unknown:
-  - field_or_fact: final PR HEAD after this handoff file is committed
-    reason: A handoff cannot contain the SHA of the commit that creates itself; it must be recorded externally after persistence.
-  - field_or_fact: exact-head CI result for the final handoff commit
-    reason: The run can exist only after this packet is committed; the wrapper must poll the run for the new HEAD and record it in the PR comment/final response.
+  - field_or_fact: final PR HEAD after this corrected handoff file is committed
+    reason: A handoff cannot contain the SHA of the commit that creates its final corrected bytes; it must be recorded externally after persistence.
+  - field_or_fact: exact-head CI result for the final corrected handoff commit
+    reason: The run can exist only after the corrected packet commit; the wrapper must poll the new HEAD and record it in the PR comment/final response.
   - field_or_fact: comprehensive R2 PR comment ID
-    reason: The concise comment is posted only after this packet is persisted.
+    reason: The concise comment is posted only after the corrected packet is persisted.
 
 not_applicable:
   - field_or_area: independent-final report attestation
@@ -604,6 +610,333 @@ remaining_risks:
   - History recovery contract and salvage integrity remain ambiguous/incomplete until B001/R008/R013 are resolved.
   - T604/T606 held concurrency/cleanup/error-policy work remains after T603 closure.
 
+extensions:
+  - namespace: t603.review_r2.report_body
+    payload: &report_body |
+      # T603 初回通常レビュー 完全再調査 R2
+
+      ## メタデータ
+
+      - Repository: `ssaattww/RevMem`
+      - Pull Request: #53 `T603 schema migration・破損隔離・回復`
+      - Review mode: `initial_review` 継続再調査
+      - Branch: `task/t603-schema-migration-recovery`
+      - Base: `main` (`146aec15783294da1795f268315c85d1a0dffa56`)
+      - Reviewed implementation HEAD: `6a7d66e2cfbdfe226b8e958151b318ced83e6d13`
+      - Reviewed implementation range: `146aec15783294da1795f268315c85d1a0dffa56..6a7d66e2cfbdfe226b8e958151b318ced83e6d13`
+      - Re-audit開始時PR HEAD: `8dca8376bf29332f219fdc4323b98d67709506ba`
+      - Previous normal-review report: `reports/issue-1-t603-review-20260816151902.md`
+      - Previous normal-review handoff: `handoffs/issue-1-t603-review-20260816151902.yaml`
+      - Reviewer: ChatGPT T603 normal reviewer（同一chat、2026-08-16）
+      - Verdict: **fail**
+      - Required findings: **14件（high 3 / medium 10 / low 1）**
+      - Generated at: `2026-08-16T15:38:00+09:00`
+
+      本報告は、前回reviewのfinding identity/severityを保持したまま、利用者から「skillに挙げられている項目を全て網羅する」よう指示を受け、アップロード済み`chatgpt-worker-skills.zip`の`work-context-manager`、`review-worker`、`chat-review-worker`、`report-writer`、`chat-handoff-manager`を実物から再読してゼロベースでcoverageを閉じ直した完全再調査版である。
+
+      前回report/handoffは履歴として保持するが、前回の「主要direct dependencies」「unexploredなし」というcoverage主張は不十分だった。また前回handoffにはschema-v3 enum/shape違反とlossless `source_payloads`不足があった。本R2 reportと同時に生成するR2 handoffを次worker向けのauthoritative review packetとする。前回finding `T603-R001`〜`T603-R007`は撤回・severity変更せず、本報告で証拠を拡張する。severity reclassificationは0件である。
+
+      ## 1. Authority / scope / conflict
+
+      ### 1.1 Authority order
+
+      1. 利用者の現指示: T603をskillの全項目で網羅reviewする。
+      2. Repository instruction: `AGENTS.md`、RevMem project instruction。
+      3. Accepted task/phase/design: `tasks/tasks-status.md` T603、`tasks/phases-status.md` P6、`doc/design/vscode-review-range-tracker-design.md` rev4。
+      4. PR #53/current repository evidence。
+      5. implementation/review reports and handoffs。
+
+      Issue #1も確認したが、現在はPhase 0のclosed issueであり、T603の追加受け入れ条件は持たない。T603の具体的authorityはtask/phase/designである。
+
+      ### 1.2 T603 accepted scope
+
+      - schema migration chain
+      - migration前backup
+      - JSON / JSONL / snapshot corruption detection / isolation / recovery
+      - legacy schema fixtureの段階移行
+      - migration failure時の復元
+      - uncertain evidenceをreviewedとして表示しない
+      - AC-22 / AC-23 / AC-24に関係する永続化堅牢化
+
+      ### 1.3 Authoritative-source conflict: T603-B001
+
+      `tasks/tasks-status.md` T603はJSONLの「破損検出・隔離・回復」を要求する。一方、現行設計rev4 §15.4は既存JSONLに破損行を検出した場合、**後続eventをappendせずrejectする**と明記する。PR #53は破損log全体をquarantineした後、valid lineをsalvageして**新event appendを成功**させる。taskの「回復」はappend継続まで明記しておらず、設計の具体的failure contractと実装が衝突する。
+
+      このconflictをreviewer判断で暗黙解消しない。現行authorityのままでは実装は設計不適合として`T603-R008`をrequired findingとする。実装workerは、設計に合わせてrejectへ戻すか、owner/userにappend継続をaccepted designとして明示更新してもらう必要がある。
+
+      ## 2. Skill-required discovery / review coverage
+
+      ### 2.1 PR変更file — implementation HEADの全9file確認
+
+      1. `.github/workflows/ci.yml`
+      2. `handoffs/issue-1-t603-implementation-20260816150000.yaml`
+      3. `reports/issue-1-t603-implementation-20260816145900.md`
+      4. `src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts`
+      5. `src/adapters/state-repository/jsonl-review-history-store.ts`
+      6. `src/adapters/state-repository/persistence-schema-recovery.ts`
+      7. `src/adapters/state-repository/validated-file-system-review-state-repository.ts`
+      8. `test/unit/review-history-jsonl-store.test.ts`
+      9. `test/unit/t603-schema-migration-recovery.test.ts`
+
+      ### 2.2 Production変更fileの内部direct imports — 全確認
+
+      - `src/adapters/state-repository/atomic-text-file-store.ts`
+      - `src/adapters/state-repository/contracts.ts`
+      - `src/adapters/state-repository/storage-router.ts`
+      - `src/adapters/state-repository/coherent-file-system-review-state-repository.ts`
+      - `src/adapters/state-repository/file-system-review-state-repository.ts`
+      - `src/adapters/state-repository/owner-global-state-loader.ts`
+      - `src/adapters/state-repository/owner-reconciliation-validation.ts`
+      - `src/adapters/state-repository/index.ts`
+      - `src/adapters/non-git-snapshots/index.ts`
+      - `src/application/non-git-snapshots/index.ts`
+      - `src/core/contracts/index.ts`
+      - `src/core/contracts/review-state.ts`
+      - `src/core/contracts/review-history.ts`
+      - `src/core/contracts/schema-version.ts`
+      - `src/core/review-history/index.ts`
+      - `src/core/review-history/review-history-event-codec.ts`
+
+      Node builtin importsはruntime platform APIとして挙動境界を確認したが、repository direct dependency fileではないため上記file listには含めない。
+
+      ### 2.3 Direct consumers / runtime integration — 確認
+
+      - `src/extension.ts`
+      - `src/t305-extension.ts`
+      - `src/t505-global-understanding-source.ts`
+      - `src/adapters/state-repository/debounced-review-state-repository.ts`
+      - `src/adapters/workspace-review-state/workspace-review-state-session-provider.ts`
+      - `src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts`
+      - `src/adapters/document-review-state/document-review-state-session-provider.ts`
+      - `src/application/review-history/review-history-recorder.ts`
+      - `src/application/global-understanding/global-understanding-background-recalculator.ts`
+      - `src/application/global-understanding/cooperative-global-understanding-calculation.ts`
+      - `src/application/editor-decoration/normal-editor-decoration-model.ts`
+
+      ### 2.4 Config / workflow / docs / tracking — 確認
+
+      - `package.json`
+      - `package-lock.json`（PRで変更なし、dependency変更なし）
+      - `tsconfig.test.json`
+      - `test/unit/ci-workflow-contract.test.ts`
+      - `.github/workflows/ci.yml`
+      - `AGENTS.md`
+      - `Design/BreakingChanges.md`
+      - `README.md`
+      - `tasks/tasks-status.md`
+      - `tasks/phases-status.md`
+      - `doc/design/vscode-review-range-tracker-design.md`
+      - Issue #1
+      - PR #53 metadata/comments/commits
+      - GitHub Actions runs/jobs/artifacts
+      - previous implementation and review reports/handoffs
+
+      `unexplored`: **なし**。required criterionは全て以下でdispositionする。
+
+      ## 3. TDD / CI / diagnostics evidence
+
+      ### 3.1 Exact-head Red
+
+      - Test-only HEAD: `3c88a86bd0e1a47a43a259b53db431cc8724d40e`
+      - Actual commit message: `test: define T603 migration recovery behavior`
+      - Matching run: `31929190714`
+      - Actual job: `95121366762`
+      - Result: failure
+      - Build / typecheck / architecture / lint / existing Unit / T602: success
+      - New T603 focused step: failure
+      - Actual failure artifact: `9258779700`
+      - Artifact name: `ci-failure-diagnostics-31929190714-1`
+
+      artifactを実取得済み。少なくともT603 test log、build/typecheck/architecture/lint/unit/T602 logs、environment、git status、generated-file inventory、`src/`、`test/`、`dist/`、`test-dist/`、configuration/workflow contextを含む。workflowは`2>&1 | tee`を使い、stdout/stderrを統合logに保存する。failure diagnostic artifact policy自体は満たす。
+
+      ただしRed suiteは6 fixtureだけで、後から実装したrepository-style manifest/context/global migrationとlatest generation pointer migration等を仕様化していない。これは`T603-R012`。
+
+      ### 3.2 Reviewed implementation HEAD CI
+
+      - Reviewed implementation HEAD: `6a7d66e2cfbdfe226b8e958151b318ced83e6d13`
+      - Exact matching run: `31930532442`
+      - Job: `95124484220`
+      - Result: success
+      - Build / contract typecheck / architecture positive+negative / lint / unit / T602 / T603 / T403 / T404 / T304 / T502 / T503 / T504 / T505 / temporary Git / mock GitHub / VS Code Extension Host: success
+
+      別SHAのrunは代用していない。
+
+      ### 3.3 Re-audit開始時PR HEAD CI
+
+      前回normal-review report/handoffを追加したcurrent PR HEAD `8dca8376bf29332f219fdc4323b98d67709506ba`にもexact matching run `31931358963` / job `95126587128`がありsuccess。`8dca...`の追加内容は前回review report/handoffのみで、technical implementation targetは`6a7d...`のまま。
+
+      ### 3.4 Current CI coverage gap
+
+      `package.json`の`test:unit`は`review-history-jsonl-store.test.js`を実行しない。`test:t206`は同testを実行するが、PR #53のCI workflowは`test:t206`を呼ばない。T603 focused stepは`t603-schema-migration-recovery.test.js`だけを直接実行する。したがってPRで変更された`test/unit/review-history-jsonl-store.test.ts`はcompile/lint対象にはなるが、current-HEAD CIでtestとして実行されない。しかも同testのcorrupt-only fixtureは`prepared.migrated === false`のwrite pathを通り、T603 mixed legacy+corrupt fixtureの`prepared.migrated === true` pathとは異なる。これは`T603-R011`。
+
+      ## 4. Required findings
+
+      ### T603-R001 — high — current-schema structural corruptionとowner-wide uncertaintyでstale reviewed cacheを再露出できる
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R001を保持。severity `high`変更なし。証拠範囲を全direct dependency/consumerへ拡張。
+      - Location: persistence recovery validation, validated repository uncertainty/load, coherent/low-level caches。
+      - Description: preflightはdeep canonical modelを検証せず、`ready`でuncertainを解除した後のdownstream failureでは再設定しない。manifest/global uncertaintyもcontext-local setにしか記録されず、sibling cached contextがstale owner Globalを返し得る。
+      - Impact: uncertain persistenceがreviewedとして再露出しT603/AC-24違反。
+      - Required action: fully canonical validation、downstream failureでuncertain保持、owner-wide propagation、cache hide/clear、regression tests。
+
+      ### T603-R002 — high — v0→v1 migration stepがcurrent定数へ結合され、次回schema bumpでchainが壊れる
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R002、severity `high`保持。
+      - Description: `toVersion:1` stepが`REVIEW_RANGE_SCHEMA_VERSION`を書き、current=2で0→1 stepが2を出してtarget assertion失敗。
+      - Required action: historical stepはimmutable target versionを出力しmulti-step testsを追加。
+
+      ### T603-R003 — medium — manifest referenceだけ全contextをv1へ進め、未選択context documentはv0のまま残る
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R003、severity `medium`保持。
+      - Required action: 全referenced context migrate/validateまたはmixed-version contract、multi-context tests。
+
+      ### T603-R004 — medium — legacy parent migrationがnested future schemaを上書きしてdowngradeする
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R004、severity `medium`保持。
+      - Required action: nested modelを個別version validation/migrationしfutureをpreserve/reject。
+
+      ### T603-R005 — medium — malformed schemaVersionをfuture扱いしquarantineせず、snapshot nullはlegacy扱いになる
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R005、severity `medium`保持。
+      - Required action: invalid schema metadataとvalid future versionを分離、legacy fallbackはundefinedのみ。
+
+      ### T603-R006 — medium — snapshot payload本体のcorruptionを検出しても隔離・除去しない
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R006、severity `medium`保持。
+      - Required action: gzip/hash/envelope failureをquarantine/deleteへ接続しlatest pointerもfail closed。
+
+      ### T603-R007 — medium — implementation report/handoff/PRの永続証跡がauthoritative GitHub dataと一致しない
+
+      - Origin: `introduced_by_change`
+      - Continuity: 前回R007、severity `medium`保持。
+      - Actual Red job/artifact `95121366762`/`9258779700`等、report/handoff/PRとの不一致をR2本文で列挙。
+      - Required action: GitHub authoritative valuesで訂正しreview lifecycle wordingを整合。
+
+      ### T603-R008 — medium — corrupt JSONL salvage+append成功はaccepted designと逆でBreakingChanges未記録
+
+      - Origin: `introduced_by_change`
+      - rev4 §15.4のreject-without-appendを、PRはquarantine/salvage/append successへ変更。
+      - AGENTS breaking-change台帳にも未記録。
+      - Required action: owner decisionでrejectへ戻すかdesign/BreakingChangesを更新。
+
+      ### T603-R009 — high — corrupt manifest referenceから正常な別documentをquarantine/deleteできる
+
+      - Origin: `introduced_by_change`
+      - `contexts/../global-state/...`等がroot内なら通り、別valid childを誤参照したcontext mismatch時にもchild自身をquarantine/removeする。
+      - Impact: corrupt pointerが正常sibling/Global evidenceを破壊。
+      - Required action: post-resolve subtree containment、reference corruptionをmanifest側へ帰属、valid child preservation tests。
+
+      ### T603-R010 — medium — startup migrationではなくlazy-on-accessで旧保存modelが残る
+
+      - Origin: `introduced_by_change`
+      - activationはconstructのみ。history past-month fileはsame month append時以外migration entrypointが無い。
+      - Required action: startup sweepを追加するかaccepted designをlazyへ変更しrestart integration tests。
+
+      ### T603-R011 — medium — 変更したJSONL regression testがcurrent CIで実行されない
+
+      - Origin: `coverage_miss`
+      - test:unit excludes、CI no test:t206、T603 focusedはT603 fileのみ。
+      - Required action: default/focused CI wiringとworkflow contract test。
+
+      ### T603-R012 — medium — TDD Redがrepository-style migrationとlatest-pointer migrationを仕様化していない
+
+      - Origin: `coverage_miss`
+      - six Red fixturesにはrepository manifest/global/context、target absent、latest pointerが無い。
+      - Required action: missing regression testsを先にRed化してからfix implementation。
+
+      ### T603-R013 — medium — JSONL salvageがtarget/month/eventId一意性を検証しない
+
+      - Origin: `introduced_by_change`
+      - existing lineのrepository/context、file month、duplicate eventIdをfile-levelで検証せずactive logへrepublish可能。
+      - Required action: file-level integrity validationとwrong-owner/month/duplicate fixtures。
+
+      ### T603-R014 — low — quarantine deletionがAtomicTextFileStoreを迂回する
+
+      - Origin: `introduced_by_change`
+      - writeはinjected store、removeはdirect node:fs rm。
+      - Required action: deleteをpersistence abstractionへ追加するかNode-only boundary化しcustom-store test。
+
+      ## 5. Required coverage dispositions
+
+      | Criterion | Disposition | Evidence |
+      | --- | --- | --- |
+      | requirement and design conformance | `checked_finding` | R001〜R006、R008〜R010、B001 |
+      | correctness and edge cases | `checked_finding` | R001〜R006、R009、R013、R014 |
+      | scope discipline / unrelated changes | `checked_no_finding` | implementation net diffはT603 scope内 |
+      | changed files and direct dependency impact | `checked_finding` | 全9変更file、全内部direct imports、主要direct consumers/runtime確認 |
+      | API/data/config/workflow/compatibility | `checked_finding` | R002〜R005、R008〜R011、R013 |
+      | error handling/failure diagnostics | `checked_finding` | R001/R005/R006/R009/R014。CI artifact自体は十分 |
+      | security/secret handling | `checked_no_finding` | 新規secret/source-body diagnostic leakなし |
+      | tests/validation adequacy | `checked_finding` | R001〜R006 gaps、R011/R012/R013 |
+      | current-HEAD CI | `checked_no_finding` | implementation 6a7d exact success、review head 8dca exact success |
+      | report/tracking/documentation accuracy | `checked_finding` | R007/R008 |
+      | regression/maintainability | `checked_finding` | R002/R003/R004/R009/R010/R014 |
+
+      `unexplored`: なし。
+
+      ## 6. Held / not applicable
+
+      - H001 T604: cross-window/process locking、migration-write serialization、atomic history append、cache/snapshot/sidecar cleanup。
+      - H002 future schema v2 concrete transform。
+      - H003 T606 generalized retry/error/privacy-safe diagnostic policy。
+      - independent-final attestation、merge、reviewer task tracking editはN/A。
+
+      ## 7. Prior review / handoff errata
+
+      - 前回はZIP Skillを開始前に実読せずdirect dependenciesを「主要」で閉じた。R2で全direct imports/consumers確認。
+      - 前回`unexplored:none`は早計。R2でrequired discovery完了。
+      - 前回handoffはschema-v3 enum/shape違反とsource_payloads不足。本corrected R2 packetがcontinuation authority。
+      - R001-R007 identity/severityは変更なし。
+
+      ## 8. Validation assessment
+
+      - Requirements completion: failed — 14 findings open。
+      - implementation exact-head CI: supported — run 31930532442/job95124484220。
+      - Red evidence/artifact: supported — run31929190714/artifact9258779700。
+      - TDD completeness: failed — R012。
+      - changed JSONL test execution: failed — R011。
+      - exhaustive skill coverage: supported — 11/11 criteria disposition、unexplored 0。
+
+      ## 9. Verdict
+
+      **fail** — high 3 / medium 10 / low 1。
+
+      ## 10. Next action
+
+      1. implementation workerがR001〜R014を修正。
+      2. B001をowner/user decisionで解決。
+      3. behavior fixはtest-first Red→implementation→exact-head Green。
+      4. implementation evidence/PR metadataをauthoritative GitHub valuesへ訂正。
+      5. same normal-review chatでfix verification。
+      6. 全closure後にreserved independent-final path + fresh reviewer。
+      7. mergeは利用者。
+
+      ## 11. Persistence / merge boundary
+
+      - report: `reports/issue-1-t603-review-r2-20260816153800.md`
+      - handoff: `handoffs/issue-1-t603-review-r2-20260816153800.yaml`
+      - reviewerはimplementation/test/design/workflow/tracking/mergeを行わない。
+  - namespace: t603.review_r2.prior_packet_errata
+    payload:
+      previous_report: reports/issue-1-t603-review-20260816151902.md
+      previous_handoff: handoffs/issue-1-t603-review-20260816151902.yaml
+      previous_review_commit: 8dca8376bf29332f219fdc4323b98d67709506ba
+      corrections:
+        - Previous review had not read the uploaded ZIP Skills before execution.
+        - Previous changed-files/direct-dependencies coverage was only major dependencies, not exhaustive.
+        - Previous schema-v3 handoff used invalid enum/shape values and incomplete core source_payloads.
+      finding_continuity: R001-R007 identities and severities remain unchanged.
+  - namespace: t603.review_r2.post_persistence_gate
+    payload:
+      required: true
+      instruction: After this corrected handoff commit, resolve the new PR HEAD and inspect only a workflow run whose head SHA exactly matches it; post the final head/run/job/conclusion externally in the PR comment and final response.
+
 source_payloads:
   - source_skill: work-context-manager
     output_contract_version: "1"
@@ -615,7 +948,7 @@ source_payloads:
       mode: review
       branch: task/t603-schema-migration-recovery
       base_ref: main
-      current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+      current_head: 115766711037ea4d06250119920e9d4d8e83d5d4
       reviewed_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
       scope:
         - Exhaustive T603 normal review of immutable implementation HEAD 6a7d... and exact implementation diff.
@@ -654,10 +987,10 @@ source_payloads:
           - environment/git status
           - generated/source/test/config/workflow context
       ci:
-        matching_run: "31932441612"
+        matching_run: "31932558161"
         conclusion: in_progress
       unknown:
-        - Final post-handoff commit SHA and its exact-head CI are future facts at packet generation.
+        - Final corrected handoff commit SHA and its exact-head CI are future facts at packet generation.
         - Comprehensive PR comment ID is unavailable until post-persistence comment creation.
       blocked:
         - T603-B001 task/design conflict on corrupt JSONL append semantics.
@@ -701,8 +1034,7 @@ source_payloads:
     content_type: application/yaml
     payload:
       report_type: review_report
-      complete_body: |
-        The complete evidence-faithful report body is persisted verbatim at reports/issue-1-t603-review-r2-20260816153800.md in commit de54a83f48a96d5103ed1c646cc392492485fa4b. Its full content is part of this handoff's typed projection through the complete findings, coverage, target identity, validation, held/blocked/unknown state and next action above; the repository report remains the canonical complete_body transport for the report-writer output.
+      complete_body: *report_body
       evidence_sources:
         - uploaded chatgpt-worker-skills.zip applicable Skills
         - PR #53 complete implementation diff and GitHub metadata
@@ -713,7 +1045,7 @@ source_payloads:
       target_identity:
         branch: task/t603-schema-migration-recovery
         base_ref: main
-        current_head: de54a83f48a96d5103ed1c646cc392492485fa4b
+        current_head: 115766711037ea4d06250119920e9d4d8e83d5d4
         reviewed_implementation_head: 6a7d66e2cfbdfe226b8e958151b318ced83e6d13
       severity_records:
         - finding_id: T603-R001
@@ -809,23 +1141,7 @@ source_payloads:
         T603 exhaustive normal review R2: FAIL. The same implementation HEAD 6a7d66e2... now has complete skill coverage. R001-R007 are preserved; R008-R014 are newly added. Total findings: 14 (high 3 / medium 10 / low 1). Key blockers: stale reviewed caches under uncertain persistence (R001), broken future adjacent chain (R002), collateral deletion through corrupt manifest references (R009), current design conflicts with salvage+append history behavior (R008/B001), startup migration missing (R010), modified history test not executed (R011), incomplete TDD Red coverage (R012), and salvage identity/month/eventId gaps (R013). Detailed report: reports/issue-1-t603-review-r2-20260816153800.md. Corrected handoff: handoffs/issue-1-t603-review-r2-20260816153800.yaml. Merge not performed.
       unresolved_discrepancies:
         - T603-B001 task/design conflict on corrupt JSONL append semantics.
-        - Previous review handoff is not schema-v3 compliant and is superseded for continuation by this R2 packet.
-
-extensions:
-  - namespace: t603.review_r2.prior_packet_errata
-    payload:
-      previous_report: reports/issue-1-t603-review-20260816151902.md
-      previous_handoff: handoffs/issue-1-t603-review-20260816151902.yaml
-      previous_review_commit: 8dca8376bf29332f219fdc4323b98d67709506ba
-      corrections:
-        - Previous review had not read the uploaded ZIP Skills before execution.
-        - Previous changed-files/direct-dependencies coverage was only major dependencies, not exhaustive.
-        - Previous schema-v3 handoff used invalid enum/shape values and incomplete core source_payloads.
-      finding_continuity: R001-R007 identities and severities remain unchanged.
-  - namespace: t603.review_r2.post_persistence_gate
-    payload:
-      required: true
-      instruction: After this handoff commit, resolve the new PR HEAD and inspect only a workflow run whose head SHA exactly matches it; post the final head/run/job/conclusion externally in the PR comment and final response.
+        - Previous review handoff is not schema-v3 compliant and is superseded for continuation by this corrected R2 packet.
 
 next_action:
   type: implementation
@@ -864,4 +1180,4 @@ transport:
   method: repository_file
   packet_path: handoffs/issue-1-t603-review-r2-20260816153800.yaml
   packet_url: null
-  transport_note: This schema-v3 packet supersedes the previous T603 normal-review handoff for continuation. The final self-commit SHA, exact-head CI, and comprehensive PR comment reference are necessarily recorded externally after persistence; no merge is authorized.
+  transport_note: This corrected schema-v3 packet supersedes the previous T603 normal-review handoffs for continuation. The final self-commit SHA, exact-head CI, and comprehensive PR comment reference are necessarily recorded externally after persistence; no merge is authorized.
