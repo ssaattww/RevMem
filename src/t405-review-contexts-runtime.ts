@@ -343,9 +343,13 @@ export function registerT405ReviewContextsRuntime(
       repositoryId: context.repositoryId,
       contextId: context.contextId,
     });
+    const cacheDirectory = route.cacheDirectory;
+    if (cacheDirectory === undefined) {
+      throw new Error("Pull-request cache requires a repository storage route");
+    }
     const cache = new GitHubPullRequestCacheService({
       acquisition,
-      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory: route.cacheDirectory }),
+      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
     return { result: await cache.acquire(diffRequest(context)), root, identity, token };
