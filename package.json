@@ -85,7 +85,6 @@
         "reviewRange.showGlobalReviewed": { "type": "boolean", "default": true, "description": "Global確認済み範囲を通常エディタの装飾へ重ねて表示します。" },
         "reviewRange.showGutterIcon": { "type": "boolean", "default": true, "description": "確認済み行のガターアイコンを表示します。" },
         "reviewRange.showOverviewRuler": { "type": "boolean", "default": false, "description": "確認済み範囲をOverview Rulerへ表示します。" },
-        "reviewRange.closedPullRequestLayerDefault": { "type": "boolean", "default": false, "description": "クローズ済みPRコンテキストのエディタレイヤーの既定値です。" },
         "reviewRange.exclude": {
           "type": "array",
           "items": { "type": "string" },
@@ -145,6 +144,7 @@
     "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t403": "npm run compile:test && node --test test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t404": "npm run compile:test && node --test test-dist/test/unit/github-pr-context-layer-store.test.js test-dist/test/unit/t404-review-followup-r3.test.js test-dist/test/unit/t404-history-integration.test.js",
+    "test:t405": "npm run compile:test && node --test test-dist/test/unit/review-contexts-runtime-wiring.test.js test-dist/test/unit/review-contexts-storage.test.js test-dist/test/unit/review-contexts-ui.test.js test-dist/test/unit/t405-github-lifecycle.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/t405-review-followup.test.js test-dist/test/unit/t405-revision-evidence.test.js test-dist/test/unit/t405-selected-pr-session.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
     "test:t306": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js --t306",
     "test:vscode-runner": "npm run compile:test && node --test test-dist/test/unit/owned-extension-host-launch.test.js test-dist/test/unit/owned-temporary-directory-cleanup.test.js",
