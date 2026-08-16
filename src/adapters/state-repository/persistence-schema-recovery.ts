@@ -352,7 +352,8 @@ export const publishSchemaMigration = async (
     if (restorationErrors.length > 0) {
       throw new AggregateError(
         [error, ...restorationErrors],
-        `Schema migration failed and backup restoration also failed: ${error instanceof Error ? error.message : String(error)}`
+        `Schema migration failed and backup restoration also failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
       );
     }
     throw error;
