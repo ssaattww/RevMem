@@ -9,6 +9,13 @@ export type ReviewContextListGroup =
   | "saved-closed-pull-request"
   | "workspace";
 
+/** Aggregate PR progress projected beside one Review Contexts row. */
+export interface ReviewContextListProgress {
+  readonly reviewedLineCount: number;
+  readonly totalLineCount: number;
+  readonly progress: number;
+}
+
 /** One context projected for the T405 Review Contexts View. */
 export interface ReviewContextListItem {
   readonly context: ReviewContextState;
@@ -17,6 +24,7 @@ export interface ReviewContextListItem {
   readonly label: string;
   readonly description?: string;
   readonly layerEnabled?: boolean;
+  readonly progress?: ReviewContextListProgress;
 }
 
 /** Inputs for deterministic current/saved context projection. */
@@ -24,6 +32,7 @@ export interface ReviewContextsProjectionInput {
   readonly current: readonly ReviewContextState[];
   readonly saved: readonly ReviewContextState[];
   readonly hiddenContextIds: ReadonlySet<string>;
+  readonly progressByContextId?: Readonly<Record<string, ReviewContextListProgress>>;
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -74,7 +83,8 @@ const GROUP_ORDER: Record<ReviewContextListGroup, number> = {
 const toItem = (
   context: ReviewContextState,
   current: boolean,
-  group: ReviewContextListGroup
+  group: ReviewContextListGroup,
+  progress: ReviewContextListProgress | undefined
 ): ReviewContextListItem => ({
   context: clone(context),
   current,
@@ -82,14 +92,17 @@ const toItem = (
   label: labelFor(context),
   description: descriptionFor(context),
   ...(context.kind === "pull-request" && context.pullRequest !== undefined
-    ? { layerEnabled: isPullRequestDecorationEnabled(context.pullRequest) }
+    ? {
+        layerEnabled: isPullRequestDecorationEnabled(context.pullRequest),
+        ...(progress === undefined ? {} : { progress: { ...progress } }),
+      }
     : {}),
 });
 
 /**
  * Projects current and saved contexts in the design-defined View order.
- * Current identities win over saved duplicates and cannot be hidden; hiding only
- * removes a non-current presentation row and never removes persisted review state.
+ * Hiding is presentation-only but applies uniformly to current and saved rows;
+ * authoritative Review State and history remain untouched.
  */
 export const projectReviewContexts = (
   input: ReviewContextsProjectionInput
@@ -98,8 +111,16 @@ export const projectReviewContexts = (
   const candidates: ReviewContextListItem[] = [];
 
   for (const context of input.current) {
+    if (input.hiddenContextIds.has(context.contextId)) continue;
     const group = groupFor(context, true);
-    if (group !== undefined) candidates.push(toItem(context, true, group));
+    if (group !== undefined) {
+      candidates.push(toItem(
+        context,
+        true,
+        group,
+        input.progressByContextId?.[context.contextId]
+      ));
+    }
   }
   for (const context of input.saved) {
     if (
@@ -107,7 +128,14 @@ export const projectReviewContexts = (
       input.hiddenContextIds.has(context.contextId)
     ) continue;
     const group = groupFor(context, false);
-    if (group !== undefined) candidates.push(toItem(context, false, group));
+    if (group !== undefined) {
+      candidates.push(toItem(
+        context,
+        false,
+        group,
+        input.progressByContextId?.[context.contextId]
+      ));
+    }
   }
 
   const unique = new Map<string, ReviewContextListItem>();
