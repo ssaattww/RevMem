@@ -258,6 +258,12 @@ export function activate(context: vscode.ExtensionContext): unknown {
     }
   );
 
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    return {
+      ...baseApi,
+      getGlobalUnderstandingSnapshot: () => globalSource.recalculate()
+    };
+  }
   return baseApi;
 }
 
