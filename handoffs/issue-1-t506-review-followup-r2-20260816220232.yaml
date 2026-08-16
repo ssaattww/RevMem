@@ -1,0 +1,377 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-16T22:02:32+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #55
+task_id: T506
+branch: task/t506-global-integration
+base_ref: main
+target:
+  current_head: 01bf055e15730b510894cc815cec789c61c72e3a
+  reviewed_head: 4cd1f3540fe160865e4981baf8e924034f054dca
+  commit_range: 4cd1f3540fe160865e4981baf8e924034f054dca..01bf055e15730b510894cc815cec789c61c72e3a
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat / 指摘対応
+    summary: T506の最新review findingsを自立して修正し、PR更新まで完了する
+  - source: repository_instruction
+    reference: project instructions / AGENTS.md
+    summary: uploaded Skills、TDD、failure diagnostics、小さなcommit、詳細report、PR簡易report、GitHub connector、非merge、exact-head CIを必須とする
+  - source: pr
+    reference: PR #55 / T506-REV-001
+    summary: High。Git fix後も非Gitworkspaceのlive editがunsupported-ownerで残るためExtension Host edit/restartまで修正する
+  - source: pr
+    reference: PR #55 / T506-REV-002
+    summary: High / introduced_by_fix。同一processの別repository/history instance競合でstate/history lost update可能なためshared/injected serialization boundaryと並行回帰を追加する
+
+development_policy:
+  method: TDD
+  testing_order: failing regression first, then production fix, then focused and full CI
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t506
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - per-command stdout
+    - per-command stderr
+    - combined log
+    - result metadata
+    - Extension Host launch diagnostics
+    - environment and Git status
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: T506 production/test/report/handoff paths and existing PR #55 metadata/comments
+      reason: current review-followup scope
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: repository requires dedicated task-management Skill, unavailable in this worker set
+    - path_or_operation: merge PR #55
+      reason: merge is reserved for the user
+    - path_or_operation: unrelated task implementation
+      reason: one accepted scope at a time
+
+scope:
+  - T506-REV-001 non-Gitworkspace live edit mapping, persistence, understanding, decoration, restart
+  - T506-REV-002 same-process repository/history serialization and deterministic command/edit concurrency regression
+non_goals:
+  - T604 cross-window/cross-process lock
+  - T605 remote/multi-root boundaries
+  - T607 performance work
+  - external-file live-edit expansion
+  - independent review verdict
+  - merge
+
+files:
+  changed:
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: share same-process state write serialization across repository instances per storage root
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: share same-process history append serialization across store instances per JSONL file
+    - path: src/application/review-history/review-history-recorder.ts
+      purpose: record committed document-edit Context/Global transition through common history boundary
+    - path: src/document-review-edit-runtime.ts
+      purpose: injectable repository/history boundary plus workspace owner routing and stale retry
+    - path: src/t305-extension.ts
+      purpose: bind VS Code document snapshots to workspace folder identity
+    - path: test/integration/t506-live-edit-concurrency.integration.test.ts
+      purpose: deterministic command/edit state+history concurrency regression
+    - path: test/vscode/t506-workspace-suite/index.ts
+      purpose: non-Git workspace live edit and restart Extension Host acceptance
+    - path: test/vscode/run-extension-host.ts
+      purpose: execute new T506 workspace and concurrency regressions in focused suite
+    - path: reports/issue-1-t506-review-followup-r2-20260816220232.md
+      purpose: detailed implementation follow-up evidence
+    - path: handoffs/issue-1-t506-review-followup-r2-20260816220232.yaml
+      purpose: lossless continuation packet
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: verify failure artifact capture exists
+    - path: tools/run-ci-command.mjs
+      purpose: verify stdout/stderr/combined/result capture
+    - path: src/adapters/workspace-review-state/workspace-review-state-session-provider.ts
+      purpose: reuse canonical workspace identity/revision contract
+    - path: src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+      purpose: inspect non-Git snapshot/restart behavior
+    - path: src/extension.ts
+      purpose: inspect base command persistence/history boundary and workspace provider composition
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: dedicated task-management Skill unavailable
+    - path_or_area: T604 cross-process lock implementation
+      reason: separate task scope
+    - path_or_area: Design/BreakingChanges.md
+      reason: no breaking change
+
+commands:
+  - command: GitHub Actions CI at 18c3a3e3c6195919a30f03058183cd548e8f63d1
+    purpose: T506-REV-002 intended RED
+    exit_code: unknown
+    result: failed
+    head_sha: 18c3a3e3c6195919a30f03058183cd548e8f63d1
+    evidence: run 31947728345; artifact 9263778874; concurrency regression failed because edit runtime lacked injected shared repository
+  - command: GitHub Actions CI at 6a945b2a536f7167c99b21b529505a4090f6c826
+    purpose: T506-REV-001 intended non-Git RED
+    exit_code: unknown
+    result: failed
+    head_sha: 6a945b2a536f7167c99b21b529505a4090f6c826
+    evidence: run 31947812044; artifact 9263810873; Extension Host asserted 0 !== 2
+  - command: GitHub Actions CI at 01bf055e15730b510894cc815cec789c61c72e3a
+    purpose: technical GREEN and broad regression validation
+    exit_code: 0
+    result: passed
+    head_sha: 01bf055e15730b510894cc815cec789c61c72e3a
+    evidence: run 31948543156 success; build/typecheck/architecture/lint/unit/T506/Git/GitHub/VS Code all success
+
+tests:
+  - name: T506 command/edit same-process concurrency
+    phase: red
+    result: failed
+    head_sha: 18c3a3e3c6195919a30f03058183cd548e8f63d1
+    evidence: run 31947728345 / artifact 9263778874
+  - name: T506 non-Git workspace Extension Host live edit
+    phase: red
+    result: failed
+    head_sha: 6a945b2a536f7167c99b21b529505a4090f6c826
+    evidence: run 31947812044 / artifact 9263810873 / reviewed count 0 instead of 2
+  - name: T506 focused suite including Git3-phase, workspace2-phase and concurrency regression
+    phase: green
+    result: passed
+    head_sha: 01bf055e15730b510894cc815cec789c61c72e3a
+    evidence: run 31948543156 / T506 Global multi-context integration success
+  - name: full VS Code Extension Host suite
+    phase: regression
+    result: passed
+    head_sha: 01bf055e15730b510894cc815cec789c61c72e3a
+    evidence: run 31948543156 / VS Code Extension Host tests success
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31948543156
+  head_sha: 01bf055e15730b510894cc815cec789c61c72e3a
+  conclusion: success
+  artifacts:
+    - id: 9263778874
+      name: ci-failure-diagnostics-31947728345-1
+      purpose: T506-REV-002 RED diagnostics
+    - id: 9263810873
+      name: ci-failure-diagnostics-31947812044-1
+      purpose: T506-REV-001 non-Git RED diagnostics
+    - id: 9263937224
+      name: ci-failure-diagnostics-31948291706-1
+      purpose: inspect initial GREEN candidate fixed-wait test race; production build/lint/unit and Git T506 passed
+
+implementation:
+  outcome: completed
+  final_head: 01bf055e15730b510894cc815cec789c61c72e3a
+  commits:
+    - sha: 1becda187aac89f718f69851032f6fb9a4c733f4
+      purpose: same-process state/history shared serialization
+    - sha: 06f06af512dded2fc17edb6651c30b25be66328e
+      purpose: injectable edit owner services, workspace mapping and common history recorder
+    - sha: 98d06a2683fda76184b4cde6bfa5f6bf6ea79bf8
+      purpose: bind VS Code live edit snapshots to workspace ownership
+    - sha: 01bf055e15730b510894cc815cec789c61c72e3a
+      purpose: replace fixed wait with deterministic black-box mapped-state polling
+  addressed_findings:
+    - id: T506-REV-001
+      reviewed_head: 4cd1f3540fe160865e4981baf8e924034f054dca
+      disposition: addressed
+      evidence: non-Git Extension Host edit/restart passes at exact-head run 31948543156
+    - id: T506-REV-002
+      reviewed_head: 4cd1f3540fe160865e4981baf8e924034f054dca
+      disposition: addressed
+      evidence: same-process shared queues plus injected stale-retry concurrency regression pass at run 31948543156
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 9263778874
+      summary: T506-REV-002 intended RED
+    - type: artifact
+      location: GitHub Actions artifact 9263810873
+      summary: T506-REV-001 intended RED
+    - type: artifact
+      location: GitHub Actions artifact 9263937224
+      summary: initial GREEN candidate revealed nondeterministic fixed-wait test read; replaced by mapped-state polling
+  blocked_items: []
+  summary:
+    - non-Git workspace live edits now use the canonical workspace owner/revision/file identity and persist mapped Context/Global state
+    - same-process state and history writes share serialization across adapter instances
+    - stale edit CAS reloads and replans instead of overwriting concurrent command state
+    - non-Git edit state and Global Understanding survive Extension Host restart
+
+review:
+  mode: not_applicable
+  reviewed_head: 4cd1f3540fe160865e4981baf8e924034f054dca
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: implementation worker does not perform fix verification
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - this packet is produced by the implementation follow-up worker; review closure remains external
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - reviewer fix verification is still required for both High findings
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t506-review-followup-r2-20260816220232.md
+    - handoffs/issue-1-t506-review-followup-r2-20260816220232.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed R2 follow-up report and handoff are persisted together; final post-persistence exact-head CI must be recorded externally
+
+findings:
+  - id: T506-REV-001
+    severity: high
+    origin: coverage_miss
+    location: src/document-review-edit-runtime.ts / non-Git workspace live edit path
+    description: Git-only live edit mapping left non-Git workspace unsupported
+    impact: changed workspace content lost valid unchanged reviewed evidence until later fail-closed reopening and Global Understanding dropped to zero
+    evidence: reviewer thread PRRT_kwDOTgwD486ZlGGu and RED run 31947812044 artifact 9263810873
+    required_action: route non-Git workspace live edits through production mapping/persistence and verify edit/restart in Extension Host
+  - id: T506-REV-002
+    severity: high
+    origin: introduced_by_fix
+    location: src/document-review-edit-runtime.ts / state and history persistence ownership
+    description: previous fix created separate instance-local repository/history serialization boundaries
+    impact: same-process concurrent edit and review operations could lose one state update or history event
+    evidence: reviewer thread PRRT_kwDOTgwD486ZmMWO and RED run 31947728345 artifact 9263778874
+    required_action: share or inject same serialized boundary and prove both state/history survive deterministic concurrency
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final PR HEAD after this handoff/report persistence
+    reason: commit SHA does not exist until the packet and report are committed
+not_applicable:
+  - field_or_area: independent review verdict
+    reason: implementation worker cannot issue it
+remaining_risks:
+  - cross-window/cross-process persistence coordination remains T604 and is intentionally not implemented here
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: runtime-neutral implementation-worker
+    content_type: application/yaml
+    payload:
+      mode: review_followup
+      accepted_scope:
+        - T506-REV-001 non-Git workspace live-edit production path
+        - T506-REV-002 same-process state/history concurrency
+      non_goals:
+        - T604 cross-process locking
+        - independent review verdict
+        - merge
+      requirements:
+        - preserve source severity High for both findings
+        - TDD with exact-head RED evidence and failure diagnostics
+        - focused then broad validation
+      changed_files:
+        - src/adapters/state-repository/validated-file-system-review-state-repository.ts
+        - src/adapters/state-repository/jsonl-review-history-store.ts
+        - src/application/review-history/review-history-recorder.ts
+        - src/document-review-edit-runtime.ts
+        - src/t305-extension.ts
+        - test/integration/t506-live-edit-concurrency.integration.test.ts
+        - test/vscode/t506-workspace-suite/index.ts
+        - test/vscode/run-extension-host.ts
+      validation:
+        red_concurrency: run 31947728345 / artifact 9263778874
+        red_non_git: run 31947812044 / artifact 9263810873
+        green: run 31948543156 / head 01bf055e15730b510894cc815cec789c61c72e3a / success
+      final_head: 01bf055e15730b510894cc815cec789c61c72e3a
+      matching_ci: 31948543156
+      unknowns: []
+      remaining_risks:
+        - T604 cross-process locking
+      next_required_action: persist report/handoff, verify new exact-head CI, post concise PR comment, then reviewer fix verification
+
+extensions:
+  - namespace: revmem
+    payload:
+      tasks_status_updated: false
+      tasks_status_reason: dedicated task-management Skill unavailable
+      review_threads_to_keep_unresolved:
+        - PRRT_kwDOTgwD486ZlGGu
+        - PRRT_kwDOTgwD486ZmMWO
+      merge_performed: false
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: verify T506-REV-001 and T506-REV-002 against the final report/handoff persistence HEAD and its exact-head CI
+  instructions:
+    - preserve source severity High unless authoritative review evidence explicitly reclassifies it
+    - verify non-Git workspace Extension Host edit/restart path
+    - verify same-process command/edit state and history concurrency boundary
+    - do not broaden into T604 cross-process locking
+  required_attachments_or_references:
+    - PR #55
+    - reports/issue-1-t506-review-followup-r2-20260816220232.md
+    - handoffs/issue-1-t506-review-followup-r2-20260816220232.yaml
+    - RED run 31947728345 artifact 9263778874
+    - RED run 31947812044 artifact 9263810873
+    - technical GREEN run 31948543156
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t506-review-followup-r2-20260816220232.yaml
+  packet_url: null
+  transport_note: final persistence commit SHA and its exact-head CI are recorded in PR metadata/comment after this packet is committed
