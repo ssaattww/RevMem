@@ -25,7 +25,7 @@ At work start, `.github/workflows/ci.yml` already satisfied the RevMem failure-d
 - the failure artifact contains test output, generated output, source, tests, tooling, configuration, and workflow context;
 - `Upload failure diagnostics` is guarded by `if: failure()`.
 
-No additional diagnostic workflow was required. The new R4 regression suite was added to the existing T603 focused step so failures use the same diagnostic path.
+No additional diagnostic workflow was required. The new R4 regression suites were added to the existing T603 focused step so failures use the same diagnostic path.
 
 ## 3. TDD Red
 
@@ -79,27 +79,33 @@ Implementation was split into two reviewable commits:
 
 This removes the exposure window: during a repaired reload, concurrent `getCurrent()` remains fail-closed until refreshed data is loaded and validated. The pre-existing sequential recovery regression also remains Green.
 
-### T603-R016 — medium — addressed by replacement packet
+### T603-R016 — medium — replacement packet plus repository-self-validation
 
-R4 found the prior implementation handoff malformed/truncated and therefore not schema-v3/lossless. Historical handoffs are retained unchanged as evidence.
-
-This follow-up creates a new replacement packet at:
+R4 found the prior implementation handoff malformed/truncated and therefore not schema-v3/lossless. Historical handoffs remain unchanged as evidence. The replacement packet is:
 
 - `handoffs/issue-1-t603-fix-followup-r4-20260817.yaml`
 
-Generation requirements applied before repository persistence:
+The packet targets the immutable technical implementation HEAD `ce761bf229d17e7f2d4659b7c4b05d99fbed0ade`, whose exact matching technical CI is complete and successful.
 
-- one-pass generation from one structured object;
-- schema version exactly `3`;
-- all required typed top-level sections present;
-- full 40-character SHA validation for available target/CI/implementation identities;
-- duplicate YAML mapping keys rejected on parse;
-- YAML anchors and aliases forbidden and checked;
-- typed sections and enum values checked;
-- `source_payloads` checked to contain complete outputs for `work-context-manager`, `implementation-worker`, `report-writer`, and `chat-implementation-worker`;
-- unknown values remain explicit rather than guessed.
+To avoid trusting an off-repository rendering, this follow-up adds `test/unit/t603-handoff-r016.test.ts` and executes it in the T603 focused CI step. The test reads the **actual repository packet** and checks:
 
-The packet targets the immutable technical implementation HEAD `ce761bf229d17e7f2d4659b7c4b05d99fbed0ade`, whose exact matching CI is already complete and successful. The later administrative packet commit is verified separately and recorded externally in PR metadata/comment, avoiding a self-referential SHA inside the packet.
+- schema version `3` and the exact required top-level section set;
+- duplicate top-level mapping-key rejection;
+- YAML anchor/alias prohibition;
+- full 40-character target/reviewed/CI/implementation SHA identities and technical CI equality;
+- exactly four required `source_payloads`: `work-context-manager`, `implementation-worker`, `report-writer`, and `chat-implementation-worker`;
+- base64 transport decodes losslessly, including valid unpadded base64 after deterministic padding normalization;
+- gzip decompression and exact decoded SHA-256 for every core Skill output;
+- JSON decoding plus each producing core Skill's required output fields;
+- report-writer complete report body and chat wrapper no-review/no-merge fields.
+
+Validation chronology is retained rather than hidden:
+
+1. `2139141465f380d0ebe8913cd4982038d0c84a8e` persisted the packet, validator, and CI wiring together. Exact-head run `31976423404` stopped at **Lint** because the new validator used literal spaces in regexes; diagnostic artifact `9271171295` was uploaded.
+2. `2a12d71d6bbc1685a19e613d3110ca8bf7744a30` fixed only that lint issue. Exact-head run `31976472926` reached T603 and the repository packet validator rejected the `implementation-worker` payload solely because the first validator imposed an additional **canonical padded-base64** rule; diagnostic artifact `9271187834` was uploaded.
+3. The uploaded `chat-handoff-manager` contract requires complete/lossless `source_payloads`, but does not require `=` padding to be present in the transport string. `468995e3f331d7449853e2e78fbc47580d71cfd8` therefore removes only that extra local rule. It still normalizes optional padding, requires exact base64 re-encoding after normalization, gunzips the payload, verifies the decoded SHA-256, parses JSON, and checks required source-output fields.
+
+The final administrative exact-head CI after this report update is the authoritative validation of the persisted packet and is recorded in the PR description/comment after completion. No different SHA is substituted.
 
 ## 5. Technical Green
 
@@ -127,12 +133,13 @@ No run for another SHA is used for this technical-head conclusion.
 ## 6. Files changed in this follow-up
 
 - `test/unit/t603-fix-verification-r5.test.ts` — R013 empty-context owner and R015 concurrent-recovery regressions.
-- `.github/workflows/ci.yml` — run the R5 regression suite under the T603 diagnostic step.
+- `.github/workflows/ci.yml` — run the R5 and R016 packet-validation suites under the T603 diagnostic step.
 - `src/adapters/persistence-startup-migration.ts` — retain canonical repository owner independently of context presence.
 - `src/adapters/state-repository/coherent-file-system-review-state-repository.ts` — return the loaded snapshot without virtual cache re-entry.
 - `src/adapters/state-repository/validated-file-system-review-state-repository.ts` — defer uncertainty clearing until recovery load validation completes.
+- `test/unit/t603-handoff-r016.test.ts` — validate the actual persisted replacement packet and complete core Skill payloads.
 - `reports/issue-1-t603-fix-followup-r4-20260817.md` — this durable implementation report.
-- `handoffs/issue-1-t603-fix-followup-r4-20260817.yaml` — validated replacement lossless handoff, persisted after this report and the concise PR comment.
+- `handoffs/issue-1-t603-fix-followup-r4-20260817.yaml` — replacement lossless handoff.
 
 ## 7. Intentionally untouched / held
 
@@ -148,4 +155,4 @@ No run for another SHA is used for this technical-head conclusion.
 
 No implementation-worker review verdict is issued. The next action is the same normal-review lineage verifying `T603-R013`, `T603-R015`, and `T603-R016` against the new implementation/handoff evidence. Independent final review must not start until that normal fix verification closes all required findings.
 
-After the handoff administrative commit is created, its exact-head CI is checked separately; that final administrative HEAD and run are recorded in the PR description/comment rather than retroactively rewriting this report.
+The final administrative current HEAD and exact-head CI are recorded externally in the PR description/comment after CI completes, avoiding self-referential evidence inside the packet/report.
