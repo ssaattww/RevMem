@@ -91,7 +91,7 @@ test("current PR and branch are shown with saved open/closed PR and workspace wi
   ]);
 });
 
-test("hidden saved context is filtered while a current context remains visible", () => {
+test("hidden presentation identity filters current and saved contexts without deleting state", () => {
   const hiddenContextIds = new Set([currentPr.contextId, savedClosedPr.contextId]);
   const items = projectReviewContexts({
     current: [currentPr, branch],
@@ -99,7 +99,8 @@ test("hidden saved context is filtered while a current context remains visible",
     hiddenContextIds,
   });
 
-  assert.deepEqual(items.map((item) => item.context.contextId), [currentPr.contextId, branch.contextId]);
+  assert.deepEqual(items.map((item) => item.context.contextId), [branch.contextId]);
+  assert.equal(currentPr.pullRequest?.state, "open");
 });
 
 test("controller hides only the presentation identity and delegates T405 operations without deleting review state", async () => {
