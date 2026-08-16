@@ -29,7 +29,6 @@ import {
 } from "./t305-current-context-git";
 import {
   registerCurrentContextRuntime,
-  type RegisteredCurrentContextRuntime,
 } from "./ui/current-context/vscode-current-context-runtime";
 import {
   GlobalUnderstandingRefreshCoalescer,
