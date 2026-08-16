@@ -1,0 +1,543 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-08-16T15:23:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+target:
+  current_head: ac49127555380254b150f0aaaf65728b92b3279a
+  reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  commit_range: 146aec15783294da1795f268315c85d1a0dffa56..b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "T405 review chat"
+    summary: "T405をuploaded worker skillsに従って通常reviewし、自立して進める。"
+  - source: repository_instruction
+    reference: AGENTS.md
+    summary: "Skill経由で作業し、breaking changeはDesign/BreakingChanges.mdへ記録する。"
+  - source: task
+    reference: tasks/tasks-status.md#T405
+    summary: "Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff。現在PR/branch/saved PRを並列表示しAC-21を満たす。"
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: "PR revision継続、canonical diff、Current Context、Review Contexts、closed PR layer、failure/privacy contract。"
+  - source: pr
+    reference: PR #54
+    summary: "T405 implementation branch and report."
+
+development_policy:
+  method: TDD
+  testing_order: "RevMem挙動実装は失敗testを先行しRedを確認してから実装する。reviewerはfixを実装しない。"
+  governing_source: "project instructions + tasks/tasks-status.md"
+validation_plan:
+  commands:
+    - "CI: npm ci"
+    - "CI: npm run build"
+    - "CI: npm run typecheck:contracts"
+    - "CI: npm run validate:architecture"
+    - "CI: npm run validate:architecture:negative"
+    - "CI: npm run lint"
+    - "CI: npm run test:unit"
+    - "CI: npm run test:t403 / T404 / T304 / T502-T505"
+    - "CI: npm run test:git"
+    - "CI: npm run test:github"
+    - "CI: xvfb-run -a npm run test:vscode"
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - source/test/generated artifacts and environment/git status sufficient for root-cause analysis
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/2026-08-16-t405-review.md
+      reason: "detailed normal review report"
+    - path_or_operation: handoffs/issue-1-t405-review-20260816152300.yaml
+      reason: "lossless normal-review handoff"
+    - path_or_operation: "PR #54 conversation comment"
+      reason: "concise review summary"
+  forbidden:
+    - path_or_operation: product implementation/tests/design/workflow/configuration
+      reason: "review-worker must not implement findings"
+    - path_or_operation: tasks/tasks-status.md or tasks/phases-status.md
+      reason: "these files require task manager Skills unavailable in the uploaded worker set"
+    - path_or_operation: merge
+      reason: "merge is user-owned"
+
+scope:
+  - Review Contexts View production composition
+  - current PR/branch/saved open-closed PR/workspace projection
+  - PR redetection and GitHub reconnect
+  - PR diff/cache operations
+  - PR layer state toggle
+  - presentation-only hide
+  - closed PR diff and AC-21 T405 ownership
+  - repository context enumeration and VS Code manifest/runtime wiring
+non_goals:
+  - T406 GitHub error/public/multiple-candidate end-to-end matrix
+  - T506 multi-context/Global integration Extension Host suite
+  - T604+ cross-window lock, cleanup and global error policy
+  - merge
+
+files:
+  changed:
+    - path: package.json
+      purpose: "Review Contexts activation/commands/menus/view/configuration"
+    - path: reports/2026-08-16-145244-t405-review-contexts.md
+      purpose: "implementation report"
+    - path: src/adapters/state-repository/repository-context-catalog.ts
+      purpose: "persisted repository context enumeration"
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: "public listRepositoryContexts API"
+    - path: src/application/review-contexts/index.ts
+      purpose: "application API exports"
+    - path: src/application/review-contexts/review-contexts-controller.ts
+      purpose: "projection, visibility and action controller"
+    - path: src/t305-extension.ts
+      purpose: "production registration and refresh wiring"
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "T401-T404 production composition"
+    - path: src/ui/review-contexts/index.ts
+      purpose: "UI exports"
+    - path: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      purpose: "Tree View and commands"
+    - path: test/unit/review-contexts-runtime-wiring.test.ts
+      purpose: "manifest/runtime static wiring tests"
+    - path: test/unit/review-contexts-storage.test.ts
+      purpose: "repository context enumeration tests"
+    - path: test/unit/review-contexts-ui.test.ts
+      purpose: "projection/controller tests"
+    - path: test/unit/t305-validation-wiring.test.ts
+      purpose: "unit suite aggregation"
+  inspected:
+    - path: AGENTS.md
+      purpose: "repository instructions"
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "authoritative design rev4"
+    - path: README.md
+      purpose: "user-facing documentation accuracy"
+    - path: tasks/tasks-status.md
+      purpose: "T405/T406/T506 scope and AC traceability"
+    - path: tasks/phases-status.md
+      purpose: "phase/tracking accuracy"
+    - path: .github/workflows/ci.yml
+      purpose: "matching CI and failure diagnostic artifact contract"
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: "T404 revision/update contract"
+    - path: src/adapters/github/node-github-pull-request-context-layer-store.ts
+      purpose: "T404 production factory/history mapper composition"
+    - path: src/adapters/github/fetch-github-pull-request-adapter.ts
+      purpose: "T401 open PR search behavior"
+    - path: src/adapters/github/vscode-github-authentication-provider.ts
+      purpose: "token host isolation/security"
+    - path: src/application/github-pr-diff/pull-request-diff-acquisition-service.ts
+      purpose: "T402 diff acquisition"
+    - path: src/application/github-pr-cache/github-pull-request-cache-service.ts
+      purpose: "T403 exact cache/offline behavior"
+    - path: src/ui/diff-editor/review-diff-editor-controller.ts
+      purpose: "T302 canonical diff identity"
+    - path: src/extension.ts
+      purpose: "T303 review command accepted diff scheme and normal decoration runtime"
+    - path: src/ui/current-context/current-context-runtime-composition.ts
+      purpose: "T305 selection composition"
+    - path: src/ui/current-context/current-context-ui-controller.ts
+      purpose: "Current Context PR presentation contract"
+    - path: src/application/review-context/selected-review-context.ts
+      purpose: "normal review command context identity union"
+    - path: src/ui/pr-progress/index.ts
+      purpose: "T304 PR progress contract"
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: "multi-context decoration direct dependency boundary"
+  intentionally_untouched:
+    - path_or_area: product code/tests/design/workflows/configuration
+      reason: "reviewer boundary"
+    - path_or_area: task tracking files
+      reason: "authorized manager Skills unavailable"
+
+commands:
+  - command: "GitHub compare 146aec15783294da1795f268315c85d1a0dffa56..b0ee79dc84e27363b805bd6ffa440bfb9b351f72"
+    purpose: "resolve complete implementation changed-file set"
+    exit_code: unknown
+    result: passed
+    head_sha: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+    evidence: "14 changed files, 13 commits, base merge-base exact"
+  - command: "GitHub Actions run 31930071251"
+    purpose: "reviewed implementation exact-head CI"
+    exit_code: unknown
+    result: passed
+    head_sha: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+    evidence: "all workflow steps success"
+
+tests:
+  - name: "T405 Red 1 application/storage contracts"
+    phase: red
+    result: failed
+    head_sha: ecf2b79f6bf02a84ce8661f3d5912f9d03016690
+    evidence: "run 31929224573, artifact 9258788360"
+  - name: "T405 Red 2 VS Code runtime wiring"
+    phase: red
+    result: failed
+    head_sha: eeae0ce03af87802a2f0b6eabcbef31d32fb118b
+    evidence: "run 31929472116, artifact 9258855130"
+  - name: "reviewed implementation CI suite"
+    phase: verification
+    result: passed
+    head_sha: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+    evidence: "run 31930071251"
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31930071251
+  head_sha: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  commits: []
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: "GitHub Actions artifact 9258788360"
+      summary: "Red 1 failure diagnostic artifact, exact test HEAD"
+    - type: artifact
+      location: "GitHub Actions artifact 9258855130"
+      summary: "Red 2 failure diagnostic artifact, exact test HEAD"
+  blocked_items: []
+  summary:
+    - "implementation was authored in another chat; this packet transports normal review only"
+
+review:
+  mode: initial_review
+  reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  reviewer:
+    identity: "ChatGPT normal reviewer / T405 review chat 2026-08-16"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - "This chat began with the user request 't405レビュー' and did not implement T405."
+        - "Implementation report and PR evidence were read independently before findings were finalized."
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: "R405-1/2/3/4/5/7"
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: "R405-1/2/3/4/8"
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: "all 14 implementation changed files are T405/report scoped"
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: "R405-1/3/5/7"
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: "R405-6/7; no schema breaking change or CI workflow modification"
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: "R405-8; CI diagnostic workflow itself checked adequate"
+    - criterion: security and secret handling where applicable
+      disposition: checked_no_finding
+      evidence: "host-aware auth, no token persistence/logging, source-redacted cache"
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: "TDD evidence valid, but runtime defects are untested"
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: "run 31930071251 exact head_sha b0ee79dc84e27363b805bd6ffa440bfb9b351f72 success"
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: "R405-9; tracking update held because manager Skill unavailable"
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: "R405-3/7/8"
+  validation_assessment:
+    - item: TDD order
+      result: supported
+      evidence: "Red commits/runs/artifacts precede implementation"
+    - item: diagnostic artifact workflow
+      result: supported
+      evidence: ".github/workflows/ci.yml logs stdout/stderr and uploads failure context"
+    - item: reviewed implementation CI
+      result: supported
+      evidence: "exact-head run 31930071251 success"
+    - item: T405 production runtime coverage
+      result: unsupported
+      evidence: "tests are projection/storage/static wiring heavy and miss R405-1/2/3/7/8"
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "9 required findings: High 1, Medium 6, Low 2"
+    - "No verdict-blocking unexplored area"
+    - "Exact reviewed implementation CI passes but does not cover identified production defects"
+
+report:
+  report_type: review_report
+  outcome: updated
+  persistence_mode: repository_file
+  paths:
+    - reports/2026-08-16-t405-review.md
+  reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  attestation_head: null
+  pr_comments:
+    - target: "PR #54 conversation"
+      url_or_id: "5306074172"
+  summary:
+    - "Detailed report contains metadata, all required coverage dispositions, all findings, CI/TDD evidence, held/unexplored, risks and next action."
+    - "Initial invalid verdict label request_changes was corrected to review-worker verdict fail without severity reclassification."
+
+findings:
+  - id: R405-1
+    severity: medium
+    origin: introduced_by_change
+    location: "src/t405-review-contexts-runtime.ts redetectPullRequest / T404 mapper composition"
+    description: "base/head変更時にT404 revision mappingを実行せず同一PR contextを継続できない"
+    impact: "PR commit追加後にpersistent stateが旧revisionのまま、layer操作がmapper error、restartで旧stateへ戻る"
+    evidence: "existing revision mismatch path returns without update; T405 mapper evidence loader always throws"
+    required_action: "real immutable revision evidence mapperを接続しrevision-change runtime regression testを追加"
+  - id: R405-2
+    severity: medium
+    origin: introduced_by_change
+    location: "src/t405-review-contexts-runtime.ts + T401 findOpenByHead"
+    description: "open PRがclosed/mergedになってもpersistent stateを更新しない"
+    impact: "AC-21 closed PR並列管理へproduction transitionできない"
+    evidence: "state=open search/creation only; zero candidate clears in-memory only"
+    required_action: "existing PR current stateを取得しopen->closed/mergedをT404へpersistしてtest"
+  - id: R405-3
+    severity: medium
+    origin: introduced_by_change
+    location: "src/t405-review-contexts-runtime.ts ReviewContextDiffDocumentProvider/openPullRequestDiff"
+    description: "T302 canonical review diffを迂回する独自schemeを導入"
+    impact: "Review Contexts起点diffでT303確認/解除不能、binary/empty-side contractsも迂回"
+    evidence: "review-range-pr-context vs accepted review-range-diff command route"
+    required_action: "T302/T303 canonical diff controller/providerを再利用しExtension Host test"
+  - id: R405-4
+    severity: medium
+    origin: introduced_by_change
+    location: "review-contexts projection/visibility + hide command"
+    description: "current context hideが表示上no-opなのにhidden IDだけpersistする"
+    impact: "操作結果不一致と後日の遅延非表示"
+    evidence: "hidden filter is applied only to saved contexts"
+    required_action: "currentもhideするかcommand/specをrestrictしtestsを追加"
+  - id: R405-5
+    severity: medium
+    origin: introduced_by_change
+    location: "ReviewContextListItem / ReviewContextsTreeProvider"
+    description: "design 16.4 required per-context progress表示がない"
+    impact: "saved/current PR review progressをViewから判断できない"
+    evidence: "no progress field or T304 production connection"
+    required_action: "T304 progress contractをprojectionへ接続しdisplay tests"
+  - id: R405-6
+    severity: low
+    origin: introduced_by_change
+    location: package.json
+    description: "reviewRange.closedPullRequestLayerDefaultがdead configuration"
+    impact: "user setting changes behavior neither in runtime nor docs"
+    evidence: "runtime never reads setting; default derives from PR state"
+    required_action: "wire and test or remove setting"
+  - id: R405-7
+    severity: high
+    origin: introduced_by_change
+    location: "src/t305-extension.ts / src/t405-review-contexts-runtime.ts / selected-review-context.ts"
+    description: "detected PR is not connected to Current Context or normal review commands/decorations"
+    impact: "PR can appear current in one View while actual review remains branch context; restart loses current PR status"
+    evidence: "SelectedReviewContext has no PR case; enumerateContexts produces branch/workspace only; redetect only mutates T405 in-memory source"
+    required_action: "add authoritative PR Current Context identity/composition and runtime/restart tests"
+  - id: R405-8
+    severity: medium
+    origin: introduced_by_change
+    location: "src/t405-review-contexts-runtime.ts redetectPullRequest"
+    description: "in-memory current PR is published before authoritative update/create succeeds"
+    impact: "write/mapping/global mismatch failures leave phantom current PR"
+    evidence: "source.setCurrentPullRequest precedes load/update/create and is not rolled back"
+    required_action: "publish only after durable state success and test injected failures"
+  - id: R405-9
+    severity: low
+    origin: introduced_by_change
+    location: README.md
+    description: "README still says Review Contexts View is unconnected and omits new setting"
+    impact: "post-merge capability/limitation/settings documentation is inaccurate"
+    evidence: "README current limitations/settings vs package.json/T405 runtime"
+    required_action: "sync README with post-T405 state and R405-6 disposition"
+
+held:
+  - item: T406 GitHub failure/public/multiple-candidate/closed E2E matrix
+    reason: "explicit downstream task ownership"
+    owner: T406
+    remaining_risk: "recovery behavior remains unproven end-to-end"
+    verdict_impact: "nonblocking held; production missing closed transition is separately R405-2"
+  - item: T506 multi-context/Global integration
+    reason: "explicit downstream task ownership"
+    owner: T506
+    remaining_risk: "final multi-context decoration/Global integration remains pending"
+    verdict_impact: "nonblocking held outside T405 accepted scope"
+  - item: task tracking progress sync
+    reason: "tracking files require task manager Skills absent from uploaded worker set"
+    owner: "authorized task-status manager lifecycle"
+    remaining_risk: "tasks/phases tracking remains stale until manager run"
+    verdict_impact: "held, not converted into implementation finding"
+
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: Design/BreakingChanges.md update
+    reason: "no breaking change found; PR adds view/commands/config/API without removing existing public contract"
+  - field_or_area: independent final review attestation
+    reason: "this packet is initial normal review"
+remaining_risks:
+  - "T405 production runtime lacks direct Extension Host coverage for the defect classes found here."
+  - "T406/T506 held scopes remain pending."
+  - "task tracking remains stale until authorized manager Skill becomes available."
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: "current uploaded skill"
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: "PR #54"
+      task_id: T405
+      mode: review
+      branch: feature/t405-review-contexts
+      base_ref: main
+      current_head: ac49127555380254b150f0aaaf65728b92b3279a
+      reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+      scope: "see typed scope above"
+      write_boundary: "review report/handoff/PR comment only"
+      development_policy: TDD
+      ci_matching_run: 31930071251
+      ci_conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks: "see typed remaining_risks"
+  - source_skill: review-worker
+    output_contract_version: "current uploaded skill"
+    content_type: application/yaml
+    payload:
+      review_mode: initial_review
+      reviewed_implementation_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+      base_and_commit_range: 146aec15783294da1795f268315c85d1a0dffa56..b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+      reviewer_identity: "ChatGPT normal reviewer / T405 review chat 2026-08-16"
+      required_coverage: "complete typed projection in review.required_coverage"
+      findings: "complete typed projection in top-level findings"
+      severity_reclassification_records: []
+      held: "complete typed projection in held"
+      unexplored: []
+      validation_assessment: "complete typed projection in review.validation_assessment"
+      verdict: fail
+      remaining_risks: "complete typed projection in remaining_risks"
+      next_action: "implementation chat fixes R405-1..R405-9; same normal review chat performs fix verification"
+      reserved_report_paths: []
+      report_attestation_allowed: false
+      report_attestation_conditions: "not applicable to initial review"
+  - source_skill: report-writer
+    output_contract_version: "current uploaded skill"
+    content_type: application/yaml
+    payload:
+      report_type: review_report
+      complete_body_repository_path: reports/2026-08-16-t405-review.md
+      evidence_sources:
+        - PR #54 and base..reviewed HEAD compare
+        - task/design/README/AGENTS
+        - changed files and direct dependencies
+        - exact-head CI run 31930071251
+        - Red diagnostic artifacts 9258788360 and 9258855130
+      target_identity:
+        branch: feature/t405-review-contexts
+        base_ref: main
+        current_head: ac49127555380254b150f0aaaf65728b92b3279a
+        reviewed_implementation_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+      severity_records:
+        - "R405-1 Medium preserved"
+        - "R405-2 Medium preserved"
+        - "R405-3 Medium preserved"
+        - "R405-4 Medium preserved"
+        - "R405-5 Medium preserved"
+        - "R405-6 Low preserved"
+        - "R405-7 High new"
+        - "R405-8 Medium new"
+        - "R405-9 Low new"
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/2026-08-16-t405-review.md
+        report_attestation_head: null
+      concise_pr_comment_body: "PR comment ID 5306074172 contains the concise current summary"
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: review_process_erratum
+    payload:
+      previous_invalid_verdict_label: request_changes
+      corrected_verdict: fail
+      finding_severity_changes: none
+      reason: "review-worker verdict vocabulary requires fail when one or more required findings exist"
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: finding_fix
+  summary: "Fix R405-1 through R405-9 with TDD, validate exact new HEAD, update implementation report, push, then return to this normal-review chat for fix verification."
+  instructions:
+    - "Preserve finding IDs and severities unless an explicit approved reclassification record exists."
+    - "Add failing regression tests before implementation for each defect class."
+    - "Do not defer R405-1/2/3/4/5/7/8 to T406/T506; they are T405 production findings."
+    - "Keep T406/T506 held scopes separate."
+    - "Use only workflow runs whose head_sha exactly matches the new PR HEAD."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/2026-08-16-t405-review.md
+    - "PR #54 comment 5306074172"
+    - "this handoff packet"
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - edit_configuration
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t405-review-20260816152300.yaml
+  packet_url: null
+  transport_note: "Normal-review handoff is persisted in the target repository; current permissions do not transfer to the implementation chat."
