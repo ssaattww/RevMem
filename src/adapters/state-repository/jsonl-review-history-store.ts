@@ -45,7 +45,6 @@ interface PreparedHistory {
 
 interface HistoryIdentity {
   readonly repositoryId: string;
-  readonly contextId: string;
 }
 
 const expectedMonthFromPath = (filePath: string): string | undefined => {
@@ -91,20 +90,15 @@ const prepareExistingHistory = (
       const canonical = serializeReviewHistoryEvent(migration.value);
       const event = JSON.parse(canonical) as ReviewHistoryEvent;
       const identity = {
-        repositoryId: event.repositoryId,
-        contextId: event.contextId
+        repositoryId: event.repositoryId
       };
       observedIdentity ??= identity;
-      if (
-        identity.repositoryId !== observedIdentity.repositoryId ||
-        identity.contextId !== observedIdentity.contextId
-      ) {
+      if (identity.repositoryId !== observedIdentity.repositoryId) {
         corrupt = true;
       }
       if (
         expectedTarget !== undefined &&
-        (event.repositoryId !== expectedTarget.repositoryId ||
-          event.contextId !== expectedTarget.contextId)
+        event.repositoryId !== expectedTarget.repositoryId
       ) {
         corrupt = true;
       }
