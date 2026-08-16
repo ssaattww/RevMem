@@ -51,6 +51,11 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
 }
 
+export interface PullRequestReviewCommandDependencies<Editor>
+extends Omit<DiffEditorReviewCommandDependencies<Editor>, "openSession" | "requestHistory"> {
+  readonly getDocumentUri: (editor: Editor) => string;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
@@ -174,15 +179,14 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public createCommandService<Editor>(
-    dependencies: Omit<DiffEditorReviewCommandDependencies<Editor>, "openSession" | "requestHistory">
+    dependencies: PullRequestReviewCommandDependencies<Editor>
   ): DiffEditorReviewCommandService<Editor> {
     return new DiffEditorReviewCommandService({
       ...dependencies,
-      openSession: async (editor) => {
-        const fileId = this.fileIdForDiffDocumentUri((editor as { readonly document?: { readonly uri?: { toString(skipEncoding?: boolean): string } } }).document?.uri?.toString(true) ?? String(editor));
-        const uri = (editor as { readonly document?: { readonly uri?: { toString(skipEncoding?: boolean): string } } }).document?.uri?.toString(true) ?? String(editor);
-        return this.openSession(uri, fileId);
-      },
+      openSession: async (editor) => this.openSession(
+        dependencies.getDocumentUri(editor),
+        dependencies.fileIdFor(editor)
+      ),
       requestHistory: (transaction) => this.options.requestHistory(transaction),
     });
   }
@@ -204,10 +208,10 @@ export class PullRequestReviewRuntime<Uri> {
       ? 0
       : persistedFile?.revisionId === registration.snapshot.headSha && persistedFile.currentPath === diffFile.newPath
         ? persistedFile.lineCount
-        : await this.lineCount(contextIdFor(registration), diffFile.newPath, registration.snapshot.headSha, "modified");
+        : await this.lineCount(registration.snapshot.contextId, diffFile.newPath, registration.snapshot.headSha, "modified");
     const originalLineCount = diffFile.oldPath === undefined
       ? 0
-      : await this.lineCount(contextIdFor(registration), diffFile.oldPath, registration.snapshot.baseSha, "original");
+      : await this.lineCount(registration.snapshot.contextId, diffFile.oldPath, registration.snapshot.baseSha, "original");
     return {
       contextState: persisted.contextState,
       globalState: persisted.globalState,
@@ -246,7 +250,7 @@ export class PullRequestReviewRuntime<Uri> {
         revision,
       })
     );
-    return content.split("\n").length;
+    return content.split(/\r\n|\r|\n/u).length;
   }
 
   private requireRegistration(contextId: string): PullRequestReviewRuntimeRegistration {
@@ -270,6 +274,3 @@ export class PullRequestReviewRuntime<Uri> {
     ) throw new Error("Persisted pull-request context does not match the registered diff revision");
   }
 }
-
-const contextIdFor = (registration: PullRequestReviewRuntimeRegistration): string =>
-  registration.snapshot.contextId;
