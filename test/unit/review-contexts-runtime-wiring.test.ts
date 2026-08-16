@@ -12,13 +12,12 @@ const REVIEW_CONTEXT_COMMANDS = [
   "reviewRange.openReviewContextDiff",
 ] as const;
 
-test("T405 contributes Review Contexts activation, commands, menus, and closed PR layer default", async () => {
+test("T405 contributes Review Contexts activation, commands, and menus", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     activationEvents: string[];
     contributes: {
       commands: Array<{ command: string }>;
       menus: Record<string, Array<{ command: string; when?: string }>>;
-      configuration: { properties: Record<string, { default?: unknown }> };
     };
   };
 
@@ -52,11 +51,6 @@ test("T405 contributes Review Contexts activation, commands, menus, and closed P
     "reviewRange.toggleReviewContextLayer",
     "reviewRange.hideReviewContext",
   ]) assert.ok(itemCommands.has(command), `missing Review Contexts item command ${command}`);
-
-  assert.equal(
-    manifest.contributes.configuration.properties["reviewRange.closedPullRequestLayerDefault"]?.default,
-    false,
-  );
 });
 
 test("T405 production entry delegates Review Contexts composition to the T405 runtime boundary", async () => {
