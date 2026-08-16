@@ -94,7 +94,7 @@ To avoid trusting an off-repository rendering, this follow-up adds `test/unit/t6
 - YAML anchor/alias prohibition;
 - full 40-character target/reviewed/CI/implementation SHA identities and technical CI equality;
 - exactly four required `source_payloads`: `work-context-manager`, `implementation-worker`, `report-writer`, and `chat-implementation-worker`;
-- base64 transport decodes losslessly, including valid unpadded base64 after deterministic padding normalization;
+- base64 transport decodes losslessly after deterministic trailing-padding normalization;
 - gzip decompression and exact decoded SHA-256 for every core Skill output;
 - JSON decoding plus each producing core Skill's required output fields;
 - report-writer complete report body and chat wrapper no-review/no-merge fields.
@@ -102,10 +102,11 @@ To avoid trusting an off-repository rendering, this follow-up adds `test/unit/t6
 Validation chronology is retained rather than hidden:
 
 1. `2139141465f380d0ebe8913cd4982038d0c84a8e` persisted the packet, validator, and CI wiring together. Exact-head run `31976423404` stopped at **Lint** because the new validator used literal spaces in regexes; diagnostic artifact `9271171295` was uploaded.
-2. `2a12d71d6bbc1685a19e613d3110ca8bf7744a30` fixed only that lint issue. Exact-head run `31976472926` reached T603 and the repository packet validator rejected the `implementation-worker` payload solely because the first validator imposed an additional **canonical padded-base64** rule; diagnostic artifact `9271187834` was uploaded.
-3. The uploaded `chat-handoff-manager` contract requires complete/lossless `source_payloads`, but does not require `=` padding to be present in the transport string. `468995e3f331d7449853e2e78fbc47580d71cfd8` therefore removes only that extra local rule. It still normalizes optional padding, requires exact base64 re-encoding after normalization, gunzips the payload, verifies the decoded SHA-256, parses JSON, and checks required source-output fields.
+2. `2a12d71d6bbc1685a19e613d3110ca8bf7744a30` fixed only that lint issue. Exact-head run `31976472926` reached T603 and the repository packet validator rejected the `implementation-worker` payload because the first validator imposed an additional canonical-padding rule; diagnostic artifact `9271187834` was uploaded.
+3. `468995e3f331d7449853e2e78fbc47580d71cfd8` removed that non-contractual padding requirement, but its first normalization helper retained existing trailing padding before adding canonical padding. The later report-only HEAD `c3fa9d70e2f9c23f244a81050e73622f50e17c99` therefore failed T603 in exact-head run `31976651581` / job `95237048723`; diagnostic artifact `9271234944` captured the validator defect.
+4. `d12180ab4242140837446e301a309155063b18b5` corrected normalization by stripping trailing `=` before restoring canonical padding. Exact-head run `31976731455` / job `95237234962` completed **successfully**, including the T603 repository-packet validator and VS Code Extension Host.
 
-The final administrative exact-head CI after this report update is the authoritative validation of the persisted packet and is recorded in the PR description/comment after completion. No different SHA is substituted.
+Thus the actual persisted packet—not an off-repository copy—has passed source-payload decompression, decoded SHA-256, JSON output-contract checks, and all configured CI. The final report-only administrative HEAD is checked separately after this report update; no different SHA is substituted.
 
 ## 5. Technical Green
 
@@ -129,6 +130,17 @@ Exact-head CI for technical implementation HEAD `ce761bf229d17e7f2d4659b7c4b05d9
 - VS Code Extension Host: success
 
 No run for another SHA is used for this technical-head conclusion.
+
+### Persisted-handoff validation Green
+
+Exact-head CI for `d12180ab4242140837446e301a309155063b18b5`:
+
+- workflow: `CI`
+- run: `31976731455`
+- job: `95237234962`
+- conclusion: `success`
+- T603 repository handoff validator: success
+- all configured steps through VS Code Extension Host: success
 
 ## 6. Files changed in this follow-up
 
@@ -155,4 +167,4 @@ No run for another SHA is used for this technical-head conclusion.
 
 No implementation-worker review verdict is issued. The next action is the same normal-review lineage verifying `T603-R013`, `T603-R015`, and `T603-R016` against the new implementation/handoff evidence. Independent final review must not start until that normal fix verification closes all required findings.
 
-The final administrative current HEAD and exact-head CI are recorded externally in the PR description/comment after CI completes, avoiding self-referential evidence inside the packet/report.
+The final report-only administrative current HEAD and its exact-head CI are recorded externally in the PR description/comment after CI completes, avoiding self-referential evidence inside this report.
