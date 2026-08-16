@@ -5,6 +5,8 @@ import test from "node:test";
 import "./global-understanding-ui.test";
 import "./t505-review-findings.test";
 import "./t505-refresh-invalidation.test";
+import "./review-contexts-storage.test";
+import "./review-contexts-ui.test";
 
 test("T305 preserves every pre-existing unit suite exactly once while adding its focused suites", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {

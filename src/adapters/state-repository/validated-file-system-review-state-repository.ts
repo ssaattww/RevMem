@@ -1,5 +1,6 @@
 import type {
-  RepositoryGlobalState
+  RepositoryGlobalState,
+  ReviewContextState
 } from "../../core/contracts/index";
 import {
   FileSystemReviewStateRepository as CoherentFileSystemReviewStateRepository,
@@ -14,6 +15,7 @@ import type {
 } from "./contracts";
 import { loadPersistedOwnerGlobal } from "./owner-global-state-loader";
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
+import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 export { StaleReviewStateError };
@@ -60,6 +62,18 @@ extends CoherentFileSystemReviewStateRepository {
   ): Promise<RepositoryGlobalState | undefined> {
     const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
     return loaded === undefined ? undefined : clone(loaded);
+  }
+
+  /** Enumerates manifest-selected branch and pull-request contexts without changing persisted state or history. */
+  public async listRepositoryContexts(repositoryId: string): Promise<ReviewContextState[]> {
+    const contexts = await listPersistedRepositoryContexts(
+      this.repositoryOptions,
+      repositoryId
+    );
+    for (const contextState of contexts) {
+      validateOwnerReconciliation(contextState);
+    }
+    return clone(contexts);
   }
 
   /** Saves a complete snapshot while preserving an existing owner-wide Global state during new-context initialization. */
