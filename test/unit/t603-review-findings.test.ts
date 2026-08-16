@@ -621,7 +621,7 @@ test("T603-R010 migrates state, historical JSONL, snapshot entries, and latest p
     await writeFile(snapshotPath, rawSnapshot, "utf8");
     await writeFile(latestPath, rawLatest, "utf8");
 
-    const modulePath = "../../src/adapters/persistence-startup-migration";
+    const modulePath = "../../src/adapters/persistence-startup-migration.js";
     const startupModule = await import(modulePath) as {
       runPersistenceStartupMigration?: (options: {
         readonly storageUris: ReviewStateStorageUris;
