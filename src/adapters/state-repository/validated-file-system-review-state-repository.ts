@@ -8,12 +8,17 @@ import {
 } from "./coherent-file-system-review-state-repository";
 import type {
   FileSystemReviewStateRepositoryOptions,
+  PersistenceOperation,
   ReviewStateCommit,
   ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike
 } from "./contracts";
 import { loadPersistedOwnerGlobal } from "./owner-global-state-loader";
+import {
+  preparePersistedReviewState,
+  type PersistedReviewStatePreparation
+} from "./persistence-schema-recovery";
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
@@ -26,41 +31,93 @@ const sharedOuterWriteTailByStorageRoot = new Map<string, Promise<void>>();
 /** Public filesystem repository with validated metadata and owner-wide Global preservation. */
 export class FileSystemReviewStateRepository
 extends CoherentFileSystemReviewStateRepository {
-  /** Creates a repository that serializes all same-process writes per storage root while retaining the complete atomic snapshot contract. */
-  public constructor(
-    private readonly repositoryOptions: FileSystemReviewStateRepositoryOptions
-  ) {
+  private readonly uncertainTargets = new Set<string>();
+  private readonly uncertainStorageRoots = new Set<string>();
+  private readonly repositoryOptions: FileSystemReviewStateRepositoryOptions;
+
+  /** Creates a repository that serializes same-process writes per storage root while retaining the complete atomic snapshot contract. */
+  public constructor(repositoryOptions: FileSystemReviewStateRepositoryOptions) {
     super(repositoryOptions);
+    this.repositoryOptions = repositoryOptions;
   }
 
   /** Returns the current in-memory complete snapshot after validating owner-reconciliation metadata. */
   public override getCurrent(
     target: ReviewStateRepositoryTarget
   ): ReviewStateCommit | undefined {
-    const current = super.getCurrent(target);
-    if (current !== undefined) {
-      validateOwnerReconciliation(current.contextState);
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+    if (
+      this.uncertainTargets.has(this.targetKey(target)) ||
+      this.uncertainStorageRoots.has(route.rootPath)
+    ) {
+      return undefined;
     }
-    return current;
+    try {
+      const current = super.getCurrent(target);
+      if (current !== undefined) {
+        validateOwnerReconciliation(current.contextState);
+      }
+      return current;
+    } catch (error) {
+      this.markUncertain(target, route.rootPath);
+      throw error;
+    }
   }
 
-  /** Loads a complete persisted snapshot and rejects invalid owner-reconciliation metadata before exposing it. */
+  /** Loads a complete persisted snapshot after migration/recovery and never exposes quarantined evidence. */
   public override async load(
     target: ReviewStateRepositoryTarget
   ): Promise<ReviewStateCommit | undefined> {
-    const loaded = await super.load(target);
-    if (loaded !== undefined) {
-      validateOwnerReconciliation(loaded.contextState);
-    }
-    return loaded;
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+    return this.serializeOuterWrite(route.rootPath, async () => {
+      const preparation = await this.prepareTarget(target, "load");
+      if (preparation === "uncertain") {
+        return undefined;
+      }
+      try {
+        const loaded = await super.load(target);
+        if (loaded !== undefined) {
+          validateOwnerReconciliation(loaded.contextState);
+          this.clearUncertain(target, route.rootPath);
+        }
+        return loaded;
+      } catch (error) {
+        this.markUncertain(target, route.rootPath);
+        throw error;
+      }
+    });
   }
 
-  /** Loads the owner-wide Global document even when the selected context is absent. */
+  /** Loads the owner-wide Global document only when its persisted state set is certain. */
   public async loadGlobal(
     target: ReviewStateRepositoryTarget
   ): Promise<RepositoryGlobalState | undefined> {
-    const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
-    return loaded === undefined ? undefined : clone(loaded);
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+    return this.serializeOuterWrite(route.rootPath, async () => {
+      const preparation = await this.prepareTarget(target, "load");
+      if (preparation === "uncertain") {
+        return undefined;
+      }
+      try {
+        const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
+        if (loaded !== undefined) {
+          this.clearUncertain(target, route.rootPath);
+        }
+        return loaded === undefined ? undefined : clone(loaded);
+      } catch (error) {
+        this.markUncertain(target, route.rootPath);
+        throw error;
+      }
+    });
   }
 
   /** Enumerates manifest-selected branch and pull-request contexts without changing persisted state or history. */
@@ -87,8 +144,18 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, async () => {
-      const currentContext = await super.load(target);
-      const persistedGlobal = await this.loadGlobal(target);
+      const preparation = await this.prepareTarget(target, "save");
+      const currentContext =
+        preparation === "uncertain" ? undefined : await super.load(target);
+      const persistedGlobal = await loadPersistedOwnerGlobal(
+        this.repositoryOptions,
+        target
+      ).catch((error: unknown) => {
+        if (preparation === "uncertain") {
+          return undefined;
+        }
+        throw error;
+      });
       let nextCommit = clone(commit);
       const initializesWithEmptyGlobal =
         Object.keys(nextCommit.globalState.files).length === 0;
@@ -113,6 +180,7 @@ extends CoherentFileSystemReviewStateRepository {
       }
 
       await super.save(target, nextCommit);
+      this.clearUncertain(target, route.rootPath);
     });
   }
 
@@ -139,7 +207,13 @@ extends CoherentFileSystemReviewStateRepository {
       target
     );
 
-    await this.serializeOuterWrite(route.rootPath, () => super.commit(transaction));
+    await this.serializeOuterWrite(route.rootPath, async () => {
+      if (await this.prepareTarget(target, "commit") === "uncertain") {
+        throw new StaleReviewStateError(target);
+      }
+      await super.commit(transaction);
+      this.clearUncertain(target, route.rootPath);
+    });
   }
 
   /** Atomically creates a validated absent context after comparing the expected owner-wide Global snapshot. */
@@ -164,7 +238,72 @@ extends CoherentFileSystemReviewStateRepository {
       target
     );
 
-    await this.serializeOuterWrite(route.rootPath, () => super.create(transaction));
+    await this.serializeOuterWrite(route.rootPath, async () => {
+      if (await this.prepareTarget(target, "commit") === "uncertain") {
+        throw new StaleReviewStateError(target);
+      }
+      await super.create(transaction);
+      this.clearUncertain(target, route.rootPath);
+    });
+  }
+
+  private async prepareTarget(
+    target: ReviewStateRepositoryTarget,
+    operation: PersistenceOperation
+  ): Promise<PersistedReviewStatePreparation> {
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+    try {
+      const preparation = await preparePersistedReviewState(
+        this.repositoryOptions,
+        target
+      );
+      if (preparation === "uncertain") {
+        this.markUncertain(target, route.rootPath);
+      }
+      return preparation;
+    } catch (error) {
+      this.markUncertain(target, route.rootPath);
+      await Promise.resolve(
+        this.repositoryOptions.notifyPersistenceFailure?.({
+          operation,
+          target: { ...target },
+          route: { ...route },
+          filePath: route.statePointerPath,
+          error
+        })
+      ).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private clearUncertain(
+    target: ReviewStateRepositoryTarget,
+    storageRoot: string
+  ): void {
+    this.uncertainTargets.delete(this.targetKey(target));
+    this.uncertainStorageRoots.delete(storageRoot);
+  }
+
+  private markUncertain(
+    target: ReviewStateRepositoryTarget,
+    storageRoot?: string
+  ): void {
+    const route = storageRoot === undefined
+      ? resolveReviewStateStorageRoute(this.repositoryOptions.storageUris, target)
+      : undefined;
+    this.uncertainTargets.add(this.targetKey(target));
+    this.uncertainStorageRoots.add(storageRoot ?? route!.rootPath);
+  }
+
+  private targetKey(target: ReviewStateRepositoryTarget): string {
+    const route = resolveReviewStateStorageRoute(
+      this.repositoryOptions.storageUris,
+      target
+    );
+    return `${route.rootPath}\u0000${target.contextId}`;
   }
 
   private async serializeOuterWrite<T>(

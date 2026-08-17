@@ -34,6 +34,10 @@ jobs:
         run: node tools/run-ci-command.mjs test-unit npm run test:unit
       - name: T602 history rewrite recovery tests
         run: node tools/run-ci-command.mjs test-t602 node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js test-dist/test/unit/history-rewrite-tree-enumeration.test.js test-dist/test/unit/local-git-tree-list.test.js test-dist/test/unit/document-git-history-rewrite-runtime.test.js
+      - name: T603 schema migration and corruption recovery tests
+        run: |
+          node tools/run-ci-command.mjs test-t603-schema node --test test-dist/test/unit/t603-schema-migration-recovery.test.js test-dist/test/unit/t603-history-multi-context-regression.test.js test-dist/test/unit/t603-history-reset-decision.test.js test-dist/test/unit/t603-fix-verification-r3.test.js test-dist/test/unit/t603-fix-verification-r5.test.js test-dist/test/unit/t603-handoff-r016.test.js test-dist/test/unit/t603-r013-startup-owner-regression.test.js test-dist/test/unit/review-history-jsonl-store.test.js
+          node tools/run-ci-command.mjs test-t603-findings node --test --test-name-pattern='T603-R00[1-7]|T603-R009|T603-R010|T603-R011|T603-R014' test-dist/test/unit/t603-review-findings.test.js
       - name: T403 GitHub cache tests
         run: node tools/run-ci-command.mjs test-t403 npm run test:t403
       - name: T404 GitHub PR context layer tests

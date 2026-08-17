@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
+import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
@@ -58,7 +59,13 @@ const toResourceUri = (uri: vscode.Uri) => ({
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
 
-export function activate(context: vscode.ExtensionContext): unknown {
+export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
+  await runPersistenceStartupMigration({
+    storageUris: {
+      globalStorageUri: context.globalStorageUri,
+      storageUri: context.storageUri
+    }
+  });
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;

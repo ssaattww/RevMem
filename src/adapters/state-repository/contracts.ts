@@ -176,6 +176,8 @@ export interface AtomicTextFileStore {
    * @throws Rejects when directory creation, temporary writing, flushing, replacement, or cleanup cannot complete.
    */
   writeTextAtomically(filePath: string, content: string): Promise<void>;
+  /** Removes a persisted path through the same injected storage boundary. */
+  deleteText?(filePath: string): Promise<void>;
 }
 
 /** Append-only persistence boundary for one validated review-history event. */

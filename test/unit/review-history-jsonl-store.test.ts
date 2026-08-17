@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -99,17 +99,31 @@ test("rejects an invalid event and preserves existing history", async () => {
   }
 });
 
-test("rejects a corrupt existing JSONL line instead of appending after it", async () => {
+test("quarantines corrupt existing JSONL and restarts active history from the next event", async () => {
   const temporary = await temporaryStorage();
   try {
     const route = resolveReviewStateStorageRoute(temporary.storageUris, target);
     const historyPath = path.join(route.historyDirectory, "events-2026-08.jsonl");
+    const corrupt = "{invalid json}\n";
     await mkdir(route.historyDirectory, { recursive: true });
-    await writeFile(historyPath, "{invalid json}\n", { encoding: "utf8", flush: true });
+    await writeFile(historyPath, corrupt, { encoding: "utf8", flush: true });
     const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
 
-    await assert.rejects(() => store.append(target, event()), /JSON|history/i);
-    assert.equal(await readFile(historyPath, "utf8"), "{invalid json}\n");
+    await store.append(target, event());
+    assert.equal(
+      await readFile(historyPath, "utf8"),
+      `${serializeReviewHistoryEvent(event())}\n`
+    );
+    const quarantineName = (await readdir(route.historyDirectory)).find(
+      (name) =>
+        name.startsWith("events-2026-08.jsonl.corrupt-") &&
+        name.endsWith(".quarantine")
+    );
+    assert.ok(quarantineName);
+    assert.equal(
+      await readFile(path.join(route.historyDirectory, quarantineName), "utf8"),
+      corrupt
+    );
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

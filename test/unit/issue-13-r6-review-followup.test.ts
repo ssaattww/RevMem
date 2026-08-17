@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -564,8 +564,8 @@ test("commit rejects reconciliation intervals outside source lineCount", async (
   }
 });
 
-/** Verifies that corrupted persisted owner-reconciliation ranges are rejected when a repository reloads them. */
-test("load rejects persisted reconciliation intervals outside source lineCount", async () => {
+/** Verifies that corrupted persisted owner-reconciliation ranges are quarantined and not exposed on reload. */
+test("load quarantines persisted reconciliation intervals outside source lineCount", async () => {
   const temporary = await createTemporaryStorage();
   try {
     const repository = new FileSystemReviewStateRepository({
@@ -585,19 +585,19 @@ test("load rejects persisted reconciliation intervals outside source lineCount",
     );
     assert.ok(contextReference);
     const contextPath = path.join(route.rootPath, contextReference.file);
-    await writeFile(
-      contextPath,
-      `${JSON.stringify(malformedCommit().contextState, null, 2)}\n`,
-      "utf8"
-    );
+    const malformedRaw = `${JSON.stringify(malformedCommit().contextState, null, 2)}\n`;
+    await writeFile(contextPath, malformedRaw, "utf8");
 
     const reloaded = new FileSystemReviewStateRepository({
       storageUris: temporary.storageUris
     });
-    await assert.rejects(
-      reloaded.load(malformedTarget),
-      /lineCount/
+    assert.equal(await reloaded.load(malformedTarget), undefined);
+    await assert.rejects(() => readFile(contextPath, "utf8"), /ENOENT/u);
+    const quarantine = (await readdir(path.dirname(contextPath))).find((name) =>
+      name.startsWith(`${path.basename(contextPath)}.corrupt-`) && name.endsWith(".quarantine")
     );
+    assert.ok(quarantine);
+    assert.equal(await readFile(path.join(path.dirname(contextPath), quarantine), "utf8"), malformedRaw);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

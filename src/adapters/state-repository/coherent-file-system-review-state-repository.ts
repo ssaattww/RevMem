@@ -278,7 +278,7 @@ export class FileSystemReviewStateRepository {
       requireTargetContextKind(target, loaded.contextState.kind);
 
       this.recordRepositoryGlobal(target, loaded.globalState);
-      return this.getCurrent(target);
+      return cloneCommit(loaded);
     } catch (error) {
       await this.notifyFailure("load", target, route.statePointerPath, error);
       throw error;

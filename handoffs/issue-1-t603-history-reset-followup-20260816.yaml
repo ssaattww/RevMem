@@ -1,0 +1,166 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up owner decision
+  generated_date: "2026-08-16"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #53"
+task_id: T603
+branch: task/t603-schema-migration-recovery
+base_ref: main
+target:
+  prior_administrative_head: 1c8988dc93f2d5605895a09084623b5fb66bca1f
+  technical_and_policy_head: c3e7d230e8a5f47d33933dea553e9f0b695ef904
+  current_head: post_report_commit_recorded_in_pr
+
+owner_decision:
+  source: explicit_user_instruction
+  decision: "If review history is corrupt, start history over from the next valid event; preserve the entire corrupt original in quarantine and do not delete it."
+  resolved_blocker: T603-B001
+  semantics:
+    - Quarantine the complete corrupt or internally inconsistent active monthly JSONL file.
+    - Remove the corrupt file from the active history path only after quarantine persistence succeeds.
+    - Do not salvage, replay, or merge valid-looking events from the corrupt file.
+    - When discovered during append, the valid event being appended becomes event/line 1 of the new active history.
+    - When discovered during startup migration, leave active history absent until the next valid event.
+    - Preserve quarantined evidence; this recovery operation does not delete it.
+    - Unsupported future schema remains a compatibility rejection and is not quarantined/reset.
+    - Current state remains authoritative and is not reconstructed from history.
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "壊れたら、履歴は1からで良いよ。ただし、壊れたやつは隔離して捨てないこと"
+    summary: Reset active history after corruption while retaining the full corrupt original in quarantine.
+  - source: repository_policy
+    reference: AGENTS.md / Design/BreakingChanges.md
+    summary: Breaking behavior changes must be recorded in Design/BreakingChanges.md.
+  - source: project_instruction
+    reference: RevMem TDD and exact-head CI policy
+    summary: Test first, preserve diagnostics, use only CI runs whose head_sha equals the evaluated PR HEAD, persist report/handoff, update PR, and do not merge.
+
+development_policy:
+  method: TDD
+  diagnostic_workflow_verified: true
+  merge_allowed: false
+
+files:
+  changed:
+    - path: src/adapters/state-repository/jsonl-review-history-store.ts
+      purpose: Quarantine complete corrupt history, remove active history, and restart from the next valid event without salvage.
+    - path: test/unit/review-history-jsonl-store.test.ts
+      purpose: Test-first expectation for quarantine plus active-history restart.
+    - path: test/unit/t603-schema-migration-recovery.test.ts
+      purpose: Test reset/no-salvage/startup quarantine behavior.
+    - path: test/unit/t603-history-reset-decision.test.ts
+      purpose: Directly lock the explicit owner decision, including inconsistent-owner/month/duplicate cases and future-schema boundary.
+    - path: .github/workflows/ci.yml
+      purpose: Run the new owner-decision suite and continue running non-superseded review-finding regressions.
+    - path: Design/BreakingChanges.md
+      purpose: Record the owner decision as the normative override of rev4 section 15.4 corruption behavior.
+    - path: reports/issue-1-t603-history-reset-followup-20260816.md
+      purpose: Durable detailed report for this owner-decision follow-up.
+    - path: handoffs/issue-1-t603-history-reset-followup-20260816.yaml
+      purpose: Lossless schema-v3 continuation packet.
+  intentionally_untouched:
+    - path: tasks/tasks-status.md
+      reason: Repository workflow reserves direct task-status changes for designated progress management.
+    - path: merge operation
+      reason: Merge is reserved for the user.
+
+review_findings:
+  - id: T603-B001
+    previous_status: authority_conflict
+    status: resolved_by_owner
+    resolution: Corrupt history is preserved in quarantine and active history restarts from the next valid event; no salvage.
+  - id: T603-R008
+    previous_expectation: Reject all later append while corrupt JSONL remains active.
+    status: superseded_by_owner_decision
+    replacement_coverage: test/unit/t603-history-reset-decision.test.ts and test/unit/t603-schema-migration-recovery.test.ts
+  - id: T603-R013
+    previous_expectation: Reject wrong-owner/wrong-month/duplicate existing history without restarting.
+    status: superseded_by_owner_decision
+    replacement_coverage: Owner-decision suite verifies quarantine plus restart; repository monthly history still permits multiple contexts.
+
+old_review_test_handling:
+  historical_file: test/unit/t603-review-findings.test.ts
+  rationale: Retained as historical review evidence.
+  ci_execution:
+    executed: T603-R001..R007, R009..R011, R014
+    excluded_as_superseded: T603-R008, T603-R013
+  replacement: test/unit/t603-history-reset-decision.test.ts
+
+validation:
+  tdd_red:
+    head_sha: d1dbe39c574fbe2bda683b466950c8777ff411a3
+    run_id: 31941969296
+    job_id: 95152361908
+    conclusion: failure
+    artifact_id: 9262264629
+    artifact_name: ci-failure-diagnostics-31941969296-1
+    evidence: New corruption-reset expectations failed while build/typecheck/architecture/lint/unit/T602 passed.
+  implementation_intermediate:
+    head_sha: 83e7f614630c1ee37b924254f520e4aec55698d3
+    run_id: 31942021770
+    job_id: 95152482005
+    conclusion: failure
+    artifact_id: 9262278625
+    artifact_name: ci-failure-diagnostics-31942021770-1
+    evidence: New owner-decision behavior passed; only historical R008/R013 rejection expectations failed.
+  ci_pattern_intermediate:
+    head_sha: 3b38953378fb7dbc54d03b617d648c721e1b854c
+    run_id: 31942510600
+    job_id: 95153613895
+    conclusion: failure
+    artifact_id: 9262401060
+    artifact_name: ci-failure-diagnostics-31942510600-1
+    evidence: Owner-decision suite passed; initial negative-lookahead pattern failed to exclude historical R008/R013 expectations.
+  technical_green:
+    head_sha: 12fb1c772eb2861e58e99875247ddf4884fb9745
+    run_id: 31942578835
+    job_id: 95153775014
+    conclusion: success
+    evidence: Full CI success including T603, Git integration, GitHub integration, and VS Code Extension Host.
+  policy_green:
+    head_sha: c3e7d230e8a5f47d33933dea553e9f0b695ef904
+    run_id: 31942719872
+    job_id: 95154110269
+    conclusion: success
+    evidence: Full exact-head CI remains green after BreakingChanges policy record.
+
+commits:
+  - sha: d1dbe39c574fbe2bda683b466950c8777ff411a3
+    purpose: Test-first definition of corrupt history reset behavior.
+  - sha: 83e7f614630c1ee37b924254f520e4aec55698d3
+    purpose: Implement quarantine and active history restart without salvage.
+  - sha: ec296cf1f8a185eb956efbebbafbb008a7977b79
+    purpose: Add focused owner-decision regression suite.
+  - sha: 3b38953378fb7dbc54d03b617d648c721e1b854c
+    purpose: First CI selection attempt for superseded historical review tests.
+  - sha: 12fb1c772eb2861e58e99875247ddf4884fb9745
+    purpose: Correct CI selection with positive test-name pattern.
+  - sha: c3e7d230e8a5f47d33933dea553e9f0b695ef904
+    purpose: Record owner decision in Design/BreakingChanges.md.
+
+incidental_noop:
+  description: A temporary placeholder file was accidentally created during connector operation verification and immediately removed in the following commit; no file remains in the resulting tree.
+  functional_impact: none
+
+report:
+  path: reports/issue-1-t603-history-reset-followup-20260816.md
+  type: implementation_followup_report
+
+review:
+  mode: not_applicable
+  verdict: not_applicable
+  reason: Implementation worker does not issue an independent review verdict for its own changes.
+
+remaining_risks:
+  - Independent reviewer still needs to verify the final post-report PR current HEAD if required by the normal review lineage.
+  - Quarantine retention/cleanup policy beyond preserving the corrupt evidence in this recovery operation remains outside this decision unless separately specified.
+
+next_actions:
+  - Persist this report and handoff in one administrative commit.
+  - Confirm exact-head CI for the post-report current HEAD; do not substitute another SHA.
+  - Update PR #53 description and add a concise completion comment with the final exact-head CI evidence.
+  - Do not merge PR #53.

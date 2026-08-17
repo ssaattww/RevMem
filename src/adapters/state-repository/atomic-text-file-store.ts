@@ -44,6 +44,11 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
     }
   }
 
+  /** Removes a persisted file and treats absence as success. */
+  public async deleteText(filePath: string): Promise<void> {
+    await rm(filePath, { force: true });
+  }
+
   /**
    * Flushes complete UTF-8 content to a unique temporary file and renames it over `filePath`.
    *
