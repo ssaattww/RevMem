@@ -24,7 +24,15 @@
     "onCommand:reviewRange.selectContext",
     "onView:reviewRange.globalUnderstanding",
     "onCommand:reviewRange.refreshGlobalUnderstanding",
-    "onCommand:reviewRange.toggleGlobalLayer"
+    "onCommand:reviewRange.toggleGlobalLayer",
+    "onView:reviewRange.reviewContexts",
+    "onCommand:reviewRange.refreshReviewContexts",
+    "onCommand:reviewRange.redetectPullRequest",
+    "onCommand:reviewRange.reconnectGitHub",
+    "onCommand:reviewRange.refreshReviewContextCache",
+    "onCommand:reviewRange.toggleReviewContextLayer",
+    "onCommand:reviewRange.hideReviewContext",
+    "onCommand:reviewRange.openReviewContextDiff"
   ],
   "main": "./dist/t305-extension.js",
   "extensionKind": ["workspace"],
@@ -38,7 +46,14 @@
       { "command": "reviewRange.selectContext", "title": "現在のコンテキストを選択", "category": "Review Range" },
       { "command": "reviewRange.openPrProgressItem", "title": "PR Progress項目を開く", "category": "Review Range" },
       { "command": "reviewRange.refreshGlobalUnderstanding", "title": "Global理解率を再計算", "category": "Review Range" },
-      { "command": "reviewRange.toggleGlobalLayer", "title": "Global確認済みレイヤーを切り替え", "category": "Review Range" }
+      { "command": "reviewRange.toggleGlobalLayer", "title": "Global確認済みレイヤーを切り替え", "category": "Review Range" },
+      { "command": "reviewRange.refreshReviewContexts", "title": "Review Contextsを更新", "category": "Review Range" },
+      { "command": "reviewRange.redetectPullRequest", "title": "PRを再検出", "category": "Review Range" },
+      { "command": "reviewRange.reconnectGitHub", "title": "GitHubへ再接続", "category": "Review Range" },
+      { "command": "reviewRange.refreshReviewContextCache", "title": "PR cacheを更新", "category": "Review Range" },
+      { "command": "reviewRange.toggleReviewContextLayer", "title": "PR layerを切り替え", "category": "Review Range" },
+      { "command": "reviewRange.hideReviewContext", "title": "Review Contextsから表示を削除", "category": "Review Range" },
+      { "command": "reviewRange.openReviewContextDiff", "title": "PR diffを開く", "category": "Review Range" }
     ],
     "menus": {
       "editor/context": [
@@ -51,16 +66,25 @@
         { "command": "reviewRange.refreshContext", "when": "view == reviewRange.currentContext", "group": "navigation@1" },
         { "command": "reviewRange.selectContext", "when": "view == reviewRange.currentContext", "group": "navigation@2" },
         { "command": "reviewRange.refreshGlobalUnderstanding", "when": "view == reviewRange.globalUnderstanding", "group": "navigation@1" },
-        { "command": "reviewRange.toggleGlobalLayer", "when": "view == reviewRange.globalUnderstanding", "group": "navigation@2" }
+        { "command": "reviewRange.toggleGlobalLayer", "when": "view == reviewRange.globalUnderstanding", "group": "navigation@2" },
+        { "command": "reviewRange.refreshReviewContexts", "when": "view == reviewRange.reviewContexts", "group": "navigation@1" },
+        { "command": "reviewRange.redetectPullRequest", "when": "view == reviewRange.reviewContexts", "group": "navigation@2" },
+        { "command": "reviewRange.reconnectGitHub", "when": "view == reviewRange.reviewContexts", "group": "navigation@3" }
       ],
       "view/item/context": [
-        { "command": "reviewRange.openPrProgressItem", "when": "view == reviewRange.prProgress && viewItem == reviewRange.prProgressFile", "group": "inline" }
+        { "command": "reviewRange.openPrProgressItem", "when": "view == reviewRange.prProgress && viewItem == reviewRange.prProgressFile", "group": "inline" },
+        { "command": "reviewRange.openReviewContextDiff", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@1" },
+        { "command": "reviewRange.refreshReviewContextCache", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@2" },
+        { "command": "reviewRange.toggleReviewContextLayer", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@3" },
+        { "command": "reviewRange.hideReviewContext", "when": "view == reviewRange.reviewContexts", "group": "navigation@4" }
       ]
     },
     "configuration": {
       "title": "Review Range",
       "properties": {
         "reviewRange.showGlobalReviewed": { "type": "boolean", "default": true, "description": "Global確認済み範囲を通常エディタの装飾へ重ねて表示します。" },
+        "reviewRange.ignoreWhitespaceChanges": { "type": "boolean", "default": false, "description": "空白のみの編集を確認済み範囲の追従で無視します。" },
+        "reviewRange.ignoreEolChanges": { "type": "boolean", "default": false, "description": "改行コードのみの編集を確認済み範囲の追従で無視します。" },
         "reviewRange.showGutterIcon": { "type": "boolean", "default": true, "description": "確認済み行のガターアイコンを表示します。" },
         "reviewRange.showOverviewRuler": { "type": "boolean", "default": false, "description": "確認済み範囲をOverview Rulerへ表示します。" },
         "reviewRange.exclude": {
@@ -122,13 +146,15 @@
     "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t403": "npm run compile:test && node --test test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t404": "npm run compile:test && node --test test-dist/test/unit/github-pr-context-layer-store.test.js test-dist/test/unit/t404-review-followup-r3.test.js test-dist/test/unit/t404-history-integration.test.js",
+    "test:t405": "npm run compile:test && node --test test-dist/test/unit/review-contexts-runtime-wiring.test.js test-dist/test/unit/review-contexts-storage.test.js test-dist/test/unit/review-contexts-ui.test.js test-dist/test/unit/t405-github-lifecycle.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/t405-review-followup.test.js test-dist/test/unit/t405-revision-evidence.test.js test-dist/test/unit/t405-selected-pr-session.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
     "test:t306": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js --t306",
     "test:vscode-runner": "npm run compile:test && node --test test-dist/test/unit/owned-extension-host-launch.test.js test-dist/test/unit/owned-temporary-directory-cleanup.test.js",
     "test": "npm run test:unit && npm run test:git && npm run test:github && npm run test:t502 && npm run test:vscode",
     "test:t402": "npm run compile:test && node --test test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js",
     "test:t305": "npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js",
-    "test:t505": "npm run compile:test && node --test test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/t505-refresh-invalidation.test.js test-dist/test/unit/t505-review-findings.test.js"
+    "test:t505": "npm run compile:test && node --test test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/t505-refresh-invalidation.test.js test-dist/test/unit/t505-review-findings.test.js",
+    "test:t506": "npm run build && npm run compile:test && node --test test-dist/test/integration/t506-global-multi-context.integration.test.js test-dist/test/integration/t506-real-multi-instance-concurrency.integration.test.js && node test-dist/test/vscode/run-extension-host.js --t506"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

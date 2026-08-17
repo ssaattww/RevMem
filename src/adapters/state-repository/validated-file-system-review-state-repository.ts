@@ -1,5 +1,6 @@
 import type {
-  RepositoryGlobalState
+  RepositoryGlobalState,
+  ReviewContextState
 } from "../../core/contracts/index";
 import {
   FileSystemReviewStateRepository as CoherentFileSystemReviewStateRepository,
@@ -19,21 +20,22 @@ import {
   type PersistedReviewStatePreparation
 } from "./persistence-schema-recovery";
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
+import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 export { StaleReviewStateError };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const sharedOuterWriteTailByStorageRoot = new Map<string, Promise<void>>();
 
 /** Public filesystem repository with validated metadata and owner-wide Global preservation. */
 export class FileSystemReviewStateRepository
 extends CoherentFileSystemReviewStateRepository {
-  private readonly outerWriteTailByStorageRoot = new Map<string, Promise<void>>();
   private readonly uncertainTargets = new Set<string>();
   private readonly uncertainStorageRoots = new Set<string>();
   private readonly repositoryOptions: FileSystemReviewStateRepositoryOptions;
 
-  /** Creates a repository that serializes writes per storage root while retaining the complete atomic snapshot contract. */
+  /** Creates a repository that serializes same-process writes per storage root while retaining the complete atomic snapshot contract. */
   public constructor(repositoryOptions: FileSystemReviewStateRepositoryOptions) {
     super(repositoryOptions);
     this.repositoryOptions = repositoryOptions;
@@ -112,6 +114,18 @@ extends CoherentFileSystemReviewStateRepository {
       this.markUncertain(target, route.rootPath);
       throw error;
     }
+  }
+
+  /** Enumerates manifest-selected branch and pull-request contexts without changing persisted state or history. */
+  public async listRepositoryContexts(repositoryId: string): Promise<ReviewContextState[]> {
+    const contexts = await listPersistedRepositoryContexts(
+      this.repositoryOptions,
+      repositoryId
+    );
+    for (const contextState of contexts) {
+      validateOwnerReconciliation(contextState);
+    }
+    return clone(contexts);
   }
 
   /** Saves a complete snapshot while preserving an existing owner-wide Global state during new-context initialization. */
@@ -292,20 +306,20 @@ extends CoherentFileSystemReviewStateRepository {
     storageRoot: string,
     operation: () => Promise<T>
   ): Promise<T> {
-    const previous = this.outerWriteTailByStorageRoot.get(storageRoot);
+    const previous = sharedOuterWriteTailByStorageRoot.get(storageRoot);
     let release: () => void = () => undefined;
     const tail = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.outerWriteTailByStorageRoot.set(storageRoot, tail);
+    sharedOuterWriteTailByStorageRoot.set(storageRoot, tail);
 
     await previous;
     try {
       return await operation();
     } finally {
       release();
-      if (this.outerWriteTailByStorageRoot.get(storageRoot) === tail) {
-        this.outerWriteTailByStorageRoot.delete(storageRoot);
+      if (sharedOuterWriteTailByStorageRoot.get(storageRoot) === tail) {
+        sharedOuterWriteTailByStorageRoot.delete(storageRoot);
       }
     }
   }

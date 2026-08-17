@@ -1,0 +1,312 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-16T19:36:28+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+
+target:
+  source_reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  source_review_completion_head: 6b065442d1ecd0195d05979e36db0ca1ce633154
+  implementation_technical_fix_head: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+  fix_verification_reviewed_head: 2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+  verification_report_head: ff19812fa53f25ab0f87201a98fb5a7993bd14c8
+  final_administrative_head: pending_after_handoff_commit
+  implementation_fix_range: 6b065442d1ecd0195d05979e36db0ca1ce633154..47d032b20fe5e0563254b960ad7bfd012e7f8863
+  verification_range: 6b065442d1ecd0195d05979e36db0ca1ce633154..2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+
+reviewer_continuity:
+  reviewer: "ChatGPT normal reviewer / T405 review chat 2026-08-16"
+  source_mode: initial_review
+  current_mode: fix_verification
+  same_reviewer_chat: true
+  implemented_fixes: false
+  merged: false
+
+source_review:
+  report: reports/2026-08-16-t405-review.md
+  handoff: handoffs/issue-1-t405-review-20260816152300.yaml
+  verdict: fail
+  findings:
+    - { id: R405-1, severity: medium }
+    - { id: R405-2, severity: medium }
+    - { id: R405-3, severity: medium }
+    - { id: R405-4, severity: medium }
+    - { id: R405-5, severity: medium }
+    - { id: R405-6, severity: low }
+    - { id: R405-7, severity: high }
+    - { id: R405-8, severity: medium }
+    - { id: R405-9, severity: low }
+
+implementation_followup:
+  report: reports/2026-08-16-t405-review-followup.md
+  handoff: handoffs/issue-1-t405-review-followup-20260816191923.yaml
+  claimed_outcome: addressed_all_review_findings
+  technical_head: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+  exact_head_run: 31941214324
+  exact_head_conclusion: success
+
+requirements:
+  - source: user_instruction
+    summary: "T405を再レビューし、前回finding setのclosureを同じnormal reviewerで検証する。"
+  - source: project_instruction
+    summary: "uploaded worker Skillsに従い、GitHub connectorを使用し、current PR HEADとrun head SHAが一致するCIのみ判定へ使用する。reviewerはfixを実装せずmergeしない。"
+  - source: task
+    reference: tasks/tasks-status.md#T405
+    summary: "Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff。現在PR/branch/saved PRを並列表示しAC-21を満たす。"
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev4
+    summary: "PR revision continuity、canonical diff、Current Context、Review Contexts progress/diff/layer/cache/hide、closed PR layer contract。"
+  - source: source_review
+    reference: reports/2026-08-16-t405-review.md
+    summary: "R405-1〜R405-9のID/severityとrequired actionsをclosure authorityとして維持する。"
+
+development_policy:
+  method: TDD
+  reviewer_role: verify_only
+  red_evidence:
+    - head_sha: 20ce97a88aba1dedc4d34d9fee17c2c67c47bf6a
+      run_id: 31933251564
+      conclusion: failure
+      artifact_id: 9259899523
+      cause_summary: "new T405 contract tests failed before production contracts existed: progressByContextId, ReviewContextListItem.progress, pull-request SelectedReviewContext"
+    - head_sha: 710e80946d28d6f59dddfce71e105b950d4546f2
+      run_id: 31933283786
+      conclusion: failure
+      cause_summary: "additional lifecycle/canonical-diff regressions were still red before production fixes"
+  ordering_verified: true
+
+failure_diagnostic_workflow:
+  checked: true
+  path: .github/workflows/ci.yml
+  sufficient: true
+  evidence:
+    - "each command writes combined stdout/stderr via 2>&1 | tee test-output/ci/*.log"
+    - "failure context records node/npm/runner/SHA/ref, git status, generated files"
+    - "failure artifact includes test-output, dist/test-dist, source/tests/tools/type-fixtures and build/config/workflow files"
+    - "T405 dedicated CI step writes test-output/ci/test-t405.log"
+  reviewer_change_required: false
+
+verification:
+  verdict: fail
+  severity_reclassifications: []
+  blocking_unexplored: []
+  unknown: []
+  source_finding_dispositions:
+    - id: R405-1
+      severity: medium
+      disposition: partial
+      product_fix: "base/head update now reaches T404 immutable revision mapping with real revision evidence loader"
+      remaining: "missing production-runtime B→C redetect -> mapped durable state -> layer operation -> restart regression required by source finding"
+    - id: R405-2
+      severity: medium
+      disposition: partial
+      product_fix: "stable PR lifecycle adapter and persisted open/closed/merged synchronization were added"
+      remaining: "missing runtime open→closed/merged -> durable state -> saved group -> default layer regression required by source finding"
+    - id: R405-3
+      severity: medium
+      disposition: partial
+      product_fix: "Review Contexts diff now uses canonical review-range-diff runtime; custom scheme removed"
+      remaining: "missing Review Contexts-origin actual original/modified mark/unmark persistence runtime/Extension Host regression required by source finding"
+    - id: R405-4
+      severity: medium
+      disposition: addressed
+      evidence: "hidden presentation identity filters current and saved contexts; current PR/branch/workspace hide regression coverage exists"
+    - id: R405-5
+      severity: medium
+      disposition: partial
+      product_fix: "progress is calculated and projected into ReviewContextListItem.progress"
+      remaining: "ReviewContextsTreeProvider never renders progress in row description or tooltip, so Design 16.4 user-visible progress display remains absent"
+    - id: R405-6
+      severity: low
+      disposition: addressed
+      evidence: "dead reviewRange.closedPullRequestLayerDefault setting removed from manifest and tests aligned"
+    - id: R405-7
+      severity: high
+      disposition: partial
+      product_fix: "single persisted PR can become Current Context and own normal-editor session"
+      remaining: "multiple open PRs sharing local HEAD cannot retain user-selected PR: findCurrentPullRequestContext returns undefined for multiple matches and no authoritative selected PR identity is persisted"
+    - id: R405-8
+      severity: medium
+      disposition: addressed
+      evidence: "pre-persistence in-memory current PR publication removed; current is derived from durable persisted state plus exact local HEAD"
+    - id: R405-9
+      severity: low
+      disposition: partial
+      product_fix: "README mostly updated for connected T405 runtime and dead setting removed"
+      remaining: "README claims Review Contexts progress is available while R405-5 UI does not render progress"
+
+  required_findings_remaining:
+    - R405-1
+    - R405-2
+    - R405-3
+    - R405-5
+    - R405-7
+    - R405-9
+  addressed_findings:
+    - R405-4
+    - R405-6
+    - R405-8
+
+coverage:
+  - criterion: requirement_and_design_conformance
+    disposition: checked_finding
+    notes: "R405-5/R405-7 remain functional gaps; R405-1/2/3 validation closure partial"
+  - criterion: correctness_and_edge_cases
+    disposition: checked_finding
+    notes: "multiple same-HEAD PR sibling case remains; progress UI absent"
+  - criterion: scope_discipline_and_unrelated_changes
+    disposition: checked_no_finding
+    notes: "fixes limited to T405 findings/direct compatibility, tests, CI, README, report/handoff"
+  - criterion: changed_files_and_direct_dependency_impact
+    disposition: checked_finding
+    notes: "T302/T303/T304/T305/T404/T505/normal-editor persistence inspected; remaining R405-3/5/7 issues"
+  - criterion: api_data_configuration_workflow_compatibility
+    disposition: checked_finding
+    notes: "PR selection API added and diff runtime multiplex compatible; multiple PR authoritative selection identity still missing"
+  - criterion: error_handling_and_failure_diagnostics
+    disposition: checked_no_finding
+    notes: "R405-8 fixed; CI diagnostics sufficient"
+  - criterion: security_and_secret_handling
+    disposition: checked_no_finding
+    notes: "no new token/source leakage path found"
+  - criterion: tests_and_validation_adequacy
+    disposition: checked_finding
+    notes: "missing R405-1/2/3 runtime regressions, R405-5 Tree render test, R405-7 multiple-candidate regression"
+  - criterion: current_head_ci_evidence
+    disposition: checked_no_finding
+    notes: "technical reviewed HEAD 2597cae... exact run 31941380967 success; report HEAD ff19812... exact run 31941991365 success"
+  - criterion: report_tracking_documentation_accuracy
+    disposition: checked_finding
+    notes: "implementation followup claims all addressed but verification finds six partial/open; README progress claim inaccurate; tracking write held"
+  - criterion: regression_and_maintainability_risks
+    disposition: checked_finding
+    notes: "integration seam regressions not fixed by tests; multiple-candidate identity state missing"
+  unexplored: []
+
+ci:
+  exact_head_policy: enforced
+  technical_verification:
+    head_sha: 2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+    run_id: 31941380967
+    conclusion: success
+    note: "only run whose workflow head SHA exactly matches fix-verification reviewed HEAD was used for technical current-head evidence"
+  report_commit_validation:
+    head_sha: ff19812fa53f25ab0f87201a98fb5a7993bd14c8
+    run_id: 31941991365
+    conclusion: success
+    successful_steps:
+      - build
+      - contract_typecheck
+      - architecture_validation
+      - architecture_negative_contract
+      - lint
+      - unit_tests
+      - t602_history_rewrite
+      - t403_cache
+      - t404_pr_context
+      - t405_review_contexts_followup
+      - t304_pr_progress
+      - t502_global_mapping
+      - t503_repository_enumeration
+      - t504_global_understanding
+      - t505_global_understanding
+      - git_integration
+      - mock_github_integration
+      - vscode_extension_host
+  final_administrative_validation:
+    head_sha: pending_after_handoff_commit
+    run_id: pending
+    conclusion: pending
+    note: "handoff commit後のnew PR HEADと完全一致するrunだけを最終administrative evidenceとして確認する。"
+
+report:
+  path: reports/2026-08-16-t405-fix-verification.md
+  commit: ff19812fa53f25ab0f87201a98fb5a7993bd14c8
+  verdict: fail
+  summary: "R405-4/R405-6/R405-8 addressed; R405-1/R405-2/R405-3/R405-5/R405-7/R405-9 remain partial/open; no unexplored items"
+
+held:
+  - id: T406_full_integration_matrix
+    blocking: false
+    summary: "public unauth/HTTP/network/patch-missing/multiple-candidate/closed-PR E2E matrix is T406 ownership; R405-7 production defect itself remains blocking T405"
+  - id: T506_multi_context_global_integration
+    blocking: false
+    summary: "multi-context change tracking and Global aggregation Extension Host validation is T506 ownership"
+  - id: tracking_sync
+    blocking: false
+    summary: "task status files require manager Skill unavailable in uploaded worker set"
+  - id: merge
+    blocking: false
+    summary: "merge is user-owned and was not performed"
+
+write_boundary:
+  reviewer_writes:
+    - reports/2026-08-16-t405-fix-verification.md
+    - handoffs/issue-1-t405-fix-verification-20260816193628.yaml
+    - "PR #54 concise verification comment"
+  untouched:
+    - product_implementation
+    - tests
+    - design
+    - workflow
+    - configuration
+    - task_tracking
+    - merge
+
+next_action:
+  destination: implementation_chat
+  instruction: "R405-1/R405-2/R405-3/R405-5/R405-7/R405-9を同じID/severityのまま修正し、required runtime regressionsを追加する。その後、このnormal-review chatで再度fix verificationする。"
+
+source_payloads:
+  work_context:
+    skill: work-context-manager
+    mode: fix_verification
+    payload:
+      target_repository: ssaattww/RevMem
+      pull_request: 54
+      branch: feature/t405-review-contexts
+      source_reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+      source_review_completion_head: 6b065442d1ecd0195d05979e36db0ca1ce633154
+      technical_fix_head: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+      reviewed_head: 2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+      scope: "closure verification for R405-1 through R405-9, fix diff, siblings, direct dependencies, tests, exact-head CI, docs/report/tracking"
+      non_goals: [T406_full_integration_matrix, T506_multi_context_global_integration, task_tracking_write, merge]
+      write_boundary: [verification_report, lossless_handoff, concise_pr_comment]
+  review_worker:
+    skill: review-worker
+    mode: fix_verification
+    payload:
+      verdict: fail
+      reviewed_head: 2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+      source_findings: [R405-1, R405-2, R405-3, R405-4, R405-5, R405-6, R405-7, R405-8, R405-9]
+      addressed: [R405-4, R405-6, R405-8]
+      partial_or_open: [R405-1, R405-2, R405-3, R405-5, R405-7, R405-9]
+      severity_reclassification: none
+      blocking_unexplored: none
+      ci_head_sha: 2597cae6fe1b30d2b9c0e26d84ece022b03b0f7c
+      ci_run_id: 31941380967
+      ci_conclusion: success
+  report_writer:
+    skill: report-writer
+    mode: verification_report
+    payload:
+      path: reports/2026-08-16-t405-fix-verification.md
+      commit: ff19812fa53f25ab0f87201a98fb5a7993bd14c8
+      persistence_mode: repository_file
+      technical_verdict: fail
+      merge_boundary: user_owned
+  chat_handoff_manager:
+    skill: chat-handoff-manager
+    mode: fix_verification
+    payload:
+      schema_version: 3
+      lossless: true
+      preserves_source_payloads: true
+      final_administrative_head: pending_after_handoff_commit

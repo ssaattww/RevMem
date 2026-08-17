@@ -1,0 +1,163 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-16T18:49:00+09:00
+source:
+  repository: ssaattww/RevMem
+  issue: 1
+  task: T506
+  pull_request: 55
+  branch: task/t506-global-integration
+  base_branch: main
+  base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+  reviewed_head_sha: a6bd4d21477d4a32795acf3e762812971ca0216b
+  implementation_head_sha: 535f8e0cb67425899e3bf6852a91620eb5b3b5f5
+scope:
+  accepted:
+    - id: T506-REV-001
+      severity: high
+      summary: production document-edit経路にGlobal range mapping/persistenceが配線されておらず、helper直呼びtestが欠落を隠していた
+      required_behavior:
+        - 実TextDocumentContentChangeEventからrange mappingを行う
+        - Context/Globalをatomic persistenceする
+        - persistence後にGlobal Understandingと通常editor decorationをrefreshする
+        - 編集後の不変Global範囲とrestart後の同一理解率をExtension Hostで検証する
+  intentionally_out_of_scope:
+    - T604のmulti-window/cross-process locking
+    - T605のmulti-root/Remote SSH/Dev Containers/Codespaces境界
+    - T607のscale/performance最適化
+    - independent review verdict
+    - merge
+repository_rules:
+  diagnostic_workflow_required: true
+  diagnostic_workflow_status: present_and_verified
+  tdd_required: true
+  small_commits_required: true
+  detailed_report_required: true
+  concise_pr_comment_required: true
+  merge_forbidden: true
+diagnostics:
+  workflow: .github/workflows/ci.yml
+  command_wrapper: tools/run-ci-command.mjs
+  captured_per_command:
+    - stdout
+    - stderr
+    - combined_log
+    - result_metadata
+  failure_context:
+    - environment
+    - git_status
+    - generated_files
+    - dist
+    - test_dist
+    - source
+    - tests
+    - tools
+    - configuration
+  red_artifact:
+    id: 9259917030
+    name: ci-failure-diagnostics-31933264222-1
+    expired: false
+    head_sha: 02a3aba262f90a2d918998c3eb5a39c7bb1cd106
+    verified_files:
+      - test-output/ci/test-t506.stdout.log
+      - test-output/ci/test-t506.stderr.log
+      - test-output/ci/test-t506.log
+      - test-output/ci/test-t506.result.json
+      - test-output/vscode-launch-diagnostics/t506-mark-context-a-1786864404057.json
+tdd:
+  red_commits:
+    - sha: 8f9015278566a1eff60ae8ef1a16edbcc14f3e99
+      message: test: reproduce normal-editor edit tracking gap
+    - sha: 4d5f2df078a85f3f620a5f0e7dec846b543e0c3a
+      message: test: expose Global understanding snapshot in test mode
+    - sha: 02a3aba262f90a2d918998c3eb5a39c7bb1cd106
+      message: test: require Global understanding after live editor mapping
+  verified_red:
+    head_sha: 02a3aba262f90a2d918998c3eb5a39c7bb1cd106
+    workflow_run: 31933264222
+    job: 95131189016
+    conclusion: failure
+    failing_step: T506 Global multi-context integration
+    observed_failure: Global Understanding reviewedNonEmptyLineCount was 0 instead of expected 2 after live editor edit
+    preceding_steps: success
+  implementation_commits:
+    - sha: f384a068da563afe08f57132c638e46771529528
+      message: fix: persist live editor review mapping
+    - sha: 50835b683f85b195ec289bf8f7c3b1edf35614e5
+      message: fix: wire live document edits into persisted Global mapping
+    - sha: 535f8e0cb67425899e3bf6852a91620eb5b3b5f5
+      message: fix: align live edit CAS with persistence contract
+implementation:
+  files:
+    src/document-review-edit-runtime.ts:
+      - serializes live changes per document
+      - maps persisted Context and Global ranges from before snapshot to after snapshot
+      - uses complete expected/next snapshots with FileSystemReviewStateRepository.commit
+      - retries stale CAS from latest persisted snapshot
+      - appends invalidated-by-edit history after successful state commit
+      - drains pending operations at deactivation
+    src/t305-extension.ts:
+      - observes open filesystem documents at activation/open
+      - forwards actual TextDocumentContentChangeEvent contentChanges
+      - refreshes decorations and Global Understanding after applied persistence
+      - forgets closed documents
+      - drains document edit runtime before base deactivation
+    test/vscode/t506-suite/index.ts:
+      - marks a normal editor through production commands
+      - edits with TextEditor.edit to trigger actual VS Code document change
+      - expects unchanged reviewed prefix/suffix and unreviewed inserted line
+      - expects Global Understanding 2/3 after edit
+      - repeats mapped understanding/decorations after Extension Host restart
+  persistence_contract:
+    repository: FileSystemReviewStateRepository
+    transaction: complete_context_and_global_snapshot_CAS
+    write_serialization: storage_root_serialized
+    stale_policy: reload_and_replan
+    uncertain_state_policy: fail_closed
+validation:
+  technical_green:
+    head_sha: 535f8e0cb67425899e3bf6852a91620eb5b3b5f5
+    workflow_run: 31933811618
+    job: 95132565212
+    conclusion: success
+    head_sha_matches: true
+    successful_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+      - Unit tests
+      - T502 Global mapping and display priority tests
+      - T503 repository enumeration tests
+      - T504 Global understanding tests
+      - T505 Global understanding tests
+      - T506 Global multi-context integration
+      - Temporary Git integration tests
+      - Mock GitHub integration tests
+      - VS Code Extension Host tests
+    substituted_other_sha: false
+finding_status:
+  T506-REV-001:
+    implementation_response: completed
+    reviewer_closure: pending_fix_verification
+    thread_should_remain_unresolved: true
+tracking:
+  tasks_status:
+    path: tasks/tasks-status.md
+    updated: false
+    reason: repository rules reserve updates for dedicated task-management Skills not present in this worker set
+  breaking_changes:
+    updated: false
+    reason: no breaking change introduced
+artifacts:
+  detailed_report: reports/issue-1-t506-review-followup-20260816184900.md
+  handoff: handoffs/issue-1-t506-review-followup-20260816184900.yaml
+next_actions:
+  - commit report and handoff to the existing PR branch
+  - verify CI run whose head_sha exactly matches the resulting PR current HEAD
+  - post concise PR follow-up comment with final HEAD and matching CI result
+  - hand off T506-REV-001 to reviewer fix verification
+  - do not merge

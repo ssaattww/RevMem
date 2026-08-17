@@ -29,17 +29,17 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
-| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T404はmainへ統合済み。Review Contexts UIと障害統合試験が未着手 |
-| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T505はmainへ統合済み。複数context統合試験のT506が未着手 |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T405はmainへ統合済み。T406は未着手 |
+| P5 | 進行中 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T505はmainへ統合済み。T506はPR #55で実装済み、独立review finding修正中 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601とT602はmainへ統合済み。T603以降が未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T505 Global Understanding UIと設定（PR #43）
-- 実装中タスク: なし
-- 次の工程: T405またはT506から次のproduct taskを選択する
-- 後続候補: T405またはT506
+- 実装中タスク: T506（PR #55、独立review finding 3件修正中）
+- 次の工程: PR #55のfinding closureと必須PR check後にsquash mergeする
+- 後続候補: T406
 
 ## P0 開発基盤
 
@@ -134,7 +134,7 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 - T402 local Git、PR files patch、base/head contentの3段差分取得fallback: 完了・main統合済み
 - T403 GitHub metadata・diff cacheとoffline読込: 完了・PR #44でmain統合済み
 - T404 永続PR context layer: 完了・PR #48でmain統合済み
-- T405 Review Contexts ViewとPR管理UI: 未着手
+- T405 Review Contexts ViewとPR管理UI: 完了・PR #54をmerge commit `11c2d517` でmain統合済み
 - T406 GitHub障害・複数PR・closed PR統合試験: 未着手
 
 ### 終了チェックポイント
@@ -158,7 +158,7 @@ context確認状態とGlobalを同期し、PR進捗と分離した理解率を�
 - T503 repository file列挙とGlobal集計候補: 完了・main統合済み
 - T504 Global理解率の再計算基盤: 完了・main統合済み
 - T505 Global Understanding View、Status Bar、Global layer設定UI: 完了・PR #43でmain統合済み
-- T506 複数contextとGlobal集計の統合・Extension Host試験: 未着手
+- T506 複数contextとGlobal集計の統合・Extension Host試験: PR #55で実装済み、独立review finding修正中。reviewed HEAD `5d21756` のCI `31980543509` はsuccess
 
 ### 終了チェックポイント
 

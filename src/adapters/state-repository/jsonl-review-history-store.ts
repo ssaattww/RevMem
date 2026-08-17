@@ -22,6 +22,7 @@ import {
 import { resolveReviewStateStorageRoute } from "./storage-router";
 
 const monthFileName = (occurredAt: string): string => `events-${occurredAt.slice(0, 7)}.jsonl`;
+const sharedHistoryTailByFilePath = new Map<string, Promise<void>>();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -165,14 +166,13 @@ export const migratePersistedReviewHistoryFile = async (
 
 /** Appends canonical validated JSONL events. Corrupt existing history is preserved in quarantine and the active history restarts from the new event without salvaging uncertain records. */
 export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
-  private readonly tails = new Map<string, Promise<void>>();
   private readonly atomicFileStore;
 
   public constructor(private readonly options: JsonlReviewHistoryStoreOptions) {
     this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
   }
 
-  /** Validates/migrates legacy records and restarts the active monthly history after quarantining corrupt or misrouted evidence. */
+  /** Validates and migrates legacy records, restarts after quarantining corrupt evidence, and shares same-process file serialization across store instances. */
   public async append(target: ReviewStateRepositoryTarget, event: ReviewHistoryEvent): Promise<void> {
     const canonical = serializeReviewHistoryEvent(event);
     if (event.repositoryId !== target.repositoryId || event.contextId !== target.contextId) {
@@ -181,7 +181,7 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
     const month = event.occurredAt.slice(0, 7);
     const filePath = path.join(route.historyDirectory, monthFileName(event.occurredAt));
-    const previous = this.tails.get(route.rootPath) ?? Promise.resolve();
+    const previous = sharedHistoryTailByFilePath.get(filePath) ?? Promise.resolve();
     const operation = previous.then(async () => {
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
       const prepared = prepareExistingHistory(existing, target.repositoryId, month);
@@ -210,7 +210,14 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
         await this.atomicFileStore.writeTextAtomically(filePath, next);
       }
     });
-    this.tails.set(route.rootPath, operation.catch(() => undefined));
-    await operation;
+    const tail = operation.catch(() => undefined);
+    sharedHistoryTailByFilePath.set(filePath, tail);
+    try {
+      await operation;
+    } finally {
+      if (sharedHistoryTailByFilePath.get(filePath) === tail) {
+        sharedHistoryTailByFilePath.delete(filePath);
+      }
+    }
   }
 }

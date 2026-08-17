@@ -1,0 +1,235 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-16T22:47:00+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #55
+task_id: T506
+branch: task/t506-global-integration
+base_ref: main
+target:
+  previous_review_artifact_head: 4cd1f3540fe160865e4981baf8e924034f054dca
+  reviewed_implementation_head: 96ac0e3f238f50ada33a13de0452fdd999b4b7d2
+  commit_range: 4cd1f3540fe160865e4981baf8e924034f054dca..96ac0e3f238f50ada33a13de0452fdd999b4b7d2
+
+authoritative_requirements:
+  - source: prior_normal_review
+    reference: T506-REV-001
+    summary: High; production live document edit mapping must work through Git and non-Git workspace paths and survive restart.
+  - source: prior_fix_verification
+    reference: T506-REV-002
+    summary: High introduced_by_fix; same-process separate state/history instances must not lose concurrent command/edit updates and must have a regression proving the production boundary.
+  - source: task
+    reference: tasks/tasks-status.md T506
+    summary: AC-18〜AC-20, multi-context Global integration, PR-progress isolation, restart-stable understanding.
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector, diagnostic artifacts, exact current-HEAD CI, detailed report, concise PR comment, no merge.
+
+development_policy:
+  method: review_only
+  fix_policy: TDD required for implementation follow-up
+  reviewer_continuity: same normal reviewer as initial T506 review and previous fix verification
+
+scope:
+  - verify T506-REV-001 closure including non-Git workspace live edit and restart
+  - verify T506-REV-002 closure including actual same-process multi-instance state/history serialization
+  - inspect all 10 files changed since previous review artifact head
+  - inspect direct workspace/state/history/command consumers and focused CI wiring
+  - verify RED artifacts and exact implementation-head CI
+non_goals:
+  - implement findings
+  - independent final review
+  - T604 cross-process locking
+  - T605 remote/multi-root acceptance
+  - T607 performance work
+  - merge
+
+write_boundary:
+  allowed:
+    - reports/issue-1-t506-fix-verification-r2-20260816224700.md
+    - handoffs/issue-1-t506-fix-verification-r2-20260816224700.yaml
+    - PR #55 review thread replies/resolution and concise summary comment
+  forbidden:
+    - product source
+    - tests
+    - workflow
+    - design
+    - tasks/tasks-status.md
+    - tasks/phases-status.md
+    - merge
+
+files:
+  changed:
+    - src/adapters/state-repository/validated-file-system-review-state-repository.ts
+    - src/adapters/state-repository/jsonl-review-history-store.ts
+    - src/application/review-history/review-history-recorder.ts
+    - src/document-review-edit-runtime.ts
+    - src/t305-extension.ts
+    - test/integration/t506-live-edit-concurrency.integration.test.ts
+    - test/vscode/t506-workspace-suite/index.ts
+    - test/vscode/run-extension-host.ts
+    - reports/issue-1-t506-review-followup-r2-20260816220232.md
+    - handoffs/issue-1-t506-review-followup-r2-20260816220232.yaml
+  inspected_direct_dependencies:
+    - src/adapters/workspace-review-state/workspace-review-state-session-provider.ts
+    - src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts
+    - src/adapters/document-review-state/document-review-state-session-provider.ts
+    - src/adapters/state-repository/debounced-review-state-repository.ts
+    - src/extension.ts
+    - package.json
+    - .github/workflows/ci.yml
+    - tools/run-ci-command.mjs
+
+failure_diagnostics:
+  - finding: T506-REV-002
+    red_head: 18c3a3e3c6195919a30f03058183cd548e8f63d1
+    workflow_run: 31947728345
+    artifact_id: 9263778874
+    result: verified
+    evidence:
+      - test-output/ci/test-t506.result.json exitCode 1
+      - stdout contains concurrency test failure
+      - actual error: DocumentReviewEditRuntime did not use the injected shared repository.
+      - stdout/stderr/combined/result files present
+  - finding: T506-REV-001
+    red_head: 6a945b2a536f7167c99b21b529505a4090f6c826
+    workflow_run: 31947812044
+    artifact_id: 9263810873
+    result: verified
+    evidence:
+      - test-output/ci/test-t506.result.json exitCode 1
+      - Git T506 phases succeeded before workspace phase
+      - t506-workspace-mark-edit Extension Host diagnostic failed with assertion 0 !== 2
+      - stdout/stderr/combined/result and Extension Host diagnostics present
+
+ci:
+  required: true
+  workflow: CI
+  reviewed_implementation_head: 96ac0e3f238f50ada33a13de0452fdd999b4b7d2
+  run_id: 31948788255
+  job_id: 95168909165
+  conclusion: success
+  exact_head_policy: only the run associated with 96ac0e3f238f50ada33a13de0452fdd999b4b7d2 was used for implementation validation
+  successful_evidence:
+    - build
+    - contract typecheck
+    - architecture positive and negative gates
+    - lint
+    - unit tests
+    - T502/T503/T504/T505/T506 focused suites
+    - T506 Git three-phase Extension Host
+    - T506 non-Git workspace two-phase Extension Host
+    - T506 concurrency test process exited successfully
+    - Git integration
+    - GitHub integration
+    - standard VS Code Extension Host
+
+review:
+  mode: fix_verification
+  reviewer:
+    role: normal_reviewer
+    continuity: same_reviewer
+    implemented_change: false
+    implemented_review_fix: false
+  verdict: fail
+  findings:
+    - id: T506-REV-001
+      severity: high
+      source_severity_preserved: true
+      status: closed
+      evidence:
+        - DocumentReviewEditRuntime resolves workspace owner with WorkspaceIdentityService and the same workspace-live revision contract as WorkspaceReviewStateSessionProvider.
+        - t305-extension supplies workspaceFolderUri and relativePath from actual VS Code documents.
+        - real non-Git Extension Host edit maps 2 reviewed lines across a middle insertion to Global Understanding 2/3 and decoration [0,1),[2,3).
+        - restart phase restores the same understanding and decoration.
+        - exact-head run 31948788255 succeeds.
+    - id: T506-REV-002
+      severity: high
+      origin: introduced_by_fix
+      source_severity_preserved: true
+      status: partial_open
+      production_fix_present: true
+      evidence:
+        - FileSystemReviewStateRepository now has module-shared outer write serialization by storage root.
+        - JsonlReviewHistoryStore now has module-shared append serialization by history file path.
+        - DocumentReviewEditRuntime supports stale CAS reload/replan.
+        - current concurrency test uses one ControlledSharedRepository and one shared ReviewHistoryRecorder/store, bypassing both production multi-instance shared queues.
+        - production t305-extension still creates a separate default edit-runtime persistence/history instance and therefore relies on the module-shared queues that the regression does not exercise.
+      impact: a regression that accidentally restores instance-local state/history queues would not be detected by the current T506 concurrency test, so the original High concurrency defect lacks permanent production-boundary coverage.
+      required_action:
+        - add a deterministic regression using separate real FileSystemReviewStateRepository instances sharing one storage root and prove concurrent command/edit preserves both updates through stale/replan
+        - add a deterministic regression using separate JsonlReviewHistoryStore/recorder instances sharing one history file and prove both events survive
+        - alternatively inject the actual base extension persistence/history instances into production edit runtime and test that actual composition
+        - re-run focused and full CI on the new current HEAD
+  new_independent_findings: []
+  unexplored: []
+  required_coverage:
+    - criterion: finding identity and severity
+      disposition: checked
+      evidence: REV-001 High closed; REV-002 High partial/open; no reclassification
+    - criterion: requirements and design
+      disposition: checked_finding
+      evidence: REV-001 satisfied; REV-002 regression evidence incomplete
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: real workspace path works; production multi-instance concurrency boundary not regression-tested
+    - criterion: scope discipline
+      disposition: checked_no_new_finding
+      evidence: fix range is limited to accepted findings and report/handoff
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: all 10 fix-range files and direct state/workspace/history consumers inspected
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_no_new_finding
+      evidence: no schema/public command incompatibility introduced
+    - criterion: error handling and diagnostics
+      disposition: checked_no_new_finding
+      evidence: both intended RED artifacts independently inspected
+    - criterion: security and privacy
+      disposition: checked_no_new_finding
+      evidence: no token/source persistence or external transfer change
+    - criterion: tests and validation
+      disposition: checked_finding
+      evidence: REV-002 concurrency regression bypasses the production multi-instance fix boundary
+    - criterion: exact implementation-head CI
+      disposition: checked_no_new_finding
+      evidence: run 31948788255 success for 96ac0e3f238f50ada33a13de0452fdd999b4b7d2
+    - criterion: report tracking documentation accuracy
+      disposition: checked_finding_held
+      evidence: R2 implementation report overstates REV-002 completion; governed task tracking remains held
+    - criterion: regression maintainability
+      disposition: checked_finding
+      evidence: module-shared queue regression is currently invisible to the concurrency test
+
+report:
+  outcome: created
+  paths:
+    - reports/issue-1-t506-fix-verification-r2-20260816224700.md
+    - handoffs/issue-1-t506-fix-verification-r2-20260816224700.yaml
+  reviewed_implementation_head: 96ac0e3f238f50ada33a13de0452fdd999b4b7d2
+
+held:
+  - item: task status synchronization
+    reason: repository requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager, unavailable to this reviewer
+    owner: progress-management worker
+  - item: merge
+    reason: user-owned action
+    owner: user
+
+not_applicable:
+  - T604 cross-window/cross-process locking
+  - T605 remote/multi-root acceptance
+  - T607 scale/performance
+  - independent final review
+
+remaining_risks:
+  - production same-process shared state/history queue code is not protected by a regression that executes separate real instances
+
+next_action:
+  type: implementation_followup
+  finding: T506-REV-002
+  summary: Add production-boundary multi-instance state/history concurrency regressions, then return to the same normal reviewer for closure verification.
+  merge: forbidden

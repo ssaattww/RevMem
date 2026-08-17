@@ -1,0 +1,242 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-16T19:19:23+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #54"
+task_id: T405
+branch: feature/t405-review-contexts
+base_ref: main
+
+target:
+  source_reviewed_head: b0ee79dc84e27363b805bd6ffa440bfb9b351f72
+  technical_validated_head: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+  report_commit_head: 039c9d707036174d692869c85a913f754d4a5040
+  final_administrative_head: pending_after_handoff_commit
+
+source_review:
+  report: reports/2026-08-16-t405-review.md
+  handoff: handoffs/issue-1-t405-review-20260816152300.yaml
+  verdict: fail
+  findings:
+    - id: R405-1
+      severity: medium
+    - id: R405-2
+      severity: medium
+    - id: R405-3
+      severity: medium
+    - id: R405-4
+      severity: medium
+    - id: R405-5
+      severity: medium
+    - id: R405-6
+      severity: low
+    - id: R405-7
+      severity: high
+    - id: R405-8
+      severity: medium
+    - id: R405-9
+      severity: low
+
+requirements:
+  - source: user_instruction
+    summary: "T405のレビュー指摘に対応し、uploaded worker skillsに従い自立して修正する。"
+  - source: project_instruction
+    summary: "RevMemはTDD。開始時にfailure diagnostic artifact workflowを確認。小さい論理単位でcommit/push。完了時にrepository reportとPR短評を残す。mergeしない。"
+  - source: ci_identity_rule
+    summary: "PR current HEAD SHAとworkflow run head SHAが一致するrunのみCI判定へ使用し、HEAD更新後は新HEAD runを確認する。"
+  - source: repository_instruction
+    reference: AGENTS.md
+    summary: "Skill経由で作業し、breaking changeはDesign/BreakingChanges.mdへ記録する。"
+
+development_policy:
+  method: TDD
+  red_evidence:
+    - commit: 20ce97a
+      summary: "review finding regression tests"
+    - commit: 710e809
+      summary: "lifecycle/canonical diff regression tests"
+    - commit: 2c95045
+      summary: "persisted current PR inference test"
+    - commit: 0dfdd646
+      summary: "immutable revision evidence test"
+    - commit: 94d2441
+      summary: "current hide regression test"
+    - commit: 0a27579
+      summary: "selected PR normal editor ownership test"
+    - commit: db7323b
+      summary: "PR context identity test"
+  green_evidence:
+    head_sha: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+    run_id: 31941214324
+    conclusion: success
+
+failure_diagnostic_workflow:
+  checked: true
+  path: .github/workflows/ci.yml
+  preexisting_support:
+    - stdout_and_stderr_tee_logs
+    - environment_and_git_status
+    - generated_file_inventory
+    - source_test_and_generated_artifact_upload
+  followup_change:
+    - "T405 follow-up suiteをCIへ追加し、test-output/ci/test-t405.logへ保存"
+
+implementation:
+  outcome: addressed_all_review_findings
+  commits:
+    - sha: 0e8f1dbf1212e43061ccf045aaaae982a0cfbb37
+      summary: "await VS Code diff command to satisfy Promise contract"
+    - sha: 13e8ecc151cb17ebf25c827c3903be20e69ec54a
+      summary: "remove dead setting and wire test:t405"
+    - sha: 8912e942aeca3015c0ff77861abccc7ebe9976fa
+      summary: "run T405 follow-up regression suite in CI"
+    - sha: 36c790fabe73e59f3c64fcc3015b079fe13322e1
+      summary: "update README for connected T405 runtime"
+    - sha: 2a1e13c8229f158cad755d8d8332b20ec418a5ee
+      summary: "satisfy lint while preserving initialization fallback"
+    - sha: 9e058f1cc7d2b974532782d0c92ff769c6e2453c
+      summary: "remove unused current-context runtime import"
+    - sha: f1e255ca8ec3ab8dd03f3187900543859ea15861
+      summary: "fix selected PR fixture serialization typing"
+    - sha: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+      summary: "align legacy wiring test with removed dead setting"
+    - sha: 039c9d707036174d692869c85a913f754d4a5040
+      summary: "persist detailed review follow-up report"
+
+finding_dispositions:
+  - id: R405-1
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "base/head updates use T404 immutable revision evidence/mapping path"
+      - "t405-revision-evidence regression coverage"
+  - id: R405-2
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "persisted PR lifecycle is synchronized to open/closed/merged"
+      - "t405-github-lifecycle regression coverage"
+  - id: R405-3
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "Review Contexts uses canonical PR review diff runtime"
+      - "original/modified review commands and persistent state share the canonical path"
+      - "t405-pull-request-review-runtime regression coverage"
+  - id: R405-4
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "hidden presentation identity filters current and saved contexts"
+      - "review-contexts UI regression coverage"
+  - id: R405-5
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "Review Contexts projects canonical PR progress"
+      - "progress covered by Review Contexts/T304 integration tests"
+  - id: R405-6
+    severity: low
+    disposition: addressed
+    evidence:
+      - "reviewRange.closedPullRequestLayerDefault removed from package manifest"
+      - "follow-up contract asserts setting is absent"
+  - id: R405-7
+    severity: high
+    disposition: addressed
+    evidence:
+      - "persisted selected PR is a Current Context candidate"
+      - "normal editor command/decoration sessions can be owned by selected PR"
+      - "t405-selected-pr-session regression coverage"
+  - id: R405-8
+    severity: medium
+    disposition: addressed
+    evidence:
+      - "current PR is derived from persisted exact-head state rather than pre-persistence in-memory publication"
+      - "rediscovery refresh follows successful persistence"
+  - id: R405-9
+    severity: low
+    disposition: addressed
+    evidence:
+      - "README documents connected Current Context/Review Contexts/canonical PR diff behavior"
+      - "README retains T406/T506 remaining boundaries"
+
+ci:
+  exact_head_policy: enforced
+  technical_validation:
+    head_sha: 47d032b20fe5e0563254b960ad7bfd012e7f8863
+    run_id: 31941214324
+    conclusion: success
+    successful_steps:
+      - build
+      - contract_typecheck
+      - architecture_validation
+      - architecture_negative_contract
+      - lint
+      - unit_tests
+      - t602_history_rewrite
+      - t403_cache
+      - t404_pr_context
+      - t405_review_contexts_followup
+      - t304_pr_progress
+      - t502_global_mapping
+      - t503_repository_enumeration
+      - t504_global_understanding
+      - t505_global_understanding
+      - git_integration
+      - mock_github_integration
+      - vscode_extension_host
+  investigated_failures:
+    - head_sha: 1c8575c95ddca44e43a3824c60ecba4427a42dbb
+      run_id: 31934416515
+      artifact_id: 9260222592
+      cause: "Thenable<void> to Promise<void> compile mismatch"
+    - head_sha: 36c790fabe73e59f3c64fcc3015b079fe13322e1
+      run_id: 31940274843
+      artifact_id: 9261822712
+      cause: "four lint findings"
+    - head_sha: 2a1e13c8229f158cad755d8d8332b20ec418a5ee
+      run_id: 31940813360
+      artifact_id: 9261958025
+      cause: "unused import lint finding"
+    - head_sha: 9e058f1cc7d2b974532782d0c92ff769c6e2453c
+      run_id: 31940956674
+      artifact_id: 9262000710
+      cause: "deep-readonly test transaction fixture compile mismatch"
+    - head_sha: f1e255ca8ec3ab8dd03f3187900543859ea15861
+      run_id: 31941146886
+      artifact_id: 9262053326
+      cause: "legacy manifest test still expected removed dead setting"
+  administrative_validation:
+    head_sha: pending_after_handoff_commit
+    run_id: pending
+    conclusion: pending
+    note: "handoff commit後のPR current HEADと一致するrunのみを最終判定に使う。"
+
+report:
+  path: reports/2026-08-16-t405-review-followup.md
+  commit: 039c9d707036174d692869c85a913f754d4a5040
+  summary: "9 findingsの対応、TDD、diagnostic artifacts、exact-head CI、held ownershipを記録"
+
+tracking:
+  task_files_updated: false
+  reason: "tasks/tasks-status.md と tasks/phases-status.md は task manager Skill ownership。今回のuploaded worker setに該当manager Skillがないためheld。"
+
+held:
+  - id: T406
+    summary: "GitHub auth/error/multi-candidate/closed PR end-to-end integration"
+  - id: T506
+    summary: "multi-context change tracking and Global integration Extension Host validation"
+  - id: tracking_sync
+    summary: "task status files require unavailable manager Skill"
+  - id: merge
+    summary: "merge is user-owned and was not performed"
+
+authorized_next_actions:
+  - verify_final_administrative_exact_head_ci
+  - update_pr_body_with_followup_summary
+  - post_concise_pr_comment
+  - leave_merge_to_user

@@ -6,6 +6,8 @@ import test from "node:test";
 const projectRoot = path.resolve(__dirname, "../../..");
 const packageJsonPath = path.join(projectRoot, "package.json");
 const workflowPath = path.join(projectRoot, ".github", "workflows", "ci.yml");
+const diagnosticRunnerPath = path.join(projectRoot, "tools", "run-ci-command.mjs");
+const extensionHostRunnerPath = path.join(projectRoot, "test", "vscode", "run-extension-host.ts");
 
 interface PackageManifest {
   readonly scripts?: Readonly<Record<string, string>>;
@@ -64,8 +66,8 @@ test("unit, npm test, focused CI execute the complete T304 tree contract", async
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(
     workflow,
-    /- name: T304 PR progress tree tests[\s\S]*?npm run test:t304\b[\s\S]*?tee test-output\/ci\/test-t304\.log/u,
-    "CI must invoke the package-owned T304 focused script and preserve its log"
+    /- name: T304 PR progress tree tests[\s\S]*?node tools\/run-ci-command\.mjs test-t304 npm run test:t304\b/u,
+    "CI must invoke the package-owned T304 focused script through the diagnostic runner"
   );
 });
 
@@ -100,11 +102,15 @@ test("CI executes positive and negative architecture gates with diagnostic logs"
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /- name: Architecture validation/u);
-  assert.match(workflow, /npm run validate:architecture\b/u);
-  assert.match(workflow, /tee test-output\/ci\/architecture\.log/u);
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs architecture npm run validate:architecture\b/u
+  );
   assert.match(workflow, /- name: Architecture negative contract/u);
-  assert.match(workflow, /npm run validate:architecture:negative\b/u);
-  assert.match(workflow, /tee test-output\/ci\/architecture-negative\.log/u);
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs architecture-negative npm run validate:architecture:negative\b/u
+  );
 });
 
 test("CI executes the canonical T502 focused command", async () => {
@@ -139,7 +145,58 @@ test("T505 focused coverage executes each dedicated suite once and is required b
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(
     workflow,
-    /- name: T505 Global understanding tests[\s\S]*?npm run test:t505\b[\s\S]*?tee test-output\/ci\/test-t505\.log/u,
-    "CI must invoke the package-owned T505 focused script and preserve its log"
+    /- name: T505 Global understanding tests[\s\S]*?node tools\/run-ci-command\.mjs test-t505 npm run test:t505\b/u,
+    "CI must invoke the package-owned T505 focused script through the diagnostic runner"
+  );
+});
+
+test("CI diagnostics preserve stdout, stderr, combined logs, and result metadata", async () => {
+  const [workflow, runner] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(diagnosticRunnerPath, "utf8")
+  ]);
+
+  assert.match(
+    workflow,
+    /node tools\/run-ci-command\.mjs/u,
+    "CI commands must execute through the diagnostic runner"
+  );
+  assert.match(workflow, /test-output\/ci\//u);
+  assert.match(runner, /\.stdout\.log/u);
+  assert.match(runner, /\.stderr\.log/u);
+  assert.match(runner, /\.log/u);
+  assert.match(runner, /\.result\.json/u);
+});
+
+test("T506 integration and Extension Host acceptance are exposed as one required focused CI command", async () => {
+  const [manifestText, workflow, extensionHostRunner] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+    readFile(extensionHostRunnerPath, "utf8")
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  const focused = requireScript(manifest.scripts ?? {}, "test:t506");
+
+  assert.match(
+    focused,
+    /test-dist\/test\/integration\/t506-global-multi-context\.integration\.test\.js/u,
+    "test:t506 must execute the multi-context Global integration suite."
+  );
+  assert.match(
+    focused,
+    /test-dist\/test\/integration\/t506-real-multi-instance-concurrency\.integration\.test\.js/u,
+    "test:t506 must execute the real multi-instance state/history concurrency regression."
+  );
+  assert.match(
+    focused,
+    /run-extension-host\.js --t506/u,
+    "test:t506 must execute the focused T506 Extension Host phases."
+  );
+  assert.match(extensionHostRunner, /process\.argv\.includes\("--t506"\)/u);
+  assert.match(extensionHostRunner, /t506-suite/u);
+  assert.match(
+    workflow,
+    /- name: T506 Global multi-context integration[\s\S]*?node tools\/run-ci-command\.mjs test-t506 xvfb-run -a npm run test:t506\b/u,
+    "CI must execute the package-owned T506 focused command under Xvfb through the diagnostic runner."
   );
 });

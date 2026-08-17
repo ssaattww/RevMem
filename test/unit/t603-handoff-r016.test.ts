@@ -39,7 +39,7 @@ const normalizeBase64Padding = (value: string): string => {
 };
 
 test("T603-R016 replacement handoff is schema-v3 lossless and self-consistent", async () => {
-  const text = await readFile(packetPath, "utf8");
+  const text = (await readFile(packetPath, "utf8")).replace(/\r\n/gu, "\n");
   assert.match(text, /^schema_version: 3$/mu);
   assert.doesNotMatch(text, /(^|[\s:])[&*][A-Za-z0-9_-]+/u, "YAML anchors and aliases are forbidden");
 

@@ -1,0 +1,163 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-17T06:28:46+09:00
+source:
+  repository: ssaattww/RevMem
+  issue: 1
+  task: T506
+  pull_request: 55
+  branch: task/t506-global-integration
+  base_branch: main
+  base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+  reviewed_head_sha: e704b12a3ebeabe41c6a270ff7590cc559bdd7b1
+  implementation_head_sha: b40bbd9eb3e180c788f3d28ab8d3605616f5cef3
+scope:
+  accepted:
+    - id: T506-REV-002
+      severity: high
+      introduced_by_fix: true
+      summary: prior GREEN used one test-only shared repository/history boundary and did not protect production module-shared multi-instance serialization
+      required_behavior:
+        - use separate real FileSystemReviewStateRepository instances on the same storage root
+        - create a deterministic competing CAS and prove stale detection followed by replan preserves both state updates
+        - use separate real JsonlReviewHistoryStore and ReviewHistoryRecorder instances targeting the same JSONL file
+        - prove both history events survive the deterministic concurrent append
+        - keep the regression in the canonical test:t506 focused CI command
+  already_closed:
+    - id: T506-REV-001
+      severity: high
+      status: closed_before_r3
+  intentionally_out_of_scope:
+    - T604 cross-window/cross-process locking
+    - independent review verdict
+    - merge
+repository_rules:
+  diagnostic_workflow_required: true
+  diagnostic_workflow_status: present_and_verified
+  tdd_required: true
+  small_commits_required: true
+  detailed_report_required: true
+  concise_pr_comment_required: true
+  merge_forbidden: true
+diagnostics:
+  workflow: .github/workflows/ci.yml
+  command_wrapper: tools/run-ci-command.mjs
+  captured_per_command:
+    - stdout
+    - stderr
+    - combined_log
+    - result_metadata
+  failure_context:
+    - environment
+    - git_status
+    - generated_files
+    - source
+    - tests
+    - tools
+    - configuration
+  red_artifact:
+    id: 9270342981
+    name: ci-failure-diagnostics-31973152168-1
+    head_sha: e12f13ad1b45775f8392745650fa63c28ffd68d2
+    observed_failure: canonical test:t506 did not execute t506-real-multi-instance-concurrency.integration.test.js
+  intermediate_failure_artifact:
+    id: 9270380582
+    name: ci-failure-diagnostics-31973302348-1
+    head_sha: 5f8c4fde831fcb45f96871a92e39df4f3f4375a7
+    observed_failure: integration test source existed and compiled but focused command contract remained intentionally unmet until wiring commit
+tdd:
+  red_commits:
+    - sha: e12f13ad1b45775f8392745650fa63c28ffd68d2
+      message: 'test(t506): require real multi-instance concurrency regression'
+  verified_red:
+    head_sha: e12f13ad1b45775f8392745650fa63c28ffd68d2
+    workflow_run: 31973152168
+    job: 95228599576
+    conclusion: failure
+    failing_step: Unit tests
+    observed_failure: 'test:t506 must execute the real multi-instance state/history concurrency regression.'
+    preceding_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+    substituted_other_sha: false
+  implementation_commits:
+    - sha: 5f8c4fde831fcb45f96871a92e39df4f3f4375a7
+      message: 'test(t506): add real multi-instance persistence regression'
+    - sha: b40bbd9eb3e180c788f3d28ab8d3605616f5cef3
+      message: 'test(t506): wire real multi-instance regression into focused CI'
+implementation:
+  production_changes: none
+  files:
+    test/integration/t506-real-multi-instance-concurrency.integration.test.ts:
+      - creates two distinct production FileSystemReviewStateRepository objects over one logical storage root
+      - gives each repository a separate AtomicTextFileStore wrapper over a deterministic shared backend
+      - blocks the first manifest publication and starts a competing second repository commit
+      - requires the second commit to observe the first commit and reject with StaleReviewStateError
+      - reloads/replans the command transaction and verifies both edit and command state survive
+      - creates two distinct production JsonlReviewHistoryStore objects and two distinct ReviewHistoryRecorder objects
+      - blocks the first JSONL replacement and starts a second append against the same history path
+      - verifies invalidated-by-edit and marked-reviewed events both survive with distinct event IDs
+    test/unit/ci-workflow-contract.test.ts:
+      - requires canonical test:t506 to execute the real multi-instance regression
+    package.json:
+      - executes the real multi-instance regression in test:t506 before Extension Host phases
+  regression_sensitivity:
+    state: reverting the production storage-root queue from module-shared to instance-local lets the second repository race against the old manifest, so the stale assertion/final combined state fails
+    history: reverting the production history-file queue from module-shared to instance-local lets separate stores read the same old JSONL and overwrite one event, so final count/type/event-id assertions fail
+validation:
+  technical_green:
+    head_sha: b40bbd9eb3e180c788f3d28ab8d3605616f5cef3
+    workflow_run: 31973380147
+    conclusion: success
+    head_sha_matches: true
+    successful_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+      - Unit tests
+      - T602 history rewrite recovery tests
+      - T403 GitHub cache tests
+      - T404 GitHub PR context layer tests
+      - T304 PR progress tree tests
+      - T502 Global mapping and display priority tests
+      - T503 repository enumeration tests
+      - T504 Global understanding tests
+      - T505 Global understanding tests
+      - T506 Global multi-context integration
+      - Temporary Git integration tests
+      - Mock GitHub integration tests
+      - VS Code Extension Host tests
+    substituted_other_sha: false
+finding_status:
+  T506-REV-001:
+    status: closed_before_r3
+  T506-REV-002:
+    severity: high
+    introduced_by_fix: true
+    implementation_response: completed
+    reviewer_closure: pending_fix_verification
+    thread_should_remain_unresolved: true
+tracking:
+  tasks_status:
+    path: tasks/tasks-status.md
+    updated: false
+    reason: repository rules reserve updates for dedicated task-management Skills not present in this worker set
+  breaking_changes:
+    updated: false
+    reason: no breaking change introduced
+artifacts:
+  detailed_report: reports/issue-1-t506-review-followup-r3-20260817062846.md
+  handoff: handoffs/issue-1-t506-review-followup-r3-20260817062846.yaml
+next_actions:
+  - commit report and handoff to the existing PR branch in one docs commit
+  - verify only a CI run whose head_sha exactly matches the resulting PR current HEAD
+  - post concise PR follow-up comment with final HEAD and matching CI result
+  - hand off T506-REV-002 to reviewer fix verification without resolving the thread
+  - do not merge
