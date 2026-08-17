@@ -19,84 +19,51 @@ jobs:
       - name: Prepare diagnostic output
         run: mkdir -p test-output/ci
       - name: Install dependencies
-        run: |
-          set -o pipefail
-          npm ci 2>&1 | tee test-output/ci/npm-ci.log
+        run: node tools/run-ci-command.mjs npm-ci npm ci
       - name: Build
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee test-output/ci/build.log
+        run: node tools/run-ci-command.mjs build npm run build
       - name: Contract typecheck
-        run: |
-          set -o pipefail
-          npm run typecheck:contracts 2>&1 | tee test-output/ci/typecheck-contracts.log
+        run: node tools/run-ci-command.mjs typecheck-contracts npm run typecheck:contracts
       - name: Architecture validation
-        run: |
-          set -o pipefail
-          npm run validate:architecture 2>&1 | tee test-output/ci/architecture.log
+        run: node tools/run-ci-command.mjs architecture npm run validate:architecture
       - name: Architecture negative contract
-        run: |
-          set -o pipefail
-          npm run validate:architecture:negative 2>&1 | tee test-output/ci/architecture-negative.log
+        run: node tools/run-ci-command.mjs architecture-negative npm run validate:architecture:negative
       - name: Lint
-        run: |
-          set -o pipefail
-          npm run lint 2>&1 | tee test-output/ci/lint.log
+        run: node tools/run-ci-command.mjs lint npm run lint
       - name: Unit tests
-        run: |
-          set -o pipefail
-          npm run test:unit 2>&1 | tee test-output/ci/test-unit.log
+        run: node tools/run-ci-command.mjs test-unit npm run test:unit
       - name: T602 history rewrite recovery tests
-        run: |
-          set -o pipefail
-          node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js test-dist/test/unit/history-rewrite-tree-enumeration.test.js test-dist/test/unit/local-git-tree-list.test.js test-dist/test/unit/document-git-history-rewrite-runtime.test.js 2>&1 | tee test-output/ci/test-t602.log
+        run: node tools/run-ci-command.mjs test-t602 node --test test-dist/test/unit/history-rewrite-recovery.test.js test-dist/test/unit/history-rewrite-recovery-conservative.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js test-dist/test/unit/history-rewrite-tree-enumeration.test.js test-dist/test/unit/local-git-tree-list.test.js test-dist/test/unit/document-git-history-rewrite-runtime.test.js
       - name: T403 GitHub cache tests
-        run: |
-          set -o pipefail
-          npm run test:t403 2>&1 | tee test-output/ci/test-t403.log
+        run: node tools/run-ci-command.mjs test-t403 npm run test:t403
       - name: T404 GitHub PR context layer tests
         run: |
-          set -o pipefail
-          npm run compile:test 2>&1 | tee test-output/ci/t404-compile-test.log
-          node --test test-dist/test/unit/github-pr-context-layer-store.test.js 2>&1 | tee test-output/ci/test-t404.log
+          node tools/run-ci-command.mjs t404-compile-test npm run compile:test
+          node tools/run-ci-command.mjs test-t404 node --test test-dist/test/unit/github-pr-context-layer-store.test.js
       - name: T405 Review Contexts follow-up tests
-        run: |
-          set -o pipefail
-          npm run test:t405 2>&1 | tee test-output/ci/test-t405.log
+        run: node tools/run-ci-command.mjs test-t405 npm run test:t405
       - name: T304 PR progress tree tests
-        run: |
-          set -o pipefail
-          npm run test:t304 2>&1 | tee test-output/ci/test-t304.log
+        run: node tools/run-ci-command.mjs test-t304 npm run test:t304
       - name: T502 Global mapping and display priority tests
-        run: |
-          set -o pipefail
-          npm run test:t502 2>&1 | tee test-output/ci/test-t502.log
+        run: node tools/run-ci-command.mjs test-t502 npm run test:t502
       - name: T503 repository enumeration tests
         run: |
-          set -o pipefail
-          npm run compile:test 2>&1 | tee test-output/ci/t503-compile-test.log
-          node --test test-dist/test/unit/repository-file-enumerator.test.js 2>&1 | tee test-output/ci/test-t503.log
+          node tools/run-ci-command.mjs t503-compile-test npm run compile:test
+          node tools/run-ci-command.mjs test-t503 node --test test-dist/test/unit/repository-file-enumerator.test.js
       - name: T504 Global understanding tests
         run: |
-          set -o pipefail
-          npm run compile:test 2>&1 | tee test-output/ci/t504-compile-test.log
-          node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js 2>&1 | tee test-output/ci/test-t504.log
+          node tools/run-ci-command.mjs t504-compile-test npm run compile:test
+          node tools/run-ci-command.mjs test-t504 node --test test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t504-review-followup.test.js test-dist/test/unit/t504-review-followup-r2.test.js
       - name: T505 Global understanding tests
-        run: |
-          set -o pipefail
-          npm run test:t505 2>&1 | tee test-output/ci/test-t505.log
+        run: node tools/run-ci-command.mjs test-t505 npm run test:t505
+      - name: T506 Global multi-context integration
+        run: node tools/run-ci-command.mjs test-t506 xvfb-run -a npm run test:t506
       - name: Temporary Git integration tests
-        run: |
-          set -o pipefail
-          npm run test:git 2>&1 | tee test-output/ci/test-git.log
+        run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests
-        run: |
-          set -o pipefail
-          npm run test:github 2>&1 | tee test-output/ci/test-github.log
+        run: node tools/run-ci-command.mjs test-github npm run test:github
       - name: VS Code Extension Host tests
-        run: |
-          set -o pipefail
-          xvfb-run -a npm run test:vscode 2>&1 | tee test-output/ci/test-vscode.log
+        run: node tools/run-ci-command.mjs test-vscode xvfb-run -a npm run test:vscode
       - name: Collect failure context
         if: failure()
         run: |

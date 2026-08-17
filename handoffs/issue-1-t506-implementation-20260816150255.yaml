@@ -1,0 +1,488 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation
+  generated_at: 2026-08-16T15:02:55+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: PR #55
+task_id: T506
+branch: task/t506-global-integration
+base_ref: main
+target:
+  current_head: daad56c3d192ae6041f34e9f662133980a262bef
+  reviewed_head: null
+  commit_range: 146aec15783294da1795f268315c85d1a0dffa56..daad56c3d192ae6041f34e9f662133980a262bef
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: T506を開始し、instructionとZIP内worker Skillsを読み、自立して止まらず、timeoutや一時失敗時は再試行して完了まで進める。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector、TDD、失敗diagnostic artifact、小さなcommit、詳細report、PR簡易report、current HEAD一致CI、非mergeを必須とする。
+  - source: task
+    reference: tasks/tasks-status.md T506
+    summary: 複数contextの確認・解除・変更追従とGlobal集計を統合・Extension Host試験で通す。
+  - source: task
+    reference: T506 exit criteria / AC-18〜AC-20
+    summary: Global状態をPR進捗へ混入させず、再起動後も同じ理解率を復元する。
+  - source: report
+    reference: reports/issue-1-t505-independent-final-review-20260808135616.md
+    summary: T505でheldされた複数context、再起動、Extension Host統合をT506で検証する。
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md
+    summary: Repository Global、PR Progress分離、Global理解率、永続化・復元、変更追従の既存contractを検証する。
+
+development_policy:
+  method: test-driven development
+  testing_order: diagnostic workflowの不足をREDで確認して補強し、T506受入testを先に追加して意図したREDを確認後、focused wiringを追加し、focusedおよびfull exact-head CIを通す。
+  governing_source: RevMem project instructions and tasks/tasks-status.md
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - npm run test:t506
+    - npm run test:git
+    - npm run test:github
+    - npm run test:vscode
+  required_failure_diagnostics:
+    - test results and exit metadata
+    - separated standard output
+    - separated standard error
+    - combined per-command logs
+    - generated build and test output
+    - source, test, tools, workflow and configuration
+    - environment and Git status
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_tests
+  - edit_configuration
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: .github/workflows/ci.yml
+      reason: required failure diagnostics and T506 focused CI wiring
+    - path_or_operation: tools/run-ci-command.mjs
+      reason: separated stdout/stderr/result/combined diagnostic capture
+    - path_or_operation: package.json
+      reason: focused T506 validation command
+    - path_or_operation: test/integration/t506-global-multi-context.integration.test.ts
+      reason: T506 production integration acceptance coverage
+    - path_or_operation: test/vscode/t506-suite/index.ts
+      reason: T506 Extension Host multi-context restart acceptance
+    - path_or_operation: test/vscode/run-extension-host.ts
+      reason: focused T506 three-phase Extension Host orchestration
+    - path_or_operation: test/unit/ci-workflow-contract.test.ts
+      reason: diagnostic and focused CI contract tests
+    - path_or_operation: reports/issue-1-t506-implementation-20260816150255.md
+      reason: required detailed implementation report
+    - path_or_operation: handoffs/issue-1-t506-implementation-20260816150255.yaml
+      reason: required transportable handoff
+    - path_or_operation: PR #55 metadata and comments
+      reason: required PR update and concise report
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md direct edit
+      reason: repository requires a specialized task-management Skill that is unavailable in this worker Skill set
+    - path_or_operation: unrelated task implementation
+      reason: outside T506 scope
+    - path_or_operation: merge
+      reason: user performs merge
+
+scope:
+  - verify Global sharing and unmark behavior across multiple contexts
+  - verify context-local review state remains isolated from other contexts
+  - verify Global state never contributes to current PR Progress
+  - verify Global reviewed ranges follow document changes conservatively
+  - verify Global understanding is stable across persistent repository restart
+  - verify the same behavior through three real VS Code Extension Host launches using persistent storage
+  - add focused T506 package and CI wiring
+  - make CI failure artifacts preserve separated stdout and stderr plus result metadata
+non_goals:
+  - redesign T501 through T505 production contracts
+  - add product-only or test-only production APIs
+  - update task tracking without the required specialized Skill
+  - independent final review verdict
+  - merge
+
+files:
+  changed:
+    - path: .github/workflows/ci.yml
+      purpose: separated diagnostic command execution and T506 Xvfb focused step
+    - path: tools/run-ci-command.mjs
+      purpose: preserve stdout, stderr, combined log, and result metadata while propagating exit status
+    - path: package.json
+      purpose: expose test:t506
+    - path: test/unit/ci-workflow-contract.test.ts
+      purpose: diagnostic and T506 focused wiring contracts
+    - path: test/integration/t506-global-multi-context.integration.test.ts
+      purpose: multi-context Global/PR isolation, restart, edit mapping, and understanding integration coverage
+    - path: test/vscode/t506-suite/index.ts
+      purpose: real three-phase Extension Host acceptance
+    - path: test/vscode/run-extension-host.ts
+      purpose: focused --t506 restart orchestration
+    - path: reports/issue-1-t506-implementation-20260816150255.md
+      purpose: required detailed implementation report
+    - path: handoffs/issue-1-t506-implementation-20260816150255.yaml
+      purpose: lossless continuation packet
+  inspected:
+    - path: tasks/tasks-status.md
+      purpose: T506 scope, dependency, exit criteria, and tracking governance
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Global, PR Progress, persistence, understanding, and change mapping contracts
+    - path: reports/issue-1-t505-independent-final-review-20260808135616.md
+      purpose: held acceptance coverage inherited by T506
+    - path: src/t306-local-base-head-runtime.ts
+      purpose: production composition for two contexts sharing one owner Global
+    - path: src/adapters/state-repository/validated-file-system-review-state-repository.ts
+      purpose: owner-wide Global preservation and reload contract
+    - path: src/application/repository-global-state/
+      purpose: mark/unmark Global transaction behavior
+    - path: src/application/global-review-mapping/global-review-mapping.ts
+      purpose: document change mapping
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: Global understanding calculation
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: prove PR Progress consumes context state and not Global state
+  intentionally_untouched:
+    - path_or_area: src/** product implementation
+      reason: existing T501-T505/T306 production contracts satisfy T506 acceptance without product changes
+    - path_or_area: doc/design/**
+      reason: no design change was required
+    - path_or_area: tasks/tasks-status.md and tasks/phases-status.md
+      reason: specialized progress-management Skill unavailable
+    - path_or_area: merge
+      reason: user-owned action
+
+commands:
+  - command: GitHub Actions CI run 31929560040
+    purpose: diagnostic workflow RED verification
+    exit_code: 1
+    result: failed
+    head_sha: 6ed1542329703dd441e9cb301da8467cc139f918
+    evidence: missing diagnostic runner caused the intentionally failing CI contract; artifact 9258878561
+  - command: GitHub Actions CI run 31929647345
+    purpose: diagnostic workflow GREEN verification
+    exit_code: 0
+    result: passed
+    head_sha: 47c716de0342b44a376dae48c3813bc51aac6680
+    evidence: all CI steps succeeded after separated diagnostic runner wiring
+  - command: GitHub Actions CI run 31929977606
+    purpose: first T506 test-first run
+    exit_code: 1
+    result: failed
+    head_sha: 2d0a30cb3b1d172ddef94179b1cc348de35ef81c
+    evidence: test fixture readonly typing failed before intended product/wiring boundary; artifact 9258989792 contains separated diagnostic files
+  - command: GitHub Actions CI run 31930062256
+    purpose: second T506 test-first run
+    exit_code: 1
+    result: failed
+    head_sha: a24d0136a64e920ec3f0dbb938103e4300f1fde4
+    evidence: remaining deep-readonly fixture typing mismatch; artifact 9259011789
+  - command: GitHub Actions CI run 31930146724
+    purpose: intended T506 RED verification
+    exit_code: 1
+    result: failed
+    head_sha: a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+    evidence: 494 tests, 493 passed, only failure was package.json must define test:t506; artifact 9259032727
+  - command: GitHub Actions CI run 31930337980
+    purpose: technical implementation exact-head GREEN and full regression
+    exit_code: 0
+    result: passed
+    head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+    evidence: job 95124027715; T506 focused integration plus all existing CI steps succeeded
+
+tests:
+  - name: CI diagnostic contract
+    phase: red
+    result: failed
+    head_sha: 6ed1542329703dd441e9cb301da8467cc139f918
+    evidence: exact-head run 31929560040 failed before tools/run-ci-command.mjs existed
+  - name: CI diagnostic contract
+    phase: green
+    result: passed
+    head_sha: 47c716de0342b44a376dae48c3813bc51aac6680
+    evidence: exact-head run 31929647345 succeeded
+  - name: T506 focused wiring contract
+    phase: red
+    result: failed
+    head_sha: a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+    evidence: exact-head run 31930146724 had exactly one failure: missing test:t506
+  - name: T506 multi-context production integration
+    phase: green
+    result: passed
+    head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+    evidence: T506 Global multi-context integration step in run 31930337980
+  - name: T506 three-phase VS Code Extension Host restart acceptance
+    phase: verification
+    result: passed
+    head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+    evidence: test:t506 invokes run-extension-host.js --t506; focused T506 CI step succeeded
+  - name: full repository regression
+    phase: verification
+    result: passed
+    head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+    evidence: run 31930337980 completed success including standard Extension Host suite
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31930337980
+  head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: daad56c3d192ae6041f34e9f662133980a262bef
+  commits:
+    - sha: 6ed1542329703dd441e9cb301da8467cc139f918
+      purpose: add test-first separated diagnostic contract
+    - sha: 47c716de0342b44a376dae48c3813bc51aac6680
+      purpose: preserve separated stdout/stderr/result/combined logs in CI
+    - sha: 2d0a30cb3b1d172ddef94179b1cc348de35ef81c
+      purpose: add T506 multi-context integration and Extension Host acceptance tests
+    - sha: a24d0136a64e920ec3f0dbb938103e4300f1fde4
+      purpose: correct test-only readonly fixture typing
+    - sha: a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+      purpose: correct deep-readonly fixture and reach intended T506 RED
+    - sha: 2504b31a33bd542b6e59d49e2ebb103f89642404
+      purpose: expose focused test:t506 command
+    - sha: daad56c3d192ae6041f34e9f662133980a262bef
+      purpose: wire focused T506 three-phase Extension Host acceptance into CI
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 9258878561
+      summary: diagnostic workflow RED for head 6ed1542329703dd441e9cb301da8467cc139f918
+    - type: standard_output
+      location: GitHub Actions artifacts 9258989792, 9259011789, 9259032727 under test-output/ci/*.stdout.log
+      summary: separated standard output captured for T506 RED failures
+    - type: standard_error
+      location: GitHub Actions artifacts 9258989792, 9259011789, 9259032727 under test-output/ci/*.stderr.log
+      summary: separated standard error captured independently, including empty stderr as an explicit artifact file
+    - type: test_result
+      location: GitHub Actions artifact 9259032727 test-output/ci/test-unit.result.json
+      summary: intended RED exit metadata and exact failed command
+    - type: artifact
+      location: GitHub Actions artifacts 9258989792, 9259011789, 9259032727
+      summary: source, test, generated output, environment, Git status, workflow and separated command diagnostics
+  blocked_items: []
+  summary:
+    - T506 verifies multi-context Global sharing/unmark while preserving context-local state.
+    - T506 proves Global reviewed state does not inflate PR Progress.
+    - T506 verifies conservative document-change mapping and resulting Global understanding.
+    - T506 verifies persistence through repository recreation and three real Extension Host launches.
+    - Existing production code required no modification; acceptance and CI wiring were sufficient.
+    - CI failure diagnostics now separately preserve stdout, stderr, combined logs, and result metadata.
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: implementation worker did not perform normal or independent review
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - this packet is produced by the implementation chat and does not issue a review verdict
+  verdict: not_applicable
+  required_coverage:
+    - criterion: normal review
+      disposition: unexplored
+      evidence: not yet performed for PR #55
+    - criterion: independent final review
+      disposition: unexplored
+      evidence: next worker/chat action
+  validation_assessment:
+    - item: technical implementation exact-head CI
+      result: supported
+      evidence: run 31930337980 at head daad56c3d192ae6041f34e9f662133980a262bef
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - no review verdict was produced by the implementation worker
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t506-implementation-20260816150255.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed T506 implementation and validation evidence is persisted with the PR branch
+
+findings: []
+held:
+  - item: task tracking status synchronization
+    reason: repository requires specialized task-management Skill not available in this worker Skill set
+    owner: task management worker or user
+    remaining_risk: tasks/tasks-status.md may continue to display T506 as 未着手 until a permitted progress synchronization is performed
+    verdict_impact: does not change technical implementation evidence
+unexplored:
+  - area: independent final review of PR #55
+    blocker: separate independent reviewer has not yet been run
+    remaining_risk: implementation/test defects may still be found by independent review
+    verdict_impact: implementation is ready for review but no independent pass verdict is claimed
+unknown: []
+not_applicable:
+  - field_or_area: product source modification
+    reason: existing product contracts satisfied T506 acceptance without src changes
+  - field_or_area: merge
+    reason: user performs merge
+remaining_risks:
+  - independent review has not yet been performed
+  - task tracking status is not synchronized because direct edit is forbidden without the required specialized Skill
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: initial implementation
+      accepted_scope:
+        - multi-context Global sharing, unmark, PR isolation, restart, edit mapping, understanding, and Extension Host acceptance
+        - diagnostic artifact completeness required before implementation
+      non_goals:
+        - product redesign
+        - task tracking direct edit
+        - review verdict
+        - merge
+      requirements_and_design_references:
+        - tasks/tasks-status.md T506 / AC-18〜AC-20
+        - doc/design/vscode-review-range-tracker-design.md
+        - reports/issue-1-t505-independent-final-review-20260808135616.md
+      changed_files:
+        - .github/workflows/ci.yml: diagnostic and T506 focused CI wiring
+        - tools/run-ci-command.mjs: separated command diagnostics
+        - package.json: test:t506
+        - test/unit/ci-workflow-contract.test.ts: CI contracts
+        - test/integration/t506-global-multi-context.integration.test.ts: production integration acceptance
+        - test/vscode/t506-suite/index.ts: Extension Host acceptance
+        - test/vscode/run-extension-host.ts: --t506 orchestration
+      intentionally_untouched:
+        - src product implementation: existing contracts were sufficient
+        - task tracking: specialized Skill unavailable
+        - merge: user-owned
+      validation:
+        - run 31929560040 failed as diagnostic RED at 6ed1542329703dd441e9cb301da8467cc139f918
+        - run 31929647345 passed diagnostic GREEN at 47c716de0342b44a376dae48c3813bc51aac6680
+        - run 31930146724 failed intended T506 RED at a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+        - run 31930337980 passed full technical GREEN at daad56c3d192ae6041f34e9f662133980a262bef
+      failure_diagnostics:
+        - artifacts 9258878561, 9258989792, 9259011789, 9259032727
+        - stdout/stderr/combined/result metadata preserved
+      commits:
+        - 6ed1542329703dd441e9cb301da8467cc139f918
+        - 47c716de0342b44a376dae48c3813bc51aac6680
+        - 2d0a30cb3b1d172ddef94179b1cc348de35ef81c
+        - a24d0136a64e920ec3f0dbb938103e4300f1fde4
+        - a9efaae6c54b0e4365fd30dddaa2c0144f9ee060
+        - 2504b31a33bd542b6e59d49e2ebb103f89642404
+        - daad56c3d192ae6041f34e9f662133980a262bef
+      final_head: daad56c3d192ae6041f34e9f662133980a262bef
+      matching_ci:
+        run_id: 31930337980
+        head_sha: daad56c3d192ae6041f34e9f662133980a262bef
+        conclusion: success
+      blocked_items: []
+      unknowns: []
+      remaining_risks:
+        - independent review pending
+        - task tracking synchronization pending specialized Skill
+      next_required_action: independent review of PR #55
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body: repository file reports/issue-1-t506-implementation-20260816150255.md contains the complete evidence-faithful report generated from this implementation context
+      evidence_sources:
+        - tasks/tasks-status.md T506
+        - doc/design/vscode-review-range-tracker-design.md
+        - reports/issue-1-t505-independent-final-review-20260808135616.md
+        - PR #55 and changed files
+        - exact-head CI runs and failure artifacts recorded in this packet
+      target_identity:
+        branch: task/t506-global-integration
+        base_ref: main
+        current_head: daad56c3d192ae6041f34e9f662133980a262bef
+        reviewed_implementation_head: null
+      severity_records: []
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-1-t506-implementation-20260816150255.md
+        report_attestation_head: null
+      concise_pr_comment_body: pending persistence of report and final exact-head CI
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: chatgpt_runtime
+    payload:
+      connector: GitHub
+      pr: 55
+      draft_at_generation: true
+      report_persistence_commit: pending
+      note: target.current_head is the technical implementation HEAD before the administrative report/handoff persistence commit; PR metadata should record the later final branch HEAD and matching CI.
+
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: independent_final_review
+  summary: PR #55のT506実装を独立reviewし、AC-18〜AC-20、multi-context/restart/PR isolation、diagnostic runnerを確認する。
+  instructions:
+    - PR #55のcurrent HEADを取得し、そのSHAをreviewed HEADとして固定する。
+    - current HEAD SHAと一致するCI runだけをvalidation evidenceとして使用し、別SHAを代用しない。
+    - T506 integration testと3-phase Extension Host acceptanceが受入条件を十分に表しているか確認する。
+    - diagnostic runnerがchild exit statusを正しく伝播しstdout/stderr/result/combined logをfailure artifactへ残すことを確認する。
+    - implementation workerの自己review verdictを前提にせず独立して判断する。
+  required_attachments_or_references:
+    - PR #55
+    - reports/issue-1-t506-implementation-20260816150255.md
+    - handoffs/issue-1-t506-implementation-20260816150255.yaml
+    - tasks/tasks-status.md T506
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t506-implementation-20260816150255.yaml
+  packet_url: null
+  transport_note: PR #55 branchに保存。次の独立review chatはrepositoryからこのpacketと詳細reportを取得する。

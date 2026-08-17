@@ -56,8 +56,7 @@ Git working tree 内では、ファイルの親ディレクトリから reposito
 以下のタスク ID は [`tasks/tasks-status.md`](tasks/tasks-status.md) の定義を指します。複数タスクを記載している項目は、最後のタスクまで完了した時点を解消条件とします。
 
 - 確認・解除の4コマンドは、通常エディタと canonical PR diff で使用できます。選択中の保存済み PR context は通常エディタの確認操作と装飾にも反映されます。GitHub 未認証・401/403/404/429・network 断・patch 欠落・複数 PR 候補・closed PR を含む end-to-end 境界ケースの統合確認は未完了です。**この制限は `T406` の統合試験が完了すると解消します。** untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
-- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。GitHub PR の障害系・複数候補・closed PR の統合受け入れは `T406`、複数 context の変更追従と Global 集計の統合は `T506` に残っています。**これらはそれぞれ `T406`、`T506` が完了すると解消します。**
-- 通常エディタの編集イベントを逐次処理して、編集中の行位置へ即時追従する runtime 配線は未実装です。Git revision 間の追従と、非 Git snapshot の再読込時の追従は実装済みです。**この制限は、複数contextの変更追従をruntimeへ統合してExtension Host試験を行う`T506`が完了すると解消します。**
+- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。通常エディタの変更追従は、選択中の保存済み PR を含む context と owner-wide Global に同期し、再起動後も復元します。GitHub PR の障害系・複数候補・closed PR の統合受け入れは `T406` に残っています。**この制限は `T406` の統合試験が完了すると解消します。**
 - 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。**履歴UIは初期版の現行タスク範囲外で、解消予定タスクはありません。`T603`はschema migrationと破損回復、`T604`は複数window競合とatomic history appendを扱いますが、履歴UIは追加しません。**
 - 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。**この制限は`T605`が完了すると解消し、初期版全体の最終受け入れは`T608`で確認します。**
 - `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。対応UIの接続は、GitHub PR進捗が`T404`〜`T406`、Global理解率が`T505`と`T506`の完了で揃います。**除外対象のファイルでも通常エディタでは確認済みにでき、確認済み表示と状態保存も行われますが、そのファイルはPR進捗とGlobal理解率の集計対象から除外されます。**
@@ -70,6 +69,8 @@ VS Code の設定で次の項目を変更できます。
 | 設定 | 既定値 | 内容 |
 | --- | --- | --- |
 | `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタの装飾へ重ねて表示します。 |
+| `reviewRange.ignoreWhitespaceChanges` | `false` | `true` のとき、通常エディタの空白のみの編集では確認済み範囲を無効化しません。 |
+| `reviewRange.ignoreEolChanges` | `false` | `true` のとき、通常エディタの改行コードのみの編集では確認済み範囲を無効化しません。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
 | `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |

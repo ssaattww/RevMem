@@ -1,0 +1,158 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-08-17T07:04:44+09:00
+source:
+  repository: ssaattww/RevMem
+  issue: 1
+  task: T506
+  pull_request: 55
+  branch: task/t506-global-integration
+  base_branch: main
+  base_sha: 146aec15783294da1795f268315c85d1a0dffa56
+  previous_review_artifact_head: e704b12a3ebeabe41c6a270ff7590cc559bdd7b1
+  reviewed_implementation_head: b03c0e1e206f3d04d4343085525f4f92b0e5c39c
+  commit_range: e704b12a3ebeabe41c6a270ff7590cc559bdd7b1..b03c0e1e206f3d04d4343085525f4f92b0e5c39c
+review:
+  reviewer_continuity: same_normal_reviewer
+  verdict: pass_with_held
+  required_findings_open: 0
+  new_findings: []
+  findings:
+    - id: T506-REV-001
+      severity: high
+      origin: coverage_miss
+      status: closed_before_r3
+      reopened: false
+    - id: T506-REV-002
+      severity: high
+      origin: introduced_by_fix
+      status: closed
+      closure_reason: >-
+        Separate real production FileSystemReviewStateRepository instances now
+        deterministically contend on one storage root and separate real
+        JsonlReviewHistoryStore/ReviewHistoryRecorder instances contend on one
+        JSONL file. The regression fails if the production module-shared queues
+        regress to instance-local serialization and is wired into canonical test:t506.
+scope:
+  changed_files_reviewed:
+    - test/integration/t506-real-multi-instance-concurrency.integration.test.ts
+    - package.json
+    - test/unit/ci-workflow-contract.test.ts
+    - reports/issue-1-t506-review-followup-r3-20260817062846.md
+    - handoffs/issue-1-t506-review-followup-r3-20260817062846.yaml
+  production_changes_in_r3: none
+  direct_impacts_checked:
+    - production FileSystemReviewStateRepository module-shared storage-root queue
+    - production JsonlReviewHistoryStore module-shared history-file queue
+    - StaleReviewStateError replan behavior
+    - ReviewHistoryRecorder append routing
+    - canonical test:t506 focused command
+  sibling_cases_checked:
+    - existing Git T506 3-phase Extension Host
+    - non-Git workspace edit/restart 2-phase Extension Host
+    - Global multi-context / PR-progress isolation integration
+  intentionally_out_of_scope:
+    - T604 cross-window/cross-process locking
+    - T605 multi-root/Remote SSH/Dev Containers/Codespaces
+    - T607 scale/performance optimization
+    - merge
+requirements:
+  T506_REV_002_required_behavior:
+    - separate real FileSystemReviewStateRepository instances on the same storage root
+    - deterministic competing CAS with stale detection
+    - reload/replan and preservation of both state updates
+    - separate real JsonlReviewHistoryStore and ReviewHistoryRecorder instances on one JSONL file
+    - deterministic competing append with both events retained
+    - regression included in canonical test:t506
+  disposition: satisfied
+diagnostics:
+  workflow_status: present_and_verified
+  red:
+    head_sha: e12f13ad1b45775f8392745650fa63c28ffd68d2
+    workflow_run: 31973152168
+    job: 95228599576
+    conclusion: failure
+    failing_step: Unit tests
+    artifact: 9270342981
+    exact_head_sha: true
+    observed_failure: test:t506 must execute the real multi-instance state/history concurrency regression.
+    artifact_inspection:
+      stdout: test-output/ci/test-unit.stdout.log
+      stderr: test-output/ci/test-unit.stderr.log
+      combined: test-output/ci/test-unit.log
+      result: test-output/ci/test-unit.result.json
+      result_exit_code: 1
+      environment: test-output/ci/environment.txt
+      git_status: test-output/ci/git-status.txt
+      generated_files: test-output/ci/generated-files.txt
+      source_present: true
+      tests_present: true
+  green:
+    head_sha: b03c0e1e206f3d04d4343085525f4f92b0e5c39c
+    workflow_run: 31973678675
+    job: 95229864464
+    conclusion: success
+    exact_head_sha: true
+    substituted_other_sha: false
+    t506_passes:
+      - T506 shares Global across contexts, isolates PR progress, survives restart, and maps edits
+      - T506 separate real repository instances serialize competing CAS and retain both updates after stale replan
+      - T506 separate real history stores and recorders serialize one JSONL file without losing either event
+    successful_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+      - Unit tests
+      - T602 history rewrite recovery tests
+      - T403 GitHub cache tests
+      - T404 GitHub PR context layer tests
+      - T304 PR progress tree tests
+      - T502 Global mapping and display priority tests
+      - T503 repository enumeration tests
+      - T504 Global understanding tests
+      - T505 Global understanding tests
+      - T506 Global multi-context integration
+      - Temporary Git integration tests
+      - Mock GitHub integration tests
+      - VS Code Extension Host tests
+coverage:
+  requirements_acceptance: checked_no_finding
+  api_data_persistence: checked_no_finding
+  error_concurrency_paths: checked_no_finding
+  tests: checked_no_finding
+  workflow_ci: checked_no_finding
+  diagnostics: checked_no_finding
+  reports_handoff: checked_no_finding
+  security_secrets: not_applicable
+  breaking_compatibility: not_applicable
+  tracking: held
+  unexplored: []
+held:
+  - id: T506-TRACKING
+    area: tasks/tasks-status.md
+    reason: repository requires task-breakdown-planner, task-consistency-manager, or progress-sync-manager; unavailable in this worker set
+    technical_blocker: false
+report:
+  path: reports/issue-1-t506-fix-verification-r3-20260817070444.md
+  handoff_path: handoffs/issue-1-t506-fix-verification-r3-20260817070444.yaml
+  reviewed_implementation_head: b03c0e1e206f3d04d4343085525f4f92b0e5c39c
+  attestation_policy:
+    allowed_paths:
+      - reports/issue-1-t506-fix-verification-r3-20260817070444.md
+      - handoffs/issue-1-t506-fix-verification-r3-20260817070444.yaml
+    parent_must_be: b03c0e1e206f3d04d4343085525f4f92b0e5c39c
+    implementation_changes_after_reviewed_head: forbidden
+current_pr_after_review_artifact:
+  head_sha: pending_until_artifact_commit
+  matching_ci: pending_until_artifact_commit
+next_actions:
+  - commit only this review report and handoff on top of reviewed implementation HEAD
+  - resolve T506-REV-002 review thread after recording closure
+  - verify only workflow run whose head_sha exactly matches the review-artifact PR HEAD
+  - post concise PR comment with pass_with_held, closed findings, current HEAD, matching CI
+  - do not edit tasks/tasks-status.md without dedicated task-management Skill
+  - do not merge

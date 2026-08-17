@@ -1,0 +1,238 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-08-17T07:36:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: PR #55
+task_id: T506
+branch: task/t506-global-integration
+base_ref: main
+target:
+  current_head: d72ec71559aa91e5d65647565df76134fa73c4c8
+  reviewed_head: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42
+  commit_range: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42..d72ec71559aa91e5d65647565df76134fa73c4c8
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: CIの早すぎる待機/timeout部分だけを修正し、それ以外は変更しない。
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: GitHub connector、failure diagnostics、small commit、report/handoff、PR summary、exact-head CI、no merge。
+development_policy:
+  method: TDD / existing failing CI used as RED evidence
+  testing_order: inspect exact failing artifact, change only test synchronization, verify focused/full exact-head CI
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - CI workflow push event
+    - CI workflow pull_request event
+  required_failure_diagnostics:
+    - test result
+    - stdout
+    - stderr
+    - Extension Host launch diagnostic
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_tests
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: test/vscode/t506-workspace-suite/index.ts
+      reason: failing wait/synchronization boundary only
+    - path_or_operation: reports/issue-1-t506-ci-wait-fix-20260817073600.md
+      reason: required implementation report
+    - path_or_operation: handoffs/issue-1-t506-ci-wait-fix-20260817073600.yaml
+      reason: required handoff
+    - path_or_operation: PR #55 comment
+      reason: required concise report
+  forbidden:
+    - path_or_operation: src/**
+      reason: user requested timeout/wait fix only
+    - path_or_operation: .github/workflows/**
+      reason: workflow timeout was not the failure cause
+    - path_or_operation: unrelated tests/design/tracking
+      reason: out of scope
+    - path_or_operation: merge
+      reason: user-owned
+scope:
+  - stabilize T506 non-Git workspace Extension Host wait for mapped decorations
+non_goals:
+  - change production behavior
+  - change T506 expected reviewed ranges
+  - change workflow
+  - merge
+files:
+  changed:
+    - path: test/vscode/t506-workspace-suite/index.ts
+      purpose: extend mapped-state wait to 15s and poll mapped decorations before assertion
+    - path: reports/issue-1-t506-ci-wait-fix-20260817073600.md
+      purpose: detailed evidence
+    - path: handoffs/issue-1-t506-ci-wait-fix-20260817073600.yaml
+      purpose: continuation packet
+  inspected:
+    - path: test-output/vscode-launch-diagnostics/t506-workspace-mark-edit-1786918085590.json
+      purpose: identify actual failure and timeout values
+    - path: test/vscode/t506-workspace-suite/index.ts
+      purpose: locate 5s wait and single decoration refresh race
+  intentionally_untouched:
+    - path_or_area: src/**
+      reason: production path already succeeds; failure is test synchronization race
+    - path_or_area: .github/workflows/**
+      reason: 120s launch timeout did not expire
+    - path_or_area: tasks/tasks-status.md
+      reason: dedicated task-management Skill unavailable
+commands:
+  - command: GitHub Actions push run 31975410323 artifact inspection
+    purpose: RED/root-cause evidence
+    exit_code: 1
+    result: failed
+    head_sha: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42
+    evidence: artifact 9270925615; t506-workspace-mark-edit saw old decoration [0,2) while expected [0,1),[2,3)
+  - command: GitHub Actions pull_request run 31975412813
+    purpose: confirm nondeterministic same-head behavior
+    exit_code: 0
+    result: passed
+    head_sha: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42
+    evidence: same implementation HEAD passed in the paired PR event
+  - command: GitHub Actions push run 31976918493
+    purpose: verify formerly failing event after wait fix
+    exit_code: 0
+    result: passed
+    head_sha: d72ec71559aa91e5d65647565df76134fa73c4c8
+    evidence: all steps including T506 and standard Extension Host success
+  - command: GitHub Actions pull_request run 31976920196
+    purpose: paired full validation
+    exit_code: 0
+    result: passed
+    head_sha: d72ec71559aa91e5d65647565df76134fa73c4c8
+    evidence: all steps including T506 and standard Extension Host success
+tests:
+  - name: T506 non-Git workspace mapped-state wait
+    phase: red
+    result: failed
+    head_sha: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42
+    evidence: push run 31975410323 / artifact 9270925615
+  - name: T506 non-Git workspace mapped-state wait
+    phase: green
+    result: passed
+    head_sha: d72ec71559aa91e5d65647565df76134fa73c4c8
+    evidence: push run 31976918493 and pull_request run 31976920196
+ci:
+  required: true
+  workflow: CI
+  run_id: 31976920196
+  head_sha: d72ec71559aa91e5d65647565df76134fa73c4c8
+  conclusion: success
+  artifacts:
+    - id: 9270925615
+      name: ci-failure-diagnostics-31975410323-1
+      purpose: RED/root-cause diagnostics
+implementation:
+  outcome: completed
+  final_head: d72ec71559aa91e5d65647565df76134fa73c4c8
+  commits:
+    - sha: d72ec71559aa91e5d65647565df76134fa73c4c8
+      purpose: wait for mapped workspace decorations with 15s mapped-state timeout
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: GitHub Actions artifact 9270925615
+      summary: launch timeout was 120s; actual failure was stale decoration assertion after an insufficient synchronization wait
+  blocked_items: []
+  summary:
+    - only the T506 workspace test wait/synchronization was changed
+    - production and workflow were intentionally untouched
+review:
+  mode: not_applicable
+  reviewed_head: 9eac042553178fc1b5b6f6b7bbdf6e7f7531ac42
+  reviewer:
+    identity: not_applicable
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: CI stabilization implementation only
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - no review verdict issued
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation worker does not issue a review verdict
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-1-t506-ci-wait-fix-20260817073600.md
+    - handoffs/issue-1-t506-ci-wait-fix-20260817073600.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - timeout/synchronization-only fix evidence
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final PR HEAD and exact-head CI after report/handoff persistence
+    reason: administrative persistence commits advance the branch after the technical fix HEAD
+not_applicable:
+  - field_or_area: production change
+    reason: not required by the diagnosed failure
+remaining_risks: []
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: runtime-neutral implementation-worker
+    content_type: application/yaml
+    payload:
+      accepted_scope: T506 workspace test wait/synchronization only
+      technical_head: d72ec71559aa91e5d65647565df76134fa73c4c8
+      red_run: 31975410323
+      green_push_run: 31976918493
+      green_pr_run: 31976920196
+extensions:
+  - namespace: revmem
+    payload:
+      tasks_status_updated: false
+      merge_performed: false
+next_action:
+  type: none
+  target_skill: none
+  mode: null
+  summary: final persistence HEADのmatching CIを確認し、PRへ簡易reportを投稿して終了する。
+  instructions: []
+  required_attachments_or_references:
+    - PR #55
+    - reports/issue-1-t506-ci-wait-fix-20260817073600.md
+  requested_authorized_actions:
+    - read_repository
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-1-t506-ci-wait-fix-20260817073600.yaml
+  packet_url: null
+  transport_note: final persistence HEAD and matching CI are recorded in the PR comment after this packet commit

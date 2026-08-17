@@ -1,15 +1,27 @@
+import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { createTemporaryDirectory, pathExists } from "../support/temporary-directory";
 import { runOwnedExtensionHostLaunch } from "./owned-extension-host-launch";
 import { cleanupOwnedTemporaryDirectory } from "./owned-temporary-directory-cleanup";
 
+const execFileAsync = promisify(execFile);
 const VS_CODE_TEST_VERSION = "1.130.0";
 const testPhases = [
   "confirm",
   "restore-confirmed-and-unmark",
   "restore-unmarked"
+] as const;
+const t506Phases = [
+  "mark-context-a",
+  "restore-context-b-unmark-global",
+  "restore-context-a"
+] as const;
+const t506WorkspacePhases = [
+  "workspace-mark-edit",
+  "workspace-restore"
 ] as const;
 const DEFAULT_LAUNCH_TIMEOUT_MS = 120_000;
 const FIXTURE_CLEANUP_TIMEOUT_MS = 10_000;
@@ -26,6 +38,8 @@ const launchTimeout = (): number => {
 
 async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
+  const focusedT506 = process.argv.includes("--t506");
+  const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workerPath = join(__dirname, "run-extension-host-launch-worker.js");
@@ -46,6 +60,16 @@ async function main(): Promise<void> {
     workspace: join(temporaryDirectory.path, "t306-workspace"),
     userData: join(temporaryDirectory.path, "t306-user-data"),
     extensions: join(temporaryDirectory.path, "t306-extensions")
+  };
+  const t506Paths = {
+    workspace: join(temporaryDirectory.path, "t506-workspace"),
+    userData: join(temporaryDirectory.path, "t506-user-data"),
+    extensions: join(temporaryDirectory.path, "t506-extensions")
+  };
+  const t506WorkspacePaths = {
+    workspace: join(temporaryDirectory.path, "t506-non-git-workspace"),
+    userData: join(temporaryDirectory.path, "t506-non-git-user-data"),
+    extensions: join(temporaryDirectory.path, "t506-non-git-extensions")
   };
   const t302Paths = {
     workspace: join(temporaryDirectory.path, "t302-workspace"),
@@ -85,9 +109,39 @@ async function main(): Promise<void> {
   try {
     await Promise.all([
       ...Object.values(t306Paths),
+      ...Object.values(t506Paths),
+      ...Object.values(t506WorkspacePaths),
       ...Object.values(t302Paths),
       ...Object.values(lifecyclePaths)
     ].map((path) => mkdir(path)));
+
+    if (focusedT506 || focusedT506SavedPullRequest) {
+      if (focusedT506SavedPullRequest) {
+        await launch("t506-saved-pr-live-edit", t506Paths, join(__dirname, "t506-suite"), "saved-pr-live-edit");
+        await launch("t506-saved-pr-restart", t506Paths, join(__dirname, "t506-suite"), "saved-pr-restart");
+        return;
+      }
+      for (const phase of t506Phases) {
+        await launch(`t506-${phase}`, t506Paths, join(__dirname, "t506-suite"), phase);
+      }
+      for (const phase of t506WorkspacePhases) {
+        await launch(
+          `t506-${phase}`,
+          t506WorkspacePaths,
+          join(__dirname, "t506-workspace-suite"),
+          phase
+        );
+      }
+      await execFileAsync(
+        process.execPath,
+        [
+          "--test",
+          join(__dirname, "../integration/t506-live-edit-concurrency.integration.test.js")
+        ],
+        { cwd: projectRoot, windowsHide: true }
+      );
+      return;
+    }
 
     await launch("t306", t306Paths, join(__dirname, "t306-suite"));
 
