@@ -260,3 +260,90 @@ test("R405-3 binary PR changes are not opened as text review diffs", async () =>
     /line review|binary|unsupported/i,
   );
 });
+
+test("Issue #59 PR Global scan reads complete HEAD files once and reuses the exact-HEAD cache", async () => {
+  const fullSnapshot: PullRequestDiffSnapshot = {
+    ...snapshot,
+    files: [
+      snapshot.files[0]!,
+      {
+        fileId: "file-2",
+        oldPath: "src/second.ts",
+        newPath: "src/second.ts",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        hunks: [{
+          oldStart: 1,
+          oldCount: 1,
+          newStart: 1,
+          newCount: 1,
+          lines: [
+            { kind: "deletion", oldLine: 1, text: "old-second" },
+            { kind: "addition", newLine: 1, text: "new-second" },
+          ],
+        }],
+      },
+      {
+        fileId: "deleted",
+        oldPath: "src/deleted.ts",
+        status: "deleted",
+        additions: 0,
+        deletions: 1,
+        hunks: [{
+          oldStart: 1,
+          oldCount: 1,
+          newStart: 0,
+          newCount: 0,
+          lines: [{ kind: "deletion", oldLine: 1, text: "deleted" }],
+        }],
+      },
+    ],
+  };
+  const reads: string[] = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot: fullSnapshot,
+    readTextContent: async (descriptor) => {
+      reads.push(`${descriptor.revision}:${descriptor.filePath}`);
+      if (descriptor.filePath === "src/example.ts") {
+        return { kind: "found", content: "first\n\nthird\n" };
+      }
+      if (descriptor.filePath === "src/second.ts") {
+        return { kind: "found", content: "alpha\nbeta\n" };
+      }
+      return { kind: "missing-file" };
+    },
+  });
+
+  type GlobalHeadFile = { readonly path: string; readonly revisionId: string; readonly content: string };
+  const candidate = runtime as unknown as {
+    readGlobalHeadFiles?: (
+      contextId: string,
+      candidatePaths: ReadonlySet<string>,
+    ) => Promise<readonly GlobalHeadFile[]>;
+  };
+  assert.equal(typeof candidate.readGlobalHeadFiles, "function");
+
+  const paths = new Set(["src/example.ts", "src/second.ts", "src/deleted.ts"]);
+  const first = await candidate.readGlobalHeadFiles!(CONTEXT_ID, paths);
+  const second = await candidate.readGlobalHeadFiles!(CONTEXT_ID, paths);
+
+  assert.deepEqual(first, [
+    { path: "src/example.ts", revisionId: B, content: "first\n\nthird\n" },
+    { path: "src/second.ts", revisionId: B, content: "alpha\nbeta\n" },
+  ]);
+  assert.deepEqual(second, first);
+  assert.deepEqual(reads, [
+    `${B}:src/example.ts`,
+    `${B}:src/second.ts`,
+  ]);
+});
