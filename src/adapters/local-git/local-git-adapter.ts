@@ -372,24 +372,34 @@ export class LocalGitAdapter {
     const names = splitOutputLines(listResult.stdout).sort((left, right) =>
       left.localeCompare(right)
     );
-    const name = names.includes("origin") ? "origin" : names[0];
-    if (name === undefined) {
-      return undefined;
+    const candidates = names.includes("origin")
+      ? ["origin", ...names.filter((name) => name !== "origin")]
+      : names;
+
+    for (const name of candidates) {
+      const urlInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["remote", "get-url", name]
+      };
+      const urlResult = await this.commandExecutor.execute(urlInvocation);
+      if (urlResult.exitCode !== 0) {
+        continue;
+      }
+
+      let rawUrl: string;
+      try {
+        rawUrl = firstOutputLine(urlResult.stdout, `remote ${name} URL`);
+        return {
+          name,
+          rawUrl,
+          normalizedUrl: normalizeGitRemoteUrl(rawUrl, rootPath)
+        };
+      } catch {
+        continue;
+      }
     }
 
-    const urlInvocation: GitCommandInvocation = {
-      cwd: rootPath,
-      argumentsList: ["remote", "get-url", name]
-    };
-    const urlResult = await this.commandExecutor.execute(urlInvocation);
-    this.requireSuccess(urlInvocation, urlResult);
-    const rawUrl = firstOutputLine(urlResult.stdout, `remote ${name} URL`);
-
-    return {
-      name,
-      rawUrl,
-      normalizedUrl: normalizeGitRemoteUrl(rawUrl, rootPath)
-    };
+    return undefined;
   }
 
   private async resolveBranchState(
