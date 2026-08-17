@@ -261,7 +261,7 @@ test("R405-3 binary PR changes are not opened as text review diffs", async () =>
   );
 });
 
-test("Issue #59 PR Global scan reads complete HEAD files once and reuses the exact-HEAD cache", async () => {
+test("Issue #59 PR full scan reads complete current-side files once and reuses immutable revision caches", async () => {
   const fullSnapshot: PullRequestDiffSnapshot = {
     ...snapshot,
     files: [
@@ -320,6 +320,9 @@ test("Issue #59 PR Global scan reads complete HEAD files once and reuses the exa
       if (descriptor.filePath === "src/second.ts") {
         return { kind: "found", content: "alpha\nbeta\n" };
       }
+      if (descriptor.filePath === "src/deleted.ts" && descriptor.revision === A) {
+        return { kind: "found", content: "deleted\nfile\n" };
+      }
       return { kind: "missing-file" };
     },
   });
@@ -345,5 +348,6 @@ test("Issue #59 PR Global scan reads complete HEAD files once and reuses the exa
   assert.deepEqual(reads, [
     `${B}:src/example.ts`,
     `${B}:src/second.ts`,
+    `${A}:src/deleted.ts`,
   ]);
 });
