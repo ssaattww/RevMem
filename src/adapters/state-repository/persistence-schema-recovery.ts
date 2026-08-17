@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
@@ -10,6 +11,7 @@ import type {
   ReviewStateStorageRoute
 } from "./contracts";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -31,6 +33,8 @@ interface MigrationWrite {
   readonly original: string;
   readonly migrated: string;
 }
+
+type PersistencePathGuard = (filePath: string) => Promise<void>;
 
 export type PersistedReviewStatePreparation = "absent" | "ready" | "uncertain";
 
@@ -272,7 +276,8 @@ const serializeMigrated = (
 
 const parseAndMigrate = (
   raw: string,
-  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state"
+  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state",
+  absentNestedVersion?: number
 ): MigratedDocument => {
   const parsed = requireRecord(JSON.parse(raw) as unknown, documentName);
   if (documentName === "Workspace review state") {
@@ -282,7 +287,7 @@ const parseAndMigrate = (
     return serializeMigrated(migrateManifestRecord(parsed));
   }
   if (documentName === "Context state") {
-    return serializeMigrated(migrateContextRecord(parsed, documentName));
+    return serializeMigrated(migrateContextRecord(parsed, documentName, absentNestedVersion));
   }
   return serializeMigrated(migrateGlobalRecord(parsed, documentName));
 };
@@ -323,10 +328,18 @@ const validateFileDocument = (
   if (requireString(value.fileId, `${name}.fileId`) !== mapKey) {
     throw new Error(`${name}.fileId does not match its map key`);
   }
-  requireString(value.currentPath, `${name}.currentPath`);
+  const currentPath = requireCanonicalReviewPath(value.currentPath, `${name}.currentPath`);
   const previousPaths = requireArray(value.previousPaths, `${name}.previousPaths`);
+  const seenPreviousPaths = new Set<string>();
   for (const [index, previousPath] of previousPaths.entries()) {
-    requireString(previousPath, `${name}.previousPaths[${index}]`);
+    const normalized = requireCanonicalReviewPath(
+      previousPath,
+      `${name}.previousPaths[${index}]`
+    );
+    if (normalized === currentPath || seenPreviousPaths.has(normalized)) {
+      throw new Error(`${name}.previousPaths must be unique and exclude currentPath`);
+    }
+    seenPreviousPaths.add(normalized);
   }
   requireString(value.revisionId, `${name}.revisionId`);
   const lineCount = requireNonNegativeSafeInteger(value.lineCount, `${name}.lineCount`);
@@ -343,6 +356,20 @@ const validateFileDocument = (
     requireString(value.contentHash, `${name}.contentHash`);
   }
   requireIsoTimestamp(value.updatedAt, `${name}.updatedAt`);
+};
+
+const requireCanonicalReviewPath = (value: unknown, name: string): string => {
+  const candidate = requireString(value, name);
+  if (
+    candidate.includes("\\") ||
+    path.posix.isAbsolute(candidate) ||
+    path.posix.normalize(candidate) !== candidate ||
+    candidate === "." ||
+    candidate.split("/").includes("..")
+  ) {
+    throw new TypeError(`${name} must be a canonical repository-relative POSIX path`);
+  }
+  return candidate;
 };
 
 const validateContextDescriptor = (value: JsonRecord, name: string): void => {
@@ -398,13 +425,21 @@ const validateContextDocument = (
   }
   requireString(value.displayName, "contextState.displayName");
   validateContextDescriptor(value, "contextState");
+  validateOwnerReconciliation(value);
   const files = requireRecord(value.files, "contextState.files");
+  const currentPaths = new Set<string>();
   for (const [fileId, fileValue] of Object.entries(files)) {
+    const file = requireRecord(fileValue, `contextState.files.${fileId}`);
     validateFileDocument(
-      requireRecord(fileValue, `contextState.files.${fileId}`),
+      file,
       fileId,
       `contextState.files.${fileId}`
     );
+    const currentPath = requireString(file.currentPath, `contextState.files.${fileId}.currentPath`);
+    if (currentPaths.has(currentPath)) {
+      throw new Error("contextState.files must not contain duplicate currentPath values");
+    }
+    currentPaths.add(currentPath);
   }
   requireIsoTimestamp(value.createdAt, "contextState.createdAt");
   requireIsoTimestamp(value.updatedAt, "contextState.updatedAt");
@@ -417,12 +452,20 @@ const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void =
   }
   requireString(value.currentRevisionId, "globalState.currentRevisionId");
   const files = requireRecord(value.files, "globalState.files");
+  const currentPaths = new Set<string>();
   for (const [fileId, fileValue] of Object.entries(files)) {
     const file = requireRecord(fileValue, `globalState.files.${fileId}`);
     if (requireString(file.fileId, `globalState.files.${fileId}.fileId`) !== fileId) {
       throw new Error(`globalState.files.${fileId}.fileId does not match its map key`);
     }
-    requireString(file.currentPath, `globalState.files.${fileId}.currentPath`);
+    const currentPath = requireCanonicalReviewPath(
+      file.currentPath,
+      `globalState.files.${fileId}.currentPath`
+    );
+    if (currentPaths.has(currentPath)) {
+      throw new Error("globalState.files must not contain duplicate currentPath values");
+    }
+    currentPaths.add(currentPath);
     requireString(file.revisionId, `globalState.files.${fileId}.revisionId`);
     validateIntervals(file.reviewed, `globalState.files.${fileId}.reviewed`);
     if (file.contentHash !== undefined) {
@@ -519,6 +562,53 @@ const resolveReferencedFile = (
 export const preMigrationBackupPath = (filePath: string): string =>
   `${filePath}.pre-migration.bak`;
 
+const isWithin = (root: string, candidate: string): boolean =>
+  candidate === root || candidate.startsWith(`${root}${path.sep}`);
+
+const existingPathIsLink = async (candidate: string): Promise<boolean> => {
+  try {
+    return (await lstat(candidate)).isSymbolicLink();
+  } catch (error) {
+    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+};
+
+/** Rejects a path that leaves, or traverses links below, the configured storage route. */
+export const createTrustedPersistencePathGuard = (
+  rootPath: string,
+  store: AtomicTextFileStore
+): PersistencePathGuard => {
+  if (!(store instanceof NodeAtomicTextFileStore)) {
+    return async () => undefined;
+  }
+  const root = path.resolve(rootPath);
+  return async (filePath: string): Promise<void> => {
+    const candidate = path.resolve(filePath);
+    if (!isWithin(root, candidate)) {
+      throw new Error("Persistence path escapes its configured storage root.");
+    }
+    const relative = path.relative(root, candidate);
+    let current = root;
+    if (await existingPathIsLink(current)) {
+      throw new Error("Persistence storage root must not be a symbolic link or junction.");
+    }
+    for (const segment of relative.split(path.sep).filter((value) => value.length > 0)) {
+      current = path.join(current, segment);
+      if (await existingPathIsLink(current)) {
+        throw new Error("Persistence storage must not traverse a symbolic link or junction.");
+      }
+    }
+  };
+};
+
+export const createTrustedStoragePathGuard = (
+  route: ReviewStateStorageRoute,
+  store: AtomicTextFileStore
+): PersistencePathGuard => createTrustedPersistencePathGuard(route.rootPath, store);
+
 const quarantinePath = (filePath: string, raw: string): string => {
   const digest = createHash("sha256").update(raw, "utf8").digest("hex").slice(0, 16);
   return `${filePath}.corrupt-${digest}.quarantine`;
@@ -529,14 +619,17 @@ export const quarantinePersistedText = async (
   store: AtomicTextFileStore,
   filePath: string,
   raw: string,
-  removeOriginal = true
+  removeOriginal = true,
+  guard?: PersistencePathGuard
 ): Promise<string> => {
   const destination = quarantinePath(filePath, raw);
+  await guard?.(destination);
   await store.writeTextAtomically(destination, raw);
   if (removeOriginal) {
     if (store.deleteText === undefined) {
       throw new Error("AtomicTextFileStore.deleteText is required to quarantine active persistence.");
     }
+    await guard?.(filePath);
     await store.deleteText(filePath);
   }
   return destination;
@@ -545,22 +638,26 @@ export const quarantinePersistedText = async (
 /** Writes every migration backup before any migrated document and rolls all documents back on publish failure. */
 export const publishSchemaMigration = async (
   store: AtomicTextFileStore,
-  writes: readonly MigrationWrite[]
+  writes: readonly MigrationWrite[],
+  guard?: PersistencePathGuard
 ): Promise<void> => {
   if (writes.length === 0) {
     return;
   }
   for (const write of writes) {
+    await guard?.(preMigrationBackupPath(write.filePath));
     await store.writeTextAtomically(preMigrationBackupPath(write.filePath), write.original);
   }
   try {
     for (const write of writes) {
+      await guard?.(write.filePath);
       await store.writeTextAtomically(write.filePath, write.migrated);
     }
   } catch (error) {
     const restorationErrors: unknown[] = [];
     for (const write of [...writes].reverse()) {
       try {
+        await guard?.(write.filePath);
         await store.writeTextAtomically(write.filePath, write.original);
       } catch (restoreError) {
         restorationErrors.push(restoreError);
@@ -581,15 +678,17 @@ const decodeOrQuarantine = async (
   store: AtomicTextFileStore,
   filePath: string,
   raw: string,
-  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state"
+  documentName: "Workspace review state" | "Repository manifest" | "Global state" | "Context state",
+  absentNestedVersion?: number,
+  guard?: PersistencePathGuard
 ): Promise<MigratedDocument | undefined> => {
   try {
-    return parseAndMigrate(raw, documentName);
+    return parseAndMigrate(raw, documentName, absentNestedVersion);
   } catch (error) {
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
     }
-    await quarantinePersistedText(store, filePath, raw);
+    await quarantinePersistedText(store, filePath, raw, true, guard);
     return undefined;
   }
 };
@@ -597,9 +696,10 @@ const decodeOrQuarantine = async (
 const quarantineManifest = async (
   store: AtomicTextFileStore,
   route: ReviewStateStorageRoute,
-  raw: string
+  raw: string,
+  guard?: PersistencePathGuard
 ): Promise<PersistedReviewStatePreparation> => {
-  await quarantinePersistedText(store, route.statePointerPath, raw);
+  await quarantinePersistedText(store, route.statePointerPath, raw, true, guard);
   return "uncertain";
 };
 
@@ -629,6 +729,8 @@ export const preparePersistedReviewState = async (
 ): Promise<PersistedReviewStatePreparation> => {
   const route = resolveReviewStateStorageRoute(options.storageUris, target);
   const store = options.atomicFileStore ?? new NodeAtomicTextFileStore();
+  const guard = createTrustedStoragePathGuard(route, store);
+  await guard(route.statePointerPath);
   const pointerRaw = await store.readText(route.statePointerPath);
   if (pointerRaw === undefined) {
     return "absent";
@@ -639,7 +741,9 @@ export const preparePersistedReviewState = async (
       store,
       route.statePointerPath,
       pointerRaw,
-      "Workspace review state"
+      "Workspace review state",
+      undefined,
+      guard
     );
     if (decoded === undefined) {
       return "uncertain";
@@ -650,7 +754,7 @@ export const preparePersistedReviewState = async (
       if (error instanceof UnsupportedPersistedSchemaVersionError) {
         throw error;
       }
-      await quarantinePersistedText(store, route.statePointerPath, pointerRaw);
+      await quarantinePersistedText(store, route.statePointerPath, pointerRaw, true, guard);
       return "uncertain";
     }
     if (decoded.migrated) {
@@ -658,7 +762,7 @@ export const preparePersistedReviewState = async (
         filePath: route.statePointerPath,
         original: pointerRaw,
         migrated: decoded.serialized
-      }]);
+      }], guard);
     }
     return "ready";
   }
@@ -667,7 +771,9 @@ export const preparePersistedReviewState = async (
     store,
     route.statePointerPath,
     pointerRaw,
-    "Repository manifest"
+    "Repository manifest",
+    undefined,
+    guard
   );
   if (manifest === undefined) {
     return "uncertain";
@@ -680,7 +786,7 @@ export const preparePersistedReviewState = async (
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
     }
-    return quarantineManifest(store, route, pointerRaw);
+    return quarantineManifest(store, route, pointerRaw, guard);
   }
 
   let globalPath: string;
@@ -694,19 +800,20 @@ export const preparePersistedReviewState = async (
       );
     }
   } catch {
-    return quarantineManifest(store, route, pointerRaw);
+    return quarantineManifest(store, route, pointerRaw, guard);
   }
 
+  await guard(globalPath);
   const globalRaw = await store.readText(globalPath);
   if (globalRaw === undefined) {
     return "uncertain";
   }
-  const global = await decodeOrQuarantine(store, globalPath, globalRaw, "Global state");
+  const global = await decodeOrQuarantine(store, globalPath, globalRaw, "Global state", undefined, guard);
   if (global === undefined) {
     return "uncertain";
   }
   if (!hasMatchingIdentity(global.value, target.repositoryId)) {
-    return quarantineManifest(store, route, pointerRaw);
+    return quarantineManifest(store, route, pointerRaw, guard);
   }
   try {
     validateGlobalDocument(global.value, target.repositoryId);
@@ -714,23 +821,31 @@ export const preparePersistedReviewState = async (
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
     }
-    await quarantinePersistedText(store, globalPath, globalRaw);
+    await quarantinePersistedText(store, globalPath, globalRaw, true, guard);
     return "uncertain";
   }
 
   const writes: MigrationWrite[] = [];
   for (const reference of references.contexts) {
     const contextPath = contextPaths.get(reference.contextId)!;
+    await guard(contextPath);
     const contextRaw = await store.readText(contextPath);
     if (contextRaw === undefined) {
       return "uncertain";
     }
-    const context = await decodeOrQuarantine(store, contextPath, contextRaw, "Context state");
+    const context = await decodeOrQuarantine(
+      store,
+      contextPath,
+      contextRaw,
+      "Context state",
+      manifest.sourceVersion === 0 ? 0 : undefined,
+      guard
+    );
     if (context === undefined) {
       return "uncertain";
     }
     if (!hasMatchingIdentity(context.value, target.repositoryId, reference.contextId)) {
-      return quarantineManifest(store, route, pointerRaw);
+      return quarantineManifest(store, route, pointerRaw, guard);
     }
     try {
       validateContextDocument(context.value, target.repositoryId, reference.contextId);
@@ -738,7 +853,7 @@ export const preparePersistedReviewState = async (
       if (error instanceof UnsupportedPersistedSchemaVersionError) {
         throw error;
       }
-      await quarantinePersistedText(store, contextPath, contextRaw);
+      await quarantinePersistedText(store, contextPath, contextRaw, true, guard);
       return "uncertain";
     }
     if (context.migrated) {
@@ -760,7 +875,7 @@ export const preparePersistedReviewState = async (
       migrated: manifest.serialized
     });
   }
-  await publishSchemaMigration(store, writes);
+  await publishSchemaMigration(store, writes, guard);
   return references.contexts.some((reference) => reference.contextId === target.contextId)
     ? "ready"
     : "absent";

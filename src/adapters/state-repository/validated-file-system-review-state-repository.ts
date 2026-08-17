@@ -75,21 +75,23 @@ extends CoherentFileSystemReviewStateRepository {
       this.repositoryOptions.storageUris,
       target
     );
-    const preparation = await this.prepareTarget(target, "load");
-    if (preparation === "uncertain") {
-      return undefined;
-    }
-    try {
-      const loaded = await super.load(target);
-      if (loaded !== undefined) {
-        validateOwnerReconciliation(loaded.contextState);
-        this.clearUncertain(target, route.rootPath);
+    return this.serializeOuterWrite(route.rootPath, async () => {
+      const preparation = await this.prepareTarget(target, "load");
+      if (preparation === "uncertain") {
+        return undefined;
       }
-      return loaded;
-    } catch (error) {
-      this.markUncertain(target, route.rootPath);
-      throw error;
-    }
+      try {
+        const loaded = await super.load(target);
+        if (loaded !== undefined) {
+          validateOwnerReconciliation(loaded.contextState);
+          this.clearUncertain(target, route.rootPath);
+        }
+        return loaded;
+      } catch (error) {
+        this.markUncertain(target, route.rootPath);
+        throw error;
+      }
+    });
   }
 
   /** Loads the owner-wide Global document only when its persisted state set is certain. */
@@ -100,20 +102,22 @@ extends CoherentFileSystemReviewStateRepository {
       this.repositoryOptions.storageUris,
       target
     );
-    const preparation = await this.prepareTarget(target, "load");
-    if (preparation === "uncertain") {
-      return undefined;
-    }
-    try {
-      const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
-      if (loaded !== undefined) {
-        this.clearUncertain(target, route.rootPath);
+    return this.serializeOuterWrite(route.rootPath, async () => {
+      const preparation = await this.prepareTarget(target, "load");
+      if (preparation === "uncertain") {
+        return undefined;
       }
-      return loaded === undefined ? undefined : clone(loaded);
-    } catch (error) {
-      this.markUncertain(target, route.rootPath);
-      throw error;
-    }
+      try {
+        const loaded = await loadPersistedOwnerGlobal(this.repositoryOptions, target);
+        if (loaded !== undefined) {
+          this.clearUncertain(target, route.rootPath);
+        }
+        return loaded === undefined ? undefined : clone(loaded);
+      } catch (error) {
+        this.markUncertain(target, route.rootPath);
+        throw error;
+      }
+    });
   }
 
   /** Enumerates manifest-selected branch and pull-request contexts without changing persisted state or history. */

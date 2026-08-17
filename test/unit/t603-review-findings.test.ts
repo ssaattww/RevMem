@@ -6,6 +6,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile
 } from "node:fs/promises";
 import os from "node:os";
@@ -16,6 +17,7 @@ import {
   NodeNonGitSnapshotCodec,
   NodeNonGitSnapshotStorage
 } from "../../src/adapters/non-git-snapshots/index";
+import { runPersistenceStartupMigration } from "../../src/adapters/persistence-startup-migration";
 import {
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
@@ -722,4 +724,136 @@ test("T603-R014 quarantine removal uses the injected persistence abstraction", a
     await store.readText(`${filePath}.corrupt-11d510e067d2cdcd.quarantine`),
     "corrupt"
   );
+});
+
+test("T603-IFR-002 rejects a repository storage-root junction before it can touch an outside sentinel", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await repository.save(repositoryTargetA, createCommit(repositoryTargetA));
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, repositoryTargetA);
+    const outside = path.join(temporary.root, "outside");
+    const sentinel = path.join(outside, "manifest.json");
+    await mkdir(outside, { recursive: true });
+    await writeFile(sentinel, "outside-sentinel", "utf8");
+    await rm(route.rootPath, { recursive: true, force: true });
+    await symlink(outside, route.rootPath, process.platform === "win32" ? "junction" : "dir");
+
+    await assert.rejects(
+      () => new FileSystemReviewStateRepository({ storageUris: temporary.storageUris }).load(repositoryTargetA),
+      /symbolic link|junction/u
+    );
+    assert.equal(await readFile(sentinel, "utf8"), "outside-sentinel");
+    assert.equal((await readdir(outside)).length, 1);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+for (const location of ["history", "snapshots", "reference"] as const) {
+  test(`T603-IFR-002 rejects a ${location} junction without reading, rewriting, or deleting its outside sentinel`, async () => {
+    const temporary = await createTemporaryStorage();
+    try {
+      const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+      await repository.save(repositoryTargetA, createCommit(repositoryTargetA));
+      const { route, manifest } = await readRepositoryManifest(temporary.storageUris);
+      const outside = path.join(temporary.root, `outside-${location}`);
+      await mkdir(outside, { recursive: true });
+      let linkedPath: string;
+      let operation: () => Promise<unknown>;
+      if (location === "history") {
+        linkedPath = route.historyDirectory;
+        await writeFile(path.join(outside, "events-2026-08.jsonl"), "outside-history", "utf8");
+        operation = () => runPersistenceStartupMigration({ storageUris: temporary.storageUris });
+      } else if (location === "snapshots") {
+        linkedPath = route.snapshotDirectory;
+        await writeFile(path.join(outside, "sentinel.json"), "outside-snapshot", "utf8");
+        operation = () => runPersistenceStartupMigration({ storageUris: temporary.storageUris });
+      } else {
+        const reference = manifest.contexts[0]!;
+        linkedPath = path.dirname(path.join(route.rootPath, reference.file));
+        await writeFile(path.join(outside, path.basename(reference.file)), "outside-reference", "utf8");
+        operation = () => repository.load(repositoryTargetA);
+      }
+      await rm(linkedPath, { recursive: true, force: true });
+      await symlink(outside, linkedPath, process.platform === "win32" ? "junction" : "dir");
+
+      await assert.rejects(operation, /symbolic link|junction/u);
+      const names = await readdir(outside);
+      assert.equal(names.length, 1);
+      assert.match(await readFile(path.join(outside, names[0]!), "utf8"), /^outside-/u);
+    } finally {
+      await rm(temporary.root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("T603-IFR-003 migrates a repository v0 context whose nested file schema is absent", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await repository.save(repositoryTargetA, createCommit(repositoryTargetA));
+    const { route, manifest } = await readRepositoryManifest(temporary.storageUris);
+    manifest.schemaVersion = 0;
+    manifest.globalState.schemaVersion = 0;
+    const reference = manifest.contexts[0]!;
+    reference.schemaVersion = 0;
+    const contextPath = path.join(route.rootPath, reference.file);
+    const context = JSON.parse(await readFile(contextPath, "utf8")) as {
+      schemaVersion: number;
+      files: Record<string, { schemaVersion?: number }>;
+    };
+    context.schemaVersion = 0;
+    for (const file of Object.values(context.files)) delete file.schemaVersion;
+    const globalPath = path.join(route.rootPath, manifest.globalState.file);
+    const global = JSON.parse(await readFile(globalPath, "utf8")) as { schemaVersion: number };
+    global.schemaVersion = 0;
+    await writeFile(contextPath, `${JSON.stringify(context, null, 2)}\n`, "utf8");
+    await writeFile(globalPath, `${JSON.stringify(global, null, 2)}\n`, "utf8");
+    await writeFile(route.statePointerPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    const loaded = await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .load(repositoryTargetA);
+    assert.equal(loaded?.contextState.schemaVersion, REVIEW_RANGE_SCHEMA_VERSION);
+    assert.equal(
+      (JSON.parse(await readFile(contextPath, "utf8")) as { files: Record<string, { schemaVersion: number }> })
+        .files["file-1"]!.schemaVersion,
+      REVIEW_RANGE_SCHEMA_VERSION
+    );
+    assert.ok(await readFile(`${contextPath}.pre-migration.bak`, "utf8"));
+    const beforeRepeat = await readFile(contextPath, "utf8");
+    await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris }).load(repositoryTargetA);
+    assert.equal(await readFile(contextPath, "utf8"), beforeRepeat);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603-IFR-004 quarantines semantic current-schema corruption before exposure and recovers after repair", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, workspaceTarget);
+    const original = createCommit(workspaceTarget);
+    await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .save(workspaceTarget, original);
+    const validRaw = await readFile(route.statePointerPath, "utf8");
+    const corrupt = JSON.parse(validRaw) as {
+      contextState: { files: Record<string, { currentPath: string; previousPaths: string[] }>; ownerReconciliation?: unknown };
+    };
+    corrupt.contextState.files["file-1"]!.currentPath = "../outside.ts";
+    corrupt.contextState.files["file-1"]!.previousPaths = ["../older.ts"];
+    corrupt.contextState.ownerReconciliation = { broken: { sourceOwner: "workspace" } };
+    await writeFile(route.statePointerPath, `${JSON.stringify(corrupt, null, 2)}\n`, "utf8");
+
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    assert.equal(await repository.load(workspaceTarget), undefined);
+    await assert.rejects(() => readFile(route.statePointerPath, "utf8"), /ENOENT/u);
+    assert.equal((await findQuarantineSidecars(route.statePointerPath)).length, 1);
+    assert.equal(repository.getCurrent(workspaceTarget), undefined);
+
+    await writeFile(route.statePointerPath, validRaw, "utf8");
+    assert.deepEqual(await repository.load(workspaceTarget), original);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
 });

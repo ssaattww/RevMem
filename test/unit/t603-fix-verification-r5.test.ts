@@ -48,8 +48,10 @@ const createTemporaryStorage = async (): Promise<{
   };
 };
 
-const createCommit = (target: ReviewStateRepositoryTarget): ReviewStateCommit => {
-  const revisionId = "revision-r5";
+const createCommit = (
+  target: ReviewStateRepositoryTarget,
+  revisionId = "revision-r5"
+): ReviewStateCommit => {
   const contextState = target.kind === "workspace"
     ? {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -202,6 +204,80 @@ class RecoveryGateStore implements AtomicTextFileStore {
   }
 }
 
+class MigrationReadGateStore implements AtomicTextFileStore {
+  private readonly delegate = new NodeAtomicTextFileStore();
+  private targetPath: string | undefined;
+  private enteredResolve: (() => void) | undefined;
+  private releaseResolve: (() => void) | undefined;
+  private entered = Promise.resolve();
+  private release = Promise.resolve();
+
+  public arm(filePath: string): { readonly entered: Promise<void>; readonly resume: () => void } {
+    this.targetPath = filePath;
+    this.entered = new Promise<void>((resolve) => { this.enteredResolve = resolve; });
+    this.release = new Promise<void>((resolve) => { this.releaseResolve = resolve; });
+    return { entered: this.entered, resume: () => this.releaseResolve?.() };
+  }
+
+  public async readText(filePath: string): Promise<string | undefined> {
+    const value = await this.delegate.readText(filePath);
+    if (filePath === this.targetPath) {
+      this.targetPath = undefined;
+      this.enteredResolve?.();
+      await this.release;
+    }
+    return value;
+  }
+
+  public async writeTextAtomically(filePath: string, content: string): Promise<void> {
+    await this.delegate.writeTextAtomically(filePath, content);
+  }
+
+  public async deleteText(filePath: string): Promise<void> {
+    await this.delegate.deleteText(filePath);
+  }
+}
+
+const toLegacyWorkspaceCommit = (commit: ReviewStateCommit): Record<string, unknown> => {
+  const legacy = JSON.parse(JSON.stringify(commit)) as {
+    schemaVersion: number;
+    contextState: { schemaVersion: number; files: Record<string, { schemaVersion?: number }> };
+    globalState: { schemaVersion: number };
+  };
+  legacy.schemaVersion = 0;
+  legacy.contextState.schemaVersion = 0;
+  legacy.globalState.schemaVersion = 0;
+  for (const file of Object.values(legacy.contextState.files)) delete file.schemaVersion;
+  return legacy as unknown as Record<string, unknown>;
+};
+
+const downgradeRepositoryToLegacy = async (storageUris: ReviewStateStorageUris): Promise<void> => {
+  const route = resolveReviewStateStorageRoute(storageUris, repositoryTarget);
+  const manifest = JSON.parse(await readFile(route.statePointerPath, "utf8")) as {
+    schemaVersion: number;
+    contexts: Array<{ file: string; schemaVersion: number }>;
+    globalState: { file: string; schemaVersion: number };
+  };
+  manifest.schemaVersion = 0;
+  manifest.globalState.schemaVersion = 0;
+  for (const reference of manifest.contexts) {
+    reference.schemaVersion = 0;
+    const contextPath = path.join(route.rootPath, reference.file);
+    const context = JSON.parse(await readFile(contextPath, "utf8")) as {
+      schemaVersion: number;
+      files: Record<string, { schemaVersion?: number }>;
+    };
+    context.schemaVersion = 0;
+    for (const file of Object.values(context.files)) delete file.schemaVersion;
+    await writeFile(contextPath, `${JSON.stringify(context, null, 2)}\n`, "utf8");
+  }
+  const globalPath = path.join(route.rootPath, manifest.globalState.file);
+  const global = JSON.parse(await readFile(globalPath, "utf8")) as { schemaVersion: number };
+  global.schemaVersion = 0;
+  await writeFile(globalPath, `${JSON.stringify(global, null, 2)}\n`, "utf8");
+  await writeFile(route.statePointerPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+};
+
 test("T603-R013 startup keeps canonical repository owner when the manifest has no selected context", async () => {
   const temporary = await createTemporaryStorage();
   try {
@@ -260,6 +336,85 @@ test("T603-R015 recovery never exposes stale cached reviewed state before the re
     assert.equal(visibleDuringRecovery, undefined);
     assert.deepEqual(loaded, expected);
     assert.deepEqual(repository.getCurrent(workspaceTarget), expected);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603-IFR-001 serializes legacy migration load before a second instance saves newer workspace state", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const initial = createCommit(workspaceTarget);
+    const newer = createCommit(workspaceTarget, "revision-newer");
+    const seed = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await seed.save(workspaceTarget, initial);
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, workspaceTarget);
+    await writeFile(
+      route.statePointerPath,
+      `${JSON.stringify(toLegacyWorkspaceCommit(initial), null, 2)}\n`,
+      "utf8"
+    );
+
+    const store = new MigrationReadGateStore();
+    const loadingRepository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris,
+      atomicFileStore: store
+    });
+    const gate = store.arm(route.statePointerPath);
+    const loading = loadingRepository.load(workspaceTarget);
+    await gate.entered;
+    let saveFinished = false;
+    const saving = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .save(workspaceTarget, newer)
+      .then(() => { saveFinished = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(saveFinished, false);
+    gate.resume();
+    await Promise.all([loading, saving]);
+
+    const durable = await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .load(workspaceTarget);
+    assert.equal(durable?.globalState.currentRevisionId, "revision-newer");
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603-IFR-001 preserves newer repository Context, Global, and manifest after a gated legacy load", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const initial = createCommit(repositoryTarget);
+    const newer = createCommit(repositoryTarget, "revision-newer");
+    const seed = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await seed.save(repositoryTarget, initial);
+    await downgradeRepositoryToLegacy(temporary.storageUris);
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, repositoryTarget);
+
+    const store = new MigrationReadGateStore();
+    const loadingRepository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris,
+      atomicFileStore: store
+    });
+    const gate = store.arm(route.statePointerPath);
+    const loading = loadingRepository.load(repositoryTarget);
+    await gate.entered;
+    let saveFinished = false;
+    const saving = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .save(repositoryTarget, newer)
+      .then(() => { saveFinished = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(saveFinished, false);
+    gate.resume();
+    await Promise.all([loading, saving]);
+
+    const durable = await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .load(repositoryTarget);
+    assert.equal(durable?.contextState.branch?.headRevision, "revision-newer");
+    assert.equal(durable?.globalState.currentRevisionId, "revision-newer");
+    assert.equal(
+      (JSON.parse(await readFile(route.statePointerPath, "utf8")) as { schemaVersion: number }).schemaVersion,
+      REVIEW_RANGE_SCHEMA_VERSION
+    );
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

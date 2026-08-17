@@ -11,6 +11,7 @@ import {
 } from "./state-repository/index";
 import { migratePersistedReviewHistoryFile } from "./state-repository/jsonl-review-history-store";
 import {
+  createTrustedPersistencePathGuard,
   preparePersistedReviewState,
   quarantinePersistedText
 } from "./state-repository/persistence-schema-recovery";
@@ -53,6 +54,12 @@ const migrateWorkspaceState = async (
   const workspaceRoot = storageUris.storageUri?.fsPath;
   if (workspaceRoot === undefined || workspaceRoot.trim().length === 0) return undefined;
   const statePath = path.join(path.resolve(workspaceRoot), "workspace-state.json");
+  const guard = createTrustedPersistencePathGuard(path.resolve(workspaceRoot), store);
+  try {
+    await guard(statePath);
+  } catch {
+    return undefined;
+  }
   const raw = await store.readText(statePath);
   if (raw === undefined) return undefined;
   const value = readIdentity(raw);
@@ -65,7 +72,7 @@ const migrateWorkspaceState = async (
     typeof repositoryId !== "string" || repositoryId.trim().length === 0 ||
     typeof contextId !== "string" || contextId.trim().length === 0
   ) {
-    await quarantinePersistedText(store, statePath, raw);
+    await quarantinePersistedText(store, statePath, raw, true, guard);
     return undefined;
   }
   const preparation = await preparePersistedReviewState(
@@ -84,6 +91,12 @@ const migrateRepositoryStateRoot = async (
   const globalRoot = path.resolve(storageUris.globalStorageUri.fsPath);
   const rootPath = path.join(globalRoot, collection, rootName);
   const manifestPath = path.join(rootPath, "manifest.json");
+  const guard = createTrustedPersistencePathGuard(rootPath, store);
+  try {
+    await guard(manifestPath);
+  } catch {
+    return undefined;
+  }
   const raw = await store.readText(manifestPath);
   if (raw === undefined) return undefined;
   const manifest = readIdentity(raw);
@@ -92,7 +105,7 @@ const migrateRepositoryStateRoot = async (
     typeof repositoryId !== "string" || repositoryId.trim().length === 0 ||
     hashIdentifier(repositoryId) !== rootName
   ) {
-    await quarantinePersistedText(store, manifestPath, raw);
+    await quarantinePersistedText(store, manifestPath, raw, true, guard);
     return undefined;
   }
   const contexts = Array.isArray(manifest?.contexts) ? manifest.contexts : [];
@@ -117,11 +130,15 @@ const migrateHistoryRoot = async (
   expectedRepositoryId?: string
 ): Promise<void> => {
   const historyDirectory = path.join(rootPath, "history");
+  const guard = createTrustedPersistencePathGuard(rootPath, store);
+  await guard(historyDirectory);
   for (const name of await readDirectoryNames(historyDirectory)) {
     if (/^events-\d{4}-\d{2}\.jsonl$/u.test(name)) {
+      const filePath = path.join(historyDirectory, name);
+      await guard(filePath);
       await migratePersistedReviewHistoryFile(
         store,
-        path.join(historyDirectory, name),
+        filePath,
         expectedRepositoryId
       );
     }
@@ -161,6 +178,9 @@ export const runPersistenceStartupMigration = async (
 
   for (const [rootPath, expectedRepositoryId] of roots) {
     await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
+    await createTrustedPersistencePathGuard(rootPath, store)(
+      path.join(rootPath, "snapshots")
+    );
     await new NodeNonGitSnapshotStorage({
       snapshotDirectory: path.join(rootPath, "snapshots"),
       atomicFileStore: store

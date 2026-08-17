@@ -301,9 +301,10 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
       storageUri: { fsPath: workspaceStorageRoot },
     };
     const stateRepository = new FileSystemReviewStateRepository({ storageUris });
+    let nextHistoryEventId = 0;
     const historyRecorder = new ReviewHistoryRecorder({
       sessionId: "t405-composition",
-      createEventId: () => "t405-composition-event",
+      createEventId: () => `t405-composition-event-${++nextHistoryEventId}`,
       appender: new JsonlReviewHistoryStore({ storageUris }),
     });
     const contextId52 = `github-pr:${REPOSITORY_ID}#52`;
