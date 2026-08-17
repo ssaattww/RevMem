@@ -7,6 +7,10 @@ import {
   RevisionTextContentProvider,
 } from "./application/diff-document/index";
 import {
+  registerPullRequestGlobalHeadFileProvider,
+  type PullRequestGlobalHeadFile,
+} from "./application/global-understanding/pull-request-global-head-file-registry";
+import {
   DiffEditorReviewCommandService,
   type DiffEditorReviewCommandDependencies,
 } from "./application/review-commands/index";
@@ -56,6 +60,11 @@ extends Omit<DiffEditorReviewCommandDependencies<Editor>, "openSession" | "reque
   readonly getDocumentUri: (editor: Editor) => string;
 }
 
+interface GlobalHeadFileCache {
+  readonly headSha: string;
+  readonly files: Map<string, Promise<RevisionTextContentReadResult>>;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
@@ -71,6 +80,8 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
  */
 export class PullRequestReviewRuntime<Uri> {
   private readonly registrations = new Map<string, PullRequestReviewRuntimeRegistration>();
+  private readonly globalHeadFileCaches = new Map<string, GlobalHeadFileCache>();
+  private readonly globalProviderDisposers = new Map<string, () => void>();
   private readonly codec = new ReviewDiffUriCodec();
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
@@ -102,14 +113,85 @@ export class PullRequestReviewRuntime<Uri> {
       ...registration,
       snapshot: clone(snapshot),
     });
+    const existingCache = this.globalHeadFileCaches.get(snapshot.contextId);
+    if (existingCache !== undefined && existingCache.headSha !== snapshot.headSha) {
+      this.globalHeadFileCaches.delete(snapshot.contextId);
+    }
+    this.globalProviderDisposers.get(snapshot.contextId)?.();
+    this.globalProviderDisposers.set(
+      snapshot.contextId,
+      registerPullRequestGlobalHeadFileProvider(snapshot.contextId, async (request) => {
+        const current = this.registrations.get(snapshot.contextId);
+        if (current === undefined || current.snapshot.headSha !== request.headRevision) return [];
+        return this.readGlobalHeadFiles(snapshot.contextId, request.candidatePaths);
+      })
+    );
   }
 
   public unregister(contextId: string): void {
     this.registrations.delete(contextId);
+    this.globalHeadFileCaches.delete(contextId);
+    this.globalProviderDisposers.get(contextId)?.();
+    this.globalProviderDisposers.delete(contextId);
   }
 
   public hasContext(contextId: string): boolean {
     return this.registrations.has(contextId);
+  }
+
+  /**
+   * Reads every reviewable PR HEAD-side file requested by Global exactly once
+   * for the current immutable HEAD. Deleted/binary files have no reviewable
+   * HEAD text and are deliberately omitted.
+   */
+  public async readGlobalHeadFiles(
+    contextId: string,
+    candidatePaths: ReadonlySet<string>
+  ): Promise<readonly PullRequestGlobalHeadFile[]> {
+    const registration = this.requireRegistration(contextId);
+    const headSha = registration.snapshot.headSha;
+    let cache = this.globalHeadFileCaches.get(contextId);
+    if (cache === undefined || cache.headSha !== headSha) {
+      cache = { headSha, files: new Map<string, Promise<RevisionTextContentReadResult>>() };
+      this.globalHeadFileCaches.set(contextId, cache);
+    }
+
+    const files: PullRequestGlobalHeadFile[] = [];
+    for (const file of registration.snapshot.files) {
+      const repositoryPath = file.newPath;
+      if (
+        repositoryPath === undefined ||
+        file.status === "binary" ||
+        !candidatePaths.has(repositoryPath)
+      ) continue;
+
+      let pending = cache.files.get(repositoryPath);
+      if (pending === undefined) {
+        pending = registration.readTextContent({
+          contextId,
+          filePath: repositoryPath,
+          fileSystemPathSemantics: registration.fileSystemPathSemantics,
+          side: "modified",
+          revisionSource: "git-commit",
+          revision: headSha,
+        }).catch((error: unknown) => {
+          cache!.files.delete(repositoryPath);
+          throw error;
+        });
+        cache.files.set(repositoryPath, pending);
+      }
+      const result = await pending;
+      if (result.kind === "invalid-encoding") continue;
+      if (result.kind !== "found") {
+        throw new Error(`PR HEAD file is unavailable for Global scan: ${repositoryPath} (${result.kind})`);
+      }
+      files.push({
+        path: repositoryPath,
+        revisionId: headSha,
+        content: result.content,
+      });
+    }
+    return files;
   }
 
   public ownsDiffDocumentUri(uri: string): boolean {
