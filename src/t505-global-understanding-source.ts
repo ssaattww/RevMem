@@ -3,6 +3,10 @@ import { NodeRepositoryFilePathEnumerator } from "./adapters/repository-files/no
 import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "./adapters/state-repository/index";
 import type { ReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { GlobalUnderstandingBackgroundRecalculator, InMemoryGlobalUnderstandingProgressCache, type GlobalUnderstandingFileSource, type LoadedGlobalUnderstandingFile } from "./application/global-understanding/index";
+import {
+  readRegisteredPullRequestGlobalHeadFiles,
+  type PullRequestGlobalHeadFile,
+} from "./application/global-understanding/pull-request-global-head-file-registry";
 import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
 import { type FileSystemPathSemantics, type ResourceUri, WorkspaceIdentityService } from "./application/workspace-identity/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "./core/contracts/index";
@@ -21,6 +25,10 @@ export interface T505GlobalUnderstandingSourceDependencies {
   readonly storageUris: ReviewStateStorageUris;
   readonly exclusionPolicy: T505GlobalUnderstandingExclusionPolicy;
   readonly readOpenDocuments?: (owner: Readonly<T505GlobalUnderstandingOwner>) => readonly LoadedGlobalUnderstandingFile[];
+  readonly readPullRequestHeadFiles?: (
+    owner: Readonly<T505GlobalUnderstandingOwner>,
+    candidatePaths: ReadonlySet<string>
+  ) => Promise<readonly PullRequestGlobalHeadFile[]>;
   readonly fileSystemPathSemantics?: FileSystemPathSemantics;
   readonly yieldControl?: () => void | Promise<void>;
 }
@@ -62,17 +70,20 @@ const stableOpenedEvidence = (
  * Composition-root source for Global understanding.
  *
  * Issue #59 deliberately separates cheap repository path discovery from line
- * evidence. Only files observed through an open VS Code document contribute to
- * the line denominator; their last observed evidence remains available after the
- * editor closes for the lifetime of this Extension Host.
+ * evidence. Ordinary files contribute only after they have been opened. When a
+ * pull request is the active context, every reviewable changed HEAD-side file is
+ * scanned in full once, cached by exact PR HEAD, and promoted to the same opened
+ * evidence set. Closing an editor keeps its last observed evidence for this host.
  */
 export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntimeSource {
   private readonly repository: FileSystemReviewStateRepository;
   private readonly cache = new InMemoryGlobalUnderstandingProgressCache();
+  private readonly stableHash = new NodeSha256StableHash();
   private readonly identity = new WorkspaceIdentityService(new NodeSha256StableHash());
   private readonly pathSemantics: FileSystemPathSemantics;
   private readonly yieldControl: () => void | Promise<void>;
   private readonly openedEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
+  private readonly pullRequestEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private currentContext: CurrentContextUiSnapshot | undefined;
 
   public constructor(private readonly dependencies: T505GlobalUnderstandingSourceDependencies) {
@@ -90,8 +101,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const pathEnumeration = await new NodeRepositoryFilePathEnumerator(
       this.dependencies.exclusionPolicy
     ).enumerate(owner.repositoryRoot);
-    const evidenceByPath = this.captureOpenedDocuments(owner);
     const candidatePaths = new Set(pathEnumeration.includedPaths);
+    await this.capturePullRequestHeadFiles(owner, candidatePaths);
+    const evidenceByPath = this.captureOpenedDocuments(owner);
     const openedByPath = new Map(
       [...evidenceByPath].filter(([repositoryPath]) => candidatePaths.has(repositoryPath))
     );
@@ -136,16 +148,75 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     };
   }
 
-  private captureOpenedDocuments(
-    owner: T505GlobalUnderstandingOwner
-  ): ReadonlyMap<string, LoadedGlobalUnderstandingFile> {
+  private retainedOpenedEvidence(owner: T505GlobalUnderstandingOwner): Map<string, LoadedGlobalUnderstandingFile> {
     const key = ownerEvidenceKey(owner);
     let retained = this.openedEvidenceByOwner.get(key);
     if (retained === undefined) {
       retained = new Map<string, LoadedGlobalUnderstandingFile>();
       this.openedEvidenceByOwner.set(key, retained);
     }
+    return retained;
+  }
 
+  private async capturePullRequestHeadFiles(
+    owner: T505GlobalUnderstandingOwner,
+    candidatePaths: ReadonlySet<string>
+  ): Promise<void> {
+    if (owner.target.kind !== "pull-request") return;
+
+    const snapshots = this.dependencies.readPullRequestHeadFiles === undefined
+      ? await readRegisteredPullRequestGlobalHeadFiles({
+          contextId: owner.target.contextId,
+          headRevision: owner.currentRevisionId,
+          candidatePaths,
+        })
+      : await this.dependencies.readPullRequestHeadFiles(owner, candidatePaths);
+    const key = ownerEvidenceKey(owner);
+    let parsed = this.pullRequestEvidenceByOwner.get(key);
+    if (parsed === undefined) {
+      parsed = new Map<string, LoadedGlobalUnderstandingFile>();
+      this.pullRequestEvidenceByOwner.set(key, parsed);
+    }
+    const retained = this.retainedOpenedEvidence(owner);
+    const seen = new Set<string>();
+
+    for (const snapshot of snapshots) {
+      const canonicalPath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
+      if (!candidatePaths.has(canonicalPath)) continue;
+      if (snapshot.revisionId !== owner.currentRevisionId) {
+        throw new Error(`PR HEAD evidence revision does not match current owner revision: ${canonicalPath}`);
+      }
+      if (seen.has(canonicalPath)) {
+        throw new Error(`Duplicate PR HEAD evidence path: ${canonicalPath}`);
+      }
+      seen.add(canonicalPath);
+
+      let evidence = parsed.get(canonicalPath);
+      if (evidence === undefined) {
+        const lines = snapshot.content.split(/\r\n|\r|\n/u);
+        const nonEmptyLines: number[] = [];
+        for (let line = 0; line < lines.length; line += 1) {
+          if (lines[line]!.trim().length > 0) nonEmptyLines.push(line);
+        }
+        const contentHash = this.stableHash.digest(snapshot.content);
+        evidence = {
+          path: canonicalPath,
+          revisionId: owner.currentRevisionId,
+          lineCount: lines.length,
+          nonEmptyLines,
+          contentHash,
+          cacheKey: `pr-head:${owner.target.repositoryId}:${owner.target.contextId}:${owner.currentRevisionId}:${canonicalPath}:${contentHash}`
+        };
+        parsed.set(canonicalPath, evidence);
+      }
+      retained.set(canonicalPath, stableOpenedEvidence(evidence, canonicalPath));
+    }
+  }
+
+  private captureOpenedDocuments(
+    owner: T505GlobalUnderstandingOwner
+  ): ReadonlyMap<string, LoadedGlobalUnderstandingFile> {
+    const retained = this.retainedOpenedEvidence(owner);
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
     for (const snapshot of this.dependencies.readOpenDocuments?.(owner) ?? []) {
       const canonicalPath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
