@@ -51,8 +51,11 @@ const emptyGlobalState = (repositoryId: string, currentRevisionId: string): Repo
   updatedAt: new Date(0).toISOString()
 });
 
+const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner): string =>
+  JSON.stringify(owner.target);
+
 const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner): string =>
-  `${JSON.stringify(owner.target)}\0${owner.currentRevisionId}`;
+  `${ownerIdentityKey(owner)}\0${owner.currentRevisionId}`;
 
 const stableOpenedEvidence = (
   snapshot: LoadedGlobalUnderstandingFile,
@@ -72,8 +75,9 @@ const stableOpenedEvidence = (
  * Issue #59 deliberately separates cheap repository path discovery from line
  * evidence. Ordinary files contribute only after they have been opened. When a
  * pull request is the active context, every reviewable changed HEAD-side file is
- * scanned in full once, cached by exact PR HEAD, and promoted to the same opened
- * evidence set. Closing an editor keeps its last observed evidence for this host.
+ * scanned in full once from the immutable PR snapshot, cached by exact PR HEAD,
+ * and promoted to the same opened evidence set. Working-tree path existence does
+ * not gate immutable PR evidence. Only the active revision is retained per owner.
  */
 export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntimeSource {
   private readonly repository: FileSystemReviewStateRepository;
@@ -84,6 +88,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   private readonly yieldControl: () => void | Promise<void>;
   private readonly openedEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly pullRequestEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
+  private readonly activeEvidenceKeyByOwner = new Map<string, string>();
   private currentContext: CurrentContextUiSnapshot | undefined;
 
   public constructor(private readonly dependencies: T505GlobalUnderstandingSourceDependencies) {
@@ -97,15 +102,18 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   public async recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const owner = this.resolveOwner(this.currentContext);
     if (owner === undefined) return undefined;
+    this.activateEvidenceRevision(owner);
 
     const pathEnumeration = await new NodeRepositoryFilePathEnumerator(
       this.dependencies.exclusionPolicy
     ).enumerate(owner.repositoryRoot);
+    this.requireActiveEvidenceKey(owner);
     const candidatePaths = new Set(pathEnumeration.includedPaths);
-    await this.capturePullRequestHeadFiles(owner, candidatePaths);
+    const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths);
+    const availablePaths = new Set([...candidatePaths, ...pullRequestHeadPaths]);
     const evidenceByPath = this.captureOpenedDocuments(owner);
     const openedByPath = new Map(
-      [...evidenceByPath].filter(([repositoryPath]) => candidatePaths.has(repositoryPath))
+      [...evidenceByPath].filter(([repositoryPath]) => availablePaths.has(repositoryPath))
     );
     const included = [...openedByPath].map(([repositoryPath, evidence]) => ({
       path: repositoryPath,
@@ -113,11 +121,13 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }));
 
     const persisted = await this.repository.loadGlobal(owner.target);
+    this.requireActiveEvidenceKey(owner);
     const globalState = persisted?.currentRevisionId === owner.currentRevisionId
       ? persisted
       : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
     const source: GlobalUnderstandingFileSource = {
       load: async (repositoryPath, revisionId) => {
+        this.requireActiveEvidenceKey(owner);
         const evidence = openedByPath.get(repositoryPath);
         if (evidence === undefined) {
           throw new Error(`Opened Global evidence is unavailable: ${repositoryPath}`);
@@ -139,17 +149,39 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       openFilePaths: [...openedByPath.keys()],
       configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`
     });
+    this.requireActiveEvidenceKey(owner);
     return {
       progress: result.progress,
       openedFileCount: openedByPath.size,
-      unopenedFileCount: Math.max(0, pathEnumeration.includedPaths.length - openedByPath.size),
+      unopenedFileCount: Math.max(0, availablePaths.size - openedByPath.size),
       excludedFileCount: pathEnumeration.excluded.length,
       prunedExcludedDirectoryCount: pathEnumeration.excludedDirectories.length
     };
   }
 
+  private activateEvidenceRevision(owner: T505GlobalUnderstandingOwner): string {
+    const identityKey = ownerIdentityKey(owner);
+    const nextEvidenceKey = ownerEvidenceKey(owner);
+    const previousEvidenceKey = this.activeEvidenceKeyByOwner.get(identityKey);
+    if (previousEvidenceKey !== undefined && previousEvidenceKey !== nextEvidenceKey) {
+      this.openedEvidenceByOwner.delete(previousEvidenceKey);
+      this.pullRequestEvidenceByOwner.delete(previousEvidenceKey);
+    }
+    this.activeEvidenceKeyByOwner.set(identityKey, nextEvidenceKey);
+    return nextEvidenceKey;
+  }
+
+  private requireActiveEvidenceKey(owner: T505GlobalUnderstandingOwner): string {
+    const identityKey = ownerIdentityKey(owner);
+    const expectedEvidenceKey = ownerEvidenceKey(owner);
+    if (this.activeEvidenceKeyByOwner.get(identityKey) !== expectedEvidenceKey) {
+      throw new Error("Global owner revision changed during recalculation");
+    }
+    return expectedEvidenceKey;
+  }
+
   private retainedOpenedEvidence(owner: T505GlobalUnderstandingOwner): Map<string, LoadedGlobalUnderstandingFile> {
-    const key = ownerEvidenceKey(owner);
+    const key = this.requireActiveEvidenceKey(owner);
     let retained = this.openedEvidenceByOwner.get(key);
     if (retained === undefined) {
       retained = new Map<string, LoadedGlobalUnderstandingFile>();
@@ -161,9 +193,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   private async capturePullRequestHeadFiles(
     owner: T505GlobalUnderstandingOwner,
     candidatePaths: ReadonlySet<string>
-  ): Promise<void> {
-    if (owner.target.kind !== "pull-request") return;
+  ): Promise<ReadonlySet<string>> {
+    if (owner.target.kind !== "pull-request") return new Set<string>();
 
+    this.requireActiveEvidenceKey(owner);
     const snapshots = this.dependencies.readPullRequestHeadFiles === undefined
       ? await readRegisteredPullRequestGlobalHeadFiles({
           contextId: owner.target.contextId,
@@ -171,7 +204,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           candidatePaths,
         })
       : await this.dependencies.readPullRequestHeadFiles(owner, candidatePaths);
-    const key = ownerEvidenceKey(owner);
+    const key = this.requireActiveEvidenceKey(owner);
     let parsed = this.pullRequestEvidenceByOwner.get(key);
     if (parsed === undefined) {
       parsed = new Map<string, LoadedGlobalUnderstandingFile>();
@@ -179,10 +212,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }
     const retained = this.retainedOpenedEvidence(owner);
     const seen = new Set<string>();
+    const acceptedPaths = new Set<string>();
 
     for (const snapshot of snapshots) {
       const canonicalPath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
-      if (!candidatePaths.has(canonicalPath)) continue;
+      if (this.dependencies.exclusionPolicy.evaluate({ path: canonicalPath, isBinary: false }).excluded) continue;
       if (snapshot.revisionId !== owner.currentRevisionId) {
         throw new Error(`PR HEAD evidence revision does not match current owner revision: ${canonicalPath}`);
       }
@@ -190,6 +224,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         throw new Error(`Duplicate PR HEAD evidence path: ${canonicalPath}`);
       }
       seen.add(canonicalPath);
+      acceptedPaths.add(canonicalPath);
 
       let evidence = parsed.get(canonicalPath);
       if (evidence === undefined) {
@@ -211,6 +246,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
       retained.set(canonicalPath, stableOpenedEvidence(evidence, canonicalPath));
     }
+    return acceptedPaths;
   }
 
   private captureOpenedDocuments(
