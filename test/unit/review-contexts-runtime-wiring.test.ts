@@ -60,3 +60,14 @@ test("T405 production entry delegates Review Contexts composition to the T405 ru
   assert.match(composition, /registerReviewContextsRuntime/u);
   assert.match(composition, /ReviewContextsController/u);
 });
+
+test("Issue #57 maps an existing owner-wide Global revision before publishing a new PR context", async () => {
+  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+
+  assert.match(composition, /GitContextRevisionMapper/u);
+  assert.match(composition, /currentGlobalForNewPullRequest[\s\S]*\.map\(/u);
+  assert.doesNotMatch(
+    composition,
+    /現在のGlobal stateをPR headへ安全に対応付けできません/u,
+  );
+});
