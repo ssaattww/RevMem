@@ -19,7 +19,7 @@ import { T505GlobalUnderstandingSource } from "../../src/t505-global-understandi
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-test("T505 source joins persisted Global state with included files and separate exclusion diagnostics", async (t) => {
+test("T505 source keeps unopened file contents out of the line denominator while preserving path diagnostics", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t505-source-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repositoryRoot = path.join(root, "repository");
@@ -98,18 +98,14 @@ test("T505 source joins persisted Global state with included files and separate 
   const current = await source.recalculate();
   assert.deepEqual(current, {
     progress: {
-      reviewedNonEmptyLineCount: 1,
-      totalNonEmptyLineCount: 2,
-      progress: 1 / 2,
-      files: [{
-        path: "src/a.ts",
-        state: "current",
-        reviewedNonEmptyLineCount: 1,
-        totalNonEmptyLineCount: 2,
-        progress: 1 / 2
-      }]
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: 0,
+      progress: 1,
+      files: []
     },
-    excludedFileCount: 1,
+    openedFileCount: 0,
+    unopenedFileCount: 2,
+    excludedFileCount: 0,
     prunedExcludedDirectoryCount: 1
   });
 
@@ -130,8 +126,10 @@ test("T505 source joins persisted Global state with included files and separate 
   });
   const staleRevision = await source.recalculate();
   assert.equal(staleRevision?.progress.reviewedNonEmptyLineCount, 0);
-  assert.equal(staleRevision?.progress.totalNonEmptyLineCount, 2);
-  assert.equal(staleRevision?.progress.files[0]?.state, "missing");
+  assert.equal(staleRevision?.progress.totalNonEmptyLineCount, 0);
+  assert.deepEqual(staleRevision?.progress.files, []);
+  assert.equal(staleRevision?.openedFileCount, 0);
+  assert.equal(staleRevision?.unopenedFileCount, 2);
 });
 
 test("Issue #59 uses only previously opened files for Global line progress and reports unopened files separately", async (t) => {
