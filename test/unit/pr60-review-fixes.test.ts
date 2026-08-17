@@ -232,8 +232,12 @@ test("R60-003 superseded owner revisions evict retained Global evidence instead 
   assert.equal(returnedToSupersededRevision?.openedFileCount, 0);
 });
 
-test("R60-002 authoritative design specifies opened-only ordinary Global semantics and the immutable PR full-scan exception", async () => {
-  const design = await readFile("doc/design/vscode-review-range-tracker-design.md", "utf8");
+test("R60-002 breaking-change policy supersedes rev4 Global semantics with opened-only and immutable-PR rules", async () => {
+  const breakingChanges = await readFile("Design/BreakingChanges.md", "utf8");
+  assert.match(
+    breakingChanges,
+    /supersedes `doc\/design\/vscode-review-range-tracker-design\.md` rev4 §11\.3\s+and §12/u,
+  );
   for (const fragment of [
     "通常コンテキストでは、一度でも開いたことがあるfile",
     "immutableなPR snapshot",
@@ -241,6 +245,6 @@ test("R60-002 authoritative design specifies opened-only ordinary Global semanti
     "deleted fileはBASE側全文",
     "Global分母にはHEAD側",
   ]) {
-    assert.match(design, new RegExp(fragment, "u"), `missing design requirement: ${fragment}`);
+    assert.match(breakingChanges, new RegExp(fragment, "u"), `missing superseding design requirement: ${fragment}`);
   }
 });
