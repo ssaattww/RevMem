@@ -1,0 +1,347 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: implementation-handoff
+  generated_at: 2026-08-17T04:05:54Z
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #57 / PR #58"
+task_id: null
+branch: fix/issue-57-review-context-redetect
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: b780f764bb9a133e9f0ca9938faf93909b2a51be
+  commit_range: 31cce9aebaa95592d9570680a59e460475b489b7..b780f764bb9a133e9f0ca9938faf93909b2a51be
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "Issue #57 error handling request"
+    summary: "Fix the errors reported in Issue #57 and proceed autonomously under the uploaded worker skills."
+  - source: repository_instruction
+    reference: AGENTS.md
+    summary: "Follow repository development and breaking-change rules; this change is non-breaking."
+  - source: issue
+    reference: "https://github.com/ssaattww/RevMem/issues/57"
+    summary: "Review Contexts fails when current Global cannot be associated with PR head; issue comment also reports git remote get-url origin exit 128."
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md
+    summary: "When creating a new context, map an older Global revision to the new revision and atomically publish Context+Global; GitHub failures must not block local review operation."
+  - source: other
+    reference: uploaded chatgpt-worker-skills.zip
+    summary: "Use TDD, preserve exact-head CI evidence, write detailed report and handoff, update PR, and do not merge."
+
+development_policy:
+  method: TDD
+  testing_order: "add regression tests -> confirm RED on exact-head CI -> implement -> confirm GREEN on exact-head CI -> persist report/handoff -> re-check final exact-head CI"
+  governing_source: user_instruction + uploaded implementation-worker skill
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - focused T405/T502/T506 suites
+    - Temporary Git integration tests
+    - Mock GitHub integration tests
+    - VS Code Extension Host tests
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - combined command logs
+    - environment and generated/source context
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - update_issue
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/adapters/local-git/local-git-adapter.ts
+      reason: "Issue #57 unusable remote URL handling."
+    - path_or_operation: src/t405-review-contexts-runtime.ts
+      reason: "Issue #57 Global-to-PR-head mapping before PR context creation."
+    - path_or_operation: test/unit/local-git-adapter.test.ts
+      reason: "TDD regression coverage for remote get-url failure."
+    - path_or_operation: test/unit/review-contexts-runtime-wiring.test.ts
+      reason: "TDD regression coverage for new PR Global mapping wiring."
+    - path_or_operation: reports/issue-57-review-context-redetect-fix-20260817.md
+      reason: "Required detailed implementation report."
+    - path_or_operation: handoffs/issue-57-review-context-redetect-fix-20260817.yaml
+      reason: "Required lossless handoff packet."
+    - path_or_operation: "PR #58 metadata/comment"
+      reason: "Required concise completion summary."
+  forbidden:
+    - path_or_operation: tasks/tasks-status.md
+      reason: "Issue #57 is not a task-progress transition."
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: "Implementation is being brought into compliance with existing design; no design change."
+    - path_or_operation: .github/workflows/ci.yml
+      reason: "Required failure diagnostic artifact workflow already exists and was verified."
+    - path_or_operation: merge
+      reason: "Merge is reserved for the user."
+
+scope:
+  - "Map owner-wide Global state to the detected PR/current HEAD revision before creating a new PR context."
+  - "Preserve local Git context when a listed identity remote has no usable URL."
+  - "Add TDD regressions for both Issue #57 failure paths."
+non_goals:
+  - "Change OAuth scopes or GitHub authentication policy."
+  - "Change task tracking or design specifications."
+  - "Merge PR #58."
+
+files:
+  changed:
+    - path: test/unit/review-contexts-runtime-wiring.test.ts
+      purpose: "RED/GREEN regression for new PR Global mapping production wiring."
+    - path: test/unit/local-git-adapter.test.ts
+      purpose: "RED/GREEN regression for remote get-url exit 128 fallback."
+    - path: src/adapters/local-git/local-git-adapter.ts
+      purpose: "Try usable remotes and fall back to root-derived repository identity when none resolve."
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "Use GitContextRevisionMapper and exact expected Global CAS when creating a new PR context."
+    - path: reports/issue-57-review-context-redetect-fix-20260817.md
+      purpose: "Detailed implementation evidence."
+    - path: handoffs/issue-57-review-context-redetect-fix-20260817.yaml
+      purpose: "Transportable schema v3 continuation state."
+  inspected:
+    - path: AGENTS.md
+      purpose: "Repository instructions."
+    - path: .github/workflows/ci.yml
+      purpose: "Confirm failure diagnostics workflow exists."
+    - path: tools/run-ci-command.mjs
+      purpose: "Confirm stdout/stderr/combined/result diagnostic capture."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Confirm Global mapping and local-operation fallback requirements."
+    - path: src/application/review-context/history-rewrite-git-context-revision-mapper.ts
+      purpose: "Confirm reusable GitContextRevisionMapper behavior."
+    - path: src/application/github-pr-context/github-pull-request-context-layer-store.ts
+      purpose: "Confirm PR create/update CAS and revision invariants."
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "No task-status transition."
+    - path_or_area: Design/BreakingChanges.md
+      reason: "No breaking change."
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Existing diagnostics satisfy the required artifact policy."
+
+commands:
+  - command: "GitHub Actions CI run 31992818785"
+    purpose: "TDD RED on the exact regression-test HEAD."
+    exit_code: unknown
+    result: failed
+    head_sha: 335565f73ca7e5dfec27555040fef908dcf79979
+    evidence: "Exact-head run failed in Unit tests; 501 total, 500 pass, 1 intended Issue #57 wiring regression fail."
+  - command: "GitHub Actions CI run 31993055281"
+    purpose: "Broad GREEN validation of implementation HEAD."
+    exit_code: unknown
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "Build, typecheck, architecture, lint, Unit, focused suites, Temporary Git, Mock GitHub, and Extension Host all succeeded."
+
+tests:
+  - name: "Issue #57 maps an existing owner-wide Global revision before publishing a new PR context"
+    phase: red
+    result: failed
+    head_sha: 335565f73ca7e5dfec27555040fef908dcf79979
+    evidence: "Exact-head CI 31992818785 failed because production runtime did not use GitContextRevisionMapper."
+  - name: "Issue #57 keeps local Git context usable when a listed remote URL cannot be resolved"
+    phase: red
+    result: not_run
+    head_sha: 335565f73ca7e5dfec27555040fef908dcf79979
+    evidence: "Added before implementation; RED CI stopped at the earlier Unit failure before Temporary Git integration."
+  - name: "Unit tests"
+    phase: green
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281 step Unit tests succeeded."
+  - name: "T405 Review Contexts follow-up tests"
+    phase: regression
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281."
+  - name: "T502 Global mapping and display priority tests"
+    phase: regression
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281."
+  - name: "Temporary Git integration tests"
+    phase: regression
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281; includes local Git adapter regression path."
+  - name: "Mock GitHub integration tests"
+    phase: regression
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281."
+  - name: "VS Code Extension Host tests"
+    phase: verification
+    result: passed
+    head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+    evidence: "CI 31993055281."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 31993055281
+  head_sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: b780f764bb9a133e9f0ca9938faf93909b2a51be
+  commits:
+    - sha: 22791515a51f951c7896a27e1cafa5b52c1fad49
+      purpose: "Add Global mapping RED regression."
+    - sha: 335565f73ca7e5dfec27555040fef908dcf79979
+      purpose: "Add unusable remote RED regression."
+    - sha: c8536e49807a95bc99fa480c0bf98bf9fc005d0d
+      purpose: "Tolerate unusable identity remotes while preserving local context."
+    - sha: b780f764bb9a133e9f0ca9938faf93909b2a51be
+      purpose: "Map Global state before new PR context creation."
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: "GitHub Actions artifact 9275883653"
+      summary: "ci-failure-diagnostics-31992818785-1 contains RED test logs and diagnostic context."
+    - type: standard_output
+      location: "test-output/ci/*-stdout.log in RED artifact"
+      summary: "Captured by tools/run-ci-command.mjs."
+    - type: standard_error
+      location: "test-output/ci/*-stderr.log in RED artifact"
+      summary: "Captured by tools/run-ci-command.mjs."
+    - type: test_result
+      location: "CI 31992818785 / job 95279238495"
+      summary: "501 Unit tests, 500 pass, 1 intended RED failure."
+  blocked_items: []
+  summary:
+    - "New PR context creation now maps older owner-wide Global state to current immutable Git revision before atomic create CAS."
+    - "Unusable remote URLs no longer make local repository inspection fail; a usable alternate remote or root-derived identity is used."
+    - "Implementation HEAD passed exact-head broad CI 31993055281."
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "No independent review was requested or performed in this implementation session."
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-57-review-context-redetect-fix-20260817.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed report records RED/GREEN exact-head CI, root causes, implementation, diagnostics, and remaining manual E2E risk."
+
+findings: []
+held: []
+unexplored:
+  - area: "Manual live private-repository reproduction in the user's environment"
+    blocker: "Worker does not have the user's local VS Code/private repository runtime session as an executable E2E fixture."
+    remaining_risk: "Environment-specific Git/VS Code authentication interactions are covered by automated boundaries but not manually reproduced on the user's private repository."
+    verdict_impact: "Does not change implementation outcome; exact-head automated CI passed."
+unknown:
+  - field_or_fact: target.current_head
+    reason: "The report/handoff persistence commit that contains this packet has not been created yet; its SHA must be recorded externally after persistence."
+not_applicable:
+  - field_or_area: independent_final_review
+    reason: "Not requested in this implementation task."
+  - field_or_area: merge
+    reason: "Merge is reserved for the user."
+remaining_risks:
+  - "Manual live reproduction on the user's private repository has not been executed by this worker."
+  - "A final exact-head CI run must be checked again after this report/handoff persistence commit changes PR HEAD."
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/plain
+    payload: |
+      outcome=completed
+      red_head=335565f73ca7e5dfec27555040fef908dcf79979
+      red_ci=31992818785 failure
+      implementation_head=b780f764bb9a133e9f0ca9938faf93909b2a51be
+      green_ci=31993055281 success
+      commits=22791515a51f951c7896a27e1cafa5b52c1fad49,335565f73ca7e5dfec27555040fef908dcf79979,c8536e49807a95bc99fa480c0bf98bf9fc005d0d,b780f764bb9a133e9f0ca9938faf93909b2a51be
+      implementation summary: Global mismatch is mapped through GitContextRevisionMapper before new PR context create; unusable remote URLs fail over without dropping local Git context.
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: |
+      report_type=implementation_report
+      path=reports/issue-57-review-context-redetect-fix-20260817.md
+      evidence includes Issue #57, TDD RED exact-head CI 31992818785 and diagnostic artifact 9275883653, implementation commits, and GREEN exact-head CI 31993055281.
+extensions: []
+
+next_action:
+  type: user_decision
+  target_skill: none
+  mode: null
+  summary: "After persistence, verify PR #58 final current HEAD exact-head CI, post concise PR comment, then leave merge to the user."
+  instructions:
+    - "Resolve the repository persistence commit SHA and update target identity externally in PR metadata/comment."
+    - "Check only a workflow run whose head_sha exactly equals PR #58 final current HEAD."
+    - "If final exact-head CI succeeds, post the concise PR report with final HEAD/run ID."
+    - "Do not merge PR #58."
+  required_attachments_or_references:
+    - "Issue #57"
+    - "PR #58"
+    - reports/issue-57-review-context-redetect-fix-20260817.md
+    - "RED CI 31992818785 / artifact 9275883653"
+    - "GREEN implementation CI 31993055281"
+  requested_authorized_actions:
+    - read_repository
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-57-review-context-redetect-fix-20260817.yaml
+  packet_url: null
+  transport_note: "Packet is persisted with the implementation report. Its enclosing persistence commit SHA is intentionally recorded externally after creation because the packet cannot self-reference the commit that contains it."

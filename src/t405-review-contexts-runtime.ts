@@ -25,6 +25,7 @@ import {
   type ReviewStateTransactionLike,
   type ReviewStateStorageUris,
 } from "./adapters/state-repository/index";
+import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import type { RevisionTextContentReadResult } from "./application/diff-document/index";
 import { GitHubPullRequestCacheService } from "./application/github-pr-cache/index";
 import type { ReviewHistoryRecorder } from "./application/review-history/index";
@@ -35,7 +36,12 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
-import type { GitRevisionMappingSource } from "./application/review-context/index";
+import {
+  GitContextRevisionMapper,
+  GitReviewContextResolver,
+  type GitRevisionMappingSource,
+  type ResolvedGitReviewContext,
+} from "./application/review-context/index";
 import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
@@ -107,6 +113,11 @@ interface LocalRepositoryOwner {
   readonly headRevision: string;
   readonly branchRef?: string;
   readonly snapshot: CurrentContextUiSnapshot;
+}
+
+interface PreparedNewPullRequestGlobal {
+  readonly expectedGlobalState: RepositoryGlobalState | undefined;
+  readonly nextGlobalState: RepositoryGlobalState;
 }
 
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
@@ -418,21 +429,56 @@ const pullRequestState = (
 
 const currentGlobalForNewPullRequest = async (
   repository: T405ReviewStateRepository,
-  repositoryId: string,
-  headSha: string,
-): Promise<RepositoryGlobalState | undefined> => {
-  const current = await repository.loadGlobal({
+  current: ResolvedGitReviewContext,
+  mapper: GitContextRevisionMapper,
+  mappingOptions: ReturnType<typeof resolveReviewRangeMappingOptions>,
+): Promise<PreparedNewPullRequestGlobal> => {
+  const expectedGlobalState = await repository.loadGlobal({
     kind: "git",
-    repositoryId,
+    repositoryId: current.repositoryId,
     contextId: "review-contexts-current-global",
   });
-  if (current !== undefined) return current.currentRevisionId === headSha ? current : undefined;
+  if (expectedGlobalState === undefined) {
+    return {
+      expectedGlobalState: undefined,
+      nextGlobalState: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        repositoryId: current.repositoryId,
+        currentRevisionId: current.revisionId,
+        files: {},
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  }
+  if (expectedGlobalState.currentRevisionId === current.revisionId) {
+    return {
+      expectedGlobalState,
+      nextGlobalState: expectedGlobalState,
+    };
+  }
+
+  const branch = current.contextState.branch;
+  if (branch === undefined) {
+    throw new Error("Git revision mapping requires branch-schema persistence.");
+  }
+  const mapped = await mapper.map({
+    current,
+    contextState: {
+      ...current.contextState,
+      branch: {
+        ...branch,
+        headRevision: expectedGlobalState.currentRevisionId,
+      },
+      files: {},
+      updatedAt: expectedGlobalState.updatedAt,
+    },
+    globalState: expectedGlobalState,
+    fileSystemPathSemantics: PATH_SEMANTICS,
+    options: mappingOptions,
+  });
   return {
-    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-    repositoryId,
-    currentRevisionId: headSha,
-    files: {},
-    updatedAt: new Date().toISOString(),
+    expectedGlobalState,
+    nextGlobalState: mapped.globalState,
   };
 };
 
@@ -446,6 +492,11 @@ export function registerT405ReviewContextsRuntime(
     options.context.workspaceState,
   );
   const stableHash = new NodeSha256StableHash();
+  const gitContextResolver = new GitReviewContextResolver({ stableHash });
+  const gitContextRevisionMapper = new GitContextRevisionMapper({
+    source: options.git,
+    stableHash,
+  });
   const gitExecutor = new NodeGitCommandExecutor();
   const auth = new VsCodeGitHubAuthenticationProvider(
     vscode.authentication,
@@ -764,22 +815,31 @@ export function registerT405ReviewContextsRuntime(
             displayName: state.displayName,
           });
         } else {
-          const global = await currentGlobalForNewPullRequest(
-            repository,
-            local.repositoryId,
-            resolution.pullRequest.headSha
-          );
-          if (global === undefined) {
-            throw new Error("現在のGlobal stateをPR headへ安全に対応付けできません。");
-          }
-          const expectedGlobal = await repository.loadGlobal({
-            kind: "git",
+          const current = gitContextResolver.resolve({
             repositoryId: local.repositoryId,
-            contextId: state.contextId,
+            rootPath: local.rootPath,
+            branch: local.branch,
+            head: local.head,
           });
+          const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
+          const preparedGlobal = await currentGlobalForNewPullRequest(
+            repository,
+            current,
+            gitContextRevisionMapper,
+            resolveReviewRangeMappingOptions({
+              ignoreWhitespaceChanges: reviewRangeConfiguration.get(
+                "ignoreWhitespaceChanges",
+                false,
+              ),
+              ignoreEolChanges: reviewRangeConfiguration.get(
+                "ignoreEolChanges",
+                false,
+              ),
+            }),
+          );
           await contextStateService.create(
-            { contextState: state, globalState: global },
-            expectedGlobal
+            { contextState: state, globalState: preparedGlobal.nextGlobalState },
+            preparedGlobal.expectedGlobalState
           );
         }
         await currentPullRequestSelection.select(

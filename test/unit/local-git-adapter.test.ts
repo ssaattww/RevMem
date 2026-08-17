@@ -265,6 +265,46 @@ test("a repository without remotes receives a stable root-derived identity", asy
   assert.notEqual(first.repository.repositoryId, otherRoot.repository.repositoryId);
 });
 
+test("Issue #57 keeps local Git context usable when a listed remote URL cannot be resolved", async () => {
+  const executor = new RecordingGitCommandExecutor();
+  executor.queue(undefined, ["--version"], success("git version 2.55.0\n"));
+  executor.queue(
+    repositorySource,
+    ["rev-parse", "--show-toplevel"],
+    success(`${repositoryRoot}\n`)
+  );
+  executor.queue(repositoryRoot, ["remote"], success("origin\n"));
+  executor.queue(
+    repositoryRoot,
+    ["remote", "get-url", "origin"],
+    failure(128, "fatal: no URL configured for remote 'origin'\n")
+  );
+  executor.queue(
+    repositoryRoot,
+    ["symbolic-ref", "--quiet", "HEAD"],
+    success("refs/heads/main\n")
+  );
+  executor.queue(
+    repositoryRoot,
+    ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    success("0123456789abcdef0123456789abcdef01234567\n")
+  );
+
+  const inspection = await createMetadataAdapter(executor).inspectRepository(
+    repositorySource
+  );
+
+  assert.equal(inspection.kind, "repository");
+  if (inspection.kind !== "repository") {
+    return;
+  }
+  assert.equal(inspection.repository.remote, undefined);
+  assert.match(inspection.repository.repositoryId, /^git-root:[0-9a-f]{64}$/u);
+  assert.equal(inspection.repository.branch.kind, "branch");
+  assert.equal(inspection.repository.head, "0123456789abcdef0123456789abcdef01234567");
+  executor.assertExhausted();
+});
+
 test("detached HEAD is distinguished while retaining the exact HEAD object", async () => {
   const executor = new RecordingGitCommandExecutor();
   queueRepositoryInspection(executor, {
