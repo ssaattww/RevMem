@@ -237,3 +237,111 @@ test("Issue #59 uses only previously opened files for Global line progress and r
   assert.equal(afterCloseCounts?.openedFileCount, 1);
   assert.equal(afterCloseCounts?.unopenedFileCount, 1);
 });
+
+test("Issue #59 PR full HEAD scan is promoted to opened Global evidence", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-issue-59-pr-source-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  const globalStorage = path.join(root, "global-storage");
+  const workspaceStorage = path.join(root, "workspace-storage");
+  await mkdir(repositoryRoot, { recursive: true });
+  const pullRequestText = "reviewed\n\nsecond\nthird\n";
+  await writeFile(path.join(repositoryRoot, "pr.ts"), pullRequestText, "utf8");
+  await writeFile(path.join(repositoryRoot, "untouched.ts"), "not\nin\npr\n", "utf8");
+
+  const repositoryId = "repository-issue-59-pr";
+  const contextId = "github-pr:repository-issue-59-pr#59";
+  const baseRevisionId = "a".repeat(40);
+  const revisionId = "b".repeat(40);
+  const occurredAt = "2026-08-17T08:00:00.000Z";
+  const contextState: ReviewContextState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId,
+    kind: "pull-request",
+    repositoryId,
+    displayName: "PR #59",
+    pullRequest: {
+      host: "github.com",
+      owner: "ssaattww",
+      repository: "RevMem",
+      number: 59,
+      state: "open",
+      baseSha: baseRevisionId,
+      headSha: revisionId
+    },
+    files: {},
+    createdAt: occurredAt,
+    updatedAt: occurredAt
+  };
+  const globalState: RepositoryGlobalState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    repositoryId,
+    currentRevisionId: revisionId,
+    files: {
+      "pr-file": {
+        fileId: "pr-file",
+        currentPath: "pr.ts",
+        revisionId,
+        reviewed: [{ startLine: 0, endLineExclusive: 1 }],
+        contentHash: sha256(pullRequestText),
+        updatedAt: occurredAt
+      }
+    },
+    updatedAt: occurredAt
+  };
+  const storageUris = {
+    globalStorageUri: { fsPath: globalStorage },
+    storageUri: { fsPath: workspaceStorage }
+  };
+  await new FileSystemReviewStateRepository({ storageUris }).save(
+    { kind: "pull-request", repositoryId, contextId },
+    { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState }
+  );
+
+  const dependencies = {
+    storageUris,
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    readPullRequestHeadFiles: async (
+      _owner: unknown,
+      candidatePaths: ReadonlySet<string>
+    ) => {
+      assert.equal(candidatePaths.has("pr.ts"), true);
+      assert.equal(candidatePaths.has("untouched.ts"), true);
+      return [{ path: "pr.ts", revisionId, content: pullRequestText }];
+    },
+    fileSystemPathSemantics: "posix" as const,
+    yieldControl: () => undefined
+  } as ConstructorParameters<typeof T505GlobalUnderstandingSource>[0] & {
+    readonly readPullRequestHeadFiles: (
+      owner: unknown,
+      candidatePaths: ReadonlySet<string>
+    ) => Promise<readonly { readonly path: string; readonly revisionId: string; readonly content: string }[]>;
+  };
+  const source = new T505GlobalUnderstandingSource(dependencies);
+  source.setContext({
+    context: {
+      kind: "pull-request",
+      label: "#59",
+      detail: "Issue #59",
+      baseRevision: baseRevisionId,
+      headRevision: revisionId,
+      selection: {
+        kind: "pull-request",
+        repositoryId,
+        repositoryRoot,
+        contextId,
+        pullRequestNumber: 59,
+        headRevision: revisionId
+      }
+    },
+    progress: undefined
+  });
+
+  const current = await source.recalculate();
+  assert.equal(current?.progress.reviewedNonEmptyLineCount, 1);
+  assert.equal(current?.progress.totalNonEmptyLineCount, 3);
+  assert.deepEqual(current?.progress.files.map((file) => file.path), ["pr.ts"]);
+  assert.equal(current?.openedFileCount, 1);
+  assert.equal(current?.unopenedFileCount, 1);
+});
