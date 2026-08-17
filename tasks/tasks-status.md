@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近実装タスク: T506 複数contextとGlobal集計の統合・Extension Host試験（PR #55、独立review finding修正中）
-- 現在のタスク: T506 Review finding closure（PR #55）
-- 次のタスク: T506の独立review finding closureと必須PR check確認後のsquash merge
-- 実装状態: T405は全独立review finding closure済みでmain統合済み。T506はPR #55でfinding closure中
-- 独立review verdict: T405はclosure済み。T506 source HEAD `5d21756e20efb4c7fab8fbee932178ab092b2067` の3 findingをPR #55で修正中
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
+- 直近完了タスク: T603 schema migration・破損隔離・回復（PR #53）
+- 現在のタスク: なし
+- 次のタスク: 未選択（依存解消済み候補はT406またはT604）
+- 実装状態: T405、T506、T603は独立review finding closureとexact-head CIを完了し、mainへsquash merge済み
+- 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`
 - ブロッカー: なし
-- Gitブランチ: `task/t506-global-integration`
-- Pull Request: PR #55（T506 finding closure中）
+- Gitブランチ: `main`
+- Pull Request: なし
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
 - T404 implementation handoff: `reports/issue-1-t404-handoff-20260806185200.yaml`
 - T404初回通常レビューレポート: `reports/issue-1-t404-review-20260806191327.md`
@@ -44,6 +44,12 @@
 - T405独立reviewレポート: `reports/issue-1-t405-independent-final-review-20260817080505.md`
 - T405独立review finding対応レポート: `reports/issue-1-t405-independent-review-followup-20260817081448.md`
 - T405独立review finding対応R2レポート: `reports/issue-1-t405-independent-review-followup-r2-20260817083317.md`
+- T506独立reviewレポート: `reports/issue-1-t506-independent-final-review-20260817085641.md`
+- T506独立review finding closureレポート: `reports/issue-1-t506-independent-finding-closure-20260817091926.md`
+- T506 merge commit: `8dd8aacbce3c0afb7a2d15091f970e96ec141561`
+- T603独立reviewレポート: `reports/issue-1-t603-independent-final-review-20260817093112.md`
+- T603独立review finding closure R3レポート: `reports/issue-1-t603-independent-finding-closure-r3-20260817100415.md`
+- T603 merge commit: `8cbdaa55176105cb02dcd071f2fd9bbcb8484706`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
 - T306通常レビューレポート: `reports/issue-1-t306-review-20260806120847.md`
@@ -335,7 +341,7 @@
 | T503 | 完了 | M | T300の共通除外policyを使うrepository file列挙、gitignore、invalid encoding、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`、`excluded`、`excludedDirectories`を決定的に返し、pruneしたdirectoryを配下fileへ展開・推定しない。独立review findingをclosureし、PR #34をcurrent mainへ統合済み |
 | T504 | 完了 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | validated immutable evidenceから有効なGlobal非空行だけを集計し、malformed UTF-8を除外し、cooperative処理中のfile変更を再検証する。通常review・独立review findingをclosureし、PR #39をcurrent mainへ統合済み。AC-18のcore部分を満たす |
 | T505 | 完了 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装した | T305、T502、T504 | 通常review findings 7件と一度限りの全範囲独立review finding 1件をclosed。T505 4 suiteとCI接続を固定し、PR #43をcurrent mainへsquash merge済み |
-| T506 | 実装・finding修正中 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を実装した。PR #55で独立review `T506-IFR-001`〜`003` を修正中 | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる。reviewed HEAD `5d21756` のCI `31980543509` はsuccess、current fix HEADの検証・CIはPR #55で確認する |
+| T506 | 完了 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を実装した | T501〜T505 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31981859602`成功後、PR #55をmerge commit `8dd8aacb`でmainへ統合済み。AC-18〜AC-20を満たす |
 
 ## P6 Gitなし対応と堅牢化
 
@@ -343,7 +349,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
 | T602 | 完了 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #49をcurrent mainへsquash merge済み |
-| T603 | 未着手 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装する | T104、T206、T601 | 旧schema fixtureを段階移行でき、失敗時はbackupから戻り、不確実な範囲を未確認にする |
+| T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
 | T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
 | T606 | 未着手 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装する | T403、T601〜T605 | token・source本文をlogへ出さず、全障害fixtureで誤った確認済み表示をしない。AC-24を満たす |
@@ -370,4 +376,4 @@
 
 ## 次回開始時の選択
 
-T405 PR #54は通常reviewと一度限りの全範囲独立review finding closureを完了し、merge commit `11c2d517` でmainへ統合済みである。
+T506 PR #55とT603 PR #53は、一度限りの全範囲独立review、同一reviewerのfinding限定closure、exact-head CIを完了し、それぞれmerge commit `8dd8aacb`、`8cbdaa55`でmainへ統合済みである。次回はT406またはT604から選択する。
