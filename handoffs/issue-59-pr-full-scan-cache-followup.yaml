@@ -1,0 +1,135 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: issue implementation follow-up
+  generated_date: "2026-08-17"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #59 / PR #60"
+task_id: ISSUE-59-PR-FULL-SCAN-CACHE
+branch: feature/issue-59-global-understanding-opened-files
+base_ref: main
+target:
+  accepted_base_head: f1fa3d658d0391d7e05e492b4239ce770e5b5d30
+  validated_technical_head: 35e597f4933b3121ee4f081cba5ccac8a26186d8
+  final_documentation_head: pending_after_packet_commit
+
+requirements:
+  ordinary_global:
+    - Do not content-scan unopened ordinary repository files for Global line progress.
+    - Keep opened/retained files as the Global line denominator.
+    - Report opened and unopened candidate counts separately.
+  pull_request:
+    - Fully scan reviewable PR files even if they were never opened in an editor.
+    - Existing/added/renamed/copied files use complete HEAD text.
+    - Deleted files use complete BASE text.
+    - Promote only files that exist at HEAD into Global as opened evidence.
+    - Cache immutable full text and parsed Global evidence to avoid repeat reads/parsing.
+  process:
+    - Use RevMem TDD with Red evidence before implementation.
+    - Use only exact-PR-HEAD workflow runs as CI evidence.
+    - Preserve failure diagnostic artifacts.
+    - Save repository report and concise PR comment.
+    - Never merge; merge belongs to the user.
+
+implementation:
+  lazy_provider:
+    path: src/application/global-understanding/pull-request-global-head-file-registry.ts
+    summary: Registers PR full-text providers without scanning during Review Contexts enumeration; active PR Global recalculation invokes the provider lazily.
+  raw_text_cache:
+    path: src/t405-pull-request-review-runtime.ts
+    identity: "contextId + exact baseSha/headSha pair; entry key revision + path"
+    behavior:
+      - "HEAD full text for modified/added/renamed/copied reviewable files"
+      - "BASE full text for deleted reviewable files"
+      - "binary/config-excluded files remain outside line scanning"
+      - "failed read entries are evicted for retry"
+      - "BASE or HEAD revision change invalidates the context cache"
+      - "deleted BASE text is not returned as Global HEAD evidence"
+  parsed_global_cache:
+    path: src/t505-global-understanding-source.ts
+    identity: "repository target + current exact revision + path"
+    behavior:
+      - "parse returned PR HEAD text into lineCount/nonEmptyLines/contentHash once"
+      - "promote parsed evidence into retained opened evidence"
+      - "ordinary non-PR Global remains opened-only"
+      - "live editor evidence may override the retained evidence for the current calculation"
+
+files:
+  followup_changed:
+    - src/application/global-understanding/pull-request-global-head-file-registry.ts
+    - src/t405-pull-request-review-runtime.ts
+    - src/t505-global-understanding-source.ts
+    - test/unit/t405-pull-request-review-runtime.test.ts
+    - test/unit/t505-global-understanding-source.test.ts
+  existing_issue59_changes_retained:
+    - src/adapters/repository-files/node-repository-file-path-enumerator.ts
+    - src/ui/global-understanding/global-understanding-ui-model.ts
+    - src/ui/global-understanding/vscode-global-understanding-runtime.ts
+    - test/unit/global-understanding-ui.test.ts
+    - test/unit/t505-review-findings.test.ts
+  intentionally_untouched:
+    - path: .github/workflows/ci.yml
+      reason: Existing workflow already captures results, stdout, stderr, combined logs, source/tests/tools, and investigation diagnostics on failure.
+    - path: tasks/tasks-status.md
+      reason: Repository-local instructions permit direct updates only through designated progress-management skills.
+    - operation: merge PR #60
+      reason: Merge is explicitly user-owned.
+
+validation:
+  original_issue_red:
+    head_sha: 534553c6bf515b8884fbb62d479c0657f19e6387
+    workflow_run_id: 32003811348
+    conclusion: failure
+    artifact_id: 9279332376
+    evidence: "Unopened content still produced totalNonEmptyLineCount 4 instead of expected 2."
+  followup_red_pr_scan:
+    head_sha: 1aaff563edf756e0237229bfbc5ba0819111c2aa
+    workflow_run_id: 32009302780
+    conclusion: failure
+    artifact_id: 9281164978
+    evidence: "T405 regression required a full-file PR scan/cache API; readGlobalHeadFiles was absent."
+  intermediate_green:
+    head_sha: e31d0abad257960efd469a1165f7003c7b105407
+    workflow_run_id: 32009597981
+    conclusion: success
+    evidence: "Complete CI green for HEAD-side full scan, cache, and Global promotion."
+  followup_red_deleted_base:
+    head_sha: 8988ca464ea802651e21a1f75b04c205335a9ae7
+    workflow_run_id: 32010027596
+    conclusion: failure
+    artifact_id: 9281427952
+    evidence: "T405 expected BASE read for src/deleted.ts; actual reads contained only HEAD-side files."
+  final_technical_green:
+    head_sha: 35e597f4933b3121ee4f081cba5ccac8a26186d8
+    workflow_run_id: 32010265126
+    job_id: 95328130530
+    conclusion: success
+    evidence: "Build, contracts, architecture, lint, Unit, focused T405/T505/T506 and all Git/GitHub/VS Code integration gates succeeded."
+  final_documentation_head:
+    head_sha: pending_after_packet_commit
+    workflow_run_id: pending
+    conclusion: pending
+    note: "Final PR comment will record the exact documentation HEAD/run result; no other SHA may substitute."
+
+reports:
+  detailed: reports/issue-59-pr-full-scan-cache-followup.md
+  handoff: handoffs/issue-59-pr-full-scan-cache-followup.yaml
+
+tradeoffs:
+  - PR raw-text and parsed evidence caches are Extension-Host-lifetime only and are not persisted across restart.
+  - First activation of a very large PR context still incurs a deliberate full scan; immutable revision caching amortizes subsequent recalculations.
+  - Ordinary candidate counting still traverses directory paths, but unopened file bodies are not read.
+
+next_action:
+  - Commit this report and handoff together as one documentation-only commit.
+  - Check CI only for that new exact PR HEAD.
+  - If Green, update PR #60 body with final behavior/TDD evidence.
+  - Post a concise PR comment with exact final HEAD and workflow run.
+  - Mark PR #60 ready for review.
+  - Do not merge.
+
+transport:
+  merge_owner: user
+  worker_may_merge: false
+  continuation_summary: "Issue #59 ordinary Global remains opened-only; active PRs full-scan immutable current-side files with exact-revision caches, promote HEAD files to Global opened evidence, and scan deleted files from BASE without Global promotion. Technical CI is Green at 35e597f4933b3121ee4f081cba5ccac8a26186d8."
