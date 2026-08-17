@@ -78,7 +78,7 @@ const selectBranch = (
   });
 };
 
-test("T505-R001 prefers immutable open-document evidence and switches to disk after save and close", async (t) => {
+test("T505-R001 retains immutable open-document evidence after save and close", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t505-r001-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repositoryRoot = path.join(root, "repository");
@@ -280,12 +280,16 @@ test("T505-R003 reuses the shared last-valid exclusion policy after an invalid s
   selectBranch(source, "repository-r003", repositoryRoot, "revision-r003");
 
   const beforeInvalid = await source.recalculate();
-  assert.equal(beforeInvalid?.progress.totalNonEmptyLineCount, 1);
+  assert.equal(beforeInvalid?.progress.totalNonEmptyLineCount, 0);
+  assert.equal(beforeInvalid?.openedFileCount, 0);
+  assert.equal(beforeInvalid?.unopenedFileCount, 1);
   assert.equal(beforeInvalid?.prunedExcludedDirectoryCount, 1);
   assert.throws(() => policy.updateUserGlobs(["!ignored/**"]));
 
   const afterInvalid = await source.recalculate();
-  assert.equal(afterInvalid?.progress.totalNonEmptyLineCount, 1);
+  assert.equal(afterInvalid?.progress.totalNonEmptyLineCount, 0);
+  assert.equal(afterInvalid?.openedFileCount, 0);
+  assert.equal(afterInvalid?.unopenedFileCount, 1);
   assert.equal(afterInvalid?.prunedExcludedDirectoryCount, 1);
 });
 

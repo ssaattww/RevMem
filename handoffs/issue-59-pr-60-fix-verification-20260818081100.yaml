@@ -1,0 +1,242 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: "2026-08-18T08:11:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #59 / PR #60"
+task_id: PR60-FIX-VERIFICATION
+branch: feature/issue-59-global-understanding-opened-files
+base_ref: main
+target:
+  current_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  commit_range: 791134c20fa49ae3afe5bc7dba61771ce109abe3..5c77841fc1ff9d14e12339c6b30a863e91dd5907
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instructions
+    summary: Use uploaded review skills, GitHub connector, exact-HEAD CI only, persist detailed report and concise PR comment, do not merge.
+  - source: issue
+    reference: Issue #59 comment 5312112751
+    summary: Ordinary Global uses opened-file line evidence and separately reports opened/unopened file counts.
+  - source: pr
+    reference: PR #60 current body
+    summary: Active PR is an immutable-snapshot full-scan exception using exact HEAD/BASE content and exact-revision caching.
+  - source: report
+    reference: initial review comment 5320154784
+    summary: Verify R60-001 High, R60-002 Medium, and R60-003 Medium with severity continuity.
+development_policy:
+  method: TDD
+  testing_order: red-before-fix then exact-head green
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - GitHub Actions CI
+  required_failure_diagnostics:
+    - test result
+    - standard output
+    - standard error
+    - investigation logs/artifact
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-59-pr-60-fix-verification-20260818081100.md
+      reason: required detailed verification report
+    - path_or_operation: handoffs/issue-59-pr-60-fix-verification-20260818081100.yaml
+      reason: required continuation packet
+    - path_or_operation: PR #60 comment
+      reason: required concise verification summary
+  forbidden:
+    - path_or_operation: implementation/tests/design/workflow/tracking
+      reason: reviewer does not implement fixes
+    - path_or_operation: merge PR #60
+      reason: merge is user-owned
+scope:
+  - Verify R60-001, R60-002, R60-003 on current immutable implementation HEAD.
+  - Inspect fix diff, direct impacts, sibling cases, changed tests/design/reporting, and exact-head CI.
+non_goals:
+  - implementation changes
+  - merge
+files:
+  changed: []
+  inspected:
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: R60-001 immutable PR scan boundary
+    - path: src/t505-global-understanding-source.ts
+      purpose: R60-001 aggregation and R60-003 eviction/concurrency boundary
+    - path: Design/BreakingChanges.md
+      purpose: R60-002 authoritative design supersession
+    - path: test/unit/pr60-review-fixes.test.ts
+      purpose: direct regressions for all findings
+    - path: test/unit/t405-review-followup.test.ts
+      purpose: focused suite inclusion
+    - path: reports/issue-59-pr-60-review-fixes-20260818080400.md
+      purpose: implementation-side evidence accuracy
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: repository-local manager-only update rule
+commands: []
+tests:
+  - name: review-fix Red regressions
+    phase: red
+    result: failed
+    head_sha: 1f638d2c45f65749b5ce4984e3cd58103302fcc8
+    evidence: CI 32078109943 failed at T405; artifact 9304161320 is present/unexpired and exact-HEAD.
+  - name: current reviewed HEAD CI
+    phase: verification
+    result: passed
+    head_sha: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+    evidence: CI 32078930971 completed success across all gates.
+ci:
+  required: true
+  workflow: CI
+  run_id: 32078930971
+  head_sha: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  commits: []
+  addressed_findings:
+    - id: R60-001
+      reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+      disposition: addressed
+      evidence: immutable PR snapshot now controls exact HEAD/BASE scan; missing-working-tree-path regressions pass
+    - id: R60-002
+      reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+      disposition: addressed
+      evidence: BreakingChanges explicitly supersedes rev4 §11.3/§12 and regression verifies the clauses
+    - id: R60-003
+      reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+      disposition: addressed
+      evidence: stable-owner active revision eviction and active-key guards prevent evidence revival
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - Reviewer performed verification only.
+review:
+  mode: fix_verification
+  reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  reviewer:
+    identity: chat-review-worker
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: chat-review-worker
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - Same normal-review chat performed initial review and this fix verification; reviewer made no implementation changes.
+  verdict: pass
+  required_coverage:
+    - criterion: requirement/design conformance
+      disposition: checked_no_finding
+      evidence: all three findings verified against code/design
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: direct regressions plus sibling-case inspection
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: finding response remains in scope
+    - criterion: changed files/direct dependencies
+      disposition: checked_no_finding
+      evidence: T405/T505/design/tests inspected
+    - criterion: API/data/configuration/workflow/compatibility
+      disposition: checked_no_finding
+      evidence: provider contract retained; workflow intentionally unchanged
+    - criterion: error handling/failure diagnostics
+      disposition: checked_no_finding
+      evidence: Red diagnostic artifact confirmed
+    - criterion: security/secret handling
+      disposition: not_applicable
+      evidence: no security-sensitive changes
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: four direct regressions plus full CI
+    - criterion: current-head CI
+      disposition: checked_no_finding
+      evidence: exact HEAD run 32078930971 success
+    - criterion: reporting/tracking/documentation
+      disposition: checked_no_finding
+      evidence: fix report accurate; task tracking intentionally untouched
+    - criterion: regression/maintainability risk
+      disposition: checked_no_finding
+      evidence: revision cache bounded and PR scan authority explicit
+  validation_assessment:
+    - item: Red evidence
+      result: supported
+      evidence: run 32078109943 + artifact 9304161320
+    - item: current-head Green
+      result: supported
+      evidence: run 32078930971 exact SHA success
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - R60-001 High addressed.
+    - R60-002 Medium addressed.
+    - R60-003 Medium addressed.
+    - No new required findings; verdict pass.
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-59-pr-60-fix-verification-20260818081100.md
+  reviewed_head: 5c77841fc1ff9d14e12339c6b30a863e91dd5907
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed normal-review fix-verification report.
+findings: []
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: independent final review attestation
+    reason: this round is normal-review fix verification
+remaining_risks:
+  - Independent final review has not yet been performed in a fresh chat.
+source_payloads: []
+extensions: []
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: Start a fresh independent-final-review chat if final independent acceptance is desired.
+  instructions:
+    - Freeze the post-verification implementation/non-final-report HEAD before independent final review.
+    - Independent reviewer must not reuse this normal-review chat.
+  required_attachments_or_references:
+    - PR #60
+    - initial review comment 5320154784
+    - this verification report/handoff
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-59-pr-60-fix-verification-20260818081100.yaml
+  packet_url: null
+  transport_note: Normal-review fix-verification handoff; merge remains user-owned.

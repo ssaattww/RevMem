@@ -1,0 +1,281 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial-normal-review
+  generated_at: "2026-08-18T05:41:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #59 / PR #60"
+task_id: null
+branch: feature/issue-59-global-understanding-opened-files
+base_ref: main
+target:
+  accepted_base_head: f1fa3d658d0391d7e05e492b4239ce770e5b5d30
+  reviewed_implementation_head: 1e2443ada9605530181d98da4ecbc20d55ba6387
+  commit_range: f1fa3d658d0391d7e05e492b4239ce770e5b5d30..1e2443ada9605530181d98da4ecbc20d55ba6387
+  review_transport_commit: pending_after_packet_commit
+
+authority:
+  - priority: 1
+    source: current_user_and_project_instructions
+    summary: "Review PR #60 using uploaded skills; use GitHub connector; judge CI only from runs whose head SHA equals current PR HEAD; persist detailed report and concise PR comment; do not merge."
+  - priority: 2
+    source: repository_instructions
+    references:
+      - AGENTS.md
+      - tasks/tasks-status.md
+      - .github/workflows/ci.yml
+  - priority: 3
+    source: accepted_issue_and_pr_contract
+    references:
+      - Issue #59
+      - PR #60 body
+      - reports/issue-59-implementation-20260817161511.md
+      - reports/issue-59-pr-full-scan-cache-followup.md
+      - handoffs/issue-59-pr-full-scan-cache-followup.yaml
+  - priority: 4
+    source: design
+    references:
+      - doc/design/vscode-review-range-tracker-design.md rev4
+      - Design/BreakingChanges.md
+
+reviewer:
+  identity: chat-review-worker
+  connector_actor: ssaattww
+  role: normal_reviewer
+  continuity:
+    previous_submitted_reviews: 0
+    previous_review_threads: 0
+    changed: false
+    reason: null
+  independence:
+    implemented_change: false
+    implemented_review_fix: false
+    served_as_normal_reviewer: true
+    inherited_implementation_conversation: false
+    evidence:
+      - "This review session inspected PR #60 and did not modify implementation or tests."
+
+scope:
+  accepted_requirements:
+    - "Ordinary Global Understanding must not scan unopened repository file bodies solely for line progress."
+    - "Opened/retained evidence forms the ordinary Global line denominator; opened/unopened file counts are shown separately."
+    - "When a pull request is the active context, every reviewable PR file is fully scanned even if never opened in an editor."
+    - "Files existing at PR HEAD use complete HEAD text and are promoted to Global opened evidence."
+    - "Deleted PR files use complete BASE text and are not promoted to Global HEAD evidence."
+    - "Immutable PR text and parsed Global evidence are cached by exact revision so same-revision recalculation avoids rereads/reparsing."
+    - "Review Contexts listing alone must not trigger full PR body scan."
+  changed_files_count: 14
+  changed_files:
+    - handoffs/issue-59-implementation-20260817161511.yaml
+    - handoffs/issue-59-pr-full-scan-cache-followup.yaml
+    - reports/issue-59-implementation-20260817161511.md
+    - reports/issue-59-pr-full-scan-cache-followup.md
+    - src/adapters/repository-files/node-repository-file-path-enumerator.ts
+    - src/application/global-understanding/pull-request-global-head-file-registry.ts
+    - src/t405-pull-request-review-runtime.ts
+    - src/t505-global-understanding-source.ts
+    - src/ui/global-understanding/global-understanding-ui-model.ts
+    - src/ui/global-understanding/vscode-global-understanding-runtime.ts
+    - test/unit/global-understanding-ui.test.ts
+    - test/unit/t405-pull-request-review-runtime.test.ts
+    - test/unit/t505-global-understanding-source.test.ts
+    - test/unit/t505-review-findings.test.ts
+  direct_dependencies_inspected:
+    - src/t405-review-contexts-runtime.ts
+    - src/application/review-contexts/current-pull-request-context.ts
+    - src/application/global-understanding/global-understanding-background-recalculator.ts
+    - src/adapters/local-git/local-git-adapter.ts
+    - src/adapters/local-git/node-git-blob-reader.ts
+    - src/adapters/github/fetch-github-pull-request-diff-adapter.ts
+    - src/t305-extension.ts
+    - .github/workflows/ci.yml
+    - tasks/tasks-status.md
+    - AGENTS.md
+    - doc/design/vscode-review-range-tracker-design.md
+    - Design/BreakingChanges.md
+
+findings:
+  - id: R60-001
+    severity: high
+    blocking: true
+    origin: introduced_by_change
+    locations:
+      - "src/t505-global-understanding-source.ts: recalculate(), capturePullRequestHeadFiles()"
+      - "src/t405-pull-request-review-runtime.ts: readGlobalHeadFiles()"
+    description: >-
+      The immutable PR HEAD full-scan is gated by candidatePaths produced by walking the mutable working tree. T405 skips a HEAD-side PR file when candidatePaths does not contain file.newPath; T505 repeats the same candidate gate and later filters retained evidence by that mutable set. Current PR selection only proves PR headSha equals local Git HEAD and does not require a clean worktree.
+    impact: >-
+      If local HEAD equals the PR HEAD but a PR HEAD file is unstaged-deleted or renamed in the worktree, the file is silently omitted from the PR full scan and Global opened evidence even though the exact commit blob is available. Global file/line progress therefore depends on dirty-worktree presence rather than the accepted immutable PR revision.
+    evidence:
+      - "T505 recalculate() builds candidatePaths from NodeRepositoryFilePathEnumerator(owner.repositoryRoot)."
+      - "T405 readGlobalHeadFiles(): if (!candidatePaths.has(file.newPath)) continue."
+      - "T505 capturePullRequestHeadFiles(): if (!candidatePaths.has(canonicalPath)) continue."
+      - "T505 openedByPath filters retained evidence through candidatePaths."
+      - "findCurrentPullRequestContext() matches persisted open PR headSha to local headRevision but has no clean-worktree predicate."
+      - "T405 and T505 PR tests always provide candidate sets containing the PR HEAD files and do not cover a dirty-worktree omission."
+    required_action: >-
+      Derive the active-PR reviewable HEAD-side file universe from the validated immutable PR snapshot plus exclusion policy rather than mutable path existence; prevent T505 from discarding immutable PR evidence solely because the working-tree walk omitted it. Add a Red/Green regression with a PR HEAD file absent from candidatePaths and verify exact HEAD read, promotion, and counting.
+
+  - id: R60-002
+    severity: medium
+    blocking: true
+    origin: requirement_design_divergence
+    locations:
+      - "doc/design/vscode-review-range-tracker-design.md §11.3"
+      - "doc/design/vscode-review-range-tracker-design.md §12"
+      - "Design/BreakingChanges.md (no Issue #59 override)"
+    description: >-
+      Rev4 still defines Global understanding as reviewed non-empty lines divided by all target non-empty lines and says included repository entries contribute each file's non-empty count. It also describes binary/invalid UTF-8 exclusion after content classification. PR #60 intentionally changes ordinary Global to opened/retained-only line evidence and avoids content-classifying unopened paths, but does not update or explicitly supersede that design contract.
+    impact: >-
+      The repository's authoritative design and the accepted implementation now specify different denominator and exclusion semantics, so future work following rev4 can legitimately reintroduce the repository-wide scan that Issue #59 removes.
+    required_action: >-
+      Update the authoritative design with opened/retained denominator semantics, opened/unopened diagnostics, deferred unopened-content classification, and the active-PR immutable full-scan exception; or explicitly record a superseding repository policy if rev4 must remain unchanged.
+
+  - id: R60-003
+    severity: medium
+    blocking: true
+    origin: introduced_by_change
+    locations:
+      - "src/t505-global-understanding-source.ts: ownerEvidenceKey(), openedEvidenceByOwner, pullRequestEvidenceByOwner, retainedOpenedEvidence(), capturePullRequestHeadFiles(), setContext()"
+    description: >-
+      T505 cache keys include exact revision, but superseded revision maps are never evicted or bounded. Each new branch/PR revision creates retained evidence maps; PR full scans keep parsed nonEmptyLines and also clone them into retained opened evidence. setContext() only assigns currentContext and performs no lifecycle cleanup.
+    impact: >-
+      Long-lived Extension Host sessions with repeated commits or PR HEAD updates retain obsolete per-file line-index evidence until restart. Large PRs can make memory grow materially, undermining the performance objective of Issue #59. T405 raw text is invalidated on revision change, but T505 parsed/retained evidence is not.
+    required_action: >-
+      Evict superseded revision evidence for a stable owner identity or enforce a bounded cache policy across both T505 evidence maps. Add a regression that advances the same owner to a new HEAD and verifies obsolete parsed/retained evidence is no longer retained or reused.
+
+coverage:
+  - criterion: requirement_design_conformance
+    disposition: checked_finding
+    findings: [R60-001, R60-002]
+  - criterion: correctness_edge_cases
+    disposition: checked_finding
+    findings: [R60-001, R60-003]
+  - criterion: scope_unrelated_changes
+    disposition: checked_no_finding
+  - criterion: changed_dependency_impact
+    disposition: checked_finding
+    findings: [R60-001, R60-003]
+  - criterion: api_data_config_workflow_compatibility
+    disposition: checked_no_finding
+  - criterion: error_failure_diagnostics
+    disposition: checked_no_finding
+  - criterion: security_trust_boundaries
+    disposition: checked_no_finding
+  - criterion: tests_validation
+    disposition: checked_finding
+    findings: [R60-001, R60-003]
+  - criterion: current_head_ci
+    disposition: checked_no_finding
+  - criterion: reports_tracking_docs
+    disposition: checked_finding
+    findings: [R60-002]
+  - criterion: regression_maintainability
+    disposition: checked_finding
+    findings: [R60-003]
+
+validation:
+  current_exact_head:
+    head_sha: 1e2443ada9605530181d98da4ecbc20d55ba6387
+    workflow: CI
+    workflow_run_id: 32010623820
+    job_id: 95329199731
+    event: pull_request
+    conclusion: success
+    exact_sha_match: true
+    substituted_other_sha: false
+    successful_steps:
+      - Build
+      - Contract typecheck
+      - Architecture validation
+      - Architecture negative contract
+      - Lint
+      - Unit tests
+      - T602 history rewrite recovery tests
+      - T603 schema migration and corruption recovery tests
+      - T403 GitHub cache tests
+      - T404 GitHub PR context layer tests
+      - T405 Review Contexts follow-up tests
+      - T304 PR progress tree tests
+      - T502 Global mapping and display priority tests
+      - T503 repository enumeration tests
+      - T504 Global understanding tests
+      - T505 Global understanding tests
+      - T506 Global multi-context integration
+      - Temporary Git integration tests
+      - Mock GitHub integration tests
+      - VS Code Extension Host tests
+  historical_tdd:
+    - head_sha: 534553c6bf515b8884fbb62d479c0657f19e6387
+      workflow_run_id: 32003811348
+      conclusion: failure
+      diagnostic_artifact_id: 9279332376
+      diagnostic_artifact_name: ci-failure-diagnostics-32003811348-1
+      artifact_verified_present: true
+      artifact_expired: false
+    - head_sha: 1aaff563edf756e0237229bfbc5ba0819111c2aa
+      workflow_run_id: 32009302780
+      conclusion: failure
+      diagnostic_artifact_id: 9281164978
+      diagnostic_artifact_name: ci-failure-diagnostics-32009302780-1
+      artifact_verified_present: true
+      artifact_expired: false
+    - head_sha: 8988ca464ea802651e21a1f75b04c205335a9ae7
+      workflow_run_id: 32010027596
+      conclusion: failure
+      diagnostic_artifact_id: 9281427952
+      diagnostic_artifact_name: ci-failure-diagnostics-32010027596-1
+      artifact_verified_present: true
+      artifact_expired: false
+  diagnostic_workflow:
+    status: checked_no_finding
+    evidence: >-
+      .github/workflows/ci.yml wraps CI commands with tools/run-ci-command.mjs, keeps result/stdout/stderr/combined logs, collects failure context, and uploads ci-failure-diagnostics artifacts.
+
+held: []
+unexplored: []
+unknown: []
+
+review:
+  verdict: fail
+  verdict_reason: >-
+    R60-001 is a high-severity correctness/accepted-contract violation. R60-002 and R60-003 are additional required findings. Exact-head CI is Green but does not exercise the missing dirty-worktree or cache-lifecycle cases.
+  reviewed_implementation_head: 1e2443ada9605530181d98da4ecbc20d55ba6387
+  finding_fix_verification_required: true
+  merge_allowed_by_worker: false
+
+report:
+  report_type: initial_review_report
+  persistence_mode: repository_file
+  path: reports/issue-59-pr-60-review-20260818054100.md
+  handoff_path: handoffs/issue-59-pr-60-review-20260818054100.yaml
+  transport_commit_sha: pending_after_packet_commit
+  pr_comment: pending_after_packet_commit
+  summary:
+    - "Initial normal review completed against immutable PR HEAD 1e2443ada9605530181d98da4ecbc20d55ba6387."
+    - "Verdict fail with 3 required findings: one high, two medium."
+    - "Exact-head CI 32010623820 succeeded; TDD failure artifacts were independently verified present."
+
+next_action:
+  - "Implementation worker fixes R60-001, R60-002, and R60-003 without merging."
+  - "After a new implementation HEAD is pushed, the same normal reviewer performs finding-fix verification only against that new immutable HEAD."
+  - "Use only CI whose run head SHA exactly equals the new PR HEAD."
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "review result"
+    content_type: text/plain
+    payload: |
+      verdict=fail
+      reviewed_implementation_head=1e2443ada9605530181d98da4ecbc20d55ba6387
+      findings=R60-001(high),R60-002(medium),R60-003(medium)
+      current_exact_head_ci=32010623820 success
+      other_sha_substitution=false
+  - source_skill: report-writer
+    output_contract_version: "detailed-review-report"
+    content_type: text/plain
+    payload: |
+      detailed_report_path=reports/issue-59-pr-60-review-20260818054100.md
+      handoff_path=handoffs/issue-59-pr-60-review-20260818054100.yaml
+      report_transport_commit=pending_after_packet_commit

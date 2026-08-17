@@ -5,6 +5,8 @@ import type {
 
 export interface GlobalUnderstandingTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
+  readonly openedFileCount?: number;
+  readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
 }
@@ -31,7 +33,9 @@ export interface GlobalUnderstandingFileNode {
 
 export interface GlobalUnderstandingDiagnosticsNode {
   readonly kind: "diagnostics";
-  readonly label: "除外診断";
+  readonly label: "ファイル状況";
+  readonly openedFileCount: number;
+  readonly unopenedFileCount: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
 }
@@ -97,8 +101,15 @@ const fileNode = (file: GlobalUnderstandingFileProgress): GlobalUnderstandingFil
 export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const { progress } = snapshot;
   validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount");
+  requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
   requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  if (openedFileCount !== progress.files.length) {
+    throw new RangeError("openedFileCount must match Global progress file count.");
+  }
   const files = progress.files.map(fileNode).sort((left, right) => compareCodeUnits(left.path, right.path));
   const paths = new Set<string>();
   for (const file of files) {
@@ -117,7 +128,9 @@ export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstanding
     files: Object.freeze(files),
     diagnostics: Object.freeze({
       kind: "diagnostics" as const,
-      label: "除外診断" as const,
+      label: "ファイル状況" as const,
+      openedFileCount,
+      unopenedFileCount,
       excludedFileCount: snapshot.excludedFileCount,
       prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
     })
@@ -133,6 +146,8 @@ export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstanding
       `Global理解率: ${percent}`,
       `確認済み非空行: ${model.summary.reviewedNonEmptyLineCount}`,
       `対象非空行: ${model.summary.totalNonEmptyLineCount}`,
+      `開いたことがあるファイル: ${model.diagnostics.openedFileCount}`,
+      `未オープンファイル: ${model.diagnostics.unopenedFileCount}`,
       `除外ファイル: ${model.diagnostics.excludedFileCount}`,
       `pruneした除外ディレクトリ: ${model.diagnostics.prunedExcludedDirectoryCount}`
     ].join("\n")

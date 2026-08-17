@@ -1,0 +1,138 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review-finding-response
+  generated_at: "2026-08-18T08:04:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #59 / PR #60"
+task_id: "PR60-REVIEW-FIXES"
+branch: feature/issue-59-global-understanding-opened-files
+base_ref: main
+target:
+  review_transport_head: 791134c20fa49ae3afe5bc7dba61771ce109abe3
+  red_head: 1f638d2c45f65749b5ce4984e3cd58103302fcc8
+  validated_technical_head: 6428777312b463df81db930531e8f2c9cbadc876
+  final_documentation_head: pending_after_packet_commit
+
+source_payloads:
+  - kind: pr_comment
+    id: "5320154784"
+    summary: "Initial review failed with required findings R60-001, R60-002 and R60-003."
+  - kind: review_report
+    path: reports/issue-59-pr-60-review-20260818054100.md
+    summary: "Detailed initial review evidence and required actions."
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_design_override
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+  - reply_to_review_feedback
+write_boundary:
+  allowed:
+    - src/t405-pull-request-review-runtime.ts
+    - src/t505-global-understanding-source.ts
+    - Design/BreakingChanges.md
+    - test/unit/pr60-review-fixes.test.ts
+    - test/unit/t405-review-followup.test.ts
+    - reports/issue-59-pr-60-review-fixes-20260818080400.md
+    - handoffs/issue-59-pr-60-review-fixes-20260818080400.yaml
+    - PR #60 metadata and conversation comments
+  forbidden:
+    - merge PR #60
+    - tasks/tasks-status.md
+
+commands:
+  workflow: CI
+  red_run_id: 32078109943
+  green_technical_run_id: 32078553090
+  note: "CI judgment uses only runs whose workflow head_sha exactly matches the referenced PR HEAD."
+
+tests:
+  added:
+    - name: "R60-001 immutable PR HEAD remains authoritative when the working-tree candidate set omits the file"
+      purpose: "Prove T405 reads exact PR HEAD even when mutable candidatePaths omits the path."
+    - name: "R60-001 Global promotes immutable PR HEAD evidence even when the working tree no longer contains that path"
+      purpose: "Prove T505 counts/promotes immutable PR evidence independently of dirty working-tree presence."
+    - name: "R60-003 superseded owner revisions evict retained Global evidence instead of reviving it later"
+      purpose: "Prove A→B→A does not revive stale retained evidence."
+    - name: "R60-002 breaking-change policy supersedes rev4 Global semantics with opened-only and immutable-PR rules"
+      purpose: "Prove the repository's authoritative override records the accepted Global contract."
+  focused_suite: npm run test:t405
+
+ci:
+  red:
+    head_sha: 1f638d2c45f65749b5ce4984e3cd58103302fcc8
+    workflow_run_id: 32078109943
+    job_id: 95535449030
+    conclusion: failure
+    artifact_id: 9304161320
+    artifact_name: ci-failure-diagnostics-32078109943-1
+    evidence:
+      - R60-001 T405 returned an empty immutable scan when candidatePaths was empty.
+      - R60-001 T505 discarded immutable PR evidence absent from the working tree.
+      - R60-003 revived old revision evidence after A→B→A.
+      - R60-002 had no superseding design policy.
+  green_technical:
+    head_sha: 6428777312b463df81db930531e8f2c9cbadc876
+    workflow_run_id: 32078553090
+    job_id: 95536753425
+    conclusion: success
+    evidence: "Build, lint, Unit, T405, T505, T506, Git/GitHub integration and VS Code Extension Host all succeeded."
+  final_documentation:
+    head_sha: pending_after_packet_commit
+    workflow_run_id: pending
+    conclusion: pending
+
+implementation:
+  findings:
+    R60-001:
+      status: fixed
+      summary:
+        - "Validated immutable PR snapshot is authoritative for PR file existence."
+        - "Mutable working-tree candidatePaths no longer gates T405 HEAD reads."
+        - "T505 unions working-tree paths with accepted immutable PR HEAD paths for Global availability/counting."
+        - "Shared exclusion policy is applied directly to immutable PR paths."
+    R60-002:
+      status: fixed
+      summary:
+        - "Design/BreakingChanges.md explicitly supersedes rev4 §11.3 and §12 for Global semantics."
+        - "Opened/retained ordinary denominator, deferred unopened classification, immutable PR exception and cache lifecycle are recorded."
+    R60-003:
+      status: fixed
+      summary:
+        - "T505 retains at most one revision evidence map per stable owner target."
+        - "Revision replacement evicts both opened and parsed PR evidence."
+        - "Active-key guards prevent stale async recalculation from recreating an evicted revision."
+  intentionally_unchanged:
+    - ".github/workflows/ci.yml: existing diagnostic artifacts are sufficient."
+    - "tasks/tasks-status.md: repository-local manager-only update rule."
+
+review:
+  original_verdict: fail
+  implementation_worker_verdict: not_applicable
+  unresolved_inline_threads: 0
+  note: "Implementation worker does not self-approve. Reviewer should re-review the fixed PR HEAD after final exact-head CI."
+
+report:
+  path: reports/issue-59-pr-60-review-fixes-20260818080400.md
+  status: prepared_for_same_commit
+
+next_action:
+  - Commit this handoff and report together as one documentation-only commit.
+  - Verify CI only for the resulting exact PR HEAD.
+  - Update PR #60 body with review-finding TDD and final exact-head CI evidence.
+  - Post a concise PR conversation comment mapping R60-001/R60-002/R60-003 to the fixes and validation.
+  - Do not merge PR #60.
+
+transport:
+  merge_owner: user
+  worker_may_merge: false
+  continuation_summary: "R60-001/002/003 are technically Green at 6428777312b463df81db930531e8f2c9cbadc876; the report/handoff documentation commit still requires its own exact-head CI before reviewer handoff."

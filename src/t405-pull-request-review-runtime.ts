@@ -7,6 +7,10 @@ import {
   RevisionTextContentProvider,
 } from "./application/diff-document/index";
 import {
+  registerPullRequestGlobalHeadFileProvider,
+  type PullRequestGlobalHeadFile,
+} from "./application/global-understanding/pull-request-global-head-file-registry";
+import {
   DiffEditorReviewCommandService,
   type DiffEditorReviewCommandDependencies,
 } from "./application/review-commands/index";
@@ -56,6 +60,12 @@ extends Omit<DiffEditorReviewCommandDependencies<Editor>, "openSession" | "reque
   readonly getDocumentUri: (editor: Editor) => string;
 }
 
+interface PullRequestFullTextCache {
+  readonly baseSha: string;
+  readonly headSha: string;
+  readonly files: Map<string, Promise<RevisionTextContentReadResult>>;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
@@ -64,6 +74,9 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
   contextId: registration.snapshot.contextId,
 });
 
+const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
+  `${revision}\0${repositoryPath}`;
+
 /**
  * Shared T405 runtime for persisted GitHub PR contexts. It reuses the canonical
  * T302 virtual URI, T303 command service, and T304 progress calculator instead
@@ -71,6 +84,8 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
  */
 export class PullRequestReviewRuntime<Uri> {
   private readonly registrations = new Map<string, PullRequestReviewRuntimeRegistration>();
+  private readonly fullTextCaches = new Map<string, PullRequestFullTextCache>();
+  private readonly globalProviderDisposers = new Map<string, () => void>();
   private readonly codec = new ReviewDiffUriCodec();
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
@@ -102,14 +117,128 @@ export class PullRequestReviewRuntime<Uri> {
       ...registration,
       snapshot: clone(snapshot),
     });
+    const existingCache = this.fullTextCaches.get(snapshot.contextId);
+    if (
+      existingCache !== undefined &&
+      (existingCache.baseSha !== snapshot.baseSha || existingCache.headSha !== snapshot.headSha)
+    ) {
+      this.fullTextCaches.delete(snapshot.contextId);
+    }
+    this.globalProviderDisposers.get(snapshot.contextId)?.();
+    this.globalProviderDisposers.set(
+      snapshot.contextId,
+      registerPullRequestGlobalHeadFileProvider(snapshot.contextId, async (request) => {
+        const current = this.registrations.get(snapshot.contextId);
+        if (current === undefined || current.snapshot.headSha !== request.headRevision) return [];
+        return this.readGlobalHeadFiles(snapshot.contextId, request.candidatePaths);
+      })
+    );
   }
 
   public unregister(contextId: string): void {
     this.registrations.delete(contextId);
+    this.fullTextCaches.delete(contextId);
+    this.globalProviderDisposers.get(contextId)?.();
+    this.globalProviderDisposers.delete(contextId);
   }
 
   public hasContext(contextId: string): boolean {
     return this.registrations.has(contextId);
+  }
+
+  /**
+   * Fully scans every reviewable PR file once per immutable revision pair.
+   * Existing/added/renamed/copied files are read from HEAD and returned for
+   * Global opened evidence. Deleted files are read from BASE to complete the PR
+   * scan, but are not returned because they do not exist in the Global HEAD.
+   * Working-tree path discovery is diagnostic only and never gates immutable PR
+   * snapshot content.
+   */
+  public async readGlobalHeadFiles(
+    contextId: string,
+    candidatePaths: ReadonlySet<string>
+  ): Promise<readonly PullRequestGlobalHeadFile[]> {
+    const registration = this.requireRegistration(contextId);
+    const { baseSha, headSha } = registration.snapshot;
+    let cache = this.fullTextCaches.get(contextId);
+    if (cache === undefined || cache.baseSha !== baseSha || cache.headSha !== headSha) {
+      cache = {
+        baseSha,
+        headSha,
+        files: new Map<string, Promise<RevisionTextContentReadResult>>(),
+      };
+      this.fullTextCaches.set(contextId, cache);
+    }
+
+    void candidatePaths;
+    const files: PullRequestGlobalHeadFile[] = [];
+    const exclusionPolicy = this.options.getExclusionPolicy();
+    for (const file of registration.snapshot.files) {
+      if (file.status === "binary") continue;
+
+      if (file.newPath !== undefined) {
+        if (exclusionPolicy.evaluate({ path: file.newPath, isBinary: false }).excluded) continue;
+        const result = await this.readCachedFullText(
+          registration,
+          cache,
+          file.newPath,
+          headSha,
+          "modified"
+        );
+        if (result.kind === "invalid-encoding") continue;
+        if (result.kind !== "found") {
+          throw new Error(`PR HEAD file is unavailable for Global scan: ${file.newPath} (${result.kind})`);
+        }
+        files.push({
+          path: file.newPath,
+          revisionId: headSha,
+          content: result.content,
+        });
+        continue;
+      }
+
+      const deletedPath = file.oldPath;
+      if (deletedPath === undefined) continue;
+      if (exclusionPolicy.evaluate({ path: deletedPath, isBinary: false }).excluded) continue;
+      const deleted = await this.readCachedFullText(
+        registration,
+        cache,
+        deletedPath,
+        baseSha,
+        "original"
+      );
+      if (deleted.kind === "invalid-encoding") continue;
+      if (deleted.kind !== "found") {
+        throw new Error(`PR BASE file is unavailable for full scan: ${deletedPath} (${deleted.kind})`);
+      }
+    }
+    return files;
+  }
+
+  private async readCachedFullText(
+    registration: PullRequestReviewRuntimeRegistration,
+    cache: PullRequestFullTextCache,
+    repositoryPath: string,
+    revision: string,
+    side: "original" | "modified"
+  ): Promise<RevisionTextContentReadResult> {
+    const key = fullTextCacheKey(revision, repositoryPath);
+    let pending = cache.files.get(key);
+    if (pending === undefined) {
+      pending = registration.readTextContent({
+        contextId: registration.snapshot.contextId,
+        filePath: repositoryPath,
+        fileSystemPathSemantics: registration.fileSystemPathSemantics,
+        side,
+        revisionSource: "git-commit",
+        revision,
+      }).catch((error: unknown) => {
+        cache.files.delete(key);
+        throw error;
+      });
+      cache.files.set(key, pending);
+    }
+    return pending;
   }
 
   public ownsDiffDocumentUri(uri: string): boolean {

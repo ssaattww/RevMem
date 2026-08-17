@@ -154,6 +154,16 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
       return [
         {
           kind: "diagnostic-value",
+          label: "開いたことがあるファイル",
+          value: node.openedFileCount
+        },
+        {
+          kind: "diagnostic-value",
+          label: "未オープンファイル",
+          value: node.unopenedFileCount
+        },
+        {
+          kind: "diagnostic-value",
           label: "除外ファイル",
           value: node.excludedFileCount
         },
