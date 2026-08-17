@@ -5,8 +5,8 @@ import type {
 
 export interface GlobalUnderstandingTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
-  readonly openedFileCount: number;
-  readonly unopenedFileCount: number;
+  readonly openedFileCount?: number;
+  readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
 }
@@ -101,11 +101,13 @@ const fileNode = (file: GlobalUnderstandingFileProgress): GlobalUnderstandingFil
 export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const { progress } = snapshot;
   validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
-  requireCount(snapshot.openedFileCount, "openedFileCount");
-  requireCount(snapshot.unopenedFileCount, "unopenedFileCount");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount");
+  requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
   requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
-  if (snapshot.openedFileCount !== progress.files.length) {
+  if (openedFileCount !== progress.files.length) {
     throw new RangeError("openedFileCount must match Global progress file count.");
   }
   const files = progress.files.map(fileNode).sort((left, right) => compareCodeUnits(left.path, right.path));
@@ -127,8 +129,8 @@ export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstanding
     diagnostics: Object.freeze({
       kind: "diagnostics" as const,
       label: "ファイル状況" as const,
-      openedFileCount: snapshot.openedFileCount,
-      unopenedFileCount: snapshot.unopenedFileCount,
+      openedFileCount,
+      unopenedFileCount,
       excludedFileCount: snapshot.excludedFileCount,
       prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
     })
