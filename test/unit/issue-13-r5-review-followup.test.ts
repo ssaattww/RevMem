@@ -401,7 +401,7 @@ const findContextFile = async (
   return undefined;
 };
 
-/** Verifies that persisted owner-reconciliation metadata round-trips intact and rejects an invalid source identity on reload. */
+/** Verifies that persisted owner-reconciliation metadata round-trips intact and quarantines an invalid source identity before reload exposure. */
 test("filesystem persistence round-trips and validates owner reconciliation metadata", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-owner-reconciliation-"));
   const repositoryId = "github.com/example/project";
@@ -471,13 +471,17 @@ test("filesystem persistence round-trips and validates owner reconciliation meta
       Record<string, unknown>
     >;
     reconciliation["owner-source:test"]!.lineCount = -1;
-    await writeFile(contextFile, `${JSON.stringify(malformed, null, 2)}\n`, "utf8");
+    const malformedRaw = `${JSON.stringify(malformed, null, 2)}\n`;
+    await writeFile(contextFile, malformedRaw, "utf8");
 
     const malformedReader = new FileSystemReviewStateRepository(options);
-    await assert.rejects(
-      malformedReader.load(target),
-      /ownerReconciliation.*lineCount|lineCount must/u
+    assert.equal(await malformedReader.load(target), undefined);
+    await assert.rejects(() => readFile(contextFile, "utf8"), /ENOENT/u);
+    const quarantine = (await readdir(path.dirname(contextFile))).find((name) =>
+      name.startsWith(`${path.basename(contextFile)}.corrupt-`) && name.endsWith(".quarantine")
     );
+    assert.ok(quarantine);
+    assert.equal(await readFile(path.join(path.dirname(contextFile), quarantine), "utf8"), malformedRaw);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
