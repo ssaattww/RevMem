@@ -59,6 +59,14 @@ const repositoryTargetB: ReviewStateRepositoryTarget = {
   contextId: "branch:b"
 };
 
+const externalTarget: ReviewStateRepositoryTarget = {
+  kind: "external-file",
+  repositoryId: "external-file-repository:t603-review",
+  contextId: "external-file-context:t603-review"
+};
+
+const externalCanonicalUri = "file://buildserver/share/source/example.ts";
+
 const createTemporaryStorage = async (): Promise<{
   readonly root: string;
   readonly storageUris: ReviewStateStorageUris;
@@ -151,6 +159,51 @@ const createCommit = (
     }
   };
 };
+
+const createExternalCommit = (): ReviewStateCommit => ({
+  schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+  contextState: {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId: externalTarget.contextId,
+    kind: "external-file",
+    repositoryId: externalTarget.repositoryId,
+    displayName: externalCanonicalUri,
+    externalFile: {
+      canonicalUri: externalCanonicalUri,
+      snapshotRevision: "external-live:t603-review"
+    },
+    files: {
+      "external-file-1": {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: "external-file-1",
+        currentPath: externalCanonicalUri,
+        previousPaths: [],
+        revisionId: "external-live:t603-review",
+        modifiedReviewed: [{ startLine: 0, endLineExclusive: 2 }],
+        originalReviewedByDiff: {},
+        lineCount: 2,
+        updatedAt: timestamp
+      }
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp
+  },
+  globalState: {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    repositoryId: externalTarget.repositoryId,
+    currentRevisionId: "external-live:t603-review",
+    files: {
+      "external-file-1": {
+        fileId: "external-file-1",
+        currentPath: externalCanonicalUri,
+        revisionId: "external-live:t603-review",
+        reviewed: [{ startLine: 0, endLineExclusive: 2 }],
+        updatedAt: timestamp
+      }
+    },
+    updatedAt: timestamp
+  }
+});
 
 const toLegacyCommit = (commit: ReviewStateCommit): Record<string, unknown> => {
   const value = JSON.parse(JSON.stringify(commit)) as {
@@ -853,6 +906,48 @@ test("T603-IFR-004 quarantines semantic current-schema corruption before exposur
 
     await writeFile(route.statePointerPath, validRaw, "utf8");
     assert.deepEqual(await repository.load(workspaceTarget), original);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603-IFR-004 preserves reviewed external-file canonical URI state across save, load, and restart", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const expected = createExternalCommit();
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await repository.save(externalTarget, expected);
+    assert.deepEqual(await repository.load(externalTarget), expected);
+    const restarted = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    assert.deepEqual(await restarted.load(externalTarget), expected);
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, externalTarget);
+    assert.equal((await findQuarantineSidecars(route.statePointerPath)).length, 0);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T603-IFR-004 quarantines a noncanonical external-file URI before exposure", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const expected = createExternalCommit();
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    await repository.save(externalTarget, expected);
+    const { route, manifest } = await readRepositoryManifest(temporary.storageUris, externalTarget);
+    const contextPath = path.join(route.rootPath, manifest.contexts[0]!.file);
+    const corrupted = JSON.parse(await readFile(contextPath, "utf8")) as {
+      files: Record<string, { currentPath: string }>;
+    };
+    corrupted.files["external-file-1"]!.currentPath = "file://buildserver/share/../outside.ts";
+    const raw = `${JSON.stringify(corrupted, null, 2)}\n`;
+    await writeFile(contextPath, raw, "utf8");
+
+    assert.equal(await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris })
+      .load(externalTarget), undefined);
+    await assert.rejects(() => readFile(contextPath, "utf8"), /ENOENT/u);
+    const quarantines = await findQuarantineSidecars(contextPath);
+    assert.equal(quarantines.length, 1);
+    assert.equal(await readFile(quarantines[0]!, "utf8"), raw);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

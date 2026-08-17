@@ -319,20 +319,50 @@ const validateIntervals = (
   }
 };
 
+type PersistedFilePathKind = "repository-relative" | "external-uri";
+
+const requireCanonicalExternalUri = (value: unknown, name: string): string => {
+  const candidate = requireString(value, name);
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new TypeError(`${name} must be a canonical absolute URI`);
+  }
+  if (
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0 ||
+    candidate !== `${parsed.protocol}//${parsed.host}${parsed.pathname}`
+  ) {
+    throw new TypeError(`${name} must be a canonical absolute URI without credentials, query, or fragment`);
+  }
+  return candidate;
+};
+
 const validateFileDocument = (
   value: JsonRecord,
   mapKey: string,
-  name: string
+  name: string,
+  pathKind: PersistedFilePathKind,
+  expectedExternalUri?: string
 ): void => {
   requireCurrentSchema(value.schemaVersion, name);
   if (requireString(value.fileId, `${name}.fileId`) !== mapKey) {
     throw new Error(`${name}.fileId does not match its map key`);
   }
-  const currentPath = requireCanonicalReviewPath(value.currentPath, `${name}.currentPath`);
+  const requirePath = pathKind === "external-uri"
+    ? requireCanonicalExternalUri
+    : requireCanonicalReviewPath;
+  const currentPath = requirePath(value.currentPath, `${name}.currentPath`);
+  if (expectedExternalUri !== undefined && currentPath !== expectedExternalUri) {
+    throw new Error(`${name}.currentPath must match the external-file canonical URI`);
+  }
   const previousPaths = requireArray(value.previousPaths, `${name}.previousPaths`);
   const seenPreviousPaths = new Set<string>();
   for (const [index, previousPath] of previousPaths.entries()) {
-    const normalized = requireCanonicalReviewPath(
+    const normalized = requirePath(
       previousPath,
       `${name}.previousPaths[${index}]`
     );
@@ -425,6 +455,13 @@ const validateContextDocument = (
   }
   requireString(value.displayName, "contextState.displayName");
   validateContextDescriptor(value, "contextState");
+  const kind = requireString(value.kind, "contextState.kind");
+  const externalUri = kind === "external-file"
+    ? requireCanonicalExternalUri(
+      requireRecord(value.externalFile, "contextState.externalFile").canonicalUri,
+      "contextState.externalFile.canonicalUri"
+    )
+    : undefined;
   validateOwnerReconciliation(value);
   const files = requireRecord(value.files, "contextState.files");
   const currentPaths = new Set<string>();
@@ -433,7 +470,9 @@ const validateContextDocument = (
     validateFileDocument(
       file,
       fileId,
-      `contextState.files.${fileId}`
+      `contextState.files.${fileId}`,
+      externalUri === undefined ? "repository-relative" : "external-uri",
+      externalUri
     );
     const currentPath = requireString(file.currentPath, `contextState.files.${fileId}.currentPath`);
     if (currentPaths.has(currentPath)) {
@@ -445,7 +484,11 @@ const validateContextDocument = (
   requireIsoTimestamp(value.updatedAt, "contextState.updatedAt");
 };
 
-const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void => {
+const validateGlobalDocument = (
+  value: JsonRecord,
+  repositoryId: string,
+  pathKind: PersistedFilePathKind
+): void => {
   requireCurrentSchema(value.schemaVersion, "Global state");
   if (requireString(value.repositoryId, "globalState.repositoryId") !== repositoryId) {
     throw new Error("Global state repositoryId does not match its storage owner.");
@@ -458,7 +501,9 @@ const validateGlobalDocument = (value: JsonRecord, repositoryId: string): void =
     if (requireString(file.fileId, `globalState.files.${fileId}.fileId`) !== fileId) {
       throw new Error(`globalState.files.${fileId}.fileId does not match its map key`);
     }
-    const currentPath = requireCanonicalReviewPath(
+    const currentPath = (pathKind === "external-uri"
+      ? requireCanonicalExternalUri
+      : requireCanonicalReviewPath)(
       file.currentPath,
       `globalState.files.${fileId}.currentPath`
     );
@@ -487,7 +532,11 @@ const validateWorkspaceDocument = (
   if (context.kind !== "workspace") {
     throw new Error("Workspace persistence requires a workspace review context.");
   }
-  validateGlobalDocument(global, target.repositoryId);
+  validateGlobalDocument(
+    global,
+    target.repositoryId,
+    "repository-relative"
+  );
 };
 
 interface ManifestReference {
@@ -816,7 +865,11 @@ export const preparePersistedReviewState = async (
     return quarantineManifest(store, route, pointerRaw, guard);
   }
   try {
-    validateGlobalDocument(global.value, target.repositoryId);
+    validateGlobalDocument(
+      global.value,
+      target.repositoryId,
+      target.kind === "external-file" ? "external-uri" : "repository-relative"
+    );
   } catch (error) {
     if (error instanceof UnsupportedPersistedSchemaVersionError) {
       throw error;
