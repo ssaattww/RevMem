@@ -1,0 +1,171 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: issue implementation
+  generated_at: "2026-08-17T16:15:11+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #59 / PR #60"
+task_id: ISSUE-59
+branch: feature/issue-59-global-understanding-opened-files
+base_ref: main
+target:
+  accepted_base_head: f1fa3d658d0391d7e05e492b4239ce770e5b5d30
+  validated_technical_head: 3c0abae2960582020bb91758ccb15313014a3f38
+  final_documentation_head: pending_after_packet_commit
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "issue #59の対応を行ってください / project instructions"
+    summary: Follow uploaded skills, use GitHub connector, TDD, diagnostic artifacts, small commits, repository report, PR summary, exact-head CI, and never merge.
+  - source: issue
+    reference: "Issue #59 and issue comment"
+    summary: Avoid excessively heavy Global progress exploration; use files that have been opened as the line denominator and expose opened/unopened file counts separately.
+  - source: repository_instruction
+    reference: ".github/workflows/ci.yml and tasks/tasks-status.md"
+    summary: Existing CI diagnostics are sufficient; direct tasks-status edits require a designated progress-management skill and were not authorized.
+
+development_policy:
+  method: TDD
+  red_head: 534553c6bf515b8884fbb62d479c0657f19e6387
+  red_run_id: 32003811348
+  red_result: failure
+  green_technical_head: 3c0abae2960582020bb91758ccb15313014a3f38
+  green_technical_run_id: 32004589338
+  green_technical_result: success
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/adapters/repository-files/node-repository-file-path-enumerator.ts
+      reason: Lightweight candidate path enumeration for Issue #59.
+    - path_or_operation: src/t505-global-understanding-source.ts
+      reason: Opened-file-only Global line evidence and file counts.
+    - path_or_operation: src/ui/global-understanding/**
+      reason: Opened/unopened count presentation.
+    - path_or_operation: test/unit/global-understanding-ui.test.ts
+      reason: UI contract coverage.
+    - path_or_operation: test/unit/t505-global-understanding-source.test.ts
+      reason: Issue #59 TDD regression and source contract.
+    - path_or_operation: test/unit/t505-review-findings.test.ts
+      reason: Existing T505 expectations aligned with Issue #59 contract.
+    - path_or_operation: reports/issue-59-implementation-20260817161511.md
+      reason: Required detailed implementation report.
+    - path_or_operation: handoffs/issue-59-implementation-20260817161511.yaml
+      reason: Required continuation packet.
+    - path_or_operation: PR #60 metadata and comments
+      reason: Required PR handoff and concise report.
+  forbidden:
+    - path_or_operation: merge PR #60
+      reason: Merge is reserved for the user.
+    - path_or_operation: tasks/tasks-status.md
+      reason: Repository file explicitly restricts direct updates to designated progress-management skills.
+    - path_or_operation: raise local-git maxBuffer
+      reason: The accepted Issue #59 direction removes the heavy Global content scan instead.
+
+scope:
+  - Line-based Global progress from files observed open in the current Extension Host/current revision.
+  - Retain last opened evidence after an editor closes during the same Extension Host and revision.
+  - Lightweight repository path enumeration without per-candidate content reads.
+  - Opened/unopened file counts in Global UI and Status Bar tooltip.
+  - Existing exclusion directory pruning and root .gitignore path handling.
+non_goals:
+  - Persistence of opened evidence across Extension Host restart.
+  - Carrying evidence across revision changes without reopening.
+  - Repository-wide binary/encoding inspection for unopened files.
+  - Eliminating directory traversal entirely.
+  - Direct task status updates.
+
+files:
+  changed:
+    - path: src/adapters/repository-files/node-repository-file-path-enumerator.ts
+      purpose: Enumerate candidate paths without opening each file body.
+    - path: src/t505-global-understanding-source.ts
+      purpose: Restrict Global line evidence to opened/retained documents and report counts.
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: Model opened/unopened diagnostics and tooltip data.
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: Render file-status diagnostics in the Tree View.
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: Verify opened/unopened UI diagnostics.
+    - path: test/unit/t505-global-understanding-source.test.ts
+      purpose: Verify Issue #59 denominator and retained evidence behavior.
+    - path: test/unit/t505-review-findings.test.ts
+      purpose: Keep prior T505 findings compatible with the new accepted contract.
+    - path: reports/issue-59-implementation-20260817161511.md
+      purpose: Detailed implementation and validation record.
+    - path: handoffs/issue-59-implementation-20260817161511.yaml
+      purpose: Cross-chat implementation handoff.
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: Already records stdout, stderr, command results, logs, and failure context in a workflow artifact.
+    - path_or_area: tasks/tasks-status.md
+      reason: Restricted by repository-local update rule.
+    - path_or_area: src/adapters/local-git/node-git-command-executor.ts
+      reason: Increasing maxBuffer is not the selected fix.
+
+validation:
+  red:
+    head_sha: 534553c6bf515b8884fbb62d479c0657f19e6387
+    workflow_run_id: 32003811348
+    conclusion: failure
+    failed_step: T505 Global understanding tests
+    evidence: "Issue #59 regression expected totalNonEmptyLineCount 2 but existing full-scan behavior returned 4. Diagnostic artifact id 9279332376."
+  intermediate:
+    - head_sha: a84914fa74e0902fb8507128ec1e1d70c1db9a2c
+      workflow_run_id: 32004187637
+      conclusion: failure
+      evidence: "Legacy UI/R003 expectations still described the old full-scan contract; artifact id 9279438461."
+    - head_sha: a24e6fbbda7897767105f378703a43144f6858a7
+      workflow_run_id: 32004392385
+      conclusion: failure
+      evidence: "Broad Unit passed; one focused T505 source expectation still described full scanning; artifact id 9279525521."
+  green_technical:
+    head_sha: 3c0abae2960582020bb91758ccb15313014a3f38
+    workflow_run_id: 32004589338
+    conclusion: success
+    evidence: "Exact matching CI completed successfully across build, lint, unit, focused task suites, integrations, and VS Code Extension Host."
+  final_documentation_head:
+    head_sha: pending_after_packet_commit
+    workflow_run_id: pending
+    conclusion: pending
+    note: "The report and handoff are committed together after technical Green. Exact-head CI must be checked after this packet commit; the final PR comment is authoritative for that result because writing it back here would create another HEAD."
+
+implementation:
+  summary:
+    - Replaced Global full file-body enumeration with lightweight path discovery.
+    - Removed disk fallback reads from Global line-evidence recalculation.
+    - Added owner/current-revision scoped in-memory opened evidence retention.
+    - Added opened/unopened file count diagnostics.
+  tradeoffs:
+    - Opened evidence is current-Extension-Host only.
+    - Revision changes require new evidence before lines contribute again.
+    - Unopened binary/invalid-text paths are not content-classified and may count as unopened candidates.
+    - Directory paths are still walked to compute file counts.
+
+report:
+  path: reports/issue-59-implementation-20260817161511.md
+  status: prepared_for_same_commit
+
+next_action:
+  - Advance this packet and report in one documentation-only commit.
+  - Verify CI only against that new exact PR HEAD.
+  - Update PR #60 body and mark it ready for review after Green.
+  - Post concise PR comment containing final exact-head CI evidence and report/handoff paths.
+  - Do not merge PR #60.
+
+transport:
+  merge_owner: user
+  worker_may_merge: false
+  continuation_summary: "Issue #59 implementation is technically Green at 3c0abae2960582020bb91758ccb15313014a3f38. Final report/handoff commit still requires its own exact-head CI check before handoff."
