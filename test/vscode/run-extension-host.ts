@@ -39,6 +39,7 @@ const launchTimeout = (): number => {
 async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
   const focusedT506 = process.argv.includes("--t506");
+  const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workerPath = join(__dirname, "run-extension-host-launch-worker.js");
@@ -114,7 +115,12 @@ async function main(): Promise<void> {
       ...Object.values(lifecyclePaths)
     ].map((path) => mkdir(path)));
 
-    if (focusedT506) {
+    if (focusedT506 || focusedT506SavedPullRequest) {
+      if (focusedT506SavedPullRequest) {
+        await launch("t506-saved-pr-live-edit", t506Paths, join(__dirname, "t506-suite"), "saved-pr-live-edit");
+        await launch("t506-saved-pr-restart", t506Paths, join(__dirname, "t506-suite"), "saved-pr-restart");
+        return;
+      }
       for (const phase of t506Phases) {
         await launch(`t506-${phase}`, t506Paths, join(__dirname, "t506-suite"), phase);
       }

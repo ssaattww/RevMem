@@ -28,6 +28,7 @@ import {
   type DocumentContentChange,
   type RangeMappingOptions
 } from "./core/range-mapping/index";
+import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
 
 /** Workspace ownership evidence captured at the VS Code document boundary. */
 export interface DocumentReviewEditWorkspaceSnapshot {
@@ -52,6 +53,8 @@ export interface DocumentReviewEditRequest {
   readonly after: DocumentReviewEditSnapshot;
   readonly changes: readonly DocumentContentChange[];
   readonly options: Readonly<RangeMappingOptions>;
+  /** Current Context accepted before this document event was queued. */
+  readonly selectedContext?: SelectedReviewContext;
 }
 
 /** Observable disposition of one live-edit persistence request. */
@@ -97,7 +100,12 @@ interface WorkspaceOwnerMapping extends OwnerMappingBase {
   readonly workspaceId: string;
 }
 
-type OwnerMapping = GitOwnerMapping | WorkspaceOwnerMapping;
+interface PullRequestOwnerMapping extends OwnerMappingBase {
+  readonly kind: "pull-request";
+  readonly pullRequestNumber: number;
+}
+
+type OwnerMapping = GitOwnerMapping | WorkspaceOwnerMapping | PullRequestOwnerMapping;
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -169,7 +177,10 @@ export class DocumentReviewEditRuntime {
         rangeLength: change.rangeLength,
         text: change.text
       })),
-      options: { ...request.options }
+      options: { ...request.options },
+      selectedContext: request.selectedContext === undefined
+        ? undefined
+        : { ...request.selectedContext }
     };
     const previous = this.tails.get(request.after.documentKey) ?? Promise.resolve();
     const operation = previous.catch(() => undefined).then(() => this.persist(input));
@@ -193,18 +204,24 @@ export class DocumentReviewEditRuntime {
     readonly after: DocumentReviewEditSnapshot;
     readonly changes: readonly DocumentContentChange[];
     readonly options: Readonly<RangeMappingOptions>;
+    readonly selectedContext?: SelectedReviewContext;
   }): Promise<DocumentReviewEditResult> {
     this.assertSameDocument(input.before, input.after);
     const pathApi = pathApiFor(input.after.fileSystemPathSemantics);
     const inspection = await this.options.gitInspector.inspectRepository(
       pathApi.dirname(input.after.documentFsPath)
     );
-    const owner = inspection.kind === "repository"
-      ? this.resolveGitOwner(input.after, inspection.repository)
+    let owner = inspection.kind === "repository"
+      ? this.resolveSelectedPullRequestOwner(input.after, inspection.repository, input.selectedContext)
+        ?? this.resolveGitOwner(input.after, inspection.repository)
       : this.resolveWorkspaceOwner(input.after);
     if (owner === undefined) return "unsupported-owner";
 
     let current = await this.repository.load(owner.repositoryTarget);
+    if (current === undefined && owner.kind === "pull-request" && inspection.kind === "repository") {
+      owner = this.resolveGitOwner(input.after, inspection.repository);
+      current = await this.repository.load(owner.repositoryTarget);
+    }
     if (current === undefined) return "no-op";
 
     for (;;) {
@@ -396,6 +413,49 @@ export class DocumentReviewEditRuntime {
     };
   }
 
+  private resolveSelectedPullRequestOwner(
+    snapshot: DocumentReviewEditSnapshot,
+    repository: LocalGitRepository,
+    selectedContext: SelectedReviewContext | undefined
+  ): PullRequestOwnerMapping | undefined {
+    if (
+      selectedContext?.kind !== "pull-request" ||
+      selectedContext.repositoryId !== repository.repositoryId ||
+      selectedContext.repositoryRoot !== repository.rootPath ||
+      selectedContext.headRevision !== repository.head
+    ) return undefined;
+    if (repository.head === undefined) return undefined;
+    const pathApi = pathApiFor(snapshot.fileSystemPathSemantics);
+    const relativePath = pathApi.relative(
+      pathApi.resolve(repository.rootPath),
+      pathApi.resolve(snapshot.documentFsPath)
+    );
+    if (
+      relativePath.length === 0 ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${pathApi.sep}`) ||
+      pathApi.isAbsolute(relativePath)
+    ) return undefined;
+    const normalizedPath = relativePath.split(pathApi.sep).join("/");
+    const currentPath = snapshot.fileSystemPathSemantics === "windows"
+      ? normalizedPath.toLowerCase()
+      : normalizedPath;
+    return {
+      kind: "pull-request",
+      repositoryTarget: {
+        kind: "pull-request",
+        repositoryId: selectedContext.repositoryId,
+        contextId: selectedContext.contextId
+      },
+      repositoryId: selectedContext.repositoryId,
+      contextId: selectedContext.contextId,
+      revisionId: selectedContext.headRevision,
+      pullRequestNumber: selectedContext.pullRequestNumber,
+      currentPath,
+      defaultFileId: this.createId("repository-file", selectedContext.repositoryId, currentPath)
+    };
+  }
+
   private resolveWorkspaceOwner(
     snapshot: DocumentReviewEditSnapshot
   ): WorkspaceOwnerMapping | undefined {
@@ -496,6 +556,18 @@ export class DocumentReviewEditRuntime {
       ) {
         throw new Error(
           "persisted review state no longer matches the Git owner observed for the live edit."
+        );
+      }
+      return;
+    }
+    if (owner.kind === "pull-request") {
+      if (
+        commit.contextState.kind !== "pull-request" ||
+        commit.contextState.pullRequest?.number !== owner.pullRequestNumber ||
+        commit.contextState.pullRequest?.headSha !== owner.revisionId
+      ) {
+        throw new Error(
+          "persisted review state no longer matches the selected pull-request owner observed for the live edit."
         );
       }
       return;

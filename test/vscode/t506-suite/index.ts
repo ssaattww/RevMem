@@ -13,7 +13,9 @@ const TAG_HEAD = "t506-head";
 type TestPhase =
   | "mark-context-a"
   | "restore-context-b-unmark-global"
-  | "restore-context-a";
+  | "restore-context-a"
+  | "saved-pr-live-edit"
+  | "saved-pr-restart";
 
 interface PullRequestProgressTreeFile {
   readonly path: string;
@@ -73,6 +75,7 @@ interface ReviewRangeT506TestApi {
     };
   } | undefined>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
+  seedSavedPullRequestContext(document: vscode.TextDocument, pullRequestNumber: number): Promise<void>;
 }
 
 const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
@@ -95,9 +98,11 @@ const within = async <Value>(label: string, operation: PromiseLike<Value>): Prom
 const readPhase = (): TestPhase => {
   const phase = process.env[PHASE_VARIABLE];
   assert.ok(
-    phase === "mark-context-a" ||
+      phase === "mark-context-a" ||
       phase === "restore-context-b-unmark-global" ||
-      phase === "restore-context-a",
+      phase === "restore-context-a" ||
+      phase === "saved-pr-live-edit" ||
+      phase === "saved-pr-restart",
     `Unexpected T506 Extension Host phase: ${String(phase)}`
   );
   return phase;
@@ -166,7 +171,7 @@ const readFixture = async (
   workspacePath: string,
   phase: TestPhase
 ): Promise<{ readonly baseA: string; readonly baseB: string; readonly head: string }> => {
-  if (phase === "mark-context-a") return createFixture(workspacePath);
+  if (phase === "mark-context-a" || phase === "saved-pr-live-edit") return createFixture(workspacePath);
   return {
     baseA: await runGit(workspacePath, ["rev-parse", TAG_BASE_A]),
     baseB: await runGit(workspacePath, ["rev-parse", TAG_BASE_B]),
@@ -287,6 +292,50 @@ export async function run(): Promise<void> {
   assert.ok(extension, "The Extension Development Host should load this extension.");
   const api = (await within("extension activation", extension.activate())) as ReviewRangeT506TestApi;
   api.setLocalBaseHeadConfirmationAnswer(true);
+
+  if (phase === "saved-pr-live-edit") {
+    const normalEditor = await within(
+      "open saved PR normal editor",
+      openNormalReviewEditor(workspaceFolder)
+    );
+    await within(
+      "seed and accept saved PR Current Context",
+      api.seedSavedPullRequestContext(normalEditor.document, 506)
+    );
+    normalEditor.selections = [new vscode.Selection(0, 0, 1, 20)];
+    await within(
+      "mark saved PR normal-editor lines",
+      vscode.commands.executeCommand("reviewRange.markSelectionReviewed")
+    );
+    await within("refresh saved PR initial decorations", api.refreshVisibleEditorDecorations());
+    assert.deepEqual(
+      api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
+      [{ startLine: 0, endLineExclusive: 2 }]
+    );
+    await within("edit saved PR normal editor", normalEditor.edit((edit) => {
+      edit.insert(new vscode.Position(1, 0), "const inserted = 9;\n");
+    }));
+    await waitForMappedLiveEdit(api);
+    await within("refresh saved PR mapped decorations", api.refreshVisibleEditorDecorations());
+    assert.deepEqual(
+      api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
+      expectedMappedIntervals
+    );
+    assert.equal(await normalEditor.document.save(), true);
+    return;
+  }
+
+  if (phase === "saved-pr-restart") {
+    const normalEditor = await within("open saved PR restored normal editor", openNormalReviewEditor(workspaceFolder));
+    await within("restore saved PR Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
+    await within("refresh saved PR restored decorations", api.refreshVisibleEditorDecorations());
+    assert.deepEqual(
+      api.getVisibleReviewedIntervals(normalEditor.document.uri.toString()),
+      expectedMappedIntervals
+    );
+    await assertMappedGlobalUnderstanding(api);
+    return;
+  }
 
   if (phase === "mark-context-a") {
     await within(

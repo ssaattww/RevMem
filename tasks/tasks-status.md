@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（進行中）、P6 Gitなし対応と堅牢化（進行中）
-- 直近完了タスク: T505 Global Understanding UIと設定（PR #43）をcurrent mainへsquash merge済み
-- 現在のタスク: T405 Review Contexts ViewとPR管理UI（PR #54）
-- 次のタスク: openの`T405-IFR-1`と`T405-IFR-2`を同じreviewerで限定closureし、必須PR check成功後にsquash mergeする
-- 実装状態: `T405-IFR-3`はclosed。`T405-IFR-1` Highと`T405-IFR-2` Mediumの不足回帰を追加し、composition regression 2/2は成功
-- 独立review verdict: source HEAD `b16c5c46d9d1511f68f6fc76e6ee09a404c76f58`では`fail`。残る2 findingの限定closure待ち
+- 直近実装タスク: T506 複数contextとGlobal集計の統合・Extension Host試験（PR #55、独立review finding修正中）
+- 現在のタスク: T506 Review finding closure（PR #55）
+- 次のタスク: T506の独立review finding closureと必須PR check確認後のsquash merge
+- 実装状態: T405は全独立review finding closure済みでmain統合済み。T506はPR #55でfinding closure中
+- 独立review verdict: T405はclosure済み。T506 source HEAD `5d21756e20efb4c7fab8fbee932178ab092b2067` の3 findingをPR #55で修正中
 - ブロッカー: なし
-- Gitブランチ: `feature/t405-review-contexts`
-- Pull Request: PR #54（open、finding限定closure待ち）
+- Gitブランチ: `task/t506-global-integration`
+- Pull Request: PR #55（T506 finding closure中）
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`
 - T404 implementation handoff: `reports/issue-1-t404-handoff-20260806185200.yaml`
 - T404初回通常レビューレポート: `reports/issue-1-t404-review-20260806191327.md`
@@ -323,7 +323,7 @@
 | T402 | 完了 | L | PR metadata/file取得と、local Git diff、PR files API patch、base/head内容差分の3段フォールバックを実装する。local Gitのtextconv無効化、rename/copy検出上限、patchless binary分類、GitHub pagination・changed file完全性、duplicate lineの曖昧alignmentをfail closedにする | T203、T301、T401 | raw blob座標に基づくcomplete immutable snapshotだけを返し、不完全、stale、曖昧、上限超過は理由付きで拒否する。通常review、fix verification、独立review findingをclosureし、PR #40をcurrent mainへ統合済み |
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
 | T404 | 完了 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装した | T104、T205、T401、T403 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #48をcurrent mainへsquash merge済み |
-| T405 | 進行中 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常review findingsと独立review IFR-3をclosed。IFR-1/2の不足回帰を追加し、同じreviewerの限定closureとsquash mergeが残る |
+| T405 | 完了 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常reviewと独立review closureを完了し、PR #54をmerge commit `11c2d517` でmainへ統合済み |
 | T406 | 未着手 | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加する | T401〜T405 | 未認証公開repositoryではPRを解決し、rate limit・GitHub障害中はbranch contextで確認操作でき、復旧後にcontextとcacheが再同期する。AC-11を満たす |
 
 ## P5 Global確認済みと理解率
@@ -335,7 +335,7 @@
 | T503 | 完了 | M | T300の共通除外policyを使うrepository file列挙、gitignore、invalid encoding、空行判定を実装し、Global集計対象と除外診断を構築する | T300 | `included`、`excluded`、`excludedDirectories`を決定的に返し、pruneしたdirectoryを配下fileへ展開・推定しない。独立review findingをclosureし、PR #34をcurrent mainへ統合済み |
 | T504 | 完了 | L | repository・file別Global理解率calculator、進捗cache、chunk処理、open file優先のbackground再計算を実装する | T501、T503 | validated immutable evidenceから有効なGlobal非空行だけを集計し、malformed UTF-8を除外し、cooperative処理中のfile変更を再検証する。通常review・独立review findingをclosureし、PR #39をcurrent mainへ統合済み。AC-18のcore部分を満たす |
 | T505 | 完了 | M | Global Understanding View、Status Bar併記、Global layer切替、装飾・除外・snapshot上限設定を実装した | T305、T502、T504 | 通常review findings 7件と一度限りの全範囲独立review finding 1件をclosed。T505 4 suiteとCI接続を固定し、PR #43をcurrent mainへsquash merge済み |
-| T506 | 未着手 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を追加する | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる |
+| T506 | 実装・finding修正中 | L | 複数contextの確認・解除・変更追従とGlobal集計を通す統合・Extension Host試験を実装した。PR #55で独立review `T506-IFR-001`〜`003` を修正中 | T501〜T505 | AC-18〜AC-20を通し、Global状態がPR進捗へ混入せず、再起動後も同じ理解率になる。reviewed HEAD `5d21756` のCI `31980543509` はsuccess、current fix HEADの検証・CIはPR #55で確認する |
 
 ## P6 Gitなし対応と堅牢化
 
@@ -370,4 +370,4 @@
 
 ## 次回開始時の選択
 
-T405 PR #54は通常review findingsをclosedし、一度限りの全範囲独立review finding 3件をTDD修正した。同じreviewerの限定closure後に必須PR checkを確認してsquash mergeする。
+T405 PR #54は通常reviewと一度限りの全範囲独立review finding closureを完了し、merge commit `11c2d517` でmainへ統合済みである。

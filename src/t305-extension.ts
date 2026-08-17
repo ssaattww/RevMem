@@ -41,6 +41,9 @@ import {
   type RegisteredT405ReviewContextsRuntime,
 } from "./t405-review-contexts-runtime";
 import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
+import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
+import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
+import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
@@ -58,6 +61,11 @@ const UNMARK_FILE_CONFIRMATION = "すべて解除";
 export function activate(context: vscode.ExtensionContext): unknown {
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
+  let selectedContext: SelectedReviewContext | undefined;
+  const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
+    selectedContext = next;
+    runtimePort.setSelectedContext(next);
+  };
   const git = createNodeLocalGitAdapter();
   const stableHash = new NodeSha256StableHash();
   const documentEditRuntime = new DocumentReviewEditRuntime({
@@ -349,7 +357,7 @@ export function activate(context: vscode.ExtensionContext): unknown {
       selectContext: () => currentContextComposition.selectContext()
     },
     {
-      setSelectedContext: (selected) => runtimePort.setSelectedContext(selected),
+      setSelectedContext: acceptSelectedContext,
       refreshDependents: async () => {
         await runtimePort.refreshVisibleEditorDecorations();
         await globalRuntime.refresh();
@@ -407,10 +415,13 @@ export function activate(context: vscode.ExtensionContext): unknown {
         rangeLength: change.rangeLength,
         text: change.text
       })),
-      options: {
-        ignoreWhitespaceChanges: false,
-        ignoreEolChanges: false
-      }
+      options: resolveReviewRangeMappingOptions({
+        ignoreWhitespaceChanges: vscode.workspace.getConfiguration("reviewRange")
+          .get<unknown>("ignoreWhitespaceChanges"),
+        ignoreEolChanges: vscode.workspace.getConfiguration("reviewRange")
+          .get<unknown>("ignoreEolChanges")
+      }),
+      selectedContext
     }).then(async (result) => {
       if (result !== "applied") return;
       await runtimePort.refreshVisibleEditorDecorations();
@@ -458,7 +469,39 @@ export function activate(context: vscode.ExtensionContext): unknown {
     return {
       ...baseApi,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
-      getGlobalUnderstandingSnapshot: () => globalSource.recalculate()
+      getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
+      seedSavedPullRequestContext: async (document: vscode.TextDocument, pullRequestNumber: number) => {
+        const inspection = await git.inspectRepository(document.uri.fsPath);
+        if (inspection.kind !== "repository" || inspection.repository.head === undefined) {
+          throw new Error("T506 saved PR fixture requires a Git document at a concrete HEAD.");
+        }
+        const relativePath = path.relative(inspection.repository.rootPath, document.uri.fsPath)
+          .split(path.sep).join("/");
+        const contextId = `github-pr:${inspection.repository.repositoryId}#${pullRequestNumber}`;
+        const fileId = `repository-file:${stableHash.digest([
+          "repository-file", inspection.repository.repositoryId, relativePath
+        ].join("\0"))}`;
+        const now = new Date().toISOString();
+        const contentHash = stableHash.digest(document.getText());
+        const contextState: ReviewContextState = {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId, kind: "pull-request",
+          repositoryId: inspection.repository.repositoryId, displayName: `PR #${pullRequestNumber}`,
+          pullRequest: { host: "github.com", owner: "fixture", repository: "t506", number: pullRequestNumber, state: "open", baseSha: inspection.repository.head, headSha: inspection.repository.head },
+          files: { [fileId]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId, currentPath: relativePath, previousPaths: [], revisionId: inspection.repository.head, modifiedReviewed: [], originalReviewedByDiff: {}, contentHash, lineCount: document.lineCount, updatedAt: now } },
+          createdAt: now, updatedAt: now
+        };
+        const globalState: RepositoryGlobalState = {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: inspection.repository.repositoryId,
+          currentRevisionId: inspection.repository.head, files: {}, updatedAt: now
+        };
+        await runtimePort.reviewStateRepository.save(
+          { kind: "pull-request", repositoryId: inspection.repository.repositoryId, contextId },
+          { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState }
+        );
+        acceptSelectedContext({ kind: "pull-request", repositoryId: inspection.repository.repositoryId,
+          repositoryRoot: inspection.repository.rootPath, contextId, pullRequestNumber,
+          headRevision: inspection.repository.head });
+      }
     };
   }
   return baseApi;

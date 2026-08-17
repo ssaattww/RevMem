@@ -83,6 +83,8 @@
       "title": "Review Range",
       "properties": {
         "reviewRange.showGlobalReviewed": { "type": "boolean", "default": true, "description": "Global確認済み範囲を通常エディタの装飾へ重ねて表示します。" },
+        "reviewRange.ignoreWhitespaceChanges": { "type": "boolean", "default": false, "description": "空白のみの編集を確認済み範囲の追従で無視します。" },
+        "reviewRange.ignoreEolChanges": { "type": "boolean", "default": false, "description": "改行コードのみの編集を確認済み範囲の追従で無視します。" },
         "reviewRange.showGutterIcon": { "type": "boolean", "default": true, "description": "確認済み行のガターアイコンを表示します。" },
         "reviewRange.showOverviewRuler": { "type": "boolean", "default": false, "description": "確認済み範囲をOverview Rulerへ表示します。" },
         "reviewRange.exclude": {
