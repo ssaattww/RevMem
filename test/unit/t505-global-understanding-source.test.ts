@@ -133,3 +133,109 @@ test("T505 source joins persisted Global state with included files and separate 
   assert.equal(staleRevision?.progress.totalNonEmptyLineCount, 2);
   assert.equal(staleRevision?.progress.files[0]?.state, "missing");
 });
+
+test("Issue #59 uses only previously opened files for Global line progress and reports unopened files separately", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-issue-59-source-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  const globalStorage = path.join(root, "global-storage");
+  const workspaceStorage = path.join(root, "workspace-storage");
+  await mkdir(repositoryRoot, { recursive: true });
+  const openedText = "reviewed\n\nunreviewed\n";
+  await writeFile(path.join(repositoryRoot, "opened.ts"), openedText, "utf8");
+  await writeFile(path.join(repositoryRoot, "unopened.ts"), "never\nopened\n", "utf8");
+
+  const repositoryId = "repository-issue-59";
+  const contextId = "branch-context";
+  const revisionId = "revision-1";
+  const occurredAt = "2026-08-17T06:00:00.000Z";
+  const contextState: ReviewContextState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId,
+    kind: "branch",
+    repositoryId,
+    displayName: "refs/heads/main",
+    branch: { refName: "refs/heads/main", headRevision: revisionId },
+    files: {},
+    createdAt: occurredAt,
+    updatedAt: occurredAt
+  };
+  const globalState: RepositoryGlobalState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    repositoryId,
+    currentRevisionId: revisionId,
+    files: {
+      opened: {
+        fileId: "opened",
+        currentPath: "opened.ts",
+        revisionId,
+        reviewed: [{ startLine: 0, endLineExclusive: 1 }],
+        contentHash: sha256(openedText),
+        updatedAt: occurredAt
+      }
+    },
+    updatedAt: occurredAt
+  };
+  const storageUris = {
+    globalStorageUri: { fsPath: globalStorage },
+    storageUri: { fsPath: workspaceStorage }
+  };
+  await new FileSystemReviewStateRepository({ storageUris }).save(
+    { kind: "git", repositoryId, contextId },
+    { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState }
+  );
+
+  let open = true;
+  const source = new T505GlobalUnderstandingSource({
+    storageUris,
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => open ? [{
+      path: "opened.ts",
+      revisionId,
+      lineCount: 3,
+      nonEmptyLines: [0, 2],
+      contentHash: sha256(openedText),
+      cacheKey: `test:${sha256(openedText)}`
+    }] : [],
+    fileSystemPathSemantics: "posix",
+    yieldControl: () => undefined
+  });
+  source.setContext({
+    context: {
+      kind: "branch",
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: revisionId,
+      selection: {
+        kind: "branch",
+        repositoryId,
+        repositoryRoot,
+        branchRef: "refs/heads/main"
+      }
+    },
+    progress: undefined
+  });
+
+  const whileOpen = await source.recalculate();
+  assert.equal(whileOpen?.progress.reviewedNonEmptyLineCount, 1);
+  assert.equal(whileOpen?.progress.totalNonEmptyLineCount, 2);
+  assert.deepEqual(whileOpen?.progress.files.map((file) => file.path), ["opened.ts"]);
+  const whileOpenCounts = whileOpen as typeof whileOpen & {
+    openedFileCount?: number;
+    unopenedFileCount?: number;
+  };
+  assert.equal(whileOpenCounts?.openedFileCount, 1);
+  assert.equal(whileOpenCounts?.unopenedFileCount, 1);
+
+  open = false;
+  const afterClose = await source.recalculate();
+  assert.equal(afterClose?.progress.reviewedNonEmptyLineCount, 1);
+  assert.equal(afterClose?.progress.totalNonEmptyLineCount, 2);
+  assert.deepEqual(afterClose?.progress.files.map((file) => file.path), ["opened.ts"]);
+  const afterCloseCounts = afterClose as typeof afterClose & {
+    openedFileCount?: number;
+    unopenedFileCount?: number;
+  };
+  assert.equal(afterCloseCounts?.openedFileCount, 1);
+  assert.equal(afterCloseCounts?.unopenedFileCount, 1);
+});
