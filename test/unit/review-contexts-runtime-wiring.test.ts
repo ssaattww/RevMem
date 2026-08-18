@@ -111,3 +111,34 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
   assert.match(gitExecutor, /\bspawn\(/u);
   assert.doesNotMatch(gitExecutor, /\bexecFile\(/u);
 });
+
+test("Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics", async () => {
+  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+
+  assert.match(composition, /reportActiveOperationFailure/u);
+  assert.match(
+    composition,
+    /result\.kind !== "acquired"[\s\S]{0,700}reportActiveOperationFailure\("PR進捗を取得"/u,
+  );
+  assert.match(
+    composition,
+    /catch \(error\)[\s\S]{0,300}reportActiveOperationFailure\("PR進捗を取得"/u,
+  );
+});
+
+test("Issue #63 lets operation feedback observe Review Contexts failures before UI reporting", async () => {
+  const reviewContextsUi = await readFile(
+    "src/ui/review-contexts/vscode-review-contexts-runtime.ts",
+    "utf8",
+  );
+
+  assert.match(reviewContextsUi, /const runOperation = async/u);
+  assert.match(
+    reviewContextsUi,
+    /await runWithActiveOperationFeedback\(label, operation\)[\s\S]{0,240}catch \(error\)[\s\S]{0,240}dependencies\.reportError\(error\)/u,
+  );
+  assert.doesNotMatch(
+    reviewContextsUi,
+    /runWithActiveOperationFeedback\([\s\S]{0,140}\(\) => report\(/u,
+  );
+});
