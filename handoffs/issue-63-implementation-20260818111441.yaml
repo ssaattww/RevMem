@@ -1,0 +1,248 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: issue implementation
+  generated_at: "2026-08-18T11:14:41+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #63 / PR #65"
+task_id: ISSUE-63
+branch: feature/issue-63-stream-git-output
+base_ref: main
+target:
+  accepted_base_head: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+  validated_technical_head: 51c2ff13e172a0510711fc4198a4f6b6f2e9a663
+  final_documentation_head: pending_after_packet_commit
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "Issue #63 investigation and implementation"
+    summary: Fix private-repository symptoms where Global denominator appears, PR Progress stays blank, and marking reviewed reports stdout maxBuffer length exceeded.
+  - source: user_instruction
+    reference: "Output and status requirements"
+    summary: Write operation logs to Output and update status display while processing.
+  - source: user_instruction
+    reference: "Design-first instruction"
+    summary: Update the design document before continuing implementation; design rev5 was committed first at c6ff1b628af89fd27334c5f3001f5a777bbbae7a.
+  - source: project_instruction
+    reference: "RevMem project instructions"
+    summary: Use GitHub connector, TDD, existing diagnostic artifacts, small logical commits, repository report, concise PR report, exact-head CI only, and never merge.
+  - source: user_instruction
+    reference: "Do not increase PR count"
+    summary: Keep Issue #63 in one active PR; redundant PR #64 was closed unmerged and PR #65 is the sole active implementation PR.
+
+development_policy:
+  method: TDD
+  primary_red_head: f216b6355cbe77873f2487e21973a88d6b7b1d9a
+  primary_red_run_id: 32086621261
+  primary_red_result: failure
+  green_technical_head: 51c2ff13e172a0510711fc4198a4f6b6f2e9a663
+  green_technical_run_id: 32090827458
+  green_technical_result: success
+
+authorized_actions:
+  - read_repository
+  - edit_design
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: Define Git streaming and operation diagnostics before implementation continues.
+    - path_or_operation: src/adapters/local-git/node-git-command-executor.ts
+      reason: Remove fixed child-process stdout buffer failure.
+    - path_or_operation: src/application/operation-feedback/**
+      reason: Runtime-neutral operation lifecycle and diagnostic service.
+    - path_or_operation: src/ui/operation-feedback/**
+      reason: VS Code Output Channel and Status Bar host.
+    - path_or_operation: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      reason: Publish shared feedback and expose Global recalculation lifecycle.
+    - path_or_operation: src/ui/normal-editor/review-command-registration.ts
+      reason: Expose review operation status and failure diagnostics.
+    - path_or_operation: src/t405-pull-request-review-runtime.ts
+      reason: Expose PR progress calculation lifecycle while preserving immutable PR scan behavior.
+    - path_or_operation: src/t405-review-contexts-runtime.ts
+      reason: Record fail-closed PR progress acquisition failures.
+    - path_or_operation: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      reason: Expose Review Contexts lifecycle and preserve refresh-after-failure behavior.
+    - path_or_operation: test/integration/local-git-adapter.integration.test.ts
+      reason: Validate a complete Git diff larger than the former buffer limit.
+    - path_or_operation: test/unit/node-git-command-executor.test.ts
+      reason: TDD regression for stdout larger than 4 MiB.
+    - path_or_operation: test/unit/normal-editor-review-command-registration.test.ts
+      reason: TDD regression for failed review command diagnostics.
+    - path_or_operation: test/unit/review-contexts-runtime-wiring.test.ts
+      reason: Wiring and fail-closed diagnostic contracts.
+    - path_or_operation: test/unit/review-contexts-ui.test.ts
+      reason: Operation feedback behavior and Output formatting contract.
+    - path_or_operation: reports/issue-63-implementation-20260818111441.md
+      reason: Required detailed implementation report.
+    - path_or_operation: handoffs/issue-63-implementation-20260818111441.yaml
+      reason: Required continuation packet.
+    - path_or_operation: PR #65 metadata and comments
+      reason: Required final handoff.
+  forbidden:
+    - path_or_operation: merge PR #65
+      reason: Merge is reserved for the user.
+    - path_or_operation: create another Issue #63 PR
+      reason: User explicitly requested no additional PRs.
+    - path_or_operation: tasks/tasks-status.md
+      reason: No authorized progress-management update was performed.
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Existing workflow already preserves required failure diagnostics.
+
+scope:
+  - Stream Git command stdout/stderr instead of using a fixed execFile maxBuffer ceiling.
+  - Keep complete text-result compatibility after process close.
+  - Status Bar activity while observable asynchronous review operations are active.
+  - Review Range Output lifecycle logs for start, success, and failure.
+  - PR Progress acquisition failures remain fail-closed but are no longer diagnostically silent.
+  - Review command failures are logged before existing UI error handling.
+  - Review Contexts failures are logged while existing cache/status refresh semantics remain intact.
+  - Design rev5 records the new runtime and UI contracts.
+non_goals:
+  - Merge PR #65.
+  - Create another Issue #63 PR.
+  - Change CI artifact workflow.
+  - Change task-status tracking.
+  - Replace all application APIs with streaming parsers; existing complete-string contracts remain.
+
+files:
+  changed:
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: Design rev5 for Git streaming, operation feedback, Output, Status Bar, diagnostics, tests, and acceptance.
+    - path: src/adapters/local-git/node-git-command-executor.ts
+      purpose: Stream subprocess stdout/stderr and remove maxBuffer failure mode.
+    - path: src/application/operation-feedback/index.ts
+      purpose: Export operation feedback contract.
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: Track active operations and structured lifecycle diagnostics.
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: Report PR progress calculation lifecycle without regressing immutable PR scan behavior.
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: Log fail-closed PR progress acquisition failures.
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: Own shared VS Code operation feedback and wrap Global recalculation.
+    - path: src/ui/normal-editor/review-command-registration.ts
+      purpose: Wrap review mutations and let feedback observe failures before UI error presentation.
+    - path: src/ui/operation-feedback/index.ts
+      purpose: Export VS Code operation feedback host.
+    - path: src/ui/operation-feedback/vscode-operation-feedback.ts
+      purpose: Review Range Output channel and transient activity Status Bar.
+    - path: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      purpose: Wrap Review Contexts operations and preserve Tree refresh after failed mutations.
+    - path: test/integration/local-git-adapter.integration.test.ts
+      purpose: Complete large Git diff regression.
+    - path: test/unit/node-git-command-executor.test.ts
+      purpose: Large stdout regression.
+    - path: test/unit/normal-editor-review-command-registration.test.ts
+      purpose: Failed review command diagnostic regression.
+    - path: test/unit/review-contexts-runtime-wiring.test.ts
+      purpose: Issue #63 wiring and silent-failure diagnostics.
+    - path: test/unit/review-contexts-ui.test.ts
+      purpose: Operation feedback lifecycle/status/log behavior.
+    - path: reports/issue-63-implementation-20260818111441.md
+      purpose: Detailed implementation and verification record.
+    - path: handoffs/issue-63-implementation-20260818111441.yaml
+      purpose: Cross-chat implementation handoff.
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: Existing ci-failure-diagnostics artifact already contains result, stdout, stderr, combined logs, environment, source, tests, and configuration.
+    - path_or_area: tasks/tasks-status.md
+      reason: No authorized task progress manager operation.
+
+validation:
+  red:
+    - head_sha: f216b6355cbe77873f2487e21973a88d6b7b1d9a
+      workflow_run_id: 32086621261
+      conclusion: failure
+      failed_behavior: stdout larger than legacy 4 MiB child-process buffer
+      evidence: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER; diagnostic artifact 9306928485."
+    - head_sha: 033d21b672c0f5452d32484abef70cc813303e91
+      workflow_run_id: 32087043760
+      conclusion: failure
+      failed_behavior: operation feedback contract not yet implemented
+      evidence: "Diagnostic artifact 9307057566."
+    - head_sha: 50fcd37ece6f1fbcf1336a1ccf566560d2d66060
+      workflow_run_id: 32089918157
+      conclusion: failure
+      failed_behavior: failed review command was logged as succeeded because UI caught the exception inside feedback
+      evidence: "Diagnostic artifact 9307984297."
+    - head_sha: 388024d68eb7801653699f8bb44a112aa8d3e996
+      workflow_run_id: 32090241746
+      conclusion: failure
+      failed_behavior: fail-closed PR progress and Review Contexts errors lacked required diagnostic wiring
+      evidence: "Diagnostic artifact 9308088860."
+  convergence_regressions:
+    - head_sha: c502b3290b5853df5df65f38d659e0f3ac21cb32
+      workflow_run_id: 32087859021
+      conclusion: failure
+      evidence: "Existing R60-001 detected accidental mutable working-tree gating of immutable PR HEAD; artifact 9307326163. Restored existing contract."
+    - head_sha: 3a975f581e332500ff2f3747044b9e4f5e745eee
+      workflow_run_id: 32090611646
+      conclusion: failure
+      evidence: "Existing T405 composition regression detected missing Tree refresh after cache refresh failure; artifact 9308203580. Restored refresh-after-error behavior."
+  design_checkpoint:
+    head_sha: c6ff1b628af89fd27334c5f3001f5a777bbbae7a
+    conclusion: committed_before_later_implementation
+    evidence: "Design rev5 was pushed before implementation continued after the user's design-first instruction."
+  intermediate_green:
+    - head_sha: 245c21127dc543d45def2760ebaecc0da56d5389
+      workflow_run_id: 32089518158
+      conclusion: success
+      evidence: "Immutable PR scan regression restored."
+    - head_sha: aa791119c5a2874e2ebdb26cc573a765d3143a68
+      workflow_run_id: 32090015468
+      conclusion: success
+      evidence: "Failed review commands now produce failure lifecycle diagnostics."
+  green_technical:
+    head_sha: 51c2ff13e172a0510711fc4198a4f6b6f2e9a663
+    workflow_run_id: 32090827458
+    conclusion: success
+    evidence: "Exact matching CI passed build, contract typecheck, architecture gates, lint, Unit, focused task suites, Git integrations, GitHub integration, and VS Code Extension Host."
+  final_documentation_head:
+    head_sha: pending_after_packet_commit
+    workflow_run_id: pending
+    conclusion: pending
+    note: "Report and handoff are committed together after technical Green. Final exact-head CI is recorded in the PR comment to avoid creating another repository HEAD."
+
+implementation:
+  summary:
+    - Replaced fixed-buffer Git metadata/diff execution with spawned streamed stdout/stderr consumption.
+    - Added shared runtime-neutral operation lifecycle service.
+    - Added Review Range Output channel and temporary processing Status Bar item.
+    - Added Global, PR Progress, normal review command, and Review Contexts operation feedback wiring.
+    - Added explicit diagnostics for PR progress failures that remain fail-closed in the UI.
+    - Preserved immutable PR HEAD scan and failed-cache-refresh Tree presentation semantics.
+  design:
+    path: doc/design/vscode-review-range-tracker-design.md
+    revision: rev5
+    design_first_commit: c6ff1b628af89fd27334c5f3001f5a777bbbae7a
+  tradeoffs:
+    - Existing application callers still receive complete string results after subprocess close; streaming removes the child-process buffer ceiling but is not an incremental diff-parser redesign.
+    - Fail-closed PR progress remains absent when evidence is unavailable; the difference is that the acquisition failure is now observable in Output.
+
+report:
+  path: reports/issue-63-implementation-20260818111441.md
+  status: prepared_for_same_commit
+
+next_action:
+  - Commit this handoff and report in one documentation-only commit.
+  - Verify CI only for that resulting exact PR HEAD.
+  - Update PR #65 body and mark it ready only after Green.
+  - Post concise PR comment with final exact-head CI evidence and report/handoff paths.
+  - Do not merge PR #65.
+  - Do not create another Issue #63 PR.
+
+transport:
+  merge_owner: user
+  worker_may_merge: false
+  active_pull_request: 65
+  redundant_pull_request_closed_unmerged: 64
+  continuation_summary: "Issue #63 is technically Green at 51c2ff13e172a0510711fc4198a4f6b6f2e9a663 / CI 32090827458. Final report/handoff documentation commit still requires its own exact-head CI before PR handoff."
