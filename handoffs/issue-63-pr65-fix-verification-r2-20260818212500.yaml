@@ -1,0 +1,630 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix verification
+  generated_at: "2026-08-18T21:25:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #65 / Issue #63"
+task_id: ISSUE-63
+branch: feature/issue-63-stream-git-output
+base_ref: main
+target:
+  current_head: 7774bcb93600a5c4ae1f790f1018a9dad9e72be1
+  reviewed_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+  commit_range: 8a6095304776c064ab3b44181b4e33377a6e77c1..2712ed11253ef6ea16349f0ba49a47959c418567
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー"
+    summary: "Re-verify PR #65 using the same normal reviewer continuity."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector, exact-head CI only, persist detailed report/handoff, do not merge."
+  - source: pr
+    reference: "PR #65 fix verification review 4957320382"
+    summary: "R65-001 HIGH and R65-004 MEDIUM remained open; R65-002/R65-003 were closed."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev5 §§16.10,17.3,18"
+    summary: "Output must be privacy-safe while fail-closed PR Progress remains diagnosable with acquisition attempt/stage and cause."
+  - source: handoff
+    reference: "chat-handoff-manager schema v3"
+    summary: "Typed projection plus complete producing-Skill outputs must be preserved losslessly."
+
+development_policy:
+  method: TDD
+  testing_order: "Implementation fixes add RED regression before code, then exact-head Green. Reviewer performs validation-only verification."
+  governing_source: "RevMem project instructions"
+validation_plan:
+  commands:
+    - "Inspect fix diff and direct/sibling contracts for R65-001/R65-004."
+    - "Use only workflow runs whose head SHA exactly matches the cited validation HEAD."
+  required_failure_diagnostics:
+    - "test result metadata"
+    - "standard output"
+    - "standard error"
+    - "combined logs"
+    - "failure artifact containing source/tests/configuration and investigation context"
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+      reason: "Required detailed fix-verification report."
+    - path_or_operation: handoffs/issue-63-pr65-fix-verification-r2-20260818212500.yaml
+      reason: "Required lossless review handoff."
+    - path_or_operation: "PR #65 review/comment"
+      reason: "Publish concise verdict and finding disposition."
+  forbidden:
+    - path_or_operation: "product/design/test/workflow implementation"
+      reason: "Reviewer must not implement findings."
+    - path_or_operation: tasks/tasks-status.md
+      reason: "Owned by designated task/progress-management flow."
+    - path_or_operation: "merge PR #65"
+      reason: "Merge is user-owned."
+
+scope:
+  - "Fix verification of R65-001 HIGH and R65-004 MEDIUM at reviewed HEAD 2712ed11253ef6ea16349f0ba49a47959c418567."
+  - "Regression check for previously closed R65-002 HIGH / R65-003 MEDIUM."
+  - "Inspect newly changed privacy/tests/handoff/report areas and sibling fail-closed diagnostic contract."
+non_goals:
+  - "Implement fixes."
+  - "Reopen R65-001..R65-004 without evidence."
+  - "Edit task tracking."
+  - "Merge."
+
+files:
+  changed:
+    - path: reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+      purpose: "Detailed verification report persisted after reviewed HEAD was frozen."
+    - path: handoffs/issue-63-pr65-fix-verification-r2-20260818212500.yaml
+      purpose: "Lossless continuation packet."
+  inspected:
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: "R65-001 allowlist-only privacy projection and cross-impact on failure diagnostics."
+    - path: test/unit/node-git-command-executor.test.ts
+      purpose: "Ordinary-word/custom-name privacy regressions and retained R65-002/R65-003 coverage."
+    - path: test/unit/review-contexts-ui.test.ts
+      purpose: "Generic Output expectation alignment."
+    - path: test/unit/normal-editor-review-command-registration.test.ts
+      purpose: "Original UI error remains while Output is sanitized."
+    - path: handoffs/issue-63-implementation-20260818111441.yaml
+      purpose: "R65-004 lossless source-payload verification."
+    - path: reports/issue-63-pr65-review-followup-2-20260818145600.md
+      purpose: "Implementation follow-up evidence."
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "Direct fail-closed PR progress diagnostic caller."
+    - path: src/application/github-pr-diff/contracts.ts
+      purpose: "Safe closed enums for acquisition source/reason."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Privacy and fail-closed diagnostic requirements."
+    - path: .github/workflows/ci.yml
+      purpose: "Exact-head CI and failure diagnostics."
+    - path: tasks/tasks-status.md
+      purpose: "Held tracking ownership check."
+  intentionally_untouched:
+    - path_or_area: "product/design/test/workflow code"
+      reason: "Reviewer boundary."
+    - path_or_area: tasks/tasks-status.md
+      reason: "Held for progress-management owner."
+
+commands:
+  - command: "GitHub exact-head CI lookup for 2184039267c735c5294e742ed406eec936a87827"
+    purpose: "Verify latest TDD RED identity."
+    exit_code: unknown
+    result: failed
+    head_sha: 2184039267c735c5294e742ed406eec936a87827
+    evidence: "Run 32105015297 = failure; artifact 9312843824."
+  - command: "GitHub exact-head CI lookup for 067258aabaaecb7997144decdeb37ee26dc10b39"
+    purpose: "Verify implementation convergence identity."
+    exit_code: unknown
+    result: failed
+    head_sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+    evidence: "Run 32105252501 = failure; new privacy tests Green, one legacy expectation remained; artifact 9312912066."
+  - command: "GitHub exact-head CI lookup for 3c265f830886049d08fffc6ba43c04c745368d40"
+    purpose: "Verify technical Green identity."
+    exit_code: unknown
+    result: passed
+    head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+    evidence: "Run 32105396850 = success."
+  - command: "GitHub exact-head CI lookup for 2712ed11253ef6ea16349f0ba49a47959c418567"
+    purpose: "Validate reviewed final implementation HEAD."
+    exit_code: unknown
+    result: passed
+    head_sha: 2712ed11253ef6ea16349f0ba49a47959c418567
+    evidence: "Run 32106684795 = success across full workflow."
+
+tests:
+  - name: "ordinary-word/custom Error privacy regression"
+    phase: red
+    result: failed
+    head_sha: 2184039267c735c5294e742ed406eec936a87827
+    evidence: "Run 32105015297 failed the intended new privacy cases."
+  - name: "allowlist-only privacy implementation convergence"
+    phase: post_implementation
+    result: failed
+    head_sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+    evidence: "New cases passed; one legacy raw-message expectation failed."
+  - name: "technical full regression"
+    phase: green
+    result: passed
+    head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+    evidence: "Run 32105396850 success."
+  - name: "final reviewed-head regression"
+    phase: verification
+    result: passed
+    head_sha: 2712ed11253ef6ea16349f0ba49a47959c418567
+    evidence: "Run 32106684795 success."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32137219235
+  head_sha: 7774bcb93600a5c4ae1f790f1018a9dad9e72be1
+  conclusion: in_progress
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: unknown
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "Reviewer performed no implementation."
+
+review:
+  mode: fix_verification
+  reviewed_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+  reviewer:
+    identity: "ChatGPT normal reviewer / PR65 / 2026-08-18"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: "ChatGPT normal reviewer / PR65 / 2026-08-18"
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - "Same normal-review chat that created and verified the prior PR #65 findings."
+        - "This round performed verification-only repository reads plus report/handoff persistence; it did not implement fixes."
+  verdict: fail
+  required_coverage:
+    - criterion: "requirement and design conformance"
+      disposition: checked_finding
+      evidence: "R65-001/R65-004 now conform; R65-005 violates rev5 fail-closed diagnostic requirements."
+    - criterion: "correctness and edge cases"
+      disposition: checked_finding
+      evidence: "R65-005 affects the unavailable/fail-closed PR Progress edge path; R65-002/R65-003 remain fixed."
+    - criterion: "scope discipline and unrelated changes"
+      disposition: checked_no_finding
+      evidence: "Implementation fix range is restricted to R65-001/R65-004 and required artifacts/tests."
+    - criterion: "changed files and direct dependency impact"
+      disposition: checked_finding
+      evidence: "All new paths plus direct progressFor and PR-diff attempt contracts were inspected; R65-005 is a cross-impact of the privacy fix."
+    - criterion: "API, data, configuration, workflow, and compatibility effects"
+      disposition: checked_no_finding
+      evidence: "No public API/config/workflow compatibility regression found; R65-004 transport issue is closed."
+    - criterion: "error handling and failure diagnostics"
+      disposition: checked_finding
+      evidence: "R65-005 removes required safe attempt/cause detail from fail-closed Output."
+    - criterion: "security and secret handling"
+      disposition: checked_no_finding
+      evidence: "R65-001 is closed; arbitrary Error message/name content is no longer exposed."
+    - criterion: "tests and validation adequacy"
+      disposition: checked_finding
+      evidence: "Exact-head CI is Green, but no test verifies that safe PR acquisition attempts/causes survive the privacy projection."
+    - criterion: "current-HEAD CI evidence"
+      disposition: checked_no_finding
+      evidence: "Reviewed implementation HEAD 2712ed11253ef6ea16349f0ba49a47959c418567 has exact matching success run 32106684795."
+    - criterion: "report, tracking, and documentation accuracy"
+      disposition: held
+      evidence: "R65-004 is closed. H65-001 task tracking remains owned by progress-management."
+    - criterion: "regression and maintainability risks"
+      disposition: checked_finding
+      evidence: "R65-005 shows privacy and diagnosability need a typed safe-diagnostic contract, not a plain Error-message boundary."
+  validation_assessment:
+    - item: "Reviewed implementation exact-head CI"
+      result: supported
+      evidence: "2712ed11253ef6ea16349f0ba49a47959c418567 / run 32106684795 / success."
+    - item: "Latest TDD RED identity"
+      result: supported
+      evidence: "2184039267c735c5294e742ed406eec936a87827 / run 32105015297 / failure."
+    - item: "Technical Green identity"
+      result: supported
+      evidence: "3c265f830886049d08fffc6ba43c04c745368d40 / run 32105396850 / success."
+    - item: "R65-001 closure"
+      result: supported
+      evidence: "Allowlist-only name/code projection; raw messages never copied; ordinary-word/custom-name tests present."
+    - item: "R65-004 closure"
+      result: supported
+      evidence: "Current implementation packet preserves complete initial and latest fix-verification review-worker outputs with all 11 coverage dispositions and remaining contract fields under source_payloads."
+    - item: "R65-002 retained closure"
+      result: supported
+      evidence: "Executor unchanged in latest fix range; bounded termination tests remain and current CI is Green."
+    - item: "R65-003 retained closure"
+      result: supported
+      evidence: "Lifecycle semantics unchanged; nested/reused Error tests remain and current CI is Green."
+    - item: "R65-005 diagnostic regression"
+      result: failed
+      evidence: "progressFor builds safe source:reason attempt detail in a plain Error; allowlist-only sanitizer replaces it with generic text, so fail-closed Output loses attempt/final cause."
+    - item: "Diagnostic artifact workflow"
+      result: supported
+      evidence: ".github/workflows/ci.yml retains required failure diagnostics."
+  reserved_report_paths:
+    - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+      - executable
+      - skill
+      - design
+      - workflow
+      - configuration
+      - tracking
+      - handoff
+      - product
+      - other
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - "Normal fix verification, not independent-final-review attestation."
+  summary:
+    - "R65-001 HIGH and R65-004 MEDIUM are addressed."
+    - "R65-002 HIGH and R65-003 MEDIUM remain addressed."
+    - "New R65-005 MEDIUM requires a safe structured fail-closed diagnostic."
+    - "H65-001 remains held for progress-management."
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+  reviewed_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed fix-verification R2 report persisted in commit 7774bcb93600a5c4ae1f790f1018a9dad9e72be1."
+    - "Concise PR review publication follows this handoff."
+
+findings:
+  - id: R65-005
+    severity: medium
+    origin: introduced_by_fix
+    location: "src/application/operation-feedback/operation-feedback.ts (sanitizedFailureMessage) + src/t405-review-contexts-runtime.ts (progressFor)"
+    description: "Allowlist-only privacy projection removes the safe acquisition attempt/final-cause detail required for fail-closed PR Progress diagnostics."
+    impact: "When PR Progress is blank/fail-closed, Output no longer reveals which acquisition route failed or the stable reason, regressing the Issue #63 diagnostic requirement."
+    evidence: "progressFor builds result.attempts source:reason text in a plain Error; sanitizer emits generic text for Error without allowlisted code. Design rev5 requires acquisition attempt/stage and cause. Source/reason are closed enums and can be safely projected."
+    required_action: "Introduce a structured/allowlisted PR-progress-unavailable diagnostic carrying only safe source/reason enum values (and safe category/code), preserve it in Output, and add a regression that verifies attempts/causes survive without exposing arbitrary private data."
+
+held:
+  - item: "H65-001 tasks/tasks-status.md tracking remains stale"
+    reason: "The repository file explicitly restricts updates to designated task/progress-management Skills."
+    owner: "task/progress-management flow"
+    remaining_risk: "Tracking metadata remains stale until that owner synchronizes it."
+    verdict_impact: "Non-blocking by itself."
+
+unexplored: []
+unknown:
+  - field_or_fact: "Final CI conclusion for reviewer report commit 7774bcb93600a5c4ae1f790f1018a9dad9e72be1"
+    reason: "Exact matching run 32137219235 was still in progress when this packet was generated; it is not technical validation for reviewed implementation HEAD 2712ed1."
+not_applicable:
+  - field_or_area: "implementation outcome"
+    reason: "Reviewer did not implement changes."
+  - field_or_area: "independent final review"
+    reason: "This is normal fix verification."
+remaining_risks:
+  - "R65-005 keeps fail-closed PR Progress insufficiently diagnosable until a typed safe diagnostic is added."
+  - "H65-001 remains external tracking debt."
+
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: "PR #65 / Issue #63"
+      task_id: ISSUE-63
+      mode: review
+      branch: feature/issue-63-stream-git-output
+      base_ref: main
+      current_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+      reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+      scope:
+        - "Verify R65-001 HIGH and R65-004 MEDIUM fixes."
+        - "Check newly changed areas and sibling contracts for regressions."
+        - "Retain R65-002/R65-003 closure unless new evidence appears."
+      non_goals:
+        - "Implement fixes."
+        - "Edit task tracking."
+        - "Merge."
+      authoritative_requirements:
+        - source: user_instruction
+          reference: "再レビュー"
+          summary: "Perform another same-reviewer fix verification."
+        - source: repository_instruction
+          reference: "RevMem project instructions"
+          summary: "GitHub connector, exact-head CI, reports/handoffs, no merge."
+        - source: pr
+          reference: "Previous fix verification"
+          summary: "R65-001/R65-004 open; R65-002/R65-003 closed."
+        - source: design
+          reference: "rev5 §§16.10,17.3,18"
+          summary: "Privacy-safe diagnostics must retain fail-closed attempt/cause information."
+      write_boundary:
+        allowed:
+          - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+          - handoffs/issue-63-pr65-fix-verification-r2-20260818212500.yaml
+          - "PR #65 review/comment"
+        forbidden:
+          - "implementation files"
+          - tasks/tasks-status.md
+          - merge
+      development_policy:
+        method: TDD
+        testing_order: "Implementation worker RED→Green; reviewer validation-only."
+      validation:
+        commands:
+          - "Inspect fix diff/direct dependencies."
+          - "Exact-head CI lookup."
+        required_failure_diagnostics:
+          - result
+          - stdout
+          - stderr
+          - combined logs
+          - failure artifact
+      ci:
+        matching_run: "32106684795"
+        conclusion: success
+      unknown: []
+      blocked: []
+      remaining_risks:
+        - "Potential cross-impact of privacy projection on diagnosability required inspection."
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+      base: main@3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+      commit_range: 8a6095304776c064ab3b44181b4e33377a6e77c1..2712ed11253ef6ea16349f0ba49a47959c418567
+      reviewer:
+        identity: "ChatGPT normal reviewer / PR65 / 2026-08-18"
+        role: normal_reviewer
+        continuity:
+          previous_reviewer_identity: "ChatGPT normal reviewer / PR65 / 2026-08-18"
+          changed: false
+          reason: null
+        independence:
+          implemented_change: false
+          implemented_review_fix: false
+          served_as_normal_reviewer: true
+          inherited_conversation: true
+          evidence:
+            - "Same normal-review chat as prior rounds."
+            - "Verification-only; no implementation performed."
+      required_coverage:
+        - criterion: "requirement and design conformance"
+          disposition: checked_finding
+          evidence: "R65-001/R65-004 closed; R65-005 violates fail-closed diagnostic requirements."
+        - criterion: "correctness and edge cases"
+          disposition: checked_finding
+          evidence: "R65-005 affects unavailable PR Progress; R65-002/R65-003 remain fixed."
+        - criterion: "scope discipline and unrelated changes"
+          disposition: checked_no_finding
+          evidence: "Fix range scoped to findings/artifacts."
+        - criterion: "changed files and direct dependency impact"
+          disposition: checked_finding
+          evidence: "Cross-impact on progressFor found after inspecting direct caller."
+        - criterion: "API, data, configuration, workflow, and compatibility effects"
+          disposition: checked_no_finding
+          evidence: "No public compatibility regression; R65-004 transport issue closed."
+        - criterion: "error handling and failure diagnostics"
+          disposition: checked_finding
+          evidence: "R65-005."
+        - criterion: "security and secret handling"
+          disposition: checked_no_finding
+          evidence: "R65-001 closed with allowlist-only projection."
+        - criterion: "tests and validation adequacy"
+          disposition: checked_finding
+          evidence: "Missing regression for safe acquisition attempt/cause preservation."
+        - criterion: "current-HEAD CI evidence"
+          disposition: checked_no_finding
+          evidence: "2712ed1 / 32106684795 success."
+        - criterion: "report, tracking, and documentation accuracy"
+          disposition: held
+          evidence: "R65-004 closed; H65-001 externally owned."
+        - criterion: "regression and maintainability risks"
+          disposition: checked_finding
+          evidence: "Privacy projection needs structured safe diagnostics to preserve causality."
+      findings:
+        - id: R65-005
+          severity: medium
+          origin: introduced_by_fix
+          location: "operation-feedback.ts sanitizedFailureMessage + t405-review-contexts-runtime.ts progressFor"
+          description: "Allowlist-only privacy projection removes safe fail-closed PR acquisition attempt/cause detail."
+          impact: "Blank PR Progress is no longer diagnostically traceable from Output."
+          evidence: "Plain Error carries safe enum source:reason message; sanitizer emits generic text; rev5 requires attempt/stage and cause."
+          required_action: "Typed allowlisted PR progress unavailable diagnostic + regression test."
+      severity_reclassification_records: []
+      finding_verification:
+        - id: R65-001
+          source_severity: high
+          disposition: addressed
+          evidence: "Raw arbitrary message/name no longer emitted; ordinary-word/custom-name regressions present."
+        - id: R65-002
+          source_severity: high
+          disposition: addressed
+          evidence: "No changes; bounded termination closure retained and full CI Green."
+        - id: R65-003
+          source_severity: medium
+          disposition: addressed
+          evidence: "No lifecycle regression; nested/reused Error tests retained."
+        - id: R65-004
+          source_severity: medium
+          disposition: addressed
+          evidence: "Complete initial/latest review-worker outputs now preserved under source_payloads."
+        - id: R65-005
+          source_severity: medium
+          disposition: unresolved
+          evidence: "New finding in this fix verification."
+      held:
+        - item: "H65-001 tasks/tasks-status.md tracking remains stale"
+          reason: "Owned by task/progress-management."
+          owner: "task/progress-management flow"
+          remaining_risk: "Tracking metadata stale until synchronization."
+          verdict_impact: "Non-blocking by itself."
+      unexplored: []
+      validation_assessment:
+        - item: "reviewed-head CI"
+          result: supported
+          evidence: "2712ed11253ef6ea16349f0ba49a47959c418567 / 32106684795 / success"
+        - item: "latest RED"
+          result: supported
+          evidence: "2184039267c735c5294e742ed406eec936a87827 / 32105015297 / failure"
+        - item: "technical Green"
+          result: supported
+          evidence: "3c265f830886049d08fffc6ba43c04c745368d40 / 32105396850 / success"
+        - item: "R65-001 closure"
+          result: supported
+          evidence: "allowlist-only projection and privacy regressions"
+        - item: "R65-004 closure"
+          result: supported
+          evidence: "full 11-criterion source payloads and remaining review fields preserved"
+        - item: "R65-002 closure"
+          result: supported
+          evidence: "unchanged bounded termination + Green CI"
+        - item: "R65-003 closure"
+          result: supported
+          evidence: "unchanged lifecycle regressions + Green CI"
+        - item: "R65-005"
+          result: failed
+          evidence: "safe source:reason attempt detail is lost through generic sanitizer"
+        - item: "diagnostic workflow"
+          result: supported
+          evidence: "CI failure artifact remains configured"
+      verdict: fail
+      remaining_risks:
+        - "R65-005 diagnostic regression."
+        - "H65-001 tracking remains externally held."
+      next_action: "Return only R65-005 to implementation; TDD fix; exact-new-HEAD CI; same reviewer re-verifies; no merge."
+      reserved_report_paths:
+        - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+      report_attestation_allowed: false
+      report_attestation_conditions:
+        - "Not applicable; normal fix verification."
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: verification_report
+      complete_body: |
+        # PR #65 Fix Verification R2
+
+        Reviewed implementation HEAD: `2712ed11253ef6ea16349f0ba49a47959c418567`.
+        Exact-head CI `32106684795` is success.
+
+        R65-001 HIGH: addressed. R65-004 MEDIUM: addressed. R65-002/R65-003 remain addressed.
+
+        New R65-005 MEDIUM: allowlist-only privacy projection correctly removes arbitrary raw Error text, but `progressFor()` sends its safe enumerated acquisition attempts as a plain Error message. The sanitizer therefore replaces `local-git:missing-revision`, `github-patch:network`, etc. with only `Operation failed; details were redacted.`. This violates rev5's requirement to retain fail-closed acquisition attempt/stage and cause. Implement a typed allowlisted PR-progress-unavailable diagnostic and regression coverage.
+
+        Verdict: fail. H65-001 remains held. Do not merge.
+      evidence_sources:
+        - "PR #65 reviewed HEAD 2712ed1 and exact-head run 32106684795"
+        - "operation-feedback.ts allowlist-only projection"
+        - "t405-review-contexts-runtime.ts progressFor safe attempt construction"
+        - "github-pr-diff closed source/reason enums"
+        - "design rev5 §§16.10,17.3,18"
+      target_identity:
+        branch: feature/issue-63-stream-git-output
+        base_ref: main
+        current_head: 7774bcb93600a5c4ae1f790f1018a9dad9e72be1
+        reviewed_implementation_head: 2712ed11253ef6ea16349f0ba49a47959c418567
+      severity_records:
+        - finding_id: R65-001
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: R65-004
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: R65-005
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+        report_attestation_head: null
+      concise_pr_comment_body: "PR #65 fix verification R2: R65-001 HIGH and R65-004 MEDIUM are addressed; R65-002/R65-003 remain addressed. New R65-005 MEDIUM: allowlist-only Output privacy fix now strips the safe PR acquisition source/reason detail required by rev5 fail-closed diagnostics. Reviewed HEAD 2712ed11253ef6ea16349f0ba49a47959c418567 has exact-head CI 32106684795 success. Fix only R65-005 with a typed allowlisted PR-progress-unavailable diagnostic + TDD regression, then return to the same reviewer."
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: revmem.review_evidence
+    payload:
+      previous_fix_verification_review_id: 4957320382
+      previous_fix_verification_report: reports/issue-63-pr65-fix-verification-20260818133800.md
+      implementation_followup_report: reports/issue-63-pr65-review-followup-2-20260818145600.md
+      implementation_handoff: handoffs/issue-63-implementation-20260818111441.yaml
+      reviewed_implementation_ci_run: 32106684795
+      reviewer_report_commit: 7774bcb93600a5c4ae1f790f1018a9dad9e72be1
+      reviewer_report_commit_ci_run: 32137219235
+      reviewer_report_commit_ci_status: in_progress
+
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: "review finding fix"
+  summary: "Fix only R65-005 MEDIUM, then return to the same normal reviewer."
+  instructions:
+    - "Add a TDD regression first: a fail-closed PR Progress acquisition result must leave safe source/reason attempt detail in Output."
+    - "Represent the failure with structured/allowlisted diagnostic data; do not reintroduce arbitrary Error.message output."
+    - "Keep R65-001/R65-002/R65-003/R65-004 closed unless new evidence shows regression."
+    - "Run CI and judge it only when workflow run head_sha matches the new PR HEAD."
+    - "Update implementation report/handoff and PR summary."
+    - "Do not edit tasks/tasks-status.md outside its owner flow."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/issue-63-pr65-fix-verification-r2-20260818212500.md
+    - handoffs/issue-63-pr65-fix-verification-r2-20260818212500.yaml
+    - "PR #65"
+    - "Reviewed implementation HEAD 2712ed11253ef6ea16349f0ba49a47959c418567"
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-63-pr65-fix-verification-r2-20260818212500.yaml
+  packet_url: null
+  transport_note: "Technical verdict is attached to reviewed implementation HEAD 2712ed11253ef6ea16349f0ba49a47959c418567. This packet was generated after report commit 7774bcb93600a5c4ae1f790f1018a9dad9e72be1; the handoff commit itself advances the branch and must not be treated as reviewed implementation content. Resolve current PR HEAD before implementing R65-005."
