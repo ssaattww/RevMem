@@ -9,6 +9,22 @@ import {
   type GitCommandInvocation
 } from "../../src/adapters/local-git/index";
 
+test("streams stdout larger than the legacy 4 MiB child-process buffer", async () => {
+  const outputBytes = 5 * 1024 * 1024 + 17;
+  const executor = new NodeGitCommandExecutor({
+    executable: process.execPath,
+    timeoutMs: 10_000
+  });
+
+  const result = await executor.execute({
+    argumentsList: ["-e", `process.stdout.write("x".repeat(${outputBytes}))`]
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(Buffer.byteLength(result.stdout, "utf8"), outputBytes);
+  assert.equal(result.stderr, "");
+});
+
 test("metadata command timeout preserves invocation and diagnostics as GitCommandFailedError", async () => {
   const timeoutMs = 50;
   const invocation: GitCommandInvocation = {
