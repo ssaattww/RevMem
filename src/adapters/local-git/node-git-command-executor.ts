@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 
 import {
@@ -15,14 +15,13 @@ export interface NodeGitCommandExecutorOptions {
   readonly executable?: string;
   /** Maximum execution time in milliseconds. Defaults to 30 seconds. */
   readonly timeoutMs?: number;
-  /** Maximum bytes captured independently for stdout/stderr. Defaults to 4 MiB. */
+  /**
+   * Soft per-stream diagnostic threshold. Output remains fully captured after
+   * this threshold is exceeded. Defaults to 4 MiB.
+   */
   readonly maxBufferBytes?: number;
-}
-
-interface ExecFileProcessError extends Error {
-  readonly code?: string | number | null;
-  readonly killed?: boolean;
-  readonly signal?: NodeJS.Signals | null;
+  /** Receives lifecycle diagnostics without command output contents. */
+  readonly onDiagnostic?: (message: string) => void;
 }
 
 const requirePositiveSafeInteger = (
@@ -39,21 +38,27 @@ const requirePositiveSafeInteger = (
 const appendDiagnostic = (stderr: string, diagnostic: string): string =>
   stderr.length === 0 ? diagnostic : `${stderr.trimEnd()}\n${diagnostic}`;
 
+const decoded = (chunks: readonly Buffer[]): string =>
+  Buffer.concat(chunks).toString("utf8");
+
 /**
- * Node Extension Host command executor that invokes Git directly with `execFile`.
+ * Node Extension Host command executor that invokes Git directly with `spawn`.
  *
  * The executor never enables a shell and never joins arguments into a command
  * string. Non-zero Git exits are returned as data so the adapter can distinguish
  * normal states such as detached HEAD and a missing object. Git output is forced
  * to the C locale because the adapter classifies stable diagnostic text. Process
- * timeouts reject with `GitCommandFailedError`, matching raw blob reads and
- * preserving invocation, partial output, and deterministic timeout diagnostics.
+ * output is streamed instead of using `execFile.maxBuffer`, so complete repository
+ * diffs are not rejected at a fixed byte boundary. Process timeouts reject with
+ * `GitCommandFailedError`, preserving invocation, partial output, and deterministic
+ * timeout diagnostics.
  */
 export class NodeGitCommandExecutor implements GitCommandExecutor {
   /** Configured Git executable name or path. */
   public readonly executable: string;
   private readonly timeoutMs: number;
   private readonly maxBufferBytes: number;
+  private readonly onDiagnostic: ((message: string) => void) | undefined;
 
   /** Creates a direct Git process executor. */
   public constructor(options: NodeGitCommandExecutorOptions = {}) {
@@ -71,9 +76,10 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
       options.maxBufferBytes ?? 4 * 1024 * 1024,
       "maxBufferBytes"
     );
+    this.onDiagnostic = options.onDiagnostic;
   }
 
-  /** Executes Git directly and captures UTF-8 output. */
+  /** Executes Git directly and captures complete UTF-8 output. */
   public async execute(invocation: GitCommandInvocation): Promise<GitCommandResult> {
     const normalizedInvocation: GitCommandInvocation = {
       cwd: invocation.cwd,
@@ -92,67 +98,151 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
       }
     }
 
+    const operation = normalizedInvocation.argumentsList[0] ?? "<no-arguments>";
+    const startedAt = Date.now();
+    this.reportDiagnostic(
+      `Git ${operation} started (arguments=${normalizedInvocation.argumentsList.length}).`
+    );
+
     return new Promise<GitCommandResult>((resolve, reject) => {
-      execFile(
+      const child = spawn(
         this.executable,
         [...normalizedInvocation.argumentsList],
         {
           cwd: normalizedInvocation.cwd,
-          encoding: "utf8",
           env: {
             ...process.env,
             LANG: "C",
             LC_ALL: "C"
           },
-          maxBuffer: this.maxBufferBytes,
           shell: false,
-          timeout: this.timeoutMs,
+          stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true
-        },
-        (error, stdout, stderr) => {
-          if (error === null) {
-            resolve({ exitCode: 0, stdout, stderr });
-            return;
-          }
-
-          const processError = error as ExecFileProcessError;
-          if (processError.code === "ENOENT") {
-            reject(
-              new GitExecutableNotFoundError(this.executable, { cause: error })
-            );
-            return;
-          }
-
-          if (
-            processError.killed === true &&
-            processError.signal !== undefined &&
-            processError.signal !== null
-          ) {
-            reject(
-              new GitCommandFailedError(normalizedInvocation, {
-                exitCode: -1,
-                stdout,
-                stderr: appendDiagnostic(
-                  stderr,
-                  `Git command timed out after ${this.timeoutMs} ms`
-                )
-              })
-            );
-            return;
-          }
-
-          if (typeof processError.code === "number") {
-            resolve({
-              exitCode: processError.code,
-              stdout,
-              stderr
-            });
-            return;
-          }
-
-          reject(error);
         }
       );
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutThresholdReported = false;
+      let stderrThresholdReported = false;
+      let settled = false;
+      let timedOut = false;
+
+      const finishDiagnostic = (
+        outcome: string,
+        exitCode: number
+      ): void => {
+        this.reportDiagnostic(
+          `Git ${operation} ${outcome} ` +
+          `(exitCode=${exitCode}, durationMs=${Date.now() - startedAt}, ` +
+          `stdoutBytes=${stdoutBytes}, stderrBytes=${stderrBytes}).`
+        );
+      };
+
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        timedOut = true;
+        child.kill("SIGTERM");
+      }, this.timeoutMs);
+
+      const clearTimer = (): void => {
+        clearTimeout(timeout);
+      };
+
+      const capture = (
+        streamName: "stdout" | "stderr",
+        chunk: Buffer | Uint8Array
+      ): void => {
+        const bytes = Buffer.from(chunk);
+        if (streamName === "stdout") {
+          stdoutChunks.push(bytes);
+          stdoutBytes += bytes.byteLength;
+          if (!stdoutThresholdReported && stdoutBytes > this.maxBufferBytes) {
+            stdoutThresholdReported = true;
+            this.reportDiagnostic(
+              `Git ${operation} stdout exceeded the ${this.maxBufferBytes}-byte ` +
+              "stream threshold; capture continues without truncation."
+            );
+          }
+          return;
+        }
+
+        stderrChunks.push(bytes);
+        stderrBytes += bytes.byteLength;
+        if (!stderrThresholdReported && stderrBytes > this.maxBufferBytes) {
+          stderrThresholdReported = true;
+          this.reportDiagnostic(
+            `Git ${operation} stderr exceeded the ${this.maxBufferBytes}-byte ` +
+            "stream threshold; capture continues without truncation."
+          );
+        }
+      };
+
+      child.stdout.on("data", (chunk: Buffer | Uint8Array) => {
+        capture("stdout", chunk);
+      });
+      child.stderr.on("data", (chunk: Buffer | Uint8Array) => {
+        capture("stderr", chunk);
+      });
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimer();
+        finishDiagnostic("failed to start", -1);
+        if (error.code === "ENOENT") {
+          reject(new GitExecutableNotFoundError(this.executable, { cause: error }));
+          return;
+        }
+        reject(error);
+      });
+      child.on("close", (code, signal) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimer();
+        const stdout = decoded(stdoutChunks);
+        const stderr = decoded(stderrChunks);
+
+        if (timedOut) {
+          const result = {
+            exitCode: -1,
+            stdout,
+            stderr: appendDiagnostic(
+              stderr,
+              `Git command timed out after ${this.timeoutMs} ms`
+            )
+          };
+          finishDiagnostic("timed out", -1);
+          reject(new GitCommandFailedError(normalizedInvocation, result));
+          return;
+        }
+
+        const exitCode = code ?? -1;
+        const result: GitCommandResult = {
+          exitCode,
+          stdout,
+          stderr:
+            code === null && signal !== null
+              ? appendDiagnostic(stderr, `Git process terminated by ${signal}`)
+              : stderr
+        };
+        finishDiagnostic(exitCode === 0 ? "completed" : "exited", exitCode);
+        resolve(result);
+      });
     });
+  }
+
+  private reportDiagnostic(message: string): void {
+    try {
+      this.onDiagnostic?.(message);
+    } catch {
+      // Diagnostics must never change Git command behavior.
+    }
   }
 }
