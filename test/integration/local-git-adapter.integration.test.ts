@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -188,5 +188,43 @@ test("a missing Git executable is reported without conflating it with a plain fo
       inspection.executable,
       "review-range-git-executable-that-does-not-exist"
     );
+  }
+});
+
+
+test("real Git revision diff streams output larger than the legacy 4 MiB buffer", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+  const lineCount = 70_000;
+  const baseContent = Array.from(
+    { length: lineCount },
+    (_, index) => `base-${String(index).padStart(8, "0")}-${"a".repeat(30)}`
+  ).join("\n") + "\n";
+  const headContent = Array.from(
+    { length: lineCount },
+    (_, index) => `head-${String(index).padStart(8, "0")}-${"b".repeat(30)}`
+  ).join("\n") + "\n";
+
+  try {
+    const largePath = path.join(repository.path, "large.txt");
+    await writeFile(largePath, baseContent, "utf8");
+    await repository.runGit(["add", "large.txt"]);
+    await repository.runGit(["commit", "--message", "large diff base"]);
+    const largeBase = await repository.runGit(["rev-parse", "HEAD"]);
+
+    await writeFile(largePath, headContent, "utf8");
+    await repository.runGit(["commit", "--all", "--message", "large diff head"]);
+    const largeHead = await repository.runGit(["rev-parse", "HEAD"]);
+
+    const diff = await adapter.diffRevisions(
+      repository.path,
+      largeBase,
+      largeHead
+    );
+
+    assert.ok(Buffer.byteLength(diff, "utf8") > 4 * 1024 * 1024);
+    assert.match(diff, /^diff --git /u);
+  } finally {
+    await repository.cleanup();
   }
 });
