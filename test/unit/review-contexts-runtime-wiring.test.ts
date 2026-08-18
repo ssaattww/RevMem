@@ -73,10 +73,20 @@ test("Issue #57 maps an existing owner-wide Global revision before publishing a 
 });
 
 test("Issue #63 wires streamed Git output, operation status, and Output diagnostics", async () => {
-  const entry = await readFile("src/t305-extension.ts", "utf8");
-  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const globalRuntime = await readFile(
+    "src/ui/global-understanding/vscode-global-understanding-runtime.ts",
+    "utf8",
+  );
   const reviewContextsUi = await readFile(
     "src/ui/review-contexts/vscode-review-contexts-runtime.ts",
+    "utf8",
+  );
+  const normalCommands = await readFile(
+    "src/ui/normal-editor/review-command-registration.ts",
+    "utf8",
+  );
+  const pullRequestRuntime = await readFile(
+    "src/t405-pull-request-review-runtime.ts",
     "utf8",
   );
   const operationUi = await readFile(
@@ -88,13 +98,14 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
     "utf8",
   );
 
-  assert.match(entry, /new VscodeOperationFeedbackHost/u);
-  assert.match(entry, /new OperationFeedback/u);
-  assert.match(entry, /Global理解率を再計算/u);
-  assert.match(composition, /PR進捗を計算/u);
-  assert.match(composition, /result\.kind !== "acquired"[\s\S]*throw new Error/u);
-  assert.match(reviewContextsUi, /runOperation/u);
+  assert.match(globalRuntime, /new VscodeOperationFeedbackHost/u);
+  assert.match(globalRuntime, /setActiveOperationFeedback/u);
+  assert.match(globalRuntime, /Global理解率を再計算/u);
+  assert.match(pullRequestRuntime, /PR進捗を計算/u);
+  assert.match(normalCommands, /ファイル全体を確認済みにする/u);
+  assert.match(normalCommands, /runWithActiveOperationFeedback/u);
   assert.match(reviewContextsUi, /Review Contextsを更新/u);
+  assert.match(reviewContextsUi, /runWithActiveOperationFeedback/u);
   assert.match(operationUi, /createOutputChannel/u);
   assert.match(operationUi, /createStatusBarItem/u);
   assert.match(gitExecutor, /\bspawn\(/u);
