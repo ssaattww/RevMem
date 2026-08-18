@@ -46,3 +46,22 @@ test("an invalid working directory is preserved as an invocation failure instead
     }
   );
 });
+
+test("large stdout is returned even when it exceeds the configured stream buffer", async () => {
+  const outputBytes = 512 * 1024;
+  const executor = new NodeGitCommandExecutor({
+    executable: process.execPath,
+    maxBufferBytes: 1024
+  });
+
+  const result = await executor.execute({
+    argumentsList: [
+      "-e",
+      `process.stdout.write("x".repeat(${outputBytes}))`
+    ]
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(Buffer.byteLength(result.stdout, "utf8"), outputBytes);
+  assert.equal(result.stderr, "");
+});
