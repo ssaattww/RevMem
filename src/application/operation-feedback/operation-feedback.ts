@@ -46,36 +46,51 @@ const requireLabel = (label: string): string => {
 const singleLine = (value: string): string =>
   value.replace(/[\r\n\u2028\u2029]+/gu, " ").trim();
 
-const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/u;
-const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,31}$/u;
-const FILE_LIKE_TOKEN = /(?:^|[\s(])[^\s/\\'"`<>]+\.(?:c|cc|cpp|cs|h|hpp|js|json|jsx|md|mjs|py|ts|tsx|txt|ya?ml)(?:$|[\s:),])/iu;
-const SENSITIVE_DIAGNOSTIC = /(?:https?:|file:|ssh:|git@|\b(?:token|credential|authorization|password|secret|api[-_ ]?key|bearer)\b|\bPR\s*#?\d+\b)/iu;
-const SENSITIVE_PUNCTUATION = ["/", "\\", "`", "'", "\"", "{", "}", "[", "]", "<", ">"] as const;
+const SAFE_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "URIError",
+  "AggregateError",
+  "GitCommandFailedError",
+  "GitExecutableNotFoundError"
+]);
+
+const SAFE_ERROR_CODES = new Set([
+  "EACCES",
+  "EBUSY",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EEXIST",
+  "EIO",
+  "EISDIR",
+  "EMFILE",
+  "ENFILE",
+  "ENOENT",
+  "ENOSPC",
+  "ENOTDIR",
+  "EPERM",
+  "EROFS",
+  "ETIMEDOUT",
+  "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+  "PR_PROGRESS_UNAVAILABLE"
+]);
 
 const safeErrorName = (error: Error): string =>
-  SAFE_ERROR_NAME.test(error.name) ? error.name : "Error";
+  SAFE_ERROR_NAMES.has(error.name) ? error.name : "Error";
 
 const safeErrorCode = (error: unknown): string | undefined => {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   const code = (error as { readonly code?: unknown }).code;
-  return typeof code === "string" && SAFE_ERROR_CODE.test(code) ? code : undefined;
+  return typeof code === "string" && SAFE_ERROR_CODES.has(code) ? code : undefined;
 };
 
 const sanitizedFailureMessage = (error: unknown): string => {
-  const raw = error instanceof Error ? error.message : String(error);
-  const normalized = singleLine(raw);
   const errorName = error instanceof Error ? safeErrorName(error) : undefined;
-
   if (errorName === "GitCommandFailedError") return "Git command failed.";
   if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
-
-  const sensitive =
-    normalized.length === 0 ||
-    normalized.length > 240 ||
-    SENSITIVE_DIAGNOSTIC.test(normalized) ||
-    SENSITIVE_PUNCTUATION.some((token) => normalized.includes(token)) ||
-    FILE_LIKE_TOKEN.test(normalized);
-  if (!sensitive) return normalized;
 
   const code = safeErrorCode(error);
   return code === undefined
@@ -97,8 +112,8 @@ const errorIdentity = (error: unknown): object | undefined =>
  * Coordinates operation lifecycle logging with one shared activity status.
  *
  * Labels are deliberately generic. Arbitrary dependency error messages are
- * sanitized centrally before they reach the Output host so callers cannot
- * accidentally expose repository paths, source text, credentials, or PR titles.
+ * never copied into Output. Only fixed messages and explicitly allowlisted
+ * stable error names/codes are projected to diagnostics.
  */
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];

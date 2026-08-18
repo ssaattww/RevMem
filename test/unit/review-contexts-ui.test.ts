@@ -150,7 +150,6 @@ test("controller hides only the presentation identity and delegates T405 operati
   ]);
 });
 
-
 class FakeOperationFeedbackHost implements OperationFeedbackHost {
   public readonly statuses: Array<{ label: string; activeCount: number } | undefined> = [];
   public readonly logs: OperationLogEntry[] = [];
@@ -238,7 +237,7 @@ test("logs and reveals failures before rethrowing them", async () => {
   );
 
   assert.equal(host.logs.at(-1)?.event, "failed");
-  assert.equal(host.logs.at(-1)?.message, failure.message);
+  assert.equal(host.logs.at(-1)?.message, "Operation failed; details were redacted.");
   assert.equal(host.revealCount, 1);
   assert.equal(host.statuses.at(-1), undefined);
 });
@@ -251,10 +250,9 @@ test("records a swallowed diagnostic failure without changing active status", ()
 
   assert.deepEqual(host.statuses, []);
   assert.equal(host.logs[0]?.event, "failed");
-  assert.equal(host.logs[0]?.message, "diff unavailable");
+  assert.equal(host.logs[0]?.message, "Operation failed; details were redacted.");
   assert.equal(host.revealCount, 1);
 });
-
 
 test("formats one-line Output entries without exposing a stack trace", () => {
   assert.equal(
