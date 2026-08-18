@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev4
+# VS Code レビュー範囲トラッカー 設計書 rev5
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -300,7 +300,9 @@ metadata commandとblob commandは同一runtime optionsから構成する。
 
 - `executable`: 全Git subprocessで同じ値
 - `timeoutMs`: 全Git subprocessで同じ値
-- `maxBufferBytes`: boundedなmetadata出力だけへ適用
+- `maxBufferBytes`: 旧呼出元とのsource compatibilityだけのdeprecated option。runtimeの出力上限には使用しない
+
+metadata command、complete diff、blob commandのstdout/stderrはpipeから逐次消費し、`execFile.maxBuffer`へ全量を預けない。text resultが必要なcommandはprocess close後に取得済みchunkを完全な文字列へ結合し、blobはraw byte sequenceとして扱う。したがって4 MiBを超えるPR差分・revision差分・metadata出力を固定child-process bufferだけを理由に失敗させない。
 
 Node Extension Hostでは共通factoryからmetadata executorとblob readerを生成する。portable Git、絶対path指定、Remote、Container環境で、metadataだけ設定済みGitを使いblobだけPATH上の別Gitを使う状態を禁止する。
 
@@ -346,7 +348,9 @@ Git objectから再取得可能な本文には固定の4 MiB上限を設けな�
 
 ### 9.5 Process failure contract
 
-metadata commandとblob commandのtimeoutは、いずれもinvocation、partial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。
+metadata commandとblob commandのtimeoutは、いずれもinvocation、streamから取得済みのpartial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。
+
+全Git subprocessはstdout/stderrをpipeで消費し、processの`close` eventで終了を確定する。timeout時も終了処理中に到着したchunkをdiagnosticへ追加し、固定buffer超過をtimeoutやGit failureへ読み替えない。
 
 blob commandがtimeoutした場合は、まずSIGTERMを送信し、その後もstdoutとstderrの収集を継続する。通常経路ではprocessのclose eventを待ってからfailureを確定し、timeoutまでに得た出力と終了処理中の出力を同じdiagnosticへ含める。
 
@@ -631,7 +635,8 @@ Composition RootはLocal Git、GitHub、snapshot codec、local extension snapsho
 
 ### 13.3 主要コンポーネント
 
-- UI Adapter: command、dialog、decoration、Tree View、Status Bar、diff表示
+- UI Adapter: command、dialog、decoration、Tree View、Status Bar、Output Channel、diff表示
+- Operation Feedback Service: 非同期operationの開始・成功・失敗、active operation stack、diagnostic eventをruntime-neutralに管理
 - Review Context Resolver: repository、branch、PR、fallback context解決
 - Review State Service: interval、context/Global transaction、history request
 - Range Mapping Engine: edit/Git/snapshot差分追従
@@ -641,6 +646,8 @@ Composition RootはLocal Git、GitHub、snapshot codec、local extension snapsho
 - Snapshot Adapter: Gitなし・object欠落時のsnapshot差分
 - State Repository: atomic persistence、migration、routing
 - History Store: append-only event
+
+Operation Feedback Serviceはapplication層に置き、VS Code固有のStatus BarとOutput ChannelはUI adapterのhostとして注入する。operation serviceからVS Code APIまたはruntime adapterを直接参照しない。
 
 公開barrelはconsumer type fixtureで固定し、内部compileだけで公開contractを検証済みとしない。
 
@@ -815,11 +822,23 @@ visible editorだけを装飾対象とし、現在PRの未確認変更行はGlob
 
 ### 16.7 Status Bar
 
+通常状態ではcontextと理解率を表示する。
+
 ```text
 PR #123: 67% | Global: 42%
 ```
 
 PRがない場合はbranchまたはworkspace contextを表示する。
+
+Git、GitHub、永続化、revision mapping、PR Progress、Global再計算、Review Contexts更新など、ユーザー操作またはbackground refreshから開始した非同期処理が継続している間は、通常のcontext表示とは別の一時activity itemを表示する。
+
+```text
+$(sync~spin) Review Range: PR進捗を計算
+```
+
+operation labelはpath、repository名、PR title等を含まないgenericな文言とする。複数処理が重なった場合は最後に開始したactive operationを表示し、tooltipへactive件数を示す。内側の処理終了後は直前のactive operation表示へ戻し、active処理が0件になった時だけactivity itemを隠す。開始・成功・失敗の各遷移はOutput logと同じoperation lifecycleで管理する。
+
+短時間で同期完了するpure calculationだけを独立したactivityとして表示する必要はないが、その計算がI/Oを伴う上位operationの一部である場合は上位operationのstatusを維持する。
 
 ### 16.8 Commands
 
@@ -860,6 +879,14 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 
 `historyRetentionDays = 0`は無期限保持を表す。
 
+### 16.10 Output log
+
+`Output > Review Range`へ、observableな非同期operationのlifecycleを1行ずつ記録する。各entryはUTC timestamp、genericなoperation label、`START` / `OK` / `ERROR`、完了時のduration、失敗時のerror name/messageを持つ。
+
+stack trace、source本文、GitHub token、credential、repository path、PR titleはOutputへ追加しない。error message内の改行は1行へ正規化する。同一のError objectがoperation wrapperとUI error boundaryの双方へ到達した場合は、同じfailureを重複記録しない。
+
+失敗したoperationはOutput channelを表示して診断可能にするが、editor focusを奪わない。PR ProgressやGlobal再計算などがfail-closedで空表示・未確認表示へ戻る場合も、取得attemptまたは処理段階と原因をOutputへ残し、無言で`undefined`へ変換しない。
+
 ## 17. エラー処理
 
 ### 17.1 基本方針
@@ -885,6 +912,8 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - GitHub認証失敗: branch contextへfallback
 - rate limit: cache利用
 - 保存失敗: 成功表示せず再試行
+- PR進捗取得失敗: 進捗を表示せず、local Git・GitHub・cache等の取得attemptと最終原因をOutputへ記録
+- Global/Review Contexts等のfail-closed処理: UI上は不確実な結果を採用せず、failureをOutputへ記録してactivity statusを終了する
 
 ## 18. セキュリティとプライバシー
 
@@ -892,8 +921,9 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - ソース本文とsnapshotを外部serviceへ送信しない
 - snapshotはlocal extension storageへ保存する
 - shell command文字列を構築しない
-- logへtokenとsource本文を出さない
-- private repositoryのpathやPR titleを診断logで抑止可能にする
+- logへtoken、credential、source本文、stack traceを出さない
+- operation labelはrepository path、repository名、PR titleを含まないgenericな文言にする
+- private repositoryのpathやPR titleを診断logへ出さない
 
 ## 19. パフォーマンス
 
@@ -912,7 +942,10 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - 進捗cache
 - 大規模処理のchunk分割
 - GitHub metadata・diff cache
+- Git subprocessのstdout/stderr逐次消費による固定child-process buffer上限の排除
 - open file優先処理
+
+Git command結果を最終的に完全なstringとして必要とする既存application contractは維持するため、streamingはchild-process pipeの消費方式を指し、巨大diffを無制限に保持してよいという意味ではない。追加のmemory上限またはincremental parserが必要になった場合は、実測に基づいて別途contractを定義する。
 
 ## 20. テスト方針
 
@@ -930,6 +963,9 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - POSIX特殊path、Windows禁止path・予約デバイス名
 - missingとfatal failureの分離
 - metadata/blob timeout error contract
+- 4 MiBを超えるmetadata/complete diff stdoutのstream取得
+- operation statusの開始・入れ子復元・終了とOutput logの成功・失敗・重複抑止
+- fail-closedで握りつぶされる処理もOutputへfailureを残すこと
 - public barrel consumer contract
 - architecture validatorと設計依存行列の一致
 - Current Context、PR Progress、Review Contextsの既決UI要件
@@ -946,6 +982,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - PATHに存在しないportable Git絶対pathをmetadata・blob双方で利用
 - POSIX特殊filename
 - 4 MiB直下・直上blob
+- 4 MiBを超えるrepository/PR complete diff
 - invalid UTF-8 blob
 - Gitなしfolderと複数repository
 
@@ -954,6 +991,8 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - 通常editor decorationとcommands
 - diff editor両side
 - dialog、Tree View、Status Bar
+- 非同期operation中のactivity statusと完了時の解除
+- `Review Range` Output Channelへの開始・成功・失敗log
 - 行単位レビュー対象外nodeの理由表示とtext diff非実行
 - restart後の復元
 - actual `vscode.Uri`のparse・serialize・decode
@@ -965,6 +1004,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 - GitHub 401/403/404/429、network断、patch欠落
 - storage容量不足、JSON/snapshot破損、途中終了
 - stale lock、複数window競合
+- PR Progress取得失敗が無言で非表示にならずOutputへ診断されること
 
 CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
 
@@ -990,6 +1030,9 @@ CI失敗時はtest log、生成物、source、test、設定、環境情報をart
 18. 大容量blobや不正encodingを誤表示しない
 19. エラー時に不確実な範囲を確認済み表示しない
 20. 恒久設計が本ファイル1つに機能別で整理されている
+21. 4 MiBを超えるPR・revision差分をchild-process buffer超過なしで取得できる
+22. 非同期処理中にactivity statusを表示し、開始・成功・失敗をOutputへ記録できる
+23. fail-closedで結果を非表示・未確認化する場合も原因をOutputから追跡できる
 
 ## 22. 将来検討
 
