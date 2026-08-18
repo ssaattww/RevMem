@@ -11,6 +11,7 @@ import {
   registerPullRequestGlobalHeadFileProvider,
   type PullRequestGlobalHeadFile,
 } from "./application/global-understanding/pull-request-global-head-file-registry";
+import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
 import {
   DiffEditorReviewCommandService,
   type DiffEditorReviewCommandDependencies,
@@ -25,6 +26,7 @@ import type { FileSystemPathSemantics } from "./application/workspace-identity/i
 import type { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
+  type PullRequestDiffFileProgress,
   type PullRequestDiffProgress,
   type PullRequestDiffSnapshot,
 } from "./core/pr-progress/index";
@@ -33,6 +35,10 @@ import {
   ReviewDiffTextDocumentContentProvider,
   type ReviewDiffEditorHost,
 } from "./ui/diff-editor/index";
+import {
+  PullRequestProgressTreeDataProvider,
+  type PullRequestLineReviewability,
+} from "./ui/pr-progress/index";
 
 export interface PullRequestReviewRuntimeRepository {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
@@ -67,6 +73,12 @@ interface PullRequestFullTextCache {
   readonly files: Map<string, Promise<RevisionTextContentReadResult>>;
 }
 
+interface CalculatedPullRequestProgress {
+  readonly registration: PullRequestReviewRuntimeRegistration;
+  readonly persisted: ReviewStateCommit;
+  readonly progress: PullRequestDiffProgress;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
@@ -89,8 +101,10 @@ export class PullRequestReviewRuntime<Uri> {
   private readonly globalProviderDisposers = new Map<string, () => void>();
   private readonly codec = new ReviewDiffUriCodec();
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
+  private activeProgressContextId: string | undefined;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
   public readonly diffController: ReviewDiffEditorController<Uri>;
+  public readonly progress: PullRequestProgressTreeDataProvider;
 
   public constructor(private readonly options: PullRequestReviewRuntimeOptions<Uri>) {
     this.revisionTextContentProvider = new RevisionTextContentProvider(this.codec, {
@@ -104,6 +118,15 @@ export class PullRequestReviewRuntime<Uri> {
       this.revisionTextContentProvider
     );
     this.diffController = new ReviewDiffEditorController(this.codec, options.diffHost);
+    this.progress = new PullRequestProgressTreeDataProvider({
+      openDiff: async (target) => {
+        await this.openReviewDiff(
+          target.contextId,
+          target.file.fileId,
+          target.file.path
+        );
+      },
+    });
   }
 
   public register(registration: PullRequestReviewRuntimeRegistration): void {
@@ -141,6 +164,7 @@ export class PullRequestReviewRuntime<Uri> {
     this.fullTextCaches.delete(contextId);
     this.globalProviderDisposers.get(contextId)?.();
     this.globalProviderDisposers.delete(contextId);
+    if (this.activeProgressContextId === contextId) this.clearProgress();
   }
 
   public hasContext(contextId: string): boolean {
@@ -161,15 +185,7 @@ export class PullRequestReviewRuntime<Uri> {
   ): Promise<readonly PullRequestGlobalHeadFile[]> {
     const registration = this.requireRegistration(contextId);
     const { baseSha, headSha } = registration.snapshot;
-    let cache = this.fullTextCaches.get(contextId);
-    if (cache === undefined || cache.baseSha !== baseSha || cache.headSha !== headSha) {
-      cache = {
-        baseSha,
-        headSha,
-        files: new Map<string, Promise<RevisionTextContentReadResult>>(),
-      };
-      this.fullTextCaches.set(contextId, cache);
-    }
+    const cache = this.fullTextCacheFor(registration);
 
     void candidatePaths;
     const files: PullRequestGlobalHeadFile[] = [];
@@ -191,7 +207,7 @@ export class PullRequestReviewRuntime<Uri> {
           throw new Error(`PR HEAD file is unavailable for Global scan: ${file.newPath} (${result.kind})`);
         }
         files.push({
-          path: file.newPath,
+          path: this.canonicalRepositoryPath(registration, file.newPath),
           revisionId: headSha,
           content: result.content,
         });
@@ -214,6 +230,22 @@ export class PullRequestReviewRuntime<Uri> {
       }
     }
     return files;
+  }
+
+  private fullTextCacheFor(
+    registration: PullRequestReviewRuntimeRegistration
+  ): PullRequestFullTextCache {
+    const { contextId, baseSha, headSha } = registration.snapshot;
+    let cache = this.fullTextCaches.get(contextId);
+    if (cache === undefined || cache.baseSha !== baseSha || cache.headSha !== headSha) {
+      cache = {
+        baseSha,
+        headSha,
+        files: new Map<string, Promise<RevisionTextContentReadResult>>(),
+      };
+      this.fullTextCaches.set(contextId, cache);
+    }
+    return cache;
   }
 
   private async readCachedFullText(
@@ -253,13 +285,7 @@ export class PullRequestReviewRuntime<Uri> {
   public fileIdForDiffDocumentUri(uri: string): string {
     const descriptor = this.codec.decode(uri);
     const registration = this.requireRegistration(descriptor.contextId);
-    const matches = registration.snapshot.files.filter((file) =>
-      (descriptor.side === "original"
-        ? file.oldPath ?? file.newPath
-        : file.newPath ?? file.oldPath) === descriptor.filePath
-    );
-    if (matches.length !== 1) throw new Error("Review diff document does not identify exactly one PR file");
-    return matches[0]!.fileId;
+    return this.diffFileForDescriptor(registration, descriptor).fileId;
   }
 
   public sideForDiffDocumentUri(uri: string): "original" | "modified" {
@@ -293,21 +319,56 @@ export class PullRequestReviewRuntime<Uri> {
 
   public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
     return runWithActiveOperationFeedback("PR進捗を計算", async () => {
-      const registration = this.requireRegistration(contextId);
-      const persisted = await this.options.repository.load(targetFor(registration));
-      if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
-      this.requireMatchingContext(registration, persisted);
-      const progress = calculatePullRequestDiffProgress({
-        diff: registration.snapshot,
-        reviewContext: persisted.contextState,
-        exclusionPolicy: this.options.getExclusionPolicy(),
-      });
+      const calculated = await this.calculateProgress(contextId);
       return {
-        reviewedLineCount: progress.reviewedLineCount,
-        totalLineCount: progress.totalLineCount,
-        progress: progress.progress,
+        reviewedLineCount: calculated.progress.reviewedLineCount,
+        totalLineCount: calculated.progress.totalLineCount,
+        progress: calculated.progress.progress,
       };
     });
+  }
+
+  /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
+  public async activateProgress(contextId: string): Promise<void> {
+    this.activeProgressContextId = contextId;
+    this.progress.clear();
+    try {
+      const calculated = await runWithActiveOperationFeedback(
+        "PR進捗を計算",
+        () => this.calculateProgress(contextId)
+      );
+      const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
+      for (const file of calculated.progress.files) {
+        lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
+          calculated.registration,
+          file
+        );
+      }
+      const { snapshot } = calculated.registration;
+      this.progress.replaceSnapshot({
+        snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
+        contextId: snapshot.contextId,
+        baseSha: snapshot.baseSha,
+        headSha: snapshot.headSha,
+        originalDiffId: snapshot.originalDiffId,
+        fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
+        progress: calculated.progress,
+        lineReviewabilityByFileId,
+      });
+    } catch (error) {
+      this.progress.clear();
+      throw error;
+    }
+  }
+
+  public async refreshActiveProgress(): Promise<void> {
+    if (this.activeProgressContextId === undefined) return;
+    await this.activateProgress(this.activeProgressContextId);
+  }
+
+  public clearProgress(): void {
+    this.activeProgressContextId = undefined;
+    this.progress.clear();
   }
 
   public createCommandService<Editor>(
@@ -325,30 +386,56 @@ export class PullRequestReviewRuntime<Uri> {
   public async openSession(uri: string, fileId?: string) {
     const descriptor = this.codec.decode(uri);
     const registration = this.requireRegistration(descriptor.contextId);
-    const resolvedFileId = fileId ?? this.fileIdForDiffDocumentUri(uri);
-    const diffFile = registration.snapshot.files.find((candidate) => candidate.fileId === resolvedFileId);
+    const descriptorFile = this.diffFileForDescriptor(registration, descriptor);
+    const diffFile = fileId === undefined
+      ? descriptorFile
+      : registration.snapshot.files.find((candidate) => candidate.fileId === fileId);
     if (diffFile === undefined || diffFile.status === "binary") {
       throw new Error("PR file is unavailable for line review");
+    }
+    if (diffFile.fileId !== descriptorFile.fileId) {
+      throw new Error("PR diff document and requested file identity do not match");
     }
     const persisted = await this.options.repository.load(targetFor(registration));
     if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
     this.requireMatchingContext(registration, persisted);
     const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
+    const resolvedFileId = this.persistedFileIdForPath(
+      registration,
+      persisted,
+      logicalPath
+    ) ?? diffFile.fileId;
     const persistedFile = persisted.contextState.files[resolvedFileId];
+    const persistedGlobalFile = persisted.globalState.files[resolvedFileId];
+    const targetPath = persistedFile?.currentPath ??
+      persistedGlobalFile?.currentPath ??
+      this.canonicalRepositoryPath(registration, logicalPath);
     const modifiedLineCount = diffFile.newPath === undefined
       ? 0
-      : persistedFile?.revisionId === registration.snapshot.headSha && persistedFile.currentPath === diffFile.newPath
+      : persistedFile?.revisionId === registration.snapshot.headSha &&
+          this.canonicalRepositoryPath(registration, persistedFile.currentPath) ===
+            this.canonicalRepositoryPath(registration, diffFile.newPath)
         ? persistedFile.lineCount
-        : await this.lineCount(registration.snapshot.contextId, diffFile.newPath, registration.snapshot.headSha, "modified");
+        : await this.lineCount(
+            registration.snapshot.contextId,
+            diffFile.newPath,
+            registration.snapshot.headSha,
+            "modified"
+          );
     const originalLineCount = diffFile.oldPath === undefined
       ? 0
-      : await this.lineCount(registration.snapshot.contextId, diffFile.oldPath, registration.snapshot.baseSha, "original");
+      : await this.lineCount(
+          registration.snapshot.contextId,
+          diffFile.oldPath,
+          registration.snapshot.baseSha,
+          "original"
+        );
     return {
       contextState: persisted.contextState,
       globalState: persisted.globalState,
       target: {
         fileId: resolvedFileId,
-        currentPath: logicalPath,
+        currentPath: targetPath,
         revisionId: registration.snapshot.headSha,
         lineCount: modifiedLineCount,
       },
@@ -363,6 +450,154 @@ export class PullRequestReviewRuntime<Uri> {
         commit: (transaction: Readonly<ReviewStateTransactionLike>) => this.options.repository.commit(transaction),
       },
     };
+  }
+
+  private async calculateProgress(
+    contextId: string
+  ): Promise<CalculatedPullRequestProgress> {
+    const registration = this.requireRegistration(contextId);
+    const persisted = await this.options.repository.load(targetFor(registration));
+    if (persisted === undefined) {
+      throw new Error("Persisted pull-request review context is unavailable");
+    }
+    this.requireMatchingContext(registration, persisted);
+    const progress = calculatePullRequestDiffProgress({
+      diff: registration.snapshot,
+      reviewContext: this.projectContextFileIdentities(registration, persisted),
+      exclusionPolicy: this.options.getExclusionPolicy(),
+    });
+    return { registration, persisted, progress };
+  }
+
+  private projectContextFileIdentities(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit
+  ): ReviewStateCommit["contextState"] {
+    const projected = clone(persisted.contextState);
+    for (const diffFile of registration.snapshot.files) {
+      if (projected.files[diffFile.fileId] !== undefined) continue;
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const matching = this.persistedContextFileForPath(
+        registration,
+        persisted,
+        logicalPath
+      );
+      if (matching === undefined) continue;
+      projected.files[diffFile.fileId] = {
+        ...clone(matching.file),
+        fileId: diffFile.fileId,
+        currentPath: logicalPath,
+      };
+    }
+    return projected;
+  }
+
+  private persistedContextFileForPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    logicalPath: string
+  ): { readonly fileId: string; readonly file: ReviewStateCommit["contextState"]["files"][string] } | undefined {
+    const expectedPath = this.canonicalRepositoryPath(registration, logicalPath);
+    const matches = Object.entries(persisted.contextState.files).filter(([, file]) =>
+      this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath
+    );
+    if (matches.length > 1) {
+      throw new Error(`Persisted PR context has conflicting file identities for ${expectedPath}`);
+    }
+    const match = matches[0];
+    return match === undefined ? undefined : { fileId: match[0], file: match[1] };
+  }
+
+  private persistedFileIdForPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    logicalPath: string
+  ): string | undefined {
+    const expectedPath = this.canonicalRepositoryPath(registration, logicalPath);
+    const fileIds = new Set<string>();
+    for (const [fileId, file] of Object.entries(persisted.contextState.files)) {
+      if (this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath) {
+        fileIds.add(fileId);
+      }
+    }
+    for (const [fileId, file] of Object.entries(persisted.globalState.files)) {
+      if (this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath) {
+        fileIds.add(fileId);
+      }
+    }
+    if (fileIds.size > 1) {
+      throw new Error(`Persisted PR state has conflicting file identities for ${expectedPath}`);
+    }
+    return fileIds.values().next().value as string | undefined;
+  }
+
+  private diffFileForDescriptor(
+    registration: PullRequestReviewRuntimeRegistration,
+    descriptor: ReturnType<ReviewDiffUriCodec["decode"]>
+  ) {
+    const descriptorPath = this.canonicalRepositoryPath(
+      registration,
+      descriptor.filePath
+    );
+    const matches = registration.snapshot.files.filter((file) => {
+      const sourcePath = descriptor.side === "original"
+        ? file.oldPath ?? file.newPath
+        : file.newPath ?? file.oldPath;
+      return sourcePath !== undefined &&
+        this.canonicalRepositoryPath(registration, sourcePath) === descriptorPath;
+    });
+    if (matches.length !== 1) {
+      throw new Error("Review diff document does not identify exactly one PR file");
+    }
+    return matches[0]!;
+  }
+
+  private async lineReviewabilityFor(
+    registration: PullRequestReviewRuntimeRegistration,
+    file: PullRequestDiffFileProgress
+  ): Promise<PullRequestLineReviewability> {
+    if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
+      return { kind: "unsupported", reason: { kind: "binary" } };
+    }
+    const filePath = file.newPath ?? file.oldPath;
+    if (filePath === undefined) {
+      throw new Error(`PR progress file has no content path: ${file.fileId}`);
+    }
+    const modified = file.newPath !== undefined;
+    const revision = modified
+      ? registration.snapshot.headSha
+      : registration.snapshot.baseSha;
+    const result = await this.readCachedFullText(
+      registration,
+      this.fullTextCacheFor(registration),
+      filePath,
+      revision,
+      modified ? "modified" : "original"
+    );
+    if (result.kind === "invalid-encoding") {
+      return {
+        kind: "unsupported",
+        reason: { kind: "invalid-encoding", encoding: result.encoding },
+      };
+    }
+    if (result.kind !== "found") {
+      throw new Error(`PR progress text is unavailable for ${filePath} (${result.kind})`);
+    }
+    return { kind: "reviewable" };
+  }
+
+  private canonicalRepositoryPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    repositoryPath: string
+  ): string {
+    const canonical = requireCanonicalRepositoryRelativePath(
+      repositoryPath,
+      registration.fileSystemPathSemantics
+    );
+    return registration.fileSystemPathSemantics === "windows"
+      ? canonical.toLowerCase()
+      : canonical;
   }
 
   private async lineCount(
