@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { toDefaultVisualState } from "../../src/core/contracts/index";
 import "./github-pr-context-layer-store.test";
+import "./issue-66-global-pr-progress.test";
 import "./repository-global-state-repository.test";
 import "./state-repository-memory.test";
 import "./state-repository.test";
