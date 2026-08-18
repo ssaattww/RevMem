@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 
 import {
+  OperationFeedback,
+  runWithActiveOperationFeedback,
+  setActiveOperationFeedback
+} from "../../application/operation-feedback/index";
+import { VscodeOperationFeedbackHost } from "../operation-feedback/index";
+
+import {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
@@ -194,6 +201,9 @@ export const registerGlobalUnderstandingRuntime = (
   context: vscode.ExtensionContext,
   dependencies: GlobalUnderstandingRuntimeDependencies
 ): RegisteredGlobalUnderstandingRuntime => {
+  const operationFeedbackHost = new VscodeOperationFeedbackHost();
+  context.subscriptions.push(operationFeedbackHost);
+  setActiveOperationFeedback(new OperationFeedback(operationFeedbackHost));
   const tree = new GlobalUnderstandingTreeDataProvider();
   const status = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -224,7 +234,10 @@ export const registerGlobalUnderstandingRuntime = (
   const invalidate = (): void => refreshController.invalidate();
   const clear = (): void => refreshController.clear();
   const refresh = (): Promise<void> =>
-    refreshController.refresh().then(() => undefined);
+    runWithActiveOperationFeedback(
+      "Global理解率を再計算",
+      () => refreshController.refresh().then(() => undefined)
+    );
 
   const refreshWithErrorBoundary = async (): Promise<void> => {
     try {
