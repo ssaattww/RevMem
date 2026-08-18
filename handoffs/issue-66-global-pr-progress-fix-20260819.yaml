@@ -1,0 +1,289 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: implementation
+  generated_at: "2026-08-19T08:25:23+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #66 / PR #68"
+task_id: ISSUE-66
+branch: fix/issue-66-global-untracked-missing
+base_ref: main
+target:
+  current_head: 8ce691c3e881c0c65b2ef16b80c877d711016a2c
+  base_head: 7d4df08e6a55b40ecb1d0faf515005912274258d
+  technical_green_head: ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d
+  behavior_red_head: b509d5bbeb997ae42a05aee9579bd108b02ba6d9
+  commit_range: 7d4df08e6a55b40ecb1d0faf515005912274258d..8ce691c3e881c0c65b2ef16b80c877d711016a2c
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "確認済みになって背景が変わった、非git管理のファイルのglobal understandingが更新されない"
+    summary: "Fix Global Understanding so confirmed files no longer remain missing when the persisted state and current file identify the same file."
+  - source: user_instruction
+    reference: "状態 missingになっている"
+    summary: "Treat the observed Global state=missing as a concrete regression signal, not as a generic refresh failure."
+  - source: user_instruction
+    reference: "pr progressも全く更新されていない (分母も分子も)"
+    summary: "Fix the dedicated PR Progress projection and the reviewed numerator for the selected pull request."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector, TDD, failure diagnostic artifacts, small logical commits, exact-head CI, repository report and concise PR comment; never merge."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev5"
+    summary: "PR Progress counts the target PR diff lines; Global Understanding counts current repository non-empty lines. Pure working-tree untracked files are not invented into the PR denominator."
+
+development_policy:
+  method: TDD
+  testing_order: "Add regressions, confirm an exact-head behavior RED, implement in small logical commits, then validate full exact-head Green."
+  ci_identity_rule: "Only a workflow run whose head_sha equals the target HEAD is admissible."
+  diagnostics_policy: "Use the existing workflow artifact that records stdout, stderr, combined logs, result metadata, sources/tests/tools and investigation context."
+
+validation_plan:
+  commands:
+    - "Complete GitHub Actions CI on each validation HEAD."
+    - "Use Unit regressions for Windows Global path identity, PR persisted file identity, GitHub PR progress source, and production source switching."
+    - "Require the full T304/T405/T505/T506/integration/Extension Host gates to pass."
+  required_failure_diagnostics:
+    - test result metadata
+    - standard output
+    - standard error
+    - combined logs
+    - source and test investigation context
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_issue
+  - update_pr
+  - comment_pr
+
+write_boundary:
+  allowed:
+    - path_or_operation: src/t505-global-understanding-source.ts
+      reason: "Canonical Global evidence identity."
+    - path_or_operation: src/t405-pull-request-review-runtime.ts
+      reason: "PR persisted file identity and GitHub PR progress projection."
+    - path_or_operation: src/ui/pr-progress/vscode-pull-request-progress-tree.ts
+      reason: "Dedicated view runtime-source switching."
+    - path_or_operation: src/t305-extension.ts
+      reason: "Production Current Context wiring and refresh lifecycle."
+    - path_or_operation: test/unit/issue-66-global-pr-progress.test.ts
+      reason: "Issue #66 TDD regressions."
+    - path_or_operation: test/unit/core-contracts.test.ts
+      reason: "Default Unit suite inclusion."
+    - path_or_operation: reports/issue-66-global-pr-progress-fix-20260819.md
+      reason: "Required detailed implementation report."
+    - path_or_operation: handoffs/issue-66-global-pr-progress-fix-20260819.yaml
+      reason: "Required continuation packet."
+    - path_or_operation: "Issue #66 / PR #68 body and PR comment"
+      reason: "Required implementation summary and handoff."
+  forbidden:
+    - path_or_operation: "merge PR #68"
+      reason: "Merge is user-owned."
+    - path_or_operation: tasks/tasks-status.md
+      reason: "The file itself restricts updates to designated task/progress-management skills."
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: "The fix conforms to the existing PR-vs-Global semantics and needs no design change."
+    - path_or_operation: .github/workflows/ci.yml
+      reason: "Existing failure diagnostics already satisfy the required artifact contract."
+
+scope:
+  - "Fix Windows/case-insensitive Global evidence path identity so a confirmed file does not stay missing."
+  - "Make GitHub PR progress reuse a persisted normal-editor file identity by canonical logical path."
+  - "Make PR diff sessions and normal-editor sessions share the same persisted PR file state."
+  - "Expose the real GitHub PR progress through the dedicated contributed PR Progress view when that PR is Current Context."
+  - "Refresh active PR progress after review-state changes, live mapping, and exclusion-policy changes."
+
+non_goals:
+  - "Do not add pure working-tree untracked files to a PR denominator when the PR diff does not contain them."
+  - "Do not change the repository-wide Global/PR Progress conceptual boundary."
+  - "Do not change persistence schema."
+  - "Do not merge PR #68."
+  - "Do not edit tasks/tasks-status.md."
+
+files:
+  changed:
+    - path: src/t505-global-understanding-source.ts
+      purpose: "Case-insensitive Windows canonicalization across filesystem candidates, open documents, and immutable PR HEAD evidence."
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "Canonical-path persisted-ID resolution, calculation-only PR aliases, shared diff sessions, and T304 progress source."
+    - path: src/ui/pr-progress/vscode-pull-request-progress-tree.ts
+      purpose: "Switchable default/local vs selected-GitHub-PR source for the contributed tree."
+    - path: src/t305-extension.ts
+      purpose: "Select/refresh/clear the GitHub PR progress source from Current Context lifecycle."
+    - path: test/unit/issue-66-global-pr-progress.test.ts
+      purpose: "Four Issue #66 regressions covering Global, PR identity, tree source, and production wiring."
+    - path: test/unit/core-contracts.test.ts
+      purpose: "Include the Issue #66 regression file in the default Unit execution."
+    - path: reports/issue-66-global-pr-progress-fix-20260819.md
+      purpose: "Detailed root cause, TDD, implementation and validation evidence."
+    - path: handoffs/issue-66-global-pr-progress-fix-20260819.yaml
+      purpose: "Schema-v3 implementation continuation packet."
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: "Confirm failure diagnostic artifacts exist before implementation."
+    - path: tools/run-ci-command.mjs
+      purpose: "Confirm stdout/stderr/combined/result capture."
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: "Establish exact missing-vs-stale semantics."
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: "Confirm selected PR normal-editor routing and hashed/persisted file identity."
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: "Confirm PR progress is keyed by diff file identity and counts only PR changed lines."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Confirm existing PR Progress and Global Understanding semantics."
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Already sufficient."
+    - path_or_area: doc/design/vscode-review-range-tracker-design.md
+      reason: "No design change."
+    - path_or_area: tasks/tasks-status.md
+      reason: "External task/progress-management ownership."
+
+commands:
+  - command: "GitHub exact-head CI for 75193368d09ce7db85425325f0b8f63a2ffe372f"
+    purpose: "Initial test-only RED attempt."
+    result: failed
+    head_sha: 75193368d09ce7db85425325f0b8f63a2ffe372f
+    evidence: "Run 32195859664 failed at lint due to a test-harness unused argument; artifact 9345813620."
+  - command: "GitHub exact-head CI for b509d5bbeb997ae42a05aee9579bd108b02ba6d9"
+    purpose: "Behavior-valid RED before production implementation."
+    result: failed
+    head_sha: b509d5bbeb997ae42a05aee9579bd108b02ba6d9
+    evidence: "Run 32196008193 failed the four intended Issue #66 regressions; artifact 9345866755."
+  - command: "GitHub exact-head CI for 36158c0347fc70ec7b2765b6addc14afbe4ccd50"
+    purpose: "Intermediate validation after core implementation and before final tree-source switch."
+    result: failed
+    head_sha: 36158c0347fc70ec7b2765b6addc14afbe4ccd50
+    evidence: "Run 32196717569: Build/typecheck/architecture/lint passed and first three Issue #66 regressions passed; the remaining wiring assertion failed; artifact 9346106650."
+  - command: "GitHub exact-head CI for ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d"
+    purpose: "Technical Green for complete Issue #66 production implementation."
+    result: passed
+    head_sha: ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d
+    evidence: "Run 32196772424 succeeded across Build, typecheck, architecture, lint, Unit, T602/T603, T403/T404/T405, T304, T502/T503/T504/T505, T506, Git, Mock GitHub and VS Code Extension Host."
+
+tests:
+  - name: "Windows Global path identity"
+    phase: red
+    result: failed
+    evidence: "b509d5bb / 32196008193: Src/Untracked.ts did not match persisted src/untracked.ts."
+  - name: "Windows Global path identity"
+    phase: green
+    result: passed
+    evidence: "ddc02c2c / 32196772424: state=current and reviewed 1/2."
+  - name: "PR persisted normal-editor identity contributes to progress"
+    phase: red
+    result: failed
+    evidence: "b509d5bb / 32196008193: actual 0/2 instead of 1/2."
+  - name: "PR persisted normal-editor identity contributes to progress"
+    phase: green
+    result: passed
+    evidence: "ddc02c2c / 32196772424: PR progress 1/2 and diff session reuses persisted file ID."
+  - name: "GitHub PR runtime owns T304 progress source"
+    phase: red
+    result: failed
+    evidence: "b509d5bb / 32196008193: runtime progress source absent."
+  - name: "GitHub PR runtime owns T304 progress source"
+    phase: green
+    result: passed
+    evidence: "ddc02c2c / 32196772424."
+  - name: "Production dedicated PR Progress source switch"
+    phase: red
+    result: failed
+    evidence: "b509d5bb / 32196008193: no production GitHub PR source wiring."
+  - name: "Production dedicated PR Progress source switch"
+    phase: green
+    result: passed
+    evidence: "ddc02c2c / 32196772424."
+
+ci:
+  required: true
+  workflow: CI
+  technical_green:
+    run_id: 32196772424
+    head_sha: ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d
+    conclusion: success
+  failure_artifacts:
+    - id: 9345813620
+      run_id: 32195859664
+      purpose: "Initial RED harness lint investigation."
+    - id: 9345866755
+      run_id: 32196008193
+      purpose: "Behavior RED with four Issue #66 failures."
+    - id: 9346106650
+      run_id: 32196717569
+      purpose: "Intermediate remaining source-switch failure."
+  final_exact_head:
+    status: pending
+    reason: "This packet is committed after the technical Green; the new documentation HEAD must receive its own exact-head CI before completion."
+
+implementation:
+  outcome: completed_pending_final_docs_ci
+  technical_green_head: ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d
+  commits:
+    - sha: 75193368d09ce7db85425325f0b8f63a2ffe372f
+      purpose: "test: initial Issue #66 regressions"
+    - sha: b509d5bbeb997ae42a05aee9579bd108b02ba6d9
+      purpose: "test: make RED reach behavior assertions"
+    - sha: 482d05468d70b38666019d8370d6697456dc808c
+      purpose: "fix: canonicalize Windows Global evidence paths"
+    - sha: c3500aa4f810c36a623bc1e0f6e23f37430732ac
+      purpose: "fix: unify PR progress and persisted file identities"
+    - sha: 97db35a4eb1b40e261251df4a4daef03cc0bdd54
+      purpose: "refactor: allow PR Progress tree source switching"
+    - sha: 0b13bd94bf1842d878b67cc924fc1b0d61c37e50
+      purpose: "feat: switch dedicated PR Progress runtime source"
+    - sha: 36158c0347fc70ec7b2765b6addc14afbe4ccd50
+      purpose: "fix: connect selected GitHub PR to PR Progress view"
+    - sha: ddc02c2c8a1f286d878f43c49a40a3300c8bbd3d
+      purpose: "test: align production source-switch regression with final design"
+    - sha: 8ce691c3e881c0c65b2ef16b80c877d711016a2c
+      purpose: "docs: detailed Issue #66 implementation report"
+  summary:
+    - "Global current-file evidence and persisted review state now share Windows case-insensitive path identity."
+    - "PR progress aliases persisted normal-editor state into raw PR diff identity only for calculation; persisted IDs are not rewritten."
+    - "PR diff sessions resolve and reuse the same persisted file ID by canonical path."
+    - "The dedicated PR Progress view keeps its local default source and switches to the selected registered GitHub PR source."
+    - "State/exclusion/edit changes refresh the active PR progress projection."
+  blocked_items: []
+
+review:
+  mode: implementation_handoff
+  verdict: not_reviewed
+  reason: "This worker performed implementation, not an independent normal/final review."
+
+report:
+  path: reports/issue-66-global-pr-progress-fix-20260819.md
+  status: written
+  summary: "Detailed symptoms, root causes, TDD chronology, implementation, exact-head technical Green and scope boundaries."
+
+source_payloads:
+  - kind: implementation_summary
+    encoding: plain
+    sha256: null
+    payload: |-
+      Issue #66 fixes three connected projection defects: Windows path casing made Global state missing; PR diff IDs could not see normal-editor persisted IDs; and the contributed PR Progress view was fixed to LocalBaseHeadRuntime instead of the selected GitHub PR runtime. Production now canonicalizes Windows Global evidence, resolves persisted PR IDs by canonical path, projects them calculation-only to the PR diff, and switches/refreshed the dedicated tree for the selected PR.
+  - kind: report_reference
+    encoding: repository-path
+    sha256: null
+    payload: reports/issue-66-global-pr-progress-fix-20260819.md
+
+next_action:
+  owner: implementation-worker
+  action: "After this handoff commit, resolve PR #68 current HEAD, wait for a workflow run whose head_sha exactly matches it, require full CI success, then update Issue #66 and PR #68 and post a concise PR comment. Do not merge."
+  success_condition: "Final PR HEAD has an exact matching successful CI run and repository/PR reports accurately reference that final validation."
+
+transport:
+  lossless: true
+  schema_version: 3
+  caveats:
+    - "final_exact_head CI is intentionally pending because creating this packet changes HEAD."
+    - "tasks/tasks-status.md remains intentionally untouched due to its own update-owner restriction."
