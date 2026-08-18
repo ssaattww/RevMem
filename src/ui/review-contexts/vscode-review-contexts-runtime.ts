@@ -168,30 +168,24 @@ export function registerReviewContextsRuntime(
   const provider = new ReviewContextsTreeProvider(dependencies.source);
   const tree = vscode.window.createTreeView(VIEW_ID, { treeDataProvider: provider });
 
-  const report = async (operation: () => Promise<void>): Promise<void> => {
+  const runOperation = async (
+    label: string,
+    operation: () => Promise<void>,
+  ): Promise<void> => {
     try {
-      await operation();
+      await runWithActiveOperationFeedback(label, operation);
     } catch (error) {
       await dependencies.reportError(error);
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
-    runWithActiveOperationFeedback(
-      "Review Contextsを更新",
-      () => report(() => provider.refresh())
-    );
+    runOperation("Review Contextsを更新", () => provider.refresh());
   const mutate = (operation: () => Promise<void>, refreshDecorations = false): Promise<void> =>
-    runWithActiveOperationFeedback("Review Contextsを更新", () =>
-      report(async () => {
-        try {
-          await operation();
-          if (refreshDecorations) await dependencies.refreshDecorations();
-        } catch (error) {
-          await dependencies.reportError(error);
-        }
-        await provider.refresh();
-      })
-    );
+    runOperation("Review Contextsを更新", async () => {
+      await operation();
+      if (refreshDecorations) await dependencies.refreshDecorations();
+      await provider.refresh();
+    });
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
     return item;
@@ -223,19 +217,16 @@ export function registerReviewContextsRuntime(
     }),
     vscode.commands.registerCommand("reviewRange.openReviewContextDiff", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
-      return runWithActiveOperationFeedback(
+      return runOperation(
         "PR差分を開く",
-        () => report(() => dependencies.controller.openDiff(item.context))
+        () => dependencies.controller.openDiff(item.context)
       );
     }),
   );
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runWithActiveOperationFeedback(
-      "Review Contextsを更新",
-      () => provider.refresh()
-    ),
+    refresh: () => runOperation("Review Contextsを更新", () => provider.refresh()),
     refreshWithErrorBoundary,
   };
 }
