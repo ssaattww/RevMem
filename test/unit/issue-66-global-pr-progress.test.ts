@@ -282,31 +282,22 @@ test("Issue #66 PR runtime publishes the active GitHub PR snapshot to the dedica
     readTextContent: async () => ({ kind: "found", content: CONTENT }),
   });
 
-  const candidate = runtime as unknown as {
-    readonly progress?: {
-      getEffectiveProgress(): {
-        readonly reviewedLineCount: number;
-        readonly totalLineCount: number;
-        readonly progress: number;
-      };
-    };
-    activateProgress?: (contextId: string) => Promise<void>;
-  };
-  assert.ok(candidate.progress, "GitHub PR runtime must own a PR Progress tree source.");
-  assert.equal(typeof candidate.activateProgress, "function");
-  await candidate.activateProgress!(CONTEXT_ID);
-  const projected = candidate.progress!.getEffectiveProgress();
+  await runtime.activateProgress(CONTEXT_ID);
+  const projected = runtime.progress.getEffectiveProgress();
   assert.equal(projected.reviewedLineCount, 1);
   assert.equal(projected.totalLineCount, 2);
   assert.equal(projected.progress, 0.5);
 });
 
 test("Issue #66 production composition switches the contributed PR Progress view to the GitHub PR runtime", async () => {
-  const base = await readFile("src/extension.ts", "utf8");
+  const treeRuntime = await readFile(
+    "src/ui/pr-progress/vscode-pull-request-progress-tree.ts",
+    "utf8"
+  );
   const composition = await readFile("src/t305-extension.ts", "utf8");
 
-  assert.match(base, /setPullRequestProgressSource/u);
-  assert.match(base, /refreshPullRequestProgressTree/u);
+  assert.match(treeRuntime, /export const setPullRequestProgressSource/u);
+  assert.match(treeRuntime, /export const refreshPullRequestProgressTree/u);
   assert.match(composition, /setPullRequestProgressSource\(pullRequestReviewRuntime\.progress\)/u);
   assert.match(composition, /pullRequestReviewRuntime\.activateProgress/u);
   assert.match(composition, /refreshPullRequestProgressTree/u);
