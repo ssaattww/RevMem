@@ -13,7 +13,7 @@ export interface OperationLogEntry {
   readonly durationMs?: number;
   /** Error class when the operation failed with an Error instance. */
   readonly errorName?: string;
-  /** Failure message without source content or credentials added by this service. */
+  /** Failure message sanitized for source-content-free Output diagnostics. */
   readonly message?: string;
 }
 
@@ -43,21 +43,64 @@ const requireLabel = (label: string): string => {
   return normalized;
 };
 
+const singleLine = (value: string): string =>
+  value.replace(/[\r\n\u2028\u2029]+/gu, " ").trim();
+
+const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/u;
+const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,31}$/u;
+const FILE_LIKE_TOKEN = /(?:^|[\s(])[^\s/\\'"`<>]+\.(?:c|cc|cpp|cs|h|hpp|js|json|jsx|md|mjs|py|ts|tsx|txt|ya?ml)(?:$|[\s:),])/iu;
+const SENSITIVE_DIAGNOSTIC = /(?:[\/\\]|https?:|file:|ssh:|git@|[`'"{}\[\]<>]|\b(?:token|credential|authorization|password|secret|api[-_ ]?key|bearer)\b|\bPR\s*#?\d+\b)/iu;
+
+const safeErrorName = (error: Error): string =>
+  SAFE_ERROR_NAME.test(error.name) ? error.name : "Error";
+
+const safeErrorCode = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  const code = (error as { readonly code?: unknown }).code;
+  return typeof code === "string" && SAFE_ERROR_CODE.test(code) ? code : undefined;
+};
+
+const sanitizedFailureMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error);
+  const normalized = singleLine(raw);
+  const errorName = error instanceof Error ? safeErrorName(error) : undefined;
+
+  if (errorName === "GitCommandFailedError") return "Git command failed.";
+  if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
+
+  const sensitive =
+    normalized.length === 0 ||
+    normalized.length > 240 ||
+    SENSITIVE_DIAGNOSTIC.test(normalized) ||
+    FILE_LIKE_TOKEN.test(normalized);
+  if (!sensitive) return normalized;
+
+  const code = safeErrorCode(error);
+  return code === undefined
+    ? "Operation failed; details were redacted."
+    : `Operation failed (code ${code}); details were redacted.`;
+};
+
 const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message"> =>
   error instanceof Error
-    ? { errorName: error.name, message: error.message }
-    : { message: String(error) };
+    ? { errorName: safeErrorName(error), message: sanitizedFailureMessage(error) }
+    : { message: sanitizedFailureMessage(error) };
+
+const errorIdentity = (error: unknown): object | undefined =>
+  (typeof error === "object" && error !== null) || typeof error === "function"
+    ? error as object
+    : undefined;
 
 /**
  * Coordinates operation lifecycle logging with one shared activity status.
  *
- * Labels are deliberately generic. Callers must not include source text,
- * credentials, repository paths, or private PR titles in labels or errors they
- * synthesize for this boundary.
+ * Labels are deliberately generic. Arbitrary dependency error messages are
+ * sanitized centrally before they reach the Output host so callers cannot
+ * accidentally expose repository paths, source text, credentials, or PR titles.
  */
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
-  private readonly reportedErrors = new WeakSet<object>();
+  private readonly pendingBoundaryDuplicates = new WeakSet<object>();
   private nextId = 0;
 
   public constructor(
@@ -93,7 +136,7 @@ export class OperationFeedback {
       return result;
     } catch (error) {
       const finishedAt = this.now();
-      this.recordFailure(
+      this.recordRunFailure(
         active.label,
         error,
         finishedAt,
@@ -107,24 +150,38 @@ export class OperationFeedback {
     }
   }
 
-  /** Records an error intentionally handled by a fail-closed fallback. */
+  /** Records an error intentionally handled by a fail-closed or UI boundary. */
   public reportFailure(label: string, error: unknown): void {
-    this.recordFailure(requireLabel(label), error, this.now());
+    const identity = errorIdentity(error);
+    if (identity !== undefined && this.pendingBoundaryDuplicates.has(identity)) {
+      this.pendingBoundaryDuplicates.delete(identity);
+      return;
+    }
+    this.appendFailure(requireLabel(label), error, this.now());
   }
 
-  private recordFailure(
+  private recordRunFailure(
+    label: string,
+    error: unknown,
+    timestamp: number,
+    durationMs: number
+  ): void {
+    const identity = errorIdentity(error);
+    if (identity !== undefined) {
+      // A previous unconsumed UI-boundary duplicate must never suppress a new
+      // run terminal event. The current run becomes the new duplicate owner.
+      this.pendingBoundaryDuplicates.delete(identity);
+    }
+    this.appendFailure(label, error, timestamp, durationMs);
+    if (identity !== undefined) this.pendingBoundaryDuplicates.add(identity);
+  }
+
+  private appendFailure(
     label: string,
     error: unknown,
     timestamp: number,
     durationMs?: number
   ): void {
-    const identity = (typeof error === "object" && error !== null) || typeof error === "function"
-      ? error as object
-      : undefined;
-    if (identity !== undefined) {
-      if (this.reportedErrors.has(identity)) return;
-      this.reportedErrors.add(identity);
-    }
     this.host.appendLog({
       timestamp: new Date(timestamp).toISOString(),
       label,
@@ -144,9 +201,6 @@ export class OperationFeedback {
     this.host.showBusy(latest.label, this.active.length);
   }
 }
-
-const singleLine = (value: string): string =>
-  value.replace(/[\r\n\u2028\u2029]+/gu, " ").trim();
 
 /** Formats one compact, source-content-free line for the VS Code Output channel. */
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
