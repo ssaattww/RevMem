@@ -392,7 +392,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       kind: "workspace",
       repositoryId: `workspace:${identity}`,
       displayName: snapshot.context.label,
-      workspace: { workspaceId: identity, snapshotRevision: "snapshot-1" },
+      workspace: { workspaceId: identity, snapshotRevision: "current" },
       files: {},
       createdAt: now,
       updatedAt: now,
