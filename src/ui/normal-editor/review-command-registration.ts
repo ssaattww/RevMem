@@ -95,6 +95,18 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
   };
 }
 
+const runReviewOperation = async (
+  host: NormalEditorCommandHost<unknown>,
+  label: string,
+  operation: () => void | Promise<unknown>
+): Promise<void> => {
+  try {
+    await runWithActiveOperationFeedback(label, async () => operation());
+  } catch (error) {
+    await host.showCommandError(error);
+  }
+};
+
 const invokeForActiveNormalEditor = async <Editor>(
   host: NormalEditorCommandHost<Editor>,
   commandId: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
@@ -106,19 +118,24 @@ const invokeForActiveNormalEditor = async <Editor>(
     return;
   }
 
-  try {
-    if (host.isDiffEditor(editor)) {
-      if (host.invokeDiffEditorCommand === undefined) {
-        await host.showNormalEditorRequired();
-        return;
-      }
-      await host.invokeDiffEditorCommand(commandId, editor);
+  if (host.isDiffEditor(editor)) {
+    if (host.invokeDiffEditorCommand === undefined) {
+      await host.showNormalEditorRequired();
       return;
     }
-    await invocation(editor);
-  } catch (error) {
-    await host.showCommandError(error);
+    await runReviewOperation(
+      host as NormalEditorCommandHost<unknown>,
+      OPERATION_LABELS[commandId],
+      () => host.invokeDiffEditorCommand!(commandId, editor)
+    );
+    return;
   }
+
+  await runReviewOperation(
+    host as NormalEditorCommandHost<unknown>,
+    OPERATION_LABELS[commandId],
+    () => invocation(editor)
+  );
 };
 
 /**
@@ -165,10 +182,7 @@ export function registerNormalEditorReviewCommands<Editor>(
   return registrations.map(([operation, commandId, invocation]) =>
     host.registerCommand(
       commandId,
-      async () => runWithActiveOperationFeedback(
-        OPERATION_LABELS[operation],
-        () => invokeForActiveNormalEditor(host, operation, invocation)
-      )
+      () => invokeForActiveNormalEditor(host, operation, invocation)
     )
   );
 }
