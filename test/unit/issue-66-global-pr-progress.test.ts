@@ -125,6 +125,7 @@ class MemoryPullRequestRepository implements PullRequestReviewRuntimeRepository 
   public async load(
     _target: ReviewStateRepositoryTarget,
   ): Promise<ReviewStateCommit> {
+    void _target;
     return clone(this.current);
   }
 
