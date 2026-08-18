@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { NodeRepositoryFilePathEnumerator } from "./adapters/repository-files/node-repository-file-path-enumerator";
 import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "./adapters/state-repository/index";
@@ -98,6 +100,17 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   }
 
   public setContext(snapshot: CurrentContextUiSnapshot | undefined): void { this.currentContext = snapshot; }
+
+  public resolveCurrentFilePath(repositoryPath: string): string | undefined {
+    const owner = this.resolveOwner(this.currentContext);
+    if (owner === undefined) return undefined;
+    const canonicalPath = requireCanonicalRepositoryRelativePath(
+      repositoryPath,
+      this.pathSemantics,
+      "Global understanding file path"
+    );
+    return path.join(owner.repositoryRoot, ...canonicalPath.split("/"));
+  }
 
   public async recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const owner = this.resolveOwner(this.currentContext);
