@@ -1,3 +1,5 @@
+import type { PullRequestDiffAcquisitionAttempt } from "../github-pr-diff/contracts";
+
 /** Lifecycle event written to the Review Range diagnostic output. */
 export type OperationLogEvent = "started" | "succeeded" | "failed";
 
@@ -29,6 +31,12 @@ export interface OperationFeedbackHost {
   revealLog(): void;
 }
 
+/** Safe structured diagnostic variants accepted by the Output boundary. */
+export type OperationDiagnostic = {
+  readonly code: "PR_PROGRESS_UNAVAILABLE";
+  readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
+};
+
 interface ActiveOperation {
   readonly id: number;
   readonly label: string;
@@ -55,7 +63,8 @@ const SAFE_ERROR_NAMES = new Set([
   "URIError",
   "AggregateError",
   "GitCommandFailedError",
-  "GitExecutableNotFoundError"
+  "GitExecutableNotFoundError",
+  "OperationDiagnosticError"
 ]);
 
 const SAFE_ERROR_CODES = new Set([
@@ -78,6 +87,64 @@ const SAFE_ERROR_CODES = new Set([
   "PR_PROGRESS_UNAVAILABLE"
 ]);
 
+const SAFE_PR_PROGRESS_SOURCES = new Set([
+  "local-git",
+  "github-patch",
+  "github-content"
+]);
+
+const SAFE_PR_PROGRESS_REASONS = new Set([
+  "git-unavailable",
+  "missing-revision",
+  "git-failure",
+  "rate-limit",
+  "network",
+  "api",
+  "missing-file",
+  "invalid-encoding",
+  "missing-patch",
+  "incomplete-patch",
+  "identity-mismatch",
+  "invalid-data",
+  "diff-too-large"
+]);
+
+const validatePrProgressAttempts = (
+  attempts: readonly PullRequestDiffAcquisitionAttempt[]
+): readonly PullRequestDiffAcquisitionAttempt[] => Object.freeze(
+  attempts.map((attempt) => {
+    if (
+      !SAFE_PR_PROGRESS_SOURCES.has(attempt.source) ||
+      !SAFE_PR_PROGRESS_REASONS.has(attempt.reason)
+    ) {
+      throw new TypeError("PR progress diagnostic attempt contains a non-allowlisted source or reason");
+    }
+    return Object.freeze({ source: attempt.source, reason: attempt.reason });
+  })
+);
+
+/**
+ * Error carrying only an explicitly allowlisted structured diagnostic.
+ *
+ * Raw dependency messages are deliberately excluded. Constructor validation and
+ * detached immutable copies prevent path/title/source data from being smuggled
+ * into the Output projection through this boundary.
+ */
+export class OperationDiagnosticError extends Error {
+  public readonly code: OperationDiagnostic["code"];
+  public readonly diagnostic: OperationDiagnostic;
+
+  public constructor(diagnostic: OperationDiagnostic) {
+    super("Operation diagnostic is available.");
+    this.name = "OperationDiagnosticError";
+    this.code = diagnostic.code;
+    this.diagnostic = Object.freeze({
+      code: diagnostic.code,
+      attempts: validatePrProgressAttempts(diagnostic.attempts)
+    });
+  }
+}
+
 const safeErrorName = (error: Error): string =>
   SAFE_ERROR_NAMES.has(error.name) ? error.name : "Error";
 
@@ -87,7 +154,18 @@ const safeErrorCode = (error: unknown): string | undefined => {
   return typeof code === "string" && SAFE_ERROR_CODES.has(code) ? code : undefined;
 };
 
+const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
+  const attempts = diagnostic.attempts
+    .map((attempt) => `${attempt.source}:${attempt.reason}`);
+  const finalAttempt = attempts.at(-1) ?? "none";
+  return `${diagnostic.code} attempts=${attempts.length === 0 ? "none" : attempts.join(" -> ")}; final=${finalAttempt}`;
+};
+
 const sanitizedFailureMessage = (error: unknown): string => {
+  if (error instanceof OperationDiagnosticError) {
+    return formatOperationDiagnostic(error.diagnostic);
+  }
+
   const errorName = error instanceof Error ? safeErrorName(error) : undefined;
   if (errorName === "GitCommandFailedError") return "Git command failed.";
   if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
@@ -112,8 +190,8 @@ const errorIdentity = (error: unknown): object | undefined =>
  * Coordinates operation lifecycle logging with one shared activity status.
  *
  * Labels are deliberately generic. Arbitrary dependency error messages are
- * never copied into Output. Only fixed messages and explicitly allowlisted
- * stable error names/codes are projected to diagnostics.
+ * never copied into Output. Only fixed messages, explicitly allowlisted stable
+ * error names/codes, and validated structured diagnostics are projected.
  */
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];

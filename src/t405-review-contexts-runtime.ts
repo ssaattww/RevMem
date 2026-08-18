@@ -36,7 +36,10 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
-import { reportActiveOperationFailure } from "./application/operation-feedback/index";
+import {
+  OperationDiagnosticError,
+  reportActiveOperationFailure,
+} from "./application/operation-feedback/index";
 import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
@@ -680,12 +683,12 @@ export function registerT405ReviewContextsRuntime(
     try {
       const { result } = await acquire(context);
       if (result.kind !== "acquired") {
-        const attempts = result.attempts
-          .map((attempt) => `${attempt.source}:${attempt.reason}`)
-          .join(", ");
         reportActiveOperationFailure(
           "PR進捗を取得",
-          new Error(`PR progress is unavailable: ${attempts || "no acquisition succeeded"}`),
+          new OperationDiagnosticError({
+            code: "PR_PROGRESS_UNAVAILABLE",
+            attempts: result.attempts,
+          }),
         );
         return undefined;
       }
