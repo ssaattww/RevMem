@@ -180,12 +180,16 @@ export function registerReviewContextsRuntime(
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
     runOperation("Review Contextsを更新", () => provider.refresh());
-  const mutate = (operation: () => Promise<void>, refreshDecorations = false): Promise<void> =>
-    runOperation("Review Contextsを更新", async () => {
+  const mutate = async (
+    operation: () => Promise<void>,
+    refreshDecorations = false,
+  ): Promise<void> => {
+    await runOperation("Review Contextsを更新", async () => {
       await operation();
       if (refreshDecorations) await dependencies.refreshDecorations();
-      await provider.refresh();
     });
+    await runOperation("Review Contextsを更新", () => provider.refresh());
+  };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
     return item;
