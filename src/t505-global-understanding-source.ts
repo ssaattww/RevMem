@@ -108,7 +108,14 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       this.dependencies.exclusionPolicy
     ).enumerate(owner.repositoryRoot);
     this.requireActiveEvidenceKey(owner);
-    const candidatePaths = new Set(pathEnumeration.includedPaths);
+    const candidatePaths = new Set<string>();
+    for (const repositoryPath of pathEnumeration.includedPaths) {
+      const canonicalPath = this.canonicalEvidencePath(repositoryPath);
+      if (candidatePaths.has(canonicalPath)) {
+        throw new Error(`Duplicate Global candidate path: ${canonicalPath}`);
+      }
+      candidatePaths.add(canonicalPath);
+    }
     const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths);
     const availablePaths = new Set([...candidatePaths, ...pullRequestHeadPaths]);
     const evidenceByPath = this.captureOpenedDocuments(owner);
@@ -215,8 +222,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const acceptedPaths = new Set<string>();
 
     for (const snapshot of snapshots) {
-      const canonicalPath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
-      if (this.dependencies.exclusionPolicy.evaluate({ path: canonicalPath, isBinary: false }).excluded) continue;
+      const sourcePath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
+      if (this.dependencies.exclusionPolicy.evaluate({ path: sourcePath, isBinary: false }).excluded) continue;
+      const canonicalPath = this.canonicalEvidencePath(sourcePath);
       if (snapshot.revisionId !== owner.currentRevisionId) {
         throw new Error(`PR HEAD evidence revision does not match current owner revision: ${canonicalPath}`);
       }
@@ -255,7 +263,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const retained = this.retainedOpenedEvidence(owner);
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
     for (const snapshot of this.dependencies.readOpenDocuments?.(owner) ?? []) {
-      const canonicalPath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
+      const canonicalPath = this.canonicalEvidencePath(snapshot.path);
       if (snapshot.revisionId !== owner.currentRevisionId) {
         throw new Error(`Open document revision does not match current owner revision: ${canonicalPath}`);
       }
@@ -264,12 +272,17 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
       const live = { ...snapshot, path: canonicalPath, nonEmptyLines: [...snapshot.nonEmptyLines] };
       current.set(canonicalPath, live);
-      retained.set(canonicalPath, stableOpenedEvidence(snapshot, canonicalPath));
+      retained.set(canonicalPath, stableOpenedEvidence(live, canonicalPath));
     }
 
     const combined = new Map(retained);
     for (const [repositoryPath, snapshot] of current) combined.set(repositoryPath, snapshot);
     return combined;
+  }
+
+  private canonicalEvidencePath(value: string): string {
+    const canonical = requireCanonicalRepositoryRelativePath(value, this.pathSemantics);
+    return this.pathSemantics === "windows" ? canonical.toLowerCase() : canonical;
   }
 
   private resolveOwner(snapshot: CurrentContextUiSnapshot | undefined): T505GlobalUnderstandingOwner | undefined {
