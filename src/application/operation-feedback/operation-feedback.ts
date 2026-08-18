@@ -161,3 +161,24 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     : `: ${entry.errorName === undefined ? "" : `${singleLine(entry.errorName)}: `}${singleLine(entry.message)}`;
   return `[${entry.timestamp}] ${stage} ${singleLine(entry.label)}${duration}${error}`;
 };
+
+let activeOperationFeedback: OperationFeedback | undefined;
+
+/** Sets the process-wide operation feedback used by UI/application integration points. */
+export const setActiveOperationFeedback = (feedback: OperationFeedback | undefined): void => {
+  activeOperationFeedback = feedback;
+};
+
+/** Runs through the active UI feedback when available, otherwise executes directly. */
+export const runWithActiveOperationFeedback = <T>(
+  label: string,
+  operation: () => Promise<T>
+): Promise<T> =>
+  activeOperationFeedback === undefined
+    ? operation()
+    : activeOperationFeedback.run(label, operation);
+
+/** Reports a handled failure to active diagnostics when the UI host is installed. */
+export const reportActiveOperationFailure = (label: string, error: unknown): void => {
+  activeOperationFeedback?.reportFailure(label, error);
+};
