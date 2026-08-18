@@ -36,6 +36,7 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+import { reportActiveOperationFailure } from "./application/operation-feedback/index";
 import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
@@ -391,7 +392,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       kind: "workspace",
       repositoryId: `workspace:${identity}`,
       displayName: snapshot.context.label,
-      workspace: { workspaceId: identity, snapshotRevision: "current" },
+      workspace: { workspaceId: identity, snapshotRevision: "snapshot-1" },
       files: {},
       createdAt: now,
       updatedAt: now,
@@ -678,9 +679,19 @@ export function registerT405ReviewContextsRuntime(
   ): Promise<ReviewContextListProgress | undefined> => {
     try {
       const { result } = await acquire(context);
-      if (result.kind !== "acquired") return undefined;
+      if (result.kind !== "acquired") {
+        const attempts = result.attempts
+          .map((attempt) => `${attempt.source}:${attempt.reason}`)
+          .join(", ");
+        reportActiveOperationFailure(
+          "PR進捗を取得",
+          new Error(`PR progress is unavailable: ${attempts || "no acquisition succeeded"}`),
+        );
+        return undefined;
+      }
       return await options.getPullRequestReviewProgress(context.contextId);
-    } catch {
+    } catch (error) {
+      reportActiveOperationFailure("PR進捗を取得", error);
       return undefined;
     }
   };
