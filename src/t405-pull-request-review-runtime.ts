@@ -1,3 +1,4 @@
+import { runWithActiveOperationFeedback } from "./application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
@@ -151,8 +152,6 @@ export class PullRequestReviewRuntime<Uri> {
    * Existing/added/renamed/copied files are read from HEAD and returned for
    * Global opened evidence. Deleted files are read from BASE to complete the PR
    * scan, but are not returned because they do not exist in the Global HEAD.
-   * Working-tree path discovery is diagnostic only and never gates immutable PR
-   * snapshot content.
    */
   public async readGlobalHeadFiles(
     contextId: string,
@@ -170,14 +169,13 @@ export class PullRequestReviewRuntime<Uri> {
       this.fullTextCaches.set(contextId, cache);
     }
 
-    void candidatePaths;
     const files: PullRequestGlobalHeadFile[] = [];
     const exclusionPolicy = this.options.getExclusionPolicy();
     for (const file of registration.snapshot.files) {
       if (file.status === "binary") continue;
 
       if (file.newPath !== undefined) {
-        if (exclusionPolicy.evaluate({ path: file.newPath, isBinary: false }).excluded) continue;
+        if (!candidatePaths.has(file.newPath)) continue;
         const result = await this.readCachedFullText(
           registration,
           cache,
@@ -291,20 +289,22 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
-    const registration = this.requireRegistration(contextId);
-    const persisted = await this.options.repository.load(targetFor(registration));
-    if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
-    this.requireMatchingContext(registration, persisted);
-    const progress = calculatePullRequestDiffProgress({
-      diff: registration.snapshot,
-      reviewContext: persisted.contextState,
-      exclusionPolicy: this.options.getExclusionPolicy(),
+    return runWithActiveOperationFeedback("PR進捗を計算", async () => {
+      const registration = this.requireRegistration(contextId);
+      const persisted = await this.options.repository.load(targetFor(registration));
+      if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
+      this.requireMatchingContext(registration, persisted);
+      const progress = calculatePullRequestDiffProgress({
+        diff: registration.snapshot,
+        reviewContext: persisted.contextState,
+        exclusionPolicy: this.options.getExclusionPolicy(),
+      });
+      return {
+        reviewedLineCount: progress.reviewedLineCount,
+        totalLineCount: progress.totalLineCount,
+        progress: progress.progress,
+      };
     });
-    return {
-      reviewedLineCount: progress.reviewedLineCount,
-      totalLineCount: progress.totalLineCount,
-      progress: progress.progress,
-    };
   }
 
   public createCommandService<Editor>(
