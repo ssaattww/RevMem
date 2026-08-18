@@ -183,6 +183,46 @@ test("operation diagnostics redact arbitrary dependency details before Output lo
   }
 });
 
+test("operation diagnostics never emit ordinary-word private dependency text", async () => {
+  const cases = [
+    "Add customer acquisition dashboard failed",
+    "Unexpected value quarterly payroll record"
+  ] as const;
+
+  for (const message of cases) {
+    const failure = new Error(message);
+    const host = new FakeOperationFeedbackHost();
+    const feedback = new OperationFeedback(host, () => 1);
+
+    await assert.rejects(
+      feedback.run("PR進捗を計算", async () => { throw failure; }),
+      failure
+    );
+
+    const terminal = host.logs.at(-1);
+    assert.equal(terminal?.event, "failed");
+    assert.equal(terminal?.message, "Operation failed; details were redacted.");
+    assert.doesNotMatch(terminal?.message ?? "", /customer acquisition dashboard|quarterly payroll record/iu);
+  }
+});
+
+test("operation diagnostics do not expose arbitrary custom Error names", async () => {
+  const failure = new Error("ordinary dependency failure");
+  failure.name = "CustomerAcquisitionDashboard";
+  const host = new FakeOperationFeedbackHost();
+  const feedback = new OperationFeedback(host, () => 1);
+
+  await assert.rejects(
+    feedback.run("PR進捗を計算", async () => { throw failure; }),
+    failure
+  );
+
+  const terminal = host.logs.at(-1);
+  assert.equal(terminal?.event, "failed");
+  assert.equal(terminal?.errorName, "Error");
+  assert.equal(terminal?.message, "Operation failed; details were redacted.");
+});
+
 test("nested operation failures emit one terminal ERROR for every started operation", async () => {
   const host = new FakeOperationFeedbackHost();
   const feedback = new OperationFeedback(host, () => 1);
