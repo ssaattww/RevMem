@@ -49,7 +49,8 @@ const singleLine = (value: string): string =>
 const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/u;
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,31}$/u;
 const FILE_LIKE_TOKEN = /(?:^|[\s(])[^\s/\\'"`<>]+\.(?:c|cc|cpp|cs|h|hpp|js|json|jsx|md|mjs|py|ts|tsx|txt|ya?ml)(?:$|[\s:),])/iu;
-const SENSITIVE_DIAGNOSTIC = /(?:[\/\\]|https?:|file:|ssh:|git@|[`'"{}\[\]<>]|\b(?:token|credential|authorization|password|secret|api[-_ ]?key|bearer)\b|\bPR\s*#?\d+\b)/iu;
+const SENSITIVE_DIAGNOSTIC = /(?:https?:|file:|ssh:|git@|\b(?:token|credential|authorization|password|secret|api[-_ ]?key|bearer)\b|\bPR\s*#?\d+\b)/iu;
+const SENSITIVE_PUNCTUATION = ["/", "\\", "`", "'", "\"", "{", "}", "[", "]", "<", ">"] as const;
 
 const safeErrorName = (error: Error): string =>
   SAFE_ERROR_NAME.test(error.name) ? error.name : "Error";
@@ -72,6 +73,7 @@ const sanitizedFailureMessage = (error: unknown): string => {
     normalized.length === 0 ||
     normalized.length > 240 ||
     SENSITIVE_DIAGNOSTIC.test(normalized) ||
+    SENSITIVE_PUNCTUATION.some((token) => normalized.includes(token)) ||
     FILE_LIKE_TOKEN.test(normalized);
   if (!sensitive) return normalized;
 
@@ -168,8 +170,6 @@ export class OperationFeedback {
   ): void {
     const identity = errorIdentity(error);
     if (identity !== undefined) {
-      // A previous unconsumed UI-boundary duplicate must never suppress a new
-      // run terminal event. The current run becomes the new duplicate owner.
       this.pendingBoundaryDuplicates.delete(identity);
     }
     this.appendFailure(label, error, timestamp, durationMs);
