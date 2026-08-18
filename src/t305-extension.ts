@@ -34,6 +34,10 @@ import {
   registerGlobalUnderstandingRuntime
 } from "./ui/global-understanding/index";
 import {
+  refreshPullRequestProgressTree,
+  setPullRequestProgressSource
+} from "./ui/pr-progress/vscode-pull-request-progress-tree";
+import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
 } from "./t505-global-understanding-source";
@@ -309,6 +313,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       userGlobs: exclusionPolicy.getUserGlobs(),
     }),
   });
+  const refreshPullRequestProgressForSelection = async (): Promise<void> => {
+    if (
+      selectedContext?.kind === "pull-request" &&
+      pullRequestReviewRuntime.hasContext(selectedContext.contextId)
+    ) {
+      setPullRequestProgressSource(pullRequestReviewRuntime.progress);
+      try {
+        await pullRequestReviewRuntime.activateProgress(selectedContext.contextId);
+      } finally {
+        refreshPullRequestProgressTree();
+      }
+      return;
+    }
+    pullRequestReviewRuntime.clearProgress();
+    setPullRequestProgressSource(undefined);
+    refreshPullRequestProgressTree();
+  };
+  const reportPullRequestProgressError = async (error: unknown): Promise<void> => {
+    await vscode.window.showErrorMessage(
+      `PR Progressを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+    );
+  };
   const pullRequestCommandService = pullRequestReviewRuntime.createCommandService<vscode.TextEditor>({
     getDocumentUri: (editor) => editor.document.uri.toString(true),
     getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(
@@ -366,6 +392,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     {
       setSelectedContext: acceptSelectedContext,
       refreshDependents: async () => {
+        await refreshPullRequestProgressForSelection();
         await runtimePort.refreshVisibleEditorDecorations();
         await globalRuntime.refresh();
         await reviewContextsRuntimeRef.current?.refresh();
@@ -395,6 +422,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const refreshGlobalUnderstanding = (): void => {
     void globalRuntime.refreshWithErrorBoundary();
+  };
+  const refreshPullRequestProgress = (): void => {
+    void refreshPullRequestProgressForSelection().catch(reportPullRequestProgressError);
   };
   const documentChangeRefresh = new GlobalUnderstandingRefreshCoalescer({
     invalidate: () => globalRuntime.invalidate(),
@@ -433,6 +463,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       if (result !== "applied") return;
       await runtimePort.refreshVisibleEditorDecorations();
       await globalRuntime.refreshWithErrorBoundary();
+      await refreshPullRequestProgressForSelection();
     }).catch(async (error: unknown) => {
       await vscode.window.showErrorMessage(
         `編集後のレビュー状態を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
@@ -447,9 +478,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       refreshGlobalUnderstanding();
+      refreshPullRequestProgress();
       void reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
     }),
-    exclusionPolicy.onDidChange(refreshGlobalUnderstanding),
+    exclusionPolicy.onDidChange(() => {
+      refreshGlobalUnderstanding();
+      refreshPullRequestProgress();
+    }),
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.observe(toEditSnapshot(document));
