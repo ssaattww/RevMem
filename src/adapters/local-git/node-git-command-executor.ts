@@ -169,12 +169,11 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
       let settled = false;
       let timedOut = false;
       let timeoutDiagnostic = "";
-      let timeoutTimer: NodeJS.Timeout | undefined;
       let terminationTimer: NodeJS.Timeout | undefined;
       let forceCloseTimer: NodeJS.Timeout | undefined;
 
       const clearTimers = (): void => {
-        if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+        clearTimeout(timeoutTimer);
         if (terminationTimer !== undefined) clearTimeout(terminationTimer);
         if (forceCloseTimer !== undefined) clearTimeout(forceCloseTimer);
       };
@@ -267,7 +266,7 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
         finishFailure(-1, signal);
       });
 
-      timeoutTimer = setTimeout(() => {
+      const timeoutTimer = setTimeout(() => {
         if (settled) return;
         timedOut = true;
         timeoutDiagnostic = `Git command timed out after ${this.timeoutMs} ms`;
