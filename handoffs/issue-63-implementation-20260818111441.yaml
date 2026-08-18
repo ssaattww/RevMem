@@ -567,6 +567,13 @@ source_payloads:
     - R65-004 lossy/stale handoff transport.
     - H65-001 external tracking mismatch.
     next_action: Return R65-001..R65-004 to implementation worker; exact-new-HEAD CI; same normal reviewer fix verification; do not merge.
+    reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    base: main@3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+    commit_range: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74..3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    severity_reclassification_records: []
+    report_attestation_allowed: false
+    report_attestation_conditions:
+    - Not applicable; normal initial review.
 - source_skill: review-worker
   output_contract_version: unknown
   content_type: application/yaml
@@ -610,6 +617,9 @@ source_payloads:
     - R65-004 lossy cold continuation.
     - H65-001 external tracking mismatch.
     next_action: Return only R65-001/R65-004 to implementation worker; after exact-new-HEAD CI, same reviewer verifies again.
+    report_attestation_allowed: false
+    report_attestation_conditions:
+    - Not applicable; normal fix verification.
 - source_skill: implementation-worker
   output_contract_version: unknown
   content_type: application/yaml
