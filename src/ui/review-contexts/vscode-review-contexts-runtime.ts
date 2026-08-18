@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { runWithActiveOperationFeedback } from "../../application/operation-feedback/index";
+
 import {
   formatReviewContextCacheStatus,
   formatReviewContextProgress,
@@ -173,17 +175,23 @@ export function registerReviewContextsRuntime(
       await dependencies.reportError(error);
     }
   };
-  const refreshWithErrorBoundary = (): Promise<void> => report(() => provider.refresh());
+  const refreshWithErrorBoundary = (): Promise<void> =>
+    runWithActiveOperationFeedback(
+      "Review Contextsを更新",
+      () => report(() => provider.refresh())
+    );
   const mutate = (operation: () => Promise<void>, refreshDecorations = false): Promise<void> =>
-    report(async () => {
-      try {
-        await operation();
-        if (refreshDecorations) await dependencies.refreshDecorations();
-      } catch (error) {
-        await dependencies.reportError(error);
-      }
-      await provider.refresh();
-    });
+    runWithActiveOperationFeedback("Review Contextsを更新", () =>
+      report(async () => {
+        try {
+          await operation();
+          if (refreshDecorations) await dependencies.refreshDecorations();
+        } catch (error) {
+          await dependencies.reportError(error);
+        }
+        await provider.refresh();
+      })
+    );
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
     return item;
@@ -215,13 +223,19 @@ export function registerReviewContextsRuntime(
     }),
     vscode.commands.registerCommand("reviewRange.openReviewContextDiff", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
-      return report(() => dependencies.controller.openDiff(item.context));
+      return runWithActiveOperationFeedback(
+        "PR差分を開く",
+        () => report(() => dependencies.controller.openDiff(item.context))
+      );
     }),
   );
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => provider.refresh(),
+    refresh: () => runWithActiveOperationFeedback(
+      "Review Contextsを更新",
+      () => provider.refresh()
+    ),
     refreshWithErrorBoundary,
   };
 }
