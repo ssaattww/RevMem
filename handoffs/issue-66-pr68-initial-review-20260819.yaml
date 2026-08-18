@@ -1,0 +1,384 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: initial_review
+  generated_at: "2026-08-19T08:35:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #68 / Issue #66"
+task_id: ISSUE-66
+branch: fix/issue-66-global-untracked-missing
+base_ref: main
+target:
+  current_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  reviewed_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  commit_range: 7d4df08e6a55b40ecb1d0faf515005912274258d..20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "pr68レビュー / instractionをよく読み一度で網羅"
+    summary: "Perform one comprehensive normal review of PR #68 and surface all findings in one pass."
+  - source: issue
+    reference: "Issue #66"
+    summary: "Fix Global Understanding missing for reviewed Windows/untracked evidence, normal-editor reviewed ranges missing from PR Progress, and the empty/0/0 dedicated PR Progress view."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev5"
+    summary: "Preserve PR-vs-Global boundaries, identity-bound progress, case-aware filesystem semantics, and fail-closed reviewed/progress UI."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector, exact-head CI only, persist detailed report, post concise PR review comment, preserve diagnostic artifact policy, and never merge."
+
+development_policy:
+  method: TDD
+  testing_order: "For implementation follow-up, add regression REDs before fixes and validate only exact-head CI."
+  governing_source: "RevMem project instructions"
+validation_plan:
+  commands:
+    - "Verify PR current HEAD before and after review evidence persistence."
+    - "Use only GitHub Actions runs whose head_sha equals the target PR HEAD."
+    - "Fix verification must exercise PR68-R001 through PR68-R004 regressions plus full CI."
+  required_failure_diagnostics:
+    - "test result metadata"
+    - "standard output"
+    - "standard error"
+    - "combined logs"
+    - "source/test/tools/configuration investigation context"
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-66-pr68-initial-review-20260819.md
+      reason: "Required detailed normal-review report."
+    - path_or_operation: handoffs/issue-66-pr68-initial-review-20260819.yaml
+      reason: "Lossless normal-review handoff."
+    - path_or_operation: "PR #68 review/comment"
+      reason: "Required concise review outcome and finding summary."
+  forbidden:
+    - path_or_operation: "product implementation / tests"
+      reason: "Normal reviewer must not implement findings."
+    - path_or_operation: tasks/tasks-status.md
+      reason: "Repository file restricts updates to designated task/progress-management managers."
+    - path_or_operation: "merge PR #68"
+      reason: "Merge is user-owned."
+
+scope:
+  - "Review all eight changed files and direct identity/progress/persistence/current-context dependencies."
+  - "Review Issue #66 requirement conformance, Windows path compatibility, PR progress source switching, concurrency, failure isolation, tests, workflow diagnostics, reports, handoff, and exact-head CI."
+non_goals:
+  - "Do not implement fixes."
+  - "Do not add pure working-tree untracked files to a PR denominator."
+  - "Do not merge PR #68."
+
+files:
+  changed:
+    - path: reports/issue-66-pr68-initial-review-20260819.md
+      purpose: "Detailed initial-review evidence and findings."
+    - path: handoffs/issue-66-pr68-initial-review-20260819.yaml
+      purpose: "Lossless transfer of review state and findings."
+  inspected:
+    - path: src/t505-global-understanding-source.ts
+      purpose: "Windows Global evidence canonicalization."
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "Persisted PR identity projection, diff sessions, and progress activation."
+    - path: src/t305-extension.ts
+      purpose: "Current Context and PR Progress production refresh lifecycle."
+    - path: src/ui/pr-progress/vscode-pull-request-progress-tree.ts
+      purpose: "Dedicated Tree source switching."
+    - path: test/unit/issue-66-global-pr-progress.test.ts
+      purpose: "Issue #66 TDD coverage and missing sibling cases."
+    - path: test/unit/core-contracts.test.ts
+      purpose: "Default Unit suite inclusion."
+    - path: reports/issue-66-global-pr-progress-fix-20260819.md
+      purpose: "Implementation claims and validation evidence."
+    - path: handoffs/issue-66-global-pr-progress-fix-20260819.yaml
+      purpose: "Implementation continuation evidence."
+    - path: src/application/github-pr-diff/snapshot-builder-shared.ts
+      purpose: "Raw PR fileId generation."
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: "Selected PR normal-editor file identity and Windows path lookup."
+    - path: src/core/review-state/review-state-service.ts
+      purpose: "Persisted target fileId/currentPath behavior."
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: "PR progress state lookup/path validation."
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: "Exact persisted Global path lookup."
+    - path: src/ui/current-context/current-context-runtime-coordinator.ts
+      purpose: "Selected identity ordering vs dependent refresh."
+    - path: src/ui/current-context/current-context-ui-controller.ts
+      purpose: "Generation scope for Current Context candidate refresh."
+    - path: src/extension.ts
+      purpose: "Default local PR Progress source and shared review-state events."
+    - path: .github/workflows/ci.yml
+      purpose: "Failure diagnostic artifact contract."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Requirement, path, progress, encoding, and fail-closed design contract."
+  intentionally_untouched:
+    - path_or_area: "src/** and test/** implementation"
+      reason: "Reviewer boundary."
+    - path_or_area: tasks/tasks-status.md
+      reason: "Designated manager ownership."
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Existing diagnostic artifacts already satisfy required evidence."
+
+commands:
+  - command: "GitHub get PR #68 metadata"
+    purpose: "Freeze reviewed implementation identity."
+    exit_code: unknown
+    result: passed
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "PR remained open/draft with base 7d4df08e... and head 20b04efb...."
+  - command: "GitHub fetch workflow runs for reviewed HEAD"
+    purpose: "Validate exact-head CI only."
+    exit_code: unknown
+    result: passed
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "CI run 32197163530 completed with conclusion success."
+
+tests:
+  - name: "Existing Issue #66 regression suite"
+    phase: verification
+    result: passed
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "Included in exact-head CI 32197163530, but does not cover R001-R004 sibling scenarios."
+  - name: "PR68-R001 mixed-case PR-diff-first identity"
+    phase: regression
+    result: not_run
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "No existing test covers empty persisted state followed by mixed-case Windows PR diff review and progress recalculation."
+  - name: "PR68-R002 pre-fix Windows persisted-state upgrade"
+    phase: regression
+    result: not_run
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "Issue #66 fixture starts from already-lowercase persisted state rather than base-version raw casing."
+  - name: "PR68-R003 concurrent PR progress activation"
+    phase: regression
+    result: not_run
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "Production wiring test is static regex and no deferred multi-PR race test exists."
+  - name: "PR68-R004 PR progress failure isolation"
+    phase: regression
+    result: not_run
+    head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    evidence: "No Current Context lifecycle test injects PR Progress rejection after owner switch."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32197163530
+  head_sha: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  conclusion: success
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "Reviewer made no product or test changes."
+
+review:
+  mode: initial_review
+  reviewed_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  reviewer:
+    identity: "ChatGPT PR68 normal-review chat"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - "This chat inspected PR #68 as reviewer and did not implement PR #68 or its review fixes."
+  verdict: fail
+  required_coverage:
+    - criterion: requirement_and_design_conformance
+      disposition: checked_finding
+      evidence: "R001-R004"
+    - criterion: correctness_and_edge_cases
+      disposition: checked_finding
+      evidence: "Windows mixed-case, upgrade state, async races, and failure paths expose R001-R004."
+    - criterion: scope_discipline
+      disposition: checked_no_finding
+      evidence: "All eight changed files are within Issue #66 implementation/test/report/handoff scope."
+    - criterion: changed_files_and_direct_dependencies
+      disposition: checked_finding
+      evidence: "All changed files and relevant identity/progress/persistence/current-context dependencies inspected."
+    - criterion: api_data_configuration_workflow_compatibility
+      disposition: checked_finding
+      evidence: "R002 is persisted Windows compatibility; workflow diagnostic contract is adequate."
+    - criterion: error_handling_and_failure_diagnostics
+      disposition: checked_finding
+      evidence: "R003/R004; CI failure artifacts adequate."
+    - criterion: security_and_secret_handling
+      disposition: checked_no_finding
+      evidence: "No new credential persistence, secret logging, or unsafe external execution found."
+    - criterion: tests_and_validation_adequacy
+      disposition: checked_finding
+      evidence: "R001-R004 scenarios are not covered by current regressions."
+    - criterion: current_head_ci_evidence
+      disposition: checked_no_finding
+      evidence: "Run 32197163530 matches reviewed HEAD exactly and succeeded."
+    - criterion: report_tracking_documentation_accuracy
+      disposition: checked_no_finding
+      evidence: "Implementation report/handoff/PR body accurately record implemented intent and CI; task status intentionally manager-owned."
+    - criterion: regression_and_maintainability_risk
+      disposition: checked_finding
+      evidence: "Shared mutable progress state and serial dependent failure coupling produce R003/R004."
+  validation_assessment:
+    - item: reviewed_head_ci
+      result: supported
+      evidence: "CI 32197163530 success at exact reviewed SHA."
+    - item: diagnostic_artifact_workflow
+      result: supported
+      evidence: "Existing CI captures stdout, stderr, combined result metadata and investigation files."
+    - item: R001_regression
+      result: unsupported
+      evidence: "No mixed-case PR-diff-first test."
+    - item: R002_regression
+      result: unsupported
+      evidence: "No pre-fix persisted-state upgrade test."
+    - item: R003_regression
+      result: unsupported
+      evidence: "No concurrent activation ordering test."
+    - item: R004_regression
+      result: unsupported
+      evidence: "No context-switch failure isolation test."
+  reserved_report_paths:
+    - reports/issue-66-pr68-initial-review-20260819.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+      - executable
+      - design
+      - workflow
+      - configuration
+      - tracking
+      - product
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - "This is normal initial review, not independent-final-review attestation mode."
+  summary:
+    - "Exact-head CI is green but four required High findings remain."
+    - "Verdict is fail for reviewed implementation HEAD 20b04efb...."
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-66-pr68-initial-review-20260819.md
+  reviewed_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed report contains four High findings and full coverage dispositions."
+
+findings:
+  - id: PR68-R001
+    severity: high
+    origin: introduced_by_change
+    location: "src/t405-pull-request-review-runtime.ts openSession/projectContextFileIdentities; src/core/pr-progress/pr-diff-progress.ts validateFileState"
+    description: "A new mixed-case Windows PR-diff-first review persists raw-case fileId with lower-case currentPath; subsequent PR progress finds the raw key and rejects the path mismatch."
+    impact: "PR review can persist a mark and then fail all subsequent PR Progress updates for that file."
+    evidence: "Raw diff IDs preserve Git casing; fallback currentPath is lower-cased; mutation persists both; projection skips an existing raw key; core comparison is case-sensitive."
+    required_action: "Unify persisted/calculation path identity and add a RED->Green mixed-case empty-state PR-diff-first progress regression."
+  - id: PR68-R002
+    severity: high
+    origin: introduced_by_change
+    location: "src/t505-global-understanding-source.ts; src/adapters/document-review-state/persisted-document-review-state-session-provider.ts; src/t405-pull-request-review-runtime.ts"
+    description: "Pre-fix Windows PR state retains raw path casing; new evidence and normal-editor lookup use lower-case identity without a legacy compatibility/migration boundary, allowing missing Global state and duplicate file IDs."
+    impact: "Existing users can remain missing after upgrade, split one logical file into two persisted identities, and later hit conflict failures or stale PR numerator."
+    evidence: "Base PR diff sessions stored raw logicalPath; Global core uses exact currentPath; normal-editor selected PR provider uses exact lower-case lookup and creates a new hash when absent; runtime rejects multiple canonical IDs."
+    required_action: "Define/read or migrate legacy Windows persisted identity and test an upgrade fixture through Global, normal editor, PR progress, and PR diff open."
+  - id: PR68-R003
+    severity: high
+    origin: introduced_by_change
+    location: "src/t405-pull-request-review-runtime.ts activateProgress; src/t305-extension.ts refreshPullRequestProgressForSelection; src/ui/pr-progress/vscode-pull-request-progress-tree.ts setPullRequestProgressSource"
+    description: "Shared asynchronous PR Progress activation has no generation/current-context guard; stale success can overwrite the newer PR snapshot and stale failure can clear it."
+    impact: "The dedicated view can display the wrong PR under the selected context or become empty after a successful newer refresh."
+    evidence: "One shared provider, setSource refresh before new activation clears, no token before replace/clear, and Current Context generation ends before dependent refresh completion."
+    required_action: "Bind activation publication to current generation/context and add deterministic A/B success/failure/leave-context race regressions."
+  - id: PR68-R004
+    severity: high
+    origin: introduced_by_change
+    location: "src/t305-extension.ts Current Context refreshDependents; src/ui/current-context/current-context-runtime-coordinator.ts"
+    description: "PR Progress is awaited first without an isolated error boundary after the selected owner changes; its failure prevents decoration, Global, and Review Contexts refresh."
+    impact: "UI/commands can target PR B while stale reviewed decorations from PR A remain visible, violating fail-closed certainty."
+    evidence: "Coordinator applies setSelectedContext before dependents; first dependent await can throw; outer boundary only reports error and does not rerender new-context decorations."
+    required_action: "Isolate PR projection failure or make context switching atomic so new-owner decorations and other dependents still become fail-closed; add rejection regression and separate live-edit mutation vs projection error reporting."
+
+held:
+  - item: "Full T406 GitHub outage/rate-limit/cache fallback lifecycle"
+    reason: "Broader existing task boundary not changed by Issue #66."
+    owner: "T406"
+    remaining_risk: "External GitHub fallback behavior remains governed by its own task."
+    verdict_impact: "Does not reduce or replace R004; no additional blocking effect for this review."
+
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: severity_reclassification
+    reason: "Initial review; no source findings to reclassify."
+remaining_risks:
+  - "Until R001/R002 are fixed, Windows file identity remains inconsistent across new and upgraded state."
+  - "Until R003/R004 are fixed, Current Context and PR Progress/decorations can diverge under latency or failure."
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "current"
+    content_type: text/markdown
+    payload: "Four required High findings PR68-R001 through PR68-R004; verdict fail; exact reviewed-head CI success does not cover the defect paths."
+  - source_skill: report-writer
+    output_contract_version: "current"
+    content_type: text/markdown
+    payload: "reports/issue-66-pr68-initial-review-20260819.md"
+extensions: []
+
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: review_follow_up
+  summary: "Fix PR68-R001 through PR68-R004 with TDD, then return to this normal reviewer for fix verification."
+  instructions:
+    - "Preserve finding IDs and High severities unless an explicit evidence-backed reclassification is approved."
+    - "Add RED regressions for each finding before implementation changes."
+    - "Use only workflow runs whose head_sha exactly equals the new PR HEAD for CI evidence."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/issue-66-pr68-initial-review-20260819.md
+    - handoffs/issue-66-pr68-initial-review-20260819.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-66-pr68-initial-review-20260819.yaml
+  packet_url: null
+  transport_note: "Use this packet for review follow-up; verdict remains bound to reviewed implementation HEAD 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592."
