@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 
 import {
-  PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeCategoryNode,
   type PullRequestProgressTreeFileNode,
-  type PullRequestProgressTreeNode
+  type PullRequestProgressTreeNode,
+  type PullRequestProgressTreeSelectionResult
 } from "./pull-request-progress-tree-data-provider";
 
 /** Contributed VS Code view that renders the current immutable pull-request progress projection. */
@@ -12,13 +12,19 @@ export const PULL_REQUEST_PROGRESS_VIEW_ID = "reviewRange.prProgress";
 /** Tree-item command that opens a selected reviewable file through the shared T304 provider. */
 export const OPEN_PULL_REQUEST_PROGRESS_ITEM_COMMAND_ID = "reviewRange.openPrProgressItem";
 
+/** Minimal T304 source contract so the contributed view can switch between runtime owners. */
+export interface PullRequestProgressTreeSource {
+  getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
+  select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
+}
+
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
 implements vscode.TreeDataProvider<PullRequestProgressTreeNode> {
   private readonly changed = new vscode.EventEmitter<PullRequestProgressTreeNode | undefined>();
   public readonly onDidChangeTreeData = this.changed.event;
 
-  public constructor(private readonly source: PullRequestProgressTreeDataProvider) {}
+  public constructor(private readonly source: PullRequestProgressTreeSource) {}
 
   public getTreeItem(node: PullRequestProgressTreeNode): vscode.TreeItem {
     if (node.kind === "category") return this.categoryTreeItem(node);
@@ -57,10 +63,10 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode> {
   }
 }
 
-/** Registers the contributed PR Progress Tree View and delegates selection to the shared T304 provider. */
+/** Registers the contributed PR Progress Tree View and delegates selection to the active T304 source. */
 export const registerVscodePullRequestProgressTree = (
   context: vscode.ExtensionContext,
-  source: PullRequestProgressTreeDataProvider,
+  source: PullRequestProgressTreeSource,
   reportError: (error: unknown) => void | Promise<void>
 ): VscodePullRequestProgressTreeDataProvider => {
   const tree = new VscodePullRequestProgressTreeDataProvider(source);
