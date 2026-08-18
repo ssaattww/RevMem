@@ -1,3 +1,4 @@
+import { runWithActiveOperationFeedback } from "./application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
@@ -291,20 +292,22 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
-    const registration = this.requireRegistration(contextId);
-    const persisted = await this.options.repository.load(targetFor(registration));
-    if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
-    this.requireMatchingContext(registration, persisted);
-    const progress = calculatePullRequestDiffProgress({
-      diff: registration.snapshot,
-      reviewContext: persisted.contextState,
-      exclusionPolicy: this.options.getExclusionPolicy(),
+    return runWithActiveOperationFeedback("PR進捗を計算", async () => {
+      const registration = this.requireRegistration(contextId);
+      const persisted = await this.options.repository.load(targetFor(registration));
+      if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
+      this.requireMatchingContext(registration, persisted);
+      const progress = calculatePullRequestDiffProgress({
+        diff: registration.snapshot,
+        reviewContext: persisted.contextState,
+        exclusionPolicy: this.options.getExclusionPolicy(),
+      });
+      return {
+        reviewedLineCount: progress.reviewedLineCount,
+        totalLineCount: progress.totalLineCount,
+        progress: progress.progress,
+      };
     });
-    return {
-      reviewedLineCount: progress.reviewedLineCount,
-      totalLineCount: progress.totalLineCount,
-      progress: progress.progress,
-    };
   }
 
   public createCommandService<Editor>(

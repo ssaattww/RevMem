@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  OperationFeedback,
+  setActiveOperationFeedback,
+  type OperationFeedbackHost,
+  type OperationLogEntry
+} from "../../src/application/operation-feedback/index";
+import {
   NORMAL_EDITOR_REVIEW_COMMAND_IDS,
   registerNormalEditorReviewCommands,
   type CommandDisposable,
@@ -53,6 +59,22 @@ class FakeHost implements NormalEditorCommandHost<FakeEditor> {
 
   public showCommandError(error: unknown): void {
     this.errors.push(error);
+  }
+}
+
+class FakeOperationFeedbackHost implements OperationFeedbackHost {
+  public readonly logs: OperationLogEntry[] = [];
+  public revealCount = 0;
+
+  public showBusy(): void {}
+  public clearBusy(): void {}
+
+  public appendLog(entry: OperationLogEntry): void {
+    this.logs.push(entry);
+  }
+
+  public revealLog(): void {
+    this.revealCount += 1;
   }
 }
 
@@ -150,4 +172,27 @@ test("registered commands report handler failures through the UI host", async ()
 
   assert.deepEqual(calls, []);
   assert.deepEqual(host.errors, [failure]);
+});
+
+test("handler failure is recorded as failed operation before the UI host reports it", async () => {
+  const failure = new Error("state commit failed");
+  const host = new FakeHost();
+  const operationHost = new FakeOperationFeedbackHost();
+  const { handlers } = createHandlers(failure);
+  host.activeEditor = { id: "editor-1" };
+  setActiveOperationFeedback(new OperationFeedback(operationHost, () => 100));
+
+  try {
+    registerNormalEditorReviewCommands(host, handlers);
+    await host.handlers.get(
+      NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed
+    )!();
+
+    assert.deepEqual(host.errors, [failure]);
+    assert.deepEqual(operationHost.logs.map((entry) => entry.event), ["started", "failed"]);
+    assert.equal(operationHost.logs.at(-1)?.message, "Operation failed; details were redacted.");
+    assert.equal(operationHost.revealCount, 1);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
 });

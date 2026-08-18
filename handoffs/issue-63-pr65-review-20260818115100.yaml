@@ -1,0 +1,510 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: initial review
+  generated_at: "2026-08-18T12:02:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "PR #65 / Issue #63"
+task_id: ISSUE-63
+branch: feature/issue-63-stream-git-output
+base_ref: main
+target:
+  current_head: 482de1c0f4bc3377cc036b7d228b7a08e6274bdb
+  reviewed_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+  commit_range: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74..3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "PR #65 review request"
+    summary: "Review PR #65, follow the uploaded instructions, and surface all findings in one review round."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector for repository/PR work, use only exact-head CI evidence, persist a detailed repository report and concise PR review summary, and do not merge."
+  - source: issue
+    reference: "Issue #63"
+    summary: "Fix Review Contexts/review-state failures caused by stdout maxBuffer length exceeded and make the related failures diagnosable."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev5"
+    summary: "Defines streamed Git subprocess output, bounded timeout termination, generic activity status, privacy-safe Output lifecycle diagnostics, and fail-closed observability."
+
+development_policy:
+  method: TDD
+  testing_order: "RED before implementation, then GREEN and regression validation"
+  governing_source: "RevMem project instructions and PR #65 implementation evidence"
+validation_plan:
+  commands:
+    - "Review complete PR diff and all changed files."
+    - "Inspect direct dependencies relevant to Git execution, diagnostics, cache/persistence, tests, workflow, reports, and tracking."
+    - "Use only workflow runs whose head SHA matches the referenced validation head."
+  required_failure_diagnostics:
+    - "CI failure artifact with test results, stdout, stderr, combined logs, source/tests/configuration, and investigation context."
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-63-pr65-review-20260818115100.md
+      reason: "Required detailed normal-review report."
+    - path_or_operation: handoffs/issue-63-pr65-review-20260818115100.yaml
+      reason: "Required normal-review continuation packet."
+    - path_or_operation: "PR #65 review/comment"
+      reason: "Required concise review result and changes-requested state."
+  forbidden:
+    - path_or_operation: "product/design/test/workflow fixes"
+      reason: "Reviewer must not implement findings."
+    - path_or_operation: "merge PR #65"
+      reason: "Merge is user-owned."
+
+scope:
+  - "Initial normal review of PR #65 at immutable implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5."
+  - "Issue #63 large-Git-output fix and operation diagnostics/status behavior."
+  - "All 18 changed implementation/design/test/report/handoff files and relevant direct dependencies."
+non_goals:
+  - "Implement review findings."
+  - "Merge the pull request."
+  - "Perform independent final review."
+
+files:
+  changed:
+    - path: reports/issue-63-pr65-review-20260818115100.md
+      purpose: "Detailed initial review report persisted after the reviewed implementation HEAD was frozen."
+    - path: handoffs/issue-63-pr65-review-20260818115100.yaml
+      purpose: "Lossless review continuation packet."
+  inspected:
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Authoritative rev5 Git/output/privacy/status contracts."
+    - path: handoffs/issue-63-implementation-20260818111441.yaml
+      purpose: "Implementation continuation evidence and schema accuracy."
+    - path: reports/issue-63-implementation-20260818111441.md
+      purpose: "Implementation rationale and TDD/CI evidence."
+    - path: src/adapters/local-git/node-git-command-executor.ts
+      purpose: "Large stdout and timeout process lifecycle."
+    - path: src/adapters/local-git/contracts.ts
+      purpose: "Git failure message contract."
+    - path: src/adapters/local-git/node-git-blob-reader.ts
+      purpose: "Sibling bounded process termination contract."
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: "Operation lifecycle, failure formatting, privacy, and duplicate suppression."
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "PR progress operation feedback."
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "Fail-closed acquisition diagnostics and arbitrary error flow."
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: "Shared feedback wiring and Global activity."
+    - path: src/ui/normal-editor/review-command-registration.ts
+      purpose: "Review mutation failure boundary."
+    - path: src/ui/operation-feedback/vscode-operation-feedback.ts
+      purpose: "Output/status VS Code host."
+    - path: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      purpose: "Review Contexts operation lifecycle and error boundary."
+    - path: src/application/github-pr-diff/contracts.ts
+      purpose: "Fail-closed PR acquisition reason model."
+    - path: src/adapters/github/node-github-pull-request-cache-storage.ts
+      purpose: "Persistence path construction and error propagation."
+    - path: src/adapters/state-repository/atomic-text-file-store.ts
+      purpose: "Filesystem error propagation."
+    - path: test/integration/local-git-adapter.integration.test.ts
+      purpose: ">4 MiB real Git diff regression."
+    - path: test/unit/node-git-command-executor.test.ts
+      purpose: "Executor large-output and timeout coverage."
+    - path: test/unit/normal-editor-review-command-registration.test.ts
+      purpose: "Failed mutation diagnostic coverage."
+    - path: test/unit/review-contexts-runtime-wiring.test.ts
+      purpose: "Issue #63 wiring/fail-closed coverage."
+    - path: test/unit/review-contexts-ui.test.ts
+      purpose: "OperationFeedback lifecycle/status/log coverage."
+    - path: .github/workflows/ci.yml
+      purpose: "Exact-head validation workflow and failure diagnostics artifact."
+    - path: tasks/tasks-status.md
+      purpose: "Tracking accuracy and update ownership."
+  intentionally_untouched:
+    - path_or_area: "product/design/test/workflow implementation"
+      reason: "Reviewer boundary forbids implementing findings."
+    - path_or_area: tasks/tasks-status.md
+      reason: "The file states it is owned by designated task/progress managers; mismatch is recorded as held."
+
+commands:
+  - command: "GitHub connector: get PR #65 metadata and re-read HEAD before verdict"
+    purpose: "Freeze immutable reviewed implementation identity."
+    exit_code: unknown
+    result: passed
+    head_sha: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    evidence: "PR HEAD remained 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 through the technical review."
+  - command: "GitHub connector: inspect exact-head workflow run"
+    purpose: "Validate current reviewed implementation HEAD CI."
+    exit_code: unknown
+    result: passed
+    head_sha: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    evidence: "CI run 32091248702 completed successfully."
+  - command: "GitHub connector: cross-check implementation TDD run identities"
+    purpose: "Verify RED/GREEN chronology belongs to the cited SHAs."
+    exit_code: unknown
+    result: passed
+    head_sha: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    evidence: "Runs 32086621261, 32087043760, 32089918157, 32090241746 matched the cited RED SHAs; run 32090827458 matched technical Green 51c2ff13e172a0510711fc4198a4f6b6f2e9a663."
+
+tests:
+  - name: "Current exact-head CI"
+    phase: verification
+    result: passed
+    head_sha: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    evidence: "Workflow run 32091248702 conclusion success."
+  - name: "Large stdout RED"
+    phase: red
+    result: failed
+    head_sha: f216b6355cbe77873f2487e21973a88d6b7b1d9a
+    evidence: "Workflow run 32086621261 conclusion failure."
+  - name: "Operation feedback contract RED"
+    phase: red
+    result: failed
+    head_sha: 033d21b672c0f5452d32484abef70cc813303e91
+    evidence: "Workflow run 32087043760 conclusion failure."
+  - name: "Review mutation failure lifecycle RED"
+    phase: red
+    result: failed
+    head_sha: 50fcd37ece6f1fbcf1336a1ccf566560d2d66060
+    evidence: "Workflow run 32089918157 conclusion failure."
+  - name: "Fail-closed diagnostics RED"
+    phase: red
+    result: failed
+    head_sha: 388024d68eb7801653699f8bb44a112aa8d3e996
+    evidence: "Workflow run 32090241746 conclusion failure."
+  - name: "Technical implementation Green"
+    phase: green
+    result: passed
+    head_sha: 51c2ff13e172a0510711fc4198a4f6b6f2e9a663
+    evidence: "Workflow run 32090827458 conclusion success."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32093994917
+  head_sha: 482de1c0f4bc3377cc036b7d228b7a08e6274bdb
+  conclusion: in_progress
+  artifacts: []
+
+implementation:
+  outcome: not_applicable
+  final_head: unknown
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "No implementation was performed by the reviewer."
+
+review:
+  mode: initial_review
+  reviewed_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+  reviewer:
+    identity: "ChatGPT normal reviewer / PR65 / 2026-08-18"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - "This chat performed review-only GitHub reads and review-report/handoff persistence; it did not implement Issue #63."
+        - "No previous PR #65 reviews or review threads existed at review start."
+  verdict: fail
+  required_coverage:
+    - criterion: "requirement and design conformance"
+      disposition: checked_finding
+      evidence: "R65-001, R65-002 and R65-003 violate explicit rev5 contracts."
+    - criterion: "correctness and edge cases"
+      disposition: checked_finding
+      evidence: "Unbounded timeout termination and nested failure lifecycle defects."
+    - criterion: "scope discipline and unrelated changes"
+      disposition: checked_no_finding
+      evidence: "Product/design/test changes are within Issue #63 scope; report/handoff files are workflow artifacts."
+    - criterion: "changed files and direct dependency impact"
+      disposition: checked_finding
+      evidence: "All changed files and relevant Git/error/cache/persistence dependencies inspected."
+    - criterion: "API, data, configuration, workflow, and compatibility effects"
+      disposition: checked_finding
+      evidence: "Executor process-failure contract and implementation handoff transport contract regressions."
+    - criterion: "error handling and failure diagnostics"
+      disposition: checked_finding
+      evidence: "R65-001 through R65-003."
+    - criterion: "security and secret handling"
+      disposition: checked_finding
+      evidence: "R65-001."
+    - criterion: "tests and validation adequacy"
+      disposition: checked_finding
+      evidence: "Green CI exists, but no tests cover privacy redaction, stubborn termination, or nested failure terminal events."
+    - criterion: "current-HEAD CI evidence"
+      disposition: checked_no_finding
+      evidence: "Reviewed implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 has exact matching successful CI run 32091248702."
+    - criterion: "report, tracking, and documentation accuracy"
+      disposition: checked_finding
+      evidence: "R65-004; tasks/tasks-status.md mismatch recorded as held H65-001."
+    - criterion: "regression and maintainability risks"
+      disposition: checked_finding
+      evidence: "Metadata executor termination diverges from blob reader; global Error WeakSet is brittle for nested operations."
+  validation_assessment:
+    - item: "Exact reviewed-head CI"
+      result: supported
+      evidence: "3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 / run 32091248702 / success."
+    - item: "Primary TDD RED identities"
+      result: supported
+      evidence: "Four cited RED heads each have the cited failure run."
+    - item: "Technical Green identity"
+      result: supported
+      evidence: "51c2ff13e172a0510711fc4198a4f6b6f2e9a663 / run 32090827458 / success."
+    - item: "Diagnostic artifact workflow"
+      result: supported
+      evidence: ".github/workflows/ci.yml uploads ci-failure-diagnostics with test output, stdout/stderr logs, environment, source, tests, tools, generated outputs, and configuration on failure."
+  reserved_report_paths:
+    - reports/issue-63-pr65-review-20260818115100.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+      - executable
+      - skill
+      - design
+      - workflow
+      - configuration
+      - tracking
+      - handoff
+      - product
+      - other
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+      - "This is a normal initial review, not an independent-final-review attestation lifecycle."
+  summary:
+    - "Verdict fail with four required findings: two HIGH and two MEDIUM."
+    - "Reviewed implementation exact-head CI is Green, and primary TDD chronology is supported."
+    - "No implementation or merge was performed."
+
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-63-pr65-review-20260818115100.md
+  reviewed_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed initial review report persisted in repository commit 482de1c0f4bc3377cc036b7d228b7a08e6274bdb."
+    - "Concise PR review submission is the next authorized publication step."
+
+findings:
+  - id: R65-001
+    severity: high
+    origin: introduced_by_change
+    location: "src/application/operation-feedback/operation-feedback.ts (failureDetails/recordFailure) and callers"
+    description: "Output diagnostics copy arbitrary Error.name/message without central redaction."
+    impact: "Private repository paths, repository/PR identity, credentials/token-like material, or source-bearing details from dependency errors can be written to Output, violating rev5 privacy/security requirements."
+    evidence: "rev5 §16.10/§18 forbids those values; failureDetails forwards error.message unchanged; filesystem errors and GitCommandFailedError can include path/invocation details; tests do not cover redaction."
+    required_action: "Sanitize or project diagnostics centrally before appendLog and add privacy regression tests for Git/fs/path/URL/token/PR-title/multiline inputs."
+  - id: R65-002
+    severity: high
+    origin: introduced_by_change
+    location: "src/adapters/local-git/node-git-command-executor.ts timeout/termination path"
+    description: "Timeout sends SIGTERM then SIGKILL but has no post-SIGKILL bounded-failure path, kill-result diagnostics, or timeout-specific handling of later process errors."
+    impact: "The Promise can remain pending beyond timeout when close never arrives, leaving review operations/status stuck and violating rev5 process failure contract."
+    evidence: "rev5 §9.5 requires bounded SIGTERM→SIGKILL→force-failure; NodeGitBlobReader implements it; NodeGitCommandExecutor stops after SIGKILL scheduling; tests cover only cooperative timeout."
+    required_action: "Share/implement bounded termination lifecycle with kill outcome diagnostics, post-timeout error preservation, final force failure, and stubborn-process/no-close tests."
+  - id: R65-003
+    severity: medium
+    origin: introduced_by_change
+    location: "src/application/operation-feedback/operation-feedback.ts reportedErrors/recordFailure"
+    description: "A global WeakSet suppresses every later failure for the same Error object, including an outer nested run's required terminal ERROR and later independent runs."
+    impact: "Operation logs can contain START without a terminal event, breaking rev5 lifecycle observability and making duration/failure diagnosis ambiguous."
+    evidence: "run always emits START; recordFailure returns when Error identity is already in WeakSet; tests cover nested success and wrapper→reportFailure dedup but not nested failure or separate-run reuse."
+    required_action: "Scope duplicate suppression to the UI/fail-closed duplicate boundary while always emitting a terminal failure for each run; add nested-failure and repeated-Error tests."
+  - id: R65-004
+    severity: medium
+    origin: introduced_by_change
+    location: handoffs/issue-63-implementation-20260818111441.yaml
+    description: "The file declares schema_version 3 but uses non-schema target fields, omits source_payloads, and retains pending finalization steps after the final documentation HEAD/CI/comment already exist."
+    impact: "A fresh worker cannot losslessly reconstruct current state and may repeat already completed finalization work."
+    evidence: "chat-handoff-manager v3 requires target.current_head/reviewed_head/commit_range and preserved source_payloads; PR body/comment already record 3fa562d6... / CI 32091248702 while the handoff still says pending."
+    required_action: "Replace or supersede with a current valid v3 packet containing exact target identity, preserved core payloads, actual validation/report state, and only applicable next actions."
+
+held:
+  - item: H65-001
+    reason: "tasks/tasks-status.md still references design rev4/no current PR while PR #65 changes design to rev5, but the file explicitly requires designated task/progress managers and the implementation worker kept it outside its write boundary."
+    owner: "task/progress-management flow"
+    remaining_risk: "Tracking metadata remains stale if no authorized synchronization occurs before/after merge."
+    verdict_impact: "Non-blocking by itself; review already fails on required findings."
+
+unexplored: []
+unknown:
+  - field_or_fact: "CI conclusion for repository review-report commit 482de1c0f4bc3377cc036b7d228b7a08e6274bdb"
+    reason: "Exact matching run 32093994917 was still in progress when this packet was generated; it is not used as implementation validation."
+not_applicable:
+  - field_or_area: "implementation outcome"
+    reason: "Reviewer did not implement changes."
+  - field_or_area: "independent final review attestation"
+    reason: "This is initial normal review."
+remaining_risks:
+  - "R65-001 may expose private repository diagnostics until a central safe-message boundary is added."
+  - "R65-002 can violate configured timeout bounds on stubborn process lifecycle paths."
+  - "R65-003 can leave incomplete nested lifecycle logs."
+  - "R65-004 leaves the implementation handoff unsafe for lossless independent continuation."
+  - "H65-001 leaves task tracking stale until its authorized owner synchronizes it."
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload: |
+      review_mode: initial_review
+      reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+      base: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+      commit_range: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74..3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+      reviewer_identity: ChatGPT normal reviewer / PR65 / 2026-08-18
+      reviewer_role: normal_reviewer
+      verdict: fail
+      findings:
+        - id: R65-001
+          severity: high
+          origin: introduced_by_change
+          location: src/application/operation-feedback/operation-feedback.ts
+          description: Raw arbitrary Error messages are written to Output without central privacy redaction.
+          impact: Private repository paths/identity or credential/source-bearing details can be disclosed.
+          required_action: Centralize safe diagnostic projection/redaction and add representative privacy tests.
+        - id: R65-002
+          severity: high
+          origin: introduced_by_change
+          location: src/adapters/local-git/node-git-command-executor.ts
+          description: Timeout lifecycle lacks post-SIGKILL bounded failure and signal-send diagnostics.
+          impact: Promise can remain pending indefinitely beyond configured timeout.
+          required_action: Align with rev5/NodeGitBlobReader bounded termination and add stubborn-process tests.
+        - id: R65-003
+          severity: medium
+          origin: introduced_by_change
+          location: src/application/operation-feedback/operation-feedback.ts
+          description: Global Error WeakSet suppresses outer/later terminal failures for reused Error identity.
+          impact: Observable operations can have START without terminal ERROR.
+          required_action: Scope duplicate suppression to UI boundary and add nested failure/reuse tests.
+        - id: R65-004
+          severity: medium
+          origin: introduced_by_change
+          location: handoffs/issue-63-implementation-20260818111441.yaml
+          description: Declared schema-v3 handoff is structurally invalid and stale after finalization.
+          impact: Independent continuation is not lossless and can repeat completed work.
+          required_action: Replace/supersede with a current valid schema-v3 packet.
+      held:
+        - id: H65-001
+          item: tasks/tasks-status.md tracking mismatch
+          owner: task/progress-management flow
+      unexplored: []
+      validation:
+        reviewed_head_ci: "3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 / 32091248702 / success"
+        tdd_red_runs:
+          - "f216b6355cbe77873f2487e21973a88d6b7b1d9a / 32086621261 / failure"
+          - "033d21b672c0f5452d32484abef70cc813303e91 / 32087043760 / failure"
+          - "50fcd37ece6f1fbcf1336a1ccf566560d2d66060 / 32089918157 / failure"
+          - "388024d68eb7801653699f8bb44a112aa8d3e996 / 32090241746 / failure"
+        technical_green: "51c2ff13e172a0510711fc4198a4f6b6f2e9a663 / 32090827458 / success"
+      next_action: implementation fixes then same normal reviewer fix verification; no merge
+      reserved_report_paths:
+        - reports/issue-63-pr65-review-20260818115100.md
+      report_attestation_allowed: false
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload: |
+      report_type: review_report
+      target_identity:
+        branch: feature/issue-63-stream-git-output
+        base_ref: main
+        current_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+        reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+      severity_records:
+        - finding_id: R65-001
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: R65-002
+          source_severity: high
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: R65-003
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+        - finding_id: R65-004
+          source_severity: medium
+          new_severity: null
+          reason: null
+          approved_by: null
+          record_type: preserved
+      persistence:
+        mode: repository_file
+        reserved_paths:
+          - reports/issue-63-pr65-review-20260818115100.md
+        report_attestation_head: null
+      complete_body: "The complete report-writer body is persisted verbatim at reports/issue-63-pr65-review-20260818115100.md (blob 791d97f67ba163707a6b1ac52d54d861d9c6866a); that repository file is the authoritative complete_body payload for this packet."
+      concise_pr_comment_body: "Review verdict: fail for implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5. Required findings: R65-001 HIGH raw Output error messages can leak private repository data; R65-002 HIGH Git executor timeout can remain unbounded after SIGKILL/no-close; R65-003 MEDIUM global Error WeakSet can suppress nested terminal ERROR events; R65-004 MEDIUM committed implementation handoff is invalid/stale schema-v3. Exact-head CI 32091248702 is success. Detailed report: reports/issue-63-pr65-review-20260818115100.md. Fix all four, run exact-new-HEAD CI, then return to the same normal reviewer for fix verification. Do not merge."
+      unresolved_discrepancies: []
+
+extensions:
+  - namespace: revmem.review_evidence
+    payload:
+      implementation_report: reports/issue-63-implementation-20260818111441.md
+      implementation_handoff: handoffs/issue-63-implementation-20260818111441.yaml
+      review_report_commit: 482de1c0f4bc3377cc036b7d228b7a08e6274bdb
+      reviewed_implementation_ci_run: 32091248702
+      review_report_commit_ci_run: 32093994917
+      review_report_commit_ci_status: in_progress
+
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: "review finding fixes"
+  summary: "Fix R65-001 through R65-004 on PR #65, preserve finding IDs/severities, then return to the same normal reviewer for fix verification."
+  instructions:
+    - "Implement tests first where required by RevMem TDD policy, demonstrate RED for the new regression cases, then implement fixes."
+    - "R65-001: centralize privacy-safe operation error diagnostics and add representative redaction tests."
+    - "R65-002: make NodeGitCommandExecutor termination bounded and diagnostically equivalent to rev5/NodeGitBlobReader; add stubborn-process/termination edge tests."
+    - "R65-003: preserve one terminal event per run while suppressing only the intended duplicate UI/fail-closed report; add nested failure and Error reuse tests."
+    - "R65-004: replace/supersede the invalid stale implementation handoff with a current valid schema-v3 packet."
+    - "Run CI and judge it only when the workflow run head SHA matches the new PR HEAD."
+    - "Update implementation/fix report and handoff, commit/push in reviewable logical units, and do not merge."
+  required_attachments_or_references:
+    - reports/issue-63-pr65-review-20260818115100.md
+    - handoffs/issue-63-pr65-review-20260818115100.yaml
+    - "PR #65"
+    - "Reviewed implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5"
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-63-pr65-review-20260818115100.yaml
+  packet_url: null
+  transport_note: "The packet was generated when the branch current HEAD was the review-report commit 482de1c0f4bc3377cc036b7d228b7a08e6274bdb and is itself persisted by one later administrative handoff commit. The receiving implementation worker must re-resolve the current PR HEAD before writing; the technical review verdict remains attached to reviewed implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5."

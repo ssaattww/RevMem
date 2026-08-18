@@ -1,0 +1,926 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: review follow-up implementation
+  generated_at: '2026-08-18T14:56:00+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #63 / PR #65'
+task_id: ISSUE-63
+branch: feature/issue-63-stream-git-output
+base_ref: main
+target:
+  current_head: 3c265f830886049d08fffc6ba43c04c745368d40
+  reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+  commit_range: 8a6095304776c064ab3b44181b4e33377a6e77c1..3c265f830886049d08fffc6ba43c04c745368d40
+authoritative_requirements:
+- source: user_instruction
+  reference: 指摘対応
+  summary: 'Address the remaining PR #65 findings in the existing PR.'
+- source: repository_instruction
+  reference: RevMem project instructions
+  summary: GitHub connector, TDD, diagnostic artifacts, exact-head CI, detailed report/handoff and PR summary, no merge.
+- source: pr
+  reference: 'PR #65 fix verification at 36b8522aba0712a4d051425f9fb8a71ecdabc756'
+  summary: R65-001 HIGH and R65-004 MEDIUM remain; R65-002 HIGH/R65-003 MEDIUM are addressed.
+- source: design
+  reference: doc/design/vscode-review-range-tracker-design.md rev5 §§16.10/18
+  summary: Output diagnostics must not expose source/private PR/path/token/credential data.
+- source: handoff
+  reference: chat-handoff-manager schema v3
+  summary: Typed projection plus complete lossless producing-Skill outputs under source_payloads.
+development_policy:
+  method: TDD
+  testing_order: RED privacy regression before implementation; full exact-head Green after implementation.
+  governing_source: 'RevMem project instructions and latest PR #65 fix verification.'
+validation_plan:
+  commands:
+  - Full GitHub CI including all focused suites, temporary Git, mock GitHub and VS Code Extension Host.
+  required_failure_diagnostics:
+  - test result metadata
+  - standard output
+  - standard error
+  - combined logs
+  - failure artifact with source/tests/configuration and investigation context
+blocked: []
+authorized_actions:
+- read_repository
+- edit_code
+- edit_tests
+- edit_documentation
+- write_handoff
+- write_report
+- commit
+- push
+- update_pr
+- comment_pr
+write_boundary:
+  allowed:
+  - path_or_operation: src/application/operation-feedback/operation-feedback.ts
+    reason: R65-001
+  - path_or_operation: test/unit/node-git-command-executor.test.ts
+    reason: R65-001 TDD
+  - path_or_operation: test/unit/review-contexts-ui.test.ts
+    reason: Privacy-safe expectation alignment
+  - path_or_operation: test/unit/normal-editor-review-command-registration.test.ts
+    reason: Privacy-safe expectation alignment
+  - path_or_operation: handoffs/issue-63-implementation-20260818111441.yaml
+    reason: R65-004 lossless replacement
+  - path_or_operation: reports/issue-63-pr65-review-followup-2-20260818145600.md
+    reason: Required detailed follow-up report
+  - path_or_operation: 'PR #65 body/comments'
+    reason: Required implementation handoff summary
+  forbidden:
+  - path_or_operation: 'merge PR #65'
+    reason: Merge is user-owned.
+  - path_or_operation: create another PR
+    reason: User explicitly requested one PR only.
+  - path_or_operation: tasks/tasks-status.md
+    reason: Owned by designated progress-management flow.
+  - path_or_operation: unrelated product/design/workflow/configuration changes
+    reason: Follow-up is limited to R65-001/R65-004.
+scope:
+- R65-001 HIGH privacy-safe allowlist-only diagnostics.
+- R65-004 MEDIUM lossless schema-v3 handoff.
+- Preserve R65-002 HIGH/R65-003 MEDIUM closure and H65-001 held state.
+non_goals:
+- merge
+- new PR
+- tasks-status edit
+- unrelated cleanup
+- reopen R65-002/R65-003 without evidence
+files:
+  changed:
+  - path: src/application/operation-feedback/operation-feedback.ts
+    purpose: Allowlist-only privacy-safe diagnostics.
+  - path: test/unit/node-git-command-executor.test.ts
+    purpose: Ordinary-word/custom-name privacy RED regressions.
+  - path: test/unit/review-contexts-ui.test.ts
+    purpose: Align feedback expectations to generic diagnostics.
+  - path: test/unit/normal-editor-review-command-registration.test.ts
+    purpose: Align Output expectation while preserving original UI error.
+  - path: handoffs/issue-63-implementation-20260818111441.yaml
+    purpose: Lossless v3 continuation packet.
+  - path: reports/issue-63-pr65-review-followup-2-20260818145600.md
+    purpose: Detailed follow-up report.
+  inspected:
+  - path: reports/issue-63-pr65-fix-verification-20260818133800.md
+    purpose: Latest finding definitions/dispositions.
+  - path: handoffs/issue-63-pr65-fix-verification-20260818133800.yaml
+    purpose: Complete fix-verification worker state.
+  - path: handoffs/issue-63-pr65-review-20260818115100.yaml
+    purpose: Complete authoritative initial review evidence.
+  - path: doc/design/vscode-review-range-tracker-design.md
+    purpose: rev5 privacy contract.
+  - path: .github/workflows/ci.yml
+    purpose: Failure diagnostics and exact-head validation workflow.
+  intentionally_untouched:
+  - path_or_area: src/adapters/local-git/node-git-command-executor.ts
+    reason: R65-002 already addressed and verified.
+  - path_or_area: R65-003 operation failure lifecycle semantics
+    reason: Already addressed and verified.
+  - path_or_area: doc/design/vscode-review-range-tracker-design.md
+    reason: No new design change; rev5 already requires this behavior.
+  - path_or_area: .github/workflows/ci.yml
+    reason: Existing diagnostics are sufficient.
+  - path_or_area: tasks/tasks-status.md
+    reason: Held for progress-management owner.
+commands:
+- command: GitHub exact-head CI for 2184039267c735c5294e742ed406eec936a87827
+  purpose: Confirm R65-001 RED
+  exit_code: unknown
+  result: failed
+  head_sha: 2184039267c735c5294e742ed406eec936a87827
+  evidence: Run 32105015297 failed exactly the ordinary-word/custom-name privacy tests; artifact 9312843824.
+- command: GitHub exact-head CI for 067258aabaaecb7997144decdeb37ee26dc10b39
+  purpose: Inspect implementation convergence
+  exit_code: unknown
+  result: failed
+  head_sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+  evidence: Run 32105252501 passed new privacy regressions; one legacy raw-message expectation failed; artifact 9312912066.
+- command: GitHub exact-head CI for 3c265f830886049d08fffc6ba43c04c745368d40
+  purpose: Validate technical fix
+  exit_code: unknown
+  result: passed
+  head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+  evidence: Run 32105396850 completed success across full workflow.
+tests:
+- name: Ordinary-word/custom Error privacy regression
+  phase: red
+  result: failed
+  head_sha: 2184039267c735c5294e742ed406eec936a87827
+  evidence: Run 32105015297; two targeted failures.
+- name: Allowlist-only privacy implementation
+  phase: post_implementation
+  result: failed
+  head_sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+  evidence: New privacy cases pass; one legacy expectation remains.
+- name: Full regression workflow
+  phase: green
+  result: passed
+  head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+  evidence: Run 32105396850 success.
+ci:
+  required: true
+  workflow: CI
+  run_id: 32105396850
+  head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+  conclusion: success
+  artifacts:
+  - id: 9312843824
+    name: ci-failure-diagnostics-32105015297-1
+    purpose: R65-001 RED investigation evidence.
+  - id: 9312912066
+    name: ci-failure-diagnostics-32105252501-1
+    purpose: Legacy expectation convergence evidence.
+implementation:
+  outcome: completed
+  final_head: 3c265f830886049d08fffc6ba43c04c745368d40
+  commits:
+  - sha: 2184039267c735c5294e742ed406eec936a87827
+    purpose: R65-001 RED regressions.
+  - sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+    purpose: Allowlist-only diagnostics.
+  - sha: 3c265f830886049d08fffc6ba43c04c745368d40
+    purpose: Align legacy privacy test.
+  addressed_findings:
+  - id: R65-001
+    reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    disposition: addressed
+    evidence: Allowlist-only projection, targeted RED and full Green CI.
+  - id: R65-004
+    reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    disposition: addressed
+    evidence: This replacement packet preserves complete authoritative review-worker outputs and current core-Skill outputs under source_payloads.
+  failure_diagnostics:
+  - type: artifact
+    location: GitHub Actions artifact 9312843824
+    summary: RED ordinary-word/custom-name privacy failures.
+  - type: artifact
+    location: GitHub Actions artifact 9312912066
+    summary: Legacy raw-message expectation after privacy implementation.
+  blocked_items: []
+  summary:
+  - Unknown dependency text is no longer emitted to Output; only fixed generic messages and allowlisted stable codes/types are projected.
+  - Replacement handoff preserves full historical review coverage and current producing-Skill outputs.
+  - R65-002/R65-003 remain untouched and closed.
+review:
+  mode: fix_verification
+  reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+  reviewer: &id001
+    identity: ChatGPT normal reviewer / PR65 / 2026-08-18
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT normal reviewer / PR65 / 2026-08-18
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+      - 'Same normal-review chat that created the initial PR #65 findings.'
+      - This chat performed verification-only repository reads plus review report/handoff persistence; it did not implement R65 fixes.
+  verdict: fail
+  required_coverage: &id002
+  - criterion: requirement and design conformance
+    disposition: checked_finding
+    evidence: R65-001 and R65-004 remain.
+  - criterion: correctness and edge cases
+    disposition: checked_finding
+    evidence: R65-001 has ordinary-word message bypasses; R65-002/R65-003 edge defects are fixed.
+  - criterion: scope discipline and unrelated changes
+    disposition: checked_no_finding
+    evidence: Implementation follow-up is limited to findings plus required report/handoff.
+  - criterion: changed files and direct dependency impact
+    disposition: checked_finding
+    evidence: All five follow-up paths and relevant sibling contracts/tests inspected; R65-001/R65-004 remain.
+  - criterion: API, data, configuration, workflow, and compatibility effects
+    disposition: checked_no_finding
+    evidence: Executor API additions are additive; no workflow/config compatibility regression found.
+  - criterion: error handling and failure diagnostics
+    disposition: checked_finding
+    evidence: R65-001 remains; R65-002/R65-003 addressed.
+  - criterion: security and secret handling
+    disposition: checked_finding
+    evidence: R65-001 HIGH remains.
+  - criterion: tests and validation adequacy
+    disposition: checked_finding
+    evidence: TDD/CI supported, but privacy tests do not cover ordinary-word PR-title/source content that bypasses the denylist.
+  - criterion: current-HEAD CI evidence
+    disposition: checked_no_finding
+    evidence: Reviewed HEAD 36b8522aba0712a4d051425f9fb8a71ecdabc756 has exact matching success run 32096020707.
+  - criterion: report, tracking, and documentation accuracy
+    disposition: checked_finding
+    evidence: R65-004 remains; H65-001 held.
+  - criterion: regression and maintainability risks
+    disposition: checked_finding
+    evidence: Denylist privacy classification and abbreviated handoff source-payload reconstruction remain fragile.
+  validation_assessment: &id003
+  - item: Reviewed fix-verification HEAD CI
+    result: supported
+    evidence: 36b8522aba0712a4d051425f9fb8a71ecdabc756 / run 32096020707 / success.
+  - item: Follow-up RED identity
+    result: supported
+    evidence: 6b08c66d7f66d44399de73d8241f4b44cb9fc891 / run 32095114274 / failure; commit is test-only for review regressions.
+  - item: Technical Green identity
+    result: supported
+    evidence: 921c5acce7390554a80308f459479ec8df4d1452 / run 32095356352 / success.
+  - item: R65-002 closure
+    result: supported
+    evidence: Bounded SIGTERM→SIGKILL→forced-failure implementation plus real stubborn-process and injected no-close/kill-false tests.
+  - item: R65-003 closure
+    result: supported
+    evidence: Each run writes terminal ERROR; nested/reused Error tests and immediate boundary duplicate suppression are present.
+  - item: R65-001 closure claim
+    result: failed
+    evidence: sanitizedFailureMessage returns raw normalized arbitrary messages when denylist does not match, allowing ordinary-word private PR/source text.
+  - item: R65-004 closure claim
+    result: failed
+    evidence: replacement packet abbreviates the authoritative initial review's eleven coverage dispositions to six top-level entries and five review-worker source-payload entries.
+  - item: Diagnostic artifact workflow
+    result: supported
+    evidence: .github/workflows/ci.yml retains required failure diagnostics.
+  reserved_report_paths: &id004
+  - reports/issue-63-pr65-fix-verification-20260818133800.md
+  report_attestation: &id005
+    allowed: false
+    reviewed_implementation_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+    - executable
+    - skill
+    - design
+    - workflow
+    - configuration
+    - tracking
+    - handoff
+    - product
+    - other
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+    - Normal fix verification, not independent-final-review attestation.
+  summary: &id006
+  - Verdict fail. R65-002 HIGH and R65-003 MEDIUM are addressed.
+  - R65-001 HIGH and R65-004 MEDIUM remain required findings with unchanged severity.
+  - H65-001 remains held for the progress-management owner.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+  - reports/issue-63-pr65-review-followup-2-20260818145600.md
+  reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+  attestation_head: null
+  pr_comments: []
+  summary:
+  - Detailed second follow-up report is persisted with this packet.
+  - Administrative commit SHA/CI and final PR comment are recorded externally after persistence to avoid recursive self-reference.
+findings: &id007
+- id: R65-001
+  severity: high
+  origin: introduced_by_change
+  location: src/application/operation-feedback/operation-feedback.ts (sanitizedFailureMessage/failureDetails)
+  description: Privacy fix remains denylist-based and forwards arbitrary ordinary-word dependency messages unchanged when no marker matches.
+  impact: Private PR title or source-derived content consisting only of ordinary words can still be written to Output, violating rev5 §§16.10/18.
+  evidence: The function returns normalized when sensitive is false. Ordinary-word examples match none of the denylisted URL/path/punctuation/file/secret/PR-number conditions.
+  required_action: Make unknown dependency diagnostics safe by construction using generic/allowlisted typed messages; add ordinary-word PR-title/source regression cases.
+- id: R65-004
+  severity: medium
+  origin: introduced_by_change
+  location: handoffs/issue-63-implementation-20260818111441.yaml
+  description: Replacement schema-v3 packet still summarizes away portions of authoritative initial review-worker output instead of preserving it losslessly.
+  impact: Cold continuation cannot reconstruct complete original review coverage evidence from replacement packet alone.
+  evidence: Initial review handoff contains eleven required_coverage criteria; replacement top-level historical review contained six and its review-worker source payload five abbreviated criteria.
+  required_action: Import/preserve the complete authoritative review-worker payload, including all coverage/validation/findings/held/unexplored/reviewer/attestation fields; do the same for every producing Skill payload.
+held: &id008
+- item: H65-001 tasks/tasks-status.md tracking remains stale
+  reason: Progress-management ownership.
+  owner: task/progress-management flow
+  remaining_risk: Tracking remains stale.
+  verdict_impact: Non-blocking by itself.
+unexplored: []
+unknown: []
+not_applicable:
+- field_or_area: merge
+  reason: Merge is user-owned and was not performed.
+- field_or_area: independent final review
+  reason: Same normal reviewer fix verification is the next stage.
+remaining_risks:
+- R65-001/R65-004 require same-reviewer verification of the new HEAD; implementation worker cannot change the historical fail verdict.
+- H65-001 remains with progress-management owner.
+source_payloads:
+- source_skill: work-context-manager
+  output_contract_version: unknown
+  content_type: application/yaml
+  payload:
+    repository: ssaattww/RevMem
+    issue_or_pr: 'Issue #63 / PR #65'
+    task_id: ISSUE-63
+    mode: implementation
+    branch: feature/issue-63-stream-git-output
+    base_ref: main
+    current_head: 3c265f830886049d08fffc6ba43c04c745368d40
+    reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    scope:
+    - Address R65-001 HIGH using privacy-safe allowlist-only Output diagnostics.
+    - Address R65-004 MEDIUM using a lossless schema-v3 implementation handoff.
+    - Preserve R65-002 HIGH and R65-003 MEDIUM as already addressed.
+    non_goals:
+    - 'Merge PR #65.'
+    - Create another PR.
+    - Edit tasks/tasks-status.md.
+    - Rework design rev5 or unrelated product code.
+    - Reopen R65-002/R65-003 without new evidence.
+    authoritative_requirements:
+    - source: user_instruction
+      reference: 指摘対応
+      summary: 'Address current PR #65 review findings; keep work in the existing PR.'
+    - source: repository_instruction
+      reference: RevMem project instructions
+      summary: GitHub connector, TDD, diagnostic artifacts, small commits, report/handoff, exact-head CI, no merge.
+    - source: pr
+      reference: 'PR #65 fix verification at 36b8522'
+      summary: R65-001 HIGH and R65-004 MEDIUM remain; R65-002/R65-003 are addressed.
+    - source: design
+      reference: doc/design/vscode-review-range-tracker-design.md rev5 §§16.10/18
+      summary: Output must not expose source/private PR/path/token/credential data.
+    - source: handoff
+      reference: chat-handoff-manager schema v3
+      summary: Typed projection plus complete lossless source_payloads are required.
+    write_boundary:
+      allowed:
+      - src/application/operation-feedback/operation-feedback.ts
+      - test/unit/node-git-command-executor.test.ts
+      - test/unit/review-contexts-ui.test.ts
+      - test/unit/normal-editor-review-command-registration.test.ts
+      - handoffs/issue-63-implementation-20260818111441.yaml
+      - reports/issue-63-pr65-review-followup-2-20260818145600.md
+      - 'PR #65 body/comments'
+      forbidden:
+      - 'merge PR #65'
+      - create another PR
+      - tasks/tasks-status.md
+      - unrelated product/design/workflow/configuration changes
+    development_policy:
+      method: TDD
+      testing_order: Add failing regression first, confirm exact-head RED, implement, then full exact-head Green.
+    validation:
+      commands:
+      - Full GitHub CI including Unit/focused/integration/VS Code Extension Host.
+      required_failure_diagnostics:
+      - test result metadata
+      - standard output
+      - standard error
+      - combined logs
+      - failure artifact with source/tests/configuration
+    ci:
+      matching_run: '32105396850'
+      conclusion: success
+    unknown: []
+    blocked: []
+    remaining_risks:
+    - Same normal reviewer must re-verify R65-001/R65-004 after final administrative HEAD.
+- source_skill: review-worker
+  output_contract_version: unknown
+  content_type: application/yaml
+  payload:
+    mode: initial_review
+    reviewed_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    reviewer:
+      identity: ChatGPT normal reviewer / PR65 / 2026-08-18
+      role: normal_reviewer
+      continuity:
+        previous_reviewer_identity: null
+        changed: false
+        reason: null
+      independence:
+        implemented_change: false
+        implemented_review_fix: false
+        served_as_normal_reviewer: true
+        inherited_conversation: false
+        evidence:
+        - 'This chat performed review-only GitHub reads and review-report/handoff persistence; it did not implement Issue #63.'
+        - 'No previous PR #65 reviews or review threads existed at review start.'
+    verdict: fail
+    required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: R65-001, R65-002 and R65-003 violate explicit rev5 contracts.
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: Unbounded timeout termination and nested failure lifecycle defects.
+    - criterion: scope discipline and unrelated changes
+      disposition: checked_no_finding
+      evidence: 'Product/design/test changes are within Issue #63 scope; report/handoff files are workflow artifacts.'
+    - criterion: changed files and direct dependency impact
+      disposition: checked_finding
+      evidence: All changed files and relevant Git/error/cache/persistence dependencies inspected.
+    - criterion: API, data, configuration, workflow, and compatibility effects
+      disposition: checked_finding
+      evidence: Executor process-failure contract and implementation handoff transport contract regressions.
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: R65-001 through R65-003.
+    - criterion: security and secret handling
+      disposition: checked_finding
+      evidence: R65-001.
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: Green CI exists, but no tests cover privacy redaction, stubborn termination, or nested failure terminal events.
+    - criterion: current-HEAD CI evidence
+      disposition: checked_no_finding
+      evidence: Reviewed implementation HEAD 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 has exact matching successful CI run 32091248702.
+    - criterion: report, tracking, and documentation accuracy
+      disposition: checked_finding
+      evidence: R65-004; tasks/tasks-status.md mismatch recorded as held H65-001.
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: Metadata executor termination diverges from blob reader; global Error WeakSet is brittle for nested operations.
+    validation_assessment:
+    - item: Exact reviewed-head CI
+      result: supported
+      evidence: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5 / run 32091248702 / success.
+    - item: Primary TDD RED identities
+      result: supported
+      evidence: Runs 32086621261, 32087043760, 32089918157, 32090241746 matched the cited RED SHAs.
+    - item: Technical Green identity
+      result: supported
+      evidence: 51c2ff13e172a0510711fc4198a4f6b6f2e9a663 / run 32090827458 / success.
+    - item: Diagnostic artifact workflow
+      result: supported
+      evidence: .github/workflows/ci.yml uploads ci-failure-diagnostics with test output, stdout/stderr logs, environment, source, tests, tools, generated outputs, and configuration on failure.
+    reserved_report_paths:
+    - reports/issue-63-pr65-review-20260818115100.md
+    report_attestation:
+      allowed: false
+      reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+      allowed_paths: []
+      required_first_parent: null
+      maximum_commits_after_reviewed_head: null
+      forbidden_path_classes:
+      - executable
+      - skill
+      - design
+      - workflow
+      - configuration
+      - tracking
+      - handoff
+      - product
+      - other
+      no_later_commits_required: not_applicable
+      validation_status: not_applicable
+      validation_evidence:
+      - This is a normal initial review, not an independent-final-review attestation lifecycle.
+    summary:
+    - 'Verdict fail with four required findings: two HIGH and two MEDIUM.'
+    - Reviewed implementation exact-head CI is Green, and primary TDD chronology is supported.
+    - No implementation or merge was performed.
+    findings:
+    - id: R65-001
+      severity: high
+      origin: introduced_by_change
+      location: src/application/operation-feedback/operation-feedback.ts (failureDetails/recordFailure) and callers
+      description: Output diagnostics copy arbitrary Error.name/message without central redaction.
+      impact: Private repository paths, repository/PR identity, credentials/token-like material, or source-bearing details from dependency errors can be written to Output, violating rev5 privacy/security requirements.
+      evidence: rev5 §16.10/§18 forbids those values; failureDetails forwards error.message unchanged; filesystem/Git errors can contain paths and invocation details; tests lacked redaction coverage.
+      required_action: Make operation feedback safe by construction with central sanitization/typed diagnostic projection and representative Git/filesystem/path/URL/token/PR-title regression tests.
+    - id: R65-002
+      severity: high
+      origin: introduced_by_change
+      location: src/adapters/local-git/node-git-command-executor.ts timeout/termination path
+      description: NodeGitCommandExecutor no longer guarantees a bounded timeout lifecycle.
+      impact: A child that ignores/cannot receive termination and never closes can leave the Promise and activity status pending indefinitely.
+      evidence: rev5 §9.5 and NodeGitBlobReader require SIGTERM, escalation, signal-send diagnostics and post-SIGKILL forced failure; executor lacked that final bound.
+      required_action: Align metadata/diff execution with bounded SIGTERM→SIGKILL→forced failure lifecycle and add stubborn/no-close/kill-failure tests.
+    - id: R65-003
+      severity: medium
+      origin: introduced_by_change
+      location: src/application/operation-feedback/operation-feedback.ts (reportedErrors/recordFailure)
+      description: Process-lifetime Error de-duplication suppresses required terminal lifecycle events for nested and later operations.
+      impact: An operation can emit START without its terminal ERROR; reusing one Error object can suppress later independent terminal events.
+      evidence: One WeakSet suppresses all later failure logs for the same object; tests did not cover nested failure or reuse.
+      required_action: Scope duplicate suppression to wrapper→UI/fail-closed duplicate reporting; each run must emit its own terminal failure.
+    - id: R65-004
+      severity: medium
+      origin: introduced_by_change
+      location: handoffs/issue-63-implementation-20260818111441.yaml
+      description: Committed implementation handoff declares schema v3 but is invalid/stale and not lossless.
+      impact: A fresh worker cannot reconstruct current completed implementation state or full review evidence losslessly.
+      evidence: Target fields did not match v3, source_payloads were absent, and pending finalization values remained after completion.
+      required_action: Replace/supersede with a current lossless schema-v3 packet with exact target identity, complete validation/review/report state and source payloads.
+    held:
+    - item: H65-001 tasks/tasks-status.md tracking is stale
+      reason: The file states it is owned by designated task/progress managers; implementation/reviewer work is not authorized to edit it.
+      owner: task/progress-management flow
+      remaining_risk: Repository tracking metadata remains stale until its owner synchronizes it.
+      verdict_impact: Non-blocking by itself; initial review already fails on R65-001..004.
+    unexplored: []
+    unknown: []
+    remaining_risks:
+    - R65-001 privacy/security contract defect.
+    - R65-002 bounded-process termination defect.
+    - R65-003 incomplete operation lifecycle defect.
+    - R65-004 lossy/stale handoff transport.
+    - H65-001 external tracking mismatch.
+    next_action: Return R65-001..R65-004 to implementation worker; exact-new-HEAD CI; same normal reviewer fix verification; do not merge.
+    reviewed_implementation_head: 3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    base: main@3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+    commit_range: 3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74..3fa562d6e9ddd556d5898d723688e9bb2dfdc0a5
+    severity_reclassification_records: []
+    report_attestation_allowed: false
+    report_attestation_conditions:
+    - Not applicable; normal initial review.
+- source_skill: review-worker
+  output_contract_version: unknown
+  content_type: application/yaml
+  payload:
+    mode: fix_verification
+    reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    reviewed_implementation_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    base: main@3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74
+    commit_range: d318ebcc325f405bad5c148c7945d8da40d6ff62..36b8522aba0712a4d051425f9fb8a71ecdabc756
+    reviewer: *id001
+    verdict: fail
+    required_coverage: *id002
+    validation_assessment: *id003
+    reserved_report_paths: *id004
+    report_attestation: *id005
+    summary: *id006
+    findings: *id007
+    severity_reclassification_records: []
+    finding_verification:
+    - id: R65-001
+      source_severity: high
+      disposition: unresolved
+      evidence: ordinary-word PR/source text bypass remains
+    - id: R65-002
+      source_severity: high
+      disposition: addressed
+      evidence: bounded termination implementation/tests and exact-head Green
+    - id: R65-003
+      source_severity: medium
+      disposition: addressed
+      evidence: per-run terminal lifecycle tests and immediate boundary dedupe
+    - id: R65-004
+      source_severity: medium
+      disposition: unresolved
+      evidence: source payload/coverage truncation remains
+    held: *id008
+    unexplored: []
+    unknown: []
+    remaining_risks:
+    - R65-001 ordinary-word privacy leak.
+    - R65-004 lossy cold continuation.
+    - H65-001 external tracking mismatch.
+    next_action: Return only R65-001/R65-004 to implementation worker; after exact-new-HEAD CI, same reviewer verifies again.
+    report_attestation_allowed: false
+    report_attestation_conditions:
+    - Not applicable; normal fix verification.
+- source_skill: implementation-worker
+  output_contract_version: unknown
+  content_type: application/yaml
+  payload:
+    mode: review follow-up
+    accepted_scope:
+    - R65-001 HIGH
+    - R65-004 MEDIUM
+    non_goals:
+    - R65-002/R65-003 changes
+    - merge
+    - task tracking
+    - unrelated redesign
+    requirements_and_design_references:
+    - 'PR #65 fix verification at reviewed HEAD 36b8522aba0712a4d051425f9fb8a71ecdabc756'
+    - design rev5 §§16.10/18
+    - chat-handoff-manager schema v3 lossless transport
+    changed_files:
+    - path: test/unit/node-git-command-executor.test.ts
+      purpose: TDD regressions for ordinary-word private messages and custom Error names.
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: Allowlist-only safe diagnostic projection for R65-001.
+    - path: test/unit/review-contexts-ui.test.ts
+      purpose: Align operation feedback expectations to generic privacy-safe diagnostics.
+    - path: test/unit/normal-editor-review-command-registration.test.ts
+      purpose: Align legacy Output expectation while preserving original UI error presentation.
+    - path: handoffs/issue-63-implementation-20260818111441.yaml
+      purpose: Lossless schema-v3 replacement for R65-004.
+    - path: reports/issue-63-pr65-review-followup-2-20260818145600.md
+      purpose: Detailed second review-follow-up report.
+    intentionally_untouched_areas:
+    - area: src/adapters/local-git/node-git-command-executor.ts
+      reason: R65-002 already verified addressed.
+    - area: R65-003 lifecycle semantics
+      reason: Already verified addressed; existing regression tests retained.
+    - area: doc/design/vscode-review-range-tracker-design.md
+      reason: rev5 already defines required behavior.
+    - area: .github/workflows/ci.yml
+      reason: Existing diagnostic artifacts satisfy requirements.
+    - area: tasks/tasks-status.md
+      reason: Held for designated progress-management owner.
+    validation_commands_and_results:
+    - head: 2184039267c735c5294e742ed406eec936a87827
+      run_id: 32105015297
+      result: failure
+      evidence: 'Two new privacy regressions failed exactly: ordinary-word message and custom Error name.'
+    - head: 067258aabaaecb7997144decdeb37ee26dc10b39
+      run_id: 32105252501
+      result: failure
+      evidence: New privacy tests passed; one legacy Output raw-message expectation remained.
+    - head: 3c265f830886049d08fffc6ba43c04c745368d40
+      run_id: 32105396850
+      result: success
+      evidence: Full CI passed including Unit, all focused suites, integrations, and VS Code Extension Host.
+    failure_diagnostics_and_artifacts:
+    - artifact_id: 9312843824
+      run_id: 32105015297
+      summary: RED ordinary-word/custom-name privacy regressions.
+    - artifact_id: 9312912066
+      run_id: 32105252501
+      summary: Legacy test expectation after allowlist implementation.
+    commit_identities:
+    - sha: 2184039267c735c5294e742ed406eec936a87827
+      purpose: 'test: cover ordinary-word diagnostic privacy leaks'
+    - sha: 067258aabaaecb7997144decdeb37ee26dc10b39
+      purpose: 'fix: make operation diagnostics allowlist-only'
+    - sha: 3c265f830886049d08fffc6ba43c04c745368d40
+      purpose: 'test: align command diagnostic with privacy contract'
+    final_head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+    matching_ci:
+      run_id: 32105396850
+      head_sha: 3c265f830886049d08fffc6ba43c04c745368d40
+      conclusion: success
+    addressed_findings:
+    - id: R65-001
+      reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+      disposition: addressed
+      evidence: Allowlist-only projection plus ordinary-word/custom-name RED regressions and full Green CI.
+    - id: R65-004
+      reviewed_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+      disposition: addressed
+      evidence: Replacement v3 packet preserves complete initial/fix-verification review-worker payloads and complete current core-Skill outputs.
+    blocked_items: []
+    unknowns: []
+    remaining_risks:
+    - Same normal reviewer fix verification is still required; implementation worker does not change verdict.
+    next_required_action: Persist report/handoff in one administrative commit, validate exact-head CI, update PR, then same reviewer verifies R65-001/R65-004.
+- source_skill: report-writer
+  output_contract_version: unknown
+  content_type: application/yaml
+  payload:
+    report_type: implementation_report
+    complete_body: |
+      # PR #65 Review Follow-up 2 Implementation Report
+
+      ## Metadata
+
+      - Repository: `ssaattww/RevMem`
+      - Issue / Pull Request: Issue #63 / PR #65
+      - Branch: `feature/issue-63-stream-git-output`
+      - Base: `main` at `3bed6371b5bde08a3b3d6ae7fa82ef1218bcfd74`
+      - Latest normal-review finding HEAD: `36b8522aba0712a4d051425f9fb8a71ecdabc756`
+      - Follow-up start HEAD: `8a6095304776c064ab3b44181b4e33377a6e77c1`
+      - Technical fix HEAD: `3c265f830886049d08fffc6ba43c04c745368d40`
+      - Technical exact-head CI: `32105396850` — success
+      - Merge boundary: merge remains user-owned; this worker did not merge.
+
+      ## Scope
+
+      This follow-up addresses only the two findings that remained open after the same normal reviewer's fix verification:
+
+      - **R65-001 HIGH** — arbitrary ordinary-word dependency text and arbitrary custom `Error.name` could still reach `Output > Review Range`.
+      - **R65-004 MEDIUM** — the implementation handoff used schema-v3 field names but still summarized away portions of authoritative producing-Skill output.
+
+      R65-002 HIGH and R65-003 MEDIUM were already verified as addressed and were intentionally left unchanged. H65-001 (`tasks/tasks-status.md`) remains held for the repository's task/progress-management owner.
+
+      ## Authoritative requirements
+
+      - Design rev5 §16.10 and §18 prohibit source text, private repository details, private PR titles, credentials, and token-like material in Output diagnostics.
+      - Unknown dependency errors therefore cannot be treated as safe merely because their text lacks path/URL/secret markers.
+      - `chat-handoff-manager` schema v3 requires both a populated typed projection and complete producing-Skill outputs under `source_payloads`; typed projection does not replace raw/complete source evidence.
+      - RevMem implementation is TDD: regression tests are added before implementation and current-HEAD CI must match the PR HEAD exactly.
+      - The existing `.github/workflows/ci.yml` already preserves failure results, stdout, stderr, combined logs and investigation context in `ci-failure-diagnostics-*`; no workflow edit was necessary.
+
+      ## TDD evidence
+
+      ### RED — ordinary-word privacy leak
+
+      Test-only HEAD:
+
+      `2184039267c735c5294e742ed406eec936a87827`
+
+      Exact matching CI run:
+
+      `32105015297` — failure
+
+      The new tests demonstrated both remaining privacy bypasses:
+
+      - `Add customer acquisition dashboard failed` was emitted unchanged instead of the required generic diagnostic.
+      - custom error name `CustomerAcquisitionDashboard` was emitted instead of a safe error class.
+
+      Failure artifact:
+
+      - `ci-failure-diagnostics-32105015297-1`
+      - artifact id `9312843824`
+
+      ### Implementation convergence
+
+      HEAD `067258aabaaecb7997144decdeb37ee26dc10b39` changed operation diagnostics to allowlist-only projection. Exact matching CI `32105252501` showed all new privacy regressions passing; one legacy test still expected raw `state commit failed` in Output. Its failure artifact was `9312912066`.
+
+      That legacy test was aligned to the existing rev5 privacy contract without changing UI error presentation: the UI host still receives the original `Error`, while Output receives only the safe diagnostic.
+
+      ### Technical Green
+
+      Technical HEAD:
+
+      `3c265f830886049d08fffc6ba43c04c745368d40`
+
+      Exact matching CI run:
+
+      `32105396850` — success
+
+      The full workflow passed build, contract typecheck, architecture gates, lint, Unit tests, T602/T603/T403/T404/T405/T304/T502/T503/T504/T505/T506, temporary Git integration, mock GitHub integration, and VS Code Extension Host tests.
+
+      ## R65-001 disposition — addressed for re-verification
+
+      `OperationFeedback` no longer decides that unknown text is safe using a denylist.
+
+      The Output diagnostic projection now:
+
+      - never copies arbitrary dependency `Error.message`;
+      - maps unknown messages to `Operation failed; details were redacted.`;
+      - exposes only an explicitly allowlisted stable error code when available;
+      - maps arbitrary/custom `Error.name` to `Error`;
+      - retains only explicitly allowlisted standard/Git error names;
+      - keeps fixed generic messages for known Git command/executable failures.
+
+      Regression coverage includes:
+
+      - absolute private paths;
+      - URL credentials and token-like material;
+      - PR/source-like marked content;
+      - ordinary-word private text with no suspicious punctuation or keywords;
+      - arbitrary custom error names;
+      - the previously verified nested/reused Error lifecycle cases.
+
+      The user-visible error boundary remains unchanged: command/UI error presentation can still receive the original error; only the `Review Range` Output diagnostic is sanitized.
+
+      ## R65-004 disposition — addressed for re-verification
+
+      `handoffs/issue-63-implementation-20260818111441.yaml` is replaced again as a schema-v3 lossless packet.
+
+      The replacement:
+
+      - populates the schema-v3 typed projection;
+      - preserves the complete initial normal-review worker output, including all **11 required coverage dispositions**, reviewer continuity/independence, validation assessment, all four original findings, held/unexplored state, report-attestation fields, verdict and risks;
+      - preserves the complete latest fix-verification review-worker output, including all **11 required coverage dispositions**, finding-verification dispositions for R65-001..004, validation assessment, held/unexplored state and reviewer evidence;
+      - preserves complete current work-context-manager, implementation-worker and report-writer outputs;
+      - preserves historical report-writer evidence for the initial review and fix verification;
+      - records raw historical handoff references in extensions so a cold worker can trace the source packets without relying on chat memory.
+
+      The top-level historical review verdict remains `fail` at the last reviewed implementation HEAD. This implementation worker does not change the normal review verdict; the next step is same-reviewer fix verification.
+
+      ## Intentionally untouched
+
+      - `src/adapters/local-git/node-git-command-executor.ts`: R65-002 was already verified addressed.
+      - Error lifecycle/deduplication behavior outside privacy projection: R65-003 was already verified addressed.
+      - `doc/design/vscode-review-range-tracker-design.md`: rev5 already specifies the required privacy/lossless behavior; this is conformance work, not a new design change.
+      - `.github/workflows/ci.yml`: existing diagnostic artifact contract is sufficient.
+      - `tasks/tasks-status.md`: held for the designated progress-management owner.
+      - PR #64: already closed and remains unmerged.
+
+      ## Remaining risks / next action
+
+      No implementation-side blocker remains for R65-001 or R65-004. Their original severities are preserved until the same normal reviewer verifies the new PR HEAD.
+
+      This report and the replacement handoff are persisted together in one administrative commit after technical Green. That administrative commit receives its own exact-head CI; its SHA/run are recorded in the PR conversation because writing them back into this report would create another HEAD.
+
+      Next action: same normal reviewer identity `ChatGPT normal reviewer / PR65 / 2026-08-18` performs fix verification of R65-001 HIGH and R65-004 MEDIUM. R65-002/R65-003 remain closed unless new evidence shows a regression. Do not merge.
+    evidence_sources:
+    - 'PR #65 latest fix-verification report/handoff'
+    - design rev5 §§16.10/18
+    - RED run 32105015297 artifact 9312843824
+    - intermediate run 32105252501 artifact 9312912066
+    - technical Green 3c265f830886049d08fffc6ba43c04c745368d40 / 32105396850
+    target_identity:
+      branch: feature/issue-63-stream-git-output
+      base_ref: main
+      current_head: 3c265f830886049d08fffc6ba43c04c745368d40
+      reviewed_implementation_head: 36b8522aba0712a4d051425f9fb8a71ecdabc756
+    severity_records:
+    - finding_id: R65-001
+      source_severity: high
+      new_severity: null
+      reason: null
+      approved_by: null
+      record_type: preserved
+    - finding_id: R65-004
+      source_severity: medium
+      new_severity: null
+      reason: null
+      approved_by: null
+      record_type: preserved
+    persistence:
+      mode: repository_file
+      reserved_paths:
+      - reports/issue-63-pr65-review-followup-2-20260818145600.md
+      report_attestation_head: null
+    concise_pr_comment_body: R65-001 HIGH/R65-004 MEDIUM addressed. RED 21840392/32105015297 (artifact 9312843824), intermediate 067258aa/32105252501 (artifact 9312912066), technical Green 3c265f83/32105396850. Final administrative HEAD/CI recorded after persistence. R65-002/003 remain closed; same normal reviewer should re-verify. Do not merge.
+    unresolved_discrepancies: []
+extensions:
+- namespace: revmem.historical_packet_sources
+  payload:
+    initial_review_handoff: handoffs/issue-63-pr65-review-20260818115100.yaml
+    initial_review_report: reports/issue-63-pr65-review-20260818115100.md
+    fix_verification_handoff: handoffs/issue-63-pr65-fix-verification-20260818133800.yaml
+    fix_verification_report: reports/issue-63-pr65-fix-verification-20260818133800.md
+    note: The complete structured review-worker payloads extracted from these authoritative packets are preserved above; these paths remain immutable historical evidence.
+    lossless_review_worker_note: Both authoritative review-worker outputs are embedded completely under source_payloads, including all 11 required_coverage entries, validation assessments, findings, held/unexplored, reviewer evidence, report-attestation fields, verdicts, risks and next actions.
+- namespace: revmem.administrative_persistence
+  payload:
+    technical_head: 3c265f830886049d08fffc6ba43c04c745368d40
+    technical_exact_head_ci_run: 32105396850
+    administrative_commit: recorded in PR conversation after packet/report persistence
+    administrative_exact_head_ci: recorded in PR conversation after packet/report persistence
+    reason: A packet cannot include the SHA of the commit that contains itself without creating a later HEAD.
+- namespace: revmem.finding_state
+  payload:
+    R65-001: implemented_pending_same_reviewer_verification
+    R65-002: addressed_verified
+    R65-003: addressed_verified
+    R65-004: implemented_pending_same_reviewer_verification
+    H65-001: held_external_owner
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: Same normal reviewer verifies R65-001 HIGH and R65-004 MEDIUM on the new PR HEAD; R65-002/R65-003 remain closed.
+  instructions:
+  - 'Resolve live PR #65 HEAD before reviewing.'
+  - Use reviewer identity ChatGPT normal reviewer / PR65 / 2026-08-18 and preserve continuity.
+  - Verify R65-001 against allowlist-only unknown-error projection and ordinary-word/custom-name regression tests.
+  - Verify R65-004 by checking that source_payloads preserve the complete initial and fix-verification review-worker outputs, including all eleven required coverage dispositions and attestation/validation/findings/held/unexplored state.
+  - Use only workflow runs whose head_sha equals the current PR HEAD.
+  - Preserve H65-001 as held unless its designated progress-management owner resolves it.
+  - Do not merge.
+  required_attachments_or_references:
+  - reports/issue-63-pr65-review-followup-2-20260818145600.md
+  - handoffs/issue-63-implementation-20260818111441.yaml
+  - reports/issue-63-pr65-review-20260818115100.md
+  - handoffs/issue-63-pr65-review-20260818115100.yaml
+  - reports/issue-63-pr65-fix-verification-20260818133800.md
+  - handoffs/issue-63-pr65-fix-verification-20260818133800.yaml
+  - Technical Green 3c265f830886049d08fffc6ba43c04c745368d40 / CI 32105396850
+  requested_authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-63-implementation-20260818111441.yaml
+  packet_url: null
+  transport_note: 'Lossless schema-v3 implementation packet. Resolve live PR HEAD before acting. The packet/report administrative commit and its exact-head CI are recorded externally in PR #65 after persistence; technical implementation evidence is 3c265f830886049d08fffc6ba43c04c745368d40 / 32105396850.'

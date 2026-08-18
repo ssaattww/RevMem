@@ -1,3 +1,5 @@
+import { runWithActiveOperationFeedback } from "../../application/operation-feedback/index";
+
 /** Command IDs defined by the editor command design. */
 export const NORMAL_EDITOR_REVIEW_COMMAND_IDS = {
   markSelectionReviewed: "reviewRange.markSelectionReviewed",
@@ -5,6 +7,13 @@ export const NORMAL_EDITOR_REVIEW_COMMAND_IDS = {
   markFileReviewed: "reviewRange.markFileReviewed",
   unmarkFileReviewed: "reviewRange.unmarkFileReviewed"
 } as const;
+
+const OPERATION_LABELS: Readonly<Record<keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS, string>> = {
+  markSelectionReviewed: "選択範囲を確認済みにする",
+  unmarkSelectionReviewed: "選択範囲の確認済みを解除する",
+  markFileReviewed: "ファイル全体を確認済みにする",
+  unmarkFileReviewed: "ファイル全体の確認済みを解除する"
+};
 
 /** One disposable registration returned by the VS Code command API. */
 export interface CommandDisposable {
@@ -86,6 +95,18 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
   };
 }
 
+const runReviewOperation = async (
+  host: NormalEditorCommandHost<unknown>,
+  label: string,
+  operation: () => void | Promise<unknown>
+): Promise<void> => {
+  try {
+    await runWithActiveOperationFeedback(label, async () => operation());
+  } catch (error) {
+    await host.showCommandError(error);
+  }
+};
+
 const invokeForActiveNormalEditor = async <Editor>(
   host: NormalEditorCommandHost<Editor>,
   commandId: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
@@ -97,19 +118,24 @@ const invokeForActiveNormalEditor = async <Editor>(
     return;
   }
 
-  try {
-    if (host.isDiffEditor(editor)) {
-      if (host.invokeDiffEditorCommand === undefined) {
-        await host.showNormalEditorRequired();
-        return;
-      }
-      await host.invokeDiffEditorCommand(commandId, editor);
+  if (host.isDiffEditor(editor)) {
+    if (host.invokeDiffEditorCommand === undefined) {
+      await host.showNormalEditorRequired();
       return;
     }
-    await invocation(editor);
-  } catch (error) {
-    await host.showCommandError(error);
+    await runReviewOperation(
+      host as NormalEditorCommandHost<unknown>,
+      OPERATION_LABELS[commandId],
+      () => host.invokeDiffEditorCommand!(commandId, editor)
+    );
+    return;
   }
+
+  await runReviewOperation(
+    host as NormalEditorCommandHost<unknown>,
+    OPERATION_LABELS[commandId],
+    () => invocation(editor)
+  );
 };
 
 /**
@@ -156,7 +182,7 @@ export function registerNormalEditorReviewCommands<Editor>(
   return registrations.map(([operation, commandId, invocation]) =>
     host.registerCommand(
       commandId,
-      async () => invokeForActiveNormalEditor(host, operation, invocation)
+      () => invokeForActiveNormalEditor(host, operation, invocation)
     )
   );
 }
