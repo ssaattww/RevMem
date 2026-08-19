@@ -135,6 +135,7 @@ test("line-review unsupported selections open the file host without opening the 
   const cases: ReadonlyArray<{
     readonly file: PullRequestDiffFileProgress;
     readonly reason: PullRequestLineReviewUnsupportedReason;
+    readonly present: { readonly side: "original" | "modified"; readonly path: string; readonly revision: string };
   }> = [
     {
       file: fileProgress("binary", "assets/logo.png", {
@@ -147,15 +148,50 @@ test("line-review unsupported selections open the file host without opening the 
         excluded: true,
         exclusionReason: { kind: "binary" }
       }),
-      reason: { kind: "binary" }
+      reason: { kind: "binary" },
+      present: { side: "modified", path: "assets/logo.png", revision: HEAD_SHA }
+    },
+    {
+      file: fileProgress("deleted-binary", "assets/deleted.bin", {
+        oldPath: "assets/deleted.bin",
+        newPath: undefined,
+        status: "binary",
+        additions: 0,
+        deletions: 0,
+        reviewedLineCount: 0,
+        totalLineCount: 0,
+        progress: 1,
+        excluded: true,
+        exclusionReason: { kind: "binary" }
+      }),
+      reason: { kind: "binary" },
+      present: { side: "original", path: "assets/deleted.bin", revision: BASE_SHA }
+    },
+    {
+      file: fileProgress("renamed-binary", "assets/new-name.bin", {
+        oldPath: "assets/old-name.bin",
+        newPath: "assets/new-name.bin",
+        status: "binary",
+        additions: 0,
+        deletions: 0,
+        reviewedLineCount: 0,
+        totalLineCount: 0,
+        progress: 1,
+        excluded: true,
+        exclusionReason: { kind: "binary" }
+      }),
+      reason: { kind: "binary" },
+      present: { side: "modified", path: "assets/new-name.bin", revision: HEAD_SHA }
     },
     {
       file: fileProgress("invalid", "data/invalid.txt"),
-      reason: { kind: "invalid-encoding", encoding: "UTF-8" }
+      reason: { kind: "invalid-encoding", encoding: "UTF-8" },
+      present: { side: "modified", path: "data/invalid.txt", revision: HEAD_SHA }
     },
     {
       file: fileProgress("unsupported", "data/legacy.txt"),
-      reason: { kind: "unsupported-encoding", encoding: "Shift_JIS" }
+      reason: { kind: "unsupported-encoding", encoding: "Shift_JIS" },
+      present: { side: "modified", path: "data/legacy.txt", revision: HEAD_SHA }
     }
   ];
 
@@ -181,6 +217,11 @@ test("line-review unsupported selections open the file host without opening the 
     assert.equal(result.kind, "opened-file");
     assert.equal(openedFiles.length, 1);
     assert.equal(openedFiles[0]?.file.fileId, item.file.fileId);
+    const target = openedFiles[0]!;
+    const present = target.modified.kind === "present"
+      ? { side: "modified" as const, path: target.modified.filePath, revision: target.modified.revision }
+      : { side: "original" as const, path: target.original.filePath, revision: target.original.revision };
+    assert.deepEqual(present, item.present);
     assert.equal(openedDiffs, 0);
   }
 });
@@ -194,7 +235,8 @@ test("effective progress has a dedicated public type with raw source and reviewa
     progress: 0.5
   });
   const provider = new PullRequestProgressTreeDataProvider({
-    openDiff: async () => undefined
+    openDiff: async () => undefined,
+    openFile: async () => undefined
   });
   provider.replaceSnapshot(snapshot(unsupported, {
     kind: "unsupported",
@@ -291,7 +333,8 @@ test("effective files remain plain enumerable DTOs through spread and JSON", () 
     progress: 0.5
   });
   const provider = new PullRequestProgressTreeDataProvider({
-    openDiff: async () => undefined
+    openDiff: async () => undefined,
+    openFile: async () => undefined
   });
   provider.replaceSnapshot(snapshot(raw, {
     kind: "unsupported",
@@ -345,7 +388,8 @@ test("PR progress paths follow canonical POSIX and Windows filesystem semantics"
     progress: 0
   });
   const provider = new PullRequestProgressTreeDataProvider({
-    openDiff: async () => undefined
+    openDiff: async () => undefined,
+    openFile: async () => undefined
   });
 
   assert.doesNotThrow(() => provider.replaceSnapshot(snapshot(

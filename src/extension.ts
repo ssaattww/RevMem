@@ -642,17 +642,11 @@ export function activate(
   const openLocalBaseHeadFile = async (
     target: PullRequestProgressTreeDiffTarget
   ): Promise<void> => {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (workspaceFolder === undefined) {
-      throw new Error("PR Progress file open requires a workspace folder.");
+    const runtime = localBaseHeadRuntimeReference.current;
+    if (runtime === undefined) {
+      throw new Error("Local base/head runtime is not available.");
     }
-    const repositoryPath = target.modified.kind === "present"
-      ? target.modified.filePath
-      : target.original.filePath;
-    const uri = vscode.Uri.joinPath(
-      workspaceFolder.uri,
-      ...repositoryPath.split("/")
-    );
+    const uri = vscode.Uri.parse(runtime.createPresentFileDocumentUri(target), true);
     await vscode.commands.executeCommand("vscode.open", uri);
     openedLocalBaseHeadFiles.push(uri.toString(true));
   };

@@ -1,5 +1,23 @@
 # Breaking Changes
 
+## 2026-08-20 — PR Progress unsupported-file selection opens an immutable present side
+
+`PullRequestProgressTreeHost.openFile` is now required. Selecting a
+`line-review-unsupported` PR Progress node now calls that host with the immutable
+snapshot target and returns the `opened-file` selection result; it no longer returns
+`line-review-unavailable` without opening a file. The selected file is the snapshot
+present side: deleted files use BASE/original, while added, modified, and renamed files
+use HEAD/modified. An absent side must never be substituted with a working-tree path or
+the opposite side.
+
+This is source-breaking for host implementers that only supplied `openDiff`, and for
+exhaustive consumers of `PullRequestProgressTreeSelectionResult`. Host implementers
+must accept and open the immutable target at its exact revision; consumers must handle
+`opened-file`. The compatibility policy is intentionally breaking rather than retaining
+an optional host or a silent fallback, because either compatibility path could discard
+the snapshot's owner/revision identity. There is no persisted-schema compatibility
+impact.
+
 ## 2026-08-18 — Global understanding uses opened evidence with an immutable PR exception
 
 This policy supersedes `doc/design/vscode-review-range-tracker-design.md` rev4 §11.3

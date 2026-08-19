@@ -4,7 +4,7 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev4
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: なし
-- 次の工程: T406またはT604を選択する
+- 実装中タスク: PR #69 / Issue #67 独立最終review finding follow-up（`PR69-R002`、`PR69-IFR001`）
+- 次の工程: immutable present-side openと公開contract更新の通常review・fix verificationを完了し、その後T406またはT604を選択する
 - 後続候補: T406、T604
 
 ## P0 開発基盤
@@ -111,6 +111,7 @@ Lを超える見込みになった場合は再分解する。
 - T304 PR Progress Tree provider: 完了
 - T305 Activity Bar、Current Context View、Status Bar、refresh/select context: 完了・PR #42でmain統合済み
 - T306 diff操作から進捗UIまでのExtension Host試験: 完了・PR #45でmain統合済み
+- PR #69 / Issue #67 follow-up: `PR69-R002`と`PR69-IFR001`のimmutable file-open/contract整合を同一batchで修正し、通常review・fix verification待ち
 
 ### 終了チェックポイント
 

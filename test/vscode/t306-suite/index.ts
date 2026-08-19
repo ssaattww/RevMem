@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
+import { ReviewDiffUriCodec } from "../../../src/application/diff-document/index";
+
 const execFileAsync = promisify(execFile);
 
 const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
@@ -45,6 +47,7 @@ interface ReviewRangeT306TestApi {
     readonly original: string;
     readonly modified: string;
   }[];
+  getLocalBaseHeadOpenedFiles(): readonly string[];
   getLocalBaseHeadPersistence(): Promise<{
     readonly contextState: {
       readonly files: Readonly<Record<string, {
@@ -98,6 +101,7 @@ const createPullRequestFixture = async (
   await write("review.ts", Buffer.from("const removed = 1;\nconst retained = 2;\n"));
   await write("rename-source.ts", Buffer.from("export const renamed = true;\n"));
   await write("binary.bin", Buffer.from([0, 1, 2, 3]));
+  await write("deleted-binary.bin", Buffer.from([8, 9, 10, 11]));
   await runGit(workspacePath, ["add", "."]);
   await runGit(workspacePath, ["commit", "-m", "base fixture"]);
   const baseSha = await runGit(workspacePath, ["rev-parse", "HEAD"]);
@@ -106,9 +110,13 @@ const createPullRequestFixture = async (
   await write("excluded.generated.ts", Buffer.from("export const generated = true;\n"));
   await runGit(workspacePath, ["mv", "rename-source.ts", "rename-target.ts"]);
   await write("binary.bin", Buffer.from([4, 5, 6, 7]));
+  await runGit(workspacePath, ["rm", "deleted-binary.bin"]);
   await runGit(workspacePath, ["add", "."]);
   await runGit(workspacePath, ["commit", "-m", "head fixture"]);
-  return { baseSha, headSha: await runGit(workspacePath, ["rev-parse", "HEAD"]) };
+  const headSha = await runGit(workspacePath, ["rev-parse", "HEAD"]);
+  await runGit(workspacePath, ["checkout", "--detach", baseSha]);
+  await write("review.ts", Buffer.from("const dirty = true;\n"));
+  return { baseSha, headSha };
 };
 
 /** Exercises T306 through the real Extension Host and a local immutable Git comparison. */
@@ -133,14 +141,21 @@ export async function run(): Promise<void> {
       before,
       {
       reviewedLineCount: 0,
-      totalLineCount: 2,
+      totalLineCount: 4,
       files: [
+        {
+          path: "deleted-binary.bin",
+          category: "unreviewed",
+          reviewedLineCount: 0,
+          totalLineCount: 2,
+          node: before.files[0]!.node
+        },
         {
           path: "review.ts",
           category: "unreviewed",
           reviewedLineCount: 0,
           totalLineCount: 2,
-          node: before.files[0]!.node
+          node: before.files[1]!.node
         },
         {
           path: "excluded.generated.ts",
@@ -148,14 +163,14 @@ export async function run(): Promise<void> {
           reason: "ユーザー除外: **/*.generated.ts",
           reviewedLineCount: 0,
           totalLineCount: 0,
-          node: before.files[1]!.node
+          node: before.files[2]!.node
         },
         {
           path: "rename-target.ts",
           category: "non-line-change",
           reviewedLineCount: 0,
           totalLineCount: 0,
-          node: before.files[2]!.node
+          node: before.files[3]!.node
         },
         {
           path: "binary.bin",
@@ -163,7 +178,7 @@ export async function run(): Promise<void> {
           reason: "バイナリファイル",
           reviewedLineCount: 0,
           totalLineCount: 0,
-          node: before.files[3]!.node
+          node: before.files[4]!.node
         }
       ]
     },
@@ -177,24 +192,54 @@ export async function run(): Promise<void> {
       0,
       "Selecting a binary PR Progress node must not delegate to the text-diff host."
     );
-    const openedFiles = (extensionApi as ReviewRangeT306TestApi & {
-      getLocalBaseHeadOpenedFiles?: () => readonly string[];
-    }).getLocalBaseHeadOpenedFiles;
-    assert.equal(typeof openedFiles, "function");
+    const codec = new ReviewDiffUriCodec();
+    const openedFiles = extensionApi.getLocalBaseHeadOpenedFiles();
+    assert.equal(openedFiles.length, 1);
+    assert.match(openedFiles[0]!, /^review-range-diff:\/\/document\/v1\//u);
     assert.deepEqual(
-      openedFiles!(),
-      [vscode.Uri.joinPath(workspaceFolder.uri, "binary.bin").toString(true)],
-      "Selecting a binary PR Progress node must open the corresponding file through the non-review host."
+      codec.decode(openedFiles[0]!),
+      {
+        contextId: `local-base-head:${comparison.baseSha}..${comparison.headSha}`,
+        filePath: "binary.bin",
+        fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+        side: "modified",
+        revisionSource: "git-commit",
+        revision: comparison.headSha
+      },
+      "Selecting a binary node must open its immutable HEAD-side document, not the checked-out working tree."
+    );
+
+    const deletedBinary = before.files.find((file) => file.path === "deleted-binary.bin");
+    assert.ok(deletedBinary, "The deleted binary file must remain selectable from the immutable snapshot.");
+    await within("deleted binary Tree selection", vscode.commands.executeCommand("reviewRange.openPrProgressItem", deletedBinary.node));
+    const deletedDiff = extensionApi.getLocalBaseHeadOpenedDiffs().at(-1);
+    assert.ok(deletedDiff);
+    const deletedDocument = codec.decode(deletedDiff.original);
+    assert.deepEqual(
+      deletedDocument,
+      {
+        contextId: `local-base-head:${comparison.baseSha}..${comparison.headSha}`,
+        filePath: "deleted-binary.bin",
+        fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+        side: "original",
+        revisionSource: "git-commit",
+        revision: comparison.baseSha
+      },
+      "A deleted snapshot node must open its immutable BASE-side document and must not substitute the absent HEAD side."
     );
 
     const review = before.files.find((file) => file.path === "review.ts");
     assert.ok(review);
     await within("text Tree selection", vscode.commands.executeCommand("reviewRange.openPrProgressItem", review.node));
     const opened = extensionApi.getLocalBaseHeadOpenedDiffs();
-    assert.equal(opened.length, 1, "Selecting a text Tree node should open the real diff host.");
-    const [diff] = opened;
+    assert.equal(opened.length, 2, "Selecting a text Tree node should open the real diff host.");
+    const diff = opened.at(-1);
     assert.ok(diff);
     assertActiveLocalBaseHeadDiff(diff);
+    assert.ok(
+      vscode.window.activeTextEditor?.document.getText().includes("const added = 3;"),
+      "A HEAD-side diff document must retain snapshot content when the checked-out working tree differs."
+    );
     await within(
       "original diff pane focus",
       vscode.commands.executeCommand("workbench.action.compareEditor.focusSecondarySide")

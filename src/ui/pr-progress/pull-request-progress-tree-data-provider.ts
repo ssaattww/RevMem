@@ -146,10 +146,10 @@ export type PullRequestProgressTreeNode =
   | PullRequestProgressTreeCategoryNode
   | PullRequestProgressTreeFileNode;
 
-/** Host boundary used only when a reviewable changed-file node opens a text diff. */
+/** Host boundary for immutable PR Progress file opens. */
 export interface PullRequestProgressTreeHost {
   openDiff(target: PullRequestProgressTreeDiffTarget): Promise<void>;
-  openFile?(target: PullRequestProgressTreeDiffTarget): Promise<void>;
+  openFile(target: PullRequestProgressTreeDiffTarget): Promise<void>;
 }
 
 interface CategoryDefinition {
@@ -751,9 +751,6 @@ export class PullRequestProgressTreeDataProvider {
       );
     }
     if (node.reviewability.kind === "unsupported") {
-      if (this.host.openFile === undefined) {
-        throw new Error("PR progress file-open host is unavailable for a line-review-unsupported file.");
-      }
       await this.host.openFile(freezeOpenTarget(node.openTarget));
       return Object.freeze({
         kind: "opened-file",
