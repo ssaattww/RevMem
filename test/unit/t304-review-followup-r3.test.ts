@@ -27,6 +27,7 @@ import {
   type PullRequestEffectiveProgress,
   type PullRequestLineReviewUnsupportedReason,
   type PullRequestLineReviewability,
+  type PullRequestProgressTreeDiffTarget,
   type PullRequestProgressTreeFileNode,
   type PullRequestProgressTreeSelectionResult,
   type PullRequestProgressTreeSnapshot
@@ -130,7 +131,7 @@ class RecordingDiffHost implements ReviewDiffEditorHost<string> {
   }
 }
 
-test("line-review unsupported selections return a typed unavailable result without opening text diff", async () => {
+test("line-review unsupported selections open the file host without opening the text diff", async () => {
   const cases: ReadonlyArray<{
     readonly file: PullRequestDiffFileProgress;
     readonly reason: PullRequestLineReviewUnsupportedReason;
@@ -159,12 +160,12 @@ test("line-review unsupported selections return a typed unavailable result witho
   ];
 
   for (const item of cases) {
-    let opened = 0;
+    let openedDiffs = 0;
+    const openedFiles: PullRequestProgressTreeDiffTarget[] = [];
     const provider = new PullRequestProgressTreeDataProvider({
-      openDiff: async () => {
-        opened += 1;
-      }
-    });
+      openDiff: async () => { openedDiffs += 1; },
+      openFile: async (target: PullRequestProgressTreeDiffTarget) => { openedFiles.push(target); }
+    } as unknown as ConstructorParameters<typeof PullRequestProgressTreeDataProvider>[0]);
     provider.replaceSnapshot(snapshot(item.file, {
       kind: "unsupported",
       reason: item.reason
@@ -177,12 +178,10 @@ test("line-review unsupported selections return a typed unavailable result witho
     });
     const result: PullRequestProgressTreeSelectionResult = await provider.select(node);
 
-    assert.deepEqual(result, {
-      kind: "line-review-unavailable",
-      file: item.file,
-      reason: item.reason
-    });
-    assert.equal(opened, 0);
+    assert.equal(result.kind, "opened-file");
+    assert.equal(openedFiles.length, 1);
+    assert.equal(openedFiles[0]?.file.fileId, item.file.fileId);
+    assert.equal(openedDiffs, 0);
   }
 });
 

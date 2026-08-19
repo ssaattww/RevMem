@@ -177,6 +177,15 @@ export async function run(): Promise<void> {
       0,
       "Selecting a binary PR Progress node must not delegate to the text-diff host."
     );
+    const openedFiles = (extensionApi as ReviewRangeT306TestApi & {
+      getLocalBaseHeadOpenedFiles?: () => readonly string[];
+    }).getLocalBaseHeadOpenedFiles;
+    assert.equal(typeof openedFiles, "function");
+    assert.deepEqual(
+      openedFiles!(),
+      [vscode.Uri.joinPath(workspaceFolder.uri, "binary.bin").toString(true)],
+      "Selecting a binary PR Progress node must open the corresponding file through the non-review host."
+    );
 
     const review = before.files.find((file) => file.path === "review.ts");
     assert.ok(review);
