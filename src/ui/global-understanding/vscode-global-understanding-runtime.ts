@@ -11,8 +11,10 @@ import {
   createGlobalUnderstandingTreeModel,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
+  GlobalUnderstandingFileOpenController,
   GlobalUnderstandingRefreshController,
   type GlobalUnderstandingDiagnosticsNode,
+  type GlobalUnderstandingFileOpenTarget,
   type GlobalUnderstandingFileNode,
   type GlobalUnderstandingSummaryNode,
   type GlobalUnderstandingTreeModel,
@@ -23,12 +25,10 @@ export const GLOBAL_UNDERSTANDING_VIEW_ID = "reviewRange.globalUnderstanding";
 export const REFRESH_GLOBAL_UNDERSTANDING_COMMAND_ID =
   "reviewRange.refreshGlobalUnderstanding";
 export const TOGGLE_GLOBAL_LAYER_COMMAND_ID = "reviewRange.toggleGlobalLayer";
-export const OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID =
-  "reviewRange.openGlobalUnderstandingFile";
+export const OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID = "reviewRange.openGlobalUnderstandingFile";
 
 export interface GlobalUnderstandingRuntimeSource {
   recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
-  resolveCurrentFilePath(repositoryPath: string): string | undefined;
 }
 
 export interface GlobalUnderstandingRuntimeDependencies {
@@ -36,8 +36,9 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly readGlobalLayerEnabled: () => boolean;
   readonly writeGlobalLayerEnabled: (enabled: boolean) => void | PromiseLike<void>;
   readonly refreshDecorations: () => void | Promise<void>;
-  readonly openFile?: (repositoryPath: string) => void | Promise<void>;
+  readonly openFile: (target: GlobalUnderstandingFileOpenTarget) => void | Promise<void>;
   readonly reportError: (error: unknown) => void | Promise<void>;
+  readonly reportOpenError: (error: unknown) => void | Promise<void>;
 }
 
 interface FilesGroupNode {
@@ -128,7 +129,7 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
         item.command = {
           command: OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
           title: "Global理解率のファイルを開く",
-          arguments: [node.path]
+          arguments: [node]
         };
         return item;
       }
@@ -208,23 +209,16 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
 /** Registers the T505 Tree View, adjacent Status Bar item, refresh command, and Global layer toggle. */
 export const registerGlobalUnderstandingRuntime = (
   context: vscode.ExtensionContext,
-  inputDependencies: GlobalUnderstandingRuntimeDependencies
+  dependencies: GlobalUnderstandingRuntimeDependencies
 ): RegisteredGlobalUnderstandingRuntime => {
-  const dependencies = {
-    ...inputDependencies,
-    openFile: inputDependencies.openFile ?? (async (repositoryPath: string) => {
-      const filePath = inputDependencies.source.resolveCurrentFilePath(repositoryPath);
-      if (filePath === undefined) {
-        throw new Error("Global理解率の対象ファイルを現在のコンテキストから解決できませんでした。");
-      }
-      const document = await vscode.workspace.openTextDocument(filePath);
-      await vscode.window.showTextDocument(document);
-    })
-  };
   const operationFeedbackHost = new VscodeOperationFeedbackHost();
   context.subscriptions.push(operationFeedbackHost);
   setActiveOperationFeedback(new OperationFeedback(operationFeedbackHost));
   const tree = new GlobalUnderstandingTreeDataProvider();
+  const openController = new GlobalUnderstandingFileOpenController({
+    openFile: dependencies.openFile,
+    reportOpenError: dependencies.reportOpenError
+  });
   const status = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     99
@@ -232,6 +226,7 @@ export const registerGlobalUnderstandingRuntime = (
   status.name = "Review Range Global Understanding";
   status.command = TOGGLE_GLOBAL_LAYER_COMMAND_ID;
   const clearPresentation = (): void => {
+    openController.clear();
     tree.clear();
     status.text = "";
     status.tooltip = undefined;
@@ -241,7 +236,9 @@ export const registerGlobalUnderstandingRuntime = (
     dependencies.source,
     {
       show: (snapshot) => {
-        tree.setModel(createGlobalUnderstandingTreeModel(snapshot));
+        const model = createGlobalUnderstandingTreeModel(snapshot);
+        openController.replaceModel(model);
+        tree.setModel(model);
         const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
         status.text = statusModel.text;
         status.tooltip = statusModel.tooltip;
@@ -287,13 +284,9 @@ export const registerGlobalUnderstandingRuntime = (
     ),
     vscode.commands.registerCommand(
       OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
-      async (repositoryPath: string | undefined) => {
-        if (repositoryPath === undefined) return;
-        try {
-          await dependencies.openFile(repositoryPath);
-        } catch (error) {
-          await dependencies.reportError(error);
-        }
+      async (node: GlobalUnderstandingFileNode | undefined) => {
+        if (node === undefined || node.kind !== "file") return;
+        await openController.open(node);
       }
     ),
     vscode.commands.registerCommand(

@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { NodeRepositoryFilePathEnumerator } from "./adapters/repository-files/node-repository-file-path-enumerator";
 import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "./adapters/state-repository/index";
@@ -13,7 +11,8 @@ import { requireCanonicalRepositoryRelativePath } from "./application/repository
 import { type FileSystemPathSemantics, type ResourceUri, WorkspaceIdentityService } from "./application/workspace-identity/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "./core/contracts/index";
 import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
-import type { GlobalUnderstandingRuntimeSource, GlobalUnderstandingTreeSnapshot } from "./ui/global-understanding/index";
+import type { GlobalUnderstandingFileOpenTarget, GlobalUnderstandingTreeSnapshot } from "./ui/global-understanding/global-understanding-ui-model";
+import type { GlobalUnderstandingRuntimeSource } from "./ui/global-understanding/index";
 
 export type T505GlobalUnderstandingExclusionPolicy = Pick<ReviewFileExclusionPolicyService, "evaluate" | "evaluateDirectory" | "getRevision">;
 
@@ -101,17 +100,6 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
   public setContext(snapshot: CurrentContextUiSnapshot | undefined): void { this.currentContext = snapshot; }
 
-  public resolveCurrentFilePath(repositoryPath: string): string | undefined {
-    const owner = this.resolveOwner(this.currentContext);
-    if (owner === undefined) return undefined;
-    const canonicalPath = requireCanonicalRepositoryRelativePath(
-      repositoryPath,
-      this.pathSemantics,
-      "Global understanding file path"
-    );
-    return path.join(owner.repositoryRoot, ...canonicalPath.split("/"));
-  }
-
   public async recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const owner = this.resolveOwner(this.currentContext);
     if (owner === undefined) return undefined;
@@ -165,10 +153,42 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     this.requireActiveEvidenceKey(owner);
     return {
       progress: result.progress,
+      fileOpenTargets: result.progress.files.map((file) =>
+        this.createFileOpenTarget(owner, file.path)
+      ),
       openedFileCount: openedByPath.size,
       unopenedFileCount: Math.max(0, availablePaths.size - openedByPath.size),
       excludedFileCount: pathEnumeration.excluded.length,
       prunedExcludedDirectoryCount: pathEnumeration.excludedDirectories.length
+    };
+  }
+
+  private createFileOpenTarget(
+    owner: T505GlobalUnderstandingOwner,
+    repositoryPath: string
+  ): GlobalUnderstandingFileOpenTarget {
+    const canonicalPath = requireCanonicalRepositoryRelativePath(
+      repositoryPath,
+      this.pathSemantics,
+      "Global understanding file path"
+    );
+    const common = {
+      repositoryId: owner.target.repositoryId,
+      contextId: owner.target.contextId,
+      revisionId: owner.currentRevisionId,
+      repositoryPath: canonicalPath
+    };
+    if (owner.target.kind === "pull-request") {
+      return {
+        kind: "pull-request-head",
+        ...common,
+        fileSystemPathSemantics: this.pathSemantics
+      };
+    }
+    return {
+      kind: "working-tree",
+      ...common,
+      filePath: path.join(owner.repositoryRoot, ...canonicalPath.split("/"))
     };
   }
 
