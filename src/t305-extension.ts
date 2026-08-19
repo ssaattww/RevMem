@@ -43,6 +43,10 @@ import {
   refreshSelectedPullRequestProgress
 } from "./t305-projection-refresh";
 import {
+  formatGlobalUnderstandingFileOpenError,
+  type GlobalUnderstandingFileOpenTarget
+} from "./ui/global-understanding/global-understanding-ui-model";
+import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
 } from "./t505-global-understanding-source";
@@ -280,6 +284,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }
   });
 
+  const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
+  const openGlobalFile = async (target: GlobalUnderstandingFileOpenTarget): Promise<void> => {
+    let uri: vscode.Uri;
+    if (target.kind === "working-tree") {
+      const folder = (vscode.workspace.workspaceFolders ?? []).find((candidate) => {
+        const relative = path.relative(candidate.uri.fsPath, target.filePath);
+        return relative.length === 0 || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+      });
+      uri = folder === undefined
+        ? vscode.Uri.file(target.filePath)
+        : vscode.Uri.joinPath(
+          folder.uri,
+          ...path.relative(folder.uri.fsPath, target.filePath).split(path.sep).filter((part) => part.length > 0)
+        );
+    } else {
+      const pullRequestRuntime = pullRequestReviewRuntimeRef.current;
+      if (pullRequestRuntime === undefined) {
+        throw new Error("Pull-request review runtime is unavailable for Global file open");
+      }
+      uri = vscode.Uri.parse(
+        pullRequestRuntime.createHeadFileDocumentUri(
+          target.contextId,
+          target.repositoryPath,
+          target.revisionId
+        ),
+        true
+      );
+    }
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document);
+  };
+
   const globalRuntime = registerGlobalUnderstandingRuntime(context, {
     source: globalSource,
     readGlobalLayerEnabled: () =>
@@ -291,10 +327,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         vscode.ConfigurationTarget.Workspace
       ),
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+    openFile: openGlobalFile,
     reportError: async (error) => {
       await vscode.window.showErrorMessage(
         `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
       );
+    },
+    reportOpenError: async (error) => {
+      await vscode.window.showErrorMessage(formatGlobalUnderstandingFileOpenError(error));
     }
   });
 
@@ -313,6 +353,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       openDiff: async (original, modified, title) => {
         await vscode.commands.executeCommand("vscode.diff", original, modified, title);
       },
+    },
+    openFile: async (uri) => {
+      await vscode.commands.executeCommand("vscode.open", uri);
     },
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: exclusionPolicy.getUserGlobs(),
@@ -338,6 +381,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       `PR Progressを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
     );
   };
+  pullRequestReviewRuntimeRef.current = pullRequestReviewRuntime;
   const pullRequestCommandService = pullRequestReviewRuntime.createCommandService<vscode.TextEditor>({
     getDocumentUri: (editor) => editor.document.uri.toString(true),
     getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(
@@ -383,10 +427,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     {
       recompute: () => currentContextComposition.recompute(),
       acceptRecomputed: (snapshot) => {
+        globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
         globalSource.setContext(snapshot);
       },
       acceptExplicit: (snapshot) => {
+        globalRuntime.clear();
         currentContextComposition.acceptExplicit(snapshot);
         globalSource.setContext(snapshot);
       },

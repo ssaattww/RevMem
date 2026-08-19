@@ -2,9 +2,33 @@ import type {
   GlobalUnderstandingFileProgress,
   RepositoryGlobalUnderstandingProgress
 } from "../../core/global-understanding/index";
+import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
+
+export interface GlobalUnderstandingWorkingTreeFileOpenTarget {
+  readonly kind: "working-tree";
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly revisionId: string;
+  readonly repositoryPath: string;
+  readonly filePath: string;
+}
+
+export interface GlobalUnderstandingPullRequestHeadFileOpenTarget {
+  readonly kind: "pull-request-head";
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly revisionId: string;
+  readonly repositoryPath: string;
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+}
+
+export type GlobalUnderstandingFileOpenTarget =
+  | GlobalUnderstandingWorkingTreeFileOpenTarget
+  | GlobalUnderstandingPullRequestHeadFileOpenTarget;
 
 export interface GlobalUnderstandingTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
+  readonly fileOpenTargets?: readonly GlobalUnderstandingFileOpenTarget[];
   readonly openedFileCount?: number;
   readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
@@ -29,6 +53,7 @@ export interface GlobalUnderstandingFileNode {
   readonly reviewedNonEmptyLineCount: number;
   readonly totalNonEmptyLineCount: number;
   readonly progress: number;
+  readonly openTarget?: GlobalUnderstandingFileOpenTarget;
 }
 
 export interface GlobalUnderstandingDiagnosticsNode {
@@ -49,6 +74,11 @@ export interface GlobalUnderstandingTreeModel {
 export interface GlobalUnderstandingStatusBarModel {
   readonly text: string;
   readonly tooltip: string;
+}
+
+export interface GlobalUnderstandingFileOpenHost {
+  openFile(target: GlobalUnderstandingFileOpenTarget): void | Promise<void>;
+  reportOpenError(error: unknown): void | Promise<void>;
 }
 
 export interface GlobalUnderstandingRefreshSource {
@@ -83,7 +113,16 @@ const validateProgress = (reviewed: number, total: number, progress: number, lab
   if (!ratiosEqual(progress, ratio(reviewed, total))) throw new RangeError(`${label}.progress does not match its counts.`);
 };
 const formatPercent = (progress: number): string => `${Math.round(progress * 100)}%`;
-const fileNode = (file: GlobalUnderstandingFileProgress): GlobalUnderstandingFileNode => {
+const cloneOpenTarget = (target: GlobalUnderstandingFileOpenTarget): GlobalUnderstandingFileOpenTarget =>
+  target.kind === "working-tree"
+    ? { ...target }
+    : { ...target };
+const freezeOpenTarget = (target: GlobalUnderstandingFileOpenTarget): GlobalUnderstandingFileOpenTarget =>
+  Object.freeze(cloneOpenTarget(target));
+const fileNode = (
+  file: GlobalUnderstandingFileProgress,
+  openTarget: GlobalUnderstandingFileOpenTarget | undefined
+): GlobalUnderstandingFileNode => {
   if (file.path.length === 0) throw new RangeError("Global understanding file path must not be empty.");
   validateProgress(file.reviewedNonEmptyLineCount, file.totalNonEmptyLineCount, file.progress, `Global understanding file ${file.path}`);
   return Object.freeze({
@@ -94,7 +133,8 @@ const fileNode = (file: GlobalUnderstandingFileProgress): GlobalUnderstandingFil
     state: file.state,
     reviewedNonEmptyLineCount: file.reviewedNonEmptyLineCount,
     totalNonEmptyLineCount: file.totalNonEmptyLineCount,
-    progress: file.progress
+    progress: file.progress,
+    ...(openTarget === undefined ? {} : { openTarget: freezeOpenTarget(openTarget) })
   });
 };
 
@@ -110,7 +150,23 @@ export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstanding
   if (openedFileCount !== progress.files.length) {
     throw new RangeError("openedFileCount must match Global progress file count.");
   }
-  const files = progress.files.map(fileNode).sort((left, right) => compareCodeUnits(left.path, right.path));
+  const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+  for (const target of snapshot.fileOpenTargets ?? []) {
+    if (openTargetsByPath.has(target.repositoryPath)) {
+      throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
+    }
+    openTargetsByPath.set(target.repositoryPath, target);
+  }
+  if (snapshot.fileOpenTargets !== undefined && snapshot.fileOpenTargets.length !== progress.files.length) {
+    throw new RangeError("Global understanding open target count must match file progress count.");
+  }
+  const files = progress.files.map((file) => {
+    const target = openTargetsByPath.get(file.path);
+    if (snapshot.fileOpenTargets !== undefined && target === undefined) {
+      throw new RangeError(`Global understanding open target is missing: ${file.path}`);
+    }
+    return fileNode(file, target);
+  }).sort((left, right) => compareCodeUnits(left.path, right.path));
   const paths = new Set<string>();
   for (const file of files) {
     if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
@@ -198,6 +254,37 @@ export class GlobalUnderstandingRefreshCoalescer {
     if (this.disposed) return;
     this.disposed = true;
     this.cancel();
+  }
+}
+
+export const formatGlobalUnderstandingFileOpenError = (error: unknown): string =>
+  `Global のファイルを開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+
+export class GlobalUnderstandingFileOpenController {
+  private currentNodes = new Set<GlobalUnderstandingFileNode>();
+
+  public constructor(private readonly host: GlobalUnderstandingFileOpenHost) {}
+
+  public replaceModel(model: GlobalUnderstandingTreeModel): void {
+    this.currentNodes = new Set(model.files);
+  }
+
+  public clear(): void {
+    this.currentNodes.clear();
+  }
+
+  public async open(node: GlobalUnderstandingFileNode): Promise<void> {
+    try {
+      if (!this.currentNodes.has(node)) {
+        throw new RangeError("Selected Global understanding file node is stale and does not belong to the current snapshot.");
+      }
+      if (node.openTarget === undefined) {
+        throw new Error("Global understanding file open target is unavailable.");
+      }
+      await this.host.openFile(freezeOpenTarget(node.openTarget));
+    } catch (error) {
+      await this.host.reportOpenError(error);
+    }
   }
 }
 

@@ -28,6 +28,7 @@ import {
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   PullRequestProgressTreeDataProvider,
+  type PullRequestProgressTreeDiffTarget,
   type PullRequestProgressTreeHost
 } from "./ui/pr-progress/index";
 import {
@@ -266,6 +267,57 @@ export class LocalBaseHeadRuntime<Uri> {
       throw new Error("Review diff document does not belong to the local base/head runtime.");
     }
     return descriptor.side;
+  }
+
+  /**
+   * Creates the immutable virtual document for a non-review PR Progress selection.
+   * A file that is absent from one diff side is never mapped to the working tree.
+   */
+  public createPresentFileDocumentUri(target: PullRequestProgressTreeDiffTarget): string {
+    if (this.initialized === undefined) {
+      throw new Error("Local base/head runtime has not been initialized.");
+    }
+    const { diff } = this.initialized;
+    const snapshotId = `local-base-head:${diff.baseSha}..${diff.headSha}`;
+    if (
+      target.snapshotId !== snapshotId ||
+      target.contextId !== diff.contextId ||
+      target.baseSha !== diff.baseSha ||
+      target.headSha !== diff.headSha ||
+      target.originalDiffId !== diff.originalDiffId
+    ) {
+      throw new RangeError("PR Progress file target is stale for the current immutable snapshot.");
+    }
+    const file = diff.files.find((candidate) => candidate.fileId === target.file.fileId);
+    if (
+      file === undefined ||
+      file.oldPath !== target.file.oldPath ||
+      file.newPath !== target.file.newPath ||
+      file.status !== target.file.status
+    ) {
+      throw new RangeError("PR Progress file target is unavailable in the current immutable snapshot.");
+    }
+
+    const side = target.modified.kind === "present" ? target.modified : target.original;
+    const sideName = target.modified.kind === "present" ? "modified" : "original";
+    const expectedPath = sideName === "modified" ? file.newPath : file.oldPath;
+    const expectedRevision = sideName === "modified" ? diff.headSha : diff.baseSha;
+    if (
+      side.kind !== "present" ||
+      expectedPath === undefined ||
+      side.filePath !== expectedPath ||
+      side.revision !== expectedRevision
+    ) {
+      throw new RangeError("PR Progress file target does not identify a present immutable side.");
+    }
+    return this.uriCodec.encode({
+      contextId: target.contextId,
+      filePath: side.filePath,
+      fileSystemPathSemantics: target.fileSystemPathSemantics,
+      side: sideName,
+      revisionSource: "git-commit",
+      revision: side.revision
+    });
   }
 
   /** Reads the durable state used by the shared command service without exposing its repository boundary. */

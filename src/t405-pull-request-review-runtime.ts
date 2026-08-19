@@ -37,6 +37,7 @@ import {
 } from "./ui/diff-editor/index";
 import {
   PullRequestProgressTreeDataProvider,
+  type PullRequestProgressTreeDiffTarget,
   type PullRequestLineReviewability,
 } from "./ui/pr-progress/index";
 
@@ -59,6 +60,7 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly repository: PullRequestReviewRuntimeRepository;
   readonly requestHistory: (transaction: Readonly<ReviewStateTransaction>) => void | Promise<void>;
   readonly diffHost: ReviewDiffEditorHost<Uri>;
+  readonly openFile?: (uri: Uri) => Promise<void>;
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
 }
 
@@ -89,6 +91,15 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
 
 const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
   `${revision}\0${repositoryPath}`;
+
+const sameRegistrationSnapshot = (
+  left: PullRequestReviewRuntimeRegistration,
+  right: PullRequestReviewRuntimeRegistration
+): boolean => left.repositoryId === right.repositoryId &&
+  left.snapshot.contextId === right.snapshot.contextId &&
+  left.snapshot.baseSha === right.snapshot.baseSha &&
+  left.snapshot.headSha === right.snapshot.headSha &&
+  left.snapshot.originalDiffId === right.snapshot.originalDiffId;
 
 /**
  * Shared T405 runtime for persisted GitHub PR contexts. It reuses the canonical
@@ -127,6 +138,14 @@ export class PullRequestReviewRuntime<Uri> {
           target.file.path
         );
       },
+      openFile: async (target) => {
+        if (this.options.openFile === undefined) {
+          throw new Error("Pull-request review file host is unavailable");
+        }
+        await this.options.openFile(this.options.diffHost.parseUri(
+          this.createPresentFileDocumentUri(target)
+        ));
+      },
     });
   }
 
@@ -137,6 +156,14 @@ export class PullRequestReviewRuntime<Uri> {
     if (registration.repositoryRoot.trim().length === 0) throw new TypeError("repositoryRoot must not be empty");
     if (snapshot.originalDiffId !== `${snapshot.baseSha}..${snapshot.headSha}`) {
       throw new Error("PR diff originalDiffId must match base/head revisions");
+    }
+    const previous = this.registrations.get(snapshot.contextId);
+    if (
+      previous !== undefined &&
+      this.activeProgressContextId === snapshot.contextId &&
+      !sameRegistrationSnapshot(previous, registration)
+    ) {
+      this.clearProgress();
     }
     this.registrations.set(snapshot.contextId, {
       ...registration,
@@ -170,6 +197,78 @@ export class PullRequestReviewRuntime<Uri> {
 
   public hasContext(contextId: string): boolean {
     return this.registrations.has(contextId);
+  }
+
+  public createHeadFileDocumentUri(
+    contextId: string,
+    repositoryPath: string,
+    revisionId: string
+  ): string {
+    const registration = this.requireRegistration(contextId);
+    if (registration.snapshot.headSha !== revisionId) {
+      throw new RangeError("Global PR file target is stale because the registered PR HEAD revision changed");
+    }
+    const file = registration.snapshot.files.find((candidate) =>
+      candidate.newPath === repositoryPath
+    );
+    if (file === undefined) {
+      throw new Error("Global PR file is unavailable at the requested HEAD revision");
+    }
+    if (file.status === "binary") {
+      throw new Error("Binary PR files are unavailable as Global text documents");
+    }
+    return this.codec.encode({
+      contextId,
+      filePath: repositoryPath,
+      fileSystemPathSemantics: registration.fileSystemPathSemantics,
+      side: "modified",
+      revisionSource: "git-commit",
+      revision: revisionId
+    });
+  }
+
+  /** Creates a present immutable PR Progress file target without falling back to the working tree. */
+  public createPresentFileDocumentUri(target: PullRequestProgressTreeDiffTarget): string {
+    const registration = this.requireRegistration(target.contextId);
+    const { snapshot } = registration;
+    if (
+      target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
+      target.baseSha !== snapshot.baseSha ||
+      target.headSha !== snapshot.headSha ||
+      target.originalDiffId !== snapshot.originalDiffId ||
+      target.fileSystemPathSemantics !== registration.fileSystemPathSemantics
+    ) {
+      throw new RangeError("PR Progress file target is stale for the current immutable snapshot.");
+    }
+    const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
+    if (
+      file === undefined ||
+      file.oldPath !== target.file.oldPath ||
+      file.newPath !== target.file.newPath ||
+      file.status !== target.file.status
+    ) {
+      throw new RangeError("PR Progress file target is unavailable in the current immutable snapshot.");
+    }
+    const side = target.modified.kind === "present" ? target.modified : target.original;
+    const sideName = target.modified.kind === "present" ? "modified" : "original";
+    const expectedPath = sideName === "modified" ? file.newPath : file.oldPath;
+    const expectedRevision = sideName === "modified" ? snapshot.headSha : snapshot.baseSha;
+    if (
+      side.kind !== "present" ||
+      expectedPath === undefined ||
+      side.filePath !== expectedPath ||
+      side.revision !== expectedRevision
+    ) {
+      throw new RangeError("PR Progress file target does not identify a present immutable side.");
+    }
+    return this.codec.encode({
+      contextId: target.contextId,
+      filePath: side.filePath,
+      fileSystemPathSemantics: target.fileSystemPathSemantics,
+      side: sideName,
+      revisionSource: "git-commit",
+      revision: side.revision,
+    });
   }
 
   /**
@@ -334,6 +433,7 @@ export class PullRequestReviewRuntime<Uri> {
     const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
     this.progress.clear();
+    const registration = this.requireRegistration(contextId);
     try {
       const calculated = await runWithActiveOperationFeedback(
         "PR進捗を計算",
@@ -345,9 +445,9 @@ export class PullRequestReviewRuntime<Uri> {
           calculated.registration,
           file
         );
-        if (!this.isCurrentProgressGeneration(contextId, generation)) return;
+        if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
       }
-      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
       const { snapshot } = calculated.registration;
       this.progress.replaceSnapshot({
         snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
@@ -360,7 +460,7 @@ export class PullRequestReviewRuntime<Uri> {
         lineReviewabilityByFileId,
       });
     } catch (error) {
-      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
       this.progress.clear();
       throw error;
     }
@@ -607,10 +707,12 @@ export class PullRequestReviewRuntime<Uri> {
 
   private isCurrentProgressGeneration(
     contextId: string,
-    generation: number
+    generation: number,
+    registration: PullRequestReviewRuntimeRegistration | undefined
   ): boolean {
     return this.activeProgressContextId === contextId &&
-      this.progressGeneration === generation;
+      this.progressGeneration === generation &&
+      this.registrations.get(contextId) === registration;
   }
 
   private async lineCount(

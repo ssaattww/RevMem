@@ -19,6 +19,7 @@ import {
   type ReviewStateTransactionLike,
 } from "../../src/adapters/state-repository/index.js";
 import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index.js";
+import { createNormalEditorDecorationModel } from "../../src/application/editor-decoration/index.js";
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service.js";
 import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
@@ -38,6 +39,7 @@ import { T505GlobalUnderstandingSource } from "../../src/t505-global-understandi
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
+const C = "c".repeat(40);
 const REPOSITORY_ID = "github.com/example/pr68-review";
 const CONTEXT_A = `github-pr:${REPOSITORY_ID}#68`;
 const CONTEXT_B = `github-pr:${REPOSITORY_ID}#69`;
@@ -57,11 +59,13 @@ const targetKey = (target: ReviewStateRepositoryTarget): string =>
 const diffSnapshot = (
   contextId: string,
   repositoryPath: string,
+  baseSha = A,
+  headSha = B,
 ): PullRequestDiffSnapshot => ({
   contextId,
-  baseSha: A,
-  headSha: B,
-  originalDiffId: `${A}..${B}`,
+  baseSha,
+  headSha,
+  originalDiffId: `${baseSha}..${headSha}`,
   files: [{
     fileId: repositoryPath,
     oldPath: repositoryPath,
@@ -86,6 +90,8 @@ const pullRequestContext = (
   contextId: string,
   pullRequestNumber: number,
   files: ReviewContextState["files"] = {},
+  baseSha = A,
+  headSha = B,
 ): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   contextId,
@@ -98,8 +104,8 @@ const pullRequestContext = (
     repository: "pr68-review",
     number: pullRequestNumber,
     state: "open",
-    baseSha: A,
-    headSha: B,
+    baseSha,
+    headSha,
   },
   files,
   createdAt: OCCURRED_AT,
@@ -108,10 +114,11 @@ const pullRequestContext = (
 
 const globalState = (
   files: RepositoryGlobalState["files"] = {},
+  revisionId = B,
 ): RepositoryGlobalState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   repositoryId: REPOSITORY_ID,
-  currentRevisionId: B,
+  currentRevisionId: revisionId,
   files,
   updatedAt: OCCURRED_AT,
 });
@@ -121,10 +128,12 @@ const commitFor = (
   pullRequestNumber: number,
   contextFiles: ReviewContextState["files"] = {},
   globalFiles: RepositoryGlobalState["files"] = {},
+  baseSha = A,
+  headSha = B,
 ): ReviewStateCommit => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-  contextState: pullRequestContext(contextId, pullRequestNumber, contextFiles),
-  globalState: globalState(globalFiles),
+  contextState: pullRequestContext(contextId, pullRequestNumber, contextFiles, baseSha, headSha),
+  globalState: globalState(globalFiles, headSha),
 });
 
 class MemoryReviewRepository
@@ -347,7 +356,7 @@ test("PR68-R002 pre-fix mixed-case Windows Global state remains current after up
   assert.equal(snapshot.progress.progress, 1);
 });
 
-test("PR68-R002 selected normal editor reuses the pre-fix mixed-case persisted PR identity", async () => {
+test("PR68-R002 selected normal editor preserves legacy case identity for decoration, Progress, and diff open", async () => {
   const repository = new MemoryReviewRepository();
   repository.setPullRequest(CONTEXT_A, commitFor(
     CONTEXT_A,
@@ -399,9 +408,32 @@ test("PR68-R002 selected normal editor reuses the pre-fix mixed-case persisted P
     contentHash: sha256(CONTENT_A),
   };
 
-  const session = await provider.open(descriptor, selectedPullRequest());
-  assert.equal(session.target.fileId, RAW_PATH_A);
-  assert.equal(session.target.currentPath, CANONICAL_PATH_A);
+  const decorationState = await provider.loadForDecoration(descriptor, selectedPullRequest());
+  assert.ok(decorationState);
+  assert.equal(decorationState.target.fileId, RAW_PATH_A);
+  assert.equal(decorationState.target.currentPath, RAW_PATH_A);
+  assert.deepEqual(
+    createNormalEditorDecorationModel({
+      ...decorationState,
+      currentPullRequestDiff: diffSnapshot(CONTEXT_A, RAW_PATH_A),
+      showGlobalReviewed: true,
+    }).map((decoration) => decoration.interval),
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = createRuntime(repository, opened);
+  registerRuntimeContext(runtime, CONTEXT_A, RAW_PATH_A, async (revision) => ({
+    kind: "found",
+    content: revision.side === "original" ? "old" : CONTENT_A,
+  }));
+  assert.deepEqual(await runtime.getProgress(CONTEXT_A), {
+    reviewedLineCount: 1,
+    totalLineCount: 2,
+    progress: 0.5,
+  });
+  await runtime.openReviewDiff(CONTEXT_A, RAW_PATH_A, RAW_PATH_A);
+  assert.equal(opened.length, 1);
   provider.dispose();
 });
 
@@ -463,4 +495,31 @@ test("PR68-R003 leaving the PR context invalidates a pending PR activation", asy
   assert.equal(progress.files.length, 0);
   assert.equal(progress.reviewedLineCount, 0);
   assert.equal(progress.totalLineCount, 0);
+});
+
+test("PR68-R003 same-context re-registration prevents an old revision from publishing after newer activation", async () => {
+  const repository = new MemoryReviewRepository();
+  repository.setPullRequest(CONTEXT_A, commitFor(CONTEXT_A, 68));
+  const runtime = createRuntime(repository);
+  const oldText = deferred<RevisionTextContentReadResult>();
+  const newText = deferred<RevisionTextContentReadResult>();
+  registerRuntimeContext(runtime, CONTEXT_A, RAW_PATH_A, async () => oldText.promise);
+
+  const oldActivation = runtime.activateProgress(CONTEXT_A);
+  repository.setPullRequest(CONTEXT_A, commitFor(CONTEXT_A, 68, {}, {}, A, C));
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "C:\\repo",
+    fileSystemPathSemantics: "windows",
+    snapshot: diffSnapshot(CONTEXT_A, RAW_PATH_B, A, C),
+    readTextContent: async () => newText.promise,
+  });
+  oldText.resolve({ kind: "found", content: CONTENT_A });
+  await oldActivation;
+  assert.equal(runtime.progress.getEffectiveProgress().files.length, 0);
+
+  const newActivation = runtime.activateProgress(CONTEXT_A);
+  newText.resolve({ kind: "found", content: CONTENT_B });
+  await newActivation;
+  assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 });

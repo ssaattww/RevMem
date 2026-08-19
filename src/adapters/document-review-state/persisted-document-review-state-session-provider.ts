@@ -328,13 +328,28 @@ export class DocumentReviewStateSessionProvider {
       return undefined;
     }
 
+    const contextState = clone(commit.contextState);
+    const globalState = clone(commit.globalState);
+    const persistedPath = contextFile?.currentPath ?? globalFile?.currentPath ?? normalized;
+    if (contextFile !== undefined) {
+      contextState.files[fileId] = {
+        ...contextState.files[fileId]!,
+        currentPath: persistedPath,
+      };
+    }
+    if (globalFile !== undefined) {
+      globalState.files[fileId] = {
+        ...globalState.files[fileId]!,
+        currentPath: persistedPath,
+      };
+    }
     return {
       owner: "git",
-      contextState: clone(commit.contextState),
-      globalState: clone(commit.globalState),
+      contextState,
+      globalState,
       target: {
         fileId,
-        currentPath,
+        currentPath: persistedPath,
         revisionId: selection.headRevision,
         lineCount: descriptor.lineCount,
         contentHash: descriptor.contentHash
