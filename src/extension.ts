@@ -135,6 +135,7 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
     readonly original: string;
     readonly modified: string;
   }[];
+  getLocalBaseHeadOpenedFiles(): readonly string[];
   getLocalBaseHeadPersistence(): ReturnType<LocalBaseHeadRuntime<vscode.Uri>["getPersistence"]>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
 }
@@ -622,6 +623,7 @@ export function activate(
     original: string;
     modified: string;
   }[] = [];
+  const openedLocalBaseHeadFiles: string[] = [];
   const openLocalBaseHeadDiff = async (
     target: PullRequestProgressTreeDiffTarget
   ): Promise<void> => {
@@ -636,6 +638,23 @@ export function activate(
       modified: target.modified,
       title: target.file.path
     });
+  };
+  const openLocalBaseHeadFile = async (
+    target: PullRequestProgressTreeDiffTarget
+  ): Promise<void> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("PR Progress file open requires a workspace folder.");
+    }
+    const repositoryPath = target.modified.kind === "present"
+      ? target.modified.filePath
+      : target.original.filePath;
+    const uri = vscode.Uri.joinPath(
+      workspaceFolder.uri,
+      ...repositoryPath.split("/")
+    );
+    await vscode.commands.executeCommand("vscode.open", uri);
+    openedLocalBaseHeadFiles.push(uri.toString(true));
   };
   const localBaseHeadRuntime = new LocalBaseHeadRuntime<vscode.Uri>({
     repository,
@@ -656,7 +675,8 @@ export function activate(
       }
     },
     progressHost: {
-      openDiff: openLocalBaseHeadDiff
+      openDiff: openLocalBaseHeadDiff,
+      openFile: openLocalBaseHeadFile
     },
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: fileExclusionPolicyService.getUserGlobs()
@@ -791,6 +811,7 @@ export function activate(
     initializeLocalBaseHeadRuntime,
     getLocalBaseHeadTree: localBaseHeadTree,
     getLocalBaseHeadOpenedDiffs: () => openedLocalBaseHeadDiffs.map((diff) => ({ ...diff })),
+    getLocalBaseHeadOpenedFiles: () => [...openedLocalBaseHeadFiles],
     getLocalBaseHeadPersistence: () => localBaseHeadRuntime.getPersistence(),
     setLocalBaseHeadConfirmationAnswer: (answer) => {
       localBaseHeadConfirmationAnswer = answer;

@@ -106,6 +106,10 @@ export type PullRequestProgressTreeSelectionResult =
     readonly target: PullRequestProgressTreeDiffTarget;
   }
   | {
+    readonly kind: "opened-file";
+    readonly target: PullRequestProgressTreeDiffTarget;
+  }
+  | {
     readonly kind: "line-review-unavailable";
     readonly file: PullRequestDiffFileProgress;
     readonly reason: PullRequestLineReviewUnsupportedReason;
@@ -145,6 +149,7 @@ export type PullRequestProgressTreeNode =
 /** Host boundary used only when a reviewable changed-file node opens a text diff. */
 export interface PullRequestProgressTreeHost {
   openDiff(target: PullRequestProgressTreeDiffTarget): Promise<void>;
+  openFile?(target: PullRequestProgressTreeDiffTarget): Promise<void>;
 }
 
 interface CategoryDefinition {
@@ -734,8 +739,8 @@ export class PullRequestProgressTreeDataProvider {
   }
 
   /**
-   * Opens a reviewable current node. Unsupported line-review nodes return a
-   * stable typed outcome and never call the text-diff host.
+   * Opens every current file node. Reviewable nodes use the canonical text diff;
+   * line-review-unsupported nodes use the non-review file host.
    */
   public async select(
     node: PullRequestProgressTreeFileNode
@@ -746,11 +751,14 @@ export class PullRequestProgressTreeDataProvider {
       );
     }
     if (node.reviewability.kind === "unsupported") {
-      return {
-        kind: "line-review-unavailable",
-        file: cloneRawFile(node.source),
-        reason: cloneUnsupportedReason(node.reviewability.reason)
-      };
+      if (this.host.openFile === undefined) {
+        throw new Error("PR progress file-open host is unavailable for a line-review-unsupported file.");
+      }
+      await this.host.openFile(freezeOpenTarget(node.openTarget));
+      return Object.freeze({
+        kind: "opened-file",
+        target: freezeOpenTarget(node.openTarget)
+      });
     }
     await this.host.openDiff(freezeOpenTarget(node.openTarget));
     return Object.freeze({
