@@ -234,7 +234,7 @@ test("PR69-R001 stale Global nodes are rejected and PR69-R003 open failures use 
   const sourceSnapshot = await source.recalculate();
   assert.ok(sourceSnapshot);
   const model = createGlobalUnderstandingTreeModel(sourceSnapshot);
-  const module = await import("../../src/ui/global-understanding/global-understanding-ui-model");
+  const module = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
   const Controller = (module as unknown as {
     readonly GlobalUnderstandingFileOpenController?: new (host: {
       readonly openFile: (target: unknown) => Promise<void>;
