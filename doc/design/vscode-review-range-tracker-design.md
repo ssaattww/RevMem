@@ -765,7 +765,9 @@ PRが解決されていない場合はbranchまたはworkspace contextを表示�
 
 行単位レビュー可能なfileを選択すると、そのcontextのidentity-bound diff editorを開く。「次の未確認行」へは自動移動しない。
 
-binary、不正encoding、未対応encoding等の「行単位レビュー対象外」fileはtext diffを開かない。Tree providerはhostを呼ばず、file identityと対象外理由を持つtyped selection resultを返す。VS Code Tree View adapterはこのresultを対象外理由の表示、選択不能表現、または情報通知へ変換し、text content providerへ送らない。
+binary、不正encoding、未対応encoding等の「行単位レビュー対象外」fileを選択した場合も、PR snapshotのpresent sideを開く。deleted fileはoriginal/BASE side、added・modified・renamed fileはmodified/HEAD sideを選び、存在しないsideをworking treeまたは反対sideへ読み替えない。open targetはsnapshot ID、context ID、BASE/HEAD revision、original diff ID、filesystem path semantics、および選んだpresent sideのpath/revisionを保持する。VS Code hostはこのimmutable targetを検証し、exact revisionを指定したfile-open URIで開く。working treeのHEAD checkout状態、dirty content、rename後のpath、またはworkspace folderの選択をopen identityの代用にしてはならない。current snapshotに属さないnodeまたはtargetはstaleとして拒否する。
+
+line-review-unsupportedのselection resultは`opened-file`であり、対象外理由はnode表示に残す。text diff hostは呼ばない。公開`PullRequestProgressTreeHost`は`openDiff`に加えて`openFile`を必須で実装し、公開selection unionをexhaustiveに扱うconsumerは`opened-file`を処理する。VS Code Tree View adapterはopen failureをPR Progress専用error boundaryへ渡す。Unit testはpresent sideの選択、deleted/rename/stale target、host呼出しとtext diff非呼出しを固定し、Extension Host testはHEAD未checkoutまたはworking tree相違でもexact revisionのURIとpresent-side contentを確認する。
 
 既定sort:
 

@@ -351,3 +351,65 @@ test("Issue #59 PR full scan reads complete current-side files once and reuses i
     `${A}:src/deleted.ts`,
   ]);
 });
+
+
+test("PR69-R001 Global PR open uses the exact immutable HEAD document and rejects a superseded head", async () => {
+  const addedSnapshot: PullRequestDiffSnapshot = {
+    ...snapshot,
+    files: [{
+      fileId: "added-only",
+      newPath: "src/added-only.ts",
+      status: "added",
+      additions: 1,
+      deletions: 0,
+      hunks: [{
+        oldStart: 0,
+        oldCount: 0,
+        newStart: 1,
+        newCount: 1,
+        lines: [{ kind: "addition", newLine: 1, text: "immutable-head" }]
+      }]
+    }]
+  };
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/working-tree-without-added-file",
+    fileSystemPathSemantics: "posix",
+    snapshot: addedSnapshot,
+    readTextContent: async (descriptor) => {
+      assert.equal(descriptor.filePath, "src/added-only.ts");
+      assert.equal(descriptor.revision, B);
+      assert.equal(descriptor.side, "modified");
+      return { kind: "found", content: "immutable-head\n" };
+    },
+  });
+
+  const candidate = runtime as unknown as {
+    createHeadFileDocumentUri?: (contextId: string, repositoryPath: string, revisionId: string) => string;
+  };
+  assert.equal(typeof candidate.createHeadFileDocumentUri, "function");
+  const uri = candidate.createHeadFileDocumentUri!(CONTEXT_ID, "src/added-only.ts", B);
+  assert.match(uri, /^review-range-diff:\/\/document\/v1\//u);
+  const content = await runtime.documentContentProvider.provideTextDocumentContent({
+    toString: () => uri
+  } as never);
+  assert.equal(content, "immutable-head\n");
+
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/working-tree-without-added-file",
+    fileSystemPathSemantics: "posix",
+    snapshot: { ...addedSnapshot, headSha: "c".repeat(40), originalDiffId: `${A}..${"c".repeat(40)}` },
+    readTextContent: async () => ({ kind: "found", content: "newer-head\n" }),
+  });
+  assert.throws(
+    () => candidate.createHeadFileDocumentUri!(CONTEXT_ID, "src/added-only.ts", B),
+    /stale|head|revision/i
+  );
+});

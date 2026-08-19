@@ -73,6 +73,10 @@ const host: PullRequestProgressTreeHost = {
   openDiff: async (value) => {
     const exact: PullRequestProgressTreeDiffTarget = value;
     void exact.original;
+  },
+  openFile: async (value) => {
+    const exact: PullRequestProgressTreeDiffTarget = value;
+    void exact.modified;
   }
 };
 const provider = new PullRequestProgressTreeDataProvider(host);

@@ -1,0 +1,126 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix_verification
+  generated_at: 2026-08-19T12:29:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: Issue #67 / PR #69
+task_id: ISSUE-67-PR69-FIX-VERIFICATION
+branch: fix/issue-67-progress-file-open
+base_ref: main
+target:
+  initial_reviewed_head: 3e4e5cd4a0e63a2aad1d942f7c1dedaaba105097
+  followup_start_head: 71a4729adb51e9b508387f6b615c53d9405423ca
+  reviewed_fix_head: 5b9c4ac13379d2980b90bdd8b097494b236f42cc
+  base_sha: 7d4df08e6a55b40ecb1d0faf515005912274258d
+  fix_range: 71a4729adb51e9b508387f6b615c53d9405423ca..5b9c4ac13379d2980b90bdd8b097494b236f42cc
+review:
+  mode: fix_verification
+  reviewer_continuity:
+    same_normal_review_chat: true
+    initial_review_report: reports/issue-67-pr69-review-202608190844.md
+    implemented_fix: false
+  verdict: pass_with_held
+  new_required_findings: []
+  closed_findings:
+    - id: PR69-R001
+      severity: High
+      disposition: closed
+      evidence:
+        - Global nodes carry repository/context/revision/content-source-bound open targets.
+        - Current Context acceptance clears the old Global model before dependent refresh.
+        - GlobalUnderstandingFileOpenController rejects stale nodes by current-model identity.
+        - PR Global files use exact immutable registered HEAD review-range-diff documents.
+        - Added-only local-missing PR file and superseded-HEAD regressions pass.
+    - id: PR69-R002
+      severity: High
+      disposition: closed
+      evidence:
+        - line-review-unsupported nodes call the non-review openFile host.
+        - binary, invalid-encoding, and unsupported-encoding unit behavioral cases pass.
+        - VS Code Extension Host binary command opens the normal file and does not open a text diff.
+    - id: PR69-R003
+      severity: Low
+      disposition: closed
+      evidence:
+        - file-open errors use reportOpenError instead of refresh reportError.
+        - Global file-open error formatter is operation-specific.
+        - host failure behavioral regression reaches the dedicated reporter.
+  held:
+    - id: PR69-H001
+      area: Remote SSH / Dev Containers / Codespaces file-open acceptance
+      owner: T605
+      reason: Initial-review held boundary; full remote/multi-root acceptance remains explicitly owned by T605.
+      blocking: false
+scope:
+  changed_fix_files:
+    - src/extension.ts
+    - src/t305-extension.ts
+    - src/t405-pull-request-review-runtime.ts
+    - src/t505-global-understanding-source.ts
+    - src/ui/global-understanding/global-understanding-ui-model.ts
+    - src/ui/global-understanding/vscode-global-understanding-runtime.ts
+    - src/ui/pr-progress/pull-request-progress-tree-data-provider.ts
+    - test/unit/t304-review-followup-r3.test.ts
+    - test/unit/t405-pull-request-review-runtime.test.ts
+    - test/unit/t505-refresh-invalidation.test.ts
+    - test/vscode/t306-suite/index.ts
+    - reports/issue-67-pr69-review-followup-202608190933.md
+    - handoffs/issue-67-pr69-review-followup-202608190933.yaml
+  inspected_sibling_cases:
+    - Global open-target count/path consistency and empty-snapshot compatibility
+    - Current Context clear ordering and stale-node behavior
+    - PR registered HEAD replacement and immutable content source
+    - PR Progress reviewable versus unsupported branch
+    - Extension Host binary normal-open path
+    - dedicated Global refresh versus open error boundaries
+tdd:
+  clean_red_head: cc00ea5ce7f7765ccfec6c41a26becc8a0b1fcf3
+  run_id: 32202551461
+  conclusion: failure
+  expected_failure: "TS2339: Property 'openTarget' does not exist on type 'GlobalUnderstandingFileNode'."
+  diagnostics_artifact:
+    id: 9348022545
+    name: ci-failure-diagnostics-32202551461-1
+    head_sha: cc00ea5ce7f7765ccfec6c41a26becc8a0b1fcf3
+ci:
+  required: true
+  workflow: CI
+  run_id: 32204232884
+  head_sha: 5b9c4ac13379d2980b90bdd8b097494b236f42cc
+  event: pull_request
+  status: completed
+  conclusion: success
+  exact_head_match: true
+  passed_steps:
+    - Build
+    - Contract typecheck
+    - Architecture validation
+    - Architecture negative contract
+    - Lint
+    - Unit tests
+    - T602 history rewrite recovery tests
+    - T603 schema migration and corruption recovery tests
+    - T403 GitHub cache tests
+    - T404 GitHub PR context layer tests
+    - T405 Review Contexts follow-up tests
+    - T304 PR progress tree tests
+    - T502 Global mapping and display priority tests
+    - T503 repository enumeration tests
+    - T504 Global understanding tests
+    - T505 Global understanding tests
+    - T506 Global multi-context integration
+    - Temporary Git integration tests
+    - Mock GitHub integration tests
+    - VS Code Extension Host tests
+reports:
+  initial_review: reports/issue-67-pr69-review-202608190844.md
+  implementation_followup: reports/issue-67-pr69-review-followup-202608190933.md
+  fix_verification: reports/issue-67-pr69-fix-verification-202608191229.md
+  fix_verification_handoff: handoffs/issue-67-pr69-fix-verification-202608191229.yaml
+post_report_validation:
+  status: pending_at_artifact_commit_time
+  rule: Check only the pull_request workflow run whose head_sha equals the new PR current HEAD after this administrative review-artifact commit; never substitute another SHA.
+next_action:
+  required_review_finding_work: none
+  merge: user_owned

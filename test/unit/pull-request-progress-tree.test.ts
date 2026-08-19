@@ -117,7 +117,7 @@ class RecordingContentSource implements RevisionTextContentSource {
 }
 
 test("classifies every PR progress file and retains counts and reasons", () => {
-  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined, openFile: async () => undefined });
   const changedFiles = [
     progressFile("pending", "src/pending.ts", { reviewedLineCount: 1, totalLineCount: 3, progress: 1 / 3 }),
     progressFile("done", "src/done.ts", { reviewedLineCount: 3, totalLineCount: 3, progress: 1 }),
@@ -190,7 +190,7 @@ test("classifies every PR progress file and retains counts and reasons", () => {
 });
 
 test("projects nonzero encoding-unsupported changes out of the effective PR denominator", () => {
-  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined, openFile: async () => undefined });
   const invalidUtf8 = progressFile("invalid", "data/invalid.txt", {
     additions: 2,
     deletions: 1,
@@ -267,7 +267,7 @@ test("projects nonzero encoding-unsupported changes out of the effective PR deno
 });
 
 test("sorts files by remaining line count descending and path ascending", () => {
-  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined, openFile: async () => undefined });
   const changedFiles = [
     progressFile("b", "src/b.ts", { reviewedLineCount: 1, totalLineCount: 5, progress: 0.2 }),
     progressFile("a", "src/a.ts", { reviewedLineCount: 0, totalLineCount: 4, progress: 0 }),
@@ -297,7 +297,8 @@ test("selection carries immutable context and revision identity", async () => {
   const provider = new PullRequestProgressTreeDataProvider({
     openDiff: async (target) => {
       opened.push(target);
-    }
+    },
+    openFile: async () => undefined
   });
   provider.replaceSnapshot(snapshot([renamed], {
     snapshotId: "snapshot-renamed",
@@ -331,7 +332,8 @@ test("current tree nodes and detached host targets cannot mutate selection ident
         (target as unknown as Record<string, unknown>).contextId = "context-tampered";
       }, TypeError);
       mutationErrors.push("host target mutation rejected");
-    }
+    },
+    openFile: async () => undefined
   });
   const renamed = progressFile("rename", "src/new.ts", {
     oldPath: "src/old.ts",
@@ -436,7 +438,8 @@ test("added and deleted selections open immutable empty missing sides through T3
       original: target.original,
       modified: target.modified,
       title: target.file.path
-    })
+    }),
+    openFile: async () => undefined
   });
   const added = progressFile("added", "src/added.ts", {
     oldPath: undefined,
@@ -488,7 +491,8 @@ test("rejects stale nodes after revision or context refresh", async () => {
   const provider = new PullRequestProgressTreeDataProvider({
     openDiff: async (target) => {
       opened.push(target);
-    }
+    },
+    openFile: async () => undefined
   });
 
   provider.replaceSnapshot(snapshot([source], {
@@ -518,7 +522,7 @@ test("rejects stale nodes after revision or context refresh", async () => {
 });
 
 test("rejects missing or inconsistent line-review availability", () => {
-  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined, openFile: async () => undefined });
   const source = progressFile("a", "src/a.ts");
 
   assert.throws(
@@ -548,7 +552,7 @@ test("rejects missing or inconsistent line-review availability", () => {
 });
 
 test("rejects inconsistent snapshot and progress records before rendering", () => {
-  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined });
+  const provider = new PullRequestProgressTreeDataProvider({ openDiff: async () => undefined, openFile: async () => undefined });
   const invalid = progressFile("invalid", "src/invalid.ts", {
     reviewedLineCount: 4,
     totalLineCount: 3,

@@ -147,6 +147,34 @@ export class PullRequestReviewRuntime<Uri> {
     return this.registrations.has(contextId);
   }
 
+  public createHeadFileDocumentUri(
+    contextId: string,
+    repositoryPath: string,
+    revisionId: string
+  ): string {
+    const registration = this.requireRegistration(contextId);
+    if (registration.snapshot.headSha !== revisionId) {
+      throw new RangeError("Global PR file target is stale because the registered PR HEAD revision changed");
+    }
+    const file = registration.snapshot.files.find((candidate) =>
+      candidate.newPath === repositoryPath
+    );
+    if (file === undefined) {
+      throw new Error("Global PR file is unavailable at the requested HEAD revision");
+    }
+    if (file.status === "binary") {
+      throw new Error("Binary PR files are unavailable as Global text documents");
+    }
+    return this.codec.encode({
+      contextId,
+      filePath: repositoryPath,
+      fileSystemPathSemantics: registration.fileSystemPathSemantics,
+      side: "modified",
+      revisionSource: "git-commit",
+      revision: revisionId
+    });
+  }
+
   /**
    * Fully scans every reviewable PR file once per immutable revision pair.
    * Existing/added/renamed/copied files are read from HEAD and returned for
