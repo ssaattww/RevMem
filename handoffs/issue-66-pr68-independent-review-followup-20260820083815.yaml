@@ -204,7 +204,7 @@ review:
     no_later_commits_required: false
     validation_status: not_applicable
     validation_evidence:
-      - "Source independent review is the completed one-time review; only its same-reviewer IFR001-003 finding-limited closure remains. New findings and a fresh independent review are forbidden."
+      - "Source independent review is the completed one-time review; IFR002 and IFR003 are closed, and only its same-reviewer IFR001-only finding-limited closure remains. New findings and a fresh independent review are forbidden."
   summary:
     - "Independent review at 9d1a938 failed with IFR001 High, IFR002 Medium, IFR003 Low."
 
@@ -251,7 +251,7 @@ held:
     reason: This worker must not commit, push, trigger CI, or wait.
     owner: parent workflow
     remaining_risk: "External metadata and current-head evidence must wait for the final immutable identity."
-    verdict_impact: "Only source independent reviewer IFR001-003 finding-limited closure remains; no fresh independent review is permitted."
+    verdict_impact: "IFR002 and IFR003 are closed; only source independent reviewer IFR001-only finding-limited closure remains, and no fresh independent review is permitted."
 unexplored: []
 unknown: []
 not_applicable:
@@ -278,8 +278,8 @@ extensions:
 next_action:
   type: review
   target_skill: review-enforcer
-  mode: source independent reviewer finding-limited closure verification
-  summary: "Commit and push all non-final changes, then have the source independent reviewer close only IFR001-003. New findings and a fresh independent review are forbidden."
+  mode: source independent reviewer IFR001-only finding-limited closure verification
+  summary: "Commit and push IFR001 R2, then have the source independent reviewer close only IFR001. IFR002 and IFR003 are closed; new findings and a fresh independent review are forbidden."
   instructions:
     - "Use the final commit SHA, not 20b04efb or 00e5b088, for current-head evidence."
     - "After final SHA is known, parent updates Issue #66 / PR #68 metadata with closure, report paths, and exact-head CI state."

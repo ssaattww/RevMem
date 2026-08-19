@@ -486,6 +486,67 @@ test("PR68-IFR001 rejects a Windows case-colliding PR snapshot before Progress o
   );
 });
 
+test("PR68-IFR001 accepts copied files that share one exact original source while current identities remain distinct", async () => {
+  const sourcePath = "Src/Source.ts";
+  const firstCopyPath = "Src/FirstCopy.ts";
+  const secondCopyPath = "Src/SecondCopy.ts";
+  const repository = new MemoryReviewRepository();
+  repository.setPullRequest(CONTEXT_A, commitFor(
+    CONTEXT_A,
+    68,
+    {
+      [sourcePath]: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: sourcePath,
+        currentPath: sourcePath,
+        previousPaths: [],
+        revisionId: B,
+        modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
+        originalReviewedByDiff: {},
+        lineCount: 1,
+        contentHash: sha256(CONTENT_A),
+        updatedAt: OCCURRED_AT,
+      },
+    },
+  ));
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = createRuntime(repository, opened);
+  const source = diffSnapshot(CONTEXT_A, sourcePath).files[0]!;
+  const firstCopy = {
+    ...diffSnapshot(CONTEXT_A, firstCopyPath).files[0]!,
+    oldPath: sourcePath,
+    newPath: firstCopyPath,
+    status: "copied" as const,
+  };
+  const secondCopy = {
+    ...diffSnapshot(CONTEXT_A, secondCopyPath).files[0]!,
+    oldPath: sourcePath,
+    newPath: secondCopyPath,
+    status: "copied" as const,
+  };
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "C:\\repo",
+    fileSystemPathSemantics: "windows",
+    snapshot: {
+      ...diffSnapshot(CONTEXT_A, sourcePath),
+      files: [source, firstCopy, secondCopy],
+    },
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.side === "original" ? "old" : CONTENT_A,
+    }),
+  });
+
+  assert.deepEqual(await runtime.getProgress(CONTEXT_A), {
+    reviewedLineCount: 1,
+    totalLineCount: 6,
+    progress: 1 / 6,
+  });
+  await runtime.openReviewDiff(CONTEXT_A, firstCopyPath, firstCopyPath);
+  assert.equal(opened.length, 1);
+});
+
 const createConcurrentRuntime = () => {
   const repository = new MemoryReviewRepository();
   repository.setPullRequest(CONTEXT_A, commitFor(CONTEXT_A, 68));

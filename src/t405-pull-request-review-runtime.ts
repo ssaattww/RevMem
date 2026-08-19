@@ -711,18 +711,46 @@ export class PullRequestReviewRuntime<Uri> {
   private assertRegistrationHasOneToOneLogicalPaths(
     registration: PullRequestReviewRuntimeRegistration
   ): void {
-    const fileIdByPath = new Map<string, string>();
+    const currentFileIdByPath = new Map<string, string>();
+    const originalFileByPath = new Map<string, {
+      readonly fileId: string;
+      readonly status: PullRequestDiffSnapshot["files"][number]["status"];
+      readonly rawPath: string;
+    }>();
     for (const file of registration.snapshot.files) {
-      for (const logicalPath of [file.oldPath, file.newPath]) {
-        if (logicalPath === undefined) continue;
-        const canonicalPath = this.canonicalRepositoryPath(registration, logicalPath);
-        const existingFileId = fileIdByPath.get(canonicalPath);
-        if (existingFileId !== undefined && existingFileId !== file.fileId) {
+      const currentPath = file.newPath ?? file.oldPath;
+      if (currentPath !== undefined) {
+        const canonicalCurrentPath = this.canonicalRepositoryPath(registration, currentPath);
+        const existingCurrentFileId = currentFileIdByPath.get(canonicalCurrentPath);
+        if (existingCurrentFileId !== undefined && existingCurrentFileId !== file.fileId) {
           throw new Error(
-            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalPath}`
+            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalCurrentPath}`
           );
         }
-        fileIdByPath.set(canonicalPath, file.fileId);
+        currentFileIdByPath.set(canonicalCurrentPath, file.fileId);
+      }
+      if (file.oldPath !== undefined) {
+        const canonicalOriginalPath = this.canonicalRepositoryPath(registration, file.oldPath);
+        const existingOriginalFile = originalFileByPath.get(canonicalOriginalPath);
+        const sharedCopiedSource = existingOriginalFile !== undefined &&
+          existingOriginalFile.rawPath === file.oldPath &&
+          (existingOriginalFile.status === "copied" || file.status === "copied");
+        if (
+          existingOriginalFile !== undefined &&
+          existingOriginalFile.fileId !== file.fileId &&
+          !sharedCopiedSource
+        ) {
+          throw new Error(
+            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalOriginalPath}`
+          );
+        }
+        if (existingOriginalFile === undefined) {
+          originalFileByPath.set(canonicalOriginalPath, {
+            fileId: file.fileId,
+            status: file.status,
+            rawPath: file.oldPath,
+          });
+        }
       }
     }
   }
