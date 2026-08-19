@@ -38,6 +38,11 @@ import {
   setPullRequestProgressSource
 } from "./ui/pr-progress/vscode-pull-request-progress-tree";
 import {
+  refreshAfterDocumentEdit,
+  refreshCurrentContextDependents,
+  refreshSelectedPullRequestProgress
+} from "./t305-projection-refresh";
+import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
 } from "./t505-global-understanding-source";
@@ -314,21 +319,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }),
   });
   const refreshPullRequestProgressForSelection = async (): Promise<void> => {
-    if (
-      selectedContext?.kind === "pull-request" &&
+    const contextId = selectedContext?.kind === "pull-request" &&
       pullRequestReviewRuntime.hasContext(selectedContext.contextId)
-    ) {
-      setPullRequestProgressSource(pullRequestReviewRuntime.progress);
-      try {
-        await pullRequestReviewRuntime.activateProgress(selectedContext.contextId);
-      } finally {
-        refreshPullRequestProgressTree();
-      }
-      return;
-    }
-    pullRequestReviewRuntime.clearProgress();
-    setPullRequestProgressSource(undefined);
-    refreshPullRequestProgressTree();
+      ? selectedContext.contextId
+      : undefined;
+    await refreshSelectedPullRequestProgress({
+      contextId,
+      source: pullRequestReviewRuntime.progress,
+      activateProgress: (selectedContextId) =>
+        pullRequestReviewRuntime.activateProgress(selectedContextId),
+      clearProgress: () => pullRequestReviewRuntime.clearProgress(),
+      setSource: (source) => setPullRequestProgressSource(source),
+      refreshTree: () => refreshPullRequestProgressTree()
+    });
   };
   const reportPullRequestProgressError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
@@ -391,12 +394,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     },
     {
       setSelectedContext: acceptSelectedContext,
-      refreshDependents: async () => {
-        await refreshPullRequestProgressForSelection();
-        await runtimePort.refreshVisibleEditorDecorations();
-        await globalRuntime.refresh();
-        await reviewContextsRuntimeRef.current?.refresh();
-      }
+      refreshDependents: () => refreshCurrentContextDependents({
+        refreshPullRequestProgress: refreshPullRequestProgressForSelection,
+        refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+        refreshGlobal: () => globalRuntime.refresh(),
+        refreshReviewContexts: async () => {
+          await reviewContextsRuntimeRef.current?.refresh();
+        },
+        reportPullRequestProgressError
+      })
     },
     async (error) => {
       await vscode.window.showErrorMessage(
@@ -459,16 +465,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
           .get<unknown>("ignoreEolChanges")
       }),
       selectedContext
-    }).then(async (result) => {
-      if (result !== "applied") return;
-      await runtimePort.refreshVisibleEditorDecorations();
-      await globalRuntime.refreshWithErrorBoundary();
-      await refreshPullRequestProgressForSelection();
-    }).catch(async (error: unknown) => {
-      await vscode.window.showErrorMessage(
-        `編集後のレビュー状態を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
-      );
-    });
+    }).then(
+      async (result) => {
+        if (result !== "applied") return;
+        try {
+          await refreshAfterDocumentEdit({
+            refreshPullRequestProgress: refreshPullRequestProgressForSelection,
+            refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+            refreshGlobal: () => globalRuntime.refreshWithErrorBoundary(),
+            reportPullRequestProgressError
+          });
+        } catch (error) {
+          await vscode.window.showErrorMessage(
+            `編集後のレビュー表示を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      },
+      async (error: unknown) => {
+        await vscode.window.showErrorMessage(
+          `編集後のレビュー状態を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    );
   };
   const refreshForSavedOrClosedDocument = (document: vscode.TextDocument): void => {
     if (!FILESYSTEM_SCHEMES.has(document.uri.scheme)) return;
