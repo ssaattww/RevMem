@@ -130,7 +130,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const persisted = await this.repository.loadGlobal(owner.target);
     this.requireActiveEvidenceKey(owner);
     const globalState = persisted?.currentRevisionId === owner.currentRevisionId
-      ? persisted
+      ? this.projectGlobalStatePaths(persisted)
       : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
     const source: GlobalUnderstandingFileSource = {
       load: async (repositoryPath, revisionId) => {
@@ -278,6 +278,30 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const combined = new Map(retained);
     for (const [repositoryPath, snapshot] of current) combined.set(repositoryPath, snapshot);
     return combined;
+  }
+
+  private projectGlobalStatePaths(
+    state: RepositoryGlobalState
+  ): RepositoryGlobalState {
+    const files: RepositoryGlobalState["files"] = {};
+    const fileIdByPath = new Map<string, string>();
+    for (const [fileId, file] of Object.entries(state.files)) {
+      const currentPath = this.canonicalEvidencePath(file.currentPath);
+      const existingFileId = fileIdByPath.get(currentPath);
+      if (existingFileId !== undefined && existingFileId !== fileId) {
+        throw new Error(`Persisted Global state has conflicting file identities for ${currentPath}`);
+      }
+      fileIdByPath.set(currentPath, fileId);
+      files[fileId] = {
+        ...file,
+        currentPath,
+        reviewed: file.reviewed.map((interval) => ({ ...interval }))
+      };
+    }
+    return {
+      ...state,
+      files
+    };
   }
 
   private canonicalEvidencePath(value: string): string {
