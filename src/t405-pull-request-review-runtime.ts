@@ -339,7 +339,6 @@ export class PullRequestReviewRuntime<Uri> {
         "PR進捗を計算",
         () => this.calculateProgress(contextId)
       );
-      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
       const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
       for (const file of calculated.progress.files) {
         lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
