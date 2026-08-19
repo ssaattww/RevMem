@@ -437,6 +437,55 @@ test("PR68-R002 selected normal editor preserves legacy case identity for decora
   provider.dispose();
 });
 
+test("PR68-IFR001 rejects a Windows case-colliding PR snapshot before Progress or diff sessions can reuse reviewed state", async () => {
+  const repository = new MemoryReviewRepository();
+  repository.setPullRequest(CONTEXT_A, commitFor(
+    CONTEXT_A,
+    68,
+    {
+      [RAW_PATH_A]: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: RAW_PATH_A,
+        currentPath: RAW_PATH_A,
+        previousPaths: [],
+        revisionId: B,
+        modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
+        originalReviewedByDiff: {},
+        lineCount: 1,
+        contentHash: sha256(CONTENT_A),
+        updatedAt: OCCURRED_AT,
+      },
+    },
+  ));
+  const runtime = createRuntime(repository);
+  const first = diffSnapshot(CONTEXT_A, RAW_PATH_A);
+  const second = diffSnapshot(CONTEXT_A, CANONICAL_PATH_A);
+  const snapshot: PullRequestDiffSnapshot = {
+    ...first,
+    files: [first.files[0]!, second.files[0]!],
+  };
+
+  assert.throws(
+    () => runtime.register({
+      repositoryId: REPOSITORY_ID,
+      repositoryRoot: "C:\\repo",
+      fileSystemPathSemantics: "windows",
+      snapshot,
+      readTextContent: async (descriptor) => ({
+        kind: "found",
+        content: descriptor.side === "original" ? "old" : CONTENT_A,
+      }),
+    }),
+    /case-colliding|conflicting PR diff file identities/i,
+  );
+  assert.equal(runtime.hasContext(CONTEXT_A), false);
+  await assert.rejects(runtime.getProgress(CONTEXT_A), /not registered/i);
+  await assert.rejects(
+    runtime.openReviewDiff(CONTEXT_A, CANONICAL_PATH_A, CANONICAL_PATH_A),
+    /not registered/i,
+  );
+});
+
 const createConcurrentRuntime = () => {
   const repository = new MemoryReviewRepository();
   repository.setPullRequest(CONTEXT_A, commitFor(CONTEXT_A, 68));

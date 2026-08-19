@@ -8,14 +8,17 @@
 - GitHub Issue: #1
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近完了タスク: T603 schema migration・破損隔離・回復（PR #53）
-- 現在のタスク: PR #68 / Issue #66 通常review follow-up R2（`PR68-R002`、`PR68-R003`）
-- 次のタスク: PR #68の通常review fix verification後に未選択へ戻す（依存解消済み候補はT406またはT604）
+- 現在のタスク: PR #68 / Issue #66 独立review finding follow-up（`PR68-IFR001`、`PR68-IFR002`、`PR68-IFR003`）
+- 次のタスク: このfinding対応をcommit/push後に通常finding-limited closure verificationへ戻し、その後fresh independent final reviewをやり直す
 - 実装状態: T405、T506、T603は独立review finding closureとexact-head CIを完了し、mainへsquash merge済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `fix/issue-66-global-untracked-missing`
-- Pull Request: #68（通常review fix verification待ち）
-- PR #68 review follow-up R2実装レポート: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）をno-commit統合し、PR68-R002/R003のRED/GREENとローカル検証を完了。commit/push/PR ready化は未実行
+- Pull Request: #68（独立review finding対応中。ready化・mergeなし）
+- PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
+- PR #68 R2通常closure: `reports/issue-66-pr68-finding-closure-r2-20260820082607.md`。PR68-R002/R003はclosed、normal verdictは`pass_with_held`
+- PR #68独立review: `reports/issue-66-pr68-independent-final-review-20260820082950.md`。IFR001 High、IFR002 Medium、IFR003 Lowで`fail`
+- PR #68独立finding対応: `reports/issue-66-pr68-independent-review-followup-20260820083815.md` と `handoffs/issue-66-pr68-independent-review-followup-20260820083815.yaml`。IFR001〜003の実装・tracking/handoff同期・外部metadata更新factsを記録
 - PR #69 independent final review: `reports/issue-67-pr69-independent-final-review-20260820074231.md` は High finding 2件で`fail`
 - PR #69 finding follow-up: `reports/issue-67-pr69-independent-review-followup-20260820075225.md`。immutable present-side open、公開host/selection contract、Breaking Changes、回帰testを同一batchで更新し、通常review・fix verification待ち
 - T404実装レポート: `reports/issue-1-t404-implementation-20260806185200.md`

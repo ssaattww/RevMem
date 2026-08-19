@@ -157,6 +157,7 @@ export class PullRequestReviewRuntime<Uri> {
     if (snapshot.originalDiffId !== `${snapshot.baseSha}..${snapshot.headSha}`) {
       throw new Error("PR diff originalDiffId must match base/head revisions");
     }
+    this.assertRegistrationHasOneToOneLogicalPaths(registration);
     const previous = this.registrations.get(snapshot.contextId);
     if (
       previous !== undefined &&
@@ -505,6 +506,7 @@ export class PullRequestReviewRuntime<Uri> {
     const persisted = await this.options.repository.load(targetFor(registration));
     if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
     this.requireMatchingContext(registration, persisted);
+    this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
     const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
     const resolvedFileId = this.persistedFileIdForPath(
       registration,
@@ -567,6 +569,7 @@ export class PullRequestReviewRuntime<Uri> {
       throw new Error("Persisted pull-request review context is unavailable");
     }
     this.requireMatchingContext(registration, persisted);
+    this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
     const progress = calculatePullRequestDiffProgress({
       diff: registration.snapshot,
       reviewContext: this.projectContextFileIdentities(registration, persisted),
@@ -705,6 +708,49 @@ export class PullRequestReviewRuntime<Uri> {
       : canonical;
   }
 
+  private assertRegistrationHasOneToOneLogicalPaths(
+    registration: PullRequestReviewRuntimeRegistration
+  ): void {
+    const fileIdByPath = new Map<string, string>();
+    for (const file of registration.snapshot.files) {
+      for (const logicalPath of [file.oldPath, file.newPath]) {
+        if (logicalPath === undefined) continue;
+        const canonicalPath = this.canonicalRepositoryPath(registration, logicalPath);
+        const existingFileId = fileIdByPath.get(canonicalPath);
+        if (existingFileId !== undefined && existingFileId !== file.fileId) {
+          throw new Error(
+            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalPath}`
+          );
+        }
+        fileIdByPath.set(canonicalPath, file.fileId);
+      }
+    }
+  }
+
+  private assertPersistedFileMappingsAreOneToOne(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit
+  ): void {
+    const diffFileIdByPersistedFileId = new Map<string, string>();
+    for (const diffFile of registration.snapshot.files) {
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const persistedFileId = this.persistedFileIdForPath(
+        registration,
+        persisted,
+        logicalPath
+      );
+      if (persistedFileId === undefined) continue;
+      const previousDiffFileId = diffFileIdByPersistedFileId.get(persistedFileId);
+      if (previousDiffFileId !== undefined && previousDiffFileId !== diffFile.fileId) {
+        throw new Error(
+          `Persisted PR file identity ${persistedFileId} maps to multiple diff files.`
+        );
+      }
+      diffFileIdByPersistedFileId.set(persistedFileId, diffFile.fileId);
+    }
+  }
+
   private isCurrentProgressGeneration(
     contextId: string,
     generation: number,
@@ -737,6 +783,7 @@ export class PullRequestReviewRuntime<Uri> {
   private requireRegistration(contextId: string): PullRequestReviewRuntimeRegistration {
     const registration = this.registrations.get(contextId);
     if (registration === undefined) throw new Error("Pull-request review runtime context is not registered");
+    this.assertRegistrationHasOneToOneLogicalPaths(registration);
     return registration;
   }
 

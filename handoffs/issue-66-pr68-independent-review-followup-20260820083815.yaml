@@ -1,0 +1,300 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: independent review finding follow-up implementation
+  generated_at: "2026-08-20T08:38:15+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #66 / PR #68"
+task_id: ISSUE-66
+branch: fix/issue-66-global-untracked-missing
+base_ref: main
+target:
+  current_head: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+  reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+  commit_range: 9d1a93806de54fc6e8962395b267ee49317bcd6c..1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+
+authoritative_requirements:
+  - source: report
+    reference: reports/issue-66-pr68-independent-final-review-20260820082950.md
+    summary: "Address only PR68-IFR001 High, PR68-IFR002 Medium, and PR68-IFR003 Low; preserve their severities."
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev5
+    summary: "Windows logical identity must be fail-closed when one-to-one correspondence cannot be proved."
+  - source: repository_instruction
+    reference: AGENTS.md
+    summary: "Use Skills first; record breaking changes only when applicable."
+
+development_policy:
+  method: TDD
+  testing_order: "Observe one deterministic IFR001 Red regression before production change, then run the same focused regression Green."
+  governing_source: "RevMem project instructions and PR68 independent review"
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run lint
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - git diff --check
+  required_failure_diagnostics:
+    - test result metadata
+    - standard output
+    - standard error
+    - git status
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_report
+  - write_handoff
+write_boundary:
+  allowed:
+    - path_or_operation: src/t405-pull-request-review-runtime.ts
+      reason: "IFR001 one-to-one identity validation."
+    - path_or_operation: test/unit/issue-66-pr68-review-findings.test.ts
+      reason: "IFR001 deterministic case-collision regression."
+    - path_or_operation: tasks/tasks-status.md and tasks/phases-status.md
+      reason: "IFR002 truthful progress synchronization."
+    - path_or_operation: reports/issue-66-pr68-independent-review-followup-20260820083815.md and handoffs/issue-66-pr68-independent-review-followup-20260820083815.yaml
+      reason: "IFR002/003 implementation evidence and resume packet."
+  forbidden:
+    - path_or_operation: GitHub Issue #66 and PR #68 body/comments
+      reason: "Parent updates external metadata only after final commit SHA is known."
+    - path_or_operation: commit, push, PR ready, merge, branch cleanup
+      reason: "Explicitly forbidden for this worker."
+
+scope:
+  - "Reject Windows case-colliding PR snapshot paths before Progress calculation or diff-session mutation."
+  - "Synchronize R2 closure and independent-finding state in tracking, report, and handoff."
+  - "Provide exact facts for a parent-owned post-commit GitHub metadata update."
+non_goals:
+  - "Change PR Progress denominator semantics."
+  - "Edit external GitHub metadata before final SHA exists."
+  - "Declare independent review closure."
+
+files:
+  changed:
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "Registration, calculation, and session one-to-one identity guards."
+    - path: test/unit/issue-66-pr68-review-findings.test.ts
+      purpose: "Case-colliding Windows snapshot rejection regression."
+    - path: tasks/tasks-status.md
+      purpose: "Current PR68 lifecycle state."
+    - path: tasks/phases-status.md
+      purpose: "Current phase next gate."
+    - path: reports/issue-66-pr68-independent-review-followup-20260820083815.md
+      purpose: "Implementation, validation, and external-metadata facts."
+    - path: handoffs/issue-66-pr68-independent-review-followup-20260820083815.yaml
+      purpose: "Resume-ready PR68 continuation packet."
+  inspected:
+    - path: reports/issue-66-pr68-finding-closure-r2-20260820082607.md
+      purpose: "R2 normal closure identity and verdict."
+    - path: reports/issue-66-pr68-independent-final-review-20260820082950.md
+      purpose: "Authoritative IFR001-003 definitions."
+  intentionally_untouched:
+    - path_or_area: Design/BreakingChanges.md and doc/design/vscode-review-range-tracker-design.md
+      reason: "Existing fail-closed contract is implemented without a public or schema change."
+    - path_or_area: GitHub Issue #66 / PR #68 body/comments
+      reason: "Final SHA and exact-head CI are parent-owned post-commit facts."
+
+commands:
+  - command: "npm run compile:test && node --test test-dist/test/unit/issue-66-pr68-review-findings.test.js"
+    purpose: "IFR001 Red/Green regression."
+    exit_code: 0
+    result: passed
+    head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+    evidence: "Red rejected no exception before the fix; Green passed 8/8 after the fix in the same uncommitted workspace batch."
+  - command: "npm run build; npm run typecheck:contracts; npm run lint; npm run validate:architecture; npm run validate:architecture:negative"
+    purpose: "Required local build, typecheck, lint, and architecture gates."
+    exit_code: 0
+    result: passed
+    head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+    evidence: "Each command was run once and succeeded."
+  - command: "node --test test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/pull-request-progress-tree.test.js"
+    purpose: "Direct runtime and PR Progress dependency suite."
+    exit_code: 0
+    result: passed
+    head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+    evidence: "15/15 passed."
+tests:
+  - name: "PR68-IFR001 Windows case-colliding snapshot"
+    phase: red
+    result: failed
+    head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+    evidence: "Pre-fix registration accepted the colliding snapshot."
+  - name: "PR68-IFR001 Windows case-colliding snapshot"
+    phase: green
+    result: passed
+    head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+    evidence: "Registration rejects before Progress or diff-session access."
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+  conclusion: unknown
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 1ae1c71eaaf344da4bd883ccdbe6b9d6057ba397
+  commits: []
+  addressed_findings:
+    - id: PR68-IFR001
+      reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+      disposition: addressed
+      evidence: "Case-fold collision is rejected at registration and rechecked at calculation/session boundaries."
+    - id: PR68-IFR002
+      reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+      disposition: addressed
+      evidence: "Tasks, phases, report reference, and this schema-v3 handoff carry R2 closure and independent-finding state."
+    - id: PR68-IFR003
+      reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+      disposition: addressed
+      evidence: "Report and handoff distinguish external historical SHA claims from parent-owned final-SHA metadata update facts."
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "Workspace changes are uncommitted by explicit instruction; final commit SHA and CI identity are not yet available."
+    - "R2 normal closure: PR68-R002/R003 closed with pass_with_held in reports/issue-66-pr68-finding-closure-r2-20260820082607.md."
+
+review:
+  mode: independent_final_review
+  reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+  reviewer:
+    identity: "Codex independent final reviewer / PR68 / 2026-08-20"
+    role: independent_final_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: "Source independent review."
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: false
+      evidence:
+        - "Source report records independent reviewer identity and fail verdict."
+  verdict: fail
+  required_coverage:
+    - criterion: "IFR001-003"
+      disposition: checked_finding
+      evidence: "reports/issue-66-pr68-independent-final-review-20260820082950.md"
+  validation_assessment:
+    - item: "Exact final-head CI"
+      result: unavailable
+      evidence: "No final commit exists yet; do not use historical SHA success as current evidence."
+  reserved_report_paths:
+    - reports/issue-66-pr68-independent-review-followup-20260820083815.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes:
+      - executable
+      - tracking
+      - handoff
+      - product
+    no_later_commits_required: false
+    validation_status: not_applicable
+    validation_evidence:
+      - "Source independent review is the completed one-time review; only its same-reviewer IFR001-003 finding-limited closure remains. New findings and a fresh independent review are forbidden."
+  summary:
+    - "Independent review at 9d1a938 failed with IFR001 High, IFR002 Medium, IFR003 Low."
+
+report:
+  report_type: implementation_report
+  outcome: updated
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-66-pr68-independent-review-followup-20260820083815.md
+  reviewed_head: 9d1a93806de54fc6e8962395b267ee49317bcd6c
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Parent must update GitHub metadata after final commit/push, not at this uncommitted workspace stage."
+
+findings:
+  - id: PR68-IFR001
+    severity: high
+    origin: introduced_by_change
+    location: src/t405-pull-request-review-runtime.ts
+    description: "Windows case-fold collision could map two PR files to one persisted identity."
+    impact: "Reviewed ranges could be double-projected or mutate the wrong file."
+    evidence: "Case-colliding two-file snapshot regression."
+    required_action: "Reject non-one-to-one logical path mappings."
+  - id: PR68-IFR002
+    severity: medium
+    origin: coverage_miss
+    location: tasks/tasks-status.md, tasks/phases-status.md, handoffs/
+    description: "R2 closure and handoff state were stale."
+    impact: "Resume could repeat completed review work or enter the wrong gate."
+    evidence: "R2 closure report and independent review report."
+    required_action: "Sync tracking and create a schema-v3 resume handoff."
+  - id: PR68-IFR003
+    severity: low
+    origin: coverage_miss
+    location: GitHub Issue #66 and PR #68 body
+    description: "External metadata labels historical SHA and review state as current."
+    impact: "Maintainers can misread exact-head evidence."
+    evidence: "Source independent review external-metadata comparison."
+    required_action: "Parent updates external metadata after final SHA is known."
+
+held:
+  - item: Final commit SHA and exact-head CI
+    reason: This worker must not commit, push, trigger CI, or wait.
+    owner: parent workflow
+    remaining_risk: "External metadata and current-head evidence must wait for the final immutable identity."
+    verdict_impact: "Only source independent reviewer IFR001-003 finding-limited closure remains; no fresh independent review is permitted."
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: Design and BreakingChanges update
+    reason: "No public contract, schema, configuration, or workflow change."
+remaining_risks:
+  - "No commit/push/CI has been performed for this uncommitted batch."
+  - "GitHub Issue/PR metadata remains historical until parent post-commit update."
+
+source_payloads:
+  - source_skill: report-writer
+    output_contract_version: "independent-final-review source report"
+    content_type: text/markdown
+    payload: "reports/issue-66-pr68-independent-final-review-20260820082950.md"
+extensions:
+  - namespace: pr68_external_metadata
+    payload:
+      issue_historical_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+      pr_historical_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      r2_normal_closure: reports/issue-66-pr68-finding-closure-r2-20260820082607.md
+      independent_review: reports/issue-66-pr68-independent-final-review-20260820082950.md
+      current_followup_report: reports/issue-66-pr68-independent-review-followup-20260820083815.md
+
+next_action:
+  type: review
+  target_skill: review-enforcer
+  mode: source independent reviewer finding-limited closure verification
+  summary: "Commit and push all non-final changes, then have the source independent reviewer close only IFR001-003. New findings and a fresh independent review are forbidden."
+  instructions:
+    - "Use the final commit SHA, not 20b04efb or 00e5b088, for current-head evidence."
+    - "After final SHA is known, parent updates Issue #66 / PR #68 metadata with closure, report paths, and exact-head CI state."
+  required_attachments_or_references:
+    - reports/issue-66-pr68-independent-review-followup-20260820083815.md
+    - reports/issue-66-pr68-finding-closure-r2-20260820082607.md
+  requested_authorized_actions:
+    - commit
+    - push
+    - update_issue
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-66-pr68-independent-review-followup-20260820083815.yaml
+  packet_url: null
+  transport_note: "Current implementation batch is uncommitted; final SHA and CI must be filled by the parent after commit/push."
