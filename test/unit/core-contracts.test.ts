@@ -8,6 +8,7 @@ import "./issue-66-pr68-review-findings.test";
 import "./repository-global-state-repository.test";
 import "./state-repository-memory.test";
 import "./state-repository.test";
+import "./t305-projection-refresh.test";
 
 test("toDefaultVisualState only renders certain reviews as reviewed", () => {
   assert.equal(toDefaultVisualState("reviewed"), "reviewed");
