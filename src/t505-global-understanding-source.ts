@@ -153,11 +153,12 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`
     });
     this.requireActiveEvidenceKey(owner);
+    const fileOpenTargets = result.progress.files.map((file) =>
+      this.createFileOpenTarget(owner, file.path)
+    );
     return {
       progress: result.progress,
-      fileOpenTargets: result.progress.files.map((file) =>
-        this.createFileOpenTarget(owner, file.path)
-      ),
+      ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
       openedFileCount: openedByPath.size,
       unopenedFileCount: Math.max(0, availablePaths.size - openedByPath.size),
       excludedFileCount: pathEnumeration.excluded.length,
