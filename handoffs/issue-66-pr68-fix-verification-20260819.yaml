@@ -1,0 +1,463 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix verification
+  generated_at: "2026-08-19T12:29:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #66 / PR #68"
+task_id: ISSUE-66
+branch: fix/issue-66-global-untracked-missing
+base_ref: main
+target:
+  current_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  source_reviewed_head: 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592
+  source_review_evidence_head: 5bc822a054a856f1709756034fb63d271101f30f
+  commit_range: 5bc822a054a856f1709756034fb63d271101f30f..00e5b08854a4fb4ab51fc7839ee52594475d8876
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー"
+    summary: "Perform fix verification on PR #68 using the same normal-review chat and preserve source finding identities."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector; persist detailed report and concise PR review summary; use only exact-head CI evidence; do not merge."
+  - source: review
+    reference: reports/issue-66-pr68-initial-review-20260819.md
+    summary: "Initial normal review failed at 20b04efbdf3cc0dfb6a9a9f58e3cf979552cc592 with four High findings PR68-R001 through PR68-R004."
+  - source: implementation_followup
+    reference: reports/issue-66-pr68-review-followup-20260819.md
+    summary: "Implementation worker claims R001-R004 addressed at technical head d6082974c322421384cf943bf913cd12ef36d20c and final implementation-report HEAD 00e5b08854a4fb4ab51fc7839ee52594475d8876."
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md rev5
+    summary: "Persisted reviewed state must remain identity-safe and fail-closed; PR Progress is immutable revision-bound; owner-bound UI projections must not present stale identity."
+
+development_policy:
+  method: TDD
+  testing_order: "Review fixes require deterministic RED regression before implementation and exact-head Green after implementation."
+  governing_source: "RevMem project instructions"
+
+validation_plan:
+  commands:
+    - "Verify source RED runs at their exact HEADs."
+    - "Verify technical Green at d6082974c322421384cf943bf913cd12ef36d20c."
+    - "Verify final reviewed HEAD 00e5b08854a4fb4ab51fc7839ee52594475d8876 has an exact matching successful workflow run."
+    - "Inspect each source finding fix, direct dependencies, same-defect-class sibling cases, and new changed areas."
+  required_failure_diagnostics:
+    - "test result metadata"
+    - "standard output"
+    - "standard error"
+    - "combined logs"
+    - "environment and git status"
+    - "source/tests/tools/configuration investigation context"
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: reports/issue-66-pr68-fix-verification-20260819.md
+      reason: "Detailed fix-verification report."
+    - path_or_operation: handoffs/issue-66-pr68-fix-verification-20260819.yaml
+      reason: "Lossless fix-verification continuation packet."
+    - path_or_operation: "PR #68 review/comment"
+      reason: "Concise reviewer verdict and finding dispositions."
+  forbidden:
+    - path_or_operation: "product implementation"
+      reason: "Reviewer must not implement findings."
+    - path_or_operation: "tests"
+      reason: "Reviewer reports required tests; implementation worker adds them."
+    - path_or_operation: tasks/tasks-status.md
+      reason: "Owned by designated task/progress managers."
+    - path_or_operation: .github/workflows/ci.yml
+      reason: "Existing diagnostic workflow is sufficient and unchanged."
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: "Remaining findings are implementation defects, not design changes."
+    - path_or_operation: "merge PR #68"
+      reason: "Merge is user-owned."
+
+scope:
+  - "Fix verification of PR68-R001 High."
+  - "Fix verification of PR68-R002 High, including upgrade compatibility sibling cases."
+  - "Fix verification of PR68-R003 High, including stale immutable-registration sibling cases."
+  - "Fix verification of PR68-R004 High."
+  - "Inspect new fix-range code and tests for additional regressions."
+non_goals:
+  - "Independent final review."
+  - "Implement any review finding."
+  - "Change PR Progress denominator semantics."
+  - "Merge PR #68."
+
+files:
+  changed:
+    - path: src/adapters/document-review-state/persisted-document-review-state-session-provider.ts
+      purpose: "R002 legacy Windows selected-PR identity compatibility."
+    - path: src/t305-extension.ts
+      purpose: "R003/R004 production projection wiring."
+    - path: src/t305-projection-refresh.ts
+      purpose: "R003 source switch and R004 failure isolation."
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "R001 identity consistency and R003 generation guards."
+    - path: src/t505-global-understanding-source.ts
+      purpose: "R002 read-time Global canonical projection."
+    - path: test/unit/core-contracts.test.ts
+      purpose: "Canonical unit inclusion."
+    - path: test/unit/issue-66-global-pr-progress.test.ts
+      purpose: "Updated production source-switch structural contract."
+    - path: test/unit/issue-66-pr68-review-findings.test.ts
+      purpose: "R001/R002/R003 executable regressions."
+    - path: test/unit/t305-projection-refresh.test.ts
+      purpose: "R003 source switch and R004 failure-isolation regressions."
+    - path: reports/issue-66-pr68-review-followup-20260819.md
+      purpose: "Implementation-worker follow-up evidence."
+    - path: handoffs/issue-66-pr68-review-followup-20260819.yaml
+      purpose: "Implementation-worker continuation evidence."
+  inspected:
+    - path: reports/issue-66-pr68-initial-review-20260819.md
+      purpose: "Authoritative finding IDs, severities, evidence and required actions."
+    - path: src/application/editor-decoration/normal-editor-decoration-model.ts
+      purpose: "R002 selected normal-editor reviewed-decoration compatibility."
+    - path: src/core/pr-progress/pr-diff-progress.ts
+      purpose: "R001/R002 progress identity contract."
+    - path: src/core/review-state/review-state-service.ts
+      purpose: "Persisted target path mutation behavior."
+    - path: src/core/global-understanding/global-understanding-progress.ts
+      purpose: "Global currentPath exact lookup semantics."
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "R003 same-context registration lifecycle and production reachability."
+    - path: src/ui/current-context/current-context-runtime-coordinator.ts
+      purpose: "Owner refresh sequencing."
+    - path: src/ui/pr-progress/vscode-pull-request-progress-tree.ts
+      purpose: "Dedicated tree source switching."
+    - path: .github/workflows/ci.yml
+      purpose: "Inherited unchanged failure-diagnostic artifact contract."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "Identity/fail-closed/immutable revision requirements."
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "Designated manager ownership."
+    - path_or_area: product/test code
+      reason: "Fix-verification reviewer boundary."
+    - path_or_area: merge state
+      reason: "User-owned."
+
+commands:
+  - command: "GitHub exact-head CI aa385571313dff8bc9f8837a5038189ac3d23b47"
+    purpose: "R001/R002/R003 RED identity."
+    exit_code: unknown
+    result: failed
+    head_sha: aa385571313dff8bc9f8837a5038189ac3d23b47
+    evidence: "Run 32202287069 conclusion failure."
+  - command: "GitHub exact-head CI 779c3d66cd6c6538979f35f468eb805b01424160"
+    purpose: "R004/source-switch RED identity."
+    exit_code: unknown
+    result: failed
+    head_sha: 779c3d66cd6c6538979f35f468eb805b01424160
+    evidence: "Run 32202387065 conclusion failure."
+  - command: "GitHub exact-head CI d6082974c322421384cf943bf913cd12ef36d20c"
+    purpose: "Technical review-fix Green."
+    exit_code: 0
+    result: passed
+    head_sha: d6082974c322421384cf943bf913cd12ef36d20c
+    evidence: "Run 32203046332 conclusion success."
+  - command: "GitHub exact-head CI 00e5b08854a4fb4ab51fc7839ee52594475d8876"
+    purpose: "Final reviewed HEAD validation."
+    exit_code: 0
+    result: passed
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Run 32203482217 conclusion success."
+
+tests:
+  - name: "PR68-R001 mixed-case PR-diff-first mutation then PR Progress"
+    phase: verification
+    result: passed
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Executable test performs mutation and verifies 1/2, 0.5."
+  - name: "PR68-R002 pre-fix mixed-case Global state"
+    phase: verification
+    result: passed
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Read-time canonical Global projection yields current."
+  - name: "PR68-R002 legacy selected normal-editor identity"
+    phase: verification
+    result: partial
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Legacy ID is reused, but target.currentPath is canonical while returned persisted Context/Global paths stay raw; decoration model exact path checks reject reviewed ranges."
+  - name: "PR68-R002 legacy reviewed decoration continuity"
+    phase: verification
+    result: not_run
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "No regression exists; direct contract inspection establishes the mismatch."
+  - name: "PR68-R003 different-context stale activation races"
+    phase: verification
+    result: passed
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Deferred A/B success/failure and PR-leave tests pass."
+  - name: "PR68-R003 same-context immutable revision replacement"
+    phase: verification
+    result: not_run
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "No regression exists; register() does not invalidate progressGeneration when the same context is re-registered with new base/head."
+  - name: "PR68-R004 Current Context and live-edit failure isolation"
+    phase: verification
+    result: passed
+    head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+    evidence: "Injected PR Progress failure does not block required owner projections or reclassify successful mutation."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32203482217
+  head_sha: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  conclusion: success
+  artifacts:
+    - id: 9347941445
+      name: ci-failure-diagnostics-32202287069-1
+      purpose: "Implementation-worker authoritative R001/R002/R003 RED evidence."
+    - id: 9347971135
+      name: ci-failure-diagnostics-32202387065-1
+      purpose: "Implementation-worker R004/source-switch RED evidence."
+    - id: 9348097149
+      name: ci-failure-diagnostics-32202774360-1
+      purpose: "Intermediate review-fix investigation."
+    - id: 9348142571
+      name: ci-failure-diagnostics-32202921332-1
+      purpose: "Intermediate stale-rejection investigation."
+
+implementation:
+  outcome: partial
+  final_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  commits:
+    - sha: aa385571313dff8bc9f8837a5038189ac3d23b47
+      purpose: "Authoritative R001/R002/R003 RED fixture."
+    - sha: 779c3d66cd6c6538979f35f468eb805b01424160
+      purpose: "R004/source-switch RED."
+    - sha: fcaa9a151e7e743ad448f5544560c3ef6f011efa
+      purpose: "Identity/generation implementation."
+    - sha: e049346d056aa5fcf5dff0a8500f7933a395b7
+      purpose: "Legacy selected-PR path read."
+    - sha: 6f024da6be229036aa4c38f9b69559b13dcf110d
+      purpose: "Legacy Global canonical projection."
+    - sha: bb629c308c4e4a120240756cb9279326f0f17eaf
+      purpose: "Projection refresh orchestration."
+    - sha: 36618ee5e9f35baf74b90093e82bc8f52ccefb97
+      purpose: "Owner-projection wiring."
+    - sha: 626071f80e0326614ed541aa909121d466227511
+      purpose: "Structural source-switch regression update."
+    - sha: d6082974c322421384cf943bf913cd12ef36d20c
+      purpose: "Stale acquisition rejection containment; technical Green."
+  addressed_findings:
+    - id: PR68-R001
+      reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      disposition: addressed
+      evidence: "PR-diff-first mixed-case executable regression and code-path inspection close source defect."
+    - id: PR68-R002
+      reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      disposition: partial
+      evidence: "Global and ID reuse are fixed, but legacy raw persisted paths are not projected consistently with lower-cased target paths for normal-editor decoration."
+    - id: PR68-R003
+      reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      disposition: partial
+      evidence: "Different-context generation races are fixed, but same-context re-registration with a new immutable revision does not invalidate pending activation."
+    - id: PR68-R004
+      reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      disposition: addressed
+      evidence: "Projection failure isolation is correctly wired and tested."
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "R001 and R004 are closed."
+    - "R002 remains High due to legacy reviewed-decoration path mismatch and missing full legacy compatibility regressions."
+    - "R003 remains High because generation identity does not include same-context immutable registration revision."
+
+review:
+  mode: fix_verification
+  reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  reviewer:
+    identity: "ChatGPT normal reviewer / PR68 / 2026-08-19"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: "ChatGPT normal reviewer / PR68 / 2026-08-19"
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - "Initial review in this same chat produced reports/issue-66-pr68-initial-review-20260819.md."
+        - "Implementation follow-up explicitly records the same reviewer identity and that this reviewer did not implement the fixes."
+  verdict: fail
+  required_coverage:
+    - criterion: requirements_and_design_conformance
+      disposition: checked_finding
+      evidence: "R002 and R003 remain."
+    - criterion: correctness_and_edge_cases
+      disposition: checked_finding
+      evidence: "Legacy decoration and same-context revision replacement checked."
+    - criterion: scope_discipline
+      disposition: checked_no_finding
+      evidence: "Fix range is finding-scoped."
+    - criterion: changed_files_and_direct_dependencies
+      disposition: checked_finding
+      evidence: "All fix files plus decoration and registration dependencies inspected."
+    - criterion: api_data_configuration_workflow_compatibility
+      disposition: checked_finding
+      evidence: "R002 compatibility remains incomplete; no schema/workflow/config changes."
+    - criterion: error_handling_and_failure_diagnostics
+      disposition: checked_no_finding
+      evidence: "R004 is closed and diagnostic workflow unchanged."
+    - criterion: security_and_secret_handling
+      disposition: not_applicable
+      evidence: "No new secret handling."
+    - criterion: tests_and_validation_adequacy
+      disposition: checked_finding
+      evidence: "Exact-head CI succeeds, but R002 decoration/legacy integration and R003 same-context revision race are untested."
+    - criterion: current_head_ci
+      disposition: checked_no_finding
+      evidence: "Run 32203482217 success for exact head 00e5b08854a4fb4ab51fc7839ee52594475d8876."
+    - criterion: reports_tracking_documentation
+      disposition: checked_no_finding
+      evidence: "Finding IDs/severities preserved; task status correctly untouched."
+    - criterion: regression_and_maintainability_risks
+      disposition: checked_finding
+      evidence: "R002/R003 remaining same-class paths can reintroduce visible stale/missing state."
+  validation_assessment:
+    - item: source_red_runs
+      result: supported
+      evidence: "Exact matching failure runs 32202287069 and 32202387065 verified."
+    - item: technical_green
+      result: supported
+      evidence: "Exact matching success run 32203046332 verified."
+    - item: final_current_head_ci
+      result: supported
+      evidence: "Exact matching success run 32203482217 verified."
+    - item: r002_full_closure
+      result: failed
+      evidence: "Decoration-model exact path mismatch remains and required legacy integration regressions are absent."
+    - item: r003_full_closure
+      result: failed
+      evidence: "Same-context re-registration does not invalidate progress generation."
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "Fix verification fails with two source findings still open at their original High severities."
+    - "No new independent finding IDs were created; remaining defects are continuations/sibling cases of R002 and R003."
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-66-pr68-fix-verification-20260819.md
+    - handoffs/issue-66-pr68-fix-verification-20260819.yaml
+  reviewed_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed fix verification records R001/R004 closed and R002/R003 partial/open."
+
+findings:
+  - id: PR68-R002
+    severity: high
+    origin: introduced_by_change
+    location: "src/adapters/document-review-state/persisted-document-review-state-session-provider.ts; src/application/editor-decoration/normal-editor-decoration-model.ts"
+    description: "Legacy mixed-case ID lookup succeeds but returned target path is lower-cased while persisted Context/Global paths remain raw; exact decoration checks reject the reviewed state."
+    impact: "Existing reviewed background can disappear immediately after Windows upgrade until a mutation rewrites the path representation."
+    evidence: "loadSelectedPullRequest returns unchanged states plus canonical target; validContextFile/validGlobalFile and PR change evidence use exact path equality; no decoration regression test exists."
+    required_action: "Keep target/state/diff path representation consistent for legacy read-only decoration; add loadForDecoration+decoration-model regression plus legacy PR Progress/diff-open coverage."
+  - id: PR68-R003
+    severity: high
+    origin: introduced_by_change
+    location: "src/t405-pull-request-review-runtime.ts register/activateProgress/isCurrentProgressGeneration; src/t405-review-contexts-runtime.ts acquire/progressFor"
+    description: "Progress generation is invalidated by activate/clear but not by same-context registration revision replacement."
+    impact: "An old base/head activation can publish after the same PR context has been re-registered to a new immutable revision, producing stale PR Progress identity."
+    evidence: "register replaces registration and revision cache without incrementing generation; publication guard checks only contextId+generation; tests cover different contexts but not same-context new revision."
+    required_action: "Bind generation to exact registration identity or invalidate active generation on revision-changing register; add deterministic same-context re-registration stale-success/failure tests."
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: failure_artifact_payload_reinspection
+    reason: "Artifacts were not re-downloaded in fix verification; exact run identities and unchanged diagnostic workflow were verified."
+not_applicable:
+  - field_or_area: security_secret_changes
+    reason: "No new secret-handling code in the fix range."
+remaining_risks:
+  - "Legacy Windows reviewed backgrounds can disappear until persisted state is rewritten."
+  - "Same-PR revision replacement can accept stale in-flight progress publication."
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "current"
+    content_type: application/yaml
+    payload:
+      mode: fix_verification
+      reviewed_implementation_head: 00e5b08854a4fb4ab51fc7839ee52594475d8876
+      source_findings:
+        PR68-R001: { severity: high, disposition: addressed }
+        PR68-R002: { severity: high, disposition: partial }
+        PR68-R003: { severity: high, disposition: partial }
+        PR68-R004: { severity: high, disposition: addressed }
+      verdict: fail
+      held: []
+      unexplored: []
+      validation:
+        exact_head_ci: { run_id: 32203482217, conclusion: success }
+      summary:
+        - "R002 legacy decoration continuity is not closed."
+        - "R003 same-context immutable revision race is not closed."
+  - source_skill: report-writer
+    output_contract_version: "current"
+    content_type: text/markdown
+    payload: "Detailed verification report is persisted at reports/issue-66-pr68-fix-verification-20260819.md and preserves source finding identities/severities."
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_finding_followup
+  summary: "Fix only the remaining PR68-R002 and PR68-R003 High findings, then return to the same normal reviewer."
+  instructions:
+    - "Preserve PR68-R002 and PR68-R003 IDs and High severities."
+    - "Add behavior RED for legacy normal-editor decoration continuity before fixing R002."
+    - "Add behavior RED for same-context registration revision replacement before fixing R003."
+    - "Also add the previously requested legacy PR Progress and PR diff-open compatibility regressions for R002."
+    - "Do not broaden scope or edit tasks/tasks-status.md/design/workflow unless independently required by authoritative instructions."
+    - "Use only exact-head workflow runs for Green/final validation."
+    - "Persist implementation follow-up report/handoff and post concise PR update; do not merge."
+  required_attachments_or_references:
+    - reports/issue-66-pr68-fix-verification-20260819.md
+    - reports/issue-66-pr68-initial-review-20260819.md
+    - reports/issue-66-pr68-review-followup-20260819.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-66-pr68-fix-verification-20260819.yaml
+  packet_url: null
+  transport_note: "Reviewer handoff is committed with the verification report. Current user permissions do not transfer automatically to another chat."
