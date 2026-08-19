@@ -20,6 +20,7 @@ import {
 } from "../../src/adapters/state-repository/index.js";
 import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index.js";
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service.js";
+import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index.js";
 import {
@@ -183,9 +184,7 @@ const registerRuntimeContext = (
   runtime: PullRequestReviewRuntime<string>,
   contextId: string,
   repositoryPath: string,
-  readTextContent: PullRequestReviewRuntime<string> extends never
-    ? never
-    : (descriptor: Parameters<Parameters<PullRequestReviewRuntime<string>["register"]>[0]["readTextContent"]>[0]) => ReturnType<Parameters<PullRequestReviewRuntime<string>["register"]>[0]["readTextContent"]>,
+  readTextContent: (descriptor: Parameters<Parameters<PullRequestReviewRuntime<string>["register"]>[0]["readTextContent"]>[0]) => Promise<RevisionTextContentReadResult>,
 ): void => {
   runtime.register({
     repositoryId: REPOSITORY_ID,
@@ -227,10 +226,12 @@ const windowsInspection = (): LocalGitRepositoryInspection => ({
   },
 });
 
-const selectedPullRequest = (): Extract<SelectedReviewContext, { kind: "pull-request" }> => ({
+const selectedPullRequest = (
+  repositoryRoot = "C:\\repo",
+): Extract<SelectedReviewContext, { kind: "pull-request" }> => ({
   kind: "pull-request",
   repositoryId: REPOSITORY_ID,
-  repositoryRoot: "C:\\repo",
+  repositoryRoot,
   contextId: CONTEXT_A,
   pullRequestNumber: 68,
   headRevision: B,
@@ -281,33 +282,35 @@ test("PR68-R002 pre-fix mixed-case Windows Global state remains current after up
   await mkdir(path.join(repositoryRoot, "Src"), { recursive: true });
   await writeFile(path.join(repositoryRoot, "Src", "Example.ts"), CONTENT_A, "utf8");
 
-  const legacyContextFile = {
-    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-    fileId: RAW_PATH_A,
-    currentPath: RAW_PATH_A,
-    previousPaths: [],
-    revisionId: B,
-    modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
-    originalReviewedByDiff: {},
-    lineCount: 1,
-    contentHash: sha256(CONTENT_A),
-    updatedAt: OCCURRED_AT,
-  };
-  const legacyGlobalFile = {
-    fileId: RAW_PATH_A,
-    currentPath: RAW_PATH_A,
-    revisionId: B,
-    reviewed: [{ startLine: 0, endLineExclusive: 1 }],
-    contentHash: sha256(CONTENT_A),
-    updatedAt: OCCURRED_AT,
-  };
   await new FileSystemReviewStateRepository({ storageUris }).save(
     { kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: CONTEXT_A },
     commitFor(
       CONTEXT_A,
       68,
-      { [RAW_PATH_A]: legacyContextFile },
-      { [RAW_PATH_A]: legacyGlobalFile },
+      {
+        [RAW_PATH_A]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          fileId: RAW_PATH_A,
+          currentPath: RAW_PATH_A,
+          previousPaths: [],
+          revisionId: B,
+          modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
+          originalReviewedByDiff: {},
+          lineCount: 1,
+          contentHash: sha256(CONTENT_A),
+          updatedAt: OCCURRED_AT,
+        },
+      },
+      {
+        [RAW_PATH_A]: {
+          fileId: RAW_PATH_A,
+          currentPath: RAW_PATH_A,
+          revisionId: B,
+          reviewed: [{ startLine: 0, endLineExclusive: 1 }],
+          contentHash: sha256(CONTENT_A),
+          updatedAt: OCCURRED_AT,
+        },
+      },
     ),
   );
 
@@ -331,7 +334,7 @@ test("PR68-R002 pre-fix mixed-case Windows Global state remains current after up
       label: "#68",
       detail: repositoryRoot,
       headRevision: B,
-      selection: selectedPullRequest(),
+      selection: selectedPullRequest(repositoryRoot),
     },
     progress: undefined,
   });
@@ -407,8 +410,8 @@ const createConcurrentRuntime = () => {
   repository.setPullRequest(CONTEXT_A, commitFor(CONTEXT_A, 68));
   repository.setPullRequest(CONTEXT_B, commitFor(CONTEXT_B, 69));
   const runtime = createRuntime(repository);
-  const aText = deferred<Awaited<ReturnType<Parameters<PullRequestReviewRuntime<string>["register"]>[0]["readTextContent"]>>>();
-  const bText = deferred<Awaited<ReturnType<Parameters<PullRequestReviewRuntime<string>["register"]>[0]["readTextContent"]>>>();
+  const aText = deferred<RevisionTextContentReadResult>();
+  const bText = deferred<RevisionTextContentReadResult>();
   registerRuntimeContext(runtime, CONTEXT_A, RAW_PATH_A, async () => aText.promise);
   registerRuntimeContext(runtime, CONTEXT_B, RAW_PATH_B, async () => bText.promise);
   return { runtime, aText, bText };
