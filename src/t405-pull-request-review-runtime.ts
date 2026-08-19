@@ -102,6 +102,7 @@ export class PullRequestReviewRuntime<Uri> {
   private readonly codec = new ReviewDiffUriCodec();
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
   private activeProgressContextId: string | undefined;
+  private progressGeneration = 0;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
   public readonly diffController: ReviewDiffEditorController<Uri>;
   public readonly progress: PullRequestProgressTreeDataProvider;
@@ -330,6 +331,7 @@ export class PullRequestReviewRuntime<Uri> {
 
   /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
   public async activateProgress(contextId: string): Promise<void> {
+    const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
     this.progress.clear();
     try {
@@ -337,13 +339,16 @@ export class PullRequestReviewRuntime<Uri> {
         "PR進捗を計算",
         () => this.calculateProgress(contextId)
       );
+      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
       const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
       for (const file of calculated.progress.files) {
         lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
           calculated.registration,
           file
         );
+        if (!this.isCurrentProgressGeneration(contextId, generation)) return;
       }
+      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
       const { snapshot } = calculated.registration;
       this.progress.replaceSnapshot({
         snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
@@ -356,6 +361,7 @@ export class PullRequestReviewRuntime<Uri> {
         lineReviewabilityByFileId,
       });
     } catch (error) {
+      if (!this.isCurrentProgressGeneration(contextId, generation)) return;
       this.progress.clear();
       throw error;
     }
@@ -367,6 +373,7 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public clearProgress(): void {
+    this.progressGeneration += 1;
     this.activeProgressContextId = undefined;
     this.progress.clear();
   }
@@ -409,7 +416,7 @@ export class PullRequestReviewRuntime<Uri> {
     const persistedGlobalFile = persisted.globalState.files[resolvedFileId];
     const targetPath = persistedFile?.currentPath ??
       persistedGlobalFile?.currentPath ??
-      this.canonicalRepositoryPath(registration, logicalPath);
+      logicalPath;
     const modifiedLineCount = diffFile.newPath === undefined
       ? 0
       : persistedFile?.revisionId === registration.snapshot.headSha &&
@@ -475,7 +482,6 @@ export class PullRequestReviewRuntime<Uri> {
   ): ReviewStateCommit["contextState"] {
     const projected = clone(persisted.contextState);
     for (const diffFile of registration.snapshot.files) {
-      if (projected.files[diffFile.fileId] !== undefined) continue;
       const logicalPath = diffFile.newPath ?? diffFile.oldPath;
       if (logicalPath === undefined) continue;
       const matching = this.persistedContextFileForPath(
@@ -598,6 +604,14 @@ export class PullRequestReviewRuntime<Uri> {
     return registration.fileSystemPathSemantics === "windows"
       ? canonical.toLowerCase()
       : canonical;
+  }
+
+  private isCurrentProgressGeneration(
+    contextId: string,
+    generation: number
+  ): boolean {
+    return this.activeProgressContextId === contextId &&
+      this.progressGeneration === generation;
   }
 
   private async lineCount(
