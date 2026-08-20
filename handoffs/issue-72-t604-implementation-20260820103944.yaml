@@ -1,10 +1,10 @@
 schema_version: 1
 repository: ssaattww/RevMem
-issue_or_pr: "Issue #72"
+issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: 96057f9edc95a8f38bfc01da39eae350c29e9c39
+current_head: a32ae42e895a17be18173680effa4c537055157e
 status: implementation_complete_normal_review_pending
 report: reports/issue-72-t604-implementation-20260820103944.md
 requirements:

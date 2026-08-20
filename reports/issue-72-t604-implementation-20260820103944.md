@@ -2,7 +2,7 @@
 
 ## タスク
 
-T604 / Issue #72 — cross-window storage lock and bounded cleanup。branch は `task/t604-storage-lock-cleanup`、base/current HEAD は `96057f9edc95a8f38bfc01da39eae350c29e9c39`。実装は完了し、通常review待ちです。
+T604 / Issue #72 — cross-window storage lock and bounded cleanup。branch は `task/t604-storage-lock-cleanup`、base は `96057f9edc95a8f38bfc01da39eae350c29e9c39`、implementation current HEAD は `a32ae42e895a17be18173680effa4c537055157e`。PR #73 はdraft/openで、実装は完了し通常review待ちです。
 
 ## sub-agentを使う理由
 
