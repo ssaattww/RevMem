@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の既存 independent finding `T606-IFR001`〜`T606-IFR005`だけを同一batchで修正した。開始HEADは`f4c815d6bab84fb453276e212f7773cfdab9a042`で、technical implementation SHAは未commitのためpendingである。
+T606 / Issue #76 / PR #77 の既存 independent finding `T606-IFR001`〜`T606-IFR005`だけを同一batchで修正した。開始HEADは`f4c815d6bab84fb453276e212f7773cfdab9a042`で、technical implementation SHAは`bdf6f4ab693e8fb126b0306cdf7690d12b813128`である。
 
 ## sub-agentを使う理由
 
@@ -30,12 +30,12 @@ ProductionはCurrent Context、T305、T405 Review Contexts/PR Progress、Global 
 - IFR002 High: Current Context retryからpersistent synchronizationを外し、feedback ownerとAbortSignalをT305/T405 read pathへ伝播する。
 - IFR003 Medium: Global openはraw UI callbackを廃止してsingle redacted boundaryへ、PR Progressはline reviewabilityとpublicationを同一lifecycleへ含める。
 - IFR004 High: old fresh expectationをnot-cachedへ変更し、R2 production regressionをfocused suiteへ残す。
-- IFR005 Medium: technical SHA pending、same independent reviewer closure R2 pending、exact-head CI held、PR body external sync pending after fix commitを同期する。
+- IFR005 Medium: technical SHA `bdf6f4ab693e8fb126b0306cdf7690d12b813128`、same independent reviewer closure R2 pending、exact-head CI held、PR body external sync pending after admin commitを同期する。
 
 ## 結果
 
-IFR001〜IFR005はimplementation scopeでaddressedである。full T606 rerunは行わず、最終Green evidenceは修正後T406 selection 1/1とstatic validationである。same independent reviewer finding-limited closure R2 pending、exact-head CI held、PR bodyは`external sync pending after fix commit`である。
+IFR001〜IFR005はimplementation scopeでaddressedである。full T606 rerunは行わず、最終Green evidenceは修正後T406 selection 1/1とstatic validationである。same independent reviewer finding-limited closure R2 pending、exact-head CI held、PR bodyは`external sync pending after admin commit`である。
 
 ## リスク
 
-未commit technical SHAのためexternal metadataはまだ更新できない。full `test:t606`は旧期待1件が失敗した実行結果のままであり、R2修正後は指定focused selectionだけがGreenである。Markdown wording toolingはrepositoryに存在せずheldである。
+technical implementation SHAは同期済みだが、PR body外部同期はadmin commit後までpendingである。full `test:t606`は旧期待1件が失敗した実行結果のままであり、R2修正後は指定focused selectionだけがGreenである。Markdown wording toolingはrepositoryに存在せずheldである。

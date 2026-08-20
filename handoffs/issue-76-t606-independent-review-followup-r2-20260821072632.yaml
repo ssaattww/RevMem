@@ -4,7 +4,7 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: f4c815d6bab84fb453276e212f7773cfdab9a042
-technical_implementation_head: pending_uncommitted_r2
+technical_implementation_head: bdf6f4ab693e8fb126b0306cdf7690d12b813128
 status: independent_ifr001_through_ifr005_r2_addressed_same_reviewer_closure_pending
 findings:
   - T606-IFR001
@@ -25,5 +25,5 @@ validation:
   diff_check: pass
   markdown_wording: "held; repository tooling is absent"
 ci: held_exact_head_pr_ci
-external_sync: "PR #77 body external sync pending after fix commit"
+external_sync: "PR #77 body external sync pending after admin commit"
 next_request: "Same independent reviewer performs finding-limited closure R2 for IFR001 through IFR005 after the technical fix is committed; no full review or merge authorization."
