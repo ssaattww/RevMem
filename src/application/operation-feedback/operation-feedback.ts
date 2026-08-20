@@ -85,6 +85,8 @@ interface ActiveOperation {
   readonly id: number;
   readonly label: string;
   readonly startedAt: number;
+  /** A handled child failure makes the enclosing lifecycle terminally failed. */
+  boundaryFailure?: unknown;
 }
 
 const MAX_OPERATION_LABEL_LENGTH = 96;
@@ -159,6 +161,7 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "rate-limit",
   "network",
   "api",
+  "authentication",
   "missing-file",
   "invalid-encoding",
   "missing-patch",
@@ -262,6 +265,7 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
       }
     }
     const finalReason = error.diagnostic.attempts.at(-1)?.reason;
+    if (finalReason === "authentication") return { kind: "authentication" };
     if (finalReason === "rate-limit" || finalReason === "network" || finalReason === "git-failure") return { kind: "retryable" };
     return { kind: "validation" };
   }
@@ -397,6 +401,11 @@ export class OperationFeedback {
     private readonly now: () => number = () => Date.now()
   ) {}
 
+  /** Whether a shared outer operation already owns this Output lifecycle. */
+  public get hasActiveOperation(): boolean {
+    return this.active.length > 0;
+  }
+
   /** Runs one operation while publishing start, success/failure, and busy status. */
   public async run<T>(label: string, operation: () => Promise<T>): Promise<T> {
     const normalizedLabel = requireLabel(label);
@@ -416,12 +425,21 @@ export class OperationFeedback {
     try {
       const result = await operation();
       const finishedAt = this.now();
-      this.host.appendLog({
-        timestamp: new Date(finishedAt).toISOString(),
-        label: active.label,
-        event: "succeeded",
-        durationMs: Math.max(0, finishedAt - active.startedAt)
-      });
+      if (active.boundaryFailure === undefined) {
+        this.host.appendLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "succeeded",
+          durationMs: Math.max(0, finishedAt - active.startedAt)
+        });
+      } else {
+        this.recordRunFailure(
+          active.label,
+          active.boundaryFailure,
+          finishedAt,
+          Math.max(0, finishedAt - active.startedAt)
+        );
+      }
       return result;
     } catch (error) {
       const finishedAt = this.now();
@@ -446,7 +464,15 @@ export class OperationFeedback {
       this.pendingBoundaryDuplicates.delete(identity);
       return;
     }
-    this.appendFailure(requireLabel(label), error, this.now());
+    const active = this.active.at(-1);
+    if (active !== undefined) {
+      active.boundaryFailure ??= error;
+      return;
+    }
+    const timestamp = this.now();
+    const normalizedLabel = requireLabel(label);
+    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started" });
+    this.appendFailure(normalizedLabel, error, timestamp);
   }
 
   /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
@@ -454,8 +480,10 @@ export class OperationFeedback {
     const scope = `${operationId}\0${kind}`;
     if (this.reportedStorageLockScopes.has(scope)) return;
     this.reportedStorageLockScopes.add(scope);
+    const timestamp = new Date(this.now()).toISOString();
+    this.host.appendLog({ timestamp, label: "Storage lock", event: "started" });
     this.host.appendLog({
-      timestamp: new Date(this.now()).toISOString(),
+      timestamp,
       label: "Storage lock",
       event: kind === "stale-recovered" ? "succeeded" : "failed",
       message: `Storage lock ${kind}.`
@@ -533,13 +561,12 @@ export const runWithActiveOperationFeedback = <T>(
   label: string,
   operation: () => Promise<T>,
   retry?: BoundedRetryOptions
-): Promise<T> =>
-  activeOperationFeedback === undefined
-    ? (retry === undefined ? operation() : runWithBoundedRetry(operation, retry).then((result) => result.value))
-    : activeOperationFeedback.run(
-      label,
-      retry === undefined ? operation : () => runWithBoundedRetry(operation, retry).then((result) => result.value)
-    );
+): Promise<T> => {
+  const execute = retry === undefined ? operation : () => runWithBoundedRetry(operation, retry).then((result) => result.value);
+  const feedback = activeOperationFeedback;
+  if (feedback === undefined || feedback.hasActiveOperation) return execute();
+  return feedback.run(label, execute);
+};
 
 /** Reports a handled failure to active diagnostics when the UI host is installed. */
 export const reportActiveOperationFailure = (label: string, error: unknown): void => {

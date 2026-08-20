@@ -30,7 +30,7 @@ R001: stale/auth/retryable/validationを実在error/resultから分類。R002: C
 
 ## 結果
 
-R001〜R007 addressed。次の必要作業は同一normal reviewerによるfinding限定closureである。
+この初回follow-upの後にR2 closureを実施した。R2の正確なfix/evidenceは`reports/issue-76-t606-normal-review-followup-r2-20260820233252.md`に記録し、同一normal reviewerによるfinding限定closure待ちである。
 
 ## リスク
 

@@ -258,6 +258,7 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
     "t604-storage-lock-cleanup",
     "t605-multi-root-remote-boundaries",
   ]) assert.match(focused, new RegExp(`test-dist/test/unit/${suite}\\.test\\.js`, "u"));
+  assert.match(focused, /test-dist\/test\/integration\/mock-github\.test\.js/u);
   assert.match(
     workflow,
     /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,

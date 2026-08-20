@@ -30,7 +30,7 @@ Red: `npm run test:t606` は初回に未exportの`classifyOperationFailure`と`r
 
 ## 結果
 
-implementation complete。既存operation lifecycleを一元化して、failure時のactivity終了、fail-closed UI、retry境界、privacy-safe Outputを接続した。次の必要作業はnormal reviewである。
+初回implementation complete。後続R2 closureは`reports/issue-76-t606-normal-review-followup-r2-20260820233252.md`に記録する。次の必要作業は同一normal reviewerによるfinding限定closureである。
 
 ## リスク
 

@@ -169,7 +169,8 @@ test("R65-005 preserves safe PR progress acquisition attempts and final cause", 
 
   feedback.reportFailure("PR進捗を取得", failure);
 
-  const terminal = host.logs[0];
+  assert.equal(host.logs[0]?.event, "started");
+  const terminal = host.logs[1];
   assert.equal(terminal?.event, "failed");
   assert.equal(terminal?.errorName, "OperationDiagnosticError");
   assert.equal(

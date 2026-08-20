@@ -249,8 +249,8 @@ test("records a swallowed diagnostic failure without changing active status", ()
   feedback.reportFailure("PR進捗を計算", new Error("diff unavailable"));
 
   assert.deepEqual(host.statuses, []);
-  assert.equal(host.logs[0]?.event, "failed");
-  assert.equal(host.logs[0]?.message, "Operation failed; details were redacted.");
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
+  assert.equal(host.logs[1]?.message, "Operation failed; details were redacted.");
   assert.equal(host.revealCount, 1);
 });
 

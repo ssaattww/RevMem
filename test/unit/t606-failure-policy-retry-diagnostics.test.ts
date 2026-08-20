@@ -4,8 +4,12 @@ import test from "node:test";
 
 import {
   OperationFeedback,
+  OperationDiagnosticError,
   classifyOperationFailure,
+  reportActiveOperationFailure,
   runWithBoundedRetry,
+  runWithActiveOperationFeedback,
+  setActiveOperationFeedback,
   type OperationFeedbackHost,
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index";
@@ -33,6 +37,10 @@ test("T606 classifies retryable, permanent, stale, authentication, and validatio
   assert.equal(classifyOperationFailure(new StaleReviewStateError({
     kind: "git", repositoryId: "root-a", contextId: "branch:main"
   })).kind, "stale");
+  assert.equal(classifyOperationFailure(new OperationDiagnosticError({
+    code: "PR_PROGRESS_UNAVAILABLE",
+    attempts: [{ source: "github-patch", reason: "authentication" }],
+  })).kind, "authentication");
 });
 
 test("T606 retries only retryable faults with a bounded cancellable sequence", async () => {
@@ -54,6 +62,23 @@ test("T606 retries only retryable faults with a bounded cancellable sequence", a
   );
 });
 
+test("T606 never retries authentication, validation, stale, or partial-side-effect failures", async () => {
+  const nonRetryable = [
+    Object.assign(new Error("auth"), { status: 401 }),
+    new TypeError("validation"),
+    new StaleReviewStateError({ kind: "git", repositoryId: "root-a", contextId: "branch:main" }),
+    Object.assign(new Error("disk full after write"), { code: "ENOSPC" }),
+  ];
+  for (const failure of nonRetryable) {
+    let calls = 0;
+    await assert.rejects(() => runWithBoundedRetry(async () => {
+      calls += 1;
+      throw failure;
+    }, { sleep: async () => undefined }), failure);
+    assert.equal(calls, 1);
+  }
+});
+
 test("T606 emits one bounded single-line redacted ERROR and always clears activity", async () => {
   const host = new FakeHost();
   const feedback = new OperationFeedback(host, () => 1);
@@ -67,15 +92,39 @@ test("T606 emits one bounded single-line redacted ERROR and always clears activi
   assert.equal(host.clear, 1);
 });
 
-test("T606 production boundaries use the shared lifecycle", async () => {
-  const [entry, reviewContexts, globalRuntime, normalCommands] = await Promise.all([
+test("T606 makes a handled inner failure terminal exactly once for its shared operation", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 1);
+  setActiveOperationFeedback(feedback);
+  try {
+    await runWithActiveOperationFeedback("Review Contextsを更新", async () => {
+      await runWithActiveOperationFeedback("PR進捗を取得", async () => {
+        reportActiveOperationFailure("PR進捗を取得", new OperationDiagnosticError({
+          code: "PR_PROGRESS_UNAVAILABLE",
+          attempts: [{ source: "github-patch", reason: "authentication" }],
+        }));
+      });
+    });
+    assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
+    assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 0);
+    assert.equal(host.clear, 1);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("T606 production boundaries use the shared lifecycle and stale publication fence", async () => {
+  const [entry, reviewContexts, reviewContextsUi, globalRuntime, normalCommands] = await Promise.all([
     readFile("src/t305-extension.ts", "utf8"),
     readFile("src/t405-review-contexts-runtime.ts", "utf8"),
+    readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8"),
     readFile("src/ui/global-understanding/vscode-global-understanding-runtime.ts", "utf8"),
     readFile("src/ui/normal-editor/review-command-registration.ts", "utf8"),
   ]);
   assert.match(entry, /composeStartupFeedback/u);
   assert.match(reviewContexts, /reportActiveOperationFailure/u);
+  assert.match(reviewContextsUi, /const generation = \+\+this\.generation/u);
+  assert.match(reviewContextsUi, /if \(generation !== this\.generation\) return/u);
   assert.match(globalRuntime, /runWithActiveOperationFeedback/u);
   assert.match(normalCommands, /runWithActiveOperationFeedback/u);
 });

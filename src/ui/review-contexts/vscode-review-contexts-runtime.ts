@@ -124,6 +124,7 @@ export class VscodeCurrentPullRequestSelectionStore {
 class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
   private readonly changed = new vscode.EventEmitter<ReviewContextListItem | undefined | null | void>();
   private items: readonly ReviewContextListItem[] = [];
+  private generation = 0;
 
   public readonly onDidChangeTreeData = this.changed.event;
 
@@ -158,11 +159,15 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
   }
 
   public async refresh(): Promise<void> {
-    this.items = [...await this.source.load()];
+    const generation = ++this.generation;
+    const loaded = await this.source.load();
+    if (generation !== this.generation) return;
+    this.items = [...loaded];
     this.changed.fire();
   }
   /** Clears the list when its replacement cannot be proven current. */
   public clear(): void {
+    this.generation += 1;
     this.items = [];
     this.changed.fire();
   }
