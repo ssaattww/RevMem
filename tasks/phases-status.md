@@ -31,13 +31,13 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T605はmainへ統合済み。T606はIFR001 closed維持、independent IFR002〜005 R4 addressed・same reviewer closure待ち、T607〜T608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T605はmainへ統合済み。T606はIFR001/003/005 closed維持、independent IFR002/004 R6 addressed・same reviewer closure待ち、T607〜T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（IFR001/005 closed維持、independent IFR002〜004 R5をaddressed。technical implementation SHAは`a80d114d899497f3a504411962ba6207c0fccbbf`、same reviewer finding限定closure R5 pending、exact-head CI held、PR body外部同期はtechnical head `a80d114d899497f3a504411962ba6207c0fccbbf`に対して完了、parent final admin head refresh pending。`test:t606`は204 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
+- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（IFR001/003/005 closed維持、independent IFR002/004 R6をaddressed。technical implementation SHAはcommit前のためpending、same reviewer finding限定closure R6 pending、exact-head CI held、PR body external sync pending。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
 - 次の工程: 独立最終review
 - 後続候補: T607
 
@@ -183,7 +183,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
-- T606: IFR001/005 closedを維持し、independent IFR002〜004 R5をaddressed。technical implementation SHAは`a80d114d899497f3a504411962ba6207c0fccbbf`（Issue #76、PR #77、same independent reviewer finding限定closure R5 pending、exact-head CI held、PR body外部同期はtechnical head `a80d114d899497f3a504411962ba6207c0fccbbf`に対して完了、parent final admin head refresh pending）。`test:t606`は204 pass / 0 fail / 2 Windows POSIX skip。end-of-Issue skill-gap decisionは`no new skill action`で、feedbackは既存CodexSkill #58/#61へ集約済み。
+- T606: IFR001/003/005 closedを維持し、independent IFR002/004 R6をaddressed。technical implementation SHAはcommit前のためpending（Issue #76、PR #77、same independent reviewer finding限定closure R6 pending、exact-head CI held、PR body external sync pending）。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。end-of-Issue skill-gap decisionは`no new skill action`で、feedbackは既存CodexSkill #58/#61へ集約済み。
 - T607〜T608: 未着手
 
 ### 終了チェックポイント

@@ -277,12 +277,13 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       signal?: AbortSignal,
       feedbackContext?: OperationFeedbackContext,
     ) => Promise<readonly ReviewContextState[]>,
-    private readonly progressFor: (
-      context: ReviewContextState,
-      repositoryRoot: string,
-      signal?: AbortSignal,
-      feedbackContext?: OperationFeedbackContext,
-    ) => Promise<ReviewContextListProgress | undefined>,
+  private readonly progressFor: (
+    context: ReviewContextState,
+    repositoryRoot: string,
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    deferCachePublish?: boolean,
+  ) => Promise<ReviewContextListProgress | undefined>,
     private readonly cacheStatusByContextId: ReadonlyMap<string, ReviewContextCacheStatus>,
   ) {}
 
@@ -408,7 +409,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
       );
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
-      const progress = await this.progressFor(pullRequest, owner.repositoryRoot, signal, feedbackContext);
+      const progress = await this.progressFor(pullRequest, owner.repositoryRoot, signal, feedbackContext, false);
       assertCurrent();
       const pr = pullRequest.pullRequest;
       const projected: CurrentContextUiSnapshot = {
@@ -797,8 +798,9 @@ export function registerT405ReviewContextsRuntime(
     _repositoryRoot: string,
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    deferCachePublish = true,
   ): Promise<ReviewContextListProgress | undefined> => {
-    const { result } = await acquire(context, false, signal, feedbackContext, true);
+    const { result } = await acquire(context, false, signal, feedbackContext, deferCachePublish);
     if (result.kind !== "acquired") {
       throw new OperationDiagnosticError({
         code: "PR_PROGRESS_UNAVAILABLE",

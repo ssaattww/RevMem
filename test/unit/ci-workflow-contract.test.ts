@@ -254,6 +254,7 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
     "t606-failure-policy-retry-diagnostics",
     "t606-production-failure-matrix",
     "t606-r6-production-matrix",
+    "t606-r6-real-composition",
     "t606-r5-production-activation",
     "local-git-adapter",
     "t405-github-lifecycle",
