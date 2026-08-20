@@ -2,7 +2,7 @@
 
 ## タスク
 
-R2 closureで再openだった7件（T604-R001〜R005/R007/R008）を、承認済みT604脅威モデルに照らしてR3 batchで対応した。technical fix HEADはcommit前のため`pending R3 follow-up commit`である。
+R2 closureで再openだった7件（T604-R001〜R005/R007/R008）を、承認済みT604脅威モデルに照らしてR3 batchで対応した。technical fix HEADは`5d296c6e078599b95bd595288ffd7d6cbcec2f0b`である。
 
 ## sub-agentを使う理由
 
