@@ -4,9 +4,9 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: 5d296c6e078599b95bd595288ffd7d6cbcec2f0b
-status: normal_review_r3_seven_findings_addressed_same_reviewer_closure_pending
-report: reports/issue-72-t604-normal-review-followup-r3-20260820193342.md
+current_head: 6ff92fba68e4bd2cd1ec2db060a796b1166d83b6
+status: normal_review_r3_complete_all_findings_closed_pass_with_held_independent_final_review_pending
+report: reports/issue-72-t604-normal-finding-closure-r3-20260820195213.md
 requirements:
   - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
   - Only expired locks are recovered; diagnostics disclose no path, source, repository ID, or owner token.
@@ -23,7 +23,7 @@ validation:
     - npm run validate:architecture:negative
     - git diff --check
   ci: not run; merge-gate held by explicit task policy
-next_request: Ask the same normal reviewer to verify only R3's addressed T604-R001/R002/R003/R004/R005/R007/R008 at fix HEAD 5d296c6e078599b95bd595288ffd7d6cbcec2f0b. Do not add review scope, run CI, push, create a PR, merge, or self-review.
+next_request: Ask a fresh independent reviewer to perform the T604 independent final review at HEAD 6ff92fba68e4bd2cd1ec2db060a796b1166d83b6. Do not add implementation scope, run CI, push, create a PR, merge, or self-review.
 remaining_risks:
-  - R3 addressed seven finding closure conditions locally; same normal reviewer verification remains pending.
+  - Normal review R3 is complete: T604-R001 through T604-R009 are closed with verdict pass_with_held; fresh independent final review remains pending.
   - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.
