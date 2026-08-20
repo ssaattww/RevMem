@@ -312,6 +312,24 @@ extends CoherentFileSystemReviewStateRepository {
     storageRoot: string,
     operation: (lease: StorageRootLease) => Promise<T>
   ): Promise<T> {
+    const runUnderCoordinator = async (): Promise<T> => {
+      const coordinator = this.repositoryOptions.storageLockCoordinator ?? (
+        this.repositoryOptions.atomicFileStore !== undefined &&
+        !(this.repositoryOptions.atomicFileStore instanceof NodeAtomicTextFileStore)
+          ? new InProcessStorageRootLockCoordinator()
+          : undefined
+      );
+      return withStorageRootLockCoordinator(coordinator, {
+        rootPath: storageRoot,
+        timeoutMs: this.repositoryOptions.storageLock?.timeoutMs,
+        leaseMs: this.repositoryOptions.storageLock?.leaseMs,
+        retryDelayMs: this.repositoryOptions.storageLock?.retryDelayMs,
+        notifyDiagnostic: this.repositoryOptions.notifyStorageLockDiagnostic
+      }, operation);
+    };
+    if (this.repositoryOptions.disableOuterWriteSerializationForTest) {
+      return runUnderCoordinator();
+    }
     const previous = sharedOuterWriteTailByStorageRoot.get(storageRoot);
     let release: () => void = () => undefined;
     const tail = new Promise<void>((resolve) => {
@@ -321,19 +339,7 @@ extends CoherentFileSystemReviewStateRepository {
 
     await previous;
     try {
-      const coordinator = this.repositoryOptions.storageLockCoordinator ?? (
-        this.repositoryOptions.atomicFileStore !== undefined &&
-        !(this.repositoryOptions.atomicFileStore instanceof NodeAtomicTextFileStore)
-          ? new InProcessStorageRootLockCoordinator()
-          : undefined
-      );
-      return await withStorageRootLockCoordinator(coordinator, {
-        rootPath: storageRoot,
-        timeoutMs: this.repositoryOptions.storageLock?.timeoutMs,
-        leaseMs: this.repositoryOptions.storageLock?.leaseMs,
-        retryDelayMs: this.repositoryOptions.storageLock?.retryDelayMs,
-        notifyDiagnostic: this.repositoryOptions.notifyStorageLockDiagnostic
-      }, operation);
+      return await runUnderCoordinator();
     } finally {
       release();
       if (sharedOuterWriteTailByStorageRoot.get(storageRoot) === tail) {

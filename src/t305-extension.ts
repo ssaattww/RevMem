@@ -5,7 +5,7 @@ import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
-import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback } from "./application/operation-feedback/index";
+import { composeStartupFeedback } from "./application/operation-feedback/index";
 import { VscodeOperationFeedbackHost } from "./ui/operation-feedback/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
@@ -79,13 +79,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   // shared Output boundary first so its queued terminal lock diagnostic flushes.
   const startupFeedbackHost = new VscodeOperationFeedbackHost();
   context.subscriptions.push(startupFeedbackHost);
-  setActiveOperationFeedback(new OperationFeedback(startupFeedbackHost));
-  await runPersistenceStartupMigration({
-    storageUris: {
-      globalStorageUri: context.globalStorageUri,
-      storageUri: context.storageUri
-    },
-    notifyStorageLockDiagnostic: reportActiveStorageLockDiagnostic
+  await composeStartupFeedback(startupFeedbackHost, async (notifyStorageLockDiagnostic) => {
+    await runPersistenceStartupMigration({
+      storageUris: {
+        globalStorageUri: context.globalStorageUri,
+        storageUri: context.storageUri
+      },
+      notifyStorageLockDiagnostic
+    });
   });
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;

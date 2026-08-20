@@ -239,4 +239,8 @@ export interface FileSystemReviewStateRepositoryOptions {
   readonly storageLock?: { readonly timeoutMs?: number; readonly leaseMs?: number; readonly retryDelayMs?: number };
   /** Optional lock coordinator for a custom AtomicTextFileStore namespace. */
   readonly storageLockCoordinator?: StorageRootLockCoordinator;
+  /** Test-only fault seam immediately before a state document becomes durable. */
+  readonly beforeAtomicPublication?: (filePath: string) => void | Promise<void>;
+  /** Test-only override for simulating two independently scheduled Extension Hosts. */
+  readonly disableOuterWriteSerializationForTest?: boolean;
 }

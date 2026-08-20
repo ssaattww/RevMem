@@ -11,6 +11,7 @@ import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "../../src/ad
 import {
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
+  InProcessStorageRootLockCoordinator,
   NodeAtomicTextFileStore,
   NodeStorageRootLock,
   StorageRootLeaseLostError,
@@ -18,13 +19,18 @@ import {
   resolveReviewStateStorageRoute,
   type ReviewStateCommit,
   type ReviewStateRepositoryTarget,
-  type ReviewStateStorageUris
+  type ReviewStateStorageUris,
+  type AtomicTextFileStore,
+  type StorageRootLease,
+  type StorageRootLockCoordinator
 } from "../../src/adapters/state-repository/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewHistoryEvent } from "../../src/core/contracts/index";
 import { NonGitSnapshotTracker } from "../../src/application/non-git-snapshots/index";
 import type { GitHubPullRequestCacheEntry } from "../../src/application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../src/application/github-pr-diff/index";
 import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
+import { composeStartupFeedback } from "../../src/application/operation-feedback/startup-feedback-composition";
+import { runPersistenceStartupMigration } from "../../src/adapters/persistence-startup-migration";
 
 const target = (contextId: string): ReviewStateRepositoryTarget => ({
   kind: "git",
@@ -118,6 +124,92 @@ const runProductionPersistenceChild = (rootPath: string, action: "startup" | "wr
     });
   });
 };
+
+class Deferred {
+  public readonly promise: Promise<void>;
+  private resolvePromise: () => void = () => undefined;
+
+  public constructor() {
+    this.promise = new Promise<void>((resolve) => { this.resolvePromise = resolve; });
+  }
+
+  public resolve(): void { this.resolvePromise(); }
+}
+
+/** Delegates every real publication to Node's atomic store while retaining exact observed bytes. */
+class RecordingNodeAtomicTextFileStore implements AtomicTextFileStore {
+  public readonly writes: Array<{ readonly filePath: string; readonly content: string }> = [];
+  public readonly deletes: string[] = [];
+
+  public constructor(private readonly nodeStore: NodeAtomicTextFileStore) {}
+
+  public readText(filePath: string): Promise<string | undefined> { return this.nodeStore.readText(filePath); }
+
+  public async writeTextAtomically(filePath: string, content: string): Promise<void> {
+    await this.nodeStore.writeTextAtomically(filePath, content);
+    this.writes.push({ filePath, content });
+  }
+
+  public async deleteText(filePath: string): Promise<void> {
+    await this.nodeStore.deleteText(filePath);
+    this.deletes.push(filePath);
+  }
+}
+
+/** Test-only recovery coordinator that fences a detached owner before its blocked publication resumes. */
+class RecoveryCoordinator implements StorageRootLockCoordinator {
+  private calls = 0;
+  public oldOwnerLost = false;
+  public readonly oldPublicationReached = new Deferred();
+  public readonly releaseOldPublication = new Deferred();
+
+  public async run<T>(_rootPath: string, operation: (lease: StorageRootLease) => Promise<T>): Promise<T> {
+    this.calls += 1;
+    const oldOwner = this.calls === 1;
+    return operation({
+      assertOwned: async () => {
+        if (oldOwner && this.oldOwnerLost) throw new StorageRootLeaseLostError();
+      }
+    });
+  }
+}
+
+/** Explicit shared coordinator used to prove all custom-store persistence consumers serialize on one root. */
+class GatedRecordingCoordinator implements StorageRootLockCoordinator {
+  private readonly coordinator = new InProcessStorageRootLockCoordinator();
+  private firstEntered = new Deferred();
+  private releaseFirst = new Deferred();
+  private firstIsHeld = false;
+  private active = 0;
+  public maximumActive = 0;
+  public readonly roots: string[] = [];
+
+  public async run<T>(rootPath: string, operation: (lease: StorageRootLease) => Promise<T>): Promise<T> {
+    return this.coordinator.run(rootPath, async (lease) => {
+      this.roots.push(rootPath);
+      this.active += 1;
+      this.maximumActive = Math.max(this.maximumActive, this.active);
+      try {
+        if (this.firstIsHeld) {
+          this.firstIsHeld = false;
+          this.firstEntered.resolve();
+          await this.releaseFirst.promise;
+        }
+        return await operation(lease);
+      } finally {
+        this.active -= 1;
+      }
+    });
+  }
+
+  public armContenders(): void {
+    this.firstEntered = new Deferred();
+    this.releaseFirst = new Deferred();
+    this.firstIsHeld = true;
+  }
+  public waitUntilFirstOperationIsHeld(): Promise<void> { return this.firstEntered.promise; }
+  public releaseContenders(): void { this.releaseFirst.resolve(); }
+}
 
 test("T604 refuses a live root lock without exposing owner or path diagnostics", async () => {
   const temporary = await createTemporaryStorage();
@@ -226,6 +318,53 @@ test("T604 fences a detached owner before it can publish after a successor recov
     const successor = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "second" }).acquire();
     await assert.rejects(() => first.assertOwned(), StorageRootLeaseLostError);
     await successor();
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 rejects a dead owner's real state publication after a successor publishes newer Context, Global, and manifest", async () => {
+  const temporary = await createTemporaryStorage();
+  const stateTarget = target("branch:lease-lost-publication");
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, stateTarget);
+  const publications = new RecordingNodeAtomicTextFileStore(new NodeAtomicTextFileStore(route.rootPath));
+  const recovery = new RecoveryCoordinator();
+  const oldCommit = commit(1, stateTarget.contextId);
+  const newerCommit = commit(2, stateTarget.contextId);
+  try {
+    const oldRepository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris,
+      atomicFileStore: publications,
+      storageLockCoordinator: recovery,
+      disableOuterWriteSerializationForTest: true,
+      beforeAtomicPublication: async () => {
+        recovery.oldPublicationReached.resolve();
+        await recovery.releaseOldPublication.promise;
+      }
+    });
+    const successorRepository = new FileSystemReviewStateRepository({
+      storageUris: temporary.storageUris,
+      atomicFileStore: publications,
+      storageLockCoordinator: recovery,
+      disableOuterWriteSerializationForTest: true
+    });
+
+    const oldSave = oldRepository.save(stateTarget, oldCommit);
+    const oldRejected = assert.rejects(oldSave, StorageRootLeaseLostError);
+    await recovery.oldPublicationReached.promise;
+    recovery.oldOwnerLost = true;
+    await successorRepository.save(stateTarget, newerCommit);
+    recovery.releaseOldPublication.resolve();
+    await oldRejected;
+
+    const oldPublications = publications.writes.filter(({ content }) => content.includes("2026-08-20T00:00:01.000Z"));
+    const newerPublications = publications.writes.filter(({ content }) => content.includes("2026-08-20T00:00:02.000Z"));
+    assert.equal(oldPublications.length, 0, "the detached owner publishes zero Context, Global, or manifest bytes");
+    assert.equal(newerPublications.length, 3, "the successor publishes the newer Context, Global, and manifest");
+    const manifest = await publications.readText(route.statePointerPath);
+    assert.match(manifest ?? "", /2026-08-20T00:00:02.000Z/u);
+    assert.doesNotMatch(manifest ?? "", /2026-08-20T00:00:01.000Z/u);
+    assert.equal((await successorRepository.load(stateTarget))?.globalState.updatedAt, "2026-08-20T00:00:02.000Z");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
@@ -352,6 +491,82 @@ test("T604 cache cleanup retains the published generation and removes superseded
   }
 });
 
+test("T604 serializes state, history, cache, snapshot cleanup, and startup migration through one explicit custom-store coordinator", async () => {
+  const temporary = await createTemporaryStorage();
+  const storageUris: ReviewStateStorageUris = { globalStorageUri: temporary.storageUris.globalStorageUri };
+  const stateTarget = target("branch:custom-store-all-consumers");
+  const route = resolveReviewStateStorageRoute(storageUris, stateTarget);
+  const customStore = new RecordingNodeAtomicTextFileStore(new NodeAtomicTextFileStore());
+  const coordinator = new GatedRecordingCoordinator();
+  const commonOptions = { atomicFileStore: customStore, storageLockCoordinator: coordinator };
+  const snapshotStorage = new NodeNonGitSnapshotStorage({ snapshotDirectory: route.snapshotDirectory, ...commonOptions });
+  const snapshotTracker = new NonGitSnapshotTracker(snapshotStorage, new NodeNonGitSnapshotCodec(), {
+    maxSnapshots: 1, maxCompressedBytes: 4_096, retentionMs: 60_000
+  });
+  const request: PullRequestDiffAcquisitionRequest = {
+    contextId: "github:github.com/owner/repo#604",
+    repository: { host: "github.com", owner: "owner", repository: "repo" },
+    number: 604,
+    baseSha: "1".repeat(40),
+    headSha: "2".repeat(40)
+  };
+  const entry = (updatedAt: string): GitHubPullRequestCacheEntry => ({
+    schemaVersion: 1,
+    request,
+    metadata: { number: 604, title: "T604", url: "https://github.com/owner/repo/pull/604", state: "open", baseSha: request.baseSha, headSha: request.headSha },
+    snapshot: { contextId: request.contextId, baseSha: request.baseSha, headSha: request.headSha, originalDiffId: `${request.baseSha}..${request.headSha}`, files: [] },
+    updatedAt,
+    expiresAt: "2026-08-21T00:00:00.000Z"
+  });
+  let generation = 0;
+  const cache = new NodeGitHubPullRequestCacheStorage({
+    cacheDirectory: route.cacheDirectory!,
+    ...commonOptions,
+    createGenerationId: () => `generation-${++generation}`
+  });
+  try {
+    await new FileSystemReviewStateRepository({ storageUris, ...commonOptions }).save(stateTarget, commit(1, stateTarget.contextId));
+    await cache.write(entry("2026-08-20T00:00:01.000Z"));
+    const staleSnapshot = await snapshotTracker.save({ workspaceContextId: "workspace", fileId: "stale", content: "stale", reviewedRanges: [] }, 1);
+    const legacySnapshot = "a".repeat(64);
+    await snapshotStorage.put(legacySnapshot, Uint8Array.of(1), 3);
+    await customStore.writeTextAtomically(
+      path.join(route.snapshotDirectory, "entries", `${legacySnapshot}.json`),
+      JSON.stringify({ createdAt: 3, bytes: Buffer.from(Uint8Array.of(1)).toString("base64") })
+    );
+    await snapshotStorage.setLatest("workspace", "legacy", legacySnapshot);
+
+    coordinator.armContenders();
+    const newerSnapshot = snapshotTracker.saveLatest({ workspaceContextId: "workspace", fileId: "latest", content: "newer", reviewedRanges: [] }, 4);
+    const contenders = Promise.all([
+      new FileSystemReviewStateRepository({ storageUris, ...commonOptions }).save(stateTarget, commit(2, stateTarget.contextId)),
+      new JsonlReviewHistoryStore({ storageUris, ...commonOptions }).append(stateTarget, event("custom-store-history", stateTarget.contextId)),
+      cache.write(entry("2026-08-20T00:00:02.000Z")),
+      newerSnapshot,
+      runPersistenceStartupMigration({ storageUris, ...commonOptions })
+    ]);
+    await coordinator.waitUntilFirstOperationIsHeld();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    coordinator.releaseContenders();
+    const [, , , savedSnapshot] = await contenders;
+
+    assert.equal(coordinator.maximumActive, 1, "all persistence families share one same-root coordinator");
+    assert.ok(coordinator.roots.length >= 5);
+    assert.ok(coordinator.roots.every((rootPath) => rootPath === route.rootPath));
+    assert.equal((await new FileSystemReviewStateRepository({ storageUris, ...commonOptions }).load(stateTarget))?.globalState.updatedAt, "2026-08-20T00:00:02.000Z");
+    assert.match(await customStore.readText(path.join(route.historyDirectory, "events-2026-08.jsonl")) ?? "", /custom-store-history/u);
+    assert.equal((await cache.read(request))?.updatedAt, "2026-08-20T00:00:02.000Z");
+    assert.ok(customStore.deletes.some((filePath) => filePath.includes("generation-1")), "cache removes superseded custom-store generations");
+    assert.equal(await snapshotStorage.getLatest("workspace", "latest"), savedSnapshot.snapshotId);
+    assert.notEqual(await snapshotStorage.get(savedSnapshot.snapshotId), undefined);
+    assert.equal(await snapshotStorage.get(staleSnapshot.snapshotId), undefined, "snapshot cleanup removes the stale unreferenced generation");
+    assert.match(await customStore.readText(path.join(route.snapshotDirectory, "entries", `${legacySnapshot}.json`)) ?? "", /"schemaVersion":1/u);
+    assert.equal(await customStore.readText(route.lockPath), undefined, "the custom-store run never creates a host filesystem lock path");
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
 test("T604 snapshot cleanup retains a referenced generation and removes expired unreferenced entries", async () => {
   const temporary = await createTemporaryStorage();
   const storage = new NodeNonGitSnapshotStorage({ snapshotDirectory: path.join(temporary.root, "snapshots"), retentionMs: 0, maxEntries: 1 });
@@ -409,6 +624,8 @@ test("T604 runs production startup recovery against real child writers and resta
     // This is an interrupted pre-v1 pointer publication: startup recovery must
     // quarantine it, then never restore an earlier plan over the writer child.
     await writeFile(path.join(route.snapshotDirectory, "latest", `${pointerName}.json`), "{partial", "utf8");
+    await mkdir(path.join(route.snapshotDirectory, "entries"), { recursive: true });
+    await writeFile(path.join(route.snapshotDirectory, "entries", `${"c".repeat(64)}.json`), "{corrupt-wrapper", "utf8");
     const killed = startLockChild(route.rootPath, 2_500);
     await new Promise((resolve) => setTimeout(resolve, 60));
     killed.child.kill();
@@ -462,16 +679,13 @@ test("T604 keeps active snapshots above count and byte limits, publishes through
     const first = await permissive.saveLatest({ workspaceContextId: "workspace", fileId: "first", content: content("first"), reviewedRanges: [] }, 1);
     const second = await permissive.saveLatest({ workspaceContextId: "workspace", fileId: "second", content: content("second"), reviewedRanges: [] }, 2);
     assert.ok(first.compressedBytes + second.compressedBytes > strictLimits.maxCompressedBytes, "two active generations exceed the explicit byte limit");
-    const raced = await permissive.save({ workspaceContextId: "workspace", fileId: "raced", content: content("raced"), reviewedRanges: [] }, 3);
-    await Promise.allSettled([
+    const raced = await Promise.all([
       new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), strictLimits)
-        .save({ workspaceContextId: "workspace", fileId: "interleaved", content: content("interleaved"), reviewedRanges: [] }, 4),
-      storage.setLatest("workspace", "raced", raced.snapshotId)
-    ]);
-    const racedPointer = await storage.getLatest("workspace", "raced");
-    if (racedPointer === raced.snapshotId) {
-      assert.notEqual(await storage.get(raced.snapshotId), undefined, "an interleaved active pointer never names a deleted generation");
-    }
+        .saveLatest({ workspaceContextId: "workspace", fileId: "raced", content: content("raced"), reviewedRanges: [] }, 4),
+      storage.cleanup(4)
+    ]).then(([saved]) => saved);
+    assert.equal(await storage.getLatest("workspace", "raced"), raced.snapshotId);
+    assert.notEqual(await storage.get(raced.snapshotId), undefined, "a successful atomic saveLatest retains its current generation");
     await permissive.save({ workspaceContextId: "workspace", fileId: "cleanup-stale", content: content("cleanup-stale"), reviewedRanges: [] }, 5);
     failCleanupDelete = true;
 
@@ -493,10 +707,19 @@ test("T604 keeps active snapshots above count and byte limits, publishes through
   }
 });
 
-test("T604 composes the Review Range Output lifecycle before startup migration", async () => {
-  const composition = await readFile("src/t305-extension.ts", "utf8");
-  const outputSetup = composition.indexOf("new VscodeOperationFeedbackHost()");
-  const startupMigration = composition.indexOf("await runPersistenceStartupMigration(");
-  assert.ok(outputSetup >= 0 && outputSetup < startupMigration);
-  assert.match(composition, /setActiveOperationFeedback\(new OperationFeedback\(startupFeedbackHost\)\)/u);
+test("T604 flushes a terminal startup lock failure through the production feedback composition exactly once", async () => {
+  const entries: unknown[] = [];
+  let reveals = 0;
+  await assert.rejects(() => composeStartupFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined,
+    appendLog: (entry) => { entries.push(entry); }, revealLog: () => { reveals += 1; }
+  }, async (notify) => {
+    notify({ kind: "failure", operationId: "startup-terminal" });
+    notify({ kind: "failure", operationId: "startup-terminal" });
+    throw new StorageRootLockTimeoutError();
+  }), StorageRootLockTimeoutError);
+  assert.equal(entries.length, 1);
+  assert.equal(reveals, 1);
+  assert.doesNotMatch(JSON.stringify(entries), /startup-terminal|repository|path/u);
+  setActiveOperationFeedback(undefined);
 });
