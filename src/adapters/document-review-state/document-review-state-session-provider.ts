@@ -25,6 +25,7 @@ import type {
   ResourceUri,
   StableHash
 } from "../../application/workspace-identity/index";
+import { resolveWorkspaceResourceEligibility } from "../../application/workspace-identity/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -223,6 +224,40 @@ const canonicalDocumentUri = (
   return `${scheme}://${authority}${encodeCanonicalPath(normalizedPath)}`;
 };
 
+/** Rejects non-filesystem and non-member workspace descriptors before Git or persistence acquisition. */
+export const validateDocumentReviewDescriptor = (
+  descriptor: DocumentEditorReviewDescriptor
+): void => {
+  if (descriptor.documentUri.scheme !== "file" && descriptor.documentUri.scheme !== "vscode-remote") {
+    throw new TypeError("document URI must use a filesystem-backed scheme.");
+  }
+  canonicalDocumentUri(descriptor.documentUri, descriptor.fileSystemPathSemantics);
+  assertNonEmpty(descriptor.documentFsPath, "documentFsPath");
+  assertNonEmpty(descriptor.contentHash, "contentHash");
+  assertLineCount(descriptor.lineCount);
+  if (
+    descriptor.fileSystemPathSemantics !== "windows" &&
+    descriptor.fileSystemPathSemantics !== "posix"
+  ) {
+    throw new TypeError(
+      'fileSystemPathSemantics must be either "windows" or "posix".'
+    );
+  }
+  if (descriptor.workspace !== undefined) {
+    const eligibility = resolveWorkspaceResourceEligibility({
+      documentUri: descriptor.documentUri,
+      workspaceFolders: [{
+        uri: descriptor.workspace.workspaceFolderUri,
+        name: descriptor.workspace.displayName
+      }],
+      fileSystemPathSemantics: descriptor.fileSystemPathSemantics
+    });
+    if (eligibility?.relativePath === undefined) {
+      throw new TypeError("document URI must be an eligible member of its workspace folder.");
+    }
+  }
+};
+
 const contextRevision = (state: ReviewContextState): string | undefined =>
   state.kind === "pull-request"
     ? state.pullRequest?.headSha
@@ -312,21 +347,7 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private validateDescriptor(descriptor: DocumentEditorReviewDescriptor): void {
-    if (descriptor.documentUri.scheme !== "file" && descriptor.documentUri.scheme !== "vscode-remote") {
-      throw new TypeError("document URI must use a filesystem-backed scheme.");
-    }
-    canonicalDocumentUri(descriptor.documentUri, descriptor.fileSystemPathSemantics);
-    assertNonEmpty(descriptor.documentFsPath, "documentFsPath");
-    assertNonEmpty(descriptor.contentHash, "contentHash");
-    assertLineCount(descriptor.lineCount);
-    if (
-      descriptor.fileSystemPathSemantics !== "windows" &&
-      descriptor.fileSystemPathSemantics !== "posix"
-    ) {
-      throw new TypeError(
-        'fileSystemPathSemantics must be either "windows" or "posix".'
-      );
-    }
+    validateDocumentReviewDescriptor(descriptor);
   }
 
   private toWorkspaceDescriptor(

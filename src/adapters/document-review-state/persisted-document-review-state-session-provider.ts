@@ -32,6 +32,7 @@ import type {
   DocumentNormalEditorDecorationState,
   DocumentNormalEditorReviewStateSession
 } from "./document-review-state-session-provider";
+import { validateDocumentReviewDescriptor } from "./document-review-state-session-provider";
 
 interface HistoryRewriteSnapshotWorkspaceProvider {
   readonly historyRewriteSnapshotTracker: NonGitSnapshotTracker;
@@ -146,6 +147,7 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorReviewStateSession> {
+    validateDocumentReviewDescriptor(descriptor);
     const session = selection?.kind === "pull-request"
       ? await this.openSelectedPullRequest(descriptor, selection)
       : await this.delegate.open(descriptor, selection);
@@ -204,6 +206,7 @@ export class DocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor,
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
+    validateDocumentReviewDescriptor(descriptor);
     if (selection?.kind === "pull-request") {
       return this.loadSelectedPullRequest(descriptor, selection);
     }

@@ -58,7 +58,10 @@ import {
 } from "./t405-review-contexts-runtime";
 import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
 import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
-import { resolveWorkspaceFolderMembership } from "./application/workspace-identity/index";
+import {
+  resolveWorkspaceFolderMembership,
+  resolveWorkspaceResourceEligibility
+} from "./application/workspace-identity/index";
 import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
 
@@ -187,8 +190,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
+    const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+      uri: toResourceUri(folder.uri), name: folder.name
+    }));
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      if (!FILESYSTEM_SCHEMES.has(folder.uri.scheme) || folder.uri.query.length > 0 || folder.uri.fragment.length > 0) continue;
+      if (resolveWorkspaceResourceEligibility({
+        documentUri: toResourceUri(folder.uri),
+        workspaceFolders,
+        fileSystemPathSemantics: workspaceSidePathSemantics()
+      }) === undefined) continue;
       if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
@@ -211,7 +221,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const editor of vscode.window.visibleTextEditors) {
-      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme) || editor.document.uri.query.length > 0 || editor.document.uri.fragment.length > 0) continue;
+      if (resolveWorkspaceResourceEligibility({
+        documentUri: toResourceUri(editor.document.uri),
+        workspaceFolders,
+        fileSystemPathSemantics: workspaceSidePathSemantics()
+      })?.relativePath === undefined) continue;
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);

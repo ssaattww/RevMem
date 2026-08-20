@@ -16,6 +16,7 @@ import {
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
 import {
+  resolveWorkspaceResourceEligibility,
   resolveWorkspaceFolderMembership,
   WorkspaceIdentityService
 } from "../../src/application/workspace-identity/index";
@@ -103,6 +104,110 @@ test("T605 root registry retains typed snapshot and Git-rewrite capabilities", (
   });
   assert.equal(registry.historyRewriteSnapshotTracker, tracker);
   assert.equal(typeof registry.commitWithSnapshot, "function");
+});
+
+test("T605 IFR001 rejects delayed open, load, and commit from a removed and re-added root generation", async () => {
+  const identityService = new WorkspaceIdentityService(hash);
+  const root = { scheme: "vscode-remote", authority: "ssh-remote+t605", path: "/remote/generation" };
+  const descriptor = {
+    workspaceFolderUri: root,
+    documentUri: { ...root, path: "/remote/generation/src/file.ts" },
+    fileSystemPathSemantics: "posix" as const,
+    relativePath: "src/file.ts",
+    workspaceDisplayName: "generation",
+    lineCount: 1,
+    contentHash: hash.digest("generation\n")
+  };
+  let releaseOpen!: () => void;
+  let releaseLoad!: () => void;
+  let releaseCommit!: () => void;
+  const opened = new Promise<void>((resolve) => { releaseOpen = resolve; });
+  const loaded = new Promise<void>((resolve) => { releaseLoad = resolve; });
+  const committed = new Promise<void>((resolve) => { releaseCommit = resolve; });
+  let created = 0;
+  const published: string[] = [];
+  const registry = createWorkspaceRootRuntimeRegistry({
+    identityService,
+    historyRewriteSnapshotTracker: {} as never,
+    factory: {
+      create: () => {
+        const generation = ++created;
+        return {
+          open: async () => {
+            if (generation === 1) await opened;
+            return {} as never;
+          },
+          loadForDecoration: async () => {
+            if (generation === 1) await loaded;
+            return undefined;
+          },
+          commitWithSnapshot: async (_descriptor, _transaction, commitState) => {
+            if (generation === 1) await committed;
+            await commitState();
+          }
+        };
+      }
+    }
+  });
+  registry.reconcileWorkspaceRoots([root], "posix");
+  const staleOpen = registry.open(descriptor);
+  const staleLoad = registry.loadForDecoration(descriptor);
+  const staleCommit = registry.commitWithSnapshot(descriptor, {} as never, async () => {
+    published.push("stale");
+  });
+  registry.reconcileWorkspaceRoots([], "posix");
+  registry.reconcileWorkspaceRoots([root], "posix");
+  releaseOpen();
+  releaseLoad();
+  releaseCommit();
+  await assert.rejects(staleOpen, /Workspace root is inactive/u);
+  await assert.rejects(staleLoad, /Workspace root is inactive/u);
+  await assert.rejects(staleCommit, /Workspace root is inactive/u);
+  assert.deepEqual(published, []);
+  await registry.open(descriptor);
+  assert.equal(created, 2);
+});
+
+test("T605 IFR002 applies one URI eligibility boundary before descriptor routing", async () => {
+  const folders = [{
+    uri: { scheme: "vscode-remote", authority: "ssh-remote+t605", path: "/remote/root" },
+    name: "root"
+  }];
+  assert.equal(resolveWorkspaceResourceEligibility({
+    documentUri: folders[0].uri,
+    workspaceFolders: folders,
+    fileSystemPathSemantics: "posix"
+  })?.relativePath, undefined);
+  const provider = new DocumentReviewStateSessionProvider({
+    gitInspector: { inspectRepository: async () => { throw new Error("descriptor validation must run first"); } },
+    repository: {} as never,
+    workspaceProvider: {} as never,
+    stableHash: hash
+  });
+  const descriptor = (documentUri: { readonly scheme: string; readonly authority?: string; readonly path: string; readonly query?: string; readonly fragment?: string }) => ({
+    documentUri,
+    documentFsPath: documentUri.path,
+    fileSystemPathSemantics: "posix" as const,
+    workspace: { workspaceFolderUri: folders[0].uri, relativePath: "src/file.ts", displayName: "root" },
+    lineCount: 1,
+    contentHash: hash.digest("file\n")
+  });
+  await assert.rejects(
+    provider.open(descriptor({ ...folders[0].uri, path: "/remote/root/src/file.ts", query: "git=1" })),
+    /URI query|eligible member/u
+  );
+  await assert.rejects(
+    provider.open(descriptor({ scheme: "vscode-vfs", authority: "virtual", path: "/remote/root/src/file.ts" })),
+    /filesystem-backed scheme/u
+  );
+  await assert.rejects(
+    provider.open(descriptor({ scheme: "untitled", path: "/remote/root/src/file.ts" })),
+    /filesystem-backed scheme/u
+  );
+  await assert.rejects(
+    provider.open(descriptor({ ...folders[0].uri, path: "/outside/file.ts" })),
+    /eligible member/u
+  );
 });
 
 test("T605 keeps same-repository roots distinct for Current Context and PR acquisition", () => {

@@ -14,6 +14,8 @@ import {
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
+import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
+import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
 import {
   parseReviewHistoryEventLine,
   serializeReviewHistoryEvent
@@ -168,6 +170,43 @@ test("routes workspace history to storageUri and external-file history to global
     assert.match(externalPath, /global[\\/]external-files[\\/][a-f0-9]{64}[\\/]history/u);
     assert.deepEqual(JSON.parse((await readFile(workspacePath, "utf8")).trim()), workspaceEvent);
     assert.deepEqual(JSON.parse((await readFile(externalPath, "utf8")).trim()), externalEvent);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T605 IFR003 keeps append-only history non-mixed for distinct workspace roots of one remote repository", async () => {
+  const temporary = await temporaryStorage();
+  try {
+    const identities = ["/work/shared/root-a", "/work/shared/root-b"].map((root) =>
+      new WorkspaceIdentityService(new NodeSha256StableHash()).resolve({
+        workspaceFolderUri: { scheme: "vscode-remote", authority: "ssh-remote+same-repository", path: root },
+        documentUri: { scheme: "vscode-remote", authority: "ssh-remote+same-repository", path: `${root}/src/file.ts` },
+        fileSystemPathSemantics: "posix",
+        relativePath: "src/file.ts"
+      })
+    );
+    const targets = identities.map((identity) => ({
+      kind: "workspace" as const,
+      repositoryId: identity.repositoryId,
+      contextId: identity.workspaceContextId
+    }));
+    const store = new JsonlReviewHistoryStore({ storageUris: temporary.storageUris });
+    await store.append(targets[0], {
+      ...event("root-a-event"), repositoryId: targets[0].repositoryId, contextId: targets[0].contextId
+    });
+    await store.append(targets[1], {
+      ...event("root-b-event"), repositoryId: targets[1].repositoryId, contextId: targets[1].contextId
+    });
+    const paths = targets.map((target) => path.join(
+      resolveReviewStateStorageRoute(temporary.storageUris, target).historyDirectory,
+      "events-2026-08.jsonl"
+    ));
+    assert.notEqual(paths[0], paths[1]);
+    assert.match(await readFile(paths[0], "utf8"), /root-a-event/u);
+    assert.doesNotMatch(await readFile(paths[0], "utf8"), /root-b-event/u);
+    assert.match(await readFile(paths[1], "utf8"), /root-b-event/u);
+    assert.doesNotMatch(await readFile(paths[1], "utf8"), /root-a-event/u);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

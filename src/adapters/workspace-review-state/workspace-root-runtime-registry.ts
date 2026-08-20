@@ -40,6 +40,7 @@ export class WorkspaceRootRuntimeRegistry
   implements SnapshotAwareWorkspaceReviewStateSessionProviderPort {
   private readonly runtimes = new Map<string, WorkspaceRootRuntime>();
   private readonly activeGenerations = new Map<string, number>();
+  private readonly knownGenerations = new Map<string, number>();
 
   public constructor(private readonly options: WorkspaceRootRuntimeRegistryOptions) {}
 
@@ -98,7 +99,11 @@ export class WorkspaceRootRuntimeRegistry
         return [];
       }
     }));
-    for (const key of active) if (!this.activeGenerations.has(key)) this.activeGenerations.set(key, 1);
+    for (const key of active) if (!this.activeGenerations.has(key)) {
+      const generation = (this.knownGenerations.get(key) ?? 0) + 1;
+      this.knownGenerations.set(key, generation);
+      this.activeGenerations.set(key, generation);
+    }
     for (const key of [...this.activeGenerations.keys()]) if (!active.has(key)) {
       this.activeGenerations.delete(key);
       this.runtimes.get(key)?.dispose?.();

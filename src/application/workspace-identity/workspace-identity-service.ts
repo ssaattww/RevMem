@@ -92,6 +92,17 @@ export interface WorkspaceFolderMembership {
   readonly relativePath: string;
 }
 
+/**
+ * A filesystem resource accepted at the workspace boundary. A workspace root
+ * itself has no relative document path; a document owned by that root does.
+ */
+export interface WorkspaceResourceEligibility {
+  /** The selected unique workspace folder. */
+  readonly workspaceFolder: WorkspaceFolderDescriptor;
+  /** Path below that folder when the resource is a document rather than the root itself. */
+  readonly relativePath: string | undefined;
+}
+
 interface CanonicalResourceUri {
   readonly scheme: string;
   readonly authority: string;
@@ -310,11 +321,11 @@ function relativeDocumentPath(
  * local UI paths or folder names. Unsupported or ambiguous URI boundaries return
  * `undefined` so callers fail closed before workspace persistence or Git access.
  */
-export const resolveWorkspaceFolderMembership = (input: {
+export const resolveWorkspaceResourceEligibility = (input: {
   readonly documentUri: ResourceUri;
   readonly workspaceFolders: readonly WorkspaceFolderDescriptor[];
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
-}): WorkspaceFolderMembership | undefined => {
+}): WorkspaceResourceEligibility | undefined => {
   try {
     const semantics = normalizeFileSystemPathSemantics(input.fileSystemPathSemantics);
     const document = canonicalizeResourceUri(input.documentUri, semantics);
@@ -322,12 +333,12 @@ export const resolveWorkspaceFolderMembership = (input: {
     const candidates = input.workspaceFolders.flatMap((workspaceFolder) => {
       const folder = canonicalizeResourceUri(workspaceFolder.uri, semantics);
       if (folder.scheme !== document.scheme || folder.authority !== document.authority) return [];
+      const rootItself = folder.path === document.path;
       const prefix = folder.path === "/" ? "/" : `${folder.path}/`;
-      if (!document.path.startsWith(prefix)) return [];
-      const relativePath = normalizeRelativePath(
-        document.path.slice(prefix.length),
-        semantics
-      );
+      if (!rootItself && !document.path.startsWith(prefix)) return [];
+      const relativePath = rootItself
+        ? undefined
+        : normalizeRelativePath(document.path.slice(prefix.length), semantics);
       return [{ workspaceFolder, folder, relativePath }] as const;
     });
     const longest = Math.max(...candidates.map((candidate) => candidate.folder.path.length));
@@ -340,6 +351,22 @@ export const resolveWorkspaceFolderMembership = (input: {
   } catch {
     return undefined;
   }
+};
+
+/** Resolves only document membership; workspace roots themselves are not documents. */
+export const resolveWorkspaceFolderMembership = (input: {
+  readonly documentUri: ResourceUri;
+  readonly workspaceFolders: readonly WorkspaceFolderDescriptor[];
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+}): WorkspaceFolderMembership | undefined => {
+  const eligibility = resolveWorkspaceResourceEligibility(input);
+  if (eligibility === undefined || eligibility.relativePath === undefined) {
+    return undefined;
+  }
+  return {
+    workspaceFolder: eligibility.workspaceFolder,
+    relativePath: eligibility.relativePath
+  };
 };
 
 /**
