@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の同一normal reviewer向けR6 finding follow-up。開始HEADは`0c938d0cbb458cc60c17f9e45a1486af03d74a83`であり、R001〜R005だけを対象にした。R006はclosedを維持する。
+T606 / Issue #76 / PR #77 の同一normal reviewer向けR6 finding follow-up。technical implementation HEADは`d7649b6d10fcb3a1c30d79ec78a1161ff1ef7c52`であり、R001〜R005だけを対象にした。R006はclosedを維持する。
 
 ## sub-agentを使う理由
 
@@ -38,8 +38,8 @@ R005: `test:t606`はR6 production matrix、modified Global、T405 Review Context
 
 ## 結果
 
-R001〜R005のR6 local implementationとdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closureはpending、R006はclosed maintainedである。technical commitは親が作成するpendingであり、本handoffはfinal SHAを記録しない。CI、PR操作、commit、push、review、mergeは未実施である。
+R001〜R005のR6 technical implementationとdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closureはpending、R006はclosed maintainedである。exact-head CIはheldであり、CI、PR操作、push、review、mergeは未実施である。
 
 ## リスク
 
-exact-head CI、real Extension Host acceptance、Markdown wording checkはheldである。次の作業は親によるtechnical commit、その後のSHAだけを同期するadmin batch、続いて同一normal reviewerによるR001〜R005限定closure R6である。
+exact-head CI、real Extension Host acceptance、Markdown wording checkはheldである。次の作業は同一normal reviewerによるR001〜R005限定closure R6である。
