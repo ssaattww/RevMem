@@ -4,8 +4,8 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: 1c664cd024882c8ffe21f03a4baec409f4c952a5 (R2 technical fix; administrative baseline a08aa99c7902c64b2be70e8d97cb0a38779ae662)
-status: independent_finding_closure_r2_evidence_addressed_pending_same_reviewer
+current_head: pending-ci-followup-commit (pre-CI technical closure 1c664cd024882c8ffe21f03a4baec409f4c952a5; CI-failed attestation head dc66e5ea98281a094c1dff20a3fc21d689cf4492)
+status: ci_followup_dead_owner_recovery_addressed_pending_same_reviewer_delta_verification
 report: reports/issue-72-t604-independent-review-followup-20260820201341.md
 requirements:
   - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
@@ -23,7 +23,7 @@ validation:
     - npm run validate:architecture:negative
     - git diff --check
   ci: not run; merge-gate held by explicit task policy
-next_request: Ask the same independent reviewer for IFR001-IFR005/IFR007 finding-limited closure R2 at technical fix HEAD 1c664cd024882c8ffe21f03a4baec409f4c952a5 only. Update PR #73 with this exact fix SHA, actual focused count 24, and the matching exact-head CI result; do not add scope, merge, or self-review.
+next_request: After the CI follow-up commit, ask the same independent reviewer to verify only the dead-owner stale-recovery CI delta against IFR001/R2, then obtain a new attestation after matching exact-head CI. Do not add scope, merge, or self-review.
 remaining_risks:
   - IFR001 through IFR005 and IFR007 are addressed locally; same independent reviewer finding-limited closure R2 and post-commit exact-head CI remain pending.
   - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

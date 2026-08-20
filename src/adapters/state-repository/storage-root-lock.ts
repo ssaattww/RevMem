@@ -216,13 +216,17 @@ export class NodeStorageRootLock {
         if (raw !== undefined) {
           const existing = parseLock(raw);
           const metadata = await stat(this.lockPath).catch(() => undefined);
-          const invalidFutureLease = existing !== undefined && existing.expiresAt > this.now() + this.leaseMs * 2;
-          const expired = existing === undefined || invalidFutureLease
-            ? metadata !== undefined && metadata.mtimeMs + this.leaseMs <= this.now()
-            : existing.expiresAt <= this.now();
+          const partialIsAged = metadata !== undefined && metadata.mtimeMs + this.leaseMs <= this.now();
+          const futureInvalid = existing !== undefined && existing.expiresAt > this.now() + this.leaseMs * 2;
           // Cooperative live Extension Hosts are never recovered solely because a
           // wall-clock lease elapsed: a stalled owner remains the owner while live.
-          const recoverable = existing === undefined || (expired && !await this.isProcessAlive(existing.processId));
+          // A confirmed-dead cooperative owner cannot renew or publish, so its
+          // descriptor is recoverable even before its wall-clock lease elapses.
+          // A live or indeterminate owner remains fail-closed; liveness probe
+          // failures intentionally propagate instead of being treated as dead.
+          const recoverable = existing === undefined || futureInvalid
+            ? partialIsAged
+            : !await this.isProcessAlive(existing.processId);
           if (recoverable) {
             const recoveryPath = path.join(this.rootPath, `.lock-recovery-${randomUUID()}`);
             await guard(recoveryPath);

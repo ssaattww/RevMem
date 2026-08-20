@@ -181,7 +181,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T601 圧縮snapshotと非Git行追従: 完了・main統合済み
 - T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
-- T604: independent IFR001〜IFR005/IFR007 addressed・technical fix `1c664cd024882c8ffe21f03a4baec409f4c952a5`のsame independent reviewer finding-limited closure R2待ち（Issue #72）
+- T604: pre-CI technical closureは保持、attestation head `dc66e5ea98281a094c1dff20a3fc21d689cf4492`のT506 dead-owner timeoutに対するCI follow-upとsame reviewer delta verification待ち（Issue #72）
 - T605〜T608: 未着手
 
 ### 終了チェックポイント

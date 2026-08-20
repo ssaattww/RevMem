@@ -227,14 +227,14 @@ test("T604 refuses a live root lock without exposing owner or path diagnostics",
   }
 });
 
-test("T604 recovers only an expired root lock", async () => {
+test("T604 immediately recovers an unexpired lease only when its owner is confirmed dead", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:a"));
   try {
     const first = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_000, createOwnerToken: () => "first" });
     const firstRelease = await first.acquire();
     const recovered: string[] = [];
-    const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1_000, now: () => 2_001, createOwnerToken: () => "second", isProcessAlive: async () => false, notifyDiagnostic: (value) => { recovered.push(value.kind); } });
+    const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_001, createOwnerToken: () => "second", isProcessAlive: async () => false, notifyDiagnostic: (value) => { recovered.push(value.kind); } });
     const release = await second.acquire();
     assert.deepEqual(recovered, ["stale-recovered"]);
     await release();
@@ -252,6 +252,10 @@ test("T604 never steals an expired descriptor from a live cooperative owner", as
     await assert.rejects(
       () => new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_001, isProcessAlive: async () => true }).acquire(),
       StorageRootLockTimeoutError
+    );
+    await assert.rejects(
+      () => new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_001, isProcessAlive: async () => { throw new Error("liveness unavailable"); } }).acquire(),
+      /liveness unavailable/u
     );
     await first();
   } finally {
@@ -274,13 +278,18 @@ test("T604 recovers a bounded stale malformed lock without taking a live valid l
   }
 });
 
-test("T604 bounds zero, truncated, malformed, and future-invalid partial lock recovery", async () => {
+test("T604 bounds fresh zero, truncated, malformed, and future-invalid partial recovery before aging", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:partial-matrix"));
   try {
     await mkdir(route.rootPath, { recursive: true });
-    for (const raw of ["", "{\"ownerToken\":", "not-json", JSON.stringify({ ownerToken: "future", expiresAt: 9_999_999 })]) {
+    for (const raw of ["", "{\"ownerToken\":", "not-json", JSON.stringify({ ownerToken: "future", expiresAt: 9_999_999, processId: process.pid })]) {
       await writeFile(route.lockPath, raw, "utf8");
+      await utimes(route.lockPath, 1, 1);
+      await assert.rejects(
+        () => new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10, now: () => 1_000 }).acquire(),
+        StorageRootLockTimeoutError
+      );
       await utimes(route.lockPath, 0, 0);
       const release = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10, now: () => 1_000 }).acquire();
       await release();
@@ -405,7 +414,7 @@ test("T604 uses an owned OS child-process lease and releases it for a successor"
   }
 });
 
-test("T604 recovers a killed child lease only after its bounded expiry", async () => {
+test("T604 immediately recovers a killed child lease before its bounded expiry", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:killed-child"));
   try {
@@ -413,8 +422,6 @@ test("T604 recovers a killed child lease only after its bounded expiry", async (
     await new Promise((resolve) => setTimeout(resolve, 60));
     first.child.kill();
     await first.output.catch(() => undefined);
-    assert.equal(await runLockChild(route.rootPath, 0), "StorageRootLockTimeoutError");
-    await new Promise((resolve) => setTimeout(resolve, 1_020));
     assert.equal(await runLockChild(route.rootPath, 0), "acquired");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
