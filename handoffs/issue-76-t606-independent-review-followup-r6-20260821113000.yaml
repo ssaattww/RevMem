@@ -3,7 +3,9 @@ repository: ssaattww/RevMem
 issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 technical_implementation_head: ce584b29e6f584234c7bab050d24d2dd163ae3d3
-status: ifr001_ifr003_ifr005_closed_maintained_ifr002_ifr004_r6_addressed_same_reviewer_closure_pending
+reviewed_admin_target: 13b8835
+current_evidence_head: 1876e18
+status: ifr001_through_ifr005_closed_independent_closure_r6_complete_final_admin_verification_pre_attestation_pending
 report: reports/issue-76-t606-independent-review-followup-r6-20260821113000.md
 validation:
   red: "1 fail: test:t606 package contract omitted real-composition suite"
@@ -15,6 +17,7 @@ validation:
   architecture: "pass; once"
   architecture_negative: "pass; once; expected 11 violations"
   diff_check: "pass; no whitespace errors; line-ending warnings only"
-ci: held
-external_sync: PR body completed for technical head ce584b29e6f584234c7bab050d24d2dd163ae3d3; parent final admin head refresh pending
-next_request: Same independent reviewer performs finding-limited closure R6 for IFR002 and IFR004 only.
+ci: exact-head PR CI and merge held
+external_sync: PR body external closure sync pending after admin commit
+skill_gap: no_new_action; CodexSkill #58/#61 maintained
+next_request: Final admin verification and pre-attestation only; independent closure R6 is complete.
