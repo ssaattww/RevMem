@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import {
   formatOperationFailureForUser,
+  runWithBoundedRetry,
   runWithActiveOperationFeedback
 } from "../../application/operation-feedback/index";
 
@@ -27,6 +28,15 @@ export interface ReviewContextsRuntimeDependencies {
   readonly refreshDecorations: () => Promise<void>;
   readonly reportError: (error: unknown) => Promise<void>;
 }
+
+/**
+ * Runs the read-only Review Contexts acquisition boundary with the shared
+ * bounded retry policy. Stateful commands deliberately do not call this.
+ */
+export const runReviewContextsPureRead = async <T>(
+  read: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> => (await runWithBoundedRetry(read, { maxAttempts: 3, signal })).value;
 
 /** Stores display-only removals in workspaceState, separate from authoritative Review State and history. */
 export class VscodeReviewContextVisibilityStore implements ReviewContextVisibilityStore {
@@ -121,7 +131,8 @@ export class VscodeCurrentPullRequestSelectionStore {
   }
 }
 
-class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
+/** Runtime tree provider with generation-fenced publication. */
+export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
   private readonly changed = new vscode.EventEmitter<ReviewContextListItem | undefined | null | void>();
   private items: readonly ReviewContextListItem[] = [];
   private generation = 0;
@@ -216,8 +227,7 @@ export function registerReviewContextsRuntime(
     try {
       await runWithActiveOperationFeedback(
         label,
-        operation,
-        retry ? { maxAttempts: 3 } : undefined
+        () => retry ? runReviewContextsPureRead(operation) : operation(),
       );
     } catch (error) {
       provider.clear();
@@ -225,7 +235,7 @@ export function registerReviewContextsRuntime(
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
-    runOperation("Review Contextsを更新", () => provider.refresh());
+    runOperation("Review Contextsを更新", () => provider.refresh(), true);
   const mutate = async (
     operation: () => Promise<void>,
     refreshDecorations = false,
@@ -276,7 +286,7 @@ export function registerReviewContextsRuntime(
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runOperation("Review Contextsを更新", () => provider.refresh()),
+    refresh: () => runOperation("Review Contextsを更新", () => provider.refresh(), true),
     refreshWithErrorBoundary,
   };
 }

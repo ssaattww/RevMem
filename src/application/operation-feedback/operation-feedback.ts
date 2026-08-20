@@ -73,6 +73,12 @@ export interface BoundedRetryResult<T> {
   readonly attempts: readonly OperationRetryAttempt[];
 }
 
+/** Explicit owner-scoped identity used to join a child to its parent lifecycle. */
+export interface OperationFeedbackContext {
+  readonly owner: OperationFeedback;
+  readonly id: number;
+}
+
 /** Explicit stale/cancelled terminal state; it is never retried. */
 export class OperationCancelledError extends Error {
   public constructor() {
@@ -401,13 +407,8 @@ export class OperationFeedback {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  /** Whether a shared outer operation already owns this Output lifecycle. */
-  public get hasActiveOperation(): boolean {
-    return this.active.length > 0;
-  }
-
   /** Runs one operation while publishing start, success/failure, and busy status. */
-  public async run<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  public async run<T>(label: string, operation: (context: OperationFeedbackContext) => Promise<T>): Promise<T> {
     const normalizedLabel = requireLabel(label);
     const active: ActiveOperation = {
       id: ++this.nextId,
@@ -423,7 +424,7 @@ export class OperationFeedback {
     this.publishStatus();
 
     try {
-      const result = await operation();
+      const result = await operation({ owner: this, id: active.id });
       const finishedAt = this.now();
       if (active.boundaryFailure === undefined) {
         this.host.appendLog({
@@ -458,13 +459,15 @@ export class OperationFeedback {
   }
 
   /** Records an error intentionally handled by a fail-closed or UI boundary. */
-  public reportFailure(label: string, error: unknown): void {
+  public reportFailure(label: string, error: unknown, context?: OperationFeedbackContext): void {
     const identity = errorIdentity(error);
     if (identity !== undefined && this.pendingBoundaryDuplicates.has(identity)) {
       this.pendingBoundaryDuplicates.delete(identity);
       return;
     }
-    const active = this.active.at(-1);
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : undefined;
     if (active !== undefined) {
       active.boundaryFailure ??= error;
       return;
@@ -476,10 +479,23 @@ export class OperationFeedback {
   }
 
   /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
-  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered", operationId: string): void {
+  public reportStorageLock(
+    kind: "timeout" | "failure" | "stale-recovered",
+    operationId: string,
+    context?: OperationFeedbackContext,
+  ): void {
     const scope = `${operationId}\0${kind}`;
     if (this.reportedStorageLockScopes.has(scope)) return;
     this.reportedStorageLockScopes.add(scope);
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : undefined;
+    if (active !== undefined) {
+      if (kind !== "stale-recovered") {
+        active.boundaryFailure ??= Object.assign(new Error("Storage lock operation failed."), { code: "EBUSY" });
+      }
+      return;
+    }
     const timestamp = new Date(this.now()).toISOString();
     this.host.appendLog({ timestamp, label: "Storage lock", event: "started" });
     this.host.appendLog({
@@ -559,18 +575,26 @@ export const setActiveOperationFeedback = (feedback: OperationFeedback | undefin
 /** Runs through the active UI feedback when available, otherwise executes directly. */
 export const runWithActiveOperationFeedback = <T>(
   label: string,
-  operation: () => Promise<T>,
-  retry?: BoundedRetryOptions
+  operation: (context: OperationFeedbackContext | undefined) => Promise<T>,
+  retry?: BoundedRetryOptions,
+  parentContext?: OperationFeedbackContext,
 ): Promise<T> => {
-  const execute = retry === undefined ? operation : () => runWithBoundedRetry(operation, retry).then((result) => result.value);
+  const execute = (context: OperationFeedbackContext | undefined): Promise<T> => retry === undefined
+    ? operation(context)
+    : runWithBoundedRetry(() => operation(context), retry).then((result) => result.value);
   const feedback = activeOperationFeedback;
-  if (feedback === undefined || feedback.hasActiveOperation) return execute();
+  if (parentContext !== undefined) return execute(parentContext);
+  if (feedback === undefined) return execute(undefined);
   return feedback.run(label, execute);
 };
 
 /** Reports a handled failure to active diagnostics when the UI host is installed. */
-export const reportActiveOperationFailure = (label: string, error: unknown): void => {
-  activeOperationFeedback?.reportFailure(label, error);
+export const reportActiveOperationFailure = (
+  label: string,
+  error: unknown,
+  context?: OperationFeedbackContext,
+): void => {
+  (context?.owner ?? activeOperationFeedback)?.reportFailure(label, error, context);
 };
 
 /** Returns whether activation has already installed the shared Output lifecycle. */
@@ -578,11 +602,16 @@ export const hasActiveOperationFeedback = (): boolean => activeOperationFeedback
 
 /** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
 export const reportActiveStorageLockDiagnostic = (
-  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }
+  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string },
+  context?: OperationFeedbackContext,
 ): void => {
-  if (activeOperationFeedback === undefined) {
+  if (activeOperationFeedback === undefined && context === undefined) {
     pendingStorageLockDiagnostics.push(diagnostic);
     return;
   }
-  activeOperationFeedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
+  (context?.owner ?? activeOperationFeedback)?.reportStorageLock(
+    diagnostic.kind,
+    diagnostic.operationId,
+    context,
+  );
 };
