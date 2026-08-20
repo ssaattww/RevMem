@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（R001/R006 addressed、same reviewer R2 closure pending）
-- 次の工程: 同一normal reviewerがR001/R006だけをR2 closure verificationする
+- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（normal findings R001〜R006 closed、independent final review pending）
+- 次の工程: fresh independent reviewerが一度限りの全範囲reviewを実施する
 - 後続候補: T606
 
 ## P0 開発基盤
@@ -182,7 +182,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
-- T605: multi-rootとRemote SSH / Dev Containers / Codespaces相当workspace URI境界はimplementation complete、normal review pending（Issue #74）
+- T605: multi-rootとRemote SSH / Dev Containers / Codespaces相当workspace URI境界はnormal findings R001〜R006 closed、independent final review pending（Issue #74、PR #75）
 - T606〜T608: 未着手
 
 ### 終了チェックポイント
