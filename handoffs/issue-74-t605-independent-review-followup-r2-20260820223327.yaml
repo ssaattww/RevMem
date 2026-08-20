@@ -1,0 +1,11 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #74 / PR #75"
+task_id: T605
+branch: task/t605-multi-root-remote-boundaries
+current_head: pending final administrative attestation freeze
+status: independent_findings_closed_final_attestation_pending
+report: reports/issue-74-t605-independent-review-followup-r2-20260820223327.md
+findings: [T605-IFR-001, T605-IFR-002, T605-IFR-003]
+next_request: Same independent reviewer attests only the administrative tracking delta, then the owner checks exact-head pull_request CI and squash merges PR #75.
+ci: not run by task policy

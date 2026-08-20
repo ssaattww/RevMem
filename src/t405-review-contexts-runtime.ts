@@ -70,6 +70,10 @@ import {
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
 import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
+import {
+  currentContextCandidateKey,
+  resolveUniqueRepositoryRoot
+} from "./t405-root-scoped-candidate-identity";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -224,7 +228,7 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
 };
 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
-  private readonly roots = new Map<string, string>();
+  private readonly roots = new Map<string, Set<string>>();
 
   public constructor(
     private readonly repository: T405ReviewStateRepository,
@@ -243,7 +247,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   ) {}
 
   public repositoryRoot(repositoryId: string): string | undefined {
-    return this.roots.get(repositoryId);
+    const roots = this.roots.get(repositoryId);
+    return roots === undefined ? undefined : resolveUniqueRepositoryRoot(roots);
+  }
+
+  private rememberRoot(repositoryId: string, repositoryRoot: string): void {
+    const roots = this.roots.get(repositoryId) ?? new Set<string>();
+    roots.add(repositoryRoot);
+    this.roots.set(repositoryId, roots);
   }
 
   public async load(): Promise<readonly ReviewContextListItem[]> {
@@ -255,7 +266,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     for (const snapshot of await this.enumerateCurrentContexts()) {
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
-        this.roots.set(owner.repositoryId, owner.repositoryRoot);
+        this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
         let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
         await this.synchronizeRepository(owner, persisted);
         persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
@@ -307,7 +318,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       candidates.set(this.candidateKey(candidate), candidate);
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
-      this.roots.set(owner.repositoryId, owner.repositoryRoot);
+      this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
       let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
       await this.synchronizeRepository(owner, persisted);
       persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
@@ -352,12 +363,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   }
 
   private candidateKey(snapshot: CurrentContextUiSnapshot): string {
-    const selection = snapshot.context.selection;
-    if (selection?.kind === "pull-request") return `pr\0${selection.contextId}`;
-    if (selection?.kind === "branch") return `branch\0${selection.repositoryId}\0${selection.branchRef}`;
-    if (selection?.kind === "detached") return `detached\0${selection.repositoryId}\0${selection.headRevision}`;
-    if (selection?.kind === "workspace") return `workspace\0${JSON.stringify(selection.workspaceFolderUri)}`;
-    return `${snapshot.context.kind}\0${snapshot.context.detail ?? ""}\0${snapshot.context.label}`;
+    return currentContextCandidateKey(snapshot);
   }
 
   private kindOrder(snapshot: CurrentContextUiSnapshot): number {

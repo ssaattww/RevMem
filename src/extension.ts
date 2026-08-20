@@ -17,7 +17,10 @@ import {
   resolveReviewStateStorageRoute
 } from "./adapters/state-repository/index";
 import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/non-git-snapshots/index";
-import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
+import {
+  SnapshotTrackingWorkspaceReviewStateSessionProvider,
+  createWorkspaceRootRuntimeRegistry
+} from "./adapters/workspace-review-state/index";
 import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
 import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import {
@@ -33,7 +36,10 @@ import {
   NormalEditorReviewCommandService
 } from "./application/review-commands/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
-import { WorkspaceIdentityService } from "./application/workspace-identity/index";
+import {
+  resolveWorkspaceFolderMembership,
+  WorkspaceIdentityService
+} from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
@@ -68,6 +74,9 @@ const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showOverviewRuler"
 ] as const;
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
+
+const workspaceSidePathSemantics = () =>
+  process.platform === "win32" ? "windows" as const : "posix" as const;
 
 type ReviewDiffEditorCommandOperation =
   | "markSelectionReviewed"
@@ -314,35 +323,67 @@ export function activate(
     globalStorageUri: context.globalStorageUri,
     storageUri: context.storageUri
   };
-  const snapshotStorage = new NodeNonGitSnapshotStorage({
-    snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
-      kind: "workspace", repositoryId: "extension-runtime", contextId: "extension-runtime"
-    }).snapshotDirectory,
-    notifyStorageLockDiagnostic: reportStorageLockDiagnostic
-  });
-  const workspaceSessionProvider = new SnapshotTrackingWorkspaceReviewStateSessionProvider({
-    identityService: new WorkspaceIdentityService(stableHash),
-    repository,
-    historyRecorder,
-    snapshotTracker: new NonGitSnapshotTracker(
-      snapshotStorage,
-      new NodeNonGitSnapshotCodec(),
-      resolveConfiguredNonGitSnapshotLimits({
-        maxSnapshotFileSizeBytes: vscode.workspace
-          .getConfiguration("reviewRange")
-          .get<number>(
-            "maxSnapshotFileSizeBytes",
-            DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES
-          )
+  const workspaceIdentityService = new WorkspaceIdentityService(stableHash);
+  const gitHistoryRewriteSnapshotTracker = new NonGitSnapshotTracker(
+    new NodeNonGitSnapshotStorage({
+      snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
+        kind: "workspace",
+        repositoryId: "git-history-rewrite",
+        contextId: "git-history-rewrite"
+      }).snapshotDirectory,
+      notifyStorageLockDiagnostic: reportStorageLockDiagnostic
+    }),
+    new NodeNonGitSnapshotCodec(),
+    resolveConfiguredNonGitSnapshotLimits({
+      maxSnapshotFileSizeBytes: vscode.workspace
+        .getConfiguration("reviewRange")
+        .get<number>("maxSnapshotFileSizeBytes", DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES)
+    })
+  );
+  const workspaceSessionProvider = createWorkspaceRootRuntimeRegistry({
+    identityService: workspaceIdentityService,
+    historyRewriteSnapshotTracker: gitHistoryRewriteSnapshotTracker,
+    factory: {
+      create: (identity) => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
+        identityService: workspaceIdentityService,
+        repository,
+        historyRecorder,
+        snapshotTracker: new NonGitSnapshotTracker(
+          new NodeNonGitSnapshotStorage({
+            snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
+              kind: "workspace",
+              repositoryId: identity.repositoryId,
+              contextId: identity.workspaceContextId
+            }).snapshotDirectory,
+            notifyStorageLockDiagnostic: reportStorageLockDiagnostic
+          }),
+          new NodeNonGitSnapshotCodec(),
+          resolveConfiguredNonGitSnapshotLimits({
+            maxSnapshotFileSizeBytes: vscode.workspace
+              .getConfiguration("reviewRange")
+              .get<number>("maxSnapshotFileSizeBytes", DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES)
+          })
+        ),
+        resolveContent: (descriptor) => {
+          const resource = descriptor.documentUri;
+          return vscode.workspace.textDocuments.find((document) =>
+            document.uri.scheme === resource.scheme && document.uri.authority === resource.authority && document.uri.path === resource.path
+          )?.getText() ?? "";
+        }
       })
-    ),
-    resolveContent: (descriptor) => {
-      const resource = descriptor.documentUri;
-      return vscode.workspace.textDocuments.find((document) =>
-        document.uri.scheme === resource.scheme && document.uri.authority === resource.authority && document.uri.path === resource.path
-      )?.getText() ?? "";
     }
   });
+  workspaceSessionProvider.reconcileWorkspaceRoots(
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => toResourceUri(folder.uri)),
+    workspaceSidePathSemantics()
+  );
+  context.subscriptions.push({ dispose: () => workspaceSessionProvider.dispose() });
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    workspaceSessionProvider.reconcileWorkspaceRoots(
+      (vscode.workspace.workspaceFolders ?? []).map((folder) => toResourceUri(folder.uri)),
+      workspaceSidePathSemantics()
+    );
+  }));
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
     gitInspector: createNodeLocalGitAdapter(),
     repository,
@@ -362,19 +403,25 @@ export function activate(
     if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
       throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
     }
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
-    const workspace = workspaceFolder === undefined
+    const membership = resolveWorkspaceFolderMembership({
+      documentUri: toResourceUri(documentUri),
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+        uri: toResourceUri(folder.uri), name: folder.name
+      })),
+      fileSystemPathSemantics: workspaceSidePathSemantics()
+    });
+    const workspace = membership === undefined
       ? undefined
       : {
-          workspaceFolderUri: toResourceUri(workspaceFolder.uri),
-          relativePath: vscode.workspace.asRelativePath(documentUri, false),
-          displayName: workspaceFolder.name
+          workspaceFolderUri: membership.workspaceFolder.uri,
+          relativePath: membership.relativePath,
+          displayName: membership.workspaceFolder.name
         };
 
     return {
       documentUri: toResourceUri(documentUri),
       documentFsPath: documentUri.fsPath,
-      fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
+      fileSystemPathSemantics: workspaceSidePathSemantics(),
       ...(workspace === undefined ? {} : { workspace }),
       lineCount: editor.document.lineCount,
       contentHash: stableHash.digest(editor.document.getText())

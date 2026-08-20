@@ -17,6 +17,7 @@ import {
 } from "../../core/contracts/index";
 import type {
   ReviewStateFileTarget,
+  ReviewStateTransaction,
   ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
 import { ReviewHistoryRecorder } from "../../application/review-history/index";
@@ -61,6 +62,32 @@ export interface WorkspaceNormalEditorDecorationState {
   /** Current file identity and certainty metadata used by the decoration model. */
   readonly target: ReviewStateFileTarget;
 }
+
+/** Workspace session operations consumed by the document-owner router. */
+export interface WorkspaceReviewStateSessionProviderPort {
+  open(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): Promise<WorkspaceNormalEditorReviewStateSession>;
+  loadForDecoration(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): Promise<WorkspaceNormalEditorDecorationState | undefined>;
+}
+
+/** Workspace provider capability that keeps the latest non-Git snapshot aligned with a state commit. */
+export interface SnapshotAwareWorkspaceReviewStateSessionProviderPort
+  extends WorkspaceReviewStateSessionProviderPort {
+  commitWithSnapshot(
+    descriptor: WorkspaceEditorReviewDescriptor,
+    transaction: Readonly<ReviewStateTransaction>,
+    commitState: () => Promise<void>
+  ): Promise<void>;
+}
+
+/** Narrows an optional production wrapper capability without relying on an untyped structural cast. */
+export const isSnapshotAwareWorkspaceReviewStateSessionProvider = (
+  provider: WorkspaceReviewStateSessionProviderPort
+): provider is SnapshotAwareWorkspaceReviewStateSessionProviderPort =>
+  "commitWithSnapshot" in provider && typeof provider.commitWithSnapshot === "function";
 
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
 export interface WorkspaceReviewStateRepository
@@ -219,7 +246,8 @@ interface WorkspaceReviewStateMapping {
  * the current file before a new command is evaluated. This preserves certainty without
  * relabeling stale reviewed ranges onto changed content.
  */
-export class WorkspaceReviewStateSessionProvider {
+export class WorkspaceReviewStateSessionProvider
+  implements WorkspaceReviewStateSessionProviderPort {
   private readonly now: () => Date;
 
   /**

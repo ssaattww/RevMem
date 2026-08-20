@@ -1,5 +1,20 @@
 # Breaking Changes
 
+## 2026-08-20 — Non-Git workspace persistence is root-scoped
+
+Non-Git workspace state, history, snapshots, locks, and cleanup now use
+`ExtensionContext.storageUri/workspaces/<workspace-id-hash>` instead of the single
+legacy `storageUri` root. The workspace ID is derived from the canonical workspace
+URI, including its scheme and authority. This is intentionally a persistence-layout
+breaking change: a legacy single-root state is not automatically reinterpreted for a
+multi-root or remote workspace, because doing so could bind state to the wrong root.
+
+Existing users must treat the old non-Git workspace state as unavailable after this
+upgrade and create fresh reviewed evidence. Git and external-file storage remain in
+their existing `globalStorageUri` routes. The change preserves T604 root-local lock
+and cleanup boundaries by making every active workspace root an independent storage
+root.
+
 ## 2026-08-20 — PR Progress unsupported-file selection opens an immutable present side
 
 `PullRequestProgressTreeHost.openFile` is now required. Selecting a

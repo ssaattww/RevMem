@@ -76,6 +76,33 @@ export interface WorkspaceIdentity {
   readonly fileId: string;
 }
 
+/** One workspace folder offered by the UI adapter for URI-based membership routing. */
+export interface WorkspaceFolderDescriptor {
+  /** Workspace URI observed by the workspace-side Extension Host. */
+  readonly uri: ResourceUri;
+  /** Display-only folder name; it is never used as an identity. */
+  readonly name: string;
+}
+
+/** Deterministic workspace membership selected for one filesystem-backed document URI. */
+export interface WorkspaceFolderMembership {
+  /** The unique longest matching workspace folder. */
+  readonly workspaceFolder: WorkspaceFolderDescriptor;
+  /** Normalized path of the document below that folder. */
+  readonly relativePath: string;
+}
+
+/**
+ * A filesystem resource accepted at the workspace boundary. A workspace root
+ * itself has no relative document path; a document owned by that root does.
+ */
+export interface WorkspaceResourceEligibility {
+  /** The selected unique workspace folder. */
+  readonly workspaceFolder: WorkspaceFolderDescriptor;
+  /** Path below that folder when the resource is a document rather than the root itself. */
+  readonly relativePath: string | undefined;
+}
+
 interface CanonicalResourceUri {
   readonly scheme: string;
   readonly authority: string;
@@ -88,6 +115,7 @@ const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const WINDOWS_RELATIVE_DRIVE_PATTERN = /^[A-Za-z]:(?:\/|$)/;
 const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+const WORKSPACE_FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 
 function requireString(value: unknown, name: string): string {
   if (typeof value !== "string") {
@@ -287,6 +315,59 @@ function relativeDocumentPath(
     workspaceFolder.pathSemantics
   );
 }
+
+/**
+ * Resolves a document to the unique longest matching workspace URI without using
+ * local UI paths or folder names. Unsupported or ambiguous URI boundaries return
+ * `undefined` so callers fail closed before workspace persistence or Git access.
+ */
+export const resolveWorkspaceResourceEligibility = (input: {
+  readonly documentUri: ResourceUri;
+  readonly workspaceFolders: readonly WorkspaceFolderDescriptor[];
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+}): WorkspaceResourceEligibility | undefined => {
+  try {
+    const semantics = normalizeFileSystemPathSemantics(input.fileSystemPathSemantics);
+    const document = canonicalizeResourceUri(input.documentUri, semantics);
+    if (!WORKSPACE_FILESYSTEM_SCHEMES.has(document.scheme)) return undefined;
+    const candidates = input.workspaceFolders.flatMap((workspaceFolder) => {
+      const folder = canonicalizeResourceUri(workspaceFolder.uri, semantics);
+      if (folder.scheme !== document.scheme || folder.authority !== document.authority) return [];
+      const rootItself = folder.path === document.path;
+      const prefix = folder.path === "/" ? "/" : `${folder.path}/`;
+      if (!rootItself && !document.path.startsWith(prefix)) return [];
+      const relativePath = rootItself
+        ? undefined
+        : normalizeRelativePath(document.path.slice(prefix.length), semantics);
+      return [{ workspaceFolder, folder, relativePath }] as const;
+    });
+    const longest = Math.max(...candidates.map((candidate) => candidate.folder.path.length));
+    const selected = candidates.filter((candidate) => candidate.folder.path.length === longest);
+    if (selected.length !== 1) return undefined;
+    return {
+      workspaceFolder: selected[0].workspaceFolder,
+      relativePath: selected[0].relativePath
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+/** Resolves only document membership; workspace roots themselves are not documents. */
+export const resolveWorkspaceFolderMembership = (input: {
+  readonly documentUri: ResourceUri;
+  readonly workspaceFolders: readonly WorkspaceFolderDescriptor[];
+  readonly fileSystemPathSemantics: FileSystemPathSemantics;
+}): WorkspaceFolderMembership | undefined => {
+  const eligibility = resolveWorkspaceResourceEligibility(input);
+  if (eligibility === undefined || eligibility.relativePath === undefined) {
+    return undefined;
+  }
+  return {
+    workspaceFolder: eligibility.workspaceFolder,
+    relativePath: eligibility.relativePath
+  };
+};
 
 /**
  * Resolves stable, domain-separated identities for non-Git workspace state.

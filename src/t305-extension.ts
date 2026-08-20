@@ -58,11 +58,17 @@ import {
 } from "./t405-review-contexts-runtime";
 import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
 import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
+import {
+  resolveWorkspaceFolderMembership,
+  resolveWorkspaceResourceEligibility
+} from "./application/workspace-identity/index";
 import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
+const workspaceSidePathSemantics = () =>
+  process.platform === "win32" ? "windows" as const : "posix" as const;
 
 const toResourceUri = (uri: vscode.Uri) => ({
   scheme: uri.scheme,
@@ -108,16 +114,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   activeDocumentReviewEditRuntime = documentEditRuntime;
   const toEditSnapshot = (document: vscode.TextDocument): DocumentReviewEditSnapshot => {
     const text = document.getText();
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    const membership = resolveWorkspaceFolderMembership({
+      documentUri: toResourceUri(document.uri),
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+        uri: toResourceUri(folder.uri), name: folder.name
+      })),
+      fileSystemPathSemantics: workspaceSidePathSemantics()
+    });
     return {
       documentKey: document.uri.toString(true),
       documentUri: toResourceUri(document.uri),
       documentFsPath: document.uri.fsPath,
-      fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix",
-      ...(workspaceFolder === undefined ? {} : {
+      fileSystemPathSemantics: workspaceSidePathSemantics(),
+      ...(membership === undefined ? {} : {
         workspace: {
-          workspaceFolderUri: toResourceUri(workspaceFolder.uri),
-          relativePath: vscode.workspace.asRelativePath(document.uri, false)
+          workspaceFolderUri: membership.workspaceFolder.uri,
+          relativePath: membership.relativePath
         }
       }),
       text,
@@ -178,7 +190,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
+    const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+      uri: toResourceUri(folder.uri), name: folder.name
+    }));
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      if (resolveWorkspaceResourceEligibility({
+        documentUri: toResourceUri(folder.uri),
+        workspaceFolders,
+        fileSystemPathSemantics: workspaceSidePathSemantics()
+      }) === undefined) continue;
       if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
@@ -201,7 +221,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const editor of vscode.window.visibleTextEditors) {
-      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) continue;
+      if (resolveWorkspaceResourceEligibility({
+        documentUri: toResourceUri(editor.document.uri),
+        workspaceFolders,
+        fileSystemPathSemantics: workspaceSidePathSemantics()
+      })?.relativePath === undefined) continue;
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);
@@ -262,7 +286,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) return undefined;
         fallback = candidates.find((candidate) =>
-          candidate.context.kind === "workspace" && candidate.context.label === (folder?.name ?? editor.document.fileName)
+          candidate.context.kind === "workspace" &&
+          candidate.context.selection?.kind === "workspace" &&
+          folder !== undefined &&
+          candidate.context.selection.workspaceFolderUri.scheme === folder.uri.scheme &&
+          candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
+          candidate.context.selection.workspaceFolderUri.path === folder.uri.path
         );
       }
     }
@@ -297,10 +326,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const openGlobalFile = async (target: GlobalUnderstandingFileOpenTarget): Promise<void> => {
     let uri: vscode.Uri;
     if (target.kind === "working-tree") {
-      const folder = (vscode.workspace.workspaceFolders ?? []).find((candidate) => {
+      const folders = (vscode.workspace.workspaceFolders ?? []).filter((candidate) => {
         const relative = path.relative(candidate.uri.fsPath, target.filePath);
         return relative.length === 0 || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
       });
+      const folder = folders.sort((left, right) => right.uri.fsPath.length - left.uri.fsPath.length)[0];
       uri = folder === undefined
         ? vscode.Uri.file(target.filePath)
         : vscode.Uri.joinPath(
