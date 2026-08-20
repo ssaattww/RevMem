@@ -62,6 +62,16 @@ export interface WorkspaceNormalEditorDecorationState {
   readonly target: ReviewStateFileTarget;
 }
 
+/** Workspace session operations consumed by the document-owner router. */
+export interface WorkspaceReviewStateSessionProviderPort {
+  open(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): Promise<WorkspaceNormalEditorReviewStateSession>;
+  loadForDecoration(
+    descriptor: WorkspaceEditorReviewDescriptor
+  ): Promise<WorkspaceNormalEditorDecorationState | undefined>;
+}
+
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
 export interface WorkspaceReviewStateRepository
   extends ReviewStateTransactionCommitter {
@@ -219,7 +229,8 @@ interface WorkspaceReviewStateMapping {
  * the current file before a new command is evaluated. This preserves certainty without
  * relabeling stale reviewed ranges onto changed content.
  */
-export class WorkspaceReviewStateSessionProvider {
+export class WorkspaceReviewStateSessionProvider
+  implements WorkspaceReviewStateSessionProviderPort {
   private readonly now: () => Date;
 
   /**

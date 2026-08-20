@@ -5,9 +5,15 @@ export {
   type WorkspaceNormalEditorDecorationState,
   type WorkspaceNormalEditorReviewStateSession,
   type WorkspaceReviewStateRepository,
+  type WorkspaceReviewStateSessionProviderPort,
   type WorkspaceReviewStateSessionProviderOptions
 } from "./workspace-review-state-session-provider";
 export {
   SnapshotTrackingWorkspaceReviewStateSessionProvider,
   type SnapshotTrackingWorkspaceReviewStateSessionProviderOptions,
 } from "./snapshot-tracking-workspace-review-state-session-provider";
+export {
+  WorkspaceRootRuntimeRegistry,
+  type WorkspaceRootRuntime,
+  type WorkspaceRootRuntimeFactory
+} from "./workspace-root-runtime-registry";

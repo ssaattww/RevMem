@@ -226,3 +226,19 @@ test("T406 GitHub failure and recovery integration is exposed by package and CI"
     "CI must invoke the package-owned T406 focused script through the diagnostic runner"
   );
 });
+
+test("T605 multi-root and remote workspace boundary coverage is exposed by package and CI", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8")
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  assert.match(
+    requireScript(manifest.scripts ?? {}, "test:t605"),
+    /test-dist\/test\/unit\/t605-multi-root-remote-boundaries\.test\.js/u
+  );
+  assert.match(
+    workflow,
+    /- name: T605 multi-root and remote workspace boundary tests[\s\S]*?node tools\/run-ci-command\.mjs test-t605 npm run test:t605\b/u
+  );
+});

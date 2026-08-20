@@ -15,7 +15,7 @@ import {
   type WorkspaceEditorReviewDescriptor,
   type WorkspaceNormalEditorDecorationState,
   type WorkspaceReviewStateRepository,
-  WorkspaceReviewStateSessionProvider
+  WorkspaceReviewStateSessionProviderPort
 } from "../workspace-review-state/index";
 import type {
   NormalEditorReviewStateSession
@@ -110,7 +110,7 @@ export interface DocumentReviewStateSessionProviderOptions {
   /** Persistence boundary that stores complete context and owner-wide Global snapshots. */
   readonly repository: DocumentReviewStateRepository;
   /** Non-Git workspace session provider reused for fallback and source promotion. */
-  readonly workspaceProvider: WorkspaceReviewStateSessionProvider;
+  readonly workspaceProvider: WorkspaceReviewStateSessionProviderPort;
   /** Stable digest provider used to derive owner, context, and file identities. */
   readonly stableHash: StableHash;
   /** Optional UTC clock used for created and updated timestamps; the system clock is used when omitted. */

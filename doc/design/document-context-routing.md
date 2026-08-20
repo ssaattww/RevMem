@@ -145,6 +145,12 @@ VS CodeのUNC securityを迂回しない。
 - `security.allowedUNCHosts`またはユーザー確認により開けたresourceは通常どおり保持する
 - 一時的に到達不能になっても既存状態を自動削除しない
 
+### 5.5 Multi-root と remote workspace URI
+
+workspace membershipはUI側のlocal pathやfolder名ではなく、workspace-side Extension Hostが観測したURIの`scheme`、`authority`、正規化pathで決定する。候補rootのうち、document URIとscheme・authorityが一致し、そのpathがdocument pathの厳密な親であるものだけを候補にする。候補が複数ある場合は最長pathのrootを選ぶ。同じ最長canonical URIが複数存在して一意に選べない場合はfail-closedでworkspace ownerを選ばない。
+
+この規則により、入れ子root、同一名root、同じpathだが異なるremote authorityを区別する。`untitled`、virtual URI、queryまたはfragmentを持つURI、workspace外URIはworkspace ownershipへ降格させず、通常editorの操作対象外またはexternal-file ownerの既存規則で扱う。Remote SSH、Dev Containers、Codespaces相当の`vscode-remote` URIはauthorityをidentityへ含め、Extension Hostが稼働する側のfilesystem semanticsとGit adapterだけを使用する。
+
 ## 6. Review State Storage
 
 ### 6.1 共通原則
@@ -183,17 +189,19 @@ repository manifestは複数のcontext参照と、1つのowner-wide Global参照
 
 ### 6.3 Non-Git workspace storage
 
-Git working treeに所属しないworkspace documentは、workspaceの`ExtensionContext.storageUri`を使用する。
+Git working treeに所属しないworkspace documentは、workspaceの`ExtensionContext.storageUri`配下でworkspace identityごとに分離したrootを使用する。root IDはcanonical workspace URIから導出し、folder名やUI側local pathを含めない。
 
 ```text
 storageUri/
-  workspace-state.json
-  history/
-  snapshots/
-  lock
+  workspaces/
+    <workspace-id-hash>/
+      workspace-state.json
+      history/
+      snapshots/
+      lock
 ```
 
-workspace contextは複数fileで共有する。対象file stateが存在しないことと、workspace context自体が存在しないことを区別する。
+workspace contextは同一root内の複数fileで共有する。対象file stateが存在しないことと、workspace context自体が存在しないことを区別する。各rootはstate、history、snapshot、lock、cleanupの独立したT604 storage-root契約を持ち、root Aの操作がroot Bのpointer、履歴、snapshot、leaseへ到達してはならない。
 
 ### 6.4 External-file storage
 
@@ -420,7 +428,7 @@ source評価順はworkspace、external-fileの順とする。ただし順番だ�
 
 ## 8. Extension接続
 
-通常エディタのコマンドと装飾は同じowner routerを使用する。
+通常エディタのコマンドと装飾は同じowner routerを使用する。activation compositionはworkspace folderごとにnon-Git provider、snapshot tracker、root-local storage routeを作成し、URI membership routerを経由してdocumentを1つのproviderへだけ渡す。workspace folderの追加・削除・変更ではprovider registryを更新し、削除されたrootのruntimeをdisposeする。Git、PR、file content、GitHub acquisitionは、選択されたdocument URIから得たworkspace-side filesystem pathだけで実行し、UI側local pathを仮定しない。
 
 ```text
 DocumentReviewStateSessionProvider.open(document descriptor)
@@ -448,6 +456,8 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - persistence failure: 成功表示しない
 - reconciliation failure: reconciliation前snapshotを維持する
 - revision mapping未完了: 旧revisionを現在revisionへ再ラベルしない
+- workspace root membershipが曖昧またはURI境界を越える: workspace state、history、snapshot、Git/PR acquisitionを開始しない
+- workspace folder削除後の旧provider: disposeし、削除rootのstateを別rootへ再利用しない
 
 ## 10. 検証条件
 
@@ -464,12 +474,16 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - HEAD確認の未知のexit 128を`GitCommandFailedError`として伝播する
 - workspaceなしウィンドウでもownerを解決できる
 - 1回のwritable openでactive-owner Git inspectionを1回だけ行う
+- multi-rootでは最長一致URI pathのrootだけを選び、入れ子root・同一名root・異なるauthorityを混同しない
+- untitled、virtual、workspace外、query/fragment URIはworkspace membershipをfail-closedに扱う
+- Remote SSH、Dev Containers、Codespaces相当authorityをworkspace identityとfile identityへ保持する
 
 ### 10.2 Storage
 
 - Git ownerが`globalStorageUri/repositories`へ保存される
 - workspace内外のGit fileが同じrepository storage routeを使用する
-- non-Git workspace stateがworkspace storageへ保存される
+- non-Git workspace stateが`storageUri/workspaces/<workspace-id-hash>`へ保存される
+- rootごとのworkspace state、history、snapshot、lock、cleanupが相互に独立する
 - external-file stateが`globalStorageUri/external-files`へ保存される
 - canonical URIがexternal stateから復元できる
 - contextとGlobalが1回のatomic commitで更新される
@@ -500,3 +514,10 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - workspaceのreviewed判断をexternal-fileのremovalが反転しない
 - workspaceのremovalをexternal-fileのadditionが反転しない
 - 複数source処理の途中失敗で一部sourceだけを保存しない
+
+### 10.4 Workspace-side composition
+
+- activationがworkspace folderごとのprovider registryを構成し、同じrootへだけdocument stateをrouteする
+- rootの追加、削除、変更でregistryを更新し、削除rootのruntimeをdisposeする
+- Git、対象file read、PR acquisitionがworkspace-side Extension HostのURIとfilesystem adapterを使用する
+- non-file remote authorityを含むroot Aとroot BでCurrent Context、review state、history、snapshot、Git/PR acquisitionが混線しない

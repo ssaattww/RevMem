@@ -42,7 +42,11 @@ export const resolveReviewStateStorageRoute = (
       );
     }
 
-    const rootPath = path.resolve(workspaceStoragePath);
+    const rootPath = path.join(
+      path.resolve(workspaceStoragePath),
+      "workspaces",
+      repositoryIdHash(repositoryId)
+    );
     return {
       storageKind: "workspace",
       rootPath,

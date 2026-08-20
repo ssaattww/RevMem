@@ -31,15 +31,15 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T603はmainへ統合済み。T604はCI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`・same independent reviewer IFR001/R2 delta verification待ち、T605以降は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T604はmainへ統合済み。T605はmulti-rootとremote workspace境界の実装中、T606以降は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（CI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`・same independent reviewer IFR001/R2 delta verification待ち）
-- 次の工程: fresh independent reviewerによるindependent final reviewを実施する
-- 後続候補: T605
+- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（implementation complete、normal review pending）
+- 次の工程: T605の通常reviewを実施する
+- 後続候補: T606
 
 ## P0 開発基盤
 
@@ -181,8 +181,9 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T601 圧縮snapshotと非Git行追従: 完了・main統合済み
 - T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
-- T604: CI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`、attestation head `dc66e5ea98281a094c1dff20a3fc21d689cf4492`のT506 dead-owner timeoutに対するsame reviewer IFR001/R2 delta verification待ち（Issue #72）
-- T605〜T608: 未着手
+- T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
+- T605: multi-rootとRemote SSH / Dev Containers / Codespaces相当workspace URI境界はimplementation complete、normal review pending（Issue #74）
+- T606〜T608: 未着手
 
 ### 終了チェックポイント
 

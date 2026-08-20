@@ -1,0 +1,29 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #74"
+task_id: T605
+branch: task/t605-multi-root-remote-boundaries
+base_ref: 64e47c590960a810a2439bd33f250ecbda9c41bf
+current_head: 64e47c590960a810a2439bd33f250ecbda9c41bf
+status: implementation_complete_normal_review_pending
+report: reports/issue-74-t605-implementation-20260820211845.md
+requirements:
+  - Route workspace documents by the unique longest matching workspace-side URI root.
+  - Keep root-local non-Git state, history, snapshots, locks, and cleanup separate under storageUri.
+  - Preserve extensionKind workspace and T604 storage-root locking and cleanup contracts.
+validation:
+  red: npm run test:t605 (missing workspace membership export)
+  green: npm run test:t605
+  static:
+    - npm run build
+    - npm run compile:test
+    - npm run typecheck:contracts
+    - npm run lint
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - git diff --check
+  ci: not run by task policy
+next_request: Run normal review against the implementation worktree, then preserve its evidence before any commit or PR action.
+remaining_risks:
+  - Remote service startup and network end-to-end are explicitly out of scope.
+  - The new root-scoped non-Git storage layout is recorded in Design/BreakingChanges.md; legacy single-root workspace state is not migrated.
