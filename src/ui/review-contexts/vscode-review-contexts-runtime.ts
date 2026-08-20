@@ -3,7 +3,8 @@ import * as vscode from "vscode";
 import {
   formatOperationFailureForUser,
   runWithBoundedRetry,
-  runWithActiveOperationFeedback
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
 
 import {
@@ -19,7 +20,8 @@ const HIDDEN_CONTEXTS_KEY = "reviewRange.hiddenReviewContexts.v1";
 const CURRENT_PULL_REQUEST_SELECTIONS_KEY = "reviewRange.currentPullRequestSelections.v1";
 
 export interface ReviewContextsRuntimeSource {
-  load(): Promise<readonly ReviewContextListItem[]>;
+  /** Loads read-only tree data and must stop downstream acquisition when aborted. */
+  load(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly ReviewContextListItem[]>;
 }
 
 export interface ReviewContextsRuntimeDependencies {
@@ -136,6 +138,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
   private readonly changed = new vscode.EventEmitter<ReviewContextListItem | undefined | null | void>();
   private items: readonly ReviewContextListItem[] = [];
   private generation = 0;
+  private refreshController: AbortController | undefined;
 
   public readonly onDidChangeTreeData = this.changed.event;
 
@@ -169,21 +172,33 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     return [...this.items];
   }
 
-  public async refresh(): Promise<void> {
+  public async refresh(feedbackContext?: OperationFeedbackContext): Promise<void> {
+    this.refreshController?.abort();
+    const controller = new AbortController();
+    this.refreshController = controller;
     const generation = ++this.generation;
-    const loaded = await this.source.load();
+    // The source owns the retryable acquisition; this method performs one
+    // publication only after that read has completed successfully.
+    const loaded = await runReviewContextsPureRead(
+      () => this.source.load(controller.signal, feedbackContext),
+      controller.signal,
+    );
     if (generation !== this.generation) return;
     this.items = [...loaded];
     this.changed.fire();
   }
   /** Clears the list when its replacement cannot be proven current. */
   public clear(): void {
+    this.refreshController?.abort();
+    this.refreshController = undefined;
     this.generation += 1;
     this.items = [];
     this.changed.fire();
   }
 
   public dispose(): void {
+    this.refreshController?.abort();
+    this.refreshController = undefined;
     this.changed.dispose();
   }
 
@@ -221,13 +236,16 @@ export function registerReviewContextsRuntime(
 
   const runOperation = async (
     label: string,
-    operation: () => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     retry = false,
   ): Promise<void> => {
+    // `retry` documents the command classification for wiring tests; retrying
+    // itself is deliberately confined to ReviewContextsTreeProvider.load().
+    void retry;
     try {
       await runWithActiveOperationFeedback(
         label,
-        () => retry ? runReviewContextsPureRead(operation) : operation(),
+        (feedbackContext) => operation(feedbackContext),
       );
     } catch (error) {
       provider.clear();
@@ -235,7 +253,7 @@ export function registerReviewContextsRuntime(
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
-    runOperation("Review Contextsを更新", () => provider.refresh(), true);
+    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   const mutate = async (
     operation: () => Promise<void>,
     refreshDecorations = false,
@@ -243,8 +261,8 @@ export function registerReviewContextsRuntime(
     await runOperation("Review Contextsを更新", async () => {
       await operation();
       if (refreshDecorations) await dependencies.refreshDecorations();
-    }, false);
-    await runOperation("Review Contextsを更新", () => provider.refresh());
+    });
+    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
@@ -286,7 +304,7 @@ export function registerReviewContextsRuntime(
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runOperation("Review Contextsを更新", () => provider.refresh(), true),
+    refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true),
     refreshWithErrorBoundary,
   };
 }

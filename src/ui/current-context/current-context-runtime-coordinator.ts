@@ -14,8 +14,8 @@ export class CurrentContextRuntimeCoordinator {
     private readonly dependentRefresher: CurrentContextDependentRefresher
   ) {}
 
-  public async refresh(): Promise<void> {
-    const result = await this.controller.refresh();
+  public async refresh(signal?: AbortSignal): Promise<void> {
+    const result = await this.controller.refresh(signal);
     if (result.stale) {
       return;
     }
@@ -23,8 +23,8 @@ export class CurrentContextRuntimeCoordinator {
     await this.dependentRefresher.refreshDependents();
   }
 
-  public async selectContext(): Promise<void> {
-    const selection = await this.controller.selectContext();
+  public async selectContext(signal?: AbortSignal): Promise<void> {
+    const selection = await this.controller.selectContext(signal);
     if (selection === undefined) {
       return;
     }

@@ -3,6 +3,7 @@ import type {
   RepositoryGlobalUnderstandingProgress
 } from "../../core/global-understanding/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
+import { runWithBoundedRetry } from "../../application/operation-feedback/index";
 
 export interface GlobalUnderstandingWorkingTreeFileOpenTarget {
   readonly kind: "working-tree";
@@ -82,7 +83,7 @@ export interface GlobalUnderstandingFileOpenHost {
 }
 
 export interface GlobalUnderstandingRefreshSource {
-  recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
 }
 
 export interface GlobalUnderstandingRefreshHost {
@@ -293,10 +294,14 @@ export class GlobalUnderstandingRefreshController {
   public constructor(private readonly source: GlobalUnderstandingRefreshSource, private readonly host: GlobalUnderstandingRefreshHost) {}
   public invalidate(): void { this.generation += 1; }
   public clear(): void { this.invalidate(); this.host.clear(); }
-  public async refresh(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
+  public async refresh(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
     try {
-      const snapshot = await this.source.recalculate();
+      const snapshot = (await runWithBoundedRetry(
+        () => this.source.recalculate(signal),
+        { maxAttempts: 3, signal },
+      )).value;
+      if (signal?.aborted === true) return undefined;
       if (currentGeneration !== this.generation) return undefined;
       if (snapshot === undefined) {
         this.host.clear();

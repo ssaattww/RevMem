@@ -1,4 +1,7 @@
-import { runWithActiveOperationFeedback } from "./application/operation-feedback/index";
+import {
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext,
+} from "./application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
@@ -418,7 +421,11 @@ export class PullRequestReviewRuntime<Uri> {
     });
   }
 
-  public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
+  public async getProgress(
+    contextId: string,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
     return runWithActiveOperationFeedback("PR進捗を計算", async () => {
       const calculated = await this.calculateProgress(contextId);
       return {
@@ -426,7 +433,7 @@ export class PullRequestReviewRuntime<Uri> {
         totalLineCount: calculated.progress.totalLineCount,
         progress: calculated.progress.progress,
       };
-    });
+    }, { maxAttempts: 3, signal }, feedbackContext);
   }
 
   /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */

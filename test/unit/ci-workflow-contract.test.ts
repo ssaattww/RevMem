@@ -254,6 +254,7 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
     "t606-failure-policy-retry-diagnostics",
     "t606-production-failure-matrix",
     "local-git-adapter",
+    "t405-github-lifecycle",
     "state-repository",
     "debounced-review-state-repository",
     "current-context-ui",
@@ -264,6 +265,7 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
   ]) assert.match(focused, new RegExp(`test-dist/test/unit/${suite}\\.test\\.js`, "u"));
   assert.match(focused, /test-dist\/test\/integration\/mock-github\.test\.js/u);
   assert.match(focused, /test-dist\/test\/integration\/t302-review-followup\.integration\.test\.js/u);
+  assert.match(focused, /test-dist\/test\/integration\/t402-pr-diff-acquisition\.test\.js/u);
   assert.match(
     workflow,
     /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,

@@ -193,6 +193,38 @@ test("T606 Review Contexts runtime fences a superseded source publication", asyn
   assert.deepEqual(provider.getChildren(), []);
 });
 
+test("T606 Review Contexts provider aborts an old root load and never publishes its distinct stale item", async () => {
+  const old = deferred<readonly never[]>();
+  const fresh = [{ label: "fresh" }] as never[];
+  const signals: AbortSignal[] = [];
+  const fakeVscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0 },
+  };
+  const moduleLoader = Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown; };
+  const originalLoad = moduleLoader._load;
+  moduleLoader._load = (request: string, parent: unknown, isMain: boolean) => request === "vscode"
+    ? fakeVscode : Reflect.apply(originalLoad, Module, [request, parent, isMain]) as unknown;
+  const modulePath = runtimeRequire.resolve("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
+  delete runtimeRequire.cache[modulePath];
+  const runtime = runtimeRequire(modulePath) as typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
+  moduleLoader._load = originalLoad;
+  let calls = 0;
+  const provider = new runtime.ReviewContextsTreeProvider({
+    load: async (signal?: AbortSignal) => {
+      signals.push(signal!);
+      return ++calls === 1 ? old.promise : fresh;
+    },
+  });
+  const stale = provider.refresh();
+  const current = provider.refresh();
+  await current;
+  assert.equal(signals[0]?.aborted, true);
+  old.resolve([{ label: "stale" }] as never[]);
+  await stale;
+  assert.deepEqual(provider.getChildren(), fresh);
+});
+
 test("T606 retries only an actual Review Contexts pure-read runtime operation", async () => {
   const fakeVscode = {
     EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
@@ -269,4 +301,50 @@ test("T606 runs Review Contexts commands through the production registration: re
   });
   assert.equal(mutations, 1, "a partial side effect is never retried");
   assert.equal(errors.length, 1);
+});
+
+test("T606 passes one explicit feedback context through the production Review Contexts read boundary", async () => {
+  const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
+  const fakeVscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0 },
+    window: { createTreeView: () => ({ dispose: () => undefined }) },
+    commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => {
+      commands.set(id, handler); return { dispose: () => undefined };
+    } },
+  };
+  const moduleLoader = Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown; };
+  const originalLoad = moduleLoader._load;
+  moduleLoader._load = (request: string, parent: unknown, isMain: boolean) => request === "vscode"
+    ? fakeVscode : Reflect.apply(originalLoad, Module, [request, parent, isMain]) as unknown;
+  const modulePath = runtimeRequire.resolve("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
+  delete runtimeRequire.cache[modulePath];
+  const runtime = runtimeRequire(modulePath) as typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
+  moduleLoader._load = originalLoad;
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 1);
+  let loads = 0;
+  let receivedContext = false;
+  setActiveOperationFeedback(feedback);
+  try {
+    runtime.registerReviewContextsRuntime({ subscriptions: [] } as never, {
+      source: { load: async (_signal, context) => {
+        loads += 1;
+        if (loads === 1) return [];
+        receivedContext = context?.owner === feedback;
+        reportActiveOperationFailure("PR進捗を取得", Object.assign(new Error("authentication"), { status: 401 }), context);
+        return [];
+      } },
+      controller: {} as never,
+      refreshDecorations: async () => undefined,
+      reportError: async () => undefined,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await commands.get("reviewRange.refreshReviewContexts")!();
+    assert.equal(receivedContext, true);
+    assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "succeeded", "started", "failed"]);
+    assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 1);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
 });

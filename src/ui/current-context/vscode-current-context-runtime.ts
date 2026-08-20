@@ -20,8 +20,8 @@ export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  recompute(): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
+  selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -96,20 +96,32 @@ export const registerCurrentContextRuntime = (
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
     ...dependentRefresher
   });
+  let refreshCancellation: AbortController | undefined;
+  let selectionCancellation: AbortController | undefined;
   const runRefresh = async (): Promise<void> => {
+    refreshCancellation?.abort();
+    const cancellation = new AbortController();
+    refreshCancellation = cancellation;
     try {
-      await runWithActiveOperationFeedback("Current Contextを更新", () => coordinator.refresh());
+      await runWithActiveOperationFeedback("Current Contextを更新", () => coordinator.refresh(cancellation.signal));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));
+    } finally {
+      if (refreshCancellation === cancellation) refreshCancellation = undefined;
     }
   };
   const runSelection = async (): Promise<void> => {
+    selectionCancellation?.abort();
+    const cancellation = new AbortController();
+    selectionCancellation = cancellation;
     try {
-      await runWithActiveOperationFeedback("Current Contextを選択", () => coordinator.selectContext());
+      await runWithActiveOperationFeedback("Current Contextを選択", () => coordinator.selectContext(cancellation.signal));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));
+    } finally {
+      if (selectionCancellation === cancellation) selectionCancellation = undefined;
     }
   };
 
@@ -137,6 +149,8 @@ export const registerCurrentContextRuntime = (
     controller,
     refresh: runRefresh,
     dispose: () => {
+      refreshCancellation?.abort();
+      selectionCancellation?.abort();
       for (const registration of registrations) {
         registration.dispose();
       }

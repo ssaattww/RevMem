@@ -505,8 +505,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
     openPullRequestReviewDiff: (contextId, fileId, title) =>
       pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
-    getPullRequestReviewProgress: (contextId) =>
-      pullRequestReviewRuntime.getProgress(contextId),
+    getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
+      pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
     reviewStateRepository: runtimePort.reviewStateRepository,
     reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
   });

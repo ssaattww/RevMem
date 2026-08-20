@@ -30,7 +30,7 @@ export const TOGGLE_GLOBAL_LAYER_COMMAND_ID = "reviewRange.toggleGlobalLayer";
 export const OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID = "reviewRange.openGlobalUnderstandingFile";
 
 export interface GlobalUnderstandingRuntimeSource {
-  recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
 }
 
 export interface GlobalUnderstandingRuntimeDependencies {
@@ -261,8 +261,7 @@ export const registerGlobalUnderstandingRuntime = (
     retryCancellation = currentCancellation;
     return runWithActiveOperationFeedback(
       "Global理解率を再計算",
-      () => refreshController.refresh().then(() => undefined),
-      { maxAttempts: 3, signal: currentCancellation.signal }
+      () => refreshController.refresh(currentCancellation.signal).then(() => undefined),
     ).finally(() => {
       if (retryCancellation === currentCancellation) retryCancellation = undefined;
     });
