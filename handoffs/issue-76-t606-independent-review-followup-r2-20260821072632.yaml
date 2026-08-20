@@ -25,5 +25,5 @@ validation:
   diff_check: pass
   markdown_wording: "held; repository tooling is absent"
 ci: held_exact_head_pr_ci
-external_sync: "PR #77 body external sync pending after admin commit"
+external_sync: "completed for technical head bdf6f4a; parent will refresh current admin head after this admin commit without Git writes"
 next_request: "Same independent reviewer performs finding-limited closure R2 for IFR001 through IFR005 after the technical fix is committed; no full review or merge authorization."
