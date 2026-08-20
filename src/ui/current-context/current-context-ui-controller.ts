@@ -181,10 +181,9 @@ export class CurrentContextUiController {
     if (this.actions === undefined) return undefined;
     const generation = ++this.generation;
     if (signal !== undefined && signal.aborted) return undefined;
-    const selection = (await runWithBoundedRetry(
-      () => this.actions!.selectContext(signal),
-      { maxAttempts: 3, signal },
-    )).value;
+    // A Quick Pick is an observable user interaction.  Unlike the preceding
+    // candidate acquisition it must never be replayed after a partial result.
+    const selection = await this.actions.selectContext(signal);
     if (signal?.aborted === true) return undefined;
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);

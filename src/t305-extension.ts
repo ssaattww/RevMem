@@ -262,19 +262,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
 
   const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
-  const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
+  const enumerateContexts = async (signal?: AbortSignal): Promise<CurrentContextUiSnapshot[]> => {
     const local = await enumerateLocalContexts();
+    if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     return reviewContextsRuntime === undefined
       ? local
       : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local)];
   };
 
-  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[]): Promise<CurrentContextUiSnapshot | undefined> => {
+  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
     if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
+      if (signal?.aborted === true) return undefined;
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
           candidate.context.selection?.kind === "pull-request" &&
@@ -301,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextComposition = new CurrentContextRuntimeComposition(selection, {
     enumerateCandidates: enumerateContexts,
     resolveFallback,
-    requestSelection: async (available) => {
+    requestSelection: async (available, signal) => {
       if (available.length === 0) {
         await vscode.window.showInformationMessage("表示できるレビューコンテキストがありません。");
         return undefined;
@@ -318,6 +320,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       const selected = await vscode.window.showQuickPick(items, {
         placeHolder: "レビューコンテキストを選択"
       });
+      if (signal?.aborted === true) return undefined;
       return selected?.snapshot;
     }
   });
@@ -464,7 +467,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: () => currentContextComposition.recompute(),
+      recompute: (signal) => currentContextComposition.recompute(signal),
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
@@ -475,7 +478,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         currentContextComposition.acceptExplicit(snapshot);
         globalSource.setContext(snapshot);
       },
-      selectContext: () => currentContextComposition.selectContext()
+      selectContext: (signal) => currentContextComposition.selectContext(signal)
     },
     {
       setSelectedContext: acceptSelectedContext,

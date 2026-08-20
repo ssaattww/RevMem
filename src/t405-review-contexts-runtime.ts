@@ -234,6 +234,7 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly roots = new Map<string, Set<string>>();
+  private pendingCachePublishes: Array<() => Promise<void>> = [];
 
   public constructor(
     private readonly repository: T405ReviewStateRepository,
@@ -276,6 +277,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextListItem[]> {
+    this.pendingCachePublishes = [];
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
@@ -332,6 +334,17 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       progressByContextId,
       cacheByContextId: Object.fromEntries(this.cacheStatusByContextId),
     });
+  }
+
+  /** Commits cache entries only after the final retryable read is accepted. */
+  public async publishLoaded(): Promise<void> {
+    const publishes = this.pendingCachePublishes;
+    this.pendingCachePublishes = [];
+    for (const publish of publishes) await publish();
+  }
+
+  public deferCachePublish(publish: () => Promise<void>): void {
+    this.pendingCachePublishes.push(publish);
   }
 
   public async augmentCurrentContextCandidates(
@@ -657,6 +670,7 @@ export function registerT405ReviewContextsRuntime(
     forceRemote = false,
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    deferCachePublish = false,
   ) => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("PR progress acquisition was superseded.", "AbortError");
@@ -689,20 +703,25 @@ export function registerT405ReviewContextsRuntime(
       }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
-    const result = await cache.acquire(diffRequest(context));
+    let result = await cache.acquireRead(diffRequest(context));
     assertCurrent();
-    if (forceRemote || !cacheStatusByContextId.has(context.contextId)) {
-      cacheStatusByContextId.set(
-        context.contextId,
-        result.kind === "acquired"
-          ? {
-              origin: result.cache.origin,
-              freshness: result.cache.freshness,
-              ...("updatedAt" in result.cache ? { updatedAt: result.cache.updatedAt } : {}),
-            }
-          : { origin: "unavailable", freshness: "unavailable" },
-      );
-    }
+    const publish = async (): Promise<void> => {
+      result = await cache.publish(diffRequest(context), result);
+      if (forceRemote || !cacheStatusByContextId.has(context.contextId)) {
+        cacheStatusByContextId.set(
+          context.contextId,
+          result.kind === "acquired"
+            ? {
+                origin: result.cache.origin,
+                freshness: result.cache.freshness,
+                ...("updatedAt" in result.cache ? { updatedAt: result.cache.updatedAt } : {}),
+              }
+            : { origin: "unavailable", freshness: "unavailable" },
+        );
+      }
+    };
+    if (deferCachePublish) sourceRef.current?.deferCachePublish(publish);
+    else await publish();
     if (result.kind === "acquired") {
       options.registerPullRequestReviewDiff({
         repositoryId: context.repositoryId,
@@ -729,7 +748,7 @@ export function registerT405ReviewContextsRuntime(
     feedbackContext?: OperationFeedbackContext,
   ): Promise<ReviewContextListProgress | undefined> => {
     try {
-      const { result } = await acquire(context, false, signal, feedbackContext);
+      const { result } = await acquire(context, false, signal, feedbackContext, true);
       if (result.kind !== "acquired") {
         reportActiveOperationFailure(
           "PR進捗を取得",

@@ -79,10 +79,21 @@ export class GitHubPullRequestCacheService {
   public async acquire(
     request: PullRequestDiffAcquisitionRequest
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
+    const read = await this.acquireRead(request);
+    return this.publish(request, read);
+  }
+
+  /**
+   * Performs only idempotent remote/cache reads. Callers that retry a UI
+   * acquisition must defer {@link publish} until the read has succeeded once.
+   */
+  public async acquireRead(
+    request: PullRequestDiffAcquisitionRequest
+  ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     requirePullRequestDiffAcquisitionRequest(request);
     const live = await this.acquisition.acquire(request);
     if (live.kind === "acquired") {
-      return this.acceptLive(request, live);
+      return this.projectLive(request, live);
     }
     if (!allowsOfflineFallback(live.attempts)) return live;
 
@@ -110,6 +121,43 @@ export class GitHubPullRequestCacheService {
         updatedAt: validated.updatedAt,
         expiresAt: validated.expiresAt
       }
+    };
+  }
+
+  /** Publishes one previously acquired exact live cache entry without reacquiring it. */
+  public async publish(
+    request: PullRequestDiffAcquisitionRequest,
+    result: GitHubPullRequestCacheAcquisitionResult,
+  ): Promise<GitHubPullRequestCacheAcquisitionResult> {
+    if (result.kind !== "acquired" || result.source === "offline-cache" || result.cache.origin !== "live" || result.metadata === undefined) return result;
+    return this.acceptLive(request, {
+      kind: "acquired",
+      source: result.source,
+      snapshot: result.snapshot,
+      metadata: result.metadata,
+    });
+  }
+
+  private projectLive(
+    request: PullRequestDiffAcquisitionRequest,
+    live: Extract<PullRequestDiffAcquisitionResult, { readonly kind: "acquired" }>,
+  ): GitHubPullRequestCacheAcquisitionResult {
+    if (
+      live.metadata === undefined ||
+      !gitHubPullRequestCacheMetadataMatches(live.metadata, request) ||
+      !gitHubPullRequestCacheSnapshotMatches(live.snapshot, request)
+    ) {
+      return {
+        ...live,
+        snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),
+        cache: { origin: "live", freshness: "not-cached" }
+      };
+    }
+    return {
+      ...live,
+      snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),
+      metadata: cloneGitHubPullRequestMetadata(live.metadata),
+      cache: { origin: "live", freshness: "not-cached" },
     };
   }
 

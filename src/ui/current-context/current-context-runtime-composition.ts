@@ -4,14 +4,18 @@ import {
   type CurrentContextUiSnapshot
 } from "./current-context-ui-controller";
 
+const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
+
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
 export interface CurrentContextRuntimeCompositionPort {
-  enumerateCandidates(): Promise<readonly CurrentContextUiSnapshot[]>;
+  enumerateCandidates(signal?: AbortSignal): Promise<readonly CurrentContextUiSnapshot[]>;
   resolveFallback(
-    candidates: readonly CurrentContextUiSnapshot[]
+    candidates: readonly CurrentContextUiSnapshot[],
+    signal?: AbortSignal,
   ): Promise<CurrentContextUiSnapshot | undefined>;
   requestSelection(
-    candidates: readonly CurrentContextUiSnapshot[]
+    candidates: readonly CurrentContextUiSnapshot[],
+    signal?: AbortSignal,
   ): Promise<CurrentContextUiSnapshot | undefined>;
 }
 
@@ -25,25 +29,29 @@ export class CurrentContextRuntimeComposition {
     private readonly port: CurrentContextRuntimeCompositionPort
   ) {}
 
-  public async recompute(): Promise<CurrentContextUiSnapshot | undefined> {
-    const candidates = await this.port.enumerateCandidates();
+  public async recompute(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> {
+    const candidates = await this.port.enumerateCandidates(signal);
+    if (isAborted(signal)) return undefined;
     if (candidates.length === 0) {
       return undefined;
     }
-    const fallback = await this.port.resolveFallback(candidates);
+    const fallback = await this.port.resolveFallback(candidates, signal);
+    if (isAborted(signal)) return undefined;
     return this.selection.resolve(candidates, fallback);
   }
 
-  public async selectContext(): Promise<CurrentContextUiSnapshot | undefined> {
-    const candidates = await this.port.enumerateCandidates();
+  public async selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> {
+    const candidates = await this.port.enumerateCandidates(signal);
+    if (isAborted(signal)) return undefined;
     const selected = await this.selection.select(
       candidates,
-      (available) => this.port.requestSelection(available)
+      (available) => this.port.requestSelection(available, signal)
     );
-    if (selected === undefined) {
+    if (selected === undefined || isAborted(signal)) {
       return undefined;
     }
-    const currentCandidates = await this.port.enumerateCandidates();
+    const currentCandidates = await this.port.enumerateCandidates(signal);
+    if (isAborted(signal)) return undefined;
     return currentCandidates.find((candidate) =>
       currentContextSelectionKey(candidate) === currentContextSelectionKey(selected)
     );

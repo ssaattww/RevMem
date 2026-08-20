@@ -96,32 +96,31 @@ export const registerCurrentContextRuntime = (
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
     ...dependentRefresher
   });
-  let refreshCancellation: AbortController | undefined;
-  let selectionCancellation: AbortController | undefined;
+  let currentCancellation: AbortController | undefined;
   const runRefresh = async (): Promise<void> => {
-    refreshCancellation?.abort();
+    currentCancellation?.abort();
     const cancellation = new AbortController();
-    refreshCancellation = cancellation;
+    currentCancellation = cancellation;
     try {
       await runWithActiveOperationFeedback("Current Contextを更新", () => coordinator.refresh(cancellation.signal));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));
     } finally {
-      if (refreshCancellation === cancellation) refreshCancellation = undefined;
+      if (currentCancellation === cancellation) currentCancellation = undefined;
     }
   };
   const runSelection = async (): Promise<void> => {
-    selectionCancellation?.abort();
+    currentCancellation?.abort();
     const cancellation = new AbortController();
-    selectionCancellation = cancellation;
+    currentCancellation = cancellation;
     try {
       await runWithActiveOperationFeedback("Current Contextを選択", () => coordinator.selectContext(cancellation.signal));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));
     } finally {
-      if (selectionCancellation === cancellation) selectionCancellation = undefined;
+      if (currentCancellation === cancellation) currentCancellation = undefined;
     }
   };
 
@@ -149,8 +148,7 @@ export const registerCurrentContextRuntime = (
     controller,
     refresh: runRefresh,
     dispose: () => {
-      refreshCancellation?.abort();
-      selectionCancellation?.abort();
+      currentCancellation?.abort();
       for (const registration of registrations) {
         registration.dispose();
       }

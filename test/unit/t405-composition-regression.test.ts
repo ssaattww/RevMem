@@ -717,7 +717,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     refreshTransport = "offline";
     const offlineRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(offlineRefreshErrors.length, 1);
-    assert.match(offlineRefreshErrors[0]!, /offline cache \(stale\)/u);
+    assert.match(offlineRefreshErrors[0]!, /詳細は Review Range Output/u);
     assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
       origin: "offline",
       freshness: "stale",
@@ -729,7 +729,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     await writeFile(cacheDirectory, "cache write blocked", "utf8");
     const writeFailureErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(writeFailureErrors.length, 1);
-    assert.match(writeFailureErrors[0]!, /live取得結果をcacheへ保存できませんでした/u);
+    assert.match(writeFailureErrors[0]!, /詳細は Review Range Output/u);
     assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
       origin: "live",
       freshness: "not-cached",
@@ -1006,9 +1006,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       historyEvents.filter((event) => event.contextId === contextId53 && event.revisionId === recoveredHeadSha),
     );
 
-    // R405-2: lifecycle changes must enter through Review Contexts load/synchronize, then survive restart.
+    // R405-2: lifecycle changes use an explicit mutation command, while refresh remains a pure projection read.
     lifecycle52 = "closed";
     lifecycle53 = "merged";
+    await invoke("reviewRange.redetectPullRequest");
     await current.runtime.refresh();
     const closed52 = findPullRequestItem(current.provider, 52);
     const merged53 = findPullRequestItem(current.provider, 53);

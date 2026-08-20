@@ -22,6 +22,8 @@ const CURRENT_PULL_REQUEST_SELECTIONS_KEY = "reviewRange.currentPullRequestSelec
 export interface ReviewContextsRuntimeSource {
   /** Loads read-only tree data and must stop downstream acquisition when aborted. */
   load(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly ReviewContextListItem[]>;
+  /** Commits a successful pure acquisition once, immediately before tree publication. */
+  publishLoaded?(): Promise<void>;
 }
 
 export interface ReviewContextsRuntimeDependencies {
@@ -183,6 +185,8 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       () => this.source.load(controller.signal, feedbackContext),
       controller.signal,
     );
+    if (generation !== this.generation) return;
+    await this.source.publishLoaded?.();
     if (generation !== this.generation) return;
     this.items = [...loaded];
     this.changed.fire();
