@@ -3,9 +3,9 @@ repository: ssaattww/RevMem
 issue_or_pr: "Issue #74 / PR #75"
 task_id: T605
 branch: task/t605-multi-root-remote-boundaries
-current_head: a38852e03c165a5aec91436352b058997262a31b
-status: ifr001_ifr003_r2_addressed_same_independent_reviewer_closure_r2_pending
+current_head: pending final administrative attestation freeze
+status: independent_findings_closed_final_attestation_pending
 report: reports/issue-74-t605-independent-review-followup-r2-20260820223327.md
 findings: [T605-IFR-001, T605-IFR-002, T605-IFR-003]
-next_request: Same independent reviewer performs only finding-limited closure R2 for IFR001 through IFR003; do not start a fresh independent review or normal full review.
+next_request: Same independent reviewer attests only the administrative tracking delta, then the owner checks exact-head pull_request CI and squash merges PR #75.
 ci: not run by task policy
