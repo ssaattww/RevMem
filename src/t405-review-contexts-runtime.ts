@@ -275,6 +275,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           owner.repositoryId,
           owner.headRevision,
           preferredContextId,
+          this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
         );
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
@@ -318,6 +319,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         owner.repositoryId,
         owner.headRevision,
         preferredContextId,
+        this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
       );
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
       const progress = await this.progressFor(pullRequest, owner.repositoryRoot);
@@ -862,7 +864,16 @@ export function registerT405ReviewContextsRuntime(
           state.contextId,
         );
       } else {
-        await currentPullRequestSelection.clear(local.repositoryId, local.head);
+        await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
+        if (search.kind === "unavailable") {
+          reportActiveOperationFailure(
+            "PRを再検出",
+            new OperationDiagnosticError({
+              code: "GITHUB_PR_DETECTION_UNAVAILABLE",
+              reason: search.reason,
+            }),
+          );
+        }
       }
       await options.refreshCurrentContext();
     },

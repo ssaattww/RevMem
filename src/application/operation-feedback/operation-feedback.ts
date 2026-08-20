@@ -35,6 +35,9 @@ export interface OperationFeedbackHost {
 export type OperationDiagnostic = {
   readonly code: "PR_PROGRESS_UNAVAILABLE";
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
+} | {
+  readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
+  readonly reason: "rate-limit" | "network" | "api";
 };
 
 interface ActiveOperation {
@@ -84,7 +87,8 @@ const SAFE_ERROR_CODES = new Set([
   "EROFS",
   "ETIMEDOUT",
   "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-  "PR_PROGRESS_UNAVAILABLE"
+  "PR_PROGRESS_UNAVAILABLE",
+  "GITHUB_PR_DETECTION_UNAVAILABLE"
 ]);
 
 const SAFE_PR_PROGRESS_SOURCES = new Set([
@@ -138,10 +142,9 @@ export class OperationDiagnosticError extends Error {
     super("Operation diagnostic is available.");
     this.name = "OperationDiagnosticError";
     this.code = diagnostic.code;
-    this.diagnostic = Object.freeze({
-      code: diagnostic.code,
-      attempts: validatePrProgressAttempts(diagnostic.attempts)
-    });
+    this.diagnostic = diagnostic.code === "PR_PROGRESS_UNAVAILABLE"
+      ? Object.freeze({ code: diagnostic.code, attempts: validatePrProgressAttempts(diagnostic.attempts) })
+      : Object.freeze({ code: diagnostic.code, reason: diagnostic.reason });
   }
 }
 
@@ -155,6 +158,9 @@ const safeErrorCode = (error: unknown): string | undefined => {
 };
 
 const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
+  if (diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
+    return `${diagnostic.code} reason=${diagnostic.reason}`;
+  }
   const attempts = diagnostic.attempts
     .map((attempt) => `${attempt.source}:${attempt.reason}`);
   const finalAttempt = attempts.at(-1) ?? "none";

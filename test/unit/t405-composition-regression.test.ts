@@ -25,6 +25,7 @@ import {
   type CurrentContextUiSnapshot,
 } from "../../src/ui/current-context/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
+import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -302,10 +303,17 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     };
     const stateRepository = new FileSystemReviewStateRepository({ storageUris });
     let nextHistoryEventId = 0;
+    const historyContextIds: string[] = [];
+    const historyStore = new JsonlReviewHistoryStore({ storageUris });
     const historyRecorder = new ReviewHistoryRecorder({
       sessionId: "t405-composition",
       createEventId: () => `t405-composition-event-${++nextHistoryEventId}`,
-      appender: new JsonlReviewHistoryStore({ storageUris }),
+      appender: {
+        append: async (target, event) => {
+          historyContextIds.push(event.contextId);
+          await historyStore.append(target, event);
+        },
+      },
     });
     const contextId52 = `github-pr:${REPOSITORY_ID}#52`;
     const contextId53 = `github-pr:${REPOSITORY_ID}#53`;
@@ -322,6 +330,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     let lifecycle53: "open" | "closed" | "merged" = "open";
     let refreshTransport: "live" | "offline" = "live";
     let discoveryTransport: "live" | "network" = "live";
+    let remoteBaseSha = baseSha;
+    let remoteHeadSha = targetHeadSha;
+    let patchOldLine = "old";
+    let patchNewLine = "new";
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
@@ -330,8 +342,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           number,
           title: `PR ${number}`,
           html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
-          head: { sha: targetHeadSha },
-          base: { ref: "main", sha: baseSha },
+          head: { sha: remoteHeadSha },
+          base: { ref: "main", sha: remoteBaseSha },
         })));
       }
       if (url.pathname === "/repos/ssaattww/revmem/pulls/52/files") {
@@ -341,7 +353,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           status: "modified",
           additions: 1,
           deletions: 1,
-          patch: "@@ -1,2 +1,2 @@\n keep\n-old\n+new",
+          patch: `@@ -1,2 +1,2 @@\n keep\n-${patchOldLine}\n+${patchNewLine}`,
         }]);
       }
       const lifecycleMatch = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
@@ -358,8 +370,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           state: lifecycle === "open" ? "open" : "closed",
           merged_at: lifecycle === "merged" ? "2026-08-17T00:30:00Z" : null,
           changed_files: number === 52 ? 1 : 0,
-          base: { sha: baseSha },
-          head: { sha: targetHeadSha },
+          base: { sha: remoteBaseSha },
+          head: { sha: remoteHeadSha },
         });
       }
       throw new Error(`Unexpected GitHub request in T405 composition regression: ${url}`);
@@ -424,7 +436,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     const openedDiffs: Array<{ original: string; modified: string; title: string }> = [];
     const pullRequestReviewRuntime = new PullRequestReviewRuntime<string>({
       repository: stateRepository,
-      requestHistory: async () => undefined,
+      requestHistory: (transaction) => historyRecorder.recordTransaction(transaction, "user-selection"),
       diffHost: {
         parseUri: (value) => value,
         openDiff: async (original, modified, title) => {
@@ -433,7 +445,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       },
       getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
     });
-    const branchSnapshot: CurrentContextUiSnapshot = {
+    let branchSnapshot: CurrentContextUiSnapshot = {
       context: {
         kind: "branch",
         label: "main",
@@ -590,7 +602,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
 
     // R405-3: start at the real Review Contexts command, then execute canonical both-side commands.
     await invoke("reviewRange.openReviewContextDiff", findPullRequestItem(current.provider, 52));
-    const opened = openedDiffs.at(-1);
+    let opened = openedDiffs.at(-1);
     assert.ok(opened);
     assert.match(opened.original, /^review-range-diff:\/\/document\/v1\//u);
     assert.match(opened.modified, /^review-range-diff:\/\/document\/v1\//u);
@@ -644,6 +656,63 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       origin: "live",
       freshness: "not-cached",
     });
+
+    // T406-R003: a stale offline A cache and a cache-write failure must not terminate
+    // recovery. A subsequent live B acquisition has to replace every T405-owned
+    // immutable identity, rather than leaving an A snapshot registered in memory.
+    await rm(cacheDirectory, { force: true });
+    await mkdir(cacheDirectory, { recursive: true });
+    await writeFile(sourcePath, "keep\nrecovered", "utf8");
+    await runGit(repositoryRoot, ["commit", "-am", "recovered target head"]);
+    const recoveredHeadSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    remoteBaseSha = targetHeadSha;
+    remoteHeadSha = recoveredHeadSha;
+    patchOldLine = "new";
+    patchNewLine = "recovered";
+    branchSnapshot = {
+      ...branchSnapshot,
+      context: { ...branchSnapshot.context, headRevision: recoveredHeadSha },
+    };
+    redetectChoice = 52;
+    errors.length = 0;
+    await invoke("reviewRange.redetectPullRequest");
+    const recoveredRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
+    assert.deepEqual(recoveredRefreshErrors, []);
+    const recoveredCache = findPullRequestItem(current.provider, 52).cache;
+    assert.equal(recoveredCache?.origin, "live");
+    assert.equal(recoveredCache?.freshness, "fresh");
+    const recovered52 = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.equal(recovered52?.contextState.pullRequest?.baseSha, targetHeadSha);
+    assert.equal(recovered52?.contextState.pullRequest?.headSha, recoveredHeadSha);
+    assert.equal(recovered52?.globalState.currentRevisionId, recoveredHeadSha);
+    assert.equal(recovered52?.contextState.files[FILE_ID]?.revisionId, recoveredHeadSha);
+    assert.equal(recovered52?.globalState.files[FILE_ID]?.revisionId, recoveredHeadSha);
+    assert.throws(
+      () => pullRequestReviewRuntime.createHeadFileDocumentUri(contextId52, FILE_ID, targetHeadSha),
+      /stale/u,
+    );
+    const recoveredUri = pullRequestReviewRuntime.createHeadFileDocumentUri(
+      contextId52,
+      FILE_ID,
+      recoveredHeadSha,
+    );
+    assert.equal(
+      Buffer.from(recoveredUri.split("/").at(-2)!, "base64url").toString("utf8"),
+      recoveredHeadSha,
+    );
+    const cacheValues = await Promise.all((await readdir(cacheDirectory, { recursive: true }))
+      .filter((relativePath) => relativePath.endsWith(".json"))
+      .map(async (relativePath) => JSON.parse(await readFile(path.join(cacheDirectory, relativePath), "utf8")) as Record<string, unknown>));
+    assert.match(JSON.stringify(cacheValues), new RegExp(recoveredHeadSha, "u"));
+    assert.doesNotMatch(JSON.stringify(cacheValues), new RegExp(`"headSha":"${targetHeadSha}"`, "u"));
+
+    await invoke("reviewRange.openReviewContextDiff", findPullRequestItem(current.provider, 52));
+    opened = openedDiffs.at(-1);
+    assert.ok(opened);
     errors.length = 0;
     const commandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
       getDocumentUri: (editor) => editor.uri,
@@ -657,8 +726,45 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     });
     const originalEditor = { uri: opened.original };
     const modifiedEditor = { uri: opened.modified };
+
+    // T406-R004 / AC-11: commands use the real PR runtime, state repository, and
+    // append-only history recorder for both sibling owners. Each direction must
+    // leave the other PR's Context ranges and history ownership untouched.
+    const state52Before53 = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.ok(state52Before53);
+    const historyBefore53 = historyContextIds.length;
+    await invoke("reviewRange.openReviewContextDiff", findPullRequestItem(current.provider, 53));
+    const opened53 = openedDiffs.at(-1);
+    assert.ok(opened53);
+    const originalEditor53 = { uri: opened53.original };
+    const modifiedEditor53 = { uri: opened53.modified };
+    assert.equal(await commandService.markSelectionReviewed(originalEditor53), "applied");
+    assert.equal(await commandService.markSelectionReviewed(modifiedEditor53), "applied");
+    const state53AfterMark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    const state52After53Mark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(state52After53Mark?.contextState, state52Before53.contextState);
+    assert.ok(historyContextIds.slice(historyBefore53).every((contextId) => contextId === contextId53));
+
     assert.equal(await commandService.markSelectionReviewed(originalEditor), "applied");
     assert.equal(await commandService.markSelectionReviewed(modifiedEditor), "applied");
+    const state53After52Mark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    assert.deepEqual(state53After52Mark?.contextState, state53AfterMark?.contextState);
     assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
       reviewedLineCount: 2,
       totalLineCount: 2,
@@ -666,6 +772,26 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     });
     assert.equal(await commandService.unmarkSelectionReviewed(originalEditor), "applied");
     assert.equal(await commandService.unmarkSelectionReviewed(modifiedEditor), "applied");
+    const state52AfterUnmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.equal(await commandService.unmarkSelectionReviewed(originalEditor53), "applied");
+    assert.equal(await commandService.unmarkSelectionReviewed(modifiedEditor53), "applied");
+    const state53AfterUnmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    const state52After53Unmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(state52After53Unmark?.contextState, state52AfterUnmark?.contextState);
+    assert.ok(historyContextIds.includes(contextId52));
+    assert.ok(historyContextIds.includes(contextId53));
     assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
       reviewedLineCount: 0,
       totalLineCount: 2,
@@ -680,9 +806,43 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       { startLine: 0, endLineExclusive: 1 },
     ]);
     assert.deepEqual(
-      reviewStateAfterUnmark?.contextState.files[FILE_ID]?.originalReviewedByDiff[`${baseSha}..${targetHeadSha}`],
+      reviewStateAfterUnmark?.contextState.files[FILE_ID]?.originalReviewedByDiff[`${targetHeadSha}..${recoveredHeadSha}`],
       [],
     );
+
+    current = registerRuntime();
+    await current.runtime.refresh();
+    const restarted52AfterTransactions = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    const restarted53AfterTransactions = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    assert.deepEqual(
+      { ...restarted52AfterTransactions?.contextState, updatedAt: undefined },
+      { ...state52AfterUnmark?.contextState, updatedAt: undefined },
+    );
+    assert.deepEqual(
+      { ...restarted53AfterTransactions?.contextState, updatedAt: undefined },
+      { ...state53AfterUnmark?.contextState, updatedAt: undefined },
+    );
+    const historyDirectory = resolveReviewStateStorageRoute(storageUris, {
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    }).historyDirectory;
+    const persistedHistory = await Promise.all((await readdir(historyDirectory, { recursive: true }))
+      .filter((relativePath) => relativePath.endsWith(".jsonl"))
+      .map((relativePath) => readFile(path.join(historyDirectory, relativePath), "utf8")));
+    const persistedContextIds = persistedHistory.flatMap((text) => text.trim().split("\n")
+      .filter(Boolean)
+      .map((line) => (JSON.parse(line) as { contextId: string }).contextId));
+    assert.ok(persistedContextIds.includes(contextId52));
+    assert.ok(persistedContextIds.includes(contextId53));
 
     // R405-2: lifecycle changes must enter through Review Contexts load/synchronize, then survive restart.
     lifecycle52 = "closed";
@@ -717,12 +877,28 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(selectedAfterCancellation?.kind, "branch");
 
     // T406: GitHub network failure must also clear the PR preference so normal-editor review remains in the branch context.
+    lifecycle53 = "closed";
+    await current.runtime.refresh();
     redetectChoice = 52;
     await invoke("reviewRange.redetectPullRequest");
     assert.equal(selectedContexts.at(-1)?.kind, "pull-request");
+    const operationLog: Array<{ event: string; label: string; message?: string }> = [];
+    setActiveOperationFeedback(new OperationFeedback({
+      showBusy: () => undefined,
+      clearBusy: () => undefined,
+      appendLog: (entry) => operationLog.push(entry),
+      revealLog: () => undefined,
+    }, () => Date.parse("2026-08-20T00:00:00.000Z")));
     discoveryTransport = "network";
     await invoke("reviewRange.redetectPullRequest");
+    setActiveOperationFeedback(undefined);
     assert.equal(selectedContexts.at(-1)?.kind, "branch");
+    const diagnostics = operationLog.filter((entry) =>
+      entry.event === "failed" && entry.message === "GITHUB_PR_DETECTION_UNAVAILABLE reason=network"
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.ok(operationLog.some((entry) => entry.event === "succeeded"));
+    assert.doesNotMatch(JSON.stringify(operationLog), /network interrupted|repositoryRoot|targetHeadSha/u);
   } finally {
     moduleLoader._load = originalModuleLoad;
     globalThis.fetch = originalFetch;

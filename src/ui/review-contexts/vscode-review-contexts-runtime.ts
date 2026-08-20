@@ -45,7 +45,7 @@ export class VscodeReviewContextVisibilityStore implements ReviewContextVisibili
   }
 }
 
-/** Remembers an explicit PR choice for one immutable local repository HEAD. */
+/** Remembers an explicit PR or branch choice for one immutable local repository HEAD. */
 export class VscodeCurrentPullRequestSelectionStore {
   public constructor(private readonly state: vscode.Memento) {}
 
@@ -73,17 +73,24 @@ export class VscodeCurrentPullRequestSelectionStore {
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
-  /** 指定repository/HEADの明示PR選択を解除し、branch候補へ戻す。 */
-  public async clear(repositoryId: string, headRevision: string): Promise<void> {
+  /** Records an explicit branch/no-PR choice that suppresses saved-PR auto-inference. */
+  public async selectBranch(repositoryId: string, headRevision: string): Promise<void> {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
-    const selections: Record<string, string> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (key !== this.key(repositoryId, headRevision) && typeof value === "string" && value.trim().length > 0) {
-        selections[key] = value;
+    const selections: Record<string, string | false> = {};
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if ((typeof value === "string" && value.trim().length > 0) || value === false) selections[key] = value;
       }
     }
+    selections[this.key(repositoryId, headRevision)] = false;
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
+  /** Returns whether the immutable repository HEAD has an explicit branch/no-PR choice. */
+  public prefersBranch(repositoryId: string, headRevision: string): boolean {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    return typeof raw === "object" && raw !== null && !Array.isArray(raw) &&
+      (raw as Record<string, unknown>)[this.key(repositoryId, headRevision)] === false;
   }
 
   private key(repositoryId: string, headRevision: string): string {

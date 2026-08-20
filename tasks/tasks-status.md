@@ -7,14 +7,14 @@
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
 - GitHub Issue: #70
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
-- 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、review待ち）
-- 現在のタスク: T406 / Issue #70 initial implementation（local validation済み、review待ち）
-- 次のタスク: T406 の通常review、fix verification、独立review、commit/PR工程を実施する。review・merge前なので完了またはmain統合済みとしては扱わない
+- 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71 draft/open、通常review fail）
+- 現在のタスク: T406 / Issue #70 normal review follow-up実装済み（T406-R001〜R005、同一normal reviewerのclosure verification待ち）
+- 次のタスク: T406-R001〜R005 のfinding限定fix verificationを実施する。review・merge前なので完了またはmain統合済みとしては扱わない
 - 実装状態: T405、T506、T603は独立review finding closureとexact-head CIを完了し、mainへsquash merge済み。T406はtask branchで実装済み・review待ち
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t406-github-pr-integration`
-- Pull Request: 未作成（T406 initial implementation。review・commit・PR作成前）
+- Pull Request: #71（draft/open、initial implementation commit/push済み、通常review fail、follow-up実装済み、closure verification待ち）
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
 - PR #68 R2通常closure: `reports/issue-66-pr68-finding-closure-r2-20260820082607.md`。PR68-R002/R003はclosed、normal verdictは`pass_with_held`
 - PR #68独立review: `reports/issue-66-pr68-independent-final-review-20260820082950.md`。IFR001 High、IFR002 Medium、IFR003 Lowで`fail`
@@ -337,7 +337,7 @@
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
 | T404 | 完了 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装した | T104、T205、T401、T403 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #48をcurrent mainへsquash merge済み |
 | T405 | 完了 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常reviewと独立review closureを完了し、PR #54をmerge commit `11c2d517` でmainへ統合済み |
-| T406 | 実装済み・review待ち | L | GitHub未認証公開repository、401/403/404/429、network断、patch欠落、複数PR、closed PRの統合試験を追加し、障害時にPR明示選択を解除してbranch contextへ戻すproduction gapを修正する | T401〜T405 | `test:t406`が未認証公開PR、401/403/404/429、network断、patch欠落fallback、複数候補・取消、closed PR layer既定OFF、cache復旧、branch操作継続、AC-11隔離を固定する。local validation済みだがreview・commit・PR・main統合前 |
+| T406 | review follow-up実装済み | L | PR #71 draft/openの通常review finding `T406-R001` High、`R002`〜`R004` Medium、`R005` Lowを一括修正した | T401〜T405 | local focused validation後、同一normal reviewerのfinding限定closure verificationを待つ。commit/push済みinitial implementationは通常review failであり、main統合前 |
 
 ## P5 Global確認済みと理解率
 
@@ -383,4 +383,4 @@
 
 ## 次回開始時の選択
 
-T406 / Issue #70 は `task/t406-github-pr-integration` でinitial implementationとlocal validationを完了し、review待ちである。review、commit、PR、main統合を完了扱いにせず、次回はT406 review工程を再開する。
+T406 / Issue #70 は `task/t406-github-pr-integration` でinitial implementationと通常review follow-up実装・local validationを完了し、PR #71 の同一normal reviewer closure verification待ちである。review、commit、PR、main統合を完了扱いにせず、次回はfinding限定closure工程を再開する。
