@@ -2,7 +2,7 @@
 
 ## タスク
 
-IFR001/005 closedを維持し、IFR002〜004だけをR5としてaddressedした。technical implementation SHAはcommit前のためpendingである。
+IFR001/005 closedを維持し、IFR002〜004だけをR5としてaddressedした。technical implementation SHAは`a80d114d899497f3a504411962ba6207c0fccbbf`である。
 
 ## sub-agentを使う理由
 
@@ -30,8 +30,8 @@ IFR002: superseded commandはtyped terminalを記録し、後着catchが最新pr
 
 ## 結果
 
-IFR002〜004 addressed、IFR001/005 closed維持。same reviewer closure R5 pending、PR body external sync pending、CI heldである。
+IFR002〜004 addressed、IFR001/005 closed維持。same reviewer closure R5 pending、PR body external syncはadmin commit後pending、CI heldである。
 
 ## リスク
 
-technical SHA pending、same reviewer closure R5、exact-head CI、PR body external syncは未実施。Markdown wording toolingはunsupported/heldである。
+technical SHAは`a80d114d899497f3a504411962ba6207c0fccbbf`、same reviewer closure R5、exact-head CI、admin commit後のPR body external syncは未実施。Markdown wording toolingはunsupported/heldである。
