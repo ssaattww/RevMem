@@ -4,7 +4,7 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
-technical_implementation_head: technical_commit_pending
+technical_implementation_head: d5193ba3513d1cb62c7d9a053b3f87086e310d51
 status: r004_through_r005_r8_addressed_same_normal_reviewer_closure_pending_r001_r002_r003_r006_r007_closed
 report: reports/issue-76-t606-normal-review-followup-r8-20260821040000.md
 validation:
@@ -12,4 +12,4 @@ validation:
   focused_green: "npm run test:t606: 195 passing, 2 Windows POSIX fixture skips, 0 failed"
   static: "build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative, and git diff --check each passed once; Markdown wording tooling is unavailable"
   ci: unstarted; exact-head CI remains a merge gate held
-next_request: Create the technical implementation commit, synchronize its SHA in a separate admin-only pass, then have the same normal reviewer perform finding-limited closure R8 for R004 through R005 only. Retain R001, R002, R003, R006, and R007 closed.
+next_request: Have the same normal reviewer perform finding-limited closure R8 for R004 through R005 only. Retain R001, R002, R003, R006, and R007 closed. Exact-head CI remains held.

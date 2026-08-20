@@ -37,7 +37,7 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（R004〜R005のR8 technical commit pending・focused 195 passing、same normal reviewer closure待ち。R001/R002/R003/R006/R007はclosed）
+- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（R004〜R005のR8 technical implementation head `d5193ba3513d1cb62c7d9a053b3f87086e310d51`・focused 195 passing、same normal reviewer closure待ち。R001/R002/R003/R006/R007はclosed）
 - 次の工程: 同一normal reviewerのfinding限定closure
 - 後続候補: T607
 
@@ -183,7 +183,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
-- T606: R001/R002/R003/R006/R007はclosedを維持。R004〜R005はR8 technical commit pending・focused 195 passing/2 skipでaddressed、同一normal reviewerのfinding限定closure R8待ち（Issue #76、PR #77、exact-head CI held）
+- T606: R001/R002/R003/R006/R007はclosedを維持。R004〜R005はR8 technical implementation head `d5193ba3513d1cb62c7d9a053b3f87086e310d51`・focused 195 passing/2 skipでaddressed、同一normal reviewerのfinding限定closure R8待ち（Issue #76、PR #77、exact-head CI held）
 - T607〜T608: 未着手
 
 ### 終了チェックポイント

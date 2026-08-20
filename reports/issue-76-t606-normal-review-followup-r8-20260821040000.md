@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の同一normal reviewer向けR8 finding follow-up。R004〜R005だけを対象にし、technical implementation commitはpendingである。R001、R002、R003、R006、R007はclosedを維持する。
+T606 / Issue #76 / PR #77 の同一normal reviewer向けR8 finding follow-up。R004〜R005だけを対象にし、technical implementation headは`d5193ba3513d1cb62c7d9a053b3f87086e310d51`である。R001、R002、R003、R006、R007はclosedを維持する。
 
 ## sub-agentを使う理由
 
@@ -32,8 +32,8 @@ R005: actual T405 compositionは実Node atomic text storeへ委譲するcache st
 
 ## 結果
 
-R004〜R005のR8 technical implementationとdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closure R8はpendingである。exact-head CIはheldであり、technical implementation commitもpendingである。
+R004〜R005のR8 technical implementation head `d5193ba3513d1cb62c7d9a053b3f87086e310d51`とdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closure R8はpendingである。exact-head CIはheldである。
 
 ## リスク
 
-exact-head CI、real Extension Host acceptance、Markdown wording checkはheldまたはunsupportedである。次の作業はtechnical commit後のadmin SHA syncを経て、同一normal reviewerによるR004〜R005限定closure R8である。
+exact-head CI、real Extension Host acceptance、Markdown wording checkはheldまたはunsupportedである。次の作業は同一normal reviewerによるR004〜R005限定closure R8である。
