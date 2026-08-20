@@ -5,4 +5,5 @@ start_head: 8341d072523422da9f996ef69a109ae2e69ad7b5
 pr: '#71 draft/open'
 source_review: reports/issue-70-t406-normal-review-20260820091339.md
 findings: [T406-R001 High, T406-R002 Medium, T406-R003 Medium, T406-R004 Medium, T406-R005 Low]
-status: R2 follow-up implementation complete for T406-R001 and T406-R004; same normal reviewer R001/R004-only closure verification required
+normal_closure: reports/issue-70-t406-finding-closure-r2-20260820100012.md
+status: normal closure complete; T406-R001 through T406-R005 closed; next one-time source independent final review, then same independent reviewer finding-only closure if needed; CI verified at merge gate; PR #71 remains draft/open and unmerged
