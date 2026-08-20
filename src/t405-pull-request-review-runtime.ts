@@ -1,4 +1,5 @@
 import {
+  OperationCancelledError,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
 } from "./application/operation-feedback/index";
@@ -454,26 +455,29 @@ export class PullRequestReviewRuntime<Uri> {
     this.activeProgressContextId = contextId;
     this.progress.clear();
     const registration = this.requireRegistration(contextId);
+    const assertCurrent = (): void => {
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration) || cancellation.signal.aborted) {
+        throw new OperationCancelledError();
+      }
+    };
     try {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
         async (feedbackContext) => {
           const calculated = await this.calculateProgress(contextId, cancellation.signal);
-          if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+          assertCurrent();
           const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
           for (const file of calculated.progress.files) {
-            if (cancellation.signal.aborted) {
-              throw new DOMException("PR progress calculation was superseded.", "AbortError");
-            }
+            assertCurrent();
             lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
               calculated.registration,
               file,
               feedbackContext,
               cancellation.signal,
             );
-            if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+            assertCurrent();
           }
-          if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+          assertCurrent();
           const { snapshot } = calculated.registration;
           this.progress.replaceSnapshot({
             snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
@@ -489,7 +493,9 @@ export class PullRequestReviewRuntime<Uri> {
         { maxAttempts: 3, signal: cancellation.signal },
       );
     } catch (error) {
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) {
+        throw error instanceof OperationCancelledError ? error : new OperationCancelledError();
+      }
       this.progress.clear();
       throw error;
     } finally {

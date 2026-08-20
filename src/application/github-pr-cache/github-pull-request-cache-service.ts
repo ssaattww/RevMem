@@ -206,6 +206,7 @@ export class GitHubPullRequestCacheService {
     };
     if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
     await this.storage.write(entry, feedbackContext, signal);
+    if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
     return {
       ...live,
       snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),

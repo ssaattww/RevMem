@@ -8,6 +8,8 @@ import {
   type GitHubPullRequestCacheStorage,
   type PullRequestDiffAcquisitionPort,
 } from "../../src/application/github-pr-cache/index";
+import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index";
+import type { AtomicTextFileStore } from "../../src/adapters/state-repository/index";
 import {
   OperationFeedback,
   OperationDiagnosticError,
@@ -227,6 +229,42 @@ test("T606 IFR001 propagates an actual cache write failure instead of projecting
   await assert.rejects(() => cache.publish(request, read));
 });
 
+test("T606 IFR002 fences a pending Node cache write after abort and returns a typed cancellation", async () => {
+  const pendingWrite = deferred<void>();
+  const writes: string[] = [];
+  const files = new Map<string, string>();
+  const store: AtomicTextFileStore = {
+    readText: async (filePath) => files.get(filePath),
+    writeTextAtomically: async (filePath, content) => {
+      writes.push(filePath);
+      if (writes.length === 1) await pendingWrite.promise;
+      files.set(filePath, content);
+    },
+  };
+  const storage = new NodeGitHubPullRequestCacheStorage({
+    cacheDirectory: "/virtual/t606-cache",
+    atomicFileStore: store,
+    createGenerationId: () => "t606-r4",
+  });
+  const cache = new GitHubPullRequestCacheService({
+    acquisition: { acquire: async () => acquired },
+    storage,
+    freshnessMs: 1_000,
+    now: () => new Date(1_000),
+  });
+  const controller = new AbortController();
+  const read = await cache.acquireRead(request, undefined, controller.signal);
+  const publishing = cache.publish(request, read, undefined, controller.signal);
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  pendingWrite.resolve();
+  await assert.rejects(
+    () => publishing,
+    (error: unknown) => error instanceof Error && error.name === "AbortError",
+  );
+  assert.equal(writes.length, 1, "abort after pending storage I/O prevents later diff/pointer publication");
+});
+
 test("T606 IFR003 runs the production Global layer toggle through one redacted terminal lifecycle", async () => {
   const commands = new Map<string, () => Promise<void>>();
   const vscode = {
@@ -343,7 +381,11 @@ test("T606 IFR003 PR Progress carries its owner and abort signal to pending cont
     runtime.clearProgress();
     assert.equal(signals[0]?.aborted, true, "clearProgress aborts the signal observed by the deepest content adapter");
     content.resolve({ kind: "found", content: "stale\n" });
-    await cancelled;
+    await assert.rejects(
+      () => cancelled,
+      (error: unknown) => error instanceof Error && error.name === "OperationCancelledError",
+      "a superseded operation has a typed cancellation terminal rather than a success terminal",
+    );
     assert.equal(
       runtime.progress.getChildren().filter((item) => item.kind === "file").length,
       0,
@@ -362,8 +404,8 @@ test("T606 IFR003 PR Progress carries its owner and abort signal to pending cont
     const events = host.logs.map((entry) => entry.event);
     assert.equal(events.filter((event) => event === "started").length, 3);
     assert.equal(events.filter((event) => event === "succeeded" || event === "failed").length, 3, "each cancellation, failure, and success has exactly one terminal");
-    assert.equal(events.filter((event) => event === "failed").length, 1);
-    assert.equal(events.filter((event) => event === "succeeded").length, 2);
+    assert.equal(events.filter((event) => event === "failed").length, 2, "cancel and content failure each end once");
+    assert.equal(events.filter((event) => event === "succeeded").length, 1, "only the published content snapshot succeeds");
   } finally {
     setActiveOperationFeedback(undefined);
   }

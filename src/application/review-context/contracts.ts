@@ -90,7 +90,9 @@ export interface GitRevisionMappingSource {
     repositoryRoot: string,
     revision: string,
     repositoryRelativePath: string,
-    fileSystemPathSemantics: FileSystemPathSemantics
+    fileSystemPathSemantics: FileSystemPathSemantics,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitRevisionMappingTextReadResult>;
 }
 

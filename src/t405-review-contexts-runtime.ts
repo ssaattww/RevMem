@@ -688,7 +688,9 @@ export function registerT405ReviewContextsRuntime(
       root,
       descriptor.revision,
       descriptor.filePath,
-      descriptor.fileSystemPathSemantics
+      descriptor.fileSystemPathSemantics,
+      feedbackContext,
+      signal,
     );
     if (local.kind === "found") return local;
     if (local.kind === "invalid-encoding") return local;
@@ -722,7 +724,7 @@ export function registerT405ReviewContextsRuntime(
     const root = await resolveRepositoryRoot(context.repositoryId);
     assertCurrent();
     const identity = repositoryIdentity(context);
-    const token = await auth.getAccessToken(identity.host);
+    const token = await auth.getAccessToken(identity.host, signal);
     assertCurrent();
     const local: LocalPullRequestDiffPort = forceRemote
       ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
@@ -842,6 +844,7 @@ export function registerT405ReviewContextsRuntime(
     owner: LocalRepositoryOwner,
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextState[]> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
@@ -854,9 +857,14 @@ export function registerT405ReviewContextsRuntime(
         continue;
       }
       const identity = repositoryIdentity(context);
-      const token = await auth.getAccessToken(identity.host);
+      const token = await auth.getAccessToken(identity.host, signal);
       assertCurrent();
-      const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(identity, context.pullRequest.number);
+      const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
+        identity,
+        context.pullRequest.number,
+        feedbackContext,
+        signal,
+      );
       assertCurrent();
       if (latest.kind !== "available") {
         throw new OperationDiagnosticError({

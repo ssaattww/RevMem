@@ -76,7 +76,13 @@ export class NodeGitBlobReader implements GitBlobReader {
     );
   }
 
-  public readBlob(repositoryRoot: string, blobObjectId: string): Promise<Uint8Array> {
+  public readBlob(
+    repositoryRoot: string,
+    blobObjectId: string,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    if (signal?.aborted === true) return Promise.reject(new DOMException("Git blob read was superseded.", "AbortError"));
     const rootPath = requirePath(repositoryRoot, "repositoryRoot");
     const objectId = requireObjectId(blobObjectId);
     const invocation: GitCommandInvocation = {
@@ -108,6 +114,15 @@ export class NodeGitBlobReader implements GitBlobReader {
         if (forceCloseTimer !== undefined) {
           clearTimeout(forceCloseTimer);
         }
+        signal?.removeEventListener("abort", onAbort);
+      };
+
+      const onAbort = (): void => {
+        if (settled) return;
+        child.kill("SIGTERM");
+        settled = true;
+        clearTimers();
+        reject(new DOMException("Git blob read was superseded.", "AbortError"));
       };
 
       const capturedResult = (
@@ -192,6 +207,7 @@ export class NodeGitBlobReader implements GitBlobReader {
           this.terminationGraceMs
         );
       }, this.timeoutMs);
+      signal?.addEventListener("abort", onAbort, { once: true });
 
       child.stdout.on("data", (chunk: Buffer | Uint8Array) => {
         stdoutChunks.push(Buffer.from(chunk));
