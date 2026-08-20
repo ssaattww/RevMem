@@ -16,5 +16,5 @@ validation:
   architecture_negative: "pass; once; expected 11 violations"
   diff_check: "pass; no whitespace errors; line-ending warnings only"
 ci: held
-external_sync: pending after admin commit; push, PR update, and exact-head CI are outside this follow-up scope
+external_sync: PR body completed for technical head ce584b29e6f584234c7bab050d24d2dd163ae3d3; parent final admin head refresh pending
 next_request: Same independent reviewer performs finding-limited closure R6 for IFR002 and IFR004 only.

@@ -30,7 +30,7 @@ IFR002: registered Current Context command が real T305→T405 runtime/candidat
 
 ## 結果
 
-IFR002 と IFR004 は R6 で addressed。IFR001、IFR003、IFR005 は closed maintained。same independent reviewer による finding-limited closure R6 は pending、admin commit 後の external PR sync は pending、exact-head CI は held。technical implementation SHA は `ce584b29e6f584234c7bab050d24d2dd163ae3d3`。count は 205 pass / 0 fail / 2 Windows POSIX skip。architecture positive/negative と diff whitespace check は追加で pass した。
+IFR002 と IFR004 は R6 で addressed。IFR001、IFR003、IFR005 は closed maintained。same independent reviewer による finding-limited closure R6 は pending、PR body external sync は technical head `ce584b29e6f584234c7bab050d24d2dd163ae3d3` に対して完了、parent final admin head refresh は pending、exact-head CI は held。technical implementation SHA は `ce584b29e6f584234c7bab050d24d2dd163ae3d3`。count は 205 pass / 0 fail / 2 Windows POSIX skip。architecture positive/negative と diff whitespace check は追加で pass した。
 
 ## リスク
 
