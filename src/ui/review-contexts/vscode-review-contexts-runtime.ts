@@ -63,10 +63,12 @@ export class VscodeCurrentPullRequestSelectionStore {
   ): Promise<void> {
     if (contextId.trim().length === 0) throw new TypeError("contextId must not be empty");
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
-    const selections: Record<string, string> = {};
+    const selections: Record<string, string | false> = {};
     if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
       for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof value === "string" && value.trim().length > 0) selections[key] = value;
+        if ((typeof value === "string" && value.trim().length > 0) || value === false) {
+          selections[key] = value;
+        }
       }
     }
     selections[this.key(repositoryId, headRevision)] = contextId;
