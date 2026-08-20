@@ -19,7 +19,7 @@ import {
 import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/non-git-snapshots/index";
 import {
   SnapshotTrackingWorkspaceReviewStateSessionProvider,
-  WorkspaceRootRuntimeRegistry
+  createWorkspaceRootRuntimeRegistry
 } from "./adapters/workspace-review-state/index";
 import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
 import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
@@ -340,7 +340,7 @@ export function activate(
         .get<number>("maxSnapshotFileSizeBytes", DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES)
     })
   );
-  const workspaceSessionProvider = new WorkspaceRootRuntimeRegistry({
+  const workspaceSessionProvider = createWorkspaceRootRuntimeRegistry({
     identityService: workspaceIdentityService,
     historyRewriteSnapshotTracker: gitHistoryRewriteSnapshotTracker,
     factory: {

@@ -8,21 +8,15 @@ import type {
   WorkspaceEditorReviewDescriptor,
   WorkspaceNormalEditorDecorationState,
   WorkspaceNormalEditorReviewStateSession,
-  WorkspaceReviewStateSessionProviderPort
+  SnapshotAwareWorkspaceReviewStateSessionProviderPort
 } from "./workspace-review-state-session-provider";
 import type { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
 import type { ReviewStateTransaction } from "../../core/review-state/index";
 
 /** Root-local workspace runtime that may release resources when its folder leaves the workspace. */
-export interface WorkspaceRootRuntime extends WorkspaceReviewStateSessionProviderPort {
+export interface WorkspaceRootRuntime extends SnapshotAwareWorkspaceReviewStateSessionProviderPort {
   /** Releases only resources owned by this workspace root. */
   dispose?(): void;
-  /** Preserves the snapshot pointer whenever a workspace command commits state. */
-  commitWithSnapshot?(
-    descriptor: WorkspaceEditorReviewDescriptor,
-    transaction: Readonly<ReviewStateTransaction>,
-    commitState: () => Promise<void>
-  ): Promise<void>;
 }
 
 /** Creates the state, history, and snapshot runtime for one canonical workspace root. */
@@ -30,20 +24,23 @@ export interface WorkspaceRootRuntimeFactory {
   create(identity: WorkspaceIdentity): WorkspaceRootRuntime;
 }
 
+/** Dependencies of the workspace-side root registry shared by activation and focused composition tests. */
+export interface WorkspaceRootRuntimeRegistryOptions {
+  readonly identityService: WorkspaceIdentityService;
+  readonly factory: WorkspaceRootRuntimeFactory;
+  /** Stable Git history-rewrite tracker retained independently from root-local workspace runtimes. */
+  readonly historyRewriteSnapshotTracker: NonGitSnapshotTracker;
+}
+
 /**
  * Selects one root-local non-Git runtime per workspace identity and disposes
  * runtimes whose roots are removed from the active workspace folders.
  */
 export class WorkspaceRootRuntimeRegistry
-  implements WorkspaceReviewStateSessionProviderPort {
+  implements SnapshotAwareWorkspaceReviewStateSessionProviderPort {
   private readonly runtimes = new Map<string, WorkspaceRootRuntime>();
 
-  public constructor(private readonly options: {
-    readonly identityService: WorkspaceIdentityService;
-    readonly factory: WorkspaceRootRuntimeFactory;
-    /** Stable Git history-rewrite tracker retained independently from root-local workspace runtimes. */
-    readonly historyRewriteSnapshotTracker: NonGitSnapshotTracker;
-  }) {}
+  public constructor(private readonly options: WorkspaceRootRuntimeRegistryOptions) {}
 
   /** T602 production capability retained through the workspace-provider wrapper. */
   public get historyRewriteSnapshotTracker(): NonGitSnapshotTracker {
@@ -69,9 +66,6 @@ export class WorkspaceRootRuntimeRegistry
     commitState: () => Promise<void>
   ): Promise<void> {
     const runtime = this.runtimeFor(descriptor);
-    if (runtime.commitWithSnapshot === undefined) {
-      throw new Error("Selected workspace root does not support snapshot-aware commits.");
-    }
     await runtime.commitWithSnapshot(descriptor, transaction, commitState);
   }
 
@@ -123,3 +117,8 @@ export class WorkspaceRootRuntimeRegistry
     return runtime;
   }
 }
+
+/** Builds the workspace-side registry used by Extension Host activation and focused composition tests. */
+export const createWorkspaceRootRuntimeRegistry = (
+  options: WorkspaceRootRuntimeRegistryOptions
+): WorkspaceRootRuntimeRegistry => new WorkspaceRootRuntimeRegistry(options);

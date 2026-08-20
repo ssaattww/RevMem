@@ -442,6 +442,8 @@ DocumentReviewStateSessionProvider.open(document descriptor)
 
 writable `open`はreconciliation済みsessionをそのまま返す。永続化確認を目的とした2回目の`loadForDecoration`やowner再解決は行わない。
 
+workspace providerをroot registryでwrapする場合、registryはtyped snapshot-aware commit capabilityを公開し、reconciliation済みsessionはそのreceiverを保持したままcommitする。したがって確認・解除のstate commitはroot-local latest snapshotの無効化、state publication、replacement snapshot publicationを同じworkspace rootで順に行う。registryはstable Git history-rewrite trackerも保持し、root add/remove/disposeとstartup migration/restart後にもT601/T602のsnapshot・history recoveryを失わない。
+
 装飾読み込みは未保存resourceを初期化せず、owner判定規則だけを共有する。
 
 ## 9. エラー処理
@@ -521,6 +523,8 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 
 - activationがworkspace folderごとのprovider registryを構成し、同じrootへだけdocument stateをrouteする
 - rootの追加、削除、変更でregistryを更新し、削除rootのruntimeをdisposeする
+- reconciliation経由のworkspace mark/unmarkがtyped snapshot-aware capabilityを通り、latest snapshot、永続state、reopen decorationを同じrootで更新する
+- startup migration/restart、snapshot/history recovery、root-scoped lock/cleanupを含むconcrete composition regressionがworkspace root境界を確認する
 - Git、対象file read、PR acquisitionがworkspace-side Extension HostのURIとfilesystem adapterを使用する
 - non-file remote authorityを含むroot Aとroot BでCurrent Context、review state、history、snapshot、Git/PR acquisitionが混線しない
 - 同一repository identityが複数rootに存在する場合もrepository rootをCurrent Context candidate、PR acquisition、diff readerのsource identityとして保持し、rootを一意に決められない操作はactive document rootへfail-closedに束縛する

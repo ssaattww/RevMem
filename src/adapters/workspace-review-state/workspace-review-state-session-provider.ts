@@ -17,6 +17,7 @@ import {
 } from "../../core/contracts/index";
 import type {
   ReviewStateFileTarget,
+  ReviewStateTransaction,
   ReviewStateTransactionCommitter
 } from "../../core/review-state/index";
 import { ReviewHistoryRecorder } from "../../application/review-history/index";
@@ -71,6 +72,22 @@ export interface WorkspaceReviewStateSessionProviderPort {
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorDecorationState | undefined>;
 }
+
+/** Workspace provider capability that keeps the latest non-Git snapshot aligned with a state commit. */
+export interface SnapshotAwareWorkspaceReviewStateSessionProviderPort
+  extends WorkspaceReviewStateSessionProviderPort {
+  commitWithSnapshot(
+    descriptor: WorkspaceEditorReviewDescriptor,
+    transaction: Readonly<ReviewStateTransaction>,
+    commitState: () => Promise<void>
+  ): Promise<void>;
+}
+
+/** Narrows an optional production wrapper capability without relying on an untyped structural cast. */
+export const isSnapshotAwareWorkspaceReviewStateSessionProvider = (
+  provider: WorkspaceReviewStateSessionProviderPort
+): provider is SnapshotAwareWorkspaceReviewStateSessionProviderPort =>
+  "commitWithSnapshot" in provider && typeof provider.commitWithSnapshot === "function";
 
 /** Persistence subset needed to load, initialize, sanitize, and commit one session. */
 export interface WorkspaceReviewStateRepository

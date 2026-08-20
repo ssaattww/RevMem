@@ -15,6 +15,7 @@ import { StaleReviewStateError } from "../state-repository/index";
 import {
   type WorkspaceEditorReviewDescriptor,
   type WorkspaceNormalEditorDecorationState,
+  isSnapshotAwareWorkspaceReviewStateSessionProvider,
   WorkspaceReviewStateSessionProviderPort
 } from "../workspace-review-state/index";
 import type {
@@ -212,17 +213,13 @@ export class DocumentReviewStateSessionProvider {
     });
     const opened = await baseProvider.open(descriptor);
     const persisted = await repository.load(this.repositoryTarget(opened));
-    const snapshotWorkspaceProvider = this.options.workspaceProvider as unknown as {
-      commitWithSnapshot?: (
-        value: WorkspaceEditorReviewDescriptor,
-        transaction: Readonly<ReviewStateTransaction>,
-        commitState: () => Promise<void>
-      ) => Promise<void>;
-    };
-    const commitWithSnapshot = snapshotWorkspaceProvider.commitWithSnapshot;
-    const workspaceSnapshotCommitter = opened.owner === "workspace" && descriptor.workspace !== undefined && commitWithSnapshot !== undefined
+    const snapshotAwareWorkspaceProvider = this.options.workspaceProvider;
+    const workspaceProviderSupportsSnapshots = isSnapshotAwareWorkspaceReviewStateSessionProvider(
+      snapshotAwareWorkspaceProvider
+    );
+    const workspaceSnapshotCommitter = opened.owner === "workspace" && descriptor.workspace !== undefined && workspaceProviderSupportsSnapshots
       ? {
-          commit: async (transaction: Readonly<ReviewStateTransaction>) => commitWithSnapshot({
+          commit: async (transaction: Readonly<ReviewStateTransaction>) => snapshotAwareWorkspaceProvider.commitWithSnapshot({
             workspaceFolderUri: descriptor.workspace!.workspaceFolderUri,
             documentUri: descriptor.documentUri,
             fileSystemPathSemantics: descriptor.fileSystemPathSemantics,

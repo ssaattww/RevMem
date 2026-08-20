@@ -70,6 +70,10 @@ import {
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
 import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
+import {
+  currentContextCandidateKey,
+  resolveUniqueRepositoryRoot
+} from "./t405-root-scoped-candidate-identity";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -244,7 +248,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
 
   public repositoryRoot(repositoryId: string): string | undefined {
     const roots = this.roots.get(repositoryId);
-    return roots?.size === 1 ? roots.values().next().value as string : undefined;
+    return roots === undefined ? undefined : resolveUniqueRepositoryRoot(roots);
   }
 
   private rememberRoot(repositoryId: string, repositoryRoot: string): void {
@@ -359,12 +363,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   }
 
   private candidateKey(snapshot: CurrentContextUiSnapshot): string {
-    const selection = snapshot.context.selection;
-    if (selection?.kind === "pull-request") return `pr\0${selection.repositoryRoot}\0${selection.contextId}`;
-    if (selection?.kind === "branch") return `branch\0${selection.repositoryRoot}\0${selection.repositoryId}\0${selection.branchRef}`;
-    if (selection?.kind === "detached") return `detached\0${selection.repositoryRoot}\0${selection.repositoryId}\0${selection.headRevision}`;
-    if (selection?.kind === "workspace") return `workspace\0${JSON.stringify(selection.workspaceFolderUri)}`;
-    return `${snapshot.context.kind}\0${snapshot.context.detail ?? ""}\0${snapshot.context.label}`;
+    return currentContextCandidateKey(snapshot);
   }
 
   private kindOrder(snapshot: CurrentContextUiSnapshot): number {
