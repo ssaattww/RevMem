@@ -15,5 +15,5 @@ validation:
   architecture: pass
   architecture_negative: "pass; expected 11 violations"
 ci: held
-external_sync: PR body external sync pending after admin commit
+external_sync: PR body external sync completed for technical head a80d114d899497f3a504411962ba6207c0fccbbf; parent final admin head refresh pending
 next_request: Same independent reviewer performs finding-limited closure R5 for IFR002 through IFR004.
