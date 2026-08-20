@@ -690,7 +690,9 @@ globalStorageUri/
 
 複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
 
-lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner tokenと短いlease expiryだけを保存する。取得待ちの上限はmonotonic elapsed timeで判定し、未期限切れのlockは奪わない。期限切れlockだけをrecovery pathへatomic renameして回復し、recoveryはsuccessorの`lock`を再公開・削除しない。renew/releaseは取得済みdescriptorでowner tokenを再検証してから更新し、leaseを失ったoperationはpublication前後のowner fenceでfail closedにする。releaseはexpiryを過去値へ更新して回復へ委ねる。Node mutationはrootのphysical descendantへ解決し、symlink、junction、reparse ancestorを拒否する。stateのload/save/create/commit、history append、startup migration、snapshot/cache cleanupは同じroot lock transaction内で行う。snapshot cleanupはlatest pointer群、save中generation、retention/count/byte plan、delete直前pointer再確認を一つのtransactionに含める。lock timeout、失敗、stale recoveryはoperation種別だけを`Review Range` Output lifecycleへ一度だけ通知し、repository path、source、owner tokenを出力しない。既存の同一process直列化は維持する。
+lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner tokenと短いlease expiryだけを保存する。取得待ちの上限はmonotonic elapsed timeで判定し、未期限切れの協調ownerは奪わない。crash、期限切れ、partial lockだけをbounded recoveryし、recoveryはsuccessorの`lock`を再公開・削除しない。renew/releaseは取得済みdescriptorでowner tokenを再検証してから更新し、leaseを失ったoperationは検出可能なpublication境界でfail closedにする。releaseはexpiryを過去値へ更新して回復へ委ねる。Node mutationはrootのphysical descendantへ解決し、開始時またはoperation中に検出したsymlink、junction、reparse ancestor・identity changeをrejectしてfail closedにする。stateのload/save/create/commit、history append、startup migration、snapshot/cache cleanupは同じroot lock transaction内で行う。snapshot cleanupはlatest pointer群、save中generation、retention/count/byte plan、delete直前pointer再確認を一つのtransactionに含める。lock timeout、失敗、stale recoveryはoperation種別だけを`Review Range` Output lifecycleへoperationごと一度だけ通知し、repository path、source、owner tokenを出力しない。既存の同一process直列化は維持する。
+
+T604のfilesystem脅威モデルは、VS Codeが提供する信頼済みstorage root内で動くRevMemの協調Extension Host/window、crash、partial I/O、およびoperation開始時に存在するlink/reparseを対象とする。同じhost上の攻撃者がrootまたはancestorをsyscall間で意図的に差し替える競合は対象外であり、pure Node実装は`openat`/handle-relative rename等のnative filesystem primitiveを導入しない。この非保証はroot外mutationを許容するものではなく、検出可能なidentity変化でoperationを停止し、既存link/reparse経由ではroot外sentinelに触れないというT604の保証を定義する。
 
 新contextを作成するtransactionは、対象contextが存在しないこととowner-wide Globalの期待snapshotおよびversionを同じCAS条件に含める。入力は対象Context ID、現在Git snapshot、context不存在期待、Globalの存在状態を含む完全snapshot、Global versionである。Globalが異revisionなら、その入力snapshotからmappingしたnext contextとnext Globalを1 transactionで公開する。読込、mapping、保存を分離した非atomicなwindowを設けない。
 
@@ -1010,6 +1012,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - GitHub 401/403/404/429、network断、patch欠落
 - storage容量不足、JSON/snapshot破損、途中終了
 - stale lock、複数window競合
+- storage root identity変化または既存symlink/junction/reparseの検出時はfail closedし、current stateを推測・公開しない
 - PR Progress取得失敗が無言で非表示にならずOutputへ診断されること
 
 CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。

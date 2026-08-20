@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, type FileHandle } from "node:fs/promises";
+import { link, mkdir, open, readFile, rename, rm, stat, type FileHandle } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
 
@@ -11,6 +11,8 @@ export type StorageRootLockDiagnosticKind = "timeout" | "failure" | "stale-recov
 /** Privacy-safe lock observation that intentionally excludes filesystem paths and owner tokens. */
 export interface StorageRootLockDiagnostic {
   readonly kind: StorageRootLockDiagnosticKind;
+  /** Opaque per-acquisition scope used only to collapse repeated lifecycle ticks. */
+  readonly operationId: string;
 }
 
 /** Raised when another live Extension Host retains the storage-root lease. */
@@ -113,6 +115,7 @@ export class NodeStorageRootLock {
   private readonly now: () => number;
   private readonly monotonicNow: () => number;
   private readonly createOwnerToken: () => string;
+  private readonly operationId = randomUUID();
 
   public constructor(private readonly options: StorageRootLockOptions) {
     this.rootPath = path.resolve(options.rootPath);
@@ -141,11 +144,11 @@ export class NodeStorageRootLock {
     try {
       for (;;) {
         await guard(this.lockPath);
-        let created = false;
+        let pendingPath: string | undefined;
         try {
           await mkdir(this.rootPath, { recursive: true });
-          const handle = await open(this.lockPath, "wx", 0o600);
-          created = true;
+          pendingPath = path.join(this.rootPath, `.lock-pending-${randomUUID()}`);
+          const handle = await open(pendingPath, "wx", 0o600);
           try {
             await (this.options.writeLease ?? ((file, content) => file.writeFile(content, "utf8")))(
               handle,
@@ -153,6 +156,9 @@ export class NodeStorageRootLock {
             );
             await (this.options.syncLease ?? ((file) => file.sync()))(handle);
             if (this.options.closeLease !== undefined) await this.options.closeLease(handle);
+            await link(pendingPath, this.lockPath);
+            await rm(pendingPath, { force: true });
+            pendingPath = undefined;
           } catch (error) {
             await handle.close().catch(() => undefined);
             throw error;
@@ -184,8 +190,8 @@ export class NodeStorageRootLock {
           const release = this.releaseFor(handle, ownerToken, renewTimer, () => { leaseLost = true; });
           return Object.assign(release, { assertOwned });
         } catch (error) {
+          if (pendingPath !== undefined) await rm(pendingPath, { force: true }).catch(() => undefined);
           if (!isExists(error)) {
-            if (created) await rm(this.lockPath, { force: true }).catch(() => undefined);
             throw error;
           }
         }
@@ -197,7 +203,8 @@ export class NodeStorageRootLock {
         if (raw !== undefined) {
           const existing = parseLock(raw);
           const metadata = await stat(this.lockPath).catch(() => undefined);
-          const expired = existing === undefined
+          const invalidFutureLease = existing !== undefined && existing.expiresAt > this.now() + this.leaseMs * 2;
+          const expired = existing === undefined || invalidFutureLease
             ? metadata !== undefined && metadata.mtimeMs + this.leaseMs <= this.now()
             : existing.expiresAt <= this.now();
           if (expired) {
@@ -269,7 +276,7 @@ export class NodeStorageRootLock {
   }
 
   private async notify(kind: StorageRootLockDiagnosticKind): Promise<void> {
-    await Promise.resolve(this.options.notifyDiagnostic?.({ kind })).catch(() => undefined);
+    await Promise.resolve(this.options.notifyDiagnostic?.({ kind, operationId: this.operationId })).catch(() => undefined);
   }
 }
 

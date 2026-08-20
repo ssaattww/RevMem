@@ -4,16 +4,16 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: f1cb025e3008bb861ac6c673831a3c7b2d8e30e8
-status: normal_review_r2_findings_r001_to_r009_addressed_same_reviewer_closure_pending
-report: reports/issue-72-t604-implementation-20260820103944.md
+current_head: pending R3 follow-up commit
+status: normal_review_r3_seven_findings_addressed_same_reviewer_closure_pending
+report: reports/issue-72-t604-normal-review-followup-r3-20260820193342.md
 requirements:
   - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
   - Only expired locks are recovered; diagnostics disclose no path, source, repository ID, or owner token.
   - History remains append-only and has no cleanup policy.
 validation:
-  red: npm run test:t604 (missing T604 API exports)
-  green: npm run test:t604 (T604 13 passing; T506 custom-store 2 passing)
+  red: npm run test:t604 (R005 cleanup delete failure rejected an already durable publication; R004 fixture seed identity mismatch)
+  green: npm run test:t604 (T604 19 passing; T506 real multi-instance 2 passing)
   static:
     - npm run build
     - npm run compile:test
@@ -23,7 +23,7 @@ validation:
     - npm run validate:architecture:negative
     - git diff --check
   ci: not run; merge-gate held by explicit task policy
-next_request: Ask the same normal reviewer to verify only T604-R001 through T604-R009 closure at fix HEAD f1cb025e3008bb861ac6c673831a3c7b2d8e30e8. Do not add review scope, run CI, push, create a PR, merge, or self-review.
+next_request: Ask the same normal reviewer to verify only R3's addressed T604-R001/R002/R003/R004/R005/R007/R008 at the pending R3 follow-up commit. Do not add review scope, run CI, push, create a PR, merge, or self-review.
 remaining_risks:
-  - No T604-R001〜R009 closure condition remains locally; CI is intentionally held during implementation.
+  - R3 addressed seven finding closure conditions locally; same normal reviewer verification remains pending.
   - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

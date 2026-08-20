@@ -79,7 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
     },
-    notifyStorageLockDiagnostic: (diagnostic) => reportActiveStorageLockDiagnostic(diagnostic.kind)
+    notifyStorageLockDiagnostic: reportActiveStorageLockDiagnostic
   });
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;

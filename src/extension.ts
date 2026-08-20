@@ -285,8 +285,8 @@ export function activate(
       }
     });
   fileExclusionConfigurationController.start();
-  const reportStorageLockDiagnostic = (diagnostic: { readonly kind: string }): void => {
-    reportActiveStorageLockDiagnostic(diagnostic.kind as "timeout" | "failure" | "stale-recovered");
+  const reportStorageLockDiagnostic = (diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }): void => {
+    reportActiveStorageLockDiagnostic(diagnostic);
   };
 
   const atomicRepository = new FileSystemReviewStateRepository({

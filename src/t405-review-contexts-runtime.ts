@@ -647,7 +647,7 @@ export function registerT405ReviewContextsRuntime(
       acquisition,
       storage: new NodeGitHubPullRequestCacheStorage({
         cacheDirectory: route.cacheDirectory,
-        notifyStorageLockDiagnostic: (diagnostic) => reportActiveStorageLockDiagnostic(diagnostic.kind)
+        notifyStorageLockDiagnostic: reportActiveStorageLockDiagnostic
       }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });

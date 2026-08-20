@@ -153,7 +153,11 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
     });
   }
 
-  /** Publishes a generation then reads pointers, plans, and deletes under one root fence. */
+  /**
+   * Publishes a generation then reads pointers, plans, and deletes under one root fence.
+   * A cleanup deletion is best-effort after publication: its failure may temporarily
+   * exceed retention bounds, but cannot roll back the durable generation.
+   */
   public async putAndCleanup(
     snapshotId: string,
     bytes: Uint8Array,
@@ -219,6 +223,11 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
         await lease.assertOwned();
         await this.deletePersistedText(pointerPath);
       } else {
+        const snapshotPath = this.snapshotPath(snapshotId);
+        await this.guard(snapshotPath);
+        if (await this.atomicFileStore.readText(snapshotPath) === undefined) {
+          throw new Error("Snapshot generation must be stored before publishing its latest pointer.");
+        }
         await this.guard(pointerPath);
         await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, snapshotId } satisfies PersistedLatest));
@@ -337,8 +346,13 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
           }
         }
         if (becameActive) continue;
-        await this.atomicFileStore.deleteText(filePath);
-        totalBytes -= candidate.bytes;
+        try {
+          await this.atomicFileStore.deleteText(filePath);
+          totalBytes -= candidate.bytes;
+        } catch {
+          // Publication already succeeded. Leave this unreferenced generation for a
+          // later cleanup/restart rather than reporting the write as wholly failed.
+        }
       } else {
         retained++;
       }

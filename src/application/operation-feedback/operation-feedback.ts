@@ -217,6 +217,7 @@ export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
   private readonly pendingBoundaryDuplicates = new WeakSet<object>();
   private nextId = 0;
+  private readonly reportedStorageLockScopes = new Set<string>();
 
   public constructor(
     private readonly host: OperationFeedbackHost,
@@ -276,7 +277,10 @@ export class OperationFeedback {
   }
 
   /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
-  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered"): void {
+  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered", operationId: string): void {
+    const scope = `${operationId}\0${kind}`;
+    if (this.reportedStorageLockScopes.has(scope)) return;
+    this.reportedStorageLockScopes.add(scope);
     this.host.appendLog({
       timestamp: new Date(this.now()).toISOString(),
       label: "Storage lock",
@@ -341,13 +345,13 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
-const pendingStorageLockDiagnostics: Array<"timeout" | "failure" | "stale-recovered"> = [];
+const pendingStorageLockDiagnostics: Array<{ readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }> = [];
 
 /** Sets the process-wide operation feedback used by UI/application integration points. */
 export const setActiveOperationFeedback = (feedback: OperationFeedback | undefined): void => {
   activeOperationFeedback = feedback;
   if (feedback !== undefined) {
-    for (const kind of pendingStorageLockDiagnostics.splice(0)) feedback.reportStorageLock(kind);
+    for (const diagnostic of pendingStorageLockDiagnostics.splice(0)) feedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
   }
 };
 
@@ -367,11 +371,11 @@ export const reportActiveOperationFailure = (label: string, error: unknown): voi
 
 /** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
 export const reportActiveStorageLockDiagnostic = (
-  kind: "timeout" | "failure" | "stale-recovered"
+  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }
 ): void => {
   if (activeOperationFeedback === undefined) {
-    pendingStorageLockDiagnostics.push(kind);
+    pendingStorageLockDiagnostics.push(diagnostic);
     return;
   }
-  activeOperationFeedback.reportStorageLock(kind);
+  activeOperationFeedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
 };

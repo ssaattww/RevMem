@@ -8,13 +8,13 @@
 - GitHub Issue: #72
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
-- 現在のタスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（R2: T604-R001〜R009対応完了・同一reviewer closure待ち）
-- 次のタスク: 同一通常reviewerによるT604-R001〜R009限定R2 closure verificationを実施する
-- 実装状態: T405、T406、T506、T603はmainへ統合済み。T604はtask branchでR2 normal review finding対応完了・closure待ち
+- 現在のタスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（R3: T604-R001/R002/R003/R004/R005/R007/R008対応完了・同一reviewer closure待ち）
+- 次のタスク: 同一通常reviewerによるR3の既存7 finding限定closure verificationを実施する
+- 実装状態: T405、T406、T506、T603はmainへ統合済み。T604はtask branchでR3 normal review finding対応完了・closure待ち
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t604-storage-lock-cleanup`
-- Pull Request: #73（draft/open、T604-R001〜R009 R2対応完了・同一reviewer closure待ち）
+- Pull Request: #73（draft/open、R3のT604-R001/R002/R003/R004/R005/R007/R008対応完了・同一reviewer closure待ち）
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
 - PR #68 R2通常closure: `reports/issue-66-pr68-finding-closure-r2-20260820082607.md`。PR68-R002/R003はclosed、normal verdictは`pass_with_held`
 - PR #68独立review: `reports/issue-66-pr68-independent-final-review-20260820082950.md`。IFR001 High、IFR002 Medium、IFR003 Lowで`fail`
@@ -357,7 +357,7 @@
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
 | T602 | 完了 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #49をcurrent mainへsquash merge済み |
 | T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
-| T604 | R2 closure evidence完了・同一reviewer verification待ち | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装し、T604-R001〜R009を同一R2 batchでclosure条件まで対応した | T104、T403、T603 | focused local T604 13件、T506 custom-store 2件、owned child-process lock回帰、CI T604 wiring、静的検証を完了。同一通常reviewerのfinding限定R2 verification待ち |
+| T604 | R3 seven-finding evidence完了・同一reviewer verification待ち | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装し、R3でT604-R001/R002/R003/R004/R005/R007/R008をclosure条件まで対応した | T104、T403、T603 | focused local T604 19件、T506 real multi-instance 2件、production child startup/writer/kill/restart、snapshot pointer/limit/delete-failure/restart、既存CI T604 wiring、静的検証を完了。同一通常reviewerの既存7 finding限定verification待ち |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
 | T606 | 未着手 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装する | T403、T601〜T605 | token・source本文をlogへ出さず、全障害fixtureで誤った確認済み表示をしない。AC-24を満たす |
 | T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
@@ -383,4 +383,4 @@
 
 ## 次回開始時の選択
 
-T604 / Issue #72 は `task/t604-storage-lock-cleanup` でT604-R001〜R009を同一R2 follow-up batchで対応した。次回は同一通常reviewerによる既存9 finding限定R2 closure verificationを実施する。CI、commit、push、PR、mergeは本follow-upでは未実行である。
+T604 / Issue #72 は `task/t604-storage-lock-cleanup` でR3のT604-R001/R002/R003/R004/R005/R007/R008を同一follow-up batchで対応した。次回は同一通常reviewerによる既存7 finding限定R3 closure verificationを実施する。CI、commit、push、PR、mergeは本follow-upでは未実行である。

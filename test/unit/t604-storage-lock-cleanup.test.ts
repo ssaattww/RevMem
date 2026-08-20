@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -6,10 +7,11 @@ import path from "node:path";
 import test from "node:test";
 
 import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/node-github-pull-request-cache-storage";
-import { NodeNonGitSnapshotStorage } from "../../src/adapters/non-git-snapshots/node-non-git-snapshot-adapters";
+import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "../../src/adapters/non-git-snapshots/node-non-git-snapshot-adapters";
 import {
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
+  NodeAtomicTextFileStore,
   NodeStorageRootLock,
   StorageRootLeaseLostError,
   StorageRootLockTimeoutError,
@@ -19,8 +21,10 @@ import {
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewHistoryEvent } from "../../src/core/contracts/index";
+import { NonGitSnapshotTracker } from "../../src/application/non-git-snapshots/index";
 import type { GitHubPullRequestCacheEntry } from "../../src/application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../src/application/github-pr-diff/index";
+import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
 
 const target = (contextId: string): ReviewStateRepositoryTarget => ({
   kind: "git",
@@ -80,6 +84,41 @@ const startLockChild = (rootPath: string, holdMs: number): { readonly child: Ret
 const runLockChild = async (rootPath: string, holdMs: number): Promise<string> =>
   startLockChild(rootPath, holdMs).output;
 
+/** Runs only production migration, state, history, and snapshot composition in an owned Node process. */
+const runProductionPersistenceChild = (rootPath: string, action: "startup" | "writer"): Promise<string> => {
+  const moduleRoot = path.join(process.cwd(), "test-dist", "src");
+  const script = [
+    "const nodePath = require('node:path');",
+    `const state = require(${JSON.stringify(path.join(moduleRoot, "adapters", "state-repository", "index.js"))});`,
+    `const { runPersistenceStartupMigration } = require(${JSON.stringify(path.join(moduleRoot, "adapters", "persistence-startup-migration.js"))});`,
+    `const { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } = require(${JSON.stringify(path.join(moduleRoot, "adapters", "non-git-snapshots", "index.js"))});`,
+    `const { NonGitSnapshotTracker } = require(${JSON.stringify(path.join(moduleRoot, "application", "non-git-snapshots", "index.js"))});`,
+    "const root = process.argv[1]; const action = process.argv[2];",
+    "const storageUris = { globalStorageUri: { fsPath: nodePath.join(root, 'global') }, storageUri: { fsPath: nodePath.join(root, 'workspace') } };",
+    "const target = { kind: 'git', repositoryId: 'repository-t604-r004', contextId: 'branch:startup-race' };",
+    "const commit = { schemaVersion: 1, contextState: { schemaVersion: 1, repositoryId: target.repositoryId, contextId: target.contextId, kind: 'branch', displayName: 'branch', branch: { refName: 'refs/heads/main', headRevision: 'newer-revision' }, files: {}, createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:09.000Z' }, globalState: { schemaVersion: 1, repositoryId: target.repositoryId, currentRevisionId: 'newer-revision', files: {}, updatedAt: '2026-08-20T00:00:09.000Z' } };",
+    "(async () => { if (action === 'startup') { await runPersistenceStartupMigration({ storageUris }); process.stdout.write('migrated'); return; }",
+    "const repository = new state.FileSystemReviewStateRepository({ storageUris }); await repository.save(target, commit);",
+    "await new state.JsonlReviewHistoryStore({ storageUris }).append(target, { schemaVersion: 1, eventId: 'newer-event', occurredAt: '2026-08-20T00:00:00.000Z', sessionId: 'session-t604', repositoryId: target.repositoryId, contextId: target.contextId, revisionId: 'newer-revision', type: 'context-created', reason: 'newer' });",
+    "const route = state.resolveReviewStateStorageRoute(storageUris, target); const tracker = new NonGitSnapshotTracker(new NodeNonGitSnapshotStorage({ snapshotDirectory: route.snapshotDirectory }), new NodeNonGitSnapshotCodec(), { maxSnapshots: 8, maxCompressedBytes: 4096, retentionMs: 60000 });",
+    "const saved = await tracker.saveLatest({ workspaceContextId: 'workspace', fileId: 'file', content: 'newer snapshot', reviewedRanges: [] }, 100); process.stdout.write(saved.snapshotId); })().catch((error) => { process.stderr.write(String(error && error.stack || error)); process.exit(1); });"
+  ].join("");
+  const child = spawn(process.execPath, ["-e", script, rootPath, action], { stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  let errorOutput = "";
+  const timeout = setTimeout(() => child.kill(), 5_000);
+  child.stdout.on("data", (value: Buffer) => { output += value.toString("utf8"); });
+  child.stderr.on("data", (value: Buffer) => { errorOutput += value.toString("utf8"); });
+  return new Promise<string>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) resolve(output.trim());
+      else reject(new Error(`production persistence child exited ${String(code)}: ${errorOutput}`));
+    });
+  });
+};
+
 test("T604 refuses a live root lock without exposing owner or path diagnostics", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:a"));
@@ -102,7 +141,8 @@ test("T604 recovers only an expired root lock", async () => {
   let now = 1_000;
   try {
     const first = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "first" });
-    await first.acquire();
+    const firstRelease = await first.acquire();
+    await firstRelease();
     now = 1_011;
     const recovered: string[] = [];
     const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "second", notifyDiagnostic: (value) => { recovered.push(value.kind); } });
@@ -127,6 +167,39 @@ test("T604 recovers a bounded stale malformed lock without taking a live valid l
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
+});
+
+test("T604 bounds zero, truncated, malformed, and future-invalid partial lock recovery", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:partial-matrix"));
+  try {
+    await mkdir(route.rootPath, { recursive: true });
+    for (const raw of ["", "{\"ownerToken\":", "not-json", JSON.stringify({ ownerToken: "future", expiresAt: 9_999_999 })]) {
+      await writeFile(route.lockPath, raw, "utf8");
+      await utimes(route.lockPath, 0, 0);
+      const release = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10, now: () => 1_000 }).acquire();
+      await release();
+    }
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 deduplicates pending privacy-safe diagnostics by operation scope", () => {
+  const entries: Array<{ readonly message?: string }> = [];
+  setActiveOperationFeedback(undefined);
+  reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
+  reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined,
+    appendLog: (entry) => { entries.push(entry); }, revealLog: () => undefined
+  }, () => 0);
+  setActiveOperationFeedback(feedback);
+  reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
+  reportActiveStorageLockDiagnostic({ kind: "stale-recovered", operationId: "scope-b" });
+  setActiveOperationFeedback(undefined);
+  assert.equal(entries.length, 2);
+  assert.doesNotMatch(JSON.stringify(entries), /scope-a|repository-t604|secret|path/u);
 });
 
 test("T604 fences a detached owner before it can publish after a successor recovery", async () => {
@@ -302,6 +375,106 @@ test("T604 snapshot cleanup preserves every active pointer while bounding an unr
     assert.notEqual(await storage.get(second), undefined);
     assert.notEqual(await storage.get(third), undefined);
     assert.equal(await storage.get(unreferenced), undefined);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 runs production startup recovery against real child writers and restarts from the newer coherent state", async () => {
+  const temporary = await createTemporaryStorage();
+  const startupTarget = { kind: "git" as const, repositoryId: "repository-t604-r004", contextId: "branch:startup-race" };
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, startupTarget);
+  const pointerName = createHash("sha256").update("legacy-pointer", "utf8").digest("hex");
+  try {
+    const initial = commit(1, startupTarget.contextId);
+    await new FileSystemReviewStateRepository({ storageUris: temporary.storageUris }).save(startupTarget, {
+      ...initial,
+      contextState: { ...initial.contextState, repositoryId: startupTarget.repositoryId },
+      globalState: { ...initial.globalState, repositoryId: startupTarget.repositoryId }
+    });
+    await mkdir(path.join(route.snapshotDirectory, "latest"), { recursive: true });
+    // This is an interrupted pre-v1 pointer publication: startup recovery must
+    // quarantine it, then never restore an earlier plan over the writer child.
+    await writeFile(path.join(route.snapshotDirectory, "latest", `${pointerName}.json`), "{partial", "utf8");
+    const killed = startLockChild(route.rootPath, 2_500);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    killed.child.kill();
+    await killed.output.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 1_020));
+
+    const [startup, savedSnapshotId] = await Promise.all([
+      runProductionPersistenceChild(temporary.root, "startup"),
+      runProductionPersistenceChild(temporary.root, "writer")
+    ]);
+    assert.equal(startup, "migrated");
+    assert.match(savedSnapshotId, /^[0-9a-f]{64}$/u);
+
+    const restarted = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    assert.equal((await restarted.load(startupTarget))?.globalState.currentRevisionId, "newer-revision");
+    const history = await readFile(path.join(route.historyDirectory, "events-2026-08.jsonl"), "utf8");
+    assert.match(history, /newer-event/u);
+    const snapshotStorage = new NodeNonGitSnapshotStorage({ snapshotDirectory: route.snapshotDirectory });
+    assert.equal(await snapshotStorage.getLatest("workspace", "file"), savedSnapshotId);
+    const restored = await new NonGitSnapshotTracker(snapshotStorage, new NodeNonGitSnapshotCodec(), {
+      maxSnapshots: 8, maxCompressedBytes: 4096, retentionMs: 60_000
+    }).restore(savedSnapshotId, 100);
+    assert.equal(restored?.content, "newer snapshot");
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 keeps active snapshots above count and byte limits, publishes through cleanup failure, and converges after restart", async () => {
+  const temporary = await createTemporaryStorage();
+  const snapshotDirectory = path.join(temporary.root, "snapshots");
+  const nodeStore = new NodeAtomicTextFileStore(temporary.root);
+  let failCleanupDelete = false;
+  const storage = new NodeNonGitSnapshotStorage({
+    snapshotDirectory,
+    atomicFileStore: {
+      readText: (filePath) => nodeStore.readText(filePath),
+      writeTextAtomically: (filePath, text) => nodeStore.writeTextAtomically(filePath, text),
+      deleteText: async (filePath) => {
+        if (failCleanupDelete) throw new Error("injected cleanup delete failure");
+        await nodeStore.deleteText?.(filePath);
+      }
+    }
+  });
+  const content = (prefix: string): string => `${prefix}:${Array.from({ length: 128 }, (_, index) => createHash("sha256").update(`${prefix}-${index}`, "utf8").digest("hex")).join("")}`;
+  const permissive = new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), {
+    maxSnapshots: 16, maxCompressedBytes: 8_192, retentionMs: 60_000
+  });
+  const strictLimits = { maxSnapshots: 1, maxCompressedBytes: 8_192, retentionMs: 60_000 };
+  try {
+    const first = await permissive.saveLatest({ workspaceContextId: "workspace", fileId: "first", content: content("first"), reviewedRanges: [] }, 1);
+    const second = await permissive.saveLatest({ workspaceContextId: "workspace", fileId: "second", content: content("second"), reviewedRanges: [] }, 2);
+    assert.ok(first.compressedBytes + second.compressedBytes > strictLimits.maxCompressedBytes, "two active generations exceed the explicit byte limit");
+    const raced = await permissive.save({ workspaceContextId: "workspace", fileId: "raced", content: content("raced"), reviewedRanges: [] }, 3);
+    await Promise.allSettled([
+      new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), strictLimits)
+        .save({ workspaceContextId: "workspace", fileId: "interleaved", content: content("interleaved"), reviewedRanges: [] }, 4),
+      storage.setLatest("workspace", "raced", raced.snapshotId)
+    ]);
+    const racedPointer = await storage.getLatest("workspace", "raced");
+    if (racedPointer === raced.snapshotId) {
+      assert.notEqual(await storage.get(raced.snapshotId), undefined, "an interleaved active pointer never names a deleted generation");
+    }
+    await permissive.save({ workspaceContextId: "workspace", fileId: "cleanup-stale", content: content("cleanup-stale"), reviewedRanges: [] }, 5);
+    failCleanupDelete = true;
+
+    const published = await new NonGitSnapshotTracker(storage, new NodeNonGitSnapshotCodec(), strictLimits)
+      .save({ workspaceContextId: "workspace", fileId: "new", content: content("new"), reviewedRanges: [] }, 6);
+    assert.notEqual(await storage.get(first.snapshotId), undefined);
+    assert.notEqual(await storage.get(second.snapshotId), undefined);
+    assert.notEqual(await storage.get(published.snapshotId), undefined);
+
+    failCleanupDelete = false;
+    const restartedStorage = new NodeNonGitSnapshotStorage({ snapshotDirectory });
+    const converged = await new NonGitSnapshotTracker(restartedStorage, new NodeNonGitSnapshotCodec(), strictLimits)
+      .save({ workspaceContextId: "workspace", fileId: "recovery", content: content("recovery"), reviewedRanges: [] }, 7);
+    assert.notEqual(await restartedStorage.get(first.snapshotId), undefined);
+    assert.notEqual(await restartedStorage.get(second.snapshotId), undefined);
+    assert.notEqual(await restartedStorage.get(converged.snapshotId), undefined);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
