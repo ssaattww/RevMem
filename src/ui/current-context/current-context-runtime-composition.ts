@@ -1,5 +1,8 @@
 import { CurrentContextCandidateSelection } from "./current-context-candidate-selection";
-import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
+import {
+  OperationCancelledError,
+  type OperationFeedbackContext,
+} from "../../application/operation-feedback/index";
 import {
   currentContextSelectionKey,
   type CurrentContextUiSnapshot
@@ -32,27 +35,30 @@ export class CurrentContextRuntimeComposition {
 
   public async recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
-    if (isAborted(signal)) return undefined;
+    if (isAborted(signal)) throw new OperationCancelledError();
     if (candidates.length === 0) {
       return undefined;
     }
     const fallback = await this.port.resolveFallback(candidates, signal);
-    if (isAborted(signal)) return undefined;
+    if (isAborted(signal)) throw new OperationCancelledError();
     return this.selection.resolve(candidates, fallback);
   }
 
   public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
-    if (isAborted(signal)) return undefined;
+    if (isAborted(signal)) throw new OperationCancelledError();
     const selected = await this.selection.select(
       candidates,
       (available) => this.port.requestSelection(available, signal)
     );
-    if (selected === undefined || isAborted(signal)) {
+    if (isAborted(signal)) {
+      throw new OperationCancelledError();
+    }
+    if (selected === undefined) {
       return undefined;
     }
     const currentCandidates = await this.port.enumerateCandidates(signal, feedbackContext);
-    if (isAborted(signal)) return undefined;
+    if (isAborted(signal)) throw new OperationCancelledError();
     return currentCandidates.find((candidate) =>
       currentContextSelectionKey(candidate) === currentContextSelectionKey(selected)
     );

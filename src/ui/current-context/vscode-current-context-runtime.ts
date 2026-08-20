@@ -105,8 +105,10 @@ export const registerCurrentContextRuntime = (
     try {
       await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext));
     } catch (error) {
-      controller.failClosed();
-      await reportRefreshError(formatOperationFailureForUser(error));
+      if (currentCancellation === cancellation) {
+        controller.failClosed();
+        await reportRefreshError(formatOperationFailureForUser(error));
+      }
     } finally {
       if (currentCancellation === cancellation) currentCancellation = undefined;
     }
@@ -118,8 +120,10 @@ export const registerCurrentContextRuntime = (
     try {
       await runWithActiveOperationFeedback("Current Contextを選択", (feedbackContext) => coordinator.selectContext(cancellation.signal, feedbackContext));
     } catch (error) {
-      controller.failClosed();
-      await reportRefreshError(formatOperationFailureForUser(error));
+      if (currentCancellation === cancellation) {
+        controller.failClosed();
+        await reportRefreshError(formatOperationFailureForUser(error));
+      }
     } finally {
       if (currentCancellation === cancellation) currentCancellation = undefined;
     }
