@@ -147,6 +147,7 @@
     "test:t403": "npm run compile:test && node --test test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t404": "npm run compile:test && node --test test-dist/test/unit/github-pr-context-layer-store.test.js test-dist/test/unit/t404-review-followup-r3.test.js test-dist/test/unit/t404-history-integration.test.js",
     "test:t405": "npm run compile:test && node --test test-dist/test/unit/review-contexts-runtime-wiring.test.js test-dist/test/unit/review-contexts-storage.test.js test-dist/test/unit/review-contexts-ui.test.js test-dist/test/unit/t405-github-lifecycle.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/t405-review-followup.test.js test-dist/test/unit/t405-revision-evidence.test.js test-dist/test/unit/t405-selected-pr-session.test.js",
+    "test:t406": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/unit/t405-composition-regression.test.js",
     "test:vscode": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js",
     "test:t306": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js --t306",
     "test:vscode-runner": "npm run compile:test && node --test test-dist/test/unit/owned-extension-host-launch.test.js test-dist/test/unit/owned-temporary-directory-cleanup.test.js",

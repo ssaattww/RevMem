@@ -45,7 +45,7 @@ export class VscodeReviewContextVisibilityStore implements ReviewContextVisibili
   }
 }
 
-/** Remembers an explicit PR choice for one immutable local repository HEAD. */
+/** Remembers an explicit PR or branch choice for one immutable local repository HEAD. */
 export class VscodeCurrentPullRequestSelectionStore {
   public constructor(private readonly state: vscode.Memento) {}
 
@@ -63,27 +63,54 @@ export class VscodeCurrentPullRequestSelectionStore {
   ): Promise<void> {
     if (contextId.trim().length === 0) throw new TypeError("contextId must not be empty");
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
-    const selections: Record<string, string> = {};
+    const selections: Record<string, string | false> = {};
     if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
       for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof value === "string" && value.trim().length > 0) selections[key] = value;
+        if ((typeof value === "string" && value.trim().length > 0) || value === false) {
+          selections[key] = value;
+        }
       }
     }
     selections[this.key(repositoryId, headRevision)] = contextId;
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
-  /** 指定repository/HEADの明示PR選択を解除し、branch候補へ戻す。 */
+  /**
+   * Removes only this immutable repository/HEAD preference for compatibility with
+   * existing public UI API consumers. New branch fallback uses selectBranch().
+   * @deprecated Use selectBranch() when an explicit branch/no-PR choice is required.
+   */
   public async clear(repositoryId: string, headRevision: string): Promise<void> {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
-    const selections: Record<string, string> = {};
+    const selections: Record<string, string | false> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (key !== this.key(repositoryId, headRevision) && typeof value === "string" && value.trim().length > 0) {
+      if (key !== this.key(repositoryId, headRevision) &&
+        ((typeof value === "string" && value.trim().length > 0) || value === false)) {
         selections[key] = value;
       }
     }
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
+  /** Records an explicit branch/no-PR choice that suppresses saved-PR auto-inference. */
+  public async selectBranch(repositoryId: string, headRevision: string): Promise<void> {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    const selections: Record<string, string | false> = {};
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if ((typeof value === "string" && value.trim().length > 0) || value === false) selections[key] = value;
+      }
+    }
+    selections[this.key(repositoryId, headRevision)] = false;
+    await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
+  /** Returns whether the immutable repository HEAD has an explicit branch/no-PR choice. */
+  public prefersBranch(repositoryId: string, headRevision: string): boolean {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    return typeof raw === "object" && raw !== null && !Array.isArray(raw) &&
+      (raw as Record<string, unknown>)[this.key(repositoryId, headRevision)] === false;
   }
 
   private key(repositoryId: string, headRevision: string): string {

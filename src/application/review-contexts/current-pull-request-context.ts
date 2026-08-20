@@ -12,6 +12,7 @@ export function findCurrentPullRequestContext(
   repositoryId: string,
   headRevision: string,
   preferredContextId?: string,
+  suppressAutomaticSelection = false,
 ): ReviewContextState | undefined {
   const matches = contexts.filter((context) =>
     context.kind === "pull-request" &&
@@ -24,5 +25,6 @@ export function findCurrentPullRequestContext(
     const preferred = matches.find((context) => context.contextId === preferredContextId);
     if (preferred !== undefined) return clone(preferred);
   }
+  if (suppressAutomaticSelection) return undefined;
   return matches.length === 1 ? clone(matches[0]!) : undefined;
 }

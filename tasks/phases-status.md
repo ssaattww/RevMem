@@ -29,7 +29,7 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
-| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T405はmainへ統合済み。T406は未着手 |
+| P4 | 進行中 | GitHub PR連携 | T401〜T406 | P3 | T401〜T405はmainへ統合済み。T406はtask branchで実装済み・review待ち |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T603はmainへ統合済み。T604以降が未着手 |
 
@@ -37,9 +37,9 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: PR #68 / Issue #66 独立review finding follow-up R2（`PR68-IFR001` Highのみ）
-- 次の工程: IFR001 R2をcommit/push後にsource independent reviewerのIFR001限定closure verificationを完了し、その後T406またはT604を選択する。fresh reviewと新規finding探索はしない
-- 後続候補: T406、T604
+- 実装中タスク: T406 / Issue #70 independent finding follow-up実装済み（PR #71 draft/open、T406-IFR001/IFR002、同source independent reviewer closure待ち、main統合前）
+- 次の工程: 同source independent reviewerによるT406-IFR001/IFR002限定closure verificationを実施する。新規観点・新規findingを追加しない。CIはmerge gateで対象HEAD一致を確認する
+- 後続候補: T604
 
 ## P0 開発基盤
 
@@ -136,7 +136,7 @@ GitHub接続を追加しつつ、認証・network・API障害がローカルレ�
 - T403 GitHub metadata・diff cacheとoffline読込: 完了・PR #44でmain統合済み
 - T404 永続PR context layer: 完了・PR #48でmain統合済み
 - T405 Review Contexts ViewとPR管理UI: 完了・PR #54をmerge commit `11c2d517` でmain統合済み
-- T406 GitHub障害・複数PR・closed PR統合試験: 未着手
+- T406 GitHub障害・複数PR・closed PR統合試験: PR #71 draft/openのnormal closureは`pass_with_held`、T406-R001〜R005はclosed。independent final reviewのT406-IFR001/IFR002 follow-up実装済みで、同source independent reviewerのfinding限定closure待ち。CIはmerge gateで確認、main統合前
 
 ### 終了チェックポイント
 

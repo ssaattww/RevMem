@@ -35,6 +35,9 @@ export interface OperationFeedbackHost {
 export type OperationDiagnostic = {
   readonly code: "PR_PROGRESS_UNAVAILABLE";
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
+} | {
+  readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
+  readonly reason: "rate-limit" | "network" | "api";
 };
 
 interface ActiveOperation {
@@ -84,7 +87,8 @@ const SAFE_ERROR_CODES = new Set([
   "EROFS",
   "ETIMEDOUT",
   "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-  "PR_PROGRESS_UNAVAILABLE"
+  "PR_PROGRESS_UNAVAILABLE",
+  "GITHUB_PR_DETECTION_UNAVAILABLE"
 ]);
 
 const SAFE_PR_PROGRESS_SOURCES = new Set([
@@ -109,6 +113,8 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "diff-too-large"
 ]);
 
+const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api"]);
+
 const validatePrProgressAttempts = (
   attempts: readonly PullRequestDiffAcquisitionAttempt[]
 ): readonly PullRequestDiffAcquisitionAttempt[] => Object.freeze(
@@ -122,6 +128,15 @@ const validatePrProgressAttempts = (
     return Object.freeze({ source: attempt.source, reason: attempt.reason });
   })
 );
+
+const validateGitHubPullRequestDetectionReason = (
+  reason: unknown
+): "rate-limit" | "network" | "api" => {
+  if (typeof reason !== "string" || !SAFE_GITHUB_PR_DETECTION_REASONS.has(reason)) {
+    throw new TypeError("GitHub PR detection diagnostic reason is not allowlisted");
+  }
+  return reason as "rate-limit" | "network" | "api";
+};
 
 /**
  * Error carrying only an explicitly allowlisted structured diagnostic.
@@ -138,10 +153,12 @@ export class OperationDiagnosticError extends Error {
     super("Operation diagnostic is available.");
     this.name = "OperationDiagnosticError";
     this.code = diagnostic.code;
-    this.diagnostic = Object.freeze({
-      code: diagnostic.code,
-      attempts: validatePrProgressAttempts(diagnostic.attempts)
-    });
+    this.diagnostic = diagnostic.code === "PR_PROGRESS_UNAVAILABLE"
+      ? Object.freeze({ code: diagnostic.code, attempts: validatePrProgressAttempts(diagnostic.attempts) })
+      : Object.freeze({
+        code: diagnostic.code,
+        reason: validateGitHubPullRequestDetectionReason(diagnostic.reason),
+      });
   }
 }
 
@@ -155,6 +172,9 @@ const safeErrorCode = (error: unknown): string | undefined => {
 };
 
 const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
+  if (diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
+    return `${diagnostic.code} reason=${diagnostic.reason}`;
+  }
   const attempts = diagnostic.attempts
     .map((attempt) => `${attempt.source}:${attempt.reason}`);
   const finalAttempt = attempts.at(-1) ?? "none";

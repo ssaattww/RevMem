@@ -224,6 +224,17 @@ test("R405-7 multiple current-head PRs retain the PR explicitly chosen by redete
   );
 });
 
+test("T406-R001 explicit branch selection suppresses one saved open PR at the same immutable HEAD", () => {
+  assert.equal(
+    findCurrentPullRequestContext([pullRequest], REPOSITORY_ID, B, undefined, true),
+    undefined,
+  );
+  assert.equal(
+    findCurrentPullRequestContext([pullRequest], REPOSITORY_ID, B)?.contextId,
+    PR_CONTEXT_ID,
+  );
+});
+
 test("R405-7 redetection persists and reloads explicit current PR identity", async () => {
   const runtime = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
 

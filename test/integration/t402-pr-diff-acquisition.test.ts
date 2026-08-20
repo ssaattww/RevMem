@@ -227,7 +227,7 @@ test("GitHub PR files patch is used after local Git is unavailable", async () =>
   assert.equal(result.snapshot.files[0]?.deletions, 1);
 });
 
-test("a missing GitHub patch falls back to exact base and head file contents", async () => {
+test("T406 missing GitHub patch falls back to exact base and head file contents", async () => {
   const reads: Array<{ revision: string; path: string }> = [];
   const remote = remoteData([modifiedPatchFile(undefined)], async (_repository, revision, path) => {
     reads.push({ revision, path });
