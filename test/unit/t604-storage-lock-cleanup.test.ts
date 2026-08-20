@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -77,6 +77,21 @@ test("T604 recovers only an expired root lock", async () => {
     const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "second", notifyDiagnostic: (value) => { recovered.push(value.kind); } });
     const release = await second.acquire();
     assert.deepEqual(recovered, ["stale-recovered"]);
+    await release();
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 recovers a bounded stale malformed lock without taking a live valid lease", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:malformed"));
+  try {
+    await mkdir(route.rootPath, { recursive: true });
+    await writeFile(route.lockPath, "{partial", "utf8");
+    await utimes(route.lockPath, 0, 0);
+    const recovered = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1, now: () => 2_000 });
+    const release = await recovered.acquire();
     await release();
   } finally {
     await rm(temporary.root, { recursive: true, force: true });

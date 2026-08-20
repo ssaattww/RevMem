@@ -2,8 +2,10 @@
 export { NodeAtomicTextFileStore } from "./atomic-text-file-store";
 export {
   NodeStorageRootLock,
+  InProcessStorageRootLockCoordinator,
   StorageRootLockTimeoutError,
-  withStorageRootLock
+  withStorageRootLock,
+  withStorageRootLockCoordinator
 } from "./storage-root-lock";
 export {
   DebouncedReviewStateRepository
@@ -47,5 +49,6 @@ export type {
 export type {
   StorageRootLockDiagnostic,
   StorageRootLockDiagnosticKind,
-  StorageRootLockOptions
+  StorageRootLockOptions,
+  StorageRootLockCoordinator
 } from "./storage-root-lock";

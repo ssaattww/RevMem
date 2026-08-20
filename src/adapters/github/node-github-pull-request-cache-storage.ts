@@ -24,6 +24,8 @@ export interface NodeGitHubPullRequestCacheStorageOptions {
   readonly atomicFileStore?: AtomicTextFileStore;
   /** Optional immutable generation identifier source. */
   readonly createGenerationId?: () => string;
+  /** Privacy-safe observation of storage lock timeout, failure, or stale recovery. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: import("../state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 interface PersistedGitHubCachePointer {
@@ -163,11 +165,13 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
   private readonly cacheDirectory: string;
   private readonly atomicFileStore: AtomicTextFileStore;
   private readonly createGenerationId: () => string;
+  private readonly notifyStorageLockDiagnostic: NodeGitHubPullRequestCacheStorageOptions["notifyStorageLockDiagnostic"];
 
   public constructor(options: NodeGitHubPullRequestCacheStorageOptions) {
     this.cacheDirectory = requireNonEmptyPath(options.cacheDirectory);
     this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
     this.createGenerationId = options.createGenerationId ?? randomUUID;
+    this.notifyStorageLockDiagnostic = options.notifyStorageLockDiagnostic;
   }
 
   public async read(
@@ -260,7 +264,7 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
       expiresAt: validated.expiresAt
     };
 
-    await withStorageRootLock({ rootPath: path.dirname(this.cacheDirectory) }, async () => {
+    await withStorageRootLock({ rootPath: path.dirname(this.cacheDirectory), notifyDiagnostic: this.notifyStorageLockDiagnostic }, async () => {
       const guard = createTrustedPersistencePathGuard(path.dirname(this.cacheDirectory), this.atomicFileStore);
       await guard(this.cacheDirectory);
       await guard(absoluteCacheFile(this.cacheDirectory, metadataFile));

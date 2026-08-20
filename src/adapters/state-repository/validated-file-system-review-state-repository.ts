@@ -22,7 +22,8 @@ import {
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
-import { withStorageRootLock } from "./storage-root-lock";
+import { NodeAtomicTextFileStore } from "./atomic-text-file-store";
+import { InProcessStorageRootLockCoordinator, withStorageRootLockCoordinator } from "./storage-root-lock";
 
 export { StaleReviewStateError };
 
@@ -320,7 +321,13 @@ extends CoherentFileSystemReviewStateRepository {
 
     await previous;
     try {
-      return await withStorageRootLock({
+      const coordinator = this.repositoryOptions.storageLockCoordinator ?? (
+        this.repositoryOptions.atomicFileStore !== undefined &&
+        !(this.repositoryOptions.atomicFileStore instanceof NodeAtomicTextFileStore)
+          ? new InProcessStorageRootLockCoordinator()
+          : undefined
+      );
+      return await withStorageRootLockCoordinator(coordinator, {
         rootPath: storageRoot,
         timeoutMs: this.repositoryOptions.storageLock?.timeoutMs,
         leaseMs: this.repositoryOptions.storageLock?.leaseMs,

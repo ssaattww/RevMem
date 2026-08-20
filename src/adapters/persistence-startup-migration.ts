@@ -5,6 +5,7 @@ import path from "node:path";
 import { NodeNonGitSnapshotStorage } from "./non-git-snapshots/index";
 import {
   NodeAtomicTextFileStore,
+  withStorageRootLock,
   type AtomicTextFileStore,
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
@@ -157,9 +158,11 @@ export const runPersistenceStartupMigration = async (
   const roots = new Map<string, string | undefined>();
   const workspaceRoot = options.storageUris.storageUri?.fsPath;
   if (workspaceRoot !== undefined && workspaceRoot.trim().length > 0) {
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
     roots.set(
-      path.resolve(workspaceRoot),
-      await migrateWorkspaceState(options.storageUris, store)
+      resolvedWorkspaceRoot,
+      await withStorageRootLock({ rootPath: resolvedWorkspaceRoot }, () =>
+        migrateWorkspaceState(options.storageUris, store))
     );
   }
 
@@ -171,19 +174,22 @@ export const runPersistenceStartupMigration = async (
       const rootPath = path.join(collectionRoot, name);
       roots.set(
         rootPath,
-        await migrateRepositoryStateRoot(options.storageUris, store, collection, name)
+        await withStorageRootLock({ rootPath }, () =>
+          migrateRepositoryStateRoot(options.storageUris, store, collection, name))
       );
     }
   }
 
   for (const [rootPath, expectedRepositoryId] of roots) {
-    await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
-    await createTrustedPersistencePathGuard(rootPath, store)(
-      path.join(rootPath, "snapshots")
-    );
-    await new NodeNonGitSnapshotStorage({
-      snapshotDirectory: path.join(rootPath, "snapshots"),
-      atomicFileStore: store
-    }).migratePersistedMetadata();
+    await withStorageRootLock({ rootPath }, async () => {
+      await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
+      await createTrustedPersistencePathGuard(rootPath, store)(
+        path.join(rootPath, "snapshots")
+      );
+      await new NodeNonGitSnapshotStorage({
+        snapshotDirectory: path.join(rootPath, "snapshots"),
+        atomicFileStore: store
+      }).migratePersistedMetadata();
+    });
   }
 };

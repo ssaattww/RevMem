@@ -85,12 +85,13 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   private readonly maxEntries: number;
   private readonly retentionMs: number;
 
-  public constructor(options: { readonly snapshotDirectory: string; readonly atomicFileStore?: AtomicTextFileStore; readonly maxEntries?: number; readonly retentionMs?: number }) {
+  public constructor(options: { readonly snapshotDirectory: string; readonly atomicFileStore?: AtomicTextFileStore; readonly maxEntries?: number; readonly retentionMs?: number; readonly notifyStorageLockDiagnostic?: (diagnostic: import("../state-repository/index").StorageRootLockDiagnostic) => void | Promise<void> }) {
     const snapshotDirectory = path.resolve(options.snapshotDirectory);
     this.rootPath = path.dirname(snapshotDirectory);
     this.snapshotsDirectory = path.join(snapshotDirectory, "entries");
     this.latestDirectory = path.join(snapshotDirectory, "latest");
     this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
+    this.notifyStorageLockDiagnostic = options.notifyStorageLockDiagnostic;
     this.maxEntries = options.maxEntries ?? 128;
     this.retentionMs = options.retentionMs ?? 30 * 24 * 60 * 60 * 1_000;
     if (!Number.isSafeInteger(this.maxEntries) || this.maxEntries < 1 || !Number.isSafeInteger(this.retentionMs) || this.retentionMs < 0) {
@@ -98,9 +99,10 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
     }
   }
   private readonly atomicFileStore: AtomicTextFileStore;
+  private readonly notifyStorageLockDiagnostic: ((diagnostic: import("../state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>) | undefined;
 
   public async put(snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath }, () =>
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, () =>
       this.atomicFileStore.writeTextAtomically(this.snapshotPath(snapshotId), JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot)));
   }
 
@@ -136,7 +138,13 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   }
 
   public async delete(snapshotId: string): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath }, () => this.deletePersistedText(this.snapshotPath(snapshotId)));
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async () => {
+      for (const name of await this.readDirectoryNames(this.latestDirectory)) {
+        if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
+        if (await this.readLatestPointer(path.join(this.latestDirectory, name)) === snapshotId) return;
+      }
+      await this.deletePersistedText(this.snapshotPath(snapshotId));
+    });
   }
 
   /** Quarantines one corrupt snapshot wrapper and every valid latest pointer that names it. */
@@ -178,7 +186,7 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
 
   public async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
     const pointerPath = this.latestPath(workspaceContextId, fileId);
-    await withStorageRootLock({ rootPath: this.rootPath }, async () => {
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async () => {
       if (snapshotId === undefined) {
         await this.deletePersistedText(pointerPath);
       } else {
@@ -190,7 +198,7 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
 
   /** Removes only unreferenced old or surplus immutable snapshots; current generation pointers are always retained. */
   public async cleanup(now = Date.now()): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath }, () => this.cleanupUnreferencedSnapshots(now));
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, () => this.cleanupUnreferencedSnapshots(now));
   }
 
   /** Eagerly migrates every persisted wrapper under this snapshot root, including hashed latest pointers. */

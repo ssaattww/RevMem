@@ -644,7 +644,10 @@ export function registerT405ReviewContextsRuntime(
     }
     const cache = new GitHubPullRequestCacheService({
       acquisition,
-      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory: route.cacheDirectory }),
+      storage: new NodeGitHubPullRequestCacheStorage({
+        cacheDirectory: route.cacheDirectory,
+        notifyStorageLockDiagnostic: (diagnostic) => console.warn(`Review Range storage lock: ${diagnostic.kind}`)
+      }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
     const result = await cache.acquire(diffRequest(context));

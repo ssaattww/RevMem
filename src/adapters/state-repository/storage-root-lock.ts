@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { createTrustedPersistencePathGuard } from "./persistence-schema-recovery";
@@ -29,6 +29,31 @@ export interface StorageRootLockOptions {
   readonly now?: () => number;
   readonly createOwnerToken?: () => string;
   readonly notifyDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
+}
+
+/** Lock owner that may share an alternate AtomicTextFileStore namespace instead of host paths. */
+export interface StorageRootLockCoordinator {
+  run<T>(rootPath: string, operation: () => Promise<T>): Promise<T>;
+}
+
+const inProcessTails = new Map<string, Promise<void>>();
+
+/** Deterministic lock coordinator for injected non-Node atomic stores. */
+export class InProcessStorageRootLockCoordinator implements StorageRootLockCoordinator {
+  public async run<T>(rootPath: string, operation: () => Promise<T>): Promise<T> {
+    const key = path.resolve(rootPath);
+    const previous = inProcessTails.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const tail = new Promise<void>((resolve) => { release = resolve; });
+    inProcessTails.set(key, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (inProcessTails.get(key) === tail) inProcessTails.delete(key);
+    }
+  }
 }
 
 interface PersistedLock {
@@ -93,9 +118,11 @@ export class NodeStorageRootLock {
     try {
       for (;;) {
         await guard(this.lockPath);
+        let created = false;
         try {
           await mkdir(this.rootPath, { recursive: true });
           const handle = await open(this.lockPath, "wx", 0o600);
+          created = true;
           try {
             await handle.writeFile(JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs }), "utf8");
             await handle.sync();
@@ -109,7 +136,10 @@ export class NodeStorageRootLock {
           renewTimer.unref();
           return this.releaseFor(ownerToken, renewTimer);
         } catch (error) {
-          if (!isExists(error)) throw error;
+          if (!isExists(error)) {
+            if (created) await rm(this.lockPath, { force: true }).catch(() => undefined);
+            throw error;
+          }
         }
 
         const raw = await readFile(this.lockPath, "utf8").catch((error: unknown) => {
@@ -118,7 +148,11 @@ export class NodeStorageRootLock {
         });
         if (raw !== undefined) {
           const existing = parseLock(raw);
-          if (existing !== undefined && existing.expiresAt < this.now()) {
+          const metadata = await stat(this.lockPath).catch(() => undefined);
+          const expired = existing === undefined
+            ? metadata !== undefined && metadata.mtimeMs + this.leaseMs <= this.now()
+            : existing.expiresAt <= this.now();
+          if (expired) {
             const recoveryPath = path.join(this.rootPath, `.lock-recovery-${randomUUID()}`);
             await guard(recoveryPath);
             try {
@@ -196,3 +230,12 @@ export const withStorageRootLock = async <T>(
     await release();
   }
 };
+
+/** Uses the injected store's coordinator when supplied, otherwise the Node filesystem lease. */
+export const withStorageRootLockCoordinator = async <T>(
+  coordinator: StorageRootLockCoordinator | undefined,
+  options: StorageRootLockOptions,
+  operation: () => Promise<T>
+): Promise<T> => coordinator === undefined
+  ? withStorageRootLock(options, operation)
+  : coordinator.run(options.rootPath, operation);

@@ -284,12 +284,16 @@ export function activate(
       }
     });
   fileExclusionConfigurationController.start();
+  const reportStorageLockDiagnostic = (diagnostic: { readonly kind: string }): void => {
+    console.warn(`Review Range storage lock: ${diagnostic.kind}`);
+  };
 
   const atomicRepository = new FileSystemReviewStateRepository({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
-    }
+    },
+    notifyStorageLockDiagnostic: reportStorageLockDiagnostic
   });
   const repository = new DebouncedReviewStateRepository({
     delegate: atomicRepository
@@ -301,7 +305,8 @@ export function activate(
       storageUris: {
         globalStorageUri: context.globalStorageUri,
         storageUri: context.storageUri
-      }
+      },
+      notifyStorageLockDiagnostic: reportStorageLockDiagnostic
     })
   });
   const workspaceStorageUris = {
@@ -311,7 +316,8 @@ export function activate(
   const snapshotStorage = new NodeNonGitSnapshotStorage({
     snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
       kind: "workspace", repositoryId: "extension-runtime", contextId: "extension-runtime"
-    }).snapshotDirectory
+    }).snapshotDirectory,
+    notifyStorageLockDiagnostic: reportStorageLockDiagnostic
   });
   const workspaceSessionProvider = new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),
