@@ -95,6 +95,10 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
 const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
   `${revision}\0${repositoryPath}`;
 
+const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
+  if (signal?.aborted) throw new DOMException("PR Progress refresh was superseded.", "AbortError");
+};
+
 const sameRegistrationSnapshot = (
   left: PullRequestReviewRuntimeRegistration,
   right: PullRequestReviewRuntimeRegistration
@@ -117,6 +121,7 @@ export class PullRequestReviewRuntime<Uri> {
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
   private activeProgressContextId: string | undefined;
   private progressGeneration = 0;
+  private progressCancellation: AbortController | undefined;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
   public readonly diffController: ReviewDiffEditorController<Uri>;
   public readonly progress: PullRequestProgressTreeDataProvider;
@@ -427,7 +432,7 @@ export class PullRequestReviewRuntime<Uri> {
     signal?: AbortSignal,
   ): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
     return runWithActiveOperationFeedback("PR進捗を計算", async () => {
-      const calculated = await this.calculateProgress(contextId);
+      const calculated = await this.calculateProgress(contextId, signal);
       return {
         reviewedLineCount: calculated.progress.reviewedLineCount,
         totalLineCount: calculated.progress.totalLineCount,
@@ -438,6 +443,9 @@ export class PullRequestReviewRuntime<Uri> {
 
   /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
   public async activateProgress(contextId: string): Promise<void> {
+    this.progressCancellation?.abort();
+    const cancellation = new AbortController();
+    this.progressCancellation = cancellation;
     const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
     this.progress.clear();
@@ -445,7 +453,8 @@ export class PullRequestReviewRuntime<Uri> {
     try {
       const calculated = await runWithActiveOperationFeedback(
         "PR進捗を計算",
-        () => this.calculateProgress(contextId)
+        () => this.calculateProgress(contextId, cancellation.signal),
+        { maxAttempts: 3, signal: cancellation.signal },
       );
       const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
       for (const file of calculated.progress.files) {
@@ -471,6 +480,8 @@ export class PullRequestReviewRuntime<Uri> {
       if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
       this.progress.clear();
       throw error;
+    } finally {
+      if (this.progressCancellation === cancellation) this.progressCancellation = undefined;
     }
   }
 
@@ -480,6 +491,8 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public clearProgress(): void {
+    this.progressCancellation?.abort();
+    this.progressCancellation = undefined;
     this.progressGeneration += 1;
     this.activeProgressContextId = undefined;
     this.progress.clear();
@@ -568,10 +581,13 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   private async calculateProgress(
-    contextId: string
+    contextId: string,
+    signal?: AbortSignal,
   ): Promise<CalculatedPullRequestProgress> {
+    throwIfProgressCancelled(signal);
     const registration = this.requireRegistration(contextId);
     const persisted = await this.options.repository.load(targetFor(registration));
+    throwIfProgressCancelled(signal);
     if (persisted === undefined) {
       throw new Error("Persisted pull-request review context is unavailable");
     }

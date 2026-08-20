@@ -5,6 +5,7 @@ import type {
   PullRequestDiffUnavailableReason
 } from "../../application/github-pr-diff/index";
 import {
+  GitCommandFailedError,
   GitExecutableNotFoundError,
   type GitCommandExecutor,
   type GitCommandResult
@@ -62,7 +63,11 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
     } catch (error) {
       return {
         kind: "unavailable",
-        reason: error instanceof GitExecutableNotFoundError ? "git-unavailable" : "git-failure"
+        reason: error instanceof GitExecutableNotFoundError
+          ? "git-unavailable"
+          : error instanceof GitCommandFailedError && error.result.exitCode === -1
+            ? "git-timeout"
+            : "git-failure"
       };
     }
   }
@@ -96,6 +101,7 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
     const diagnostic = `${result.stdout}\n${result.stderr}`;
     if (skippedRenameOrCopyDetection(diagnostic)) return "diff-too-large";
     if (result.exitCode === 0) return undefined;
+    if (result.exitCode === -1) return "git-timeout";
     return missingRevision(diagnostic) ? "missing-revision" : "git-failure";
   }
 
@@ -107,6 +113,7 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
       argumentsList: ["rev-parse", "--verify", "--quiet", `${revision}^{commit}`]
     });
     if (result.exitCode === 1) return "missing-revision";
+    if (result.exitCode === -1) return "git-timeout";
     if (result.exitCode !== 0 || result.stdout.trim() !== revision) return "git-failure";
     return undefined;
   }

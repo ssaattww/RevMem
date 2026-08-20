@@ -40,6 +40,7 @@ export interface PullRequestRemoteFile {
 /** Stable reason that one local or remote acquisition boundary was unavailable. */
 export type PullRequestDiffUnavailableReason =
   | "git-unavailable"
+  | "git-timeout"
   | "missing-revision"
   | "git-failure"
   | "rate-limit"

@@ -724,7 +724,6 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(liveCache?.origin, "live");
     assert.equal(liveCache?.freshness, "fresh");
     assert.ok(liveCache !== undefined && "updatedAt" in liveCache);
-    const cacheBeforeTerminalMutation = liveCache;
 
     const cacheDirectory = resolveReviewStateStorageRoute(storageUris, {
       kind: "pull-request",
@@ -744,15 +743,23 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     const offlineRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(offlineRefreshErrors.length, 1);
     assert.match(offlineRefreshErrors[0]!, /詳細は Review Range Output/u);
-    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, cacheBeforeTerminalMutation);
+    assert.throws(
+      () => findPullRequestItem(current.provider, 52),
+      /PR #52 should be projected/u,
+      "a terminal cache refresh failure must clear the old fresh projection",
+    );
 
     refreshTransport = "live";
+    await rm(cacheDirectory, { recursive: true, force: true });
+    await mkdir(cacheDirectory, { recursive: true });
+    await current.runtime.refresh();
+    assert.ok(findPullRequestItem(current.provider, 52));
     await rm(cacheDirectory, { recursive: true, force: true });
     await writeFile(cacheDirectory, "cache write blocked", "utf8");
     const writeFailureErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(writeFailureErrors.length, 1);
     assert.match(writeFailureErrors[0]!, /詳細は Review Range Output/u);
-    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, cacheBeforeTerminalMutation);
+    assert.throws(() => findPullRequestItem(current.provider, 52), /PR #52 should be projected/u);
 
     // T406-R003: terminal cache mutations do not republish the tree. A subsequent
     // explicit live B acquisition has to replace every T405-owned immutable identity.

@@ -37,6 +37,13 @@ interface ContentLoadFailure {
   readonly reason: PullRequestDiffUnavailableReason;
 }
 
+const localFailureReason = (error: unknown): PullRequestDiffUnavailableReason =>
+  typeof error === "object" && error !== null &&
+  (error as { readonly name?: unknown }).name === "GitCommandFailedError" &&
+  (error as { readonly result?: { readonly exitCode?: unknown } }).result?.exitCode === -1
+    ? "git-timeout"
+    : "git-failure";
+
 /**
  * Acquires one exact PR diff through local Git, GitHub patches, then immutable contents.
  * Partial or ambiguous evidence is retained only as diagnostic attempts and never exposed
@@ -59,8 +66,8 @@ export class PullRequestDiffAcquisitionService {
     let local: Awaited<ReturnType<LocalPullRequestDiffPort["loadDiff"]>>;
     try {
       local = await this.local.loadDiff(request);
-    } catch {
-      local = { kind: "unavailable", reason: "git-failure" };
+    } catch (error) {
+      local = { kind: "unavailable", reason: localFailureReason(error) };
     }
     if (local.kind === "available") {
       const built = buildSnapshotFromLocalGitDiff(request, local.diff);

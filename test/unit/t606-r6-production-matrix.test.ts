@@ -205,3 +205,41 @@ test("T606 R6 cache retries acquisition only, publishes once, and never retries 
   assert.equal(published.kind, "acquired");
   assert.deepEqual(published.cache, { origin: "live", freshness: "not-cached" });
 });
+
+test("T606 IFR003 runs the production Global layer toggle through one redacted terminal lifecycle", async () => {
+  const commands = new Map<string, () => Promise<void>>();
+  const vscode = {
+    ...fakeVscodeBase(),
+    StatusBarAlignment: { Left: 1 },
+    window: {
+      createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+      registerTreeDataProvider: () => ({ dispose(): void {} }),
+    },
+    commands: { registerCommand: (id: string, callback: () => Promise<void>) => { commands.set(id, callback); return { dispose(): void {} }; } },
+    workspace: { onDidChangeConfiguration: () => ({ dispose(): void {} }) },
+  };
+  const runtime = withVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode,
+  );
+  const host = new FeedbackHost();
+  const feedback = new OperationFeedback(host, () => 1);
+  const errors: unknown[] = [];
+  setActiveOperationFeedback(feedback);
+  try {
+    runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+      source: { recalculate: async () => undefined },
+      readGlobalLayerEnabled: () => false,
+      writeGlobalLayerEnabled: async () => { throw new Error("private settings failure"); },
+      refreshDecorations: async () => undefined,
+      openFile: async () => undefined,
+      reportError: async (error) => { errors.push(error); },
+      reportOpenError: async () => undefined,
+    });
+    await commands.get(runtime.TOGGLE_GLOBAL_LAYER_COMMAND_ID)!();
+    assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
+    assert.equal(errors.length, 1);
+    assert.doesNotMatch(String(errors[0]), /private settings failure/u);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});

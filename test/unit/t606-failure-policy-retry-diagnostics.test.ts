@@ -50,6 +50,14 @@ test("T606 classifies retryable, permanent, stale, authentication, and validatio
     code: "PR_PROGRESS_UNAVAILABLE",
     attempts: [{ source: "github-patch", reason: "authentication" }],
   })).kind, "authentication");
+  assert.equal(classifyOperationFailure(new OperationDiagnosticError({
+    code: "PR_PROGRESS_UNAVAILABLE",
+    attempts: [{ source: "local-git", reason: "git-failure" }],
+  })).kind, "permanent");
+  assert.equal(classifyOperationFailure(new OperationDiagnosticError({
+    code: "PR_PROGRESS_UNAVAILABLE",
+    attempts: [{ source: "local-git", reason: "git-timeout" }],
+  })).kind, "retryable");
 });
 
 test("T606 retries only retryable faults with a bounded cancellable sequence", async () => {

@@ -132,15 +132,16 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
 
 test("Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics", async () => {
   const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
 
   assert.match(composition, /reportActiveOperationFailure/u);
   assert.match(
     composition,
-    /result\.kind !== "acquired"[\s\S]{0,700}reportActiveOperationFailure\("PR進捗を取得"/u,
+    /result\.kind !== "acquired"[\s\S]{0,700}throw new OperationDiagnosticError/u,
   );
   assert.match(
-    composition,
-    /catch \(error\)[\s\S]{0,300}reportActiveOperationFailure\("PR進捗を取得"/u,
+    reviewContextsUi,
+    /runReviewContextsPureRead[\s\S]{0,260}runWithBoundedRetry/u,
   );
 });
 

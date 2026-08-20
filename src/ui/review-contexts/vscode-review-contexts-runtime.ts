@@ -186,6 +186,10 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       () => this.source.load(controller.signal, feedbackContext),
       controller.signal,
     );
+    if (hasOperationFeedbackFailure(feedbackContext)) {
+      if (generation === this.generation) this.clear();
+      return;
+    }
     if (generation !== this.generation) return;
     await this.source.publishLoaded?.();
     if (generation !== this.generation) return;
@@ -275,7 +279,10 @@ export function registerReviewContextsRuntime(
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
-    if (terminalFailure) return;
+    if (terminalFailure) {
+      provider.clear();
+      return;
+    }
     await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {

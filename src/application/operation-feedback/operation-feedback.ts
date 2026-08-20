@@ -162,6 +162,7 @@ const SAFE_PR_PROGRESS_SOURCES = new Set([
 
 const SAFE_PR_PROGRESS_REASONS = new Set([
   "git-unavailable",
+  "git-timeout",
   "missing-revision",
   "git-failure",
   "rate-limit",
@@ -272,7 +273,8 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
     }
     const finalReason = error.diagnostic.attempts.at(-1)?.reason;
     if (finalReason === "authentication") return { kind: "authentication" };
-    if (finalReason === "rate-limit" || finalReason === "network" || finalReason === "git-failure") return { kind: "retryable" };
+    if (finalReason === "rate-limit" || finalReason === "network" || finalReason === "git-timeout") return { kind: "retryable" };
+    if (finalReason === "git-failure" || finalReason === "git-unavailable") return { kind: "permanent" };
     return { kind: "validation" };
   }
   const status = errorField(error, "status");

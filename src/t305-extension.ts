@@ -268,7 +268,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     return reviewContextsRuntime === undefined
       ? local
-      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local)];
+      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal)];
   };
 
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {

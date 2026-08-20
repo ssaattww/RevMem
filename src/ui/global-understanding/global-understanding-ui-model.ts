@@ -274,7 +274,7 @@ export class GlobalUnderstandingFileOpenController {
     this.currentNodes.clear();
   }
 
-  public async open(node: GlobalUnderstandingFileNode): Promise<void> {
+  public async open(node: GlobalUnderstandingFileNode): Promise<unknown | undefined> {
     try {
       if (!this.currentNodes.has(node)) {
         throw new RangeError("Selected Global understanding file node is stale and does not belong to the current snapshot.");
@@ -283,8 +283,10 @@ export class GlobalUnderstandingFileOpenController {
         throw new Error("Global understanding file open target is unavailable.");
       }
       await this.host.openFile(freezeOpenTarget(node.openTarget));
+      return undefined;
     } catch (error) {
       await this.host.reportOpenError(error);
+      return error;
     }
   }
 }

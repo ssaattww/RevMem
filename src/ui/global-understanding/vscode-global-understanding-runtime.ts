@@ -297,16 +297,29 @@ export const registerGlobalUnderstandingRuntime = (
       OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
       async (node: GlobalUnderstandingFileNode | undefined) => {
         if (node === undefined || node.kind !== "file") return;
-        await openController.open(node);
+        try {
+          await runWithActiveOperationFeedback(
+            "Global理解率ファイルを開く",
+            async () => {
+              const failure = await openController.open(node);
+              if (failure !== undefined) throw failure;
+            },
+          );
+        } catch (error) {
+          await dependencies.reportError(formatOperationFailureForUser(error));
+        }
       }
     ),
     vscode.commands.registerCommand(
       TOGGLE_GLOBAL_LAYER_COMMAND_ID,
       async () => {
         try {
-          await toggle.toggle();
+          await runWithActiveOperationFeedback(
+            "Global理解率Layerを切り替える",
+            () => toggle.toggle(),
+          );
         } catch (error) {
-          await dependencies.reportError(error);
+          await dependencies.reportError(formatOperationFailureForUser(error));
         }
       }
     ),

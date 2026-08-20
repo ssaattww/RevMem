@@ -85,7 +85,7 @@ const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posi
 export interface T405ReviewContextsRuntimeOptions {
   readonly context: vscode.ExtensionContext;
   readonly git: LocalGitAdapter & GitRevisionMappingSource;
-  readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>;
+  readonly enumerateCurrentContexts: (signal?: AbortSignal) => Promise<readonly CurrentContextUiSnapshot[]>;
   readonly refreshDecorations: () => Promise<void>;
   readonly refreshCurrentContext: () => Promise<void>;
   readonly registerPullRequestReviewDiff: (
@@ -123,7 +123,9 @@ interface T405ReviewStateRepository {
 export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
   augmentCurrentContextCandidates(
-    localCandidates: readonly CurrentContextUiSnapshot[]
+    localCandidates: readonly CurrentContextUiSnapshot[],
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]>;
 }
 
@@ -246,7 +248,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     private readonly repository: T405ReviewStateRepository,
     private readonly visibility: VscodeReviewContextVisibilityStore,
     private readonly currentPullRequestSelection: VscodeCurrentPullRequestSelectionStore,
-    private readonly enumerateCurrentContexts: () => Promise<readonly CurrentContextUiSnapshot[]>,
+    private readonly enumerateCurrentContexts: (signal?: AbortSignal) => Promise<readonly CurrentContextUiSnapshot[]>,
     /** Performs state mutation only for explicit synchronization commands. */
     private readonly synchronizeRepository: (
       owner: LocalRepositoryOwner,
@@ -292,7 +294,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const progressByContextId: Record<string, ReviewContextListProgress> = {};
     this.roots.clear();
 
-    for (const snapshot of await this.enumerateCurrentContexts()) {
+    for (const snapshot of await this.enumerateCurrentContexts(signal)) {
       assertCurrent();
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
@@ -354,17 +356,26 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   }
 
   public async augmentCurrentContextCandidates(
-    localCandidates: readonly CurrentContextUiSnapshot[]
+    localCandidates: readonly CurrentContextUiSnapshot[],
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]> {
+    const assertCurrent = (): void => {
+      if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
+    };
     const candidates = new Map<string, CurrentContextUiSnapshot>();
     for (const candidate of localCandidates) {
+      assertCurrent();
       candidates.set(this.candidateKey(candidate), candidate);
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
       let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      assertCurrent();
       await this.synchronizeRepository(owner, persisted);
+      assertCurrent();
       persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      assertCurrent();
       const preferredContextId = this.currentPullRequestSelection.read(
         owner.repositoryId,
         owner.headRevision,
@@ -377,7 +388,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
       );
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
-      const progress = await this.progressFor(pullRequest, owner.repositoryRoot);
+      const progress = await this.progressFor(pullRequest, owner.repositoryRoot, signal, feedbackContext);
+      assertCurrent();
       const pr = pullRequest.pullRequest;
       const projected: CurrentContextUiSnapshot = {
         context: {
@@ -717,18 +729,16 @@ export function registerT405ReviewContextsRuntime(
     assertCurrent();
     const publish = async (): Promise<void> => {
       result = await cache.publish(diffRequest(context), result);
-      if (forceRemote || !cacheStatusByContextId.has(context.contextId)) {
-        cacheStatusByContextId.set(
-          context.contextId,
-          result.kind === "acquired"
-            ? {
-                origin: result.cache.origin,
-                freshness: result.cache.freshness,
-                ...("updatedAt" in result.cache ? { updatedAt: result.cache.updatedAt } : {}),
-              }
-            : { origin: "unavailable", freshness: "unavailable" },
-        );
-      }
+      cacheStatusByContextId.set(
+        context.contextId,
+        result.kind === "acquired"
+          ? {
+              origin: result.cache.origin,
+              freshness: result.cache.freshness,
+              ...("updatedAt" in result.cache ? { updatedAt: result.cache.updatedAt } : {}),
+            }
+          : { origin: "unavailable", freshness: "unavailable" },
+      );
     };
     if (deferCachePublish) sourceRef.current?.deferCachePublish(publish);
     else await publish();
@@ -757,23 +767,14 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<ReviewContextListProgress | undefined> => {
-    try {
-      const { result } = await acquire(context, false, signal, feedbackContext, true);
-      if (result.kind !== "acquired") {
-        reportActiveOperationFailure(
-          "PR進捗を取得",
-          new OperationDiagnosticError({
-            code: "PR_PROGRESS_UNAVAILABLE",
-            attempts: result.attempts,
-          }), feedbackContext,
-        );
-        return undefined;
-      }
-      return await options.getPullRequestReviewProgress(context.contextId, feedbackContext, signal);
-    } catch (error) {
-      reportActiveOperationFailure("PR進捗を取得", error, feedbackContext);
-      return undefined;
+    const { result } = await acquire(context, false, signal, feedbackContext, true);
+    if (result.kind !== "acquired") {
+      throw new OperationDiagnosticError({
+        code: "PR_PROGRESS_UNAVAILABLE",
+        attempts: result.attempts,
+      });
     }
+    return options.getPullRequestReviewProgress(context.contextId, feedbackContext, signal);
   };
 
   const synchronizeRepository = async (
@@ -812,7 +813,6 @@ export function registerT405ReviewContextsRuntime(
     owner: LocalRepositoryOwner,
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
-    feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextState[]> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
@@ -830,12 +830,10 @@ export function registerT405ReviewContextsRuntime(
       const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(identity, context.pullRequest.number);
       assertCurrent();
       if (latest.kind !== "available") {
-        reportActiveOperationFailure("PRを同期", new OperationDiagnosticError({
+        throw new OperationDiagnosticError({
           code: "GITHUB_PR_DETECTION_UNAVAILABLE",
           reason: latest.reason,
-        }), feedbackContext);
-        projected.push(context);
-        continue;
+        });
       }
       projected.push({
         ...context,
@@ -1028,7 +1026,7 @@ export function registerT405ReviewContextsRuntime(
 
   return {
     ...registered,
-    augmentCurrentContextCandidates: (localCandidates) =>
-      source.augmentCurrentContextCandidates(localCandidates),
+    augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
+      source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
   };
 }

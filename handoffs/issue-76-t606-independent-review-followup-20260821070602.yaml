@@ -1,0 +1,30 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: 51e64d537002991782b985698f834b69895fd0ff
+technical_implementation_head: pending_commit
+status: independent_ifr001_through_ifr005_addressed_same_reviewer_closure_pending
+findings:
+  - T606-IFR001
+  - T606-IFR002
+  - T606-IFR003
+  - T606-IFR004
+  - T606-IFR005
+report: reports/issue-76-t606-independent-review-followup-20260821070602.md
+validation:
+  red: "focused T606 classifier: 11 pass, 1 fail; git-failure was retryable instead of permanent"
+  green: "same focused T606 classifier: 12 pass, 0 fail"
+  final_test_t606: "executed once; 194 pass, 2 fail, 2 Windows POSIX skips before old regression expectations were corrected; do not rerun"
+  targeted_followup: "Exact former failures selected once: Issue #63 fail-closed PR progress diagnostics and T406 T405 production seam; 2 pass, 0 fail"
+  build: pass
+  typecheck_contracts: pass
+  lint: "first full run found 3 mechanical findings; final full run found 1 unused parameter; the source was fixed and focused ESLint for src/t405-review-contexts-runtime.ts passed"
+  architecture: pass
+  architecture_negative: "pass; expected 11 violations"
+  diff_check: pass
+  markdown_wording: "unsupported; tools/lint, cspell, and lint:md are absent"
+ci: held_exact_head_pr_ci
+external_sync: "PR #77 body update pending"
+next_request: "Same independent reviewer performs finding-limited closure only. Parent may commit, obtain technical SHA, update PR body externally, and run exact-head CI; no merge authorization."
