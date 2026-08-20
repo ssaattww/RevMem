@@ -56,12 +56,13 @@ const readIdentity = (raw: string): Record<string, unknown> | undefined => {
 
 const migrateWorkspaceState = async (
   storageUris: ReviewStateStorageUris,
-  store: AtomicTextFileStore
+  store: AtomicTextFileStore,
+  rootPath = storageUris.storageUri?.fsPath
 ): Promise<string | undefined> => {
-  const workspaceRoot = storageUris.storageUri?.fsPath;
-  if (workspaceRoot === undefined || workspaceRoot.trim().length === 0) return undefined;
-  const statePath = path.join(path.resolve(workspaceRoot), "workspace-state.json");
-  const guard = createTrustedPersistencePathGuard(path.resolve(workspaceRoot), store);
+  if (rootPath === undefined || rootPath.trim().length === 0) return undefined;
+  const workspaceRoot = path.resolve(rootPath);
+  const statePath = path.join(workspaceRoot, "workspace-state.json");
+  const guard = createTrustedPersistencePathGuard(workspaceRoot, store);
   try {
     await guard(statePath);
   } catch {
@@ -79,6 +80,11 @@ const migrateWorkspaceState = async (
     typeof repositoryId !== "string" || repositoryId.trim().length === 0 ||
     typeof contextId !== "string" || contextId.trim().length === 0
   ) {
+    await quarantinePersistedText(store, statePath, raw, true, guard);
+    return undefined;
+  }
+  const workspaceCollection = path.basename(path.dirname(workspaceRoot)) === "workspaces";
+  if (workspaceCollection && hashIdentifier(repositoryId) !== path.basename(workspaceRoot)) {
     await quarantinePersistedText(store, statePath, raw, true, guard);
     return undefined;
   }
@@ -191,6 +197,13 @@ export const runPersistenceStartupMigration = async (
   if (workspaceRoot !== undefined && workspaceRoot.trim().length > 0) {
     const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
     await migrateRoot(resolvedWorkspaceRoot, (fencedStore) => migrateWorkspaceState(options.storageUris, fencedStore));
+    const collectionRoot = path.join(resolvedWorkspaceRoot, "workspaces");
+    for (const name of await readDirectoryNames(collectionRoot)) {
+      if (!/^[0-9a-f]{64}$/u.test(name)) continue;
+      const rootPath = path.join(collectionRoot, name);
+      await migrateRoot(rootPath, (fencedStore) =>
+        migrateWorkspaceState(options.storageUris, fencedStore, rootPath));
+    }
   }
 
   const globalRoot = path.resolve(options.storageUris.globalStorageUri.fsPath);

@@ -10,11 +10,19 @@ import type {
   WorkspaceNormalEditorReviewStateSession,
   WorkspaceReviewStateSessionProviderPort
 } from "./workspace-review-state-session-provider";
+import type { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
+import type { ReviewStateTransaction } from "../../core/review-state/index";
 
 /** Root-local workspace runtime that may release resources when its folder leaves the workspace. */
 export interface WorkspaceRootRuntime extends WorkspaceReviewStateSessionProviderPort {
   /** Releases only resources owned by this workspace root. */
   dispose?(): void;
+  /** Preserves the snapshot pointer whenever a workspace command commits state. */
+  commitWithSnapshot?(
+    descriptor: WorkspaceEditorReviewDescriptor,
+    transaction: Readonly<ReviewStateTransaction>,
+    commitState: () => Promise<void>
+  ): Promise<void>;
 }
 
 /** Creates the state, history, and snapshot runtime for one canonical workspace root. */
@@ -33,7 +41,14 @@ export class WorkspaceRootRuntimeRegistry
   public constructor(private readonly options: {
     readonly identityService: WorkspaceIdentityService;
     readonly factory: WorkspaceRootRuntimeFactory;
+    /** Stable Git history-rewrite tracker retained independently from root-local workspace runtimes. */
+    readonly historyRewriteSnapshotTracker: NonGitSnapshotTracker;
   }) {}
+
+  /** T602 production capability retained through the workspace-provider wrapper. */
+  public get historyRewriteSnapshotTracker(): NonGitSnapshotTracker {
+    return this.options.historyRewriteSnapshotTracker;
+  }
 
   public open(
     descriptor: WorkspaceEditorReviewDescriptor
@@ -45,6 +60,19 @@ export class WorkspaceRootRuntimeRegistry
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorDecorationState | undefined> {
     return this.runtimeFor(descriptor).loadForDecoration(descriptor);
+  }
+
+  /** Delegates a workspace transaction to its selected root's snapshot-aware committer. */
+  public async commitWithSnapshot(
+    descriptor: WorkspaceEditorReviewDescriptor,
+    transaction: Readonly<ReviewStateTransaction>,
+    commitState: () => Promise<void>
+  ): Promise<void> {
+    const runtime = this.runtimeFor(descriptor);
+    if (runtime.commitWithSnapshot === undefined) {
+      throw new Error("Selected workspace root does not support snapshot-aware commits.");
+    }
+    await runtime.commitWithSnapshot(descriptor, transaction, commitState);
   }
 
   /** Disposes root runtimes no longer represented by workspace-side folder URIs. */

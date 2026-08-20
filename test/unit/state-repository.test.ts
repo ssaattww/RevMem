@@ -217,7 +217,13 @@ test("routing separates Git and PR state from non-Git workspace state", async ()
     assert.equal(gitRoute.lockPath, path.join(gitRoute.rootPath, "lock"));
 
     assert.equal(workspaceRoute.storageKind, "workspace");
-    assert.equal(workspaceRoute.rootPath, temporary.storageUris.storageUri?.fsPath);
+    assert.equal(path.basename(workspaceRoute.rootPath).length, 64);
+    assert.match(path.basename(workspaceRoute.rootPath), /^[a-f0-9]{64}$/);
+    assert.equal(path.basename(path.dirname(workspaceRoute.rootPath)), "workspaces");
+    assert.equal(
+      path.dirname(path.dirname(workspaceRoute.rootPath)),
+      temporary.storageUris.storageUri?.fsPath
+    );
     assert.equal(
       workspaceRoute.statePointerPath,
       path.join(workspaceRoute.rootPath, "workspace-state.json")

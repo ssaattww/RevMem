@@ -15,9 +15,8 @@ import { StaleReviewStateError } from "../state-repository/index";
 import {
   type WorkspaceEditorReviewDescriptor,
   type WorkspaceNormalEditorDecorationState,
-  WorkspaceReviewStateSessionProvider
+  WorkspaceReviewStateSessionProviderPort
 } from "../workspace-review-state/index";
-import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "../workspace-review-state/index";
 import type {
   LineInterval,
   OwnerReconciliationSourceSnapshot,
@@ -213,12 +212,17 @@ export class DocumentReviewStateSessionProvider {
     });
     const opened = await baseProvider.open(descriptor);
     const persisted = await repository.load(this.repositoryTarget(opened));
-    const snapshotWorkspaceProvider = this.options.workspaceProvider instanceof SnapshotTrackingWorkspaceReviewStateSessionProvider
-      ? this.options.workspaceProvider
-      : undefined;
-    const workspaceSnapshotCommitter = opened.owner === "workspace" && descriptor.workspace !== undefined && snapshotWorkspaceProvider !== undefined
+    const snapshotWorkspaceProvider = this.options.workspaceProvider as unknown as {
+      commitWithSnapshot?: (
+        value: WorkspaceEditorReviewDescriptor,
+        transaction: Readonly<ReviewStateTransaction>,
+        commitState: () => Promise<void>
+      ) => Promise<void>;
+    };
+    const commitWithSnapshot = snapshotWorkspaceProvider.commitWithSnapshot;
+    const workspaceSnapshotCommitter = opened.owner === "workspace" && descriptor.workspace !== undefined && commitWithSnapshot !== undefined
       ? {
-          commit: async (transaction: Readonly<ReviewStateTransaction>) => snapshotWorkspaceProvider.commitWithSnapshot({
+          commit: async (transaction: Readonly<ReviewStateTransaction>) => commitWithSnapshot({
             workspaceFolderUri: descriptor.workspace!.workspaceFolderUri,
             documentUri: descriptor.documentUri,
             fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
@@ -267,7 +271,7 @@ export class DocumentReviewStateSessionProvider {
 
   private cachingWorkspaceProvider(
     repository: CapturingRepository
-  ): WorkspaceReviewStateSessionProvider {
+  ): WorkspaceReviewStateSessionProviderPort {
     const delegate = this.options.workspaceProvider;
     const cache = new Map<string, WorkspaceNormalEditorDecorationState | undefined>();
     return {
@@ -281,13 +285,13 @@ export class DocumentReviewStateSessionProvider {
         const value = cache.get(key);
         return value === undefined ? undefined : clone(value);
       }
-    } as unknown as WorkspaceReviewStateSessionProvider;
+    };
   }
 
   private async lowerSources(
     owner: DocumentReviewOwner,
     descriptor: DocumentEditorReviewDescriptor,
-    workspaceProvider: WorkspaceReviewStateSessionProvider,
+    workspaceProvider: WorkspaceReviewStateSessionProviderPort,
     externalReader: BaseProvider
   ): Promise<readonly (DocumentNormalEditorDecorationState | undefined)[]> {
     if (owner === "external-file") {

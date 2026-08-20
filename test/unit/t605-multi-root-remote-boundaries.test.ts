@@ -8,6 +8,7 @@ import {
   resolveWorkspaceFolderMembership,
   WorkspaceIdentityService
 } from "../../src/application/workspace-identity/index";
+import { WorkspaceRootRuntimeRegistry } from "../../src/adapters/workspace-review-state/index";
 
 const hash = new NodeSha256StableHash();
 
@@ -62,4 +63,24 @@ test("T605 fails closed for URI boundaries and separates workspace storage roots
 
   assert.notEqual(routes[0].rootPath, routes[1].rootPath);
   assert.match(routes[0].rootPath, /workspaces/u);
+});
+
+test("T605 root registry preserves snapshot and Git-rewrite capabilities across its wrapper", () => {
+  const identityService = new WorkspaceIdentityService(hash);
+  const tracker = {};
+  const registry = new WorkspaceRootRuntimeRegistry({
+    identityService,
+    historyRewriteSnapshotTracker: tracker as never,
+    factory: { create: () => ({
+      open: async () => { throw new Error("not used"); },
+      loadForDecoration: async () => undefined,
+      commitWithSnapshot: async () => undefined
+    }) }
+  });
+  const capability = registry as unknown as {
+    readonly historyRewriteSnapshotTracker?: unknown;
+    commitWithSnapshot?: unknown;
+  };
+  assert.equal(capability.historyRewriteSnapshotTracker, tracker);
+  assert.equal(typeof capability.commitWithSnapshot, "function");
 });

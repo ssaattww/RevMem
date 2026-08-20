@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（implementation complete、normal review pending）
-- 次の工程: T605の通常reviewを実施する
+- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（normal findings addressed、same reviewer closure pending）
+- 次の工程: 同一normal reviewerがR001〜R006だけをclosure verificationする
 - 後続候補: T606
 
 ## P0 開発基盤

@@ -324,8 +324,25 @@ export function activate(
     storageUri: context.storageUri
   };
   const workspaceIdentityService = new WorkspaceIdentityService(stableHash);
+  const gitHistoryRewriteSnapshotTracker = new NonGitSnapshotTracker(
+    new NodeNonGitSnapshotStorage({
+      snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
+        kind: "workspace",
+        repositoryId: "git-history-rewrite",
+        contextId: "git-history-rewrite"
+      }).snapshotDirectory,
+      notifyStorageLockDiagnostic: reportStorageLockDiagnostic
+    }),
+    new NodeNonGitSnapshotCodec(),
+    resolveConfiguredNonGitSnapshotLimits({
+      maxSnapshotFileSizeBytes: vscode.workspace
+        .getConfiguration("reviewRange")
+        .get<number>("maxSnapshotFileSizeBytes", DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES)
+    })
+  );
   const workspaceSessionProvider = new WorkspaceRootRuntimeRegistry({
     identityService: workspaceIdentityService,
+    historyRewriteSnapshotTracker: gitHistoryRewriteSnapshotTracker,
     factory: {
       create: (identity) => new SnapshotTrackingWorkspaceReviewStateSessionProvider({
         identityService: workspaceIdentityService,

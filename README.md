@@ -23,7 +23,7 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 - **Review Contexts** View では、現在の PR/branch、保存済み open・closed・merged PR、workspace context を並列表示できます。PR の再検出、GitHub 再接続、cache 更新、PR layer 切替、表示だけの削除、進捗確認、PR diff の表示を行えます。
 - Review Contexts から開く PR diff は通常の review diff と同じ canonical virtual document を使用し、original・modified 両側の確認・解除操作と永続状態を共有します。
 
-現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算が production runtime へ接続されています。T406 統合試験は PR #71 のreview closure後、merge commit `96057f9e`でmainへ統合済みです。T604 は PR #73 をsquash mergeし、merge commit `64e47c590960a810a2439bd33f250ecbda9c41bf`とexact-head CI `32367553522` Greenでmainへ統合済みです。T605 はmulti-root とremote workspace URI/storage boundaryの実装・通常review待ちです。
+現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算が production runtime へ接続されています。T406 統合試験は PR #71 のreview closure後、merge commit `96057f9e`でmainへ統合済みです。T604 は PR #73 をsquash mergeし、merge commit `64e47c590960a810a2439bd33f250ecbda9c41bf`とexact-head CI `32367553522` Greenでmainへ統合済みです。T605 はnormal review findings R001〜R006のimplementation follow-upを完了し、same normal reviewerによるfinding-limited closure待ちです。
 
 ## インストール方法
 

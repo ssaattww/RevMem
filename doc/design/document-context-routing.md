@@ -203,6 +203,8 @@ storageUri/
 
 workspace contextは同一root内の複数fileで共有する。対象file stateが存在しないことと、workspace context自体が存在しないことを区別する。各rootはstate、history、snapshot、lock、cleanupの独立したT604 storage-root契約を持ち、root Aの操作がroot Bのpointer、履歴、snapshot、leaseへ到達してはならない。
 
+Git history-rewrite recovery用snapshotはworkspace provider wrapperの有無に依存しない安定したproduction capabilityとして構成する。workspace commandのcommitは選択rootのsnapshot-aware committerを通過し、reconciliation wrapperもそのcapabilityを透過する。startup migrationは`workspaces/`配下のhash rootを列挙し、root nameとstate owner identityを照合した後、各rootのstate、全history月、snapshot metadataを同じroot lock下でeagerに処理する。
+
 ### 6.4 External-file storage
 
 Git working treeにもworkspaceにも所属しないdocumentは、canonical document URIから導出したowner identityごとに保存する。
@@ -521,3 +523,4 @@ writable `open`はreconciliation済みsessionをそのまま返す。永続化�
 - rootの追加、削除、変更でregistryを更新し、削除rootのruntimeをdisposeする
 - Git、対象file read、PR acquisitionがworkspace-side Extension HostのURIとfilesystem adapterを使用する
 - non-file remote authorityを含むroot Aとroot BでCurrent Context、review state、history、snapshot、Git/PR acquisitionが混線しない
+- 同一repository identityが複数rootに存在する場合もrepository rootをCurrent Context candidate、PR acquisition、diff readerのsource identityとして保持し、rootを一意に決められない操作はactive document rootへfail-closedに束縛する
