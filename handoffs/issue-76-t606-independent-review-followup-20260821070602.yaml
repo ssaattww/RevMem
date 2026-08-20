@@ -4,7 +4,7 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: 51e64d537002991782b985698f834b69895fd0ff
-technical_implementation_head: pending_commit
+technical_implementation_head: 65d3b29dcf7f5030679a2a44269f832eda9daace
 status: independent_ifr001_through_ifr005_addressed_same_reviewer_closure_pending
 findings:
   - T606-IFR001
@@ -27,4 +27,4 @@ validation:
   markdown_wording: "unsupported; tools/lint, cspell, and lint:md are absent"
 ci: held_exact_head_pr_ci
 external_sync: "PR #77 body update pending"
-next_request: "Same independent reviewer performs finding-limited closure only. Parent may commit, obtain technical SHA, update PR body externally, and run exact-head CI; no merge authorization."
+next_request: "Same independent reviewer performs finding-limited closure only for technical implementation head 65d3b29dcf7f5030679a2a44269f832eda9daace. Parent updates PR body externally and obtains exact-head CI; no merge authorization."

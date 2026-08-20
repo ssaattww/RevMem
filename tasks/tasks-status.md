@@ -14,7 +14,7 @@
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t606-failure-policy-retry-diagnostics`
-- Pull Request: #77（draft、normal closure R8 `PASS_WITH_HELD`、technical implementation head `d5193ba3513d1cb62c7d9a053b3f87086e310d51`、independent final review pending、exact-head CI held）
+- Pull Request: #77（draft、IFR001〜005 addressed、technical implementation head `65d3b29dcf7f5030679a2a44269f832eda9daace`、same independent reviewer finding-limited closure pending、exact-head CI held、PR body external sync pending）
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -363,7 +363,7 @@
 | T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
 | T604 | 完了 | L | cross-window storage lock and bounded cleanupを実装した | T104、T403、T603 | PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。 |
 | T605 | 完了 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験した | T103、T202、T401、T601、T604 | PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み。 |
-| T606 | independent IFR001〜005修正済み・same reviewer closure待ち | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | IFR001〜004はproduction/testでaddressed、IFR005はREADME/tracking/report/handoffへ同期済み。technical SHAはcommit前のためpending。same independent reviewerのfinding限定closure、exact-head PR CI、PR body外部同期はpending。`test:t606`は指定の1回で旧期待値2件を検出し、対象regression 3/3を修正確認した。follow-up: `reports/issue-76-t606-independent-review-followup-20260821070602.md`。 |
+| T606 | independent IFR001〜005修正済み・same reviewer closure待ち | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | IFR001〜004はproduction/testでaddressed、IFR005はREADME/tracking/report/handoffへ同期済み。technical implementation headは`65d3b29dcf7f5030679a2a44269f832eda9daace`。same independent reviewerのfinding限定closure、exact-head PR CI、PR body外部同期はpending。`test:t606`は194 pass / 2 fail / 2 Windows POSIX skipで1回のみ実行し、修正後のexact failed selectionは2/2 Green。follow-up: `reports/issue-76-t606-independent-review-followup-20260821070602.md`。 |
 | T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607 | AC-01〜AC-24の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
 
@@ -387,4 +387,4 @@
 
 ## 次回開始時の選択
 
-T606 / Issue #76 はindependent IFR001〜IFR005を同一batchでaddressedした。technical SHAはcommit前のためpendingであり、次工程は同一 independent reviewerによるfinding限定closureである。exact-head PR CI、PR bodyの外部同期、Markdown wording gateはheld（Markdown toolingはunsupported）とする。end-of-Issue skill-gap decisionは既存CodexSkill #58/#61で対応済みのため`no new skill action`、feedbackは既存issueへ集約済みである。
+T606 / Issue #76 はindependent IFR001〜IFR005を同一batchでaddressedした。technical implementation headは`65d3b29dcf7f5030679a2a44269f832eda9daace`であり、次工程は同一 independent reviewerによるfinding限定closureである。exact-head PR CI、PR bodyの外部同期、Markdown wording gateはheld（Markdown toolingはunsupported）とする。end-of-Issue skill-gap decisionは既存CodexSkill #58/#61で対応済みのため`no new skill action`、feedbackは既存issueへ集約済みである。

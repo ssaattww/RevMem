@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の一度限りの independent final review に対する finding 限定 follow-up である。branch は `task/t606-failure-policy-retry-diagnostics`、base および開始時 HEAD は `51e64d537002991782b985698f834b69895fd0ff`。対象は `reports/issue-76-t606-independent-final-review-20260821063000.md` の T606-IFR001〜IFR005 だけであり、新しい full review ではない。technical commit SHA は未commit 指示により pending である。
+T606 / Issue #76 / PR #77 の一度限りの independent final review に対する finding 限定 follow-up である。branch は `task/t606-failure-policy-retry-diagnostics`、base および開始時 HEAD は `51e64d537002991782b985698f834b69895fd0ff`、technical implementation head は `65d3b29dcf7f5030679a2a44269f832eda9daace` である。対象は `reports/issue-76-t606-independent-final-review-20260821063000.md` の T606-IFR001〜IFR005 だけであり、新しい full review ではない。
 
 ## sub-agentを使う理由
 
@@ -38,14 +38,14 @@ Regression は `test/unit/t606-failure-policy-retry-diagnostics.test.ts`、`test
 - **T606-IFR002 — High — addressed.** `git-timeout` と permanent Git failure を lossless に区別し、result-union unavailable を pure-read retry に接続した。Current Context と PR Progress の cancellation propagation を固定した。
 - **T606-IFR003 — Medium — addressed.** Global toggle/open は START と terminal を一度だけ持つ shared lifecycle に入り、failure は generic/redacted UI projection になる。PR Progress も explicit cancellation owner を持つ。
 - **T606-IFR004 — High — addressed.** IFR001〜003 を検出する production matrix、actual command lifecycle、focused `test:t606`/CI contract regression を更新した。
-- **T606-IFR005 — Medium — addressed.** README、tracking、report、handoff は IFR001〜005 addressed、same reviewer closure pending、technical SHA pending、CI held、PR body external sync pending を記録する。
+- **T606-IFR005 — Medium — addressed.** README、tracking、report、handoff は IFR001〜005 addressed、technical implementation head `65d3b29dcf7f5030679a2a44269f832eda9daace`、same reviewer closure pending、CI held、PR body external sync pending を記録する。
 
 Source severity は全件保存し、reclassification はない。
 
 ## 結果
 
-IFR001〜IFR005 は implementation scope で addressed である。same independent reviewer による finding 限定 closure は pending、technical SHA は commit 前のため pending、exact-head PR CI は held、PR #77 body の外部同期も pending である。Markdown wording は `tools/lint/`、`cspell.config.jsonc`、`lint:md` が存在しないため `unsupported` / held。CI は dispatch、rerun、wait をしていない。
+IFR001〜IFR005 は implementation scope で addressed である。technical implementation head は `65d3b29dcf7f5030679a2a44269f832eda9daace`。same independent reviewer による finding 限定 closure は pending、exact-head PR CI は held、PR #77 body の外部同期も pending である。Markdown wording は `tools/lint/`、`cspell.config.jsonc`、`lint:md` が存在しないため `unsupported` / held。CI は dispatch、rerun、wait をしていない。
 
 ## リスク
 
-full `test:t606` の再実行は禁止されたため、Green evidence は exact failed selection 2/2 と既存 focused Green 12/12 に限定される。lint は final full run で判明した同一未使用 parameter を修正後、対象 file の focused ESLint で確認したが、追加の full lint は実行していない。次 action は同一 independent reviewer が IFR001〜005 限定で closure を行い、その後 parent が accepted batch を commit、technical SHA を記録、PR body を外部同期、exact-head CI を取得することである。当 report は merge authorization を与えない。
+full `test:t606` の再実行は禁止されたため、Green evidence は full 194 pass / 2 fail / 2 Windows POSIX skip の後に実行した exact failed selection 2/2 と既存 focused Green 12/12 に限定される。lint は final full run で判明した同一未使用 parameter を修正後、対象 file の focused ESLint で確認したが、追加の full lint は実行していない。次 action は同一 independent reviewer が IFR001〜005 限定で closure を行い、その後 parent が PR body を外部同期し、technical implementation head `65d3b29dcf7f5030679a2a44269f832eda9daace` の exact-head CI を取得することである。当 report は merge authorization を与えない。
