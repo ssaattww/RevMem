@@ -861,8 +861,6 @@ export function registerT405ReviewContextsRuntime(
           local.head,
           state.contextId,
         );
-      } else if (resolution.reason === "unavailable") {
-        throw new Error("GitHubからPRを再検出できませんでした。");
       } else {
         await currentPullRequestSelection.clear(local.repositoryId, local.head);
       }

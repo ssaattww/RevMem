@@ -46,6 +46,8 @@ jobs:
           node tools/run-ci-command.mjs test-t404 node --test test-dist/test/unit/github-pr-context-layer-store.test.js
       - name: T405 Review Contexts follow-up tests
         run: node tools/run-ci-command.mjs test-t405 npm run test:t405
+      - name: T406 GitHub PR integration tests
+        run: node tools/run-ci-command.mjs test-t406 npm run test:t406
       - name: T304 PR progress tree tests
         run: node tools/run-ci-command.mjs test-t304 npm run test:t304
       - name: T502 Global mapping and display priority tests

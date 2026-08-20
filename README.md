@@ -23,7 +23,7 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 - **Review Contexts** View では、現在の PR/branch、保存済み open・closed・merged PR、workspace context を並列表示できます。PR の再検出、GitHub 再接続、cache 更新、PR layer 切替、表示だけの削除、進捗確認、PR diff の表示を行えます。
 - Review Contexts から開く PR diff は通常の review diff と同じ canonical virtual document を使用し、original・modified 両側の確認・解除操作と永続状態を共有します。
 
-現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算が production runtime へ接続されています。local base/head を使った Extension Host 受け入れ試験では、PR Progress Tree から実際の diff editor を開き、original・modified 両側でファイル全体の確認・全解除を行い、進捗表示と永続状態が同期することを検証しています。GitHub の障害系、複数候補、closed PR を含む end-to-end 統合の残りは `T406` で扱います。
+現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算が production runtime へ接続されています。local base/head を使った Extension Host 受け入れ試験では、PR Progress Tree から実際の diff editor を開き、original・modified 両側でファイル全体の確認・全解除を行い、進捗表示と永続状態が同期することを検証しています。T406 では GitHub 障害系、複数候補、closed PR を含む統合試験を task branch に追加し、review 待ちです。
 
 ## インストール方法
 
@@ -55,8 +55,8 @@ Git working tree 内では、ファイルの親ディレクトリから reposito
 
 以下のタスク ID は [`tasks/tasks-status.md`](tasks/tasks-status.md) の定義を指します。複数タスクを記載している項目は、最後のタスクまで完了した時点を解消条件とします。
 
-- 確認・解除の4コマンドは、通常エディタと canonical PR diff で使用できます。選択中の保存済み PR context は通常エディタの確認操作と装飾にも反映されます。GitHub 未認証・401/403/404/429・network 断・patch 欠落・複数 PR 候補・closed PR を含む end-to-end 境界ケースの統合確認は未完了です。**この制限は `T406` の統合試験が完了すると解消します。** untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
-- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。通常エディタの変更追従は、選択中の保存済み PR を含む context と owner-wide Global に同期し、再起動後も復元します。GitHub PR の障害系・複数候補・closed PR の統合受け入れは `T406` に残っています。**この制限は `T406` の統合試験が完了すると解消します。**
+- 確認・解除の4コマンドは、通常エディタと canonical PR diff で使用できます。選択中の保存済み PR context は通常エディタの確認操作と装飾にも反映されます。GitHub 未認証・401/403/404/429・network 断・patch 欠落・複数 PR 候補・closed PR の統合試験は T406 task branch で実装済みですが、review・PR・main 統合前です。untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
+- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。通常エディタの変更追従は、選択中の保存済み PR を含む context と owner-wide Global に同期し、再起動後も復元します。GitHub PR の障害系・複数候補・closed PR の統合受け入れは T406 task branch で実装済み・review待ちであり、main 統合前です。
 - 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。**履歴UIは初期版の現行タスク範囲外で、解消予定タスクはありません。`T603`はschema migrationと破損回復、`T604`は複数window競合とatomic history appendを扱いますが、履歴UIは追加しません。**
 - 複数 root workspace、Remote SSH、Dev Containers、Codespaces の完全な統合・受け入れ試験は未完了です。**この制限は`T605`が完了すると解消し、初期版全体の最終受け入れは`T608`で確認します。**
 - `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。対応UIの接続は、GitHub PR進捗が`T404`〜`T406`、Global理解率が`T505`と`T506`の完了で揃います。**除外対象のファイルでも通常エディタでは確認済みにでき、確認済み表示と状態保存も行われますが、そのファイルはPR進捗とGlobal理解率の集計対象から除外されます。**

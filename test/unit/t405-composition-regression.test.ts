@@ -265,7 +265,7 @@ test("T405-IFR-1 shared production owner rejects one stale lifecycle/mark race w
   }
 });
 
-test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam", async () => {
+test("T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-composition-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
   const globalStorageRoot = path.join(temporaryRoot, "global-storage");
@@ -321,9 +321,11 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     let lifecycle52: "open" | "closed" | "merged" = "open";
     let lifecycle53: "open" | "closed" | "merged" = "open";
     let refreshTransport: "live" | "offline" = "live";
+    let discoveryTransport: "live" | "network" = "live";
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
+        if (discoveryTransport === "network") throw new Error("network interrupted during PR detection");
         return jsonResponse([52, 53].map((number) => ({
           number,
           title: `PR ${number}`,
@@ -563,6 +565,16 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
       contextId: contextId52,
     });
     assert.equal(isPullRequestDecorationEnabled(layerDisabled!.contextState.pullRequest!), false);
+    const isolated53 = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    assert.equal(
+      isPullRequestDecorationEnabled(isolated53!.contextState.pullRequest!),
+      true,
+      "AC-11: toggling PR #52 must not project its layer state onto PR #53",
+    );
 
     // R405-1 restart proof: rebuild the actual T405 runtime over the same durable storage.
     current = registerRuntime();
@@ -703,6 +715,14 @@ test("R405-1/R405-2/R405-3/R405-7 execute the T405 production composition seam",
     await invoke("reviewRange.redetectPullRequest");
     const selectedAfterCancellation = selectedContexts.at(-1);
     assert.equal(selectedAfterCancellation?.kind, "branch");
+
+    // T406: GitHub network failure must also clear the PR preference so normal-editor review remains in the branch context.
+    redetectChoice = 52;
+    await invoke("reviewRange.redetectPullRequest");
+    assert.equal(selectedContexts.at(-1)?.kind, "pull-request");
+    discoveryTransport = "network";
+    await invoke("reviewRange.redetectPullRequest");
+    assert.equal(selectedContexts.at(-1)?.kind, "branch");
   } finally {
     moduleLoader._load = originalModuleLoad;
     globalThis.fetch = originalFetch;

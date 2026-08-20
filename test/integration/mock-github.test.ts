@@ -240,6 +240,77 @@ test("GitHub adapter attempts a public API request without authentication", asyn
   }
 });
 
+test("T406 resolves a public PR unauthenticated and falls back to branch for GitHub failures", async () => {
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const publicServer = await createMockGitHubServer([
+    {
+      body: [{
+        number: 70,
+        title: "Public PR",
+        html_url: "https://github.com/example/review-range/pull/70",
+        head: { sha: head },
+        base: { ref: "main", sha: "89abcdef0123456789abcdef0123456789abcdef" }
+      }],
+      method: "GET",
+      pathname: "/repos/example/review-range/pulls",
+      status: 200
+    }
+  ]);
+
+  try {
+    const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: publicServer.baseUrl });
+    const resolver = new GitHubPullRequestContextResolver({
+      chooseCandidate: async () => {
+        throw new Error("a single PR must not need an explicit selection");
+      }
+    });
+    const resolution = await resolver.resolveSearchResult(await adapter.findOpenByHead(
+      { host: "github.com", owner: "example", repository: "review-range" },
+      head
+    ));
+    assert.equal(resolution.kind, "pull-request");
+    assert.equal(resolution.kind === "pull-request" ? resolution.pullRequest.number : undefined, 70);
+    assert.equal(publicServer.requests[0]?.headers.authorization, undefined);
+  } finally {
+    await publicServer.close();
+  }
+
+  for (const scenario of [
+    { status: 401, expectedReason: "api" },
+    { status: 403, expectedReason: "api" },
+    { status: 404, expectedReason: "api" },
+    { status: 429, expectedReason: "rate-limit" }
+  ] as const) {
+    const server = await createMockGitHubServer([{
+      body: { message: `GitHub ${scenario.status}` },
+      method: "GET",
+      pathname: "/repos/example/review-range/pulls",
+      status: scenario.status
+    }]);
+    try {
+      const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: server.baseUrl });
+      const resolver = new GitHubPullRequestContextResolver({ chooseCandidate: async () => undefined });
+      assert.deepEqual(await adapter.findOpenByHead(
+        { host: "github.com", owner: "example", repository: "review-range" }, head
+      ), { kind: "unavailable", reason: scenario.expectedReason });
+      assert.deepEqual(await resolver.resolveSearchResult({
+        kind: "unavailable",
+        reason: scenario.expectedReason
+      }), { kind: "branch", reason: "unavailable" });
+    } finally {
+      await server.close();
+    }
+  }
+
+  const networkAdapter = new FetchGitHubPullRequestAdapter({
+    apiBaseUrl: "https://api.github.test",
+    fetch: async () => { throw new Error("network interrupted"); }
+  });
+  assert.deepEqual(await networkAdapter.findOpenByHead(
+    { host: "github.com", owner: "example", repository: "review-range" }, head
+  ), { kind: "unavailable", reason: "network" });
+});
+
 test("GitHub adapter classifies rate-limit and API failures as unavailable", async () => {
   const server = await createMockGitHubServer([
     {

@@ -200,3 +200,29 @@ test("T506 integration and Extension Host acceptance are exposed as one required
     "CI must execute the package-owned T506 focused command under Xvfb through the diagnostic runner."
   );
 });
+
+test("T406 GitHub failure and recovery integration is exposed by package and CI", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8")
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  const focused = requireScript(manifest.scripts ?? {}, "test:t406");
+
+  for (const suite of [
+    "test-dist/test/integration/mock-github.test.js",
+    "test-dist/test/integration/t402-pr-diff-acquisition.test.js",
+    "test-dist/test/unit/t405-composition-regression.test.js"
+  ]) {
+    assert.match(
+      focused,
+      new RegExp(suite.replaceAll(".", "\\."), "u"),
+      `test:t406 must execute ${suite}`
+    );
+  }
+  assert.match(
+    workflow,
+    /- name: T406 GitHub PR integration tests[\s\S]*?node tools\/run-ci-command\.mjs test-t406 npm run test:t406\b/u,
+    "CI must invoke the package-owned T406 focused script through the diagnostic runner"
+  );
+});
