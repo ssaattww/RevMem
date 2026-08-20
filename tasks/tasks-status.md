@@ -14,7 +14,7 @@
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t606-failure-policy-retry-diagnostics`
-- Pull Request: #77（draft、IFR001〜005 R2 addressed、technical implementation head `bdf6f4ab693e8fb126b0306cdf7690d12b813128`、same independent reviewer finding-limited closure R2 pending、exact-head CI held、PR body completed for technical head bdf6f4a; parent will refresh current admin head after this admin commit without Git writes）
+- Pull Request: #77（draft、IFR001〜005 R3 addressed、technical implementation SHA pending、same independent reviewer finding-limited closure R3 pending、exact-head CI held、PR body external sync pending。`test:t606` 201 pass / 0 fail / 2 Windows POSIX skips）
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -387,4 +387,4 @@
 
 ## 次回開始時の選択
 
-T606 / Issue #76 はindependent IFR001〜IFR005 R2を同一batchでaddressedした。technical implementation SHAは`bdf6f4ab693e8fb126b0306cdf7690d12b813128`であり、次工程は同一 independent reviewerによるfinding限定closure R2である。exact-head PR CIはheld、PR bodyは`completed for technical head bdf6f4a; parent will refresh current admin head after this admin commit without Git writes`、Markdown wording gateはheld（Markdown toolingはunsupported）とする。end-of-Issue skill-gap decisionは既存CodexSkill #58/#61で対応済みのため`no new skill action`、feedbackは既存issueへ集約済みである。
+T606 / Issue #76 はindependent IFR001〜IFR005 R3を同一batchでaddressedした。technical implementation SHAは未commitのためpendingであり、次工程は同一 independent reviewerによるfinding限定closure R3である。exact-head PR CIはheld、PR body external syncはpending、`test:t606`は199 pass / 0 fail / 2 Windows POSIX skip、Markdown wording gateはheld（Markdown toolingはunsupported）とする。follow-upは`reports/issue-76-t606-independent-review-followup-r3-20260821074236.md`である。

@@ -44,7 +44,7 @@ export interface CurrentContextUiHost {
 export interface CurrentContextUiActions {
   /** Read-only candidate acquisition; callers may cancel a superseded owner. */
   recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -177,13 +177,13 @@ export class CurrentContextUiController {
     }
     return { snapshot: undefined, stale: generation !== this.generation };
   }
-  public async selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> {
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
     if (this.actions === undefined) return undefined;
     const generation = ++this.generation;
     if (signal !== undefined && signal.aborted) return undefined;
     // A Quick Pick is an observable user interaction.  Unlike the preceding
     // candidate acquisition it must never be replayed after a partial result.
-    const selection = await this.actions.selectContext(signal);
+    const selection = await this.actions.selectContext(signal, feedbackContext);
     if (signal?.aborted === true) return undefined;
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);

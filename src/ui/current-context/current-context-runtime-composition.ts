@@ -41,8 +41,8 @@ export class CurrentContextRuntimeComposition {
     return this.selection.resolve(candidates, fallback);
   }
 
-  public async selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> {
-    const candidates = await this.port.enumerateCandidates(signal);
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
+    const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) return undefined;
     const selected = await this.selection.select(
       candidates,
@@ -51,7 +51,7 @@ export class CurrentContextRuntimeComposition {
     if (selected === undefined || isAborted(signal)) {
       return undefined;
     }
-    const currentCandidates = await this.port.enumerateCandidates(signal);
+    const currentCandidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) return undefined;
     return currentCandidates.find((candidate) =>
       currentContextSelectionKey(candidate) === currentContextSelectionKey(selected)

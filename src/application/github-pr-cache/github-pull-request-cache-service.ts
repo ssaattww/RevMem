@@ -19,6 +19,7 @@ import type {
   GitHubPullRequestCacheStorage,
   PullRequestDiffAcquisitionPort
 } from "./contracts";
+import type { OperationFeedbackContext } from "../operation-feedback/index";
 
 const isOfflineFailure = (attempt: PullRequestDiffAcquisitionAttempt): boolean =>
   attempt.reason === "rate-limit" || attempt.reason === "network";
@@ -77,10 +78,12 @@ export class GitHubPullRequestCacheService {
   }
 
   public async acquire(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
-    const read = await this.acquireRead(request);
-    return this.publish(request, read);
+    const read = await this.acquireRead(request, feedbackContext, signal);
+    return this.publish(request, read, feedbackContext, signal);
   }
 
   /**
@@ -88,10 +91,14 @@ export class GitHubPullRequestCacheService {
    * acquisition must defer {@link publish} until the read has succeeded once.
    */
   public async acquireRead(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     requirePullRequestDiffAcquisitionRequest(request);
-    const live = await this.acquisition.acquire(request);
+    if (signal?.aborted) throw new DOMException("PR cache acquisition was superseded.", "AbortError");
+    const live = await this.acquisition.acquire(request, feedbackContext, signal);
+    if (signal?.aborted) throw new DOMException("PR cache acquisition was superseded.", "AbortError");
     if (live.kind === "acquired") {
       return this.projectLive(request, live);
     }
@@ -99,8 +106,9 @@ export class GitHubPullRequestCacheService {
 
     let cached: GitHubPullRequestCacheEntry | undefined;
     try {
-      cached = await this.storage.read(request);
+      cached = await this.storage.read(request, feedbackContext, signal);
     } catch {
+      if (signal?.aborted) throw new DOMException("PR cache acquisition was superseded.", "AbortError");
       return live;
     }
     const validated = cached === undefined
@@ -128,6 +136,8 @@ export class GitHubPullRequestCacheService {
   public async publish(
     request: PullRequestDiffAcquisitionRequest,
     result: GitHubPullRequestCacheAcquisitionResult,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     if (result.kind !== "acquired" || result.source === "offline-cache" || result.cache.origin !== "live" || result.metadata === undefined) return result;
     return this.acceptLive(request, {
@@ -135,7 +145,7 @@ export class GitHubPullRequestCacheService {
       source: result.source,
       snapshot: result.snapshot,
       metadata: result.metadata,
-    });
+    }, feedbackContext, signal);
   }
 
   private projectLive(
@@ -163,7 +173,9 @@ export class GitHubPullRequestCacheService {
 
   private async acceptLive(
     request: PullRequestDiffAcquisitionRequest,
-    live: Extract<PullRequestDiffAcquisitionResult, { readonly kind: "acquired" }>
+    live: Extract<PullRequestDiffAcquisitionResult, { readonly kind: "acquired" }>,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     if (
       live.metadata === undefined ||
@@ -192,16 +204,8 @@ export class GitHubPullRequestCacheService {
       updatedAt,
       expiresAt
     };
-    try {
-      await this.storage.write(entry);
-    } catch {
-      return {
-        ...live,
-        snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),
-        metadata: cloneGitHubPullRequestMetadata(live.metadata),
-        cache: { origin: "live", freshness: "not-cached" }
-      };
-    }
+    if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
+    await this.storage.write(entry, feedbackContext, signal);
     return {
       ...live,
       snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),

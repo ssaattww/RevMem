@@ -210,10 +210,14 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
   }
 
-  public async fetch(request: PullRequestDiffAcquisitionRequest): ReturnType<PullRequestRemoteDataPort["fetch"]> {
+  public async fetch(
+    request: PullRequestDiffAcquisitionRequest,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): ReturnType<PullRequestRemoteDataPort["fetch"]> {
     requirePullRequestDiffAcquisitionRequest(request);
     const root = `${this.apiBaseUrl}/repos/${encodeURIComponent(request.repository.owner)}/${encodeURIComponent(request.repository.repository)}/pulls/${request.number}`;
-    const metadataResult = await this.fetchJson(new URL(root));
+    const metadataResult = await this.fetchJson(new URL(root), signal);
     if (metadataResult.kind === "unavailable") return metadataResult;
     const parsedMetadata = parseMetadata(metadataResult.payload);
     if (parsedMetadata === undefined) return { kind: "unavailable", reason: "api" };
@@ -237,7 +241,7 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
         return { kind: "unavailable", reason: "api" };
       }
       visited.add(url.toString());
-      const page = await this.fetchJson(url);
+      const page = await this.fetchJson(url, signal);
       if (page.kind === "unavailable") return page;
       if (!Array.isArray(page.payload)) {
         return { kind: "unavailable", reason: "api" };
@@ -279,7 +283,9 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
   public async readFile(
     repository: GitHubRepositoryIdentity,
     revision: string,
-    path: string
+    path: string,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestRemoteTextReadResult> {
     const immutableRevision = requirePullRequestCommitObjectId(revision);
     const canonical = requireCanonicalRepositoryRelativePath(path, "posix", "repositoryRelativePath");
@@ -291,7 +297,8 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     let response: Response;
     try {
       response = await this.fetchImplementation(url, {
-        headers: this.headers("application/vnd.github.raw+json")
+        headers: this.headers("application/vnd.github.raw+json"),
+        signal,
       });
     } catch {
       return { kind: "unavailable", reason: "network" };
@@ -319,13 +326,13 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     };
   }
 
-  private async fetchJson(url: URL): Promise<
+  private async fetchJson(url: URL, signal?: AbortSignal): Promise<
     | { readonly kind: "available"; readonly payload: unknown; readonly response: Response }
     | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason }
   > {
     let response: Response;
     try {
-      response = await this.fetchImplementation(url, { headers: this.headers() });
+      response = await this.fetchImplementation(url, { headers: this.headers(), signal });
     } catch {
       return { kind: "unavailable", reason: "network" };
     }

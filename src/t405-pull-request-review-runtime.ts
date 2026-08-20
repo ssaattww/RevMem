@@ -55,7 +55,9 @@ export interface PullRequestReviewRuntimeRegistration {
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
   readonly snapshot: PullRequestDiffSnapshot;
   readonly readTextContent: (
-    descriptor: GitCommitReviewDiffDocumentDescriptor
+    descriptor: GitCommitReviewDiffDocumentDescriptor,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ) => Promise<RevisionTextContentReadResult>;
 }
 
@@ -362,7 +364,9 @@ export class PullRequestReviewRuntime<Uri> {
     cache: PullRequestFullTextCache,
     repositoryPath: string,
     revision: string,
-    side: "original" | "modified"
+    side: "original" | "modified",
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<RevisionTextContentReadResult> {
     const key = fullTextCacheKey(revision, repositoryPath);
     let pending = cache.files.get(key);
@@ -374,7 +378,7 @@ export class PullRequestReviewRuntime<Uri> {
         side,
         revisionSource: "git-commit",
         revision,
-      }).catch((error: unknown) => {
+      }, feedbackContext, signal).catch((error: unknown) => {
         cache.files.delete(key);
         throw error;
       });
@@ -453,7 +457,7 @@ export class PullRequestReviewRuntime<Uri> {
     try {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
-        async () => {
+        async (feedbackContext) => {
           const calculated = await this.calculateProgress(contextId, cancellation.signal);
           if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
           const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
@@ -463,7 +467,9 @@ export class PullRequestReviewRuntime<Uri> {
             }
             lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
               calculated.registration,
-              file
+              file,
+              feedbackContext,
+              cancellation.signal,
             );
             if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
           }
@@ -692,7 +698,9 @@ export class PullRequestReviewRuntime<Uri> {
 
   private async lineReviewabilityFor(
     registration: PullRequestReviewRuntimeRegistration,
-    file: PullRequestDiffFileProgress
+    file: PullRequestDiffFileProgress,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestLineReviewability> {
     if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
       return { kind: "unsupported", reason: { kind: "binary" } };
@@ -710,7 +718,9 @@ export class PullRequestReviewRuntime<Uri> {
       this.fullTextCacheFor(registration),
       filePath,
       revision,
-      modified ? "modified" : "original"
+      modified ? "modified" : "original",
+      feedbackContext,
+      signal,
     );
     if (result.kind === "invalid-encoding") {
       return {

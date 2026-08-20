@@ -264,9 +264,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     const local = await enumerateLocalContexts();
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
-    return reviewContextsRuntime === undefined
-      ? local
-      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext)];
+    if (reviewContextsRuntime === undefined) return local;
+    const augmented = await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext);
+    // The Current Context owner is authoritative: an aborted composition must
+    // never publish candidates returned by an in-flight T405 acquisition.
+    return signal?.aborted ? [] : [...augmented];
   };
 
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
@@ -473,7 +475,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         currentContextComposition.acceptExplicit(snapshot);
         globalSource.setContext(snapshot);
       },
-      selectContext: (signal) => currentContextComposition.selectContext(signal)
+      selectContext: (signal, feedbackContext) => currentContextComposition.selectContext(signal, feedbackContext)
     },
     {
       setSelectedContext: acceptSelectedContext,

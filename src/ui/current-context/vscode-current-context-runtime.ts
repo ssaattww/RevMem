@@ -22,7 +22,7 @@ export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
   recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -116,7 +116,7 @@ export const registerCurrentContextRuntime = (
     const cancellation = new AbortController();
     currentCancellation = cancellation;
     try {
-      await runWithActiveOperationFeedback("Current Contextを選択", () => coordinator.selectContext(cancellation.signal));
+      await runWithActiveOperationFeedback("Current Contextを選択", (feedbackContext) => coordinator.selectContext(cancellation.signal, feedbackContext));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));

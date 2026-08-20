@@ -10,6 +10,7 @@ import {
 } from "../../src/application/github-pr-cache/index";
 import {
   OperationFeedback,
+  OperationDiagnosticError,
   reportActiveStorageLockDiagnostic,
   setActiveOperationFeedback,
   type OperationFeedbackHost,
@@ -17,6 +18,10 @@ import {
 } from "../../src/application/operation-feedback/index";
 import type { PullRequestDiffAcquisitionRequest, PullRequestDiffAcquisitionResult } from "../../src/application/github-pr-diff/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRegistration } from "../../src/t405-pull-request-review-runtime";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion";
+import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewContextState } from "../../src/core/contracts";
+import { CurrentContextUiController, type CurrentContextUiSnapshot } from "../../src/ui/current-context";
 
 const runtimeRequire = createRequire(__filename);
 
@@ -71,7 +76,9 @@ test("T606 R6 Current Context production runtime cross-supersedes refresh/select
   const firstRefresh = deferred<undefined>();
   const selection = deferred<undefined>();
   const refreshSignals: AbortSignal[] = [];
+  const refreshOwners: unknown[] = [];
   const selectionSignals: AbortSignal[] = [];
+  const selectionOwners: unknown[] = [];
   const errors: unknown[] = [];
   const host = new FeedbackHost();
   const feedback = new OperationFeedback(host, () => 1);
@@ -80,12 +87,14 @@ test("T606 R6 Current Context production runtime cross-supersedes refresh/select
   setActiveOperationFeedback(feedback);
   try {
     runtime.registerCurrentContextRuntime({ subscriptions: [] } as never, {
-      recompute: async (signal) => {
+      recompute: async (signal, feedbackContext) => {
         refreshSignals.push(signal!);
+        refreshOwners.push(feedbackContext?.owner);
         return refreshCalls++ === 0 ? firstRefresh.promise : undefined;
       },
-      selectContext: async (signal) => {
+      selectContext: async (signal, feedbackContext) => {
         selectionSignals.push(signal!);
+        selectionOwners.push(feedbackContext?.owner);
         selectCalls += 1;
         return selection.promise;
       },
@@ -101,6 +110,8 @@ test("T606 R6 Current Context production runtime cross-supersedes refresh/select
     firstRefresh.resolve(undefined);
     await Promise.all([choose, refresh]);
     assert.equal(selectCalls, 1, "a user selection remains a one-attempt operation");
+    assert.ok(refreshOwners.every((owner) => owner === feedback), "the Current Context owner reaches its production recompute port");
+    assert.ok(selectionOwners.every((owner) => owner === feedback), "the Current Context owner reaches its production selection port");
     assert.equal(errors.length, 0);
     assert.equal(host.logs.filter((entry) => entry.event === "failed").length, 0);
   } finally {
@@ -199,11 +210,21 @@ test("T606 R6 cache retries acquisition only, publishes once, and never retries 
   const read = await cache.acquireRead(request);
   assert.equal(reads, 1);
   assert.equal(writes, 0, "pure acquisition cannot write cache state");
-  const published = await cache.publish(request, read);
+  await assert.rejects(() => cache.publish(request, read));
   assert.equal(reads, 1);
   assert.equal(writes, 1, "publish failure is one non-retryable side effect");
-  assert.equal(published.kind, "acquired");
-  assert.deepEqual(published.cache, { origin: "live", freshness: "not-cached" });
+});
+
+test("T606 IFR001 propagates an actual cache write failure instead of projecting live not-cached success", async () => {
+  const acquisition: PullRequestDiffAcquisitionPort = { acquire: async () => acquired };
+  const cache = new GitHubPullRequestCacheService({
+    acquisition,
+    storage: { read: async () => undefined, write: async () => { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); } },
+    freshnessMs: 1_000,
+    now: () => new Date(1_000),
+  });
+  const read = await cache.acquireRead(request);
+  await assert.rejects(() => cache.publish(request, read));
 });
 
 test("T606 IFR003 runs the production Global layer toggle through one redacted terminal lifecycle", async () => {
@@ -275,4 +296,119 @@ test("T606 IFR003 Global open throws once to the shared redacted UI boundary wit
   });
   controller.replaceModel(model);
   await assert.rejects(() => controller.open(model.files[0]!));
+});
+
+test("T606 IFR003 PR Progress carries its owner and abort signal to pending content I/O, then emits one terminal per cancelled, failed, and successful refresh", async () => {
+  const contextId = "github-pr:github.com/example/r6#1";
+  const fileId = "src/value.ts";
+  const state: ReviewContextState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId,
+    kind: "pull-request",
+    repositoryId: "github.com/example/r6",
+    displayName: "PR #1",
+    pullRequest: { host: "github.com", owner: "example", repository: "r6", number: 1, state: "open", title: "R6", baseSha: request.baseSha, headSha: request.headSha },
+    files: {}, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z",
+  };
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: {
+      load: async () => ({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState: state, globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: state.repositoryId, currentRevisionId: request.headSha, files: {}, updatedAt: state.updatedAt } }),
+      commit: async () => undefined,
+    },
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const content = deferred<{ kind: "found"; content: string }>();
+  const signals: AbortSignal[] = [];
+  const owners: unknown[] = [];
+  let mode: "pending" | "failure" | "success" = "pending";
+  const registration: PullRequestReviewRuntimeRegistration = {
+    repositoryId: state.repositoryId, repositoryRoot: "/repo", fileSystemPathSemantics: "posix",
+    snapshot: { ...snapshot, contextId, files: [{ fileId, newPath: fileId, status: "added", additions: 1, deletions: 0, hunks: [{ oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, lines: [{ kind: "addition", newLine: 1, text: "value" }] }] }] },
+    readTextContent: async (_descriptor, feedbackContext, signal) => {
+      owners.push(feedbackContext?.owner); signals.push(signal!);
+      if (mode === "pending") return content.promise;
+      if (mode === "failure") throw Object.assign(new Error("content adapter failed"), { code: "EIO" });
+      return { kind: "found", content: "value\n" };
+    },
+  };
+  runtime.register(registration);
+  const host = new FeedbackHost();
+  const feedback = new OperationFeedback(host, () => 1);
+  setActiveOperationFeedback(feedback);
+  try {
+    const cancelled = runtime.activateProgress(contextId);
+    await new Promise((resolve) => setImmediate(resolve));
+    runtime.clearProgress();
+    assert.equal(signals[0]?.aborted, true, "clearProgress aborts the signal observed by the deepest content adapter");
+    content.resolve({ kind: "found", content: "stale\n" });
+    await cancelled;
+    assert.equal(
+      runtime.progress.getChildren().filter((item) => item.kind === "file").length,
+      0,
+      "a cancelled pending read cannot publish stale PR Progress",
+    );
+
+    runtime.unregister(contextId);
+    runtime.register(registration);
+    mode = "failure";
+    await assert.rejects(() => runtime.activateProgress(contextId));
+    runtime.unregister(contextId);
+    runtime.register(registration);
+    mode = "success";
+    await runtime.activateProgress(contextId);
+    assert.ok(owners.every((owner) => owner === feedback), "the active PR Progress owner reaches content I/O");
+    const events = host.logs.map((entry) => entry.event);
+    assert.equal(events.filter((event) => event === "started").length, 3);
+    assert.equal(events.filter((event) => event === "succeeded" || event === "failed").length, 3, "each cancellation, failure, and success has exactly one terminal");
+    assert.equal(events.filter((event) => event === "failed").length, 1);
+    assert.equal(events.filter((event) => event === "succeeded").length, 2);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("T606 IFR002 retries only transient result unions through Current Context's cache read port and keeps permanent causes single-attempt", async () => {
+  const candidate: CurrentContextUiSnapshot = { context: { kind: "branch", label: "main" }, progress: undefined };
+  const seenSignals: AbortSignal[] = [];
+  const seenOwners: unknown[] = [];
+  let attempts = 0;
+  let permanent = false;
+  const cache = new GitHubPullRequestCacheService({
+    acquisition: {
+      acquire: async (_request, feedbackContext, signal) => {
+        attempts += 1; seenOwners.push(feedbackContext?.owner); seenSignals.push(signal!);
+        return permanent
+          ? { kind: "unavailable" as const, attempts: [{ source: "github-patch" as const, reason: "authentication" as const }] }
+          : attempts < 3
+            ? { kind: "unavailable" as const, attempts: [{ source: "github-patch" as const, reason: "network" as const }] }
+            : acquired;
+      },
+    },
+    storage: { read: async (_request, feedbackContext, signal) => { seenOwners.push(feedbackContext?.owner); seenSignals.push(signal!); return undefined; }, write: async () => undefined },
+    freshnessMs: 1_000,
+  });
+  const host = { setCurrentContext: () => undefined, setStatusBar: () => undefined, clearCurrentContext: () => undefined, clearStatusBar: () => undefined };
+  const controller = new CurrentContextUiController(host, {
+    recompute: async (signal, feedbackContext) => {
+      const result = await cache.acquireRead(request, feedbackContext, signal);
+      if (result.kind !== "acquired") throw new OperationDiagnosticError({ code: "PR_PROGRESS_UNAVAILABLE", attempts: result.attempts });
+      return candidate;
+    },
+    selectContext: async () => candidate,
+  });
+  const feedback = new OperationFeedback(new FeedbackHost(), () => 1);
+  setActiveOperationFeedback(feedback);
+  try {
+    await feedback.run("Current Contextを更新", (context) => controller.refresh(new AbortController().signal, context));
+    assert.equal(attempts, 3, "network result unions retry at most three times at the Current Context acquisition boundary");
+    assert.ok(seenSignals.every((signal) => signal instanceof AbortSignal));
+    assert.ok(seenOwners.every((owner) => owner === feedback), "one typed owner reaches acquisition and cache-read ports");
+    attempts = 0; permanent = true;
+    await assert.rejects(() => feedback.run("Current Contextを更新", (context) => controller.refresh(new AbortController().signal, context)));
+    assert.equal(attempts, 1, "authentication result unions are final typed causes and never retry");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
 });

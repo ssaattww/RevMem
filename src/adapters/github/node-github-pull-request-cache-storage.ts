@@ -184,8 +184,11 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
   }
 
   public async read(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheEntry | undefined> {
+    if (signal?.aborted) throw new DOMException("PR cache read was superseded.", "AbortError");
     const key = identityKey(request);
     const pointer = parsePointer(
       parseJson(await this.atomicFileStore.readText(
@@ -235,7 +238,12 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
     }, request);
   }
 
-  public async write(entry: GitHubPullRequestCacheEntry): Promise<void> {
+  public async write(
+    entry: GitHubPullRequestCacheEntry,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) throw new DOMException("PR cache write was superseded.", "AbortError");
     const validated = parseGitHubPullRequestCacheEntry(entry, entry.request);
     if (validated === undefined) {
       throw new TypeError("GitHub cache persistence requires an exact source-redacted entry");

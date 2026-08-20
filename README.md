@@ -29,6 +29,8 @@ T606 R2 は IFR001〜IFR005の既存required actionだけを修正し、Review C
 
 ## インストール方法
 
+T606 R3 はIFR001〜IFR005をaddressedし、actual cache write failureを成功表示せずtyped failureとしてfail-closeします。technical SHAはpending、same independent reviewer closure R3 pending、CI held、PR body external sync pendingです。
+
 この拡張機能は Marketplace ではなく VSIX で配布します。
 
 1. GitHub Releases の最新 Release から、その version に対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回 Release の例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。

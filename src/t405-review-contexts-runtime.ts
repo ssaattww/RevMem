@@ -28,7 +28,11 @@ import {
 } from "./adapters/state-repository/index";
 import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import type { RevisionTextContentReadResult } from "./application/diff-document/index";
-import { GitHubPullRequestCacheService, type GitHubPullRequestCacheStorage } from "./application/github-pr-cache/index";
+import {
+  GitHubPullRequestCacheService,
+  type GitHubPullRequestCacheStorage,
+  type PullRequestDiffAcquisitionPort,
+} from "./application/github-pr-cache/index";
 import type { ReviewHistoryRecorder } from "./application/review-history/index";
 import {
   GitHubPullRequestContextResolver,
@@ -36,7 +40,11 @@ import {
   type GitHubPullRequestCandidate,
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
-import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+import {
+  PullRequestDiffAcquisitionService,
+  type LocalPullRequestDiffPort,
+  type PullRequestRemoteDataPort,
+} from "./application/github-pr-diff/index";
 import {
   reportActiveStorageLockDiagnostic,
   type OperationFeedbackContext,
@@ -110,6 +118,13 @@ export interface T405ReviewContextsRuntimeOptions {
     cacheDirectory: string,
     notifyStorageLockDiagnostic: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>,
   ) => GitHubPullRequestCacheStorage;
+  /** Testable deepest acquisition seam; production uses the local-Git/GitHub adapter pair below. */
+  readonly createPullRequestDiffAcquisition?: (
+    options: Readonly<{
+      local: LocalPullRequestDiffPort;
+      remote: PullRequestRemoteDataPort;
+    }>,
+  ) => PullRequestDiffAcquisitionPort;
 }
 
 interface T405ReviewStateRepository {
@@ -664,8 +679,11 @@ export function registerT405ReviewContextsRuntime(
     root: string,
     identity: GitHubRepositoryIdentity,
     token: string | undefined,
-    descriptor: Parameters<PullRequestReviewRuntimeRegistration["readTextContent"]>[0]
+    descriptor: Parameters<PullRequestReviewRuntimeRegistration["readTextContent"]>[0],
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<RevisionTextContentReadResult> => {
+    if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
     const local = await options.git.readTextFileAtRevision(
       root,
       descriptor.revision,
@@ -677,7 +695,9 @@ export function registerT405ReviewContextsRuntime(
     const remote = await createPullRequestRemote(identity, token).readFile(
       identity,
       descriptor.revision,
-      descriptor.filePath
+      descriptor.filePath,
+      feedbackContext,
+      signal,
     );
     if (remote.kind === "found") return remote;
     if (remote.kind === "binary") return { kind: "invalid-encoding", encoding: "utf-8" };
@@ -704,12 +724,12 @@ export function registerT405ReviewContextsRuntime(
     const identity = repositoryIdentity(context);
     const token = await auth.getAccessToken(identity.host);
     assertCurrent();
-    const acquisition = new PullRequestDiffAcquisitionService({
-      local: forceRemote
-        ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
-        : new LocalGitPullRequestDiffAdapter(gitExecutor, root),
-      remote: createPullRequestRemote(identity, token),
-    });
+    const local: LocalPullRequestDiffPort = forceRemote
+      ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
+      : new LocalGitPullRequestDiffAdapter(gitExecutor, root);
+    const remote = createPullRequestRemote(identity, token);
+    const acquisition = options.createPullRequestDiffAcquisition?.({ local, remote }) ??
+      new PullRequestDiffAcquisitionService({ local, remote });
     const route = resolveReviewStateStorageRoute(uris, {
       kind: "pull-request",
       repositoryId: context.repositoryId,
@@ -730,10 +750,10 @@ export function registerT405ReviewContextsRuntime(
         }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
-    let result = await cache.acquireRead(diffRequest(context));
+    let result = await cache.acquireRead(diffRequest(context), feedbackContext, signal);
     assertCurrent();
     const publish = async (): Promise<void> => {
-      result = await cache.publish(diffRequest(context), result);
+      result = await cache.publish(diffRequest(context), result, feedbackContext, signal);
       cacheStatusByContextId.set(
         context.contextId,
         result.kind === "acquired"
@@ -753,12 +773,16 @@ export function registerT405ReviewContextsRuntime(
         repositoryRoot: root,
         fileSystemPathSemantics: PATH_SEMANTICS,
         snapshot: result.snapshot,
-        readTextContent: (descriptor) => readReviewDiffContent(
-          root,
-          identity,
-          token,
-          descriptor
-        ),
+        readTextContent: (descriptor, registrationFeedbackContext, registrationSignal) => {
+          return readReviewDiffContent(
+            root,
+            identity,
+            token,
+            descriptor,
+            registrationFeedbackContext,
+            registrationSignal,
+          );
+        },
       });
     }
     return { result, root, identity, token };

@@ -19,7 +19,11 @@ export interface GitCommandResult {
 /** Injectable boundary used by unit tests and the Node Extension Host adapter. */
 export interface GitCommandExecutor {
   /** Executes one Git invocation using an argument array. */
-  execute(invocation: GitCommandInvocation): Promise<GitCommandResult>;
+  execute(
+    invocation: GitCommandInvocation,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<GitCommandResult>;
 }
 
 /** Error raised when the configured Git executable cannot be started. */

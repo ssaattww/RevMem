@@ -15,6 +15,7 @@ import type {
   PullRequestRemoteMetadata
 } from "./contracts";
 import { requirePullRequestDiffAcquisitionRequest } from "./request-validation";
+import type { OperationFeedbackContext } from "../operation-feedback/index";
 
 /** Dependencies for the ordered T402 diff-acquisition workflow. */
 export interface PullRequestDiffAcquisitionServiceOptions {
@@ -59,14 +60,22 @@ export class PullRequestDiffAcquisitionService {
   }
 
   public async acquire(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestDiffAcquisitionResult> {
     requirePullRequestDiffAcquisitionRequest(request);
+    const assertCurrent = (): void => {
+      if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
+    };
+    assertCurrent();
     const attempts: PullRequestDiffAcquisitionAttempt[] = [];
     let local: Awaited<ReturnType<LocalPullRequestDiffPort["loadDiff"]>>;
     try {
-      local = await this.local.loadDiff(request);
+      local = await this.local.loadDiff(request, feedbackContext, signal);
+      assertCurrent();
     } catch (error) {
+      assertCurrent();
       local = { kind: "unavailable", reason: localFailureReason(error) };
     }
     if (local.kind === "available") {
@@ -81,8 +90,10 @@ export class PullRequestDiffAcquisitionService {
 
     let remote: Awaited<ReturnType<PullRequestRemoteDataPort["fetch"]>>;
     try {
-      remote = await this.remote.fetch(request);
+      remote = await this.remote.fetch(request, feedbackContext, signal);
+      assertCurrent();
     } catch {
+      assertCurrent();
       remote = { kind: "unavailable", reason: "api" };
     }
     if (remote.kind === "unavailable") {
@@ -111,7 +122,8 @@ export class PullRequestDiffAcquisitionService {
       return { kind: "unavailable", attempts };
     }
 
-    const loaded = await this.loadContents(request, remote.files);
+    const loaded = await this.loadContents(request, remote.files, feedbackContext, signal);
+    assertCurrent();
     if (loaded.kind === "failure") {
       attempts.push({ source: "github-content", reason: loaded.reason });
       return { kind: "unavailable", attempts };
@@ -131,10 +143,13 @@ export class PullRequestDiffAcquisitionService {
 
   private async loadContents(
     request: PullRequestDiffAcquisitionRequest,
-    files: readonly PullRequestRemoteFile[]
+    files: readonly PullRequestRemoteFile[],
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<ContentLoadSuccess | ContentLoadFailure> {
     const contents: PullRequestFileContents[] = [];
     for (const file of files) {
+      if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
       if (file.status === "binary") {
         contents.push({});
         continue;
@@ -144,7 +159,8 @@ export class PullRequestDiffAcquisitionService {
       if (file.oldPath !== undefined) {
         let oldResult: Awaited<ReturnType<PullRequestRemoteDataPort["readFile"]>>;
         try {
-          oldResult = await this.remote.readFile(request.repository, request.baseSha, file.oldPath);
+          oldResult = await this.remote.readFile(request.repository, request.baseSha, file.oldPath, feedbackContext, signal);
+          if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
         } catch {
           return { kind: "failure", reason: "invalid-data" };
         }
@@ -156,7 +172,8 @@ export class PullRequestDiffAcquisitionService {
       if (file.newPath !== undefined) {
         let newResult: Awaited<ReturnType<PullRequestRemoteDataPort["readFile"]>>;
         try {
-          newResult = await this.remote.readFile(request.repository, request.headSha, file.newPath);
+          newResult = await this.remote.readFile(request.repository, request.headSha, file.newPath, feedbackContext, signal);
+          if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
         } catch {
           return { kind: "failure", reason: "invalid-data" };
         }
