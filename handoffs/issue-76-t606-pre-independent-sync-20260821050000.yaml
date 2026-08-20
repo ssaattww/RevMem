@@ -1,0 +1,17 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+technical_implementation_head: d5193ba3513d1cb62c7d9a053b3f87086e310d51
+current_evidence_head: 43e782171a77311f6a774934aef724f5a6d3f8ea
+normal_closure_report: reports/issue-76-t606-normal-finding-closure-r8-20260821043000.md
+normal_verdict: PASS_WITH_HELD
+status: normal_review_complete_independent_final_review_pending_r001_through_r007_closed
+report: reports/issue-76-t606-pre-independent-sync-20260821050000.md
+validation:
+  evidence: "normal closure R8 records focused 195 passing, 2 Windows POSIX fixture skips, and static validation pass for technical implementation head d5193ba3513d1cb62c7d9a053b3f87086e310d51"
+  ci: unstarted; exact-head PR CI remains a merge gate held
+  markdown_wording: unsupported; tools/lint and lint:md wiring are absent
+skill_gap_decision: no new skill action; existing CodexSkill #58/#61 already cover the gap and feedback is aggregated to the existing issue
+next_request: Have an independent reviewer perform the final review against current evidence head 43e782171a77311f6a774934aef724f5a6d3f8ea. Retain R001 through R007 closed. Exact-head PR CI remains held.
