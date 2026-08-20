@@ -2,7 +2,7 @@
 
 ## タスク
 
-T604 / Issue #72 / PR #73 のnormal closure R1で`open`だった既存T604-R001〜R009だけを同一R2 batchで閉じた。sourceは`issue-72-t604-normal-finding-closure-20260820111448.md`である。CIは明示方針により起動・待機していない。
+T604 / Issue #72 / PR #73 のnormal closure R1で`open`だった既存T604-R001〜R009だけを同一R2 batchで閉じた。sourceは`issue-72-t604-normal-finding-closure-20260820111448.md`、technical fix HEADは`f1cb025e3008bb861ac6c673831a3c7b2d8e30e8`である。CIは明示方針により起動・待機していない。
 
 ## sub-agentを使う理由
 
@@ -60,7 +60,7 @@ startup/state/history/cache/snapshotは一つのkind-only sinkで`Review Range` 
 
 ### T604-R009 — Low — closed
 
-designはmonotonic owner fencing、successor-safe recovery、Output lifecycleを表現し、JSDoc、handoff、tasks/phasesをR2 evidenceへ同期した。commit前のhandoffはheadを推測せず`pending follow-up R2 commit`、CIをnot-run/merge-gate-heldとしている。
+designはmonotonic owner fencing、successor-safe recovery、Output lifecycleを表現し、JSDoc、handoff、tasks/phasesをR2 evidenceへ同期した。handoffはtechnical fix HEAD `f1cb025e3008bb861ac6c673831a3c7b2d8e30e8`、CIをnot-run/merge-gate-heldとしている。
 
 ## 結果
 
