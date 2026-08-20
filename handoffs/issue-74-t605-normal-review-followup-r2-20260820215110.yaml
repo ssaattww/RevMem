@@ -4,7 +4,7 @@ issue_or_pr: "Issue #74 / PR #75"
 task_id: T605
 branch: task/t605-multi-root-remote-boundaries
 base_ref: 64e47c590960a810a2439bd33f250ecbda9c41bf
-current_head: d49bf665e8dd0ef3c6ccdba7fa8731e31c5f4ae2
+current_head: 7dc60e5da1ec928b95943b54e00862d3cf2f68c0
 status: r001_r006_addressed_same_normal_reviewer_r2_closure_pending
 report: reports/issue-74-t605-normal-review-followup-r2-20260820215110.md
 findings:
