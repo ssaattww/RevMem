@@ -11,6 +11,7 @@ import {
   registerPullRequestGlobalHeadFileProvider,
   type PullRequestGlobalHeadFile,
 } from "./application/global-understanding/pull-request-global-head-file-registry";
+import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
 import {
   DiffEditorReviewCommandService,
   type DiffEditorReviewCommandDependencies,
@@ -25,6 +26,7 @@ import type { FileSystemPathSemantics } from "./application/workspace-identity/i
 import type { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
+  type PullRequestDiffFileProgress,
   type PullRequestDiffProgress,
   type PullRequestDiffSnapshot,
 } from "./core/pr-progress/index";
@@ -33,6 +35,11 @@ import {
   ReviewDiffTextDocumentContentProvider,
   type ReviewDiffEditorHost,
 } from "./ui/diff-editor/index";
+import {
+  PullRequestProgressTreeDataProvider,
+  type PullRequestProgressTreeDiffTarget,
+  type PullRequestLineReviewability,
+} from "./ui/pr-progress/index";
 
 export interface PullRequestReviewRuntimeRepository {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
@@ -53,6 +60,7 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly repository: PullRequestReviewRuntimeRepository;
   readonly requestHistory: (transaction: Readonly<ReviewStateTransaction>) => void | Promise<void>;
   readonly diffHost: ReviewDiffEditorHost<Uri>;
+  readonly openFile?: (uri: Uri) => Promise<void>;
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
 }
 
@@ -67,6 +75,12 @@ interface PullRequestFullTextCache {
   readonly files: Map<string, Promise<RevisionTextContentReadResult>>;
 }
 
+interface CalculatedPullRequestProgress {
+  readonly registration: PullRequestReviewRuntimeRegistration;
+  readonly persisted: ReviewStateCommit;
+  readonly progress: PullRequestDiffProgress;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
@@ -77,6 +91,15 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
 
 const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
   `${revision}\0${repositoryPath}`;
+
+const sameRegistrationSnapshot = (
+  left: PullRequestReviewRuntimeRegistration,
+  right: PullRequestReviewRuntimeRegistration
+): boolean => left.repositoryId === right.repositoryId &&
+  left.snapshot.contextId === right.snapshot.contextId &&
+  left.snapshot.baseSha === right.snapshot.baseSha &&
+  left.snapshot.headSha === right.snapshot.headSha &&
+  left.snapshot.originalDiffId === right.snapshot.originalDiffId;
 
 /**
  * Shared T405 runtime for persisted GitHub PR contexts. It reuses the canonical
@@ -89,8 +112,11 @@ export class PullRequestReviewRuntime<Uri> {
   private readonly globalProviderDisposers = new Map<string, () => void>();
   private readonly codec = new ReviewDiffUriCodec();
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
+  private activeProgressContextId: string | undefined;
+  private progressGeneration = 0;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
   public readonly diffController: ReviewDiffEditorController<Uri>;
+  public readonly progress: PullRequestProgressTreeDataProvider;
 
   public constructor(private readonly options: PullRequestReviewRuntimeOptions<Uri>) {
     this.revisionTextContentProvider = new RevisionTextContentProvider(this.codec, {
@@ -104,6 +130,23 @@ export class PullRequestReviewRuntime<Uri> {
       this.revisionTextContentProvider
     );
     this.diffController = new ReviewDiffEditorController(this.codec, options.diffHost);
+    this.progress = new PullRequestProgressTreeDataProvider({
+      openDiff: async (target) => {
+        await this.openReviewDiff(
+          target.contextId,
+          target.file.fileId,
+          target.file.path
+        );
+      },
+      openFile: async (target) => {
+        if (this.options.openFile === undefined) {
+          throw new Error("Pull-request review file host is unavailable");
+        }
+        await this.options.openFile(this.options.diffHost.parseUri(
+          this.createPresentFileDocumentUri(target)
+        ));
+      },
+    });
   }
 
   public register(registration: PullRequestReviewRuntimeRegistration): void {
@@ -113,6 +156,15 @@ export class PullRequestReviewRuntime<Uri> {
     if (registration.repositoryRoot.trim().length === 0) throw new TypeError("repositoryRoot must not be empty");
     if (snapshot.originalDiffId !== `${snapshot.baseSha}..${snapshot.headSha}`) {
       throw new Error("PR diff originalDiffId must match base/head revisions");
+    }
+    this.assertRegistrationHasOneToOneLogicalPaths(registration);
+    const previous = this.registrations.get(snapshot.contextId);
+    if (
+      previous !== undefined &&
+      this.activeProgressContextId === snapshot.contextId &&
+      !sameRegistrationSnapshot(previous, registration)
+    ) {
+      this.clearProgress();
     }
     this.registrations.set(snapshot.contextId, {
       ...registration,
@@ -141,6 +193,7 @@ export class PullRequestReviewRuntime<Uri> {
     this.fullTextCaches.delete(contextId);
     this.globalProviderDisposers.get(contextId)?.();
     this.globalProviderDisposers.delete(contextId);
+    if (this.activeProgressContextId === contextId) this.clearProgress();
   }
 
   public hasContext(contextId: string): boolean {
@@ -175,6 +228,50 @@ export class PullRequestReviewRuntime<Uri> {
     });
   }
 
+  /** Creates a present immutable PR Progress file target without falling back to the working tree. */
+  public createPresentFileDocumentUri(target: PullRequestProgressTreeDiffTarget): string {
+    const registration = this.requireRegistration(target.contextId);
+    const { snapshot } = registration;
+    if (
+      target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
+      target.baseSha !== snapshot.baseSha ||
+      target.headSha !== snapshot.headSha ||
+      target.originalDiffId !== snapshot.originalDiffId ||
+      target.fileSystemPathSemantics !== registration.fileSystemPathSemantics
+    ) {
+      throw new RangeError("PR Progress file target is stale for the current immutable snapshot.");
+    }
+    const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
+    if (
+      file === undefined ||
+      file.oldPath !== target.file.oldPath ||
+      file.newPath !== target.file.newPath ||
+      file.status !== target.file.status
+    ) {
+      throw new RangeError("PR Progress file target is unavailable in the current immutable snapshot.");
+    }
+    const side = target.modified.kind === "present" ? target.modified : target.original;
+    const sideName = target.modified.kind === "present" ? "modified" : "original";
+    const expectedPath = sideName === "modified" ? file.newPath : file.oldPath;
+    const expectedRevision = sideName === "modified" ? snapshot.headSha : snapshot.baseSha;
+    if (
+      side.kind !== "present" ||
+      expectedPath === undefined ||
+      side.filePath !== expectedPath ||
+      side.revision !== expectedRevision
+    ) {
+      throw new RangeError("PR Progress file target does not identify a present immutable side.");
+    }
+    return this.codec.encode({
+      contextId: target.contextId,
+      filePath: side.filePath,
+      fileSystemPathSemantics: target.fileSystemPathSemantics,
+      side: sideName,
+      revisionSource: "git-commit",
+      revision: side.revision,
+    });
+  }
+
   /**
    * Fully scans every reviewable PR file once per immutable revision pair.
    * Existing/added/renamed/copied files are read from HEAD and returned for
@@ -189,15 +286,7 @@ export class PullRequestReviewRuntime<Uri> {
   ): Promise<readonly PullRequestGlobalHeadFile[]> {
     const registration = this.requireRegistration(contextId);
     const { baseSha, headSha } = registration.snapshot;
-    let cache = this.fullTextCaches.get(contextId);
-    if (cache === undefined || cache.baseSha !== baseSha || cache.headSha !== headSha) {
-      cache = {
-        baseSha,
-        headSha,
-        files: new Map<string, Promise<RevisionTextContentReadResult>>(),
-      };
-      this.fullTextCaches.set(contextId, cache);
-    }
+    const cache = this.fullTextCacheFor(registration);
 
     void candidatePaths;
     const files: PullRequestGlobalHeadFile[] = [];
@@ -219,7 +308,7 @@ export class PullRequestReviewRuntime<Uri> {
           throw new Error(`PR HEAD file is unavailable for Global scan: ${file.newPath} (${result.kind})`);
         }
         files.push({
-          path: file.newPath,
+          path: this.canonicalRepositoryPath(registration, file.newPath),
           revisionId: headSha,
           content: result.content,
         });
@@ -242,6 +331,22 @@ export class PullRequestReviewRuntime<Uri> {
       }
     }
     return files;
+  }
+
+  private fullTextCacheFor(
+    registration: PullRequestReviewRuntimeRegistration
+  ): PullRequestFullTextCache {
+    const { contextId, baseSha, headSha } = registration.snapshot;
+    let cache = this.fullTextCaches.get(contextId);
+    if (cache === undefined || cache.baseSha !== baseSha || cache.headSha !== headSha) {
+      cache = {
+        baseSha,
+        headSha,
+        files: new Map<string, Promise<RevisionTextContentReadResult>>(),
+      };
+      this.fullTextCaches.set(contextId, cache);
+    }
+    return cache;
   }
 
   private async readCachedFullText(
@@ -281,13 +386,7 @@ export class PullRequestReviewRuntime<Uri> {
   public fileIdForDiffDocumentUri(uri: string): string {
     const descriptor = this.codec.decode(uri);
     const registration = this.requireRegistration(descriptor.contextId);
-    const matches = registration.snapshot.files.filter((file) =>
-      (descriptor.side === "original"
-        ? file.oldPath ?? file.newPath
-        : file.newPath ?? file.oldPath) === descriptor.filePath
-    );
-    if (matches.length !== 1) throw new Error("Review diff document does not identify exactly one PR file");
-    return matches[0]!.fileId;
+    return this.diffFileForDescriptor(registration, descriptor).fileId;
   }
 
   public sideForDiffDocumentUri(uri: string): "original" | "modified" {
@@ -321,21 +420,62 @@ export class PullRequestReviewRuntime<Uri> {
 
   public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
     return runWithActiveOperationFeedback("PR進捗を計算", async () => {
-      const registration = this.requireRegistration(contextId);
-      const persisted = await this.options.repository.load(targetFor(registration));
-      if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
-      this.requireMatchingContext(registration, persisted);
-      const progress = calculatePullRequestDiffProgress({
-        diff: registration.snapshot,
-        reviewContext: persisted.contextState,
-        exclusionPolicy: this.options.getExclusionPolicy(),
-      });
+      const calculated = await this.calculateProgress(contextId);
       return {
-        reviewedLineCount: progress.reviewedLineCount,
-        totalLineCount: progress.totalLineCount,
-        progress: progress.progress,
+        reviewedLineCount: calculated.progress.reviewedLineCount,
+        totalLineCount: calculated.progress.totalLineCount,
+        progress: calculated.progress.progress,
       };
     });
+  }
+
+  /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
+  public async activateProgress(contextId: string): Promise<void> {
+    const generation = ++this.progressGeneration;
+    this.activeProgressContextId = contextId;
+    this.progress.clear();
+    const registration = this.requireRegistration(contextId);
+    try {
+      const calculated = await runWithActiveOperationFeedback(
+        "PR進捗を計算",
+        () => this.calculateProgress(contextId)
+      );
+      const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
+      for (const file of calculated.progress.files) {
+        lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
+          calculated.registration,
+          file
+        );
+        if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+      }
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+      const { snapshot } = calculated.registration;
+      this.progress.replaceSnapshot({
+        snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
+        contextId: snapshot.contextId,
+        baseSha: snapshot.baseSha,
+        headSha: snapshot.headSha,
+        originalDiffId: snapshot.originalDiffId,
+        fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
+        progress: calculated.progress,
+        lineReviewabilityByFileId,
+      });
+    } catch (error) {
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+      this.progress.clear();
+      throw error;
+    }
+  }
+
+  public async refreshActiveProgress(): Promise<void> {
+    if (this.activeProgressContextId === undefined) return;
+    await this.activateProgress(this.activeProgressContextId);
+  }
+
+  public clearProgress(): void {
+    this.progressGeneration += 1;
+    this.activeProgressContextId = undefined;
+    this.progress.clear();
   }
 
   public createCommandService<Editor>(
@@ -353,30 +493,57 @@ export class PullRequestReviewRuntime<Uri> {
   public async openSession(uri: string, fileId?: string) {
     const descriptor = this.codec.decode(uri);
     const registration = this.requireRegistration(descriptor.contextId);
-    const resolvedFileId = fileId ?? this.fileIdForDiffDocumentUri(uri);
-    const diffFile = registration.snapshot.files.find((candidate) => candidate.fileId === resolvedFileId);
+    const descriptorFile = this.diffFileForDescriptor(registration, descriptor);
+    const diffFile = fileId === undefined
+      ? descriptorFile
+      : registration.snapshot.files.find((candidate) => candidate.fileId === fileId);
     if (diffFile === undefined || diffFile.status === "binary") {
       throw new Error("PR file is unavailable for line review");
+    }
+    if (diffFile.fileId !== descriptorFile.fileId) {
+      throw new Error("PR diff document and requested file identity do not match");
     }
     const persisted = await this.options.repository.load(targetFor(registration));
     if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
     this.requireMatchingContext(registration, persisted);
+    this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
     const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
+    const resolvedFileId = this.persistedFileIdForPath(
+      registration,
+      persisted,
+      logicalPath
+    ) ?? diffFile.fileId;
     const persistedFile = persisted.contextState.files[resolvedFileId];
+    const persistedGlobalFile = persisted.globalState.files[resolvedFileId];
+    const targetPath = persistedFile?.currentPath ??
+      persistedGlobalFile?.currentPath ??
+      logicalPath;
     const modifiedLineCount = diffFile.newPath === undefined
       ? 0
-      : persistedFile?.revisionId === registration.snapshot.headSha && persistedFile.currentPath === diffFile.newPath
+      : persistedFile?.revisionId === registration.snapshot.headSha &&
+          this.canonicalRepositoryPath(registration, persistedFile.currentPath) ===
+            this.canonicalRepositoryPath(registration, diffFile.newPath)
         ? persistedFile.lineCount
-        : await this.lineCount(registration.snapshot.contextId, diffFile.newPath, registration.snapshot.headSha, "modified");
+        : await this.lineCount(
+            registration.snapshot.contextId,
+            diffFile.newPath,
+            registration.snapshot.headSha,
+            "modified"
+          );
     const originalLineCount = diffFile.oldPath === undefined
       ? 0
-      : await this.lineCount(registration.snapshot.contextId, diffFile.oldPath, registration.snapshot.baseSha, "original");
+      : await this.lineCount(
+          registration.snapshot.contextId,
+          diffFile.oldPath,
+          registration.snapshot.baseSha,
+          "original"
+        );
     return {
       contextState: persisted.contextState,
       globalState: persisted.globalState,
       target: {
         fileId: resolvedFileId,
-        currentPath: logicalPath,
+        currentPath: targetPath,
         revisionId: registration.snapshot.headSha,
         lineCount: modifiedLineCount,
       },
@@ -391,6 +558,235 @@ export class PullRequestReviewRuntime<Uri> {
         commit: (transaction: Readonly<ReviewStateTransactionLike>) => this.options.repository.commit(transaction),
       },
     };
+  }
+
+  private async calculateProgress(
+    contextId: string
+  ): Promise<CalculatedPullRequestProgress> {
+    const registration = this.requireRegistration(contextId);
+    const persisted = await this.options.repository.load(targetFor(registration));
+    if (persisted === undefined) {
+      throw new Error("Persisted pull-request review context is unavailable");
+    }
+    this.requireMatchingContext(registration, persisted);
+    this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
+    const progress = calculatePullRequestDiffProgress({
+      diff: registration.snapshot,
+      reviewContext: this.projectContextFileIdentities(registration, persisted),
+      exclusionPolicy: this.options.getExclusionPolicy(),
+    });
+    return { registration, persisted, progress };
+  }
+
+  private projectContextFileIdentities(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit
+  ): ReviewStateCommit["contextState"] {
+    const projected = clone(persisted.contextState);
+    for (const diffFile of registration.snapshot.files) {
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const matching = this.persistedContextFileForPath(
+        registration,
+        persisted,
+        logicalPath
+      );
+      if (matching === undefined) continue;
+      projected.files[diffFile.fileId] = {
+        ...clone(matching.file),
+        fileId: diffFile.fileId,
+        currentPath: logicalPath,
+      };
+    }
+    return projected;
+  }
+
+  private persistedContextFileForPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    logicalPath: string
+  ): { readonly fileId: string; readonly file: ReviewStateCommit["contextState"]["files"][string] } | undefined {
+    const expectedPath = this.canonicalRepositoryPath(registration, logicalPath);
+    const matches = Object.entries(persisted.contextState.files).filter(([, file]) =>
+      this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath
+    );
+    if (matches.length > 1) {
+      throw new Error(`Persisted PR context has conflicting file identities for ${expectedPath}`);
+    }
+    const match = matches[0];
+    return match === undefined ? undefined : { fileId: match[0], file: match[1] };
+  }
+
+  private persistedFileIdForPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    logicalPath: string
+  ): string | undefined {
+    const expectedPath = this.canonicalRepositoryPath(registration, logicalPath);
+    const fileIds = new Set<string>();
+    for (const [fileId, file] of Object.entries(persisted.contextState.files)) {
+      if (this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath) {
+        fileIds.add(fileId);
+      }
+    }
+    for (const [fileId, file] of Object.entries(persisted.globalState.files)) {
+      if (this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath) {
+        fileIds.add(fileId);
+      }
+    }
+    if (fileIds.size > 1) {
+      throw new Error(`Persisted PR state has conflicting file identities for ${expectedPath}`);
+    }
+    return fileIds.values().next().value as string | undefined;
+  }
+
+  private diffFileForDescriptor(
+    registration: PullRequestReviewRuntimeRegistration,
+    descriptor: ReturnType<ReviewDiffUriCodec["decode"]>
+  ) {
+    const descriptorPath = this.canonicalRepositoryPath(
+      registration,
+      descriptor.filePath
+    );
+    const matches = registration.snapshot.files.filter((file) => {
+      const sourcePath = descriptor.side === "original"
+        ? file.oldPath ?? file.newPath
+        : file.newPath ?? file.oldPath;
+      return sourcePath !== undefined &&
+        this.canonicalRepositoryPath(registration, sourcePath) === descriptorPath;
+    });
+    if (matches.length !== 1) {
+      throw new Error("Review diff document does not identify exactly one PR file");
+    }
+    return matches[0]!;
+  }
+
+  private async lineReviewabilityFor(
+    registration: PullRequestReviewRuntimeRegistration,
+    file: PullRequestDiffFileProgress
+  ): Promise<PullRequestLineReviewability> {
+    if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
+      return { kind: "unsupported", reason: { kind: "binary" } };
+    }
+    const filePath = file.newPath ?? file.oldPath;
+    if (filePath === undefined) {
+      throw new Error(`PR progress file has no content path: ${file.fileId}`);
+    }
+    const modified = file.newPath !== undefined;
+    const revision = modified
+      ? registration.snapshot.headSha
+      : registration.snapshot.baseSha;
+    const result = await this.readCachedFullText(
+      registration,
+      this.fullTextCacheFor(registration),
+      filePath,
+      revision,
+      modified ? "modified" : "original"
+    );
+    if (result.kind === "invalid-encoding") {
+      return {
+        kind: "unsupported",
+        reason: { kind: "invalid-encoding", encoding: result.encoding },
+      };
+    }
+    if (result.kind !== "found") {
+      throw new Error(`PR progress text is unavailable for ${filePath} (${result.kind})`);
+    }
+    return { kind: "reviewable" };
+  }
+
+  private canonicalRepositoryPath(
+    registration: PullRequestReviewRuntimeRegistration,
+    repositoryPath: string
+  ): string {
+    const canonical = requireCanonicalRepositoryRelativePath(
+      repositoryPath,
+      registration.fileSystemPathSemantics
+    );
+    return registration.fileSystemPathSemantics === "windows"
+      ? canonical.toLowerCase()
+      : canonical;
+  }
+
+  private assertRegistrationHasOneToOneLogicalPaths(
+    registration: PullRequestReviewRuntimeRegistration
+  ): void {
+    const currentFileIdByPath = new Map<string, string>();
+    const originalFileByPath = new Map<string, {
+      readonly fileId: string;
+      readonly status: PullRequestDiffSnapshot["files"][number]["status"];
+      readonly rawPath: string;
+    }>();
+    for (const file of registration.snapshot.files) {
+      const currentPath = file.newPath ?? file.oldPath;
+      if (currentPath !== undefined) {
+        const canonicalCurrentPath = this.canonicalRepositoryPath(registration, currentPath);
+        const existingCurrentFileId = currentFileIdByPath.get(canonicalCurrentPath);
+        if (existingCurrentFileId !== undefined && existingCurrentFileId !== file.fileId) {
+          throw new Error(
+            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalCurrentPath}`
+          );
+        }
+        currentFileIdByPath.set(canonicalCurrentPath, file.fileId);
+      }
+      if (file.oldPath !== undefined) {
+        const canonicalOriginalPath = this.canonicalRepositoryPath(registration, file.oldPath);
+        const existingOriginalFile = originalFileByPath.get(canonicalOriginalPath);
+        const sharedCopiedSource = existingOriginalFile !== undefined &&
+          existingOriginalFile.rawPath === file.oldPath &&
+          (existingOriginalFile.status === "copied" || file.status === "copied");
+        if (
+          existingOriginalFile !== undefined &&
+          existingOriginalFile.fileId !== file.fileId &&
+          !sharedCopiedSource
+        ) {
+          throw new Error(
+            `PR diff has case-colliding file identities after ${registration.fileSystemPathSemantics} canonicalization: ${canonicalOriginalPath}`
+          );
+        }
+        if (existingOriginalFile === undefined) {
+          originalFileByPath.set(canonicalOriginalPath, {
+            fileId: file.fileId,
+            status: file.status,
+            rawPath: file.oldPath,
+          });
+        }
+      }
+    }
+  }
+
+  private assertPersistedFileMappingsAreOneToOne(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit
+  ): void {
+    const diffFileIdByPersistedFileId = new Map<string, string>();
+    for (const diffFile of registration.snapshot.files) {
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const persistedFileId = this.persistedFileIdForPath(
+        registration,
+        persisted,
+        logicalPath
+      );
+      if (persistedFileId === undefined) continue;
+      const previousDiffFileId = diffFileIdByPersistedFileId.get(persistedFileId);
+      if (previousDiffFileId !== undefined && previousDiffFileId !== diffFile.fileId) {
+        throw new Error(
+          `Persisted PR file identity ${persistedFileId} maps to multiple diff files.`
+        );
+      }
+      diffFileIdByPersistedFileId.set(persistedFileId, diffFile.fileId);
+    }
+  }
+
+  private isCurrentProgressGeneration(
+    contextId: string,
+    generation: number,
+    registration: PullRequestReviewRuntimeRegistration | undefined
+  ): boolean {
+    return this.activeProgressContextId === contextId &&
+      this.progressGeneration === generation &&
+      this.registrations.get(contextId) === registration;
   }
 
   private async lineCount(
@@ -415,6 +811,7 @@ export class PullRequestReviewRuntime<Uri> {
   private requireRegistration(contextId: string): PullRequestReviewRuntimeRegistration {
     const registration = this.registrations.get(contextId);
     if (registration === undefined) throw new Error("Pull-request review runtime context is not registered");
+    this.assertRegistrationHasOneToOneLogicalPaths(registration);
     return registration;
   }
 

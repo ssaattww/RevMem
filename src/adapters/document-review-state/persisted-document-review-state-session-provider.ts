@@ -6,6 +6,7 @@ import {
   GitHistoryRewriteRecoveryCoordinator,
   gitGlobalSnapshotScope
 } from "../../application/history-rewrite-recovery/git-context-recovery";
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import {
   registerGitHistoryRewriteRecovery,
   type GitRevisionMappingSource,
@@ -43,6 +44,14 @@ interface SnapshotCoordinates {
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const canonicalRepositoryPath = (
+  value: string,
+  semantics: DocumentEditorReviewDescriptor["fileSystemPathSemantics"]
+): string => {
+  const canonical = requireCanonicalRepositoryRelativePath(value, semantics);
+  return semantics === "windows" ? canonical.toLowerCase() : canonical;
+};
 
 const isRevisionSource = (
   value: unknown
@@ -275,15 +284,22 @@ export class DocumentReviewStateSessionProvider {
       return undefined;
     }
     const normalized = relativePath.split(pathApi.sep).join("/");
-    const currentPath = descriptor.fileSystemPathSemantics === "windows"
-      ? normalized.toLowerCase()
-      : normalized;
+    const currentPath = canonicalRepositoryPath(
+      normalized,
+      descriptor.fileSystemPathSemantics
+    );
     const matchingIds = new Set<string>();
     for (const [fileId, file] of Object.entries(commit.contextState.files)) {
-      if (file.currentPath === currentPath) matchingIds.add(fileId);
+      if (
+        canonicalRepositoryPath(file.currentPath, descriptor.fileSystemPathSemantics) ===
+        currentPath
+      ) matchingIds.add(fileId);
     }
     for (const [fileId, file] of Object.entries(commit.globalState.files)) {
-      if (file.currentPath === currentPath) matchingIds.add(fileId);
+      if (
+        canonicalRepositoryPath(file.currentPath, descriptor.fileSystemPathSemantics) ===
+        currentPath
+      ) matchingIds.add(fileId);
     }
     if (matchingIds.size > 1) {
       throw new Error("Persisted pull-request state has conflicting file identities.");
@@ -298,13 +314,13 @@ export class DocumentReviewStateSessionProvider {
     const globalFile = commit.globalState.files[fileId];
     if (
       (contextFile !== undefined && (
-        contextFile.currentPath !== currentPath ||
+        canonicalRepositoryPath(contextFile.currentPath, descriptor.fileSystemPathSemantics) !== currentPath ||
         contextFile.revisionId !== selection.headRevision ||
         contextFile.lineCount !== descriptor.lineCount ||
         (contextFile.contentHash !== undefined && contextFile.contentHash !== descriptor.contentHash)
       )) ||
       (globalFile !== undefined && (
-        globalFile.currentPath !== currentPath ||
+        canonicalRepositoryPath(globalFile.currentPath, descriptor.fileSystemPathSemantics) !== currentPath ||
         globalFile.revisionId !== selection.headRevision ||
         (globalFile.contentHash !== undefined && globalFile.contentHash !== descriptor.contentHash)
       ))
@@ -312,13 +328,28 @@ export class DocumentReviewStateSessionProvider {
       return undefined;
     }
 
+    const contextState = clone(commit.contextState);
+    const globalState = clone(commit.globalState);
+    const persistedPath = contextFile?.currentPath ?? globalFile?.currentPath ?? normalized;
+    if (contextFile !== undefined) {
+      contextState.files[fileId] = {
+        ...contextState.files[fileId]!,
+        currentPath: persistedPath,
+      };
+    }
+    if (globalFile !== undefined) {
+      globalState.files[fileId] = {
+        ...globalState.files[fileId]!,
+        currentPath: persistedPath,
+      };
+    }
     return {
       owner: "git",
-      contextState: clone(commit.contextState),
-      globalState: clone(commit.globalState),
+      contextState,
+      globalState,
       target: {
         fileId,
-        currentPath,
+        currentPath: persistedPath,
         revisionId: selection.headRevision,
         lineCount: descriptor.lineCount,
         contentHash: descriptor.contentHash

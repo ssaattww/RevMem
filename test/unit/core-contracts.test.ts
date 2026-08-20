@@ -3,9 +3,12 @@ import test from "node:test";
 
 import { toDefaultVisualState } from "../../src/core/contracts/index";
 import "./github-pr-context-layer-store.test";
+import "./issue-66-global-pr-progress.test";
+import "./issue-66-pr68-review-findings.test";
 import "./repository-global-state-repository.test";
 import "./state-repository-memory.test";
 import "./state-repository.test";
+import "./t305-projection-refresh.test";
 
 test("toDefaultVisualState only renders certain reviews as reviewed", () => {
   assert.equal(toDefaultVisualState("reviewed"), "reviewed");

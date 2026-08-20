@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: PR #69 / Issue #67 独立最終review finding follow-up（`PR69-R002`、`PR69-IFR001`）
-- 次の工程: immutable present-side openと公開contract更新の通常review・fix verificationを完了し、その後T406またはT604を選択する
+- 実装中タスク: PR #68 / Issue #66 独立review finding follow-up R2（`PR68-IFR001` Highのみ）
+- 次の工程: IFR001 R2をcommit/push後にsource independent reviewerのIFR001限定closure verificationを完了し、その後T406またはT604を選択する。fresh reviewと新規finding探索はしない
 - 後続候補: T406、T604
 
 ## P0 開発基盤
