@@ -2,7 +2,7 @@
 
 ## タスク
 
-- Issue #72 / PR #73 / `T604` の independent-final-review finding-limited follow-up。対象HEADは未commitの修正worktree（開始HEAD `207b0cfa6831ea2b140bfbe990cadb059f5261cf`）。
+- Issue #72 / PR #73 / `T604` の independent-final-review finding-limited follow-up。technical fix HEADは `fc5aadc08807bd98779be992521b8d8cfcf0221b`。
 - authority は `reports/issue-72-t604-independent-final-review-20260820195834.md`、承認済み trusted-storage/cooperative-process threat model、design §15。
 
 ## sub-agentを使う理由
