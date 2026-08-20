@@ -33,8 +33,8 @@ GitHub lifecycle/auth/cache adapters、local Git blob/content boundary、cache s
 
 ## 結果
 
-IFR002〜IFR005はimplementation scopeでaddressed。technical implementation SHAは`c19bddd54827143520ca6070c28db37c66de218c`、same independent reviewer finding-limited closure R4 pending、exact-head CI held、PR body外部同期はadmin commit後pendingである。`test:t606`は202 pass / 0 fail / 2 Windows POSIX skip。`npm run build`、`npm run typecheck:contracts`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`（expected 11 violations）、`git diff --check`は各一回passした。
+IFR002〜IFR005はimplementation scopeでaddressed。technical implementation SHAは`c19bddd54827143520ca6070c28db37c66de218c`、admin SHAは`59da2b4a5f04bc2d2fb24501aadfaefb8c1c544d`、same independent reviewer finding-limited closure R4 pending、exact-head CI held、PR body外部同期はtechnical head `c19bddd` に対して完了し、parentがこのadmin commit後にfinal admin headをrefreshする。`test:t606`は202 pass / 0 fail / 2 Windows POSIX skip。`npm run build`、`npm run typecheck:contracts`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`（expected 11 violations）、`git diff --check`は各一回passした。
 
 ## リスク
 
-same reviewer closure R4、exact-head CI、admin commit後のPR body外部同期は未実施である。Markdown wording focused/full checkは`tools/lint/`、`lint:md`、cspell/prh wiringがないためunsupported/heldであり、passへ変換していない。real Remote/network E2E、性能、VSIXはIssueの対象外である。
+same reviewer closure R4とexact-head CIは未実施である。PR body外部同期はtechnical head `c19bddd` に対して完了済みで、parentがこのadmin commit後にfinal admin headをrefreshする。Markdown wording focused/full checkは`tools/lint/`、`lint:md`、cspell/prh wiringがないためunsupported/heldであり、passへ変換していない。real Remote/network E2E、性能、VSIXはIssueの対象外である。
