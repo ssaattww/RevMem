@@ -14,7 +14,7 @@
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は通常review未実施
 - ブロッカー: なし
 - Gitブランチ: `task/t605-multi-root-remote-boundaries`
-- Pull Request: 未作成
+- Pull Request: #75（draft、通常review待ち）
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
 - PR #68 R2通常closure: `reports/issue-66-pr68-finding-closure-r2-20260820082607.md`。PR68-R002/R003はclosed、normal verdictは`pass_with_held`
 - PR #68独立review: `reports/issue-66-pr68-independent-final-review-20260820082950.md`。IFR001 High、IFR002 Medium、IFR003 Lowで`fail`
@@ -385,4 +385,4 @@
 
 ## 次回開始時の選択
 
-T605 / Issue #74 は `task/t605-multi-root-remote-boundaries` でimplementation complete、normal review pendingである。T604 / PR #73はsquash merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。T605のRed/Green、静的検証、implementation report、handoffを記録した。CI、commit、push、PR、review、mergeは未実行である。
+T605 / Issue #74 は `task/t605-multi-root-remote-boundaries` のdraft PR #75でimplementation complete、normal review pendingである。T604 / PR #73はsquash merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。T605のRed/Green、静的検証、implementation report、handoffを記録した。実装commit `555f54efc12ae18ad33c2873671f45d8ad469ee7`をpushし、CIは待機していない。
