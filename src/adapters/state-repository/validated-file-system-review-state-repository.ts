@@ -22,6 +22,7 @@ import {
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { withStorageRootLock } from "./storage-root-lock";
 
 export { StaleReviewStateError };
 
@@ -319,7 +320,13 @@ extends CoherentFileSystemReviewStateRepository {
 
     await previous;
     try {
-      return await operation();
+      return await withStorageRootLock({
+        rootPath: storageRoot,
+        timeoutMs: this.repositoryOptions.storageLock?.timeoutMs,
+        leaseMs: this.repositoryOptions.storageLock?.leaseMs,
+        retryDelayMs: this.repositoryOptions.storageLock?.retryDelayMs,
+        notifyDiagnostic: this.repositoryOptions.notifyStorageLockDiagnostic
+      }, operation);
     } finally {
       release();
       if (sharedOuterWriteTailByStorageRoot.get(storageRoot) === tail) {

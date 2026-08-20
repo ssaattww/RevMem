@@ -1,0 +1,28 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #72"
+task_id: T604
+branch: task/t604-storage-lock-cleanup
+base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
+current_head: 96057f9edc95a8f38bfc01da39eae350c29e9c39
+status: implementation_complete_normal_review_pending
+report: reports/issue-72-t604-implementation-20260820103944.md
+requirements:
+  - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
+  - Only expired locks are recovered; diagnostics disclose no path, source, repository ID, or owner token.
+  - History remains append-only and has no cleanup policy.
+validation:
+  red: npm run test:t604 (missing T604 API exports)
+  green: npm run test:t604 (6 passing)
+  static:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run lint
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - git diff --check
+  ci: not run by explicit task policy
+next_request: Review the T604 implementation normally. Do not run CI, commit, push, create a PR, merge, or self-review as part of this implementation handoff.
+remaining_risks:
+  - No child-process fixture was added; independent repository/store instances exercise the shared-root contention boundary locally.
+  - Reparse traversal protection is implemented through the established trusted path guard; a Windows-specific junction fixture remains review coverage.

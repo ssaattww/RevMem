@@ -1,6 +1,11 @@
 /** Filesystem persistence contracts and implementations for review state. */
 export { NodeAtomicTextFileStore } from "./atomic-text-file-store";
 export {
+  NodeStorageRootLock,
+  StorageRootLockTimeoutError,
+  withStorageRootLock
+} from "./storage-root-lock";
+export {
   DebouncedReviewStateRepository
 } from "./debounced-review-state-repository";
 export {
@@ -39,3 +44,8 @@ export type {
   ReviewHistoryEventAppender,
   StorageUriLike
 } from "./contracts";
+export type {
+  StorageRootLockDiagnostic,
+  StorageRootLockDiagnosticKind,
+  StorageRootLockOptions
+} from "./storage-root-lock";

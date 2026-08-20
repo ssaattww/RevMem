@@ -4,6 +4,7 @@ import type {
   ReviewContextState,
   SchemaVersion
 } from "../../core/contracts/index";
+import type { StorageRootLockDiagnostic } from "./storage-root-lock";
 
 /**
  * Recursive readonly view used to accept Review State Service transactions structurally.
@@ -228,4 +229,8 @@ export interface FileSystemReviewStateRepositoryOptions {
   readonly now?: () => Date;
   /** Optional commit-ID source used to make immutable document filenames unique; defaults to a random UUID. */
   readonly createCommitId?: () => string;
+  /** Optional privacy-safe observer for cross-window storage lock timeout, failure, and stale recovery. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
+  /** Optional bounded wait and lease values for the shared storage-root lock. */
+  readonly storageLock?: { readonly timeoutMs?: number; readonly leaseMs?: number; readonly retryDelayMs?: number };
 }

@@ -20,6 +20,7 @@ import {
   UnsupportedPersistedSchemaVersionError
 } from "./persistence-schema-recovery";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { withStorageRootLock } from "./storage-root-lock";
 
 const monthFileName = (occurredAt: string): string => `events-${occurredAt.slice(0, 7)}.jsonl`;
 const sharedHistoryTailByFilePath = new Map<string, Promise<void>>();
@@ -182,7 +183,7 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     const month = event.occurredAt.slice(0, 7);
     const filePath = path.join(route.historyDirectory, monthFileName(event.occurredAt));
     const previous = sharedHistoryTailByFilePath.get(filePath) ?? Promise.resolve();
-    const operation = previous.then(async () => {
+    const operation = previous.then(() => withStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath }, async () => {
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
       const prepared = prepareExistingHistory(existing, target.repositoryId, month);
       if (prepared.corrupt) {
@@ -209,7 +210,7 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
       } else {
         await this.atomicFileStore.writeTextAtomically(filePath, next);
       }
-    });
+    }));
     const tail = operation.catch(() => undefined);
     sharedHistoryTailByFilePath.set(filePath, tail);
     try {

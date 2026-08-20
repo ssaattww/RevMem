@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -10,8 +11,10 @@ import {
 import type { PullRequestDiffAcquisitionRequest } from "../../application/github-pr-diff/index";
 import {
   NodeAtomicTextFileStore,
-  type AtomicTextFileStore
+  type AtomicTextFileStore,
+  withStorageRootLock
 } from "../state-repository/index";
+import { createTrustedPersistencePathGuard } from "../state-repository/persistence-schema-recovery";
 
 /** Constructor options for repository-local GitHub metadata and diff cache persistence. */
 export interface NodeGitHubPullRequestCacheStorageOptions {
@@ -257,17 +260,47 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
       expiresAt: validated.expiresAt
     };
 
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, metadataFile),
-      JSON.stringify(metadataDocument)
-    );
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, diffFile),
-      JSON.stringify(diffDocument)
-    );
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, pointerFile),
-      JSON.stringify(pointer)
-    );
+    await withStorageRootLock({ rootPath: path.dirname(this.cacheDirectory) }, async () => {
+      const guard = createTrustedPersistencePathGuard(path.dirname(this.cacheDirectory), this.atomicFileStore);
+      await guard(this.cacheDirectory);
+      await guard(absoluteCacheFile(this.cacheDirectory, metadataFile));
+      await guard(absoluteCacheFile(this.cacheDirectory, diffFile));
+      await guard(absoluteCacheFile(this.cacheDirectory, pointerFile));
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, metadataFile),
+        JSON.stringify(metadataDocument)
+      );
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, diffFile),
+        JSON.stringify(diffDocument)
+      );
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, pointerFile),
+        JSON.stringify(pointer)
+      );
+      await this.removeSupersededGenerations(key, generation, guard);
+    });
+  }
+
+  /** Retains the published immutable pair and removes only older generations for the same exact cache identity. */
+  private async removeSupersededGenerations(
+    key: string,
+    publishedGeneration: string,
+    guard: (filePath: string) => Promise<void>
+  ): Promise<void> {
+    if (this.atomicFileStore.deleteText === undefined) return;
+    for (const [directory, prefix] of [[path.join(this.cacheDirectory, "github", key), "metadata-"], [path.join(this.cacheDirectory, "diffs", key), "diff-"]] as const) {
+      const names = await readdir(directory).catch((error: unknown) => {
+        if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+      });
+      for (const name of names) {
+        if (name.startsWith(prefix) && name !== `${prefix}${publishedGeneration}.json` && /^[-A-Za-z0-9._]+\.json$/u.test(name)) {
+          const filePath = path.join(directory, name);
+          await guard(filePath);
+          await this.atomicFileStore.deleteText(filePath);
+        }
+      }
+    }
   }
 }

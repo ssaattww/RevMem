@@ -690,6 +690,8 @@ globalStorageUri/
 
 複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
 
+lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner tokenと短いlease expiryだけを保存する。取得待ちはbounded timeoutで失敗し、未期限切れのlockは奪わない。期限切れlockだけをcompare-and-deleteして回復し、releaseはowner tokenが一致する場合だけ削除する。lock timeout、失敗、stale recoveryはoperation種別だけを公開diagnosticへ通知し、repository path、source、owner tokenを出力しない。stateのload/save/create/commit、history append、snapshot/cache cleanupは同じroot lock内で行う。既存の同一process直列化は維持する。
+
 新contextを作成するtransactionは、対象contextが存在しないこととowner-wide Globalの期待snapshotおよびversionを同じCAS条件に含める。入力は対象Context ID、現在Git snapshot、context不存在期待、Globalの存在状態を含む完全snapshot、Global versionである。Globalが異revisionなら、その入力snapshotからmappingしたnext contextとnext Globalを1 transactionで公開する。読込、mapping、保存を分離した非atomicなwindowを設けない。
 
 create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を返す。呼び出し側は最新Globalと現在Git snapshotを再読込してmappingを再計画する。既存contextの通常更新と新context初期化はともに、片側だけの保存または古いGlobal snapshotによる置換を許可しない。
@@ -708,9 +710,9 @@ ContextとGlobalを同時に更新する新規file eventは、既存range field�
 
 file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`、`marked-file-reviewed`、`unmarked-file-reviewed`、編集結果の`invalidated-by-edit`、Git diff再計算結果の`remapped-by-diff`、renameの`file-renamed`、deleteの`file-deleted`、一意に対応付けられない場合の`mapping-unresolved`である。context event typeは`context-created`と`context-revision-changed`である。各成功したstate transactionまたはcontext初期化・revision mapping結果は、affected fileごとに1 eventをappendする。失敗、cancel、no-op、またはstate commit前の計画はeventをappendしない。state commit後のhistory append失敗はstate rollbackを要求せず、呼び出し側へobservable partial successとしてrejectする。
 
-保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、後続eventをappendせずrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
+保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、同じroot lock内で既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、後続eventをappendせずrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
 
-現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。保持期間・閲覧UI・export・複数windowのcross-process history lock・schema migration readerは将来の履歴管理機能の責務とし、初期の永続化層はevent append、厳密な入力validation、同一process内の順序付けだけを提供する。履歴は原則無期限保持する。
+現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。履歴は原則無期限保持し、`historyRetentionDays=0`は無期限を意味する。cacheとsnapshotのimmutable generationは、active pointerが参照するgenerationを保護した上でbounded cleanupの対象にできる。cleanupはroot内だけを対象にし、symbolic link、junction、reparse pointを経由して書込みまたは削除しない。閲覧UI・exportは将来の履歴管理機能の責務とする。
 
 ## 16. UIと設定
 
