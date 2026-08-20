@@ -90,7 +90,7 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
     this.rootPath = path.dirname(snapshotDirectory);
     this.snapshotsDirectory = path.join(snapshotDirectory, "entries");
     this.latestDirectory = path.join(snapshotDirectory, "latest");
-    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
+    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore(this.rootPath);
     this.notifyStorageLockDiagnostic = options.notifyStorageLockDiagnostic;
     this.maxEntries = options.maxEntries ?? 128;
     this.retentionMs = options.retentionMs ?? 30 * 24 * 60 * 60 * 1_000;
@@ -102,8 +102,12 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   private readonly notifyStorageLockDiagnostic: ((diagnostic: import("../state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>) | undefined;
 
   public async put(snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, () =>
-      this.atomicFileStore.writeTextAtomically(this.snapshotPath(snapshotId), JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot)));
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
+      const filePath = this.snapshotPath(snapshotId);
+      await this.guard(filePath);
+      await lease.assertOwned();
+      await this.atomicFileStore.writeTextAtomically(filePath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot));
+    });
   }
 
   public async get(snapshotId: string): Promise<NonGitSnapshotStoredValue | undefined> {
@@ -123,11 +127,12 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
       }
       const decoded = decodeBase64(bytes);
       if (migration.migrated) {
+        const guard = createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore);
         await publishSchemaMigration(this.atomicFileStore, [{
           filePath,
           original: text,
           migrated: JSON.stringify(migration.value)
-        }]);
+        }], guard);
       }
       return { createdAt, bytes: decoded };
     } catch (error) {
@@ -138,37 +143,59 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
   }
 
   public async delete(snapshotId: string): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async () => {
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
       for (const name of await this.readDirectoryNames(this.latestDirectory)) {
         if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
         if (await this.readLatestPointer(path.join(this.latestDirectory, name)) === snapshotId) return;
       }
+      await lease.assertOwned();
       await this.deletePersistedText(this.snapshotPath(snapshotId));
+    });
+  }
+
+  /** Publishes a generation then reads pointers, plans, and deletes under one root fence. */
+  public async putAndCleanup(
+    snapshotId: string,
+    bytes: Uint8Array,
+    createdAt: number,
+    limits: { readonly maxSnapshots: number; readonly maxTotalCompressedBytes: number; readonly retentionMs: number }
+  ): Promise<void> {
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
+      const filePath = this.snapshotPath(snapshotId);
+      await this.guard(filePath);
+      await lease.assertOwned();
+      await this.atomicFileStore.writeTextAtomically(filePath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, createdAt, bytes: Buffer.from(bytes).toString("base64") } satisfies PersistedSnapshot));
+      await this.cleanupUnreferencedSnapshots(Date.now(), snapshotId, limits, lease);
     });
   }
 
   /** Quarantines one corrupt snapshot wrapper and every valid latest pointer that names it. */
   public async quarantine(snapshotId: string): Promise<void> {
-    const filePath = this.snapshotPath(snapshotId);
-    const text = await this.atomicFileStore.readText(filePath);
-    if (text !== undefined) {
-      await quarantinePersistedText(this.atomicFileStore, filePath, text);
-    }
-    for (const name of await this.readDirectoryNames(this.latestDirectory)) {
-      if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
-      const pointerPath = path.join(this.latestDirectory, name);
-      const pointerText = await this.atomicFileStore.readText(pointerPath);
-      if (pointerText === undefined) continue;
-      try {
-        const migration = parseMigratedRecord(pointerText, "Snapshot generation pointer");
-        if (migration.value.snapshotId === snapshotId) {
-          await quarantinePersistedText(this.atomicFileStore, pointerPath, pointerText);
-        }
-      } catch (error) {
-        if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
-        // Unrelated malformed pointers are handled by their own get/startup migration boundary.
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
+      const guard = createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore);
+      const filePath = this.snapshotPath(snapshotId);
+      const text = await this.atomicFileStore.readText(filePath);
+      if (text !== undefined) {
+        await lease.assertOwned();
+        await quarantinePersistedText(this.atomicFileStore, filePath, text, true, guard);
       }
-    }
+      for (const name of await this.readDirectoryNames(this.latestDirectory)) {
+        if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
+        const pointerPath = path.join(this.latestDirectory, name);
+        const pointerText = await this.atomicFileStore.readText(pointerPath);
+        if (pointerText === undefined) continue;
+        try {
+          const migration = parseMigratedRecord(pointerText, "Snapshot generation pointer");
+          if (migration.value.snapshotId === snapshotId) {
+            await lease.assertOwned();
+            await quarantinePersistedText(this.atomicFileStore, pointerPath, pointerText, true, guard);
+          }
+        } catch (error) {
+          if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
+          // Unrelated malformed pointers are handled by their own get/startup migration boundary.
+        }
+      }
+    });
   }
 
   public async entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]> {
@@ -186,19 +213,23 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
 
   public async setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void> {
     const pointerPath = this.latestPath(workspaceContextId, fileId);
-    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async () => {
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
       if (snapshotId === undefined) {
+        await this.guard(pointerPath);
+        await lease.assertOwned();
         await this.deletePersistedText(pointerPath);
       } else {
+        await this.guard(pointerPath);
+        await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(pointerPath, JSON.stringify({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, snapshotId } satisfies PersistedLatest));
       }
-      await this.cleanupUnreferencedSnapshots(Date.now());
+      await this.cleanupUnreferencedSnapshots(Date.now(), undefined, undefined, lease);
     });
   }
 
   /** Removes only unreferenced old or surplus immutable snapshots; current generation pointers are always retained. */
   public async cleanup(now = Date.now()): Promise<void> {
-    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, () => this.cleanupUnreferencedSnapshots(now));
+    await withStorageRootLock({ rootPath: this.rootPath, notifyDiagnostic: this.notifyStorageLockDiagnostic }, (lease) => this.cleanupUnreferencedSnapshots(now, undefined, undefined, lease));
   }
 
   /** Eagerly migrates every persisted wrapper under this snapshot root, including hashed latest pointers. */
@@ -225,16 +256,17 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
         throw new Error("Invalid snapshot generation pointer");
       }
       if (migration.migrated) {
+        const guard = createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore);
         await publishSchemaMigration(this.atomicFileStore, [{
           filePath,
           original: text,
           migrated: JSON.stringify(migration.value)
-        }]);
+        }], guard);
       }
       return snapshotId;
     } catch (error) {
       if (error instanceof UnsupportedPersistedSchemaVersionError) throw error;
-      await quarantinePersistedText(this.atomicFileStore, filePath, text);
+      await quarantinePersistedText(this.atomicFileStore, filePath, text, true, createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore));
       return undefined;
     }
   }
@@ -243,10 +275,21 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
     if (this.atomicFileStore.deleteText === undefined) {
       throw new Error("AtomicTextFileStore.deleteText is required to remove snapshot persistence.");
     }
+    await this.guard(filePath);
     await this.atomicFileStore.deleteText(filePath);
   }
 
-  private async cleanupUnreferencedSnapshots(now: number): Promise<void> {
+  /** Validates every Node mutation target below the durable snapshot root. */
+  private async guard(filePath: string): Promise<void> {
+    await createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore)(filePath);
+  }
+
+  private async cleanupUnreferencedSnapshots(
+    now: number,
+    protectedSnapshotId?: string,
+    limits?: { readonly maxSnapshots: number; readonly maxTotalCompressedBytes: number; readonly retentionMs: number },
+    lease?: { assertOwned(): Promise<void> }
+  ): Promise<void> {
     if (this.atomicFileStore.deleteText === undefined) return;
     const guard = createTrustedPersistencePathGuard(this.rootPath, this.atomicFileStore);
     await guard(this.snapshotsDirectory);
@@ -257,29 +300,45 @@ export class NodeNonGitSnapshotStorage implements NonGitSnapshotStorage {
       const value = await this.readLatestPointer(path.join(this.latestDirectory, name));
       if (value !== undefined) referenced.add(value);
     }
-    const candidates: Array<{ id: string; createdAt: number }> = [];
+    const candidates: Array<{ id: string; createdAt: number; bytes: number }> = [];
     for (const name of await this.readDirectoryNames(this.snapshotsDirectory)) {
       if (!/^[0-9a-f]{64}\.json$/u.test(name)) continue;
       const raw = await this.atomicFileStore.readText(path.join(this.snapshotsDirectory, name));
       try {
-        const value = raw === undefined ? undefined : JSON.parse(raw) as { createdAt?: unknown };
-        if (typeof value?.createdAt === "number" && Number.isSafeInteger(value.createdAt)) candidates.push({ id: name.slice(0, -5), createdAt: value.createdAt });
+        const value = raw === undefined ? undefined : JSON.parse(raw) as { createdAt?: unknown; bytes?: unknown };
+        if (typeof value?.createdAt === "number" && Number.isSafeInteger(value.createdAt) && typeof value.bytes === "string") {
+          candidates.push({ id: name.slice(0, -5), createdAt: value.createdAt, bytes: Buffer.from(value.bytes, "base64").byteLength });
+        }
       } catch {
         // Corrupt records remain for the established quarantine-on-read boundary.
       }
     }
     candidates.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
     let retained = 0;
+    let totalBytes = candidates.reduce((total, candidate) => total + candidate.bytes, 0);
     for (const candidate of candidates) {
-      if (referenced.has(candidate.id)) {
+      if (referenced.has(candidate.id) || candidate.id === protectedSnapshotId) {
         retained++;
         continue;
       }
-      const expired = now - candidate.createdAt > this.retentionMs;
-      if (expired || retained >= this.maxEntries) {
+      const expired = now - candidate.createdAt > (limits?.retentionMs ?? this.retentionMs);
+      const overCount = retained >= (limits?.maxSnapshots ?? this.maxEntries);
+      if (expired || overCount || (limits !== undefined && totalBytes > limits.maxTotalCompressedBytes)) {
         const filePath = this.snapshotPath(candidate.id);
         await guard(filePath);
+        await lease?.assertOwned();
+        // Re-read every pointer immediately before deletion. A concurrent publisher
+        // cannot turn an active generation into a deletion candidate after planning.
+        let becameActive = false;
+        for (const name of await this.readDirectoryNames(this.latestDirectory)) {
+          if (/^[0-9a-f]{64}\.json$/u.test(name) && await this.readLatestPointer(path.join(this.latestDirectory, name)) === candidate.id) {
+            becameActive = true;
+            break;
+          }
+        }
+        if (becameActive) continue;
         await this.atomicFileStore.deleteText(filePath);
+        totalBytes -= candidate.bytes;
       } else {
         retained++;
       }

@@ -16,6 +16,7 @@ import type {
 import {
   publishSchemaMigration,
   quarantinePersistedText,
+  createTrustedPersistencePathGuard,
   runSchemaMigrationChain,
   UnsupportedPersistedSchemaVersionError
 } from "./persistence-schema-recovery";
@@ -192,17 +193,23 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
       rootPath: route.rootPath,
       lockPath: route.lockPath,
       notifyDiagnostic: this.options.notifyStorageLockDiagnostic
-    }, async () => {
+    }, async (lease) => {
+      const guard = createTrustedPersistencePathGuard(route.rootPath, this.atomicFileStore);
+      await guard(filePath);
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
       const prepared = prepareExistingHistory(existing, target.repositoryId, month);
       if (prepared.corrupt) {
         if (existing.length > 0) {
+          await lease.assertOwned();
           await quarantinePersistedText(
             this.atomicFileStore,
             filePath,
-            existing
+            existing,
+            true,
+            guard
           );
         }
+        await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(filePath, `${canonical}\n`);
         return;
       }
@@ -211,12 +218,14 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
       }
       const next = `${prepared.content}${canonical}\n`;
       if (prepared.migrated) {
+        await lease.assertOwned();
         await publishSchemaMigration(this.atomicFileStore, [{
           filePath,
           original: existing,
           migrated: next
-        }]);
+        }], guard);
       } else {
+        await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(filePath, next);
       }
     }));

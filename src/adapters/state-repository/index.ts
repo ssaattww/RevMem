@@ -4,6 +4,7 @@ export {
   NodeStorageRootLock,
   InProcessStorageRootLockCoordinator,
   StorageRootLockTimeoutError,
+  StorageRootLeaseLostError,
   withStorageRootLock,
   withStorageRootLockCoordinator
 } from "./storage-root-lock";
@@ -50,5 +51,6 @@ export type {
   StorageRootLockDiagnostic,
   StorageRootLockDiagnosticKind,
   StorageRootLockOptions,
-  StorageRootLockCoordinator
+  StorageRootLockCoordinator,
+  StorageRootLease
 } from "./storage-root-lock";

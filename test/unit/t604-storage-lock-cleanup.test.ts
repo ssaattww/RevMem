@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,6 +11,7 @@ import {
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
   NodeStorageRootLock,
+  StorageRootLeaseLostError,
   StorageRootLockTimeoutError,
   resolveReviewStateStorageRoute,
   type ReviewStateCommit,
@@ -48,6 +50,35 @@ const event = (eventId: string, contextId: string): ReviewHistoryEvent => ({
   type: "context-created",
   reason: "created"
 });
+
+const startLockChild = (rootPath: string, holdMs: number): { readonly child: ReturnType<typeof spawn>; readonly output: Promise<string> } => {
+    const modulePath = path.join(process.cwd(), "test-dist", "src", "adapters", "state-repository", "storage-root-lock.js");
+    const script = [
+      `const { NodeStorageRootLock } = require(${JSON.stringify(modulePath)});`,
+      `(async () => { const lock = new NodeStorageRootLock({ rootPath: process.argv[1], timeoutMs: 150, leaseMs: 1000 });`,
+      "try { const release = await lock.acquire(); process.stdout.write('acquired\\n'); setTimeout(() => release().then(() => process.exit(0)), Number(process.argv[2])); }",
+      "catch (error) { process.stdout.write(error.name + '\\n'); process.exit(0); } })();"
+    ].join("");
+    const child = spawn(process.execPath, ["-e", script, rootPath, String(holdMs)], { stdio: ["ignore", "pipe", "pipe"] });
+    let outputText = "";
+    const timeout = setTimeout(() => child.kill(), 3_000);
+    child.stdout.on("data", (value: Buffer) => { outputText += value.toString("utf8"); });
+    const output = new Promise<string>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(outputText.trim());
+      } else {
+        reject(new Error(`lock child exited ${String(code)}`));
+      }
+      });
+    });
+    return { child, output };
+};
+
+const runLockChild = async (rootPath: string, holdMs: number): Promise<string> =>
+  startLockChild(rootPath, holdMs).output;
 
 test("T604 refuses a live root lock without exposing owner or path diagnostics", async () => {
   const temporary = await createTemporaryStorage();
@@ -93,6 +124,91 @@ test("T604 recovers a bounded stale malformed lock without taking a live valid l
     const recovered = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1, now: () => 2_000 });
     const release = await recovered.acquire();
     await release();
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 fences a detached owner before it can publish after a successor recovery", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:fence"));
+  let now = 0;
+  try {
+    const first = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 1, now: () => now, createOwnerToken: () => "first" }).acquire();
+    await first();
+    now = 2;
+    const successor = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "second" }).acquire();
+    await assert.rejects(() => first.assertOwned(), StorageRootLeaseLostError);
+    await successor();
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 cleans an owned partial lease after write, sync, or close acquisition failure", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:faults"));
+  try {
+    for (const fault of ["writeLease", "syncLease", "closeLease"] as const) {
+      await rm(route.lockPath, { force: true });
+      const lock = new NodeStorageRootLock({
+        rootPath: route.rootPath,
+        timeoutMs: 0,
+        leaseMs: 10,
+        [fault]: async () => { throw new Error(`injected ${fault}`); }
+      });
+      await assert.rejects(() => lock.acquire(), /injected/u);
+      const release = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 10 }).acquire();
+      await release();
+    }
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 uses an owned OS child-process lease and releases it for a successor", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:child-process"));
+  try {
+    const first = runLockChild(route.rootPath, 250);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(await runLockChild(route.rootPath, 0), "StorageRootLockTimeoutError");
+    assert.equal(await first, "acquired");
+    assert.equal(await runLockChild(route.rootPath, 0), "acquired");
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 recovers a killed child lease only after its bounded expiry", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:killed-child"));
+  try {
+    const first = startLockChild(route.rootPath, 2_500);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    first.child.kill();
+    await first.output.catch(() => undefined);
+    assert.equal(await runLockChild(route.rootPath, 0), "StorageRootLockTimeoutError");
+    await new Promise((resolve) => setTimeout(resolve, 1_020));
+    assert.equal(await runLockChild(route.rootPath, 0), "acquired");
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 rejects a root-confined snapshot mutation through a symlink or Windows junction", async () => {
+  const temporary = await createTemporaryStorage();
+  const outside = path.join(temporary.root, "outside");
+  const snapshotDirectory = path.join(temporary.root, "snapshots");
+  const sentinel = path.join(outside, "sentinel.txt");
+  try {
+    await mkdir(outside, { recursive: true });
+    await writeFile(sentinel, "unchanged", "utf8");
+    await mkdir(snapshotDirectory, { recursive: true });
+    await symlink(outside, path.join(snapshotDirectory, "entries"), process.platform === "win32" ? "junction" : "dir");
+    const storage = new NodeNonGitSnapshotStorage({ snapshotDirectory });
+    await assert.rejects(() => storage.put("c".repeat(64), Uint8Array.of(1), 1), /symbolic link|junction|outside/u);
+    assert.equal(await readFile(sentinel, "utf8"), "unchanged");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
@@ -162,6 +278,30 @@ test("T604 snapshot cleanup retains a referenced generation and removes expired 
     await storage.setLatest("workspace", "file", second);
     assert.equal(await storage.get(first), undefined);
     assert.deepEqual(await storage.get(second), { createdAt: 1, bytes: Uint8Array.of(2) });
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 snapshot cleanup preserves every active pointer while bounding an unreferenced generation", async () => {
+  const temporary = await createTemporaryStorage();
+  const storage = new NodeNonGitSnapshotStorage({ snapshotDirectory: path.join(temporary.root, "snapshots"), retentionMs: 100_000, maxEntries: 128 });
+  const first = "d".repeat(64);
+  const second = "e".repeat(64);
+  const third = "f".repeat(64);
+  const unreferenced = "0".repeat(64);
+  const createdAt = Date.now();
+  try {
+    await storage.put(first, Uint8Array.of(1), createdAt);
+    await storage.put(second, Uint8Array.of(2), createdAt + 1);
+    await storage.setLatest("workspace", "first", first);
+    await storage.setLatest("workspace", "second", second);
+    await storage.put(unreferenced, Uint8Array.of(0), createdAt + 2);
+    await storage.putAndCleanup(third, Uint8Array.of(3), createdAt + 3, { maxSnapshots: 1, maxTotalCompressedBytes: 1, retentionMs: 100_000 });
+    assert.notEqual(await storage.get(first), undefined);
+    assert.notEqual(await storage.get(second), undefined);
+    assert.notEqual(await storage.get(third), undefined);
+    assert.equal(await storage.get(unreferenced), undefined);
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

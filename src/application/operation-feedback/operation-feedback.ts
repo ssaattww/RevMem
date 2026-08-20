@@ -275,6 +275,17 @@ export class OperationFeedback {
     this.appendFailure(requireLabel(label), error, this.now());
   }
 
+  /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
+  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered"): void {
+    this.host.appendLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: "Storage lock",
+      event: kind === "stale-recovered" ? "succeeded" : "failed",
+      message: `Storage lock ${kind}.`
+    });
+    if (kind !== "stale-recovered") this.host.revealLog();
+  }
+
   private recordRunFailure(
     label: string,
     error: unknown,
@@ -330,10 +341,14 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
+const pendingStorageLockDiagnostics: Array<"timeout" | "failure" | "stale-recovered"> = [];
 
 /** Sets the process-wide operation feedback used by UI/application integration points. */
 export const setActiveOperationFeedback = (feedback: OperationFeedback | undefined): void => {
   activeOperationFeedback = feedback;
+  if (feedback !== undefined) {
+    for (const kind of pendingStorageLockDiagnostics.splice(0)) feedback.reportStorageLock(kind);
+  }
 };
 
 /** Runs through the active UI feedback when available, otherwise executes directly. */
@@ -348,4 +363,15 @@ export const runWithActiveOperationFeedback = <T>(
 /** Reports a handled failure to active diagnostics when the UI host is installed. */
 export const reportActiveOperationFailure = (label: string, error: unknown): void => {
   activeOperationFeedback?.reportFailure(label, error);
+};
+
+/** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
+export const reportActiveStorageLockDiagnostic = (
+  kind: "timeout" | "failure" | "stale-recovered"
+): void => {
+  if (activeOperationFeedback === undefined) {
+    pendingStorageLockDiagnostics.push(kind);
+    return;
+  }
+  activeOperationFeedback.reportStorageLock(kind);
 };

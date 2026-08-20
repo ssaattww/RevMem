@@ -690,7 +690,7 @@ globalStorageUri/
 
 複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
 
-lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner tokenと短いlease expiryだけを保存する。取得待ちはbounded timeoutで失敗し、未期限切れのlockは奪わない。期限切れlockだけをcompare-and-deleteして回復し、releaseはowner tokenが一致する場合だけ削除する。lock timeout、失敗、stale recoveryはoperation種別だけを公開diagnosticへ通知し、repository path、source、owner tokenを出力しない。stateのload/save/create/commit、history append、snapshot/cache cleanupは同じroot lock内で行う。既存の同一process直列化は維持する。
+lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner tokenと短いlease expiryだけを保存する。取得待ちの上限はmonotonic elapsed timeで判定し、未期限切れのlockは奪わない。期限切れlockだけをrecovery pathへatomic renameして回復し、recoveryはsuccessorの`lock`を再公開・削除しない。renew/releaseは取得済みdescriptorでowner tokenを再検証してから更新し、leaseを失ったoperationはpublication前後のowner fenceでfail closedにする。releaseはexpiryを過去値へ更新して回復へ委ねる。Node mutationはrootのphysical descendantへ解決し、symlink、junction、reparse ancestorを拒否する。stateのload/save/create/commit、history append、startup migration、snapshot/cache cleanupは同じroot lock transaction内で行う。snapshot cleanupはlatest pointer群、save中generation、retention/count/byte plan、delete直前pointer再確認を一つのtransactionに含める。lock timeout、失敗、stale recoveryはoperation種別だけを`Review Range` Output lifecycleへ一度だけ通知し、repository path、source、owner tokenを出力しない。既存の同一process直列化は維持する。
 
 新contextを作成するtransactionは、対象contextが存在しないこととowner-wide Globalの期待snapshotおよびversionを同じCAS条件に含める。入力は対象Context ID、現在Git snapshot、context不存在期待、Globalの存在状態を含む完全snapshot、Global versionである。Globalが異revisionなら、その入力snapshotからmappingしたnext contextとnext Globalを1 transactionで公開する。読込、mapping、保存を分離した非atomicなwindowを設けない。
 

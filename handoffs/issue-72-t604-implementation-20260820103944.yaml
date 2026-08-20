@@ -4,8 +4,8 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: a32ae42e895a17be18173680effa4c537055157e
-status: normal_review_findings_r001_to_r009_addressed_same_reviewer_closure_pending
+current_head: pending follow-up R2 commit
+status: normal_review_r2_findings_r001_to_r009_addressed_same_reviewer_closure_pending
 report: reports/issue-72-t604-implementation-20260820103944.md
 requirements:
   - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
@@ -13,16 +13,17 @@ requirements:
   - History remains append-only and has no cleanup policy.
 validation:
   red: npm run test:t604 (missing T604 API exports)
-  green: npm run test:t604 (9 passing)
+  green: npm run test:t604 (T604 13 passing; T506 custom-store 2 passing)
   static:
     - npm run build
+    - npm run compile:test
     - npm run typecheck:contracts
     - npm run lint
     - npm run validate:architecture
     - npm run validate:architecture:negative
     - git diff --check
-  ci: not run by explicit task policy
-next_request: Ask the same normal reviewer to verify only T604-R001 through T604-R009 closure. Do not add review scope, run CI, commit, push, create a PR, merge, or self-review.
+  ci: not run; merge-gate held by explicit task policy
+next_request: Parent must synchronize the exact follow-up R2 commit after committing; then ask the same normal reviewer to verify only T604-R001 through T604-R009 closure. Do not add review scope, run CI, push, create a PR, merge, or self-review.
 remaining_risks:
-  - No child-process fixture was added; independent repository/store instances exercise the shared-root contention boundary locally.
-  - Reparse traversal protection is implemented through the established trusted path guard; a Windows-specific junction fixture remains review coverage.
+  - No T604-R001〜R009 closure condition remains locally; CI is intentionally held during implementation.
+  - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

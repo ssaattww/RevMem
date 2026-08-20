@@ -169,7 +169,7 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
 
   public constructor(options: NodeGitHubPullRequestCacheStorageOptions) {
     this.cacheDirectory = requireNonEmptyPath(options.cacheDirectory);
-    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
+    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore(path.dirname(this.cacheDirectory));
     this.createGenerationId = options.createGenerationId ?? randomUUID;
     this.notifyStorageLockDiagnostic = options.notifyStorageLockDiagnostic;
   }

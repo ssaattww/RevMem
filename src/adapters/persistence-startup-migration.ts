@@ -20,6 +20,7 @@ import {
 interface StartupMigrationOptions {
   readonly storageUris: ReviewStateStorageUris;
   readonly atomicFileStore?: AtomicTextFileStore;
+  readonly notifyStorageLockDiagnostic?: (diagnostic: import("./state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -155,15 +156,29 @@ export const runPersistenceStartupMigration = async (
   options: StartupMigrationOptions
 ): Promise<void> => {
   const store = options.atomicFileStore ?? new NodeAtomicTextFileStore();
-  const roots = new Map<string, string | undefined>();
+  const migrateRoot = async (
+    rootPath: string,
+    stateMigration: () => Promise<string | undefined>
+  ): Promise<void> => {
+    await withStorageRootLock({ rootPath, notifyDiagnostic: options.notifyStorageLockDiagnostic }, async (lease) => {
+      // State, history and snapshot recovery deliberately share one lease. A second
+      // Extension Host therefore cannot read an old migration plan between phases.
+      const expectedRepositoryId = await stateMigration();
+      await lease.assertOwned();
+      await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
+      await createTrustedPersistencePathGuard(rootPath, store)(path.join(rootPath, "snapshots"));
+      await lease.assertOwned();
+      await new NodeNonGitSnapshotStorage({
+        snapshotDirectory: path.join(rootPath, "snapshots"),
+        atomicFileStore: store,
+        notifyStorageLockDiagnostic: options.notifyStorageLockDiagnostic
+      }).migratePersistedMetadata();
+    });
+  };
   const workspaceRoot = options.storageUris.storageUri?.fsPath;
   if (workspaceRoot !== undefined && workspaceRoot.trim().length > 0) {
     const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-    roots.set(
-      resolvedWorkspaceRoot,
-      await withStorageRootLock({ rootPath: resolvedWorkspaceRoot }, () =>
-        migrateWorkspaceState(options.storageUris, store))
-    );
+    await migrateRoot(resolvedWorkspaceRoot, () => migrateWorkspaceState(options.storageUris, store));
   }
 
   const globalRoot = path.resolve(options.storageUris.globalStorageUri.fsPath);
@@ -172,24 +187,8 @@ export const runPersistenceStartupMigration = async (
     for (const name of await readDirectoryNames(collectionRoot)) {
       if (!/^[0-9a-f]{64}$/u.test(name)) continue;
       const rootPath = path.join(collectionRoot, name);
-      roots.set(
-        rootPath,
-        await withStorageRootLock({ rootPath }, () =>
-          migrateRepositoryStateRoot(options.storageUris, store, collection, name))
-      );
+      await migrateRoot(rootPath, () =>
+        migrateRepositoryStateRoot(options.storageUris, store, collection, name));
     }
-  }
-
-  for (const [rootPath, expectedRepositoryId] of roots) {
-    await withStorageRootLock({ rootPath }, async () => {
-      await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
-      await createTrustedPersistencePathGuard(rootPath, store)(
-        path.join(rootPath, "snapshots")
-      );
-      await new NodeNonGitSnapshotStorage({
-        snapshotDirectory: path.join(rootPath, "snapshots"),
-        atomicFileStore: store
-      }).migratePersistedMetadata();
-    });
   }
 };

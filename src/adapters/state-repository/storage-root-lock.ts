@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, type FileHandle } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 
 import { createTrustedPersistencePathGuard } from "./persistence-schema-recovery";
@@ -20,6 +21,20 @@ export class StorageRootLockTimeoutError extends Error {
   }
 }
 
+/** Raised before publication when this operation no longer owns its lease generation. */
+export class StorageRootLeaseLostError extends Error {
+  public constructor() {
+    super("Review storage lease was lost before publication.");
+    this.name = "StorageRootLeaseLostError";
+  }
+}
+
+/** Owner-fenced lease passed to a root-lock operation. It contains no path or token. */
+export interface StorageRootLease {
+  /** Fails closed when stale recovery has detached this owner's descriptor. */
+  assertOwned(): Promise<void>;
+}
+
 export interface StorageRootLockOptions {
   readonly rootPath: string;
   readonly lockPath?: string;
@@ -27,7 +42,13 @@ export interface StorageRootLockOptions {
   readonly leaseMs?: number;
   readonly retryDelayMs?: number;
   readonly now?: () => number;
+  /** Monotonic elapsed-time source used only for acquisition bounds. */
+  readonly monotonicNow?: () => number;
   readonly createOwnerToken?: () => string;
+  /** Test-only fault seams for proving bounded cleanup of a partially published lease. */
+  readonly writeLease?: (handle: FileHandle, content: string) => Promise<void>;
+  readonly syncLease?: (handle: FileHandle) => Promise<void>;
+  readonly closeLease?: (handle: FileHandle) => Promise<void>;
   readonly notifyDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
@@ -90,6 +111,7 @@ export class NodeStorageRootLock {
   private readonly leaseMs: number;
   private readonly retryDelayMs: number;
   private readonly now: () => number;
+  private readonly monotonicNow: () => number;
   private readonly createOwnerToken: () => string;
 
   public constructor(private readonly options: StorageRootLockOptions) {
@@ -102,6 +124,7 @@ export class NodeStorageRootLock {
     this.leaseMs = options.leaseMs ?? 30_000;
     this.retryDelayMs = options.retryDelayMs ?? 10;
     this.now = options.now ?? Date.now;
+    this.monotonicNow = options.monotonicNow ?? (() => performance.now());
     this.createOwnerToken = options.createOwnerToken ?? randomUUID;
     if (this.timeoutMs < 0 || this.leaseMs <= 0 || this.retryDelayMs < 0) {
       throw new RangeError("Storage lock timings must be non-negative and leaseMs must be positive.");
@@ -109,11 +132,11 @@ export class NodeStorageRootLock {
   }
 
   /** Acquires the root lock and returns an idempotent owner-checked release callback. */
-  public async acquire(): Promise<() => Promise<void>> {
+  public async acquire(): Promise<(() => Promise<void>) & StorageRootLease> {
     const guard = createTrustedPersistencePathGuard(this.rootPath, new NodeAtomicTextFileStore());
     await guard(this.lockPath);
     const ownerToken = this.createOwnerToken();
-    const deadline = this.now() + this.timeoutMs;
+    const deadline = this.monotonicNow() + this.timeoutMs;
     let staleReported = false;
     try {
       for (;;) {
@@ -124,17 +147,42 @@ export class NodeStorageRootLock {
           const handle = await open(this.lockPath, "wx", 0o600);
           created = true;
           try {
-            await handle.writeFile(JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs }), "utf8");
-            await handle.sync();
-          } finally {
-            await handle.close();
+            await (this.options.writeLease ?? ((file, content) => file.writeFile(content, "utf8")))(
+              handle,
+              JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs })
+            );
+            await (this.options.syncLease ?? ((file) => file.sync()))(handle);
+            if (this.options.closeLease !== undefined) await this.options.closeLease(handle);
+          } catch (error) {
+            await handle.close().catch(() => undefined);
+            throw error;
           }
           if (staleReported) await this.notify("stale-recovered");
+          let leaseLost = false;
+          const assertOwned = async (): Promise<void> => {
+            if (leaseLost) throw new StorageRootLeaseLostError();
+            const current = await readFile(this.lockPath, "utf8").catch(() => undefined);
+            if (current === undefined || parseLock(current)?.ownerToken !== ownerToken) {
+              leaseLost = true;
+              throw new StorageRootLeaseLostError();
+            }
+            const descriptor = await handle.stat();
+            // Recovery removes the moved inode only after comparing its original bytes.
+            // A zero-link descriptor is therefore a definitive, successor-safe fence.
+            if (process.platform !== "win32" && descriptor.nlink === 0) {
+              leaseLost = true;
+              throw new StorageRootLeaseLostError();
+            }
+          };
           const renewTimer = setInterval(() => {
-            void this.renew(ownerToken).catch(() => this.notify("failure"));
+            void this.renew(handle, ownerToken).catch(async () => {
+              leaseLost = true;
+              await this.notify("failure");
+            });
           }, Math.max(1, Math.floor(this.leaseMs / 3)));
           renewTimer.unref();
-          return this.releaseFor(ownerToken, renewTimer);
+          const release = this.releaseFor(handle, ownerToken, renewTimer, () => { leaseLost = true; });
+          return Object.assign(release, { assertOwned });
         } catch (error) {
           if (!isExists(error)) {
             if (created) await rm(this.lockPath, { force: true }).catch(() => undefined);
@@ -163,13 +211,16 @@ export class NodeStorageRootLock {
                 staleReported = true;
                 continue;
               }
-              await rename(recoveryPath, this.lockPath).catch(() => undefined);
+              // A writer may have renewed through an already-open descriptor while
+              // recovery moved the old inode. Never rename this recovery inode back:
+              // doing so could overwrite a successor that has acquired lockPath.
+              await rm(recoveryPath, { force: true }).catch(() => undefined);
             } catch (error) {
               if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error;
             }
           }
         }
-        if (this.now() >= deadline) {
+        if (this.monotonicNow() >= deadline) {
           await this.notify("timeout");
           throw new StorageRootLockTimeoutError();
         }
@@ -181,36 +232,40 @@ export class NodeStorageRootLock {
     }
   }
 
-  private releaseFor(ownerToken: string, renewTimer: NodeJS.Timeout): () => Promise<void> {
+  private releaseFor(
+    handle: FileHandle,
+    ownerToken: string,
+    renewTimer: NodeJS.Timeout,
+    markLost: () => void
+  ): () => Promise<void> {
     let released = false;
     return async (): Promise<void> => {
       if (released) return;
       released = true;
       clearInterval(renewTimer);
-      const raw = await readFile(this.lockPath, "utf8").catch((error: unknown) => {
-        if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-        throw error;
-      });
-      if (raw !== undefined && parseLock(raw)?.ownerToken === ownerToken) {
-        await rm(this.lockPath, { force: true });
+      try {
+        await this.renew(handle, ownerToken, true);
+      } catch {
+        markLost();
+        throw new StorageRootLeaseLostError();
+      } finally {
+        await handle.close().catch(() => undefined);
       }
     };
   }
 
-  private async renew(ownerToken: string): Promise<void> {
-    const raw = await readFile(this.lockPath, "utf8").catch((error: unknown) => {
-      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-      throw error;
-    });
+  private async renew(handle: FileHandle, ownerToken: string, release = false): Promise<void> {
+    const raw = await readFile(this.lockPath, "utf8").catch(() => undefined);
     if (raw === undefined || parseLock(raw)?.ownerToken !== ownerToken) return;
-    const handle = await open(this.lockPath, "r+");
-    try {
-      await handle.truncate(0);
-      await handle.writeFile(JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs }), "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await handle.truncate(0);
+    // The descriptor remains bound to the owner inode. If stale recovery has already
+    // renamed it, this update cannot affect a successor at lockPath.
+    await handle.write(
+      JSON.stringify({ ownerToken, expiresAt: release ? 0 : this.now() + this.leaseMs }),
+      0,
+      "utf8"
+    );
+    await handle.sync();
   }
 
   private async notify(kind: StorageRootLockDiagnosticKind): Promise<void> {
@@ -221,11 +276,14 @@ export class NodeStorageRootLock {
 /** Runs one operation under a storage-root-local exclusive lease. */
 export const withStorageRootLock = async <T>(
   options: StorageRootLockOptions,
-  operation: () => Promise<T>
+  operation: (lease: StorageRootLease) => Promise<T>
 ): Promise<T> => {
   const release = await new NodeStorageRootLock(options).acquire();
   try {
-    return await operation();
+    await release.assertOwned();
+    const result = await operation(release);
+    await release.assertOwned();
+    return result;
   } finally {
     await release();
   }
@@ -235,7 +293,7 @@ export const withStorageRootLock = async <T>(
 export const withStorageRootLockCoordinator = async <T>(
   coordinator: StorageRootLockCoordinator | undefined,
   options: StorageRootLockOptions,
-  operation: () => Promise<T>
+  operation: (lease: StorageRootLease) => Promise<T>
 ): Promise<T> => coordinator === undefined
   ? withStorageRootLock(options, operation)
-  : coordinator.run(options.rootPath, operation);
+  : coordinator.run(options.rootPath, () => operation({ assertOwned: async () => undefined }));

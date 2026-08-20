@@ -5,6 +5,7 @@ import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
+import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
@@ -77,7 +78,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
-    }
+    },
+    notifyStorageLockDiagnostic: (diagnostic) => reportActiveStorageLockDiagnostic(diagnostic.kind)
   });
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;

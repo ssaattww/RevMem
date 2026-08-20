@@ -36,6 +36,7 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import {
   OperationDiagnosticError,
   reportActiveOperationFailure,
@@ -646,7 +647,7 @@ export function registerT405ReviewContextsRuntime(
       acquisition,
       storage: new NodeGitHubPullRequestCacheStorage({
         cacheDirectory: route.cacheDirectory,
-        notifyStorageLockDiagnostic: (diagnostic) => console.warn(`Review Range storage lock: ${diagnostic.kind}`)
+        notifyStorageLockDiagnostic: (diagnostic) => reportActiveStorageLockDiagnostic(diagnostic.kind)
       }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });

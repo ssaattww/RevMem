@@ -61,6 +61,8 @@ export interface NonGitSnapshotStorage {
   entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]>;
   getLatest(workspaceContextId: string, fileId: string): Promise<string | undefined>;
   setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void>;
+  /** Optional adapter transaction that publishes one generation and plans bounded cleanup under one owner fence. */
+  putAndCleanup?(snapshotId: string, bytes: Uint8Array, createdAt: number, limits: { readonly maxSnapshots: number; readonly maxTotalCompressedBytes: number; readonly retentionMs: number }): Promise<void>;
 }
 
 /** Deterministic in-memory port used by application tests. */
@@ -171,8 +173,16 @@ export class NonGitSnapshotTracker {
     if (compressed.byteLength > this.maxSnapshotCompressedBytes) {
       throw new Error("Snapshot exceeds maxSnapshotCompressedBytes");
     }
-    await this.storage.put(snapshotId, compressed, now);
-    await this.cleanup(now, snapshotId);
+    if (this.storage.putAndCleanup === undefined) {
+      await this.storage.put(snapshotId, compressed, now);
+      await this.cleanup(now, snapshotId);
+    } else {
+      await this.storage.putAndCleanup(snapshotId, compressed, now, {
+        maxSnapshots: this.limits.maxSnapshots,
+        maxTotalCompressedBytes: this.maxTotalCompressedBytes,
+        retentionMs: this.limits.retentionMs
+      });
+    }
     if (await this.storage.get(snapshotId) === undefined) {
       throw new Error("Saved snapshot was removed during cleanup");
     }

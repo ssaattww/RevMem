@@ -19,6 +19,7 @@ import {
 import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/non-git-snapshots/index";
 import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
 import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
+import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import {
   DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
   resolveConfiguredNonGitSnapshotLimits
@@ -285,7 +286,7 @@ export function activate(
     });
   fileExclusionConfigurationController.start();
   const reportStorageLockDiagnostic = (diagnostic: { readonly kind: string }): void => {
-    console.warn(`Review Range storage lock: ${diagnostic.kind}`);
+    reportActiveStorageLockDiagnostic(diagnostic.kind as "timeout" | "failure" | "stale-recovered");
   };
 
   const atomicRepository = new FileSystemReviewStateRepository({
