@@ -192,6 +192,7 @@ test("T605 concrete root composition commits snapshots through reconciliation an
         }
       }
     });
+    registry.reconcileWorkspaceRoots([descriptor.workspace.workspaceFolderUri], "posix");
     return registry;
   };
   const createDocumentProvider = (repository: FileSystemReviewStateRepository) => {
@@ -234,6 +235,10 @@ test("T605 concrete root composition commits snapshots through reconciliation an
     assert.deepEqual(decoration?.contextState.files[opened.target.fileId]?.modifiedReviewed, [
       { startLine: 0, endLineExclusive: 2 }
     ]);
+    workspaceProvider.reconcileWorkspaceRoots([
+      descriptor.workspace.workspaceFolderUri,
+      { scheme: "vscode-remote", authority: "ssh-remote+t605", path: "/remote/root-b" }
+    ], "posix");
     await workspaceProvider.open({
       workspaceFolderUri: { scheme: "vscode-remote", authority: "ssh-remote+t605", path: "/remote/root-b" },
       documentUri: { scheme: "vscode-remote", authority: "ssh-remote+t605", path: "/remote/root-b/src/other.ts" },

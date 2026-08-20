@@ -188,6 +188,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      if (!FILESYSTEM_SCHEMES.has(folder.uri.scheme) || folder.uri.query.length > 0 || folder.uri.fragment.length > 0) continue;
       if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
@@ -210,7 +211,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const editor of vscode.window.visibleTextEditors) {
-      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) continue;
+      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme) || editor.document.uri.query.length > 0 || editor.document.uri.fragment.length > 0) continue;
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);

@@ -164,7 +164,7 @@ test("routes workspace history to storageUri and external-file history to global
       resolveReviewStateStorageRoute(temporary.storageUris, externalTarget).historyDirectory,
       "events-2026-08.jsonl"
     );
-    assert.match(workspacePath, /workspace[\\/]history[\\/]events-2026-08\.jsonl$/u);
+    assert.match(workspacePath, /workspace[\\/]workspaces[\\/][a-f0-9]{64}[\\/]history[\\/]events-2026-08\.jsonl$/u);
     assert.match(externalPath, /global[\\/]external-files[\\/][a-f0-9]{64}[\\/]history/u);
     assert.deepEqual(JSON.parse((await readFile(workspacePath, "utf8")).trim()), workspaceEvent);
     assert.deepEqual(JSON.parse((await readFile(externalPath, "utf8")).trim()), externalEvent);

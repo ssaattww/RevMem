@@ -1,0 +1,11 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #74 / PR #75"
+task_id: T605
+branch: task/t605-multi-root-remote-boundaries
+current_head: 4b936815d198e7698ac94a667e22f1c0e99d55c1
+status: ifr001_ifr003_addressed_same_independent_reviewer_closure_pending
+report: reports/issue-74-t605-independent-review-followup-20260820222155.md
+findings: [T605-IFR-001, T605-IFR-002, T605-IFR-003]
+next_request: Same independent reviewer performs only finding-limited closure for IFR001 through IFR003; do not start a fresh independent review or normal full review.
+ci: not run by task policy

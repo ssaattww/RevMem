@@ -39,6 +39,7 @@ export interface WorkspaceRootRuntimeRegistryOptions {
 export class WorkspaceRootRuntimeRegistry
   implements SnapshotAwareWorkspaceReviewStateSessionProviderPort {
   private readonly runtimes = new Map<string, WorkspaceRootRuntime>();
+  private readonly activeGenerations = new Map<string, number>();
 
   public constructor(private readonly options: WorkspaceRootRuntimeRegistryOptions) {}
 
@@ -47,16 +48,22 @@ export class WorkspaceRootRuntimeRegistry
     return this.options.historyRewriteSnapshotTracker;
   }
 
-  public open(
+  public async open(
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorReviewStateSession> {
-    return this.runtimeFor(descriptor).open(descriptor);
+    const selected = this.runtimeFor(descriptor);
+    const session = await selected.runtime.open(descriptor);
+    this.assertCurrent(selected);
+    return session;
   }
 
-  public loadForDecoration(
+  public async loadForDecoration(
     descriptor: WorkspaceEditorReviewDescriptor
   ): Promise<WorkspaceNormalEditorDecorationState | undefined> {
-    return this.runtimeFor(descriptor).loadForDecoration(descriptor);
+    const selected = this.runtimeFor(descriptor);
+    const state = await selected.runtime.loadForDecoration(descriptor);
+    this.assertCurrent(selected);
+    return state;
   }
 
   /** Delegates a workspace transaction to its selected root's snapshot-aware committer. */
@@ -65,8 +72,13 @@ export class WorkspaceRootRuntimeRegistry
     transaction: Readonly<ReviewStateTransaction>,
     commitState: () => Promise<void>
   ): Promise<void> {
-    const runtime = this.runtimeFor(descriptor);
-    await runtime.commitWithSnapshot(descriptor, transaction, commitState);
+    const selected = this.runtimeFor(descriptor);
+    await selected.runtime.commitWithSnapshot(descriptor, transaction, async () => {
+      this.assertCurrent(selected);
+      await commitState();
+      this.assertCurrent(selected);
+    });
+    this.assertCurrent(selected);
   }
 
   /** Disposes root runtimes no longer represented by workspace-side folder URIs. */
@@ -86,35 +98,43 @@ export class WorkspaceRootRuntimeRegistry
         return [];
       }
     }));
-    for (const [key, runtime] of this.runtimes) {
-      if (!active.has(key)) {
-        runtime.dispose?.();
-        this.runtimes.delete(key);
-      }
+    for (const key of active) if (!this.activeGenerations.has(key)) this.activeGenerations.set(key, 1);
+    for (const key of [...this.activeGenerations.keys()]) if (!active.has(key)) {
+      this.activeGenerations.delete(key);
+      this.runtimes.get(key)?.dispose?.();
+      this.runtimes.delete(key);
     }
   }
 
   public dispose(): void {
     for (const runtime of this.runtimes.values()) runtime.dispose?.();
     this.runtimes.clear();
+    this.activeGenerations.clear();
   }
 
   public get size(): number {
     return this.runtimes.size;
   }
 
-  private runtimeFor(descriptor: WorkspaceEditorReviewDescriptor): WorkspaceRootRuntime {
+  private runtimeFor(descriptor: WorkspaceEditorReviewDescriptor): { readonly key: string; readonly generation: number; readonly runtime: WorkspaceRootRuntime } {
     const identity = this.options.identityService.resolve({
       workspaceFolderUri: descriptor.workspaceFolderUri,
       documentUri: descriptor.documentUri,
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
       relativePath: descriptor.relativePath
     });
-    const existing = this.runtimes.get(identity.canonicalWorkspaceUri);
-    if (existing !== undefined) return existing;
+    const key = identity.canonicalWorkspaceUri;
+    const generation = this.activeGenerations.get(key);
+    if (generation === undefined) throw new Error("Workspace root is inactive.");
+    const existing = this.runtimes.get(key);
+    if (existing !== undefined) return { key, generation, runtime: existing };
     const runtime = this.options.factory.create(identity);
-    this.runtimes.set(identity.canonicalWorkspaceUri, runtime);
-    return runtime;
+    this.runtimes.set(key, runtime);
+    return { key, generation, runtime };
+  }
+
+  private assertCurrent(selected: { readonly key: string; readonly generation: number }): void {
+    if (this.activeGenerations.get(selected.key) !== selected.generation) throw new Error("Workspace root is inactive.");
   }
 }
 

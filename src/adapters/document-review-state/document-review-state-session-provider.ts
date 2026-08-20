@@ -312,6 +312,10 @@ export class DocumentReviewStateSessionProvider {
   }
 
   private validateDescriptor(descriptor: DocumentEditorReviewDescriptor): void {
+    if (descriptor.documentUri.scheme !== "file" && descriptor.documentUri.scheme !== "vscode-remote") {
+      throw new TypeError("document URI must use a filesystem-backed scheme.");
+    }
+    canonicalDocumentUri(descriptor.documentUri, descriptor.fileSystemPathSemantics);
     assertNonEmpty(descriptor.documentFsPath, "documentFsPath");
     assertNonEmpty(descriptor.contentHash, "contentHash");
     assertLineCount(descriptor.lineCount);
