@@ -25,6 +25,8 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 
 現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算、失敗分類・bounded retry・privacy-safe Output 診断が production runtime へ接続されています。T406 統合試験は PR #71 のreview closure後、merge commit `96057f9e`でmainへ統合済みです。T604 は PR #73 をsquash mergeし、merge commit `64e47c590960a810a2439bd33f250ecbda9c41bf`とexact-head CI `32367553522` Greenでmainへ統合済みです。T605 は PR #75 をsquash mergeし、merge commit `fb7df6ab79bb23ae16b43b61aa66ab743460be69`とexact-head CI `32376730329` Greenでmainへ統合済みです。T606 は independent finding IFR001〜IFR005 を修正済みで、Review Contexts は失敗時に旧fresh表示をclearしてunknownへ戻し、pure readだけが一時的なresult-union/timeoutを最大3回再試行します。Global toggle/open と PR Progress も共有のactivity lifecycleへ接続されています。technical implementation headは`65d3b29dcf7f5030679a2a44269f832eda9daace`であり、same independent reviewerによるfinding限定closure、exact-head PR CI、PR body外部同期はpendingです。
 
+T606 R2 は IFR001〜IFR005の既存required actionだけを修正し、Review Contextsの公開後same-snapshotと失敗時stale/unknown、Current Contextのpure acquisition、Global openのredacted single boundary、PR Progress全体のactivity lifecycleを回復しました。technical implementation SHAは未commitのためpendingであり、same independent reviewerのfinding-limited closure R2、exact-head CIはheld、PR bodyは`external sync pending after fix commit`です。
+
 ## インストール方法
 
 この拡張機能は Marketplace ではなく VSIX で配布します。

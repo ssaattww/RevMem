@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 
 import {
   formatOperationFailureForUser,
-  runWithActiveOperationFeedback
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext
 } from "../../application/operation-feedback/index";
 
 import {
@@ -20,7 +21,7 @@ export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  recompute(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
@@ -102,7 +103,7 @@ export const registerCurrentContextRuntime = (
     const cancellation = new AbortController();
     currentCancellation = cancellation;
     try {
-      await runWithActiveOperationFeedback("Current Contextを更新", () => coordinator.refresh(cancellation.signal));
+      await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext));
     } catch (error) {
       controller.failClosed();
       await reportRefreshError(formatOperationFailureForUser(error));

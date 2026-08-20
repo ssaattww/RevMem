@@ -233,7 +233,6 @@ test("T606 IFR003 runs the production Global layer toggle through one redacted t
       refreshDecorations: async () => undefined,
       openFile: async () => undefined,
       reportError: async (error) => { errors.push(error); },
-      reportOpenError: async () => undefined,
     });
     await commands.get(runtime.TOGGLE_GLOBAL_LAYER_COMMAND_ID)!();
     assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
@@ -242,4 +241,38 @@ test("T606 IFR003 runs the production Global layer toggle through one redacted t
   } finally {
     setActiveOperationFeedback(undefined);
   }
+});
+
+test("T606 IFR001 republishes the post-cache-publish tree snapshot and fails closed when publication reports failure", async () => {
+  const runtime = withVscode<typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js")>(
+    "../../src/ui/review-contexts/vscode-review-contexts-runtime.js", fakeVscodeBase(),
+  );
+  const provider = new runtime.ReviewContextsTreeProvider({
+    load: async () => [{ label: "before-publish" }] as never,
+    publishLoaded: async () => [{ label: "after-publish" }] as never,
+  } as never);
+  await provider.refresh();
+  assert.deepEqual(provider.getChildren(), [{ label: "after-publish" }]);
+});
+
+test("T606 IFR003 Global open throws once to the shared redacted UI boundary without a raw-error callback", async () => {
+  const global = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
+  const snapshot = {
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: 1,
+      progress: 0,
+      files: [{ path: "src/a.ts", state: "current" as const, reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 1, progress: 0 }],
+    },
+    openedFileCount: 1,
+    unopenedFileCount: 0,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0,
+  };
+  const model = global.createGlobalUnderstandingTreeModel(snapshot);
+  const controller = new global.GlobalUnderstandingFileOpenController({
+    openFile: async () => { throw new Error("private open failure"); },
+  });
+  controller.replaceModel(model);
+  await assert.rejects(() => controller.open(model.files[0]!));
 });

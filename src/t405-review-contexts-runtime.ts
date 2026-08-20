@@ -243,6 +243,7 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly roots = new Map<string, Set<string>>();
   private pendingCachePublishes: Array<() => Promise<void>> = [];
+  private pendingProjection: (() => Promise<readonly ReviewContextListItem[]>) | undefined;
 
   public constructor(
     private readonly repository: T405ReviewStateRepository,
@@ -335,20 +336,26 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       }
     }
 
-    return projectReviewContexts({
+    const hiddenContextIds = new Set(await this.visibility.readHiddenContextIds());
+    const project = async (): Promise<readonly ReviewContextListItem[]> => projectReviewContexts({
       current,
       saved: [...saved.values()],
-      hiddenContextIds: new Set(await this.visibility.readHiddenContextIds()),
+      hiddenContextIds,
       progressByContextId,
       cacheByContextId: Object.fromEntries(this.cacheStatusByContextId),
     });
+    this.pendingProjection = project;
+    return project();
   }
 
   /** Commits cache entries only after the final retryable read is accepted. */
-  public async publishLoaded(): Promise<void> {
+  public async publishLoaded(): Promise<readonly ReviewContextListItem[] | undefined> {
     const publishes = this.pendingCachePublishes;
     this.pendingCachePublishes = [];
     for (const publish of publishes) await publish();
+    const projection = this.pendingProjection;
+    this.pendingProjection = undefined;
+    return projection?.();
   }
 
   public deferCachePublish(publish: () => Promise<void>): void {
@@ -370,18 +377,16 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
-      let persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
       assertCurrent();
-      await this.synchronizeRepository(owner, persisted);
-      assertCurrent();
-      persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
       assertCurrent();
       const preferredContextId = this.currentPullRequestSelection.read(
         owner.repositoryId,
         owner.headRevision,
       );
       const pullRequest = findCurrentPullRequestContext(
-        persisted,
+        synchronized,
         owner.repositoryId,
         owner.headRevision,
         preferredContextId,

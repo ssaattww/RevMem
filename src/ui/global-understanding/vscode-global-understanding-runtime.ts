@@ -40,7 +40,6 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly refreshDecorations: () => void | Promise<void>;
   readonly openFile: (target: GlobalUnderstandingFileOpenTarget) => void | Promise<void>;
   readonly reportError: (error: unknown) => void | Promise<void>;
-  readonly reportOpenError: (error: unknown) => void | Promise<void>;
 }
 
 interface FilesGroupNode {
@@ -220,8 +219,7 @@ export const registerGlobalUnderstandingRuntime = (
   }
   const tree = new GlobalUnderstandingTreeDataProvider();
   const openController = new GlobalUnderstandingFileOpenController({
-    openFile: dependencies.openFile,
-    reportOpenError: dependencies.reportOpenError
+    openFile: dependencies.openFile
   });
   const status = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -300,10 +298,7 @@ export const registerGlobalUnderstandingRuntime = (
         try {
           await runWithActiveOperationFeedback(
             "Global理解率ファイルを開く",
-            async () => {
-              const failure = await openController.open(node);
-              if (failure !== undefined) throw failure;
-            },
+            () => openController.open(node),
           );
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));

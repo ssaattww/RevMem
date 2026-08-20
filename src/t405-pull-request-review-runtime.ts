@@ -451,31 +451,37 @@ export class PullRequestReviewRuntime<Uri> {
     this.progress.clear();
     const registration = this.requireRegistration(contextId);
     try {
-      const calculated = await runWithActiveOperationFeedback(
+      await runWithActiveOperationFeedback(
         "PR進捗を計算",
-        () => this.calculateProgress(contextId, cancellation.signal),
+        async () => {
+          const calculated = await this.calculateProgress(contextId, cancellation.signal);
+          if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+          const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
+          for (const file of calculated.progress.files) {
+            if (cancellation.signal.aborted) {
+              throw new DOMException("PR progress calculation was superseded.", "AbortError");
+            }
+            lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
+              calculated.registration,
+              file
+            );
+            if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+          }
+          if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+          const { snapshot } = calculated.registration;
+          this.progress.replaceSnapshot({
+            snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
+            contextId: snapshot.contextId,
+            baseSha: snapshot.baseSha,
+            headSha: snapshot.headSha,
+            originalDiffId: snapshot.originalDiffId,
+            fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
+            progress: calculated.progress,
+            lineReviewabilityByFileId,
+          });
+        },
         { maxAttempts: 3, signal: cancellation.signal },
       );
-      const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
-      for (const file of calculated.progress.files) {
-        lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
-          calculated.registration,
-          file
-        );
-        if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
-      }
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
-      const { snapshot } = calculated.registration;
-      this.progress.replaceSnapshot({
-        snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
-        contextId: snapshot.contextId,
-        baseSha: snapshot.baseSha,
-        headSha: snapshot.headSha,
-        originalDiffId: snapshot.originalDiffId,
-        fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
-        progress: calculated.progress,
-        lineReviewabilityByFileId,
-      });
     } catch (error) {
       if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
       this.progress.clear();

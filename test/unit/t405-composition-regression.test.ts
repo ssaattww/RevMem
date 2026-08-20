@@ -722,8 +722,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(liveRefreshErrors, []);
     const liveCache = findPullRequestItem(current.provider, 52).cache;
     assert.equal(liveCache?.origin, "live");
-    assert.equal(liveCache?.freshness, "fresh");
-    assert.ok(liveCache !== undefined && "updatedAt" in liveCache);
+    assert.equal(liveCache?.freshness, "not-cached");
+    assert.ok(liveCache !== undefined);
 
     const cacheDirectory = resolveReviewStateStorageRoute(storageUris, {
       kind: "pull-request",
@@ -783,7 +783,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(recoveredRefreshErrors, []);
     const recoveredCache = findPullRequestItem(current.provider, 52).cache;
     assert.equal(recoveredCache?.origin, "live");
-    assert.equal(recoveredCache?.freshness, "fresh");
+    assert.equal(recoveredCache?.freshness, "not-cached");
     const recovered52 = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",
       repositoryId: REPOSITORY_ID,

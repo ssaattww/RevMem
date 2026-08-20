@@ -1,4 +1,5 @@
 import { CurrentContextCandidateSelection } from "./current-context-candidate-selection";
+import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
 import {
   currentContextSelectionKey,
   type CurrentContextUiSnapshot
@@ -8,7 +9,7 @@ const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted 
 
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
 export interface CurrentContextRuntimeCompositionPort {
-  enumerateCandidates(signal?: AbortSignal): Promise<readonly CurrentContextUiSnapshot[]>;
+  enumerateCandidates(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly CurrentContextUiSnapshot[]>;
   resolveFallback(
     candidates: readonly CurrentContextUiSnapshot[],
     signal?: AbortSignal,
@@ -29,8 +30,8 @@ export class CurrentContextRuntimeComposition {
     private readonly port: CurrentContextRuntimeCompositionPort
   ) {}
 
-  public async recompute(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> {
-    const candidates = await this.port.enumerateCandidates(signal);
+  public async recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
+    const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) return undefined;
     if (candidates.length === 0) {
       return undefined;

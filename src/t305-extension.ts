@@ -44,10 +44,8 @@ import {
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
 } from "./t305-projection-refresh";
-import {
-  formatGlobalUnderstandingFileOpenError,
-  type GlobalUnderstandingFileOpenTarget
-} from "./ui/global-understanding/global-understanding-ui-model";
+import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
+import type { OperationFeedbackContext } from "./application/operation-feedback/index";
 import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
@@ -262,13 +260,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
 
   const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
-  const enumerateContexts = async (signal?: AbortSignal): Promise<CurrentContextUiSnapshot[]> => {
+  const enumerateContexts = async (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot[]> => {
     const local = await enumerateLocalContexts();
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     return reviewContextsRuntime === undefined
       ? local
-      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal)];
+      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext)];
   };
 
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
@@ -374,9 +372,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       await vscode.window.showErrorMessage(
         `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
       );
-    },
-    reportOpenError: async (error) => {
-      await vscode.window.showErrorMessage(formatGlobalUnderstandingFileOpenError(error));
     }
   });
 
@@ -467,7 +462,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: (signal) => currentContextComposition.recompute(signal),
+      recompute: (signal, feedbackContext) => currentContextComposition.recompute(signal, feedbackContext),
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);

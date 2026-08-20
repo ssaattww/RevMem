@@ -79,7 +79,6 @@ export interface GlobalUnderstandingStatusBarModel {
 
 export interface GlobalUnderstandingFileOpenHost {
   openFile(target: GlobalUnderstandingFileOpenTarget): void | Promise<void>;
-  reportOpenError(error: unknown): void | Promise<void>;
 }
 
 export interface GlobalUnderstandingRefreshSource {
@@ -274,20 +273,14 @@ export class GlobalUnderstandingFileOpenController {
     this.currentNodes.clear();
   }
 
-  public async open(node: GlobalUnderstandingFileNode): Promise<unknown | undefined> {
-    try {
-      if (!this.currentNodes.has(node)) {
-        throw new RangeError("Selected Global understanding file node is stale and does not belong to the current snapshot.");
-      }
-      if (node.openTarget === undefined) {
-        throw new Error("Global understanding file open target is unavailable.");
-      }
-      await this.host.openFile(freezeOpenTarget(node.openTarget));
-      return undefined;
-    } catch (error) {
-      await this.host.reportOpenError(error);
-      return error;
+  public async open(node: GlobalUnderstandingFileNode): Promise<void> {
+    if (!this.currentNodes.has(node)) {
+      throw new RangeError("Selected Global understanding file node is stale and does not belong to the current snapshot.");
     }
+    if (node.openTarget === undefined) {
+      throw new Error("Global understanding file open target is unavailable.");
+    }
+    await this.host.openFile(freezeOpenTarget(node.openTarget));
   }
 }
 

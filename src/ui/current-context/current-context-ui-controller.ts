@@ -1,4 +1,4 @@
-import { runWithBoundedRetry } from "../../application/operation-feedback/index";
+import { runWithBoundedRetry, type OperationFeedbackContext } from "../../application/operation-feedback/index";
 
 export type CurrentContextKind = "pull-request" | "branch" | "workspace";
 
@@ -43,7 +43,7 @@ export interface CurrentContextUiHost {
 
 export interface CurrentContextUiActions {
   /** Read-only candidate acquisition; callers may cancel a superseded owner. */
-  recompute(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   selectContext(signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
@@ -156,12 +156,12 @@ export class CurrentContextUiController {
     this.host.setCurrentContext({ label: projectContextLabel(snapshot.context), ...(snapshot.context.detail === undefined ? {} : { description: snapshot.context.detail }), tooltip });
     this.host.setStatusBar({ text: `${projectStatusPrefix(snapshot.context)}${percent === undefined ? "" : `: ${percent}`}`, tooltip });
   }
-  public async refresh(signal?: AbortSignal): Promise<CurrentContextRefreshResult> {
+  public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextRefreshResult> {
     if (this.actions === undefined) return { snapshot: undefined, stale: false };
     const generation = ++this.generation;
     if (signal !== undefined && signal.aborted) return { snapshot: undefined, stale: true };
     const snapshot = (await runWithBoundedRetry(
-      () => this.actions!.recompute(signal),
+      () => this.actions!.recompute(signal, feedbackContext),
       { maxAttempts: 3, signal },
     )).value;
     if (signal?.aborted === true) return { snapshot: undefined, stale: true };
