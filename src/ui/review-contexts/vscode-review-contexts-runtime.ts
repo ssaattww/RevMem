@@ -243,6 +243,7 @@ export function registerReviewContextsRuntime(
     label: string,
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     retry = false,
+    clearProviderOnFailure = true,
   ): Promise<void> => {
     // `retry` documents the command classification for wiring tests; retrying
     // itself is deliberately confined to ReviewContextsTreeProvider.load().
@@ -253,7 +254,7 @@ export function registerReviewContextsRuntime(
         (feedbackContext) => operation(feedbackContext),
       );
     } catch (error) {
-      provider.clear();
+      if (clearProviderOnFailure) provider.clear();
       await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
@@ -268,12 +269,12 @@ export function registerReviewContextsRuntime(
       try {
         await operation(feedbackContext);
       } catch (error) {
-        terminalFailure = hasOperationFeedbackFailure(feedbackContext);
+        terminalFailure = true;
         throw error;
       }
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
-    });
+    }, false, false);
     if (terminalFailure) return;
     await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   };

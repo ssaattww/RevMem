@@ -19,6 +19,7 @@ import {
 } from "./adapters/local-git/index";
 import {
   resolveReviewStateStorageRoute,
+  type StorageRootLockDiagnostic,
   type ReviewStateCommit,
   type ReviewStateCreateTransactionLike,
   type ReviewStateRepositoryTarget,
@@ -27,7 +28,7 @@ import {
 } from "./adapters/state-repository/index";
 import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import type { RevisionTextContentReadResult } from "./application/diff-document/index";
-import { GitHubPullRequestCacheService } from "./application/github-pr-cache/index";
+import { GitHubPullRequestCacheService, type GitHubPullRequestCacheStorage } from "./application/github-pr-cache/index";
 import type { ReviewHistoryRecorder } from "./application/review-history/index";
 import {
   GitHubPullRequestContextResolver,
@@ -104,6 +105,11 @@ export interface T405ReviewContextsRuntimeOptions {
   readonly reviewStateRepository: T405ReviewStateRepository;
   /** 同一Extension Hostで通常editor/PR diff/Review Contextsが共有するhistory serialization owner。 */
   readonly reviewHistoryRecorder: Pick<ReviewHistoryRecorder, "recordContextCreated" | "recordRevisionMapping">;
+  /** Internal composition port for the repository-local PR cache storage adapter. */
+  readonly createPullRequestCacheStorage?: (
+    cacheDirectory: string,
+    notifyStorageLockDiagnostic: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>,
+  ) => GitHubPullRequestCacheStorage;
 }
 
 interface T405ReviewStateRepository {
@@ -695,12 +701,16 @@ export function registerT405ReviewContextsRuntime(
     if (route.cacheDirectory === undefined) {
       throw new Error("Pull-request cache requires a repository storage route");
     }
+    const notifyStorageLockDiagnostic = (diagnostic: StorageRootLockDiagnostic): void => {
+      reportActiveStorageLockDiagnostic(diagnostic, feedbackContext);
+    };
     const cache = new GitHubPullRequestCacheService({
       acquisition,
-      storage: new NodeGitHubPullRequestCacheStorage({
-        cacheDirectory: route.cacheDirectory,
-        notifyStorageLockDiagnostic: (diagnostic) => reportActiveStorageLockDiagnostic(diagnostic, feedbackContext)
-      }),
+      storage: options.createPullRequestCacheStorage?.(route.cacheDirectory, notifyStorageLockDiagnostic) ??
+        new NodeGitHubPullRequestCacheStorage({
+          cacheDirectory: route.cacheDirectory,
+          notifyStorageLockDiagnostic,
+        }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
     let result = await cache.acquireRead(diffRequest(context));
