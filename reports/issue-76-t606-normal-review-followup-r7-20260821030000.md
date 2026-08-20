@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の同一normal reviewer向けR7 finding follow-up。R002〜R005だけを対象にし、technical implementation commitはpendingである。R001、R006、R007はclosedを維持する。
+T606 / Issue #76 / PR #77 の同一normal reviewer向けR7 finding follow-up。R002〜R005だけを対象にし、technical implementation headは`b3f2f9c43fa4f86c6cd51461f7afc6f48c21bc9e`である。R001、R006、R007はclosedを維持する。
 
 ## sub-agentを使う理由
 
@@ -36,8 +36,8 @@ R005: 上記direct scenariosは既存`test:t606` production matrixに含まれ�
 
 ## 結果
 
-R002〜R005のR7 technical implementationとdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closure R7はpendingである。exact-head CIはheldであり、technical implementation commitもpendingである。
+R002〜R005のR7 technical implementation head `b3f2f9c43fa4f86c6cd51461f7afc6f48c21bc9e`とdirect production evidenceはaddressedである。同一normal reviewerのfinding-limited closure R7はpendingである。exact-head CIはheldである。
 
 ## リスク
 
-exact-head CI、real Extension Host acceptance、Markdown wording checkはheldまたはunsupportedである。次の作業はtechnical commit後のadmin SHA syncを経て、同一normal reviewerによるR002〜R005限定closure R7である。
+exact-head CI、real Extension Host acceptance、Markdown wording checkはheldまたはunsupportedである。次の作業は同一normal reviewerによるR002〜R005限定closure R7である。
