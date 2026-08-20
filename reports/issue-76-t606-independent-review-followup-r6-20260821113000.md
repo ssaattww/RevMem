@@ -2,7 +2,7 @@
 
 ## タスク
 
-Issue #76 / PR #77 の IFR002 と IFR004 に対する R6 follow-up。IFR001、IFR003、IFR005 は closed を維持し、再作業しない。technical implementation SHA は未commitのため pending である。
+Issue #76 / PR #77 の IFR002 と IFR004 に対する R6 follow-up。IFR001、IFR003、IFR005 は closed を維持し、再作業しない。technical implementation SHA は `ce584b29e6f584234c7bab050d24d2dd163ae3d3` である。
 
 ## sub-agentを使う理由
 
@@ -30,7 +30,7 @@ IFR002: registered Current Context command が real T305→T405 runtime/candidat
 
 ## 結果
 
-IFR002 と IFR004 は R6 で addressed。IFR001、IFR003、IFR005 は closed maintained。same independent reviewer による finding-limited closure R6、external PR sync、exact-head CI は pending/held。technical implementation SHA は commit 前のため pending。count は 205 pass / 0 fail / 2 Windows POSIX skip。architecture positive/negative と diff whitespace check は追加で pass した。
+IFR002 と IFR004 は R6 で addressed。IFR001、IFR003、IFR005 は closed maintained。same independent reviewer による finding-limited closure R6 は pending、admin commit 後の external PR sync は pending、exact-head CI は held。technical implementation SHA は `ce584b29e6f584234c7bab050d24d2dd163ae3d3`。count は 205 pass / 0 fail / 2 Windows POSIX skip。architecture positive/negative と diff whitespace check は追加で pass した。
 
 ## リスク
 

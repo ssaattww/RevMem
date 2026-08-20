@@ -2,7 +2,7 @@ schema_version: 1
 repository: ssaattww/RevMem
 issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
-technical_implementation_head: pending_uncommitted_r6
+technical_implementation_head: ce584b29e6f584234c7bab050d24d2dd163ae3d3
 status: ifr001_ifr003_ifr005_closed_maintained_ifr002_ifr004_r6_addressed_same_reviewer_closure_pending
 report: reports/issue-76-t606-independent-review-followup-r6-20260821113000.md
 validation:
@@ -16,5 +16,5 @@ validation:
   architecture_negative: "pass; once; expected 11 violations"
   diff_check: "pass; no whitespace errors; line-ending warnings only"
 ci: held
-external_sync: pending; commit, push, PR update, and exact-head CI are outside this follow-up scope
+external_sync: pending after admin commit; push, PR update, and exact-head CI are outside this follow-up scope
 next_request: Same independent reviewer performs finding-limited closure R6 for IFR002 and IFR004 only.
