@@ -4,7 +4,7 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
-implementation_head: "34dff5caae9fcfc74fd507757841f602138745f3 plus uncommitted R2 closure changes"
+implementation_head: 46aed4504f556159b0fcff52668bffb313b6222c
 status: r001_through_r005_and_r007_r2_implementation_complete_normal_closure_pending
 report: reports/issue-76-t606-implementation-20260820225743.md
 validation:
