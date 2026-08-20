@@ -37,6 +37,7 @@ import {
   REVIEW_RANGE_CONFIGURATION_KEYS,
   type ReviewRangeConfiguration
 } from "../../src/application/configuration";
+import { VscodeCurrentPullRequestSelectionStore } from "../../src/ui/review-contexts";
 
 const schemaVersion: SchemaVersion = REVIEW_RANGE_SCHEMA_VERSION;
 const lineInterval = {
@@ -260,6 +261,10 @@ const historyEventTypes = [
   "context-revision-changed",
   "mapping-unresolved"
 ] as const satisfies readonly ReviewHistoryEventType[];
+const clearCurrentPullRequestSelection: (
+  repositoryId: string,
+  headRevision: string,
+) => Promise<void> = VscodeCurrentPullRequestSelectionStore.prototype.clear;
 
 void [
   lineInterval.startLine,
@@ -283,6 +288,7 @@ void [
   visualStates,
   changeStatuses,
   contextKinds,
-  historyEventTypes
+  historyEventTypes,
+  clearCurrentPullRequestSelection
 ];
 void (undefined as unknown as T303PublicBarrels);

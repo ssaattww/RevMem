@@ -75,6 +75,24 @@ export class VscodeCurrentPullRequestSelectionStore {
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
+  /**
+   * Removes only this immutable repository/HEAD preference for compatibility with
+   * existing public UI API consumers. New branch fallback uses selectBranch().
+   * @deprecated Use selectBranch() when an explicit branch/no-PR choice is required.
+   */
+  public async clear(repositoryId: string, headRevision: string): Promise<void> {
+    const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+    const selections: Record<string, string | false> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (key !== this.key(repositoryId, headRevision) &&
+        ((typeof value === "string" && value.trim().length > 0) || value === false)) {
+        selections[key] = value;
+      }
+    }
+    await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
+  }
+
   /** Records an explicit branch/no-PR choice that suppresses saved-PR auto-inference. */
   public async selectBranch(repositoryId: string, headRevision: string): Promise<void> {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});

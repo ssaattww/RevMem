@@ -26,7 +26,11 @@ import {
   type CurrentContextUiSnapshot,
 } from "../../src/ui/current-context/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index.js";
+import {
+  OperationDiagnosticError,
+  OperationFeedback,
+  setActiveOperationFeedback,
+} from "../../src/application/operation-feedback/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -175,6 +179,34 @@ const findPullRequestItem = (
   assert.ok(item, `PR #${number} should be projected by Review Contexts.`);
   return item;
 };
+
+test("T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection", async () => {
+  const entries: Array<{ event: string; message?: string }> = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: (entry) => entries.push(entry),
+    revealLog: () => undefined,
+  }, () => 0);
+  for (const reason of ["network", "api", "rate-limit"] as const) {
+    await assert.rejects(feedback.run("PRを再検出", async () => {
+      throw new OperationDiagnosticError({ code: "GITHUB_PR_DETECTION_UNAVAILABLE", reason });
+    }));
+    assert.equal(
+      entries.filter((entry) => entry.message === `GITHUB_PR_DETECTION_UNAVAILABLE reason=${reason}`).length,
+      1,
+    );
+  }
+  const unsafeReason = "token=ghp_example\nC:\\private\\repository";
+  assert.throws(
+    () => new OperationDiagnosticError({
+      code: "GITHUB_PR_DETECTION_UNAVAILABLE",
+      reason: unsafeReason as never,
+    }),
+    TypeError,
+  );
+  assert.doesNotMatch(JSON.stringify(entries), /ghp_example|private\\repository/u);
+});
 
 test("T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history", async () => {
   const storageRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-ifr1-"));
@@ -471,6 +503,12 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       "github-pr:github.com/ssaattww/another-repository#9",
     );
     assert.equal(preferenceStore.prefersBranch(REPOSITORY_ID, targetHeadSha), true);
+    await preferenceStore.clear(REPOSITORY_ID, targetHeadSha);
+    assert.equal(preferenceStore.prefersBranch(REPOSITORY_ID, targetHeadSha), false);
+    assert.equal(
+      preferenceStore.read("github.com/ssaattww/another-repository", sourceHeadSha),
+      "github-pr:github.com/ssaattww/another-repository#9",
+    );
 
     const localGit = createNodeLocalGitAdapter();
     const openedDiffs: Array<{ original: string; modified: string; title: string }> = [];
