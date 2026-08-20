@@ -4,7 +4,7 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: pending-r2-commit (R2 working tree; administrative baseline a08aa99c7902c64b2be70e8d97cb0a38779ae662)
+current_head: 1c664cd024882c8ffe21f03a4baec409f4c952a5 (R2 technical fix; administrative baseline a08aa99c7902c64b2be70e8d97cb0a38779ae662)
 status: independent_finding_closure_r2_evidence_addressed_pending_same_reviewer
 report: reports/issue-72-t604-independent-review-followup-20260820201341.md
 requirements:
@@ -23,7 +23,7 @@ validation:
     - npm run validate:architecture:negative
     - git diff --check
   ci: not run; merge-gate held by explicit task policy
-next_request: After the pending R2 commit, ask the same independent reviewer for IFR001-IFR005/IFR007 finding-limited closure R2 at that exact fix HEAD only. Update PR #73 with the exact fix SHA, actual focused count 24, and the matching exact-head CI result; do not add scope, merge, or self-review.
+next_request: Ask the same independent reviewer for IFR001-IFR005/IFR007 finding-limited closure R2 at technical fix HEAD 1c664cd024882c8ffe21f03a4baec409f4c952a5 only. Update PR #73 with this exact fix SHA, actual focused count 24, and the matching exact-head CI result; do not add scope, merge, or self-review.
 remaining_risks:
   - IFR001 through IFR005 and IFR007 are addressed locally; same independent reviewer finding-limited closure R2 and post-commit exact-head CI remain pending.
   - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

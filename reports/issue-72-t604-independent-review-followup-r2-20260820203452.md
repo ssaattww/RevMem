@@ -2,7 +2,7 @@
 
 ## タスク
 
-- Issue #72 / PR #73 / T604 independent finding closure R2。開始administrative baselineは `a08aa99c7902c64b2be70e8d97cb0a38779ae662`、R2 commitはpending。
+- Issue #72 / PR #73 / T604 independent finding closure R2。開始administrative baselineは `a08aa99c7902c64b2be70e8d97cb0a38779ae662`、R2 technical fix HEADは `1c664cd024882c8ffe21f03a4baec409f4c952a5`。
 
 ## sub-agentを使う理由
 
@@ -31,7 +31,7 @@
 - IFR003: production startup fixtureへcorrupt `entries/<snapshotId>.json` wrapperをseedし、internal quarantine/restart convergenceを実行する。
 - IFR004: 同一custom `AtomicTextFileStore`、root、明示共有`StorageRootLockCoordinator`をstate/history/cache/snapshot/startupへ注入したsingle-root integration scenarioを追加した。競合state/history/cache/snapshot/startup migrationはmax active 1でserializeし、cache superseded cleanup、snapshot latest+stale cleanup、legacy snapshot migration、host lock path未作成とcustom-store data coherenceをassertした。
 - IFR005: activationが使用する`composeStartupFeedback` seamへterminal lock failureを注入し、privacy-safe append/reveal各1回をassertする。
-- IFR007: technical fix `fc5aadc08807bd98779be992521b8d8cfcf0221b`とadministrative baseline `a08aa99c7902c64b2be70e8d97cb0a38779ae662`を役割別に記録し、focused実測24（T604 21、design structure 1、T506 2）を維持する。PR本文は親が更新済みだが、R2後のfinal current HEADは親が再同期する。
+- IFR007: technical fix `1c664cd024882c8ffe21f03a4baec409f4c952a5`とadministrative baseline `a08aa99c7902c64b2be70e8d97cb0a38779ae662`を役割別に記録し、focused実測24（T604 21、design structure 1、T506 2）を維持する。PR本文は親が更新済みだが、R2後のfinal current HEADは親が再同期する。
 
 ## 結果
 
