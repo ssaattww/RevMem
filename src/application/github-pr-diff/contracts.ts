@@ -43,6 +43,7 @@ export type PullRequestDiffUnavailableReason =
   | "missing-revision"
   | "git-failure"
   | "rate-limit"
+  | "authentication"
   | "network"
   | "api"
   | "missing-file"

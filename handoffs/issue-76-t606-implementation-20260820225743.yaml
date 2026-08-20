@@ -4,8 +4,8 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
-implementation_head: d7d410c025b6097b1fa6986e2c32b4aa51233536
-status: implementation_complete_normal_review_pending
+implementation_head: 5ba2d5db5cd63d343c35f270a8ea9fe2e0564f56
+status: normal_findings_r001_through_r007_addressed_closure_pending
 report: reports/issue-76-t606-implementation-20260820225743.md
 validation:
   focused_red: observed missing T606 exports before implementation
@@ -14,4 +14,5 @@ validation:
   contracts: npm run typecheck:contracts
   lint: npm run lint
   architecture: positive and negative passed
-next_request: Run one full-scope normal review against draft PR #77 without rerunning local validation or waiting for CI.
+followup_report: reports/issue-76-t606-normal-review-followup-20260820232057.md
+next_request: Have the same normal reviewer perform finding-limited closure for T606-R001 through R007; do not start a new review scope.

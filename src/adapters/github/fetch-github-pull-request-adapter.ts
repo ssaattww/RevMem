@@ -161,6 +161,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       if (response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")) {
         return { kind: "unavailable", reason: "rate-limit" };
       }
+      if (response.status === 401 || response.status === 403) return { kind: "unavailable", reason: "authentication" };
       if (!response.ok) {
         return { kind: "unavailable", reason: "api" };
       }

@@ -180,5 +180,12 @@ export class CurrentContextUiController {
     }
     return undefined;
   }
+  /** Clears an indeterminate context so an old snapshot is never presented as fresh. */
+  public failClosed(): void {
+    this.generation += 1;
+    this.host.clearCurrentContext();
+    this.host.clearStatusBar();
+    this.actions?.acceptRecomputed?.(undefined);
+  }
 }
 import type { SelectedReviewContext } from "../../application/review-context/index";

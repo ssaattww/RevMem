@@ -1,7 +1,7 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
 
-export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api";
+export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
 
 export type GitHubPullRequestLifecycleResult =
   | { readonly kind: "available"; readonly metadata: PullRequestRemoteMetadata }
@@ -36,6 +36,7 @@ const classify = (response: Response): GitHubPullRequestLifecycleUnavailableReas
     response.status === 429 ||
     (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")
   ) return "rate-limit";
+  if (response.status === 401 || response.status === 403) return "authentication";
   return response.ok ? undefined : "api";
 };
 

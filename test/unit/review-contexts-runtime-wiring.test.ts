@@ -179,17 +179,16 @@ test("R65-005 preserves safe PR progress acquisition attempts and final cause", 
   assert.doesNotMatch(terminal?.message ?? "", /Customer Payroll Dashboard/u);
 });
 
-test("Issue #63 lets operation feedback observe Review Contexts failures before UI reporting", async () => {
+test("T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure", async () => {
   const reviewContextsUi = await readFile(
     "src/ui/review-contexts/vscode-review-contexts-runtime.ts",
     "utf8",
   );
 
   assert.match(reviewContextsUi, /const runOperation = async/u);
-  assert.match(
-    reviewContextsUi,
-    /await runWithActiveOperationFeedback\(label, operation\)[\s\S]{0,240}catch \(error\)[\s\S]{0,240}dependencies\.reportError\(error\)/u,
-  );
+  assert.match(reviewContextsUi, /retry = false/u);
+  assert.match(reviewContextsUi, /provider\.clear\(\)[\s\S]{0,240}formatOperationFailureForUser/u);
+  assert.match(reviewContextsUi, /openReviewContextDiff[\s\S]{0,500}runOperation/u);
   assert.doesNotMatch(
     reviewContextsUi,
     /runWithActiveOperationFeedback\([\s\S]{0,140}\(\) => report\(/u,

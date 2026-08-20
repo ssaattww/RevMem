@@ -161,6 +161,11 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     this.items = [...await this.source.load()];
     this.changed.fire();
   }
+  /** Clears the list when its replacement cannot be proven current. */
+  public clear(): void {
+    this.items = [];
+    this.changed.fire();
+  }
 
   public dispose(): void {
     this.changed.dispose();
@@ -201,7 +206,7 @@ export function registerReviewContextsRuntime(
   const runOperation = async (
     label: string,
     operation: () => Promise<void>,
-    retry = true,
+    retry = false,
   ): Promise<void> => {
     try {
       await runWithActiveOperationFeedback(
@@ -210,6 +215,7 @@ export function registerReviewContextsRuntime(
         retry ? { maxAttempts: 3 } : undefined
       );
     } catch (error) {
+      provider.clear();
       await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };

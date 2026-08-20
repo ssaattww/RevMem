@@ -254,12 +254,19 @@ export const registerGlobalUnderstandingRuntime = (
 
   const invalidate = (): void => refreshController.invalidate();
   const clear = (): void => refreshController.clear();
-  const refresh = (): Promise<void> =>
-    runWithActiveOperationFeedback(
+  let retryCancellation: AbortController | undefined;
+  const refresh = (): Promise<void> => {
+    retryCancellation?.abort();
+    const currentCancellation = new AbortController();
+    retryCancellation = currentCancellation;
+    return runWithActiveOperationFeedback(
       "Global理解率を再計算",
       () => refreshController.refresh().then(() => undefined),
-      { maxAttempts: 3 }
-    );
+      { maxAttempts: 3, signal: currentCancellation.signal }
+    ).finally(() => {
+      if (retryCancellation === currentCancellation) retryCancellation = undefined;
+    });
+  };
 
   const refreshWithErrorBoundary = async (): Promise<void> => {
     try {

@@ -249,10 +249,15 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
     readFile(workflowPath, "utf8"),
   ]);
   const manifest = JSON.parse(manifestText) as PackageManifest;
-  assert.match(
-    requireScript(manifest.scripts ?? {}, "test:t606"),
-    /test-dist\/test\/unit\/t606-failure-policy-retry-diagnostics\.test\.js/u,
-  );
+  const focused = requireScript(manifest.scripts ?? {}, "test:t606");
+  for (const suite of [
+    "t606-failure-policy-retry-diagnostics",
+    "current-context-ui",
+    "review-contexts-runtime-wiring",
+    "github-pull-request-cache",
+    "t604-storage-lock-cleanup",
+    "t605-multi-root-remote-boundaries",
+  ]) assert.match(focused, new RegExp(`test-dist/test/unit/${suite}\\.test\\.js`, "u"));
   assert.match(
     workflow,
     /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,

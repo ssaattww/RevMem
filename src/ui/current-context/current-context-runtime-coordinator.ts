@@ -39,6 +39,7 @@ export class CurrentContextRuntimeCoordinator {
     try {
       await this.refresh();
     } catch (error) {
+      this.controller.failClosed();
       await report(error);
     }
   }

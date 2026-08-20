@@ -9,6 +9,7 @@ import {
   type OperationFeedbackHost,
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index";
+import { StaleReviewStateError } from "../../src/adapters/state-repository/index";
 
 class FakeHost implements OperationFeedbackHost {
   public readonly logs: OperationLogEntry[] = [];
@@ -29,6 +30,9 @@ test("T606 classifies retryable, permanent, stale, authentication, and validatio
   assert.equal(classifyOperationFailure(Object.assign(new Error("expired"), { name: "AbortError" })).kind, "stale");
   assert.equal(classifyOperationFailure(Object.assign(new Error("token"), { status: 401 })).kind, "authentication");
   assert.equal(classifyOperationFailure(new TypeError("bad input")).kind, "validation");
+  assert.equal(classifyOperationFailure(new StaleReviewStateError({
+    kind: "git", repositoryId: "root-a", contextId: "branch:main"
+  })).kind, "stale");
 });
 
 test("T606 retries only retryable faults with a bounded cancellable sequence", async () => {

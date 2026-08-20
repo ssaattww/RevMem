@@ -37,7 +37,7 @@ export type OperationDiagnostic = {
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
 } | {
   readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
-  readonly reason: "rate-limit" | "network" | "api";
+  readonly reason: "rate-limit" | "network" | "api" | "authentication";
 };
 
 /** Stable disposition used by the shared retry and UI failure boundary. */
@@ -168,7 +168,7 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "diff-too-large"
 ]);
 
-const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api"]);
+const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication"]);
 
 const validatePrProgressAttempts = (
   attempts: readonly PullRequestDiffAcquisitionAttempt[]
@@ -186,11 +186,11 @@ const validatePrProgressAttempts = (
 
 const validateGitHubPullRequestDetectionReason = (
   reason: unknown
-): "rate-limit" | "network" | "api" => {
+): "rate-limit" | "network" | "api" | "authentication" => {
   if (typeof reason !== "string" || !SAFE_GITHUB_PR_DETECTION_REASONS.has(reason)) {
     throw new TypeError("GitHub PR detection diagnostic reason is not allowlisted");
   }
-  return reason as "rate-limit" | "network" | "api";
+  return reason as "rate-limit" | "network" | "api" | "authentication";
 };
 
 /**
@@ -245,8 +245,25 @@ const isTimedOutGitCommand = (error: unknown): boolean => {
  * deliberately never enter the retry loop.
  */
 export const classifyOperationFailure = (error: unknown): OperationFailureClassification => {
-  if (error instanceof OperationCancelledError || errorField(error, "name") === "AbortError") {
+  if (
+    error instanceof OperationCancelledError ||
+    errorField(error, "name") === "AbortError" ||
+    errorField(error, "name") === "StaleReviewStateError"
+  ) {
     return { kind: "stale" };
+  }
+  if (error instanceof OperationDiagnosticError) {
+    if (error.diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
+      switch (error.diagnostic.reason) {
+        case "authentication": return { kind: "authentication" };
+        case "rate-limit":
+        case "network": return { kind: "retryable" };
+        case "api": return { kind: "validation" };
+      }
+    }
+    const finalReason = error.diagnostic.attempts.at(-1)?.reason;
+    if (finalReason === "rate-limit" || finalReason === "network" || finalReason === "git-failure") return { kind: "retryable" };
+    return { kind: "validation" };
   }
   const status = errorField(error, "status");
   if (status === 401 || status === 403) return { kind: "authentication" };

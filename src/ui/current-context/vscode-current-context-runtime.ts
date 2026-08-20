@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 
 import {
+  formatOperationFailureForUser,
+  runWithActiveOperationFeedback
+} from "../../application/operation-feedback/index";
+
+import {
   CurrentContextRuntimeCoordinator,
   type CurrentContextDependentRefresher
 } from "./current-context-runtime-coordinator";
@@ -91,30 +96,46 @@ export const registerCurrentContextRuntime = (
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
     ...dependentRefresher
   });
+  const runRefresh = async (): Promise<void> => {
+    try {
+      await runWithActiveOperationFeedback("Current Contextを更新", () => coordinator.refresh());
+    } catch (error) {
+      controller.failClosed();
+      await reportRefreshError(formatOperationFailureForUser(error));
+    }
+  };
+  const runSelection = async (): Promise<void> => {
+    try {
+      await runWithActiveOperationFeedback("Current Contextを選択", () => coordinator.selectContext());
+    } catch (error) {
+      controller.failClosed();
+      await reportRefreshError(formatOperationFailureForUser(error));
+    }
+  };
 
   const registrations: vscode.Disposable[] = [
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
     vscode.commands.registerCommand(
       REFRESH_CONTEXT_COMMAND_ID,
-      () => coordinator.refresh()
+      runRefresh
     ),
     vscode.commands.registerCommand(
       SELECT_CONTEXT_COMMAND_ID,
-      () => coordinator.selectContext()
+      runSelection
     ),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      void coordinator.refreshWithErrorBoundary(reportRefreshError);
+      void runRefresh();
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  void coordinator.refreshWithErrorBoundary(reportRefreshError);
+  void runRefresh();
 
   return {
     controller,
-    refresh: () => coordinator.refresh(),
+    refresh: runRefresh,
     dispose: () => {
       for (const registration of registrations) {
         registration.dispose();

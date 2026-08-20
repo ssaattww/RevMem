@@ -71,6 +71,7 @@ const classifyResponse = (response: Response): PullRequestDiffUnavailableReason 
   if (response.status === 429 || (
     response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0"
   )) return "rate-limit";
+  if (response.status === 401 || response.status === 403) return "authentication";
   return response.ok ? undefined : "api";
 };
 

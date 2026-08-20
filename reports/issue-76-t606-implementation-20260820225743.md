@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76。branchは`task/t606-failure-policy-retry-diagnostics`、base/current start HEADは`fb7df6ab79bb23ae16b43b61aa66ab743460be69`である。実装完了、commit・push・PR・reviewは未実施でnormal review待ちである。
+T606 / Issue #76。初回implementationのbase/current start HEADは`fb7df6ab79bb23ae16b43b61aa66ab743460be69`である。初回normal review後のR001〜R007修正はfollow-up reportへ記録し、同一reviewer closure待ちである。
 
 ## sub-agentを使う理由
 
