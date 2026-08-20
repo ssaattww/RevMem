@@ -29,7 +29,7 @@ T606 R2 は IFR001〜IFR005の既存required actionだけを修正し、Review C
 
 ## インストール方法
 
-T606 R3 はIFR001〜IFR005をaddressedし、actual cache write failureを成功表示せずtyped failureとしてfail-closeします。technical implementation SHAは`663b4078d91197b102c80825064d8b7bb73f8771`、same independent reviewer closure R3 pending、CI held、PR body external sync pendingです。
+T606 R3 はIFR001〜IFR005をaddressedし、actual cache write failureを成功表示せずtyped failureとしてfail-closeします。technical implementation SHAは`663b4078d91197b102c80825064d8b7bb73f8771`、same independent reviewer closure R3 pending、CI held、PR bodyは`completed for technical head 663b407; parent refreshes final admin head externally after this commit`です。
 
 この拡張機能は Marketplace ではなく VSIX で配布します。
 

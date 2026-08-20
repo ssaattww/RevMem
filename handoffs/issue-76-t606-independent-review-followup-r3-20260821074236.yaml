@@ -17,7 +17,7 @@ validation:
   architecture: pass
   architecture_negative: "pass; expected 11 violations"
 ci: held
-external_sync: pending
+external_sync: "completed for technical head 663b407; parent refreshes final admin head externally after this commit"
 evidence:
   current_context: "T305 refresh/select owner -> T405 candidate acquisition -> T402/T403 local Git, GitHub diff, cache read/write typed context/signal propagation; transient result union max 3, authentication permanent one attempt"
   pr_progress: "pending deepest content I/O observes active owner/signal; clear aborts; stale publication absent; cancellation/failure/success each have one terminal"
