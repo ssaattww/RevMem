@@ -47,6 +47,8 @@ export interface StorageRootLockOptions {
   /** Monotonic elapsed-time source used only for acquisition bounds. */
   readonly monotonicNow?: () => number;
   readonly createOwnerToken?: () => string;
+  /** Process liveness probe used before recovering an expired valid descriptor. */
+  readonly isProcessAlive?: (processId: number) => Promise<boolean>;
   /** Test-only fault seams for proving bounded cleanup of a partially published lease. */
   readonly writeLease?: (handle: FileHandle, content: string) => Promise<void>;
   readonly syncLease?: (handle: FileHandle) => Promise<void>;
@@ -56,14 +58,14 @@ export interface StorageRootLockOptions {
 
 /** Lock owner that may share an alternate AtomicTextFileStore namespace instead of host paths. */
 export interface StorageRootLockCoordinator {
-  run<T>(rootPath: string, operation: () => Promise<T>): Promise<T>;
+  run<T>(rootPath: string, operation: (lease: StorageRootLease) => Promise<T>): Promise<T>;
 }
 
 const inProcessTails = new Map<string, Promise<void>>();
 
 /** Deterministic lock coordinator for injected non-Node atomic stores. */
 export class InProcessStorageRootLockCoordinator implements StorageRootLockCoordinator {
-  public async run<T>(rootPath: string, operation: () => Promise<T>): Promise<T> {
+  public async run<T>(rootPath: string, operation: (lease: StorageRootLease) => Promise<T>): Promise<T> {
     const key = path.resolve(rootPath);
     const previous = inProcessTails.get(key) ?? Promise.resolve();
     let release: () => void = () => undefined;
@@ -71,7 +73,7 @@ export class InProcessStorageRootLockCoordinator implements StorageRootLockCoord
     inProcessTails.set(key, tail);
     await previous;
     try {
-      return await operation();
+      return await operation({ assertOwned: async () => undefined });
     } finally {
       release();
       if (inProcessTails.get(key) === tail) inProcessTails.delete(key);
@@ -82,6 +84,7 @@ export class InProcessStorageRootLockCoordinator implements StorageRootLockCoord
 interface PersistedLock {
   readonly ownerToken: string;
   readonly expiresAt: number;
+  readonly processId: number;
 }
 
 const isExists = (error: unknown): boolean =>
@@ -95,11 +98,12 @@ const parseLock = (raw: string): PersistedLock | undefined => {
     const value = JSON.parse(raw) as unknown;
     if (
       value === null || typeof value !== "object" || Array.isArray(value) ||
-      !("ownerToken" in value) || !("expiresAt" in value) ||
+      !("ownerToken" in value) || !("expiresAt" in value) || !("processId" in value) ||
       typeof value.ownerToken !== "string" || value.ownerToken.length === 0 ||
-      typeof value.expiresAt !== "number" || !Number.isSafeInteger(value.expiresAt)
+      typeof value.expiresAt !== "number" || !Number.isSafeInteger(value.expiresAt) ||
+      typeof value.processId !== "number" || !Number.isSafeInteger(value.processId) || value.processId <= 0
     ) return undefined;
-    return { ownerToken: value.ownerToken, expiresAt: value.expiresAt };
+    return { ownerToken: value.ownerToken, expiresAt: value.expiresAt, processId: value.processId };
   } catch {
     return undefined;
   }
@@ -115,6 +119,7 @@ export class NodeStorageRootLock {
   private readonly now: () => number;
   private readonly monotonicNow: () => number;
   private readonly createOwnerToken: () => string;
+  private readonly isProcessAlive: (processId: number) => Promise<boolean>;
   private readonly operationId = randomUUID();
 
   public constructor(private readonly options: StorageRootLockOptions) {
@@ -129,6 +134,14 @@ export class NodeStorageRootLock {
     this.now = options.now ?? Date.now;
     this.monotonicNow = options.monotonicNow ?? (() => performance.now());
     this.createOwnerToken = options.createOwnerToken ?? randomUUID;
+    this.isProcessAlive = options.isProcessAlive ?? (async (processId) => {
+      try {
+        process.kill(processId, 0);
+        return true;
+      } catch (error) {
+        return !(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ESRCH");
+      }
+    });
     if (this.timeoutMs < 0 || this.leaseMs <= 0 || this.retryDelayMs < 0) {
       throw new RangeError("Storage lock timings must be non-negative and leaseMs must be positive.");
     }
@@ -152,7 +165,7 @@ export class NodeStorageRootLock {
           try {
             await (this.options.writeLease ?? ((file, content) => file.writeFile(content, "utf8")))(
               handle,
-              JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs })
+              JSON.stringify({ ownerToken, expiresAt: this.now() + this.leaseMs, processId: process.pid })
             );
             await (this.options.syncLease ?? ((file) => file.sync()))(handle);
             if (this.options.closeLease !== undefined) await this.options.closeLease(handle);
@@ -207,7 +220,10 @@ export class NodeStorageRootLock {
           const expired = existing === undefined || invalidFutureLease
             ? metadata !== undefined && metadata.mtimeMs + this.leaseMs <= this.now()
             : existing.expiresAt <= this.now();
-          if (expired) {
+          // Cooperative live Extension Hosts are never recovered solely because a
+          // wall-clock lease elapsed: a stalled owner remains the owner while live.
+          const recoverable = existing === undefined || (expired && !await this.isProcessAlive(existing.processId));
+          if (recoverable) {
             const recoveryPath = path.join(this.rootPath, `.lock-recovery-${randomUUID()}`);
             await guard(recoveryPath);
             try {
@@ -252,6 +268,10 @@ export class NodeStorageRootLock {
       clearInterval(renewTimer);
       try {
         await this.renew(handle, ownerToken, true);
+        const current = await readFile(this.lockPath, "utf8").catch(() => undefined);
+        if (current !== undefined && parseLock(current)?.ownerToken === ownerToken) {
+          await rm(this.lockPath, { force: true });
+        }
       } catch {
         markLost();
         throw new StorageRootLeaseLostError();
@@ -268,7 +288,7 @@ export class NodeStorageRootLock {
     // The descriptor remains bound to the owner inode. If stale recovery has already
     // renamed it, this update cannot affect a successor at lockPath.
     await handle.write(
-      JSON.stringify({ ownerToken, expiresAt: release ? 0 : this.now() + this.leaseMs }),
+      JSON.stringify({ ownerToken, expiresAt: release ? 0 : this.now() + this.leaseMs, processId: process.pid }),
       0,
       "utf8"
     );
@@ -303,4 +323,4 @@ export const withStorageRootLockCoordinator = async <T>(
   operation: (lease: StorageRootLease) => Promise<T>
 ): Promise<T> => coordinator === undefined
   ? withStorageRootLock(options, operation)
-  : coordinator.run(options.rootPath, () => operation({ assertOwned: async () => undefined }));
+  : coordinator.run(options.rootPath, operation);

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import {
   OperationFeedback,
+  hasActiveOperationFeedback,
   runWithActiveOperationFeedback,
   setActiveOperationFeedback
 } from "../../application/operation-feedback/index";
@@ -211,9 +212,11 @@ export const registerGlobalUnderstandingRuntime = (
   context: vscode.ExtensionContext,
   dependencies: GlobalUnderstandingRuntimeDependencies
 ): RegisteredGlobalUnderstandingRuntime => {
-  const operationFeedbackHost = new VscodeOperationFeedbackHost();
-  context.subscriptions.push(operationFeedbackHost);
-  setActiveOperationFeedback(new OperationFeedback(operationFeedbackHost));
+  if (!hasActiveOperationFeedback()) {
+    const operationFeedbackHost = new VscodeOperationFeedbackHost();
+    context.subscriptions.push(operationFeedbackHost);
+    setActiveOperationFeedback(new OperationFeedback(operationFeedbackHost));
+  }
   const tree = new GlobalUnderstandingTreeDataProvider();
   const openController = new GlobalUnderstandingFileOpenController({
     openFile: dependencies.openFile,

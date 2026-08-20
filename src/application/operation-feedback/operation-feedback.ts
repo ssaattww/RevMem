@@ -369,6 +369,9 @@ export const reportActiveOperationFailure = (label: string, error: unknown): voi
   activeOperationFeedback?.reportFailure(label, error);
 };
 
+/** Returns whether activation has already installed the shared Output lifecycle. */
+export const hasActiveOperationFeedback = (): boolean => activeOperationFeedback !== undefined;
+
 /** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
 export const reportActiveStorageLockDiagnostic = (
   diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }

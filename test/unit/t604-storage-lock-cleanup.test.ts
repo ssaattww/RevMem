@@ -138,17 +138,30 @@ test("T604 refuses a live root lock without exposing owner or path diagnostics",
 test("T604 recovers only an expired root lock", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:a"));
-  let now = 1_000;
   try {
-    const first = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "first" });
+    const first = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_000, createOwnerToken: () => "first" });
     const firstRelease = await first.acquire();
-    await firstRelease();
-    now = 1_011;
     const recovered: string[] = [];
-    const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 10, now: () => now, createOwnerToken: () => "second", notifyDiagnostic: (value) => { recovered.push(value.kind); } });
+    const second = new NodeStorageRootLock({ rootPath: route.rootPath, lockPath: route.lockPath, timeoutMs: 0, leaseMs: 1_000, now: () => 2_001, createOwnerToken: () => "second", isProcessAlive: async () => false, notifyDiagnostic: (value) => { recovered.push(value.kind); } });
     const release = await second.acquire();
     assert.deepEqual(recovered, ["stale-recovered"]);
     await release();
+    await firstRelease().catch(() => undefined);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("T604 never steals an expired descriptor from a live cooperative owner", async () => {
+  const temporary = await createTemporaryStorage();
+  const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:live-expired"));
+  try {
+    const first = await new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 1_000, now: () => 0, createOwnerToken: () => "live" }).acquire();
+    await assert.rejects(
+      () => new NodeStorageRootLock({ rootPath: route.rootPath, timeoutMs: 0, leaseMs: 1_000, now: () => 1_001, isProcessAlive: async () => true }).acquire(),
+      StorageRootLockTimeoutError
+    );
+    await first();
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
@@ -478,4 +491,12 @@ test("T604 keeps active snapshots above count and byte limits, publishes through
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
+});
+
+test("T604 composes the Review Range Output lifecycle before startup migration", async () => {
+  const composition = await readFile("src/t305-extension.ts", "utf8");
+  const outputSetup = composition.indexOf("new VscodeOperationFeedbackHost()");
+  const startupMigration = composition.indexOf("await runPersistenceStartupMigration(");
+  assert.ok(outputSetup >= 0 && outputSetup < startupMigration);
+  assert.match(composition, /setActiveOperationFeedback\(new OperationFeedback\(startupFeedbackHost\)\)/u);
 });

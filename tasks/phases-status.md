@@ -31,13 +31,13 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T603はmainへ統合済み。T604は通常review完了・T604-R001〜R009全件closed・fresh independent final review待ち、T605以降は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T603はmainへ統合済み。T604はindependent IFR001〜IFR007 addressed・same independent reviewer finding-limited closure待ち、T605以降は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（通常review完了・T604-R001〜R009全件closed・R3 normal verdict `pass_with_held`）
+- 実装中タスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（independent IFR001〜IFR007 addressed・same independent reviewer finding-limited closure待ち）
 - 次の工程: fresh independent reviewerによるindependent final reviewを実施する
 - 後続候補: T605
 
@@ -181,7 +181,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T601 圧縮snapshotと非Git行追従: 完了・main統合済み
 - T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
-- T604: 通常review完了・T604-R001〜R009全件closed・fresh independent final review待ち（Issue #72、R3 normal verdict `pass_with_held`）
+- T604: independent IFR001〜IFR007 addressed・pending fix commit後のsame independent reviewer finding-limited closure待ち（Issue #72）
 - T605〜T608: 未着手
 
 ### 終了チェックポイント

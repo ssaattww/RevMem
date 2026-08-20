@@ -4,16 +4,16 @@ issue_or_pr: "Issue #72 / PR #73 (draft/open)"
 task_id: T604
 branch: task/t604-storage-lock-cleanup
 base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
-current_head: 6ff92fba68e4bd2cd1ec2db060a796b1166d83b6
-status: normal_review_r3_complete_all_findings_closed_pass_with_held_independent_final_review_pending
-report: reports/issue-72-t604-normal-finding-closure-r3-20260820195213.md
+current_head: pending-fix-commit (implementation worktree started from 207b0cfa6831ea2b140bfbe990cadb059f5261cf)
+status: independent_final_review_ifr001_to_ifr007_addressed_finding_limited_closure_pending
+report: reports/issue-72-t604-independent-review-followup-20260820201341.md
 requirements:
   - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
   - Only expired locks are recovered; diagnostics disclose no path, source, repository ID, or owner token.
   - History remains append-only and has no cleanup policy.
 validation:
   red: npm run test:t604 (R005 cleanup delete failure rejected an already durable publication; R004 fixture seed identity mismatch)
-  green: npm run test:t604 (T604 19 passing; T506 real multi-instance 2 passing)
+  green: npm run test:t604 (T604 19 passing; design structure 1 passing; T506 real multi-instance 2 passing; total 22)
   static:
     - npm run build
     - npm run compile:test
@@ -23,7 +23,7 @@ validation:
     - npm run validate:architecture:negative
     - git diff --check
   ci: not run; merge-gate held by explicit task policy
-next_request: Ask a fresh independent reviewer to perform the T604 independent final review at HEAD 6ff92fba68e4bd2cd1ec2db060a796b1166d83b6. Do not add implementation scope, run CI, push, create a PR, merge, or self-review.
+next_request: After the parent commits the pending IFR001-IFR007 fix, ask the same independent reviewer for finding-limited closure only. Update PR #73 with the exact fix SHA, actual focused count 22, and exact-head CI result; do not add scope, merge, or self-review.
 remaining_risks:
-  - Normal review R3 is complete: T604-R001 through T604-R009 are closed with verdict pass_with_held; fresh independent final review remains pending.
+  - IFR001 through IFR007 are addressed locally; same independent reviewer finding-limited closure and post-commit exact-head CI remain pending.
   - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

@@ -19,6 +19,7 @@ import type {
   ReviewStateStorageRoute
 } from "./contracts";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import type { StorageRootLease } from "./storage-root-lock";
 
 class PersistencePathError extends Error {
   public constructor(
@@ -296,7 +297,8 @@ export class FileSystemReviewStateRepository {
    */
   public async save(
     target: ReviewStateRepositoryTarget,
-    commit: ReviewStateCommit
+    commit: ReviewStateCommit,
+    lease?: StorageRootLease
   ): Promise<void> {
     const validatedCommit = cloneCommit(validateReviewStateCommit(commit, target));
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
@@ -308,8 +310,9 @@ export class FileSystemReviewStateRepository {
       route.statePointerPath,
       async () => {
         if (route.storageKind === "repository") {
-          await this.saveRepositoryCommit(target, route, validatedCommit);
+          await this.saveRepositoryCommit(target, route, validatedCommit, lease);
         } else {
+          await lease?.assertOwned();
           await this.writeText(
             route.statePointerPath,
             serializeJson(validatedCommit)
@@ -406,7 +409,8 @@ export class FileSystemReviewStateRepository {
   private async saveRepositoryCommit(
     target: ReviewStateRepositoryTarget,
     route: ReviewStateStorageRoute,
-    commit: ReviewStateCommit
+    commit: ReviewStateCommit,
+    lease?: StorageRootLease
   ): Promise<void> {
     const existingManifestText = await this.readText(route.statePointerPath);
     let existingManifest: RepositoryStateManifest | undefined;
@@ -439,7 +443,9 @@ export class FileSystemReviewStateRepository {
     const contextPath = resolveManifestFile(route.rootPath, contextRelativePath);
     const globalPath = resolveManifestFile(route.rootPath, globalRelativePath);
 
+    await lease?.assertOwned();
     await this.writeText(contextPath, contextText);
+    await lease?.assertOwned();
     await this.writeText(globalPath, globalText);
 
     const contextReference: RepositoryStateManifestContextReference = {
@@ -467,6 +473,7 @@ export class FileSystemReviewStateRepository {
       updatedAt: this.now().toISOString()
     };
 
+    await lease?.assertOwned();
     await this.writeText(route.statePointerPath, serializeJson(manifest));
   }
 

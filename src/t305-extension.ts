@@ -5,7 +5,8 @@ import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
-import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
+import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback } from "./application/operation-feedback/index";
+import { VscodeOperationFeedbackHost } from "./ui/operation-feedback/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
@@ -74,6 +75,11 @@ const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
 
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
+  // Startup migration can fail before the main runtime composition. Install the
+  // shared Output boundary first so its queued terminal lock diagnostic flushes.
+  const startupFeedbackHost = new VscodeOperationFeedbackHost();
+  context.subscriptions.push(startupFeedbackHost);
+  setActiveOperationFeedback(new OperationFeedback(startupFeedbackHost));
   await runPersistenceStartupMigration({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
