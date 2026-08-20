@@ -37,7 +37,7 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（independent IFR001〜005 R3をaddressed。technical implementation SHAはpending。same reviewer finding限定closure R3、exact-head CI held、PR body external sync pending。`test:t606`は201 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
+- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（independent IFR001〜005 R3をaddressed。technical implementation SHAは`663b4078d91197b102c80825064d8b7bb73f8771`。same reviewer finding限定closure R3、exact-head CI held、PR body external sync pending。`test:t606`は201 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
 - 次の工程: 独立最終review
 - 後続候補: T607
 

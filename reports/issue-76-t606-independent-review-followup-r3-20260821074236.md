@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の既存IFR001〜IFR005だけをR3として修正した。開始HEADは`e1ea5d9858760b3f944d22740f4db8ba2b78edad`で、technical SHAは未commitのためpendingである。
+T606 / Issue #76 / PR #77 の既存IFR001〜IFR005だけをR3として修正した。開始HEADは`e1ea5d9858760b3f944d22740f4db8ba2b78edad`で、technical implementation SHAは`663b4078d91197b102c80825064d8b7bb73f8771`である。
 
 ## sub-agentを使う理由
 
@@ -34,8 +34,8 @@ Focused Redは`npm run compile:test; node --test --test-name-pattern="T606 IFR00
 
 ## 結果
 
-IFR001〜IFR005はimplementation scopeでaddressed。technical SHAは未commitのためpending。same independent reviewer finding-limited closure R3 pending、exact-head CI held、PR body external sync pendingである。
+IFR001〜IFR005はimplementation scopeでaddressed。technical implementation SHAは`663b4078d91197b102c80825064d8b7bb73f8771`。same independent reviewer finding-limited closure R3 pending、exact-head CI held、PR body external sync pendingである。
 
 ## リスク
 
-technical SHAは未commitであり、external PR bodyとexact-head CIはparentの後続作業である。Markdown wording toolingはrepositoryに存在せずheldである。
+external PR body syncとexact-head CIはparentの後続作業である。Markdown wording toolingはrepositoryに存在せずheldである。
