@@ -1,0 +1,29 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #72 / PR #73 (draft/open)"
+task_id: T604
+branch: task/t604-storage-lock-cleanup
+base_ref: 96057f9edc95a8f38bfc01da39eae350c29e9c39
+current_head: de3d9475c980338c983cb39603d7bc0756eebbbb
+status: ci_followup_dead_owner_recovery_addressed_pending_same_reviewer_delta_verification
+report: reports/issue-72-t604-independent-review-followup-20260820201341.md
+requirements:
+  - Shared storage roots use a leased exclusive lock for state, history, cache, snapshot, and cleanup writes.
+  - Only expired locks are recovered; diagnostics disclose no path, source, repository ID, or owner token.
+  - History remains append-only and has no cleanup policy.
+validation:
+  red: npm run test:t604 (R005 cleanup delete failure rejected an already durable publication; R004 fixture seed identity mismatch)
+  green: npm run test:t604 (T604 21 passing; design structure 1 passing; T506 real multi-instance 2 passing; total 24)
+  static:
+    - npm run build
+    - npm run compile:test
+    - npm run typecheck:contracts
+    - npm run lint
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - git diff --check
+  ci: not run; merge-gate held by explicit task policy
+next_request: Ask the same independent reviewer to verify only the dead-owner stale-recovery CI delta against IFR001/R2 at fix HEAD de3d9475c980338c983cb39603d7bc0756eebbbb, then obtain a new attestation after matching exact-head CI. Do not add scope, merge, or self-review.
+remaining_risks:
+  - IFR001 through IFR005 and IFR007 are addressed locally; same independent reviewer finding-limited closure R2 and post-commit exact-head CI remain pending.
+  - Exact-head CI must run only after the parent creates and pushes the follow-up commit; it remains the merge gate.

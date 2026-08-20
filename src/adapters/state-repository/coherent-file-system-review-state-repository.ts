@@ -20,6 +20,7 @@ import type {
 } from "./contracts";
 import { loadPersistedOwnerGlobal } from "./owner-global-state-loader";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import type { StorageRootLease } from "./storage-root-lock";
 
 const cloneValue = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
@@ -294,14 +295,15 @@ export class FileSystemReviewStateRepository {
    */
   public async save(
     target: ReviewStateRepositoryTarget,
-    commit: ReviewStateCommit
+    commit: ReviewStateCommit,
+    lease?: StorageRootLease
   ): Promise<void> {
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
 
     await this.serializeWrite(route.rootPath, async () => {
       try {
         requireTargetContextKind(target, commit.contextState.kind);
-        await this.atomicRepository.save(target, commit);
+        await this.atomicRepository.save(target, commit, lease);
         this.recordRepositoryGlobal(target, commit.globalState);
       } catch (error) {
         await this.notifyFailure("save", target, route.statePointerPath, error);
@@ -322,7 +324,8 @@ export class FileSystemReviewStateRepository {
    * @throws Rejects with `StaleReviewStateError` when current persisted state differs from `expected`, or with validation/persistence errors; failure notification errors are ignored.
    */
   public async commit(
-    transaction: Readonly<ReviewStateTransactionLike>
+    transaction: Readonly<ReviewStateTransactionLike>,
+    lease?: StorageRootLease
   ): Promise<void> {
     const target = requireMatchingIdentity(transaction);
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
@@ -346,7 +349,7 @@ export class FileSystemReviewStateRepository {
 
         const next = transactionPairToCommit(transaction.next);
         requireTargetContextKind(target, next.contextState.kind);
-        await this.atomicRepository.save(target, next);
+        await this.atomicRepository.save(target, next, lease);
         this.recordRepositoryGlobal(target, next.globalState);
       } catch (error) {
         await this.notifyFailure("commit", target, route.statePointerPath, error);
@@ -363,7 +366,8 @@ export class FileSystemReviewStateRepository {
    * context or Global snapshot when either expectation no longer matches.
    */
   public async create(
-    transaction: Readonly<ReviewStateCreateTransactionLike>
+    transaction: Readonly<ReviewStateCreateTransactionLike>,
+    lease?: StorageRootLease
   ): Promise<void> {
     const target = requireMatchingCreateIdentity(transaction);
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
@@ -385,7 +389,7 @@ export class FileSystemReviewStateRepository {
 
         const next = transactionPairToCommit(transaction.next);
         requireTargetContextKind(target, next.contextState.kind);
-        await this.atomicRepository.save(target, next);
+        await this.atomicRepository.save(target, next, lease);
         this.recordRepositoryGlobal(target, next.globalState);
       } catch (error) {
         await this.notifyFailure("commit", target, route.statePointerPath, error);

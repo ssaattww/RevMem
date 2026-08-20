@@ -5,7 +5,11 @@ import path from "node:path";
 import { NodeNonGitSnapshotStorage } from "./non-git-snapshots/index";
 import {
   NodeAtomicTextFileStore,
+  InProcessStorageRootLockCoordinator,
+  withStorageRootLockCoordinator,
   type AtomicTextFileStore,
+  type StorageRootLease,
+  type StorageRootLockCoordinator,
   type ReviewStateRepositoryTarget,
   type ReviewStateStorageUris
 } from "./state-repository/index";
@@ -19,6 +23,9 @@ import {
 interface StartupMigrationOptions {
   readonly storageUris: ReviewStateStorageUris;
   readonly atomicFileStore?: AtomicTextFileStore;
+  /** Coordinator shared with an alternate AtomicTextFileStore namespace. */
+  readonly storageLockCoordinator?: StorageRootLockCoordinator;
+  readonly notifyStorageLockDiagnostic?: (diagnostic: import("./state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -154,13 +161,36 @@ export const runPersistenceStartupMigration = async (
   options: StartupMigrationOptions
 ): Promise<void> => {
   const store = options.atomicFileStore ?? new NodeAtomicTextFileStore();
-  const roots = new Map<string, string | undefined>();
+  const storageLockCoordinator = options.storageLockCoordinator ?? (
+    options.atomicFileStore !== undefined && !(options.atomicFileStore instanceof NodeAtomicTextFileStore)
+      ? new InProcessStorageRootLockCoordinator()
+      : undefined
+  );
+  const migrateRoot = async (
+    rootPath: string,
+    stateMigration: (fencedStore: AtomicTextFileStore) => Promise<string | undefined>
+  ): Promise<void> => {
+    await withStorageRootLockCoordinator(storageLockCoordinator, { rootPath, notifyDiagnostic: options.notifyStorageLockDiagnostic }, async (lease) => {
+      // State, history and snapshot recovery deliberately share one lease. A second
+      // Extension Host therefore cannot read an old migration plan between phases.
+      const fencedStore = fenceStore(store, lease);
+      const expectedRepositoryId = await stateMigration(fencedStore);
+      await lease.assertOwned();
+      await migrateHistoryRoot(rootPath, fencedStore, expectedRepositoryId);
+      await createTrustedPersistencePathGuard(rootPath, fencedStore)(path.join(rootPath, "snapshots"));
+      await lease.assertOwned();
+      await new NodeNonGitSnapshotStorage({
+        snapshotDirectory: path.join(rootPath, "snapshots"),
+        atomicFileStore: fencedStore,
+        storageLockCoordinator,
+        notifyStorageLockDiagnostic: options.notifyStorageLockDiagnostic
+      }).migratePersistedMetadata(lease);
+    });
+  };
   const workspaceRoot = options.storageUris.storageUri?.fsPath;
   if (workspaceRoot !== undefined && workspaceRoot.trim().length > 0) {
-    roots.set(
-      path.resolve(workspaceRoot),
-      await migrateWorkspaceState(options.storageUris, store)
-    );
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+    await migrateRoot(resolvedWorkspaceRoot, (fencedStore) => migrateWorkspaceState(options.storageUris, fencedStore));
   }
 
   const globalRoot = path.resolve(options.storageUris.globalStorageUri.fsPath);
@@ -169,21 +199,14 @@ export const runPersistenceStartupMigration = async (
     for (const name of await readDirectoryNames(collectionRoot)) {
       if (!/^[0-9a-f]{64}$/u.test(name)) continue;
       const rootPath = path.join(collectionRoot, name);
-      roots.set(
-        rootPath,
-        await migrateRepositoryStateRoot(options.storageUris, store, collection, name)
-      );
+      await migrateRoot(rootPath, (fencedStore) =>
+        migrateRepositoryStateRoot(options.storageUris, fencedStore, collection, name));
     }
   }
-
-  for (const [rootPath, expectedRepositoryId] of roots) {
-    await migrateHistoryRoot(rootPath, store, expectedRepositoryId);
-    await createTrustedPersistencePathGuard(rootPath, store)(
-      path.join(rootPath, "snapshots")
-    );
-    await new NodeNonGitSnapshotStorage({
-      snapshotDirectory: path.join(rootPath, "snapshots"),
-      atomicFileStore: store
-    }).migratePersistedMetadata();
-  }
 };
+
+const fenceStore = (store: AtomicTextFileStore, lease: StorageRootLease): AtomicTextFileStore => ({
+  readText: (filePath) => store.readText(filePath),
+  writeTextAtomically: async (filePath, content) => { await lease.assertOwned(); await store.writeTextAtomically(filePath, content); },
+  ...(store.deleteText === undefined ? {} : { deleteText: async (filePath: string) => { await lease.assertOwned(); await store.deleteText!(filePath); } })
+});

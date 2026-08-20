@@ -4,6 +4,7 @@ import type {
   ReviewContextState,
   SchemaVersion
 } from "../../core/contracts/index";
+import type { StorageRootLockCoordinator, StorageRootLockDiagnostic } from "./storage-root-lock";
 
 /**
  * Recursive readonly view used to accept Review State Service transactions structurally.
@@ -57,13 +58,13 @@ export interface ReviewStateStorageRoute {
   readonly rootPath: string;
   /** Absolute path of the manifest pointer or workspace-state document used to make a state commit visible. */
   readonly statePointerPath: string;
-  /** Absolute directory reserved for future history entries; this adapter does not create or read history entries. */
+  /** Absolute directory containing append-only review history entries. */
   readonly historyDirectory: string;
-  /** Absolute directory reserved for future snapshots; this adapter does not create or read snapshot entries. */
+  /** Absolute directory containing bounded, pointer-protected snapshot generations. */
   readonly snapshotDirectory: string;
   /** Absolute repository-style cache directory, omitted for a non-Git workspace route. */
   readonly cacheDirectory?: string;
-  /** Absolute future lock location; T104 does not acquire a cross-window or cross-process lock. */
+  /** Absolute root-local lease lock used by state, history, cache, snapshot, cleanup, and startup recovery mutation. */
   readonly lockPath: string;
 }
 
@@ -192,6 +193,10 @@ export interface JsonlReviewHistoryStoreOptions {
   readonly storageUris: ReviewStateStorageUris;
   /** Optional atomic text implementation for deterministic tests. */
   readonly atomicFileStore?: AtomicTextFileStore;
+  /** Lock coordinator sharing the same namespace as a custom atomic store. */
+  readonly storageLockCoordinator?: StorageRootLockCoordinator;
+  /** Optional privacy-safe observer for lock lifecycle. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 /** Persistence phase surfaced to the UI/application notification adapter. */
@@ -228,4 +233,14 @@ export interface FileSystemReviewStateRepositoryOptions {
   readonly now?: () => Date;
   /** Optional commit-ID source used to make immutable document filenames unique; defaults to a random UUID. */
   readonly createCommitId?: () => string;
+  /** Optional privacy-safe observer for cross-window storage lock timeout, failure, and stale recovery. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
+  /** Optional bounded wait and lease values for the shared storage-root lock. */
+  readonly storageLock?: { readonly timeoutMs?: number; readonly leaseMs?: number; readonly retryDelayMs?: number };
+  /** Optional lock coordinator for a custom AtomicTextFileStore namespace. */
+  readonly storageLockCoordinator?: StorageRootLockCoordinator;
+  /** Test-only fault seam immediately before a state document becomes durable. */
+  readonly beforeAtomicPublication?: (filePath: string) => void | Promise<void>;
+  /** Test-only override for simulating two independently scheduled Extension Hosts. */
+  readonly disableOuterWriteSerializationForTest?: boolean;
 }

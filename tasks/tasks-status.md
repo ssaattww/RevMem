@@ -5,16 +5,16 @@
 ## 現在位置
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
-- GitHub Issue: #70
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（進行中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
-- 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71 draft/open、independent finding follow-up実装済み）
-- 現在のタスク: T406 / Issue #70 independent finding follow-up実装済み（T406-IFR001/IFR002、同source independent reviewerのfinding限定closure待ち、main統合前）
-- 次のタスク: 同source independent reviewerによるT406-IFR001/IFR002限定closure verificationを実施する。新規観点・新規findingを追加しない。CIはmerge gateで対象HEAD一致を確認する
-- 実装状態: T405、T506、T603は独立review finding closureとexact-head CIを完了し、mainへsquash merge済み。T406はtask branchで実装済み・review待ち
-- 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`
+- GitHub Issue: #72
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
+- 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
+- 現在のタスク: T604 / Issue #72 cross-window storage lock and bounded cleanup（CI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`、same independent reviewer IFR001/R2 delta verification待ち）
+- 次のタスク: CI follow-up commit後、同一independent reviewerがIFR001/R2 stale-recovery deltaだけをverificationし、新しいattestationとexact-head CIを取得する
+- 実装状態: T405、T406、T506、T603はmainへ統合済み。T604はtask branchでindependent finding follow-upのlocal validation完了・closure待ち
+- 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はIFR001〜IFR005/IFR007 addressed後のsame independent reviewer finding-limited closure R2待ち
 - ブロッカー: なし
-- Gitブランチ: `task/t406-github-pr-integration`
-- Pull Request: #71（draft/open、independent final review fail、T406-IFR001/IFR002 follow-up実装済み、同source independent reviewerのfinding限定closure待ち、CIはmerge gateで確認、main統合前）
+- Gitブランチ: `task/t604-storage-lock-cleanup`
+- Pull Request: #73（draft/open、CI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`のsame independent reviewer IFR001/R2 delta verification待ち）
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
 - PR #68 R2通常closure: `reports/issue-66-pr68-finding-closure-r2-20260820082607.md`。PR68-R002/R003はclosed、normal verdictは`pass_with_held`
 - PR #68独立review: `reports/issue-66-pr68-independent-final-review-20260820082950.md`。IFR001 High、IFR002 Medium、IFR003 Lowで`fail`
@@ -56,6 +56,8 @@
 - T506 merge commit: `8dd8aacbce3c0afb7a2d15091f970e96ec141561`
 - T603独立reviewレポート: `reports/issue-1-t603-independent-final-review-20260817093112.md`
 - T603独立review finding closure R3レポート: `reports/issue-1-t603-independent-finding-closure-r3-20260817100415.md`
+- T604通常review finding closure R3レポート: `reports/issue-72-t604-normal-finding-closure-r3-20260820195213.md`
+- T604 independent finding follow-up report: `reports/issue-72-t604-independent-review-followup-20260820201341.md`
 - T603 merge commit: `8cbdaa55176105cb02dcd071f2fd9bbcb8484706`
 - T306実装レポート: `reports/issue-1-t306-implementation-20260806113611.md`
 - T306 Extension Host runner follow-upレポート: `reports/issue-1-t306-extension-host-runner-followup-20260806115832.md`
@@ -337,7 +339,7 @@
 | T403 | 完了 | M | GitHub metadata・source-redacted diff cache、期限、最終更新時刻、429・network failure限定offline読込、fresh/stale表示、pointer-last atomic publicationを実装した | T104、T402 | tokenとsource本文を永続化せず、exact context/repository/PR/base/head cacheだけを利用する。mixed `rate-limit/network`・`api`ではfail closed、patch欠落・不完全後のnetwork failureではfallbackを維持する。通常reviewと一度限りの独立review findingsをclosureし、PR #44をcurrent mainへ統合済み |
 | T404 | 完了 | L | host/owner/repository/PR番号のcontext ID、base/head revision更新、open/closed/merged保存、複数PRレイヤー状態を`globalStorageUri`へ実装した | T104、T205、T401、T403 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #48をcurrent mainへsquash merge済み |
 | T405 | 完了 | L | Review Contexts View、PR再検出、GitHub再接続、cache更新、layer切替、context表示削除、closed PR diff表示を実装した | T302、T304、T305、T404 | 通常reviewと独立review closureを完了し、PR #54をmerge commit `11c2d517` でmainへ統合済み |
-| T406 | independent follow-up実装済み | L | PR #71 draft/openのindependent finding `T406-IFR001` Mediumと`T406-IFR002` Mediumを修正した | T401〜T405 | 同source independent reviewerのfinding限定closure verificationを待つ。CIはmerge gateで対象HEAD一致を確認し、main統合前 |
+| T406 | 完了 | L | GitHub障害・複数PR・closed PR統合試験を実装した | T401〜T405 | PR #71のreview closureを完了し、merge commit `96057f9edc95a8f38bfc01da39eae350c29e9c39`でmainへ統合済み |
 
 ## P5 Global確認済みと理解率
 
@@ -357,7 +359,7 @@
 | T601 | 完了 | L | 圧縮snapshot保存、Myers相当の行差分、Git未導入・非Git時のworkspace context追従、snapshot期限と上限を実装する。PR #33で最新generation pointerとpersistent adapterを実装済み | T103、T104、T201 | Gitなしで確認・編集・再起動追従が動き、snapshot欠落・破損・曖昧時は未確認になる。AC-13を満たす。独立review findingをclosed、exact-head CI成功済み |
 | T602 | 完了 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #49をcurrent mainへsquash merge済み |
 | T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
-| T604 | 未着手 | L | 排他的file lock、期限切れ判定、複数window競合、atomic history append、cache・snapshot整理を実装する | T104、T403、T603 | 同時書き込みでcurrent stateとhistoryを壊さず、stale lockを回復し、履歴は無期限保持する |
+| T604 | CI follow-up fix・same independent reviewer IFR001/R2 delta verification待ち | L | R2 technical closure後、attestation head `dc66e5ea98281a094c1dff20a3fc21d689cf4492`のT506 phase2 dead-owner timeoutをCI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`で修正した | T104、T403、T603 | focused localはT604 21、design structure 1、T506 real multi-instance 2、計24。same reviewer IFR001/R2 delta verification、新attestation、matching exact-head CIが必要。 |
 | T605 | 未着手 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験する | T103、T202、T401、T601、T604 | rootごとのcontextとrepositoryが混線せず、Git・file操作がworkspace側で行われる |
 | T606 | 未着手 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装する | T403、T601〜T605 | token・source本文をlogへ出さず、全障害fixtureで誤った確認済み表示をしない。AC-24を満たす |
 | T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
@@ -383,4 +385,4 @@
 
 ## 次回開始時の選択
 
-T406 / Issue #70 は `task/t406-github-pr-integration` でnormal closure後のindependent finding follow-upを実装済みである。PR #71はdraft/openかつmain統合前であり、次回は同source independent reviewerによるT406-IFR001/IFR002限定closureを再開する。CIはmerge gateで対象HEAD一致を確認する。
+T604 / Issue #72 は `task/t604-storage-lock-cleanup` でCI follow-up fix `de3d9475c980338c983cb39603d7bc0756eebbbb`を作成した。次回は同一independent reviewerがIFR001/R2 stale-recovery deltaだけをverificationし、新attestationとmatching exact-head CIを取得する。CI、push、PR、mergeは本行政同期では未実行である。

@@ -61,6 +61,10 @@ export interface NonGitSnapshotStorage {
   entries(): Promise<readonly (readonly [string, NonGitSnapshotStoredValue])[]>;
   getLatest(workspaceContextId: string, fileId: string): Promise<string | undefined>;
   setLatest(workspaceContextId: string, fileId: string, snapshotId: string | undefined): Promise<void>;
+  /** Optional adapter transaction that publishes one generation and plans bounded cleanup under one owner fence. */
+  putAndCleanup?(snapshotId: string, bytes: Uint8Array, createdAt: number, limits: { readonly maxSnapshots: number; readonly maxTotalCompressedBytes: number; readonly retentionMs: number }): Promise<void>;
+  /** Optional atomic publication of a generation, its latest pointer, and bounded cleanup. */
+  putLatestAndCleanup?(workspaceContextId: string, fileId: string, snapshotId: string, bytes: Uint8Array, createdAt: number, limits: { readonly maxSnapshots: number; readonly maxTotalCompressedBytes: number; readonly retentionMs: number }): Promise<void>;
 }
 
 /** Deterministic in-memory port used by application tests. */
@@ -105,6 +109,11 @@ export class InMemoryNonGitSnapshotStorage implements NonGitSnapshotStorage {
       return;
     }
     this.latest.set(key, snapshotId);
+  }
+
+  public async putLatestAndCleanup(workspaceContextId: string, fileId: string, snapshotId: string, bytes: Uint8Array, createdAt: number): Promise<void> {
+    await this.put(snapshotId, bytes, createdAt);
+    await this.setLatest(workspaceContextId, fileId, snapshotId);
   }
 
   public async inspect(snapshotId: string): Promise<Uint8Array | undefined> {
@@ -171,8 +180,16 @@ export class NonGitSnapshotTracker {
     if (compressed.byteLength > this.maxSnapshotCompressedBytes) {
       throw new Error("Snapshot exceeds maxSnapshotCompressedBytes");
     }
-    await this.storage.put(snapshotId, compressed, now);
-    await this.cleanup(now, snapshotId);
+    if (this.storage.putAndCleanup === undefined) {
+      await this.storage.put(snapshotId, compressed, now);
+      await this.cleanup(now, snapshotId);
+    } else {
+      await this.storage.putAndCleanup(snapshotId, compressed, now, {
+        maxSnapshots: this.limits.maxSnapshots,
+        maxTotalCompressedBytes: this.maxTotalCompressedBytes,
+        retentionMs: this.limits.retentionMs
+      });
+    }
     if (await this.storage.get(snapshotId) === undefined) {
       throw new Error("Saved snapshot was removed during cleanup");
     }
@@ -181,9 +198,26 @@ export class NonGitSnapshotTracker {
 
   /** Publishes a snapshot only after it has been fully stored and validated by the caller's commit ordering. */
   public async saveLatest(state: NonGitTrackedFileState, now: number): Promise<SavedNonGitSnapshot> {
-    const saved = await this.save(state, now);
-    await this.storage.setLatest(state.workspaceContextId, state.fileId, saved.snapshotId);
-    return saved;
+    assertTimestamp(now);
+    const envelope: SnapshotEnvelope = {
+      schemaVersion: 1, createdAt: now,
+      workspaceContextId: requireNonEmpty(state.workspaceContextId, "workspaceContextId"),
+      fileId: requireNonEmpty(state.fileId, "fileId"), content: state.content,
+      reviewedRanges: normalizeLineIntervals(state.reviewedRanges),
+    };
+    const payload = JSON.stringify(envelope);
+    const snapshotId = this.codec.sha256(payload);
+    const compressed = await this.codec.compress(payload);
+    if (compressed.byteLength > this.maxSnapshotCompressedBytes) throw new Error("Snapshot exceeds maxSnapshotCompressedBytes");
+    const limits = { maxSnapshots: this.limits.maxSnapshots, maxTotalCompressedBytes: this.maxTotalCompressedBytes, retentionMs: this.limits.retentionMs };
+    if (this.storage.putLatestAndCleanup !== undefined) {
+      await this.storage.putLatestAndCleanup(state.workspaceContextId, state.fileId, snapshotId, compressed, now, limits);
+    } else {
+      await this.storage.put(snapshotId, compressed, now);
+      await this.storage.setLatest(state.workspaceContextId, state.fileId, snapshotId);
+    }
+    if (await this.storage.get(snapshotId) === undefined) throw new Error("Saved snapshot was removed during publication");
+    return { snapshotId, compressedBytes: compressed.byteLength };
   }
 
   /** Makes prior review evidence ineligible before a state transition that may fail to snapshot. */

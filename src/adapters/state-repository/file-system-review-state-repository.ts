@@ -19,6 +19,7 @@ import type {
   ReviewStateStorageRoute
 } from "./contracts";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { StorageRootLeaseLostError, type StorageRootLease } from "./storage-root-lock";
 
 class PersistencePathError extends Error {
   public constructor(
@@ -296,7 +297,8 @@ export class FileSystemReviewStateRepository {
    */
   public async save(
     target: ReviewStateRepositoryTarget,
-    commit: ReviewStateCommit
+    commit: ReviewStateCommit,
+    lease?: StorageRootLease
   ): Promise<void> {
     const validatedCommit = cloneCommit(validateReviewStateCommit(commit, target));
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
@@ -308,11 +310,13 @@ export class FileSystemReviewStateRepository {
       route.statePointerPath,
       async () => {
         if (route.storageKind === "repository") {
-          await this.saveRepositoryCommit(target, route, validatedCommit);
+          await this.saveRepositoryCommit(target, route, validatedCommit, lease);
         } else {
+          await lease?.assertOwned();
           await this.writeText(
             route.statePointerPath,
-            serializeJson(validatedCommit)
+            serializeJson(validatedCommit),
+            lease
           );
         }
 
@@ -406,7 +410,8 @@ export class FileSystemReviewStateRepository {
   private async saveRepositoryCommit(
     target: ReviewStateRepositoryTarget,
     route: ReviewStateStorageRoute,
-    commit: ReviewStateCommit
+    commit: ReviewStateCommit,
+    lease?: StorageRootLease
   ): Promise<void> {
     const existingManifestText = await this.readText(route.statePointerPath);
     let existingManifest: RepositoryStateManifest | undefined;
@@ -439,8 +444,10 @@ export class FileSystemReviewStateRepository {
     const contextPath = resolveManifestFile(route.rootPath, contextRelativePath);
     const globalPath = resolveManifestFile(route.rootPath, globalRelativePath);
 
-    await this.writeText(contextPath, contextText);
-    await this.writeText(globalPath, globalText);
+    await lease?.assertOwned();
+    await this.writeText(contextPath, contextText, lease);
+    await lease?.assertOwned();
+    await this.writeText(globalPath, globalText, lease);
 
     const contextReference: RepositoryStateManifestContextReference = {
       contextId: target.contextId,
@@ -467,7 +474,8 @@ export class FileSystemReviewStateRepository {
       updatedAt: this.now().toISOString()
     };
 
-    await this.writeText(route.statePointerPath, serializeJson(manifest));
+    await lease?.assertOwned();
+    await this.writeText(route.statePointerPath, serializeJson(manifest), lease);
   }
 
   private resolveReferencedFile(
@@ -512,10 +520,15 @@ export class FileSystemReviewStateRepository {
     return content;
   }
 
-  private async writeText(filePath: string, content: string): Promise<void> {
+  private async writeText(filePath: string, content: string, lease?: StorageRootLease): Promise<void> {
     try {
+      // This final fence is deliberately adjacent to the atomic-store boundary.
+      // A lease may be detached while a preceding preparation step is suspended.
+      await this.options.beforeAtomicPublication?.(filePath);
+      await lease?.assertOwned();
       await this.fileStore.writeTextAtomically(filePath, content);
     } catch (error) {
+      if (error instanceof StorageRootLeaseLostError) throw error;
       throw asPersistencePathError(filePath, error);
     }
   }

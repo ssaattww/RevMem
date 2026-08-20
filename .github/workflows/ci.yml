@@ -64,6 +64,8 @@ jobs:
         run: node tools/run-ci-command.mjs test-t505 npm run test:t505
       - name: T506 Global multi-context integration
         run: node tools/run-ci-command.mjs test-t506 xvfb-run -a npm run test:t506
+      - name: T604 storage lock and cleanup tests
+        run: node tools/run-ci-command.mjs test-t604 npm run test:t604
       - name: Temporary Git integration tests
         run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests

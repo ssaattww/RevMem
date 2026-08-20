@@ -22,6 +22,8 @@ import {
 import { validateOwnerReconciliation } from "./owner-reconciliation-validation";
 import { listPersistedRepositoryContexts } from "./repository-context-catalog";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { NodeAtomicTextFileStore } from "./atomic-text-file-store";
+import { InProcessStorageRootLockCoordinator, withStorageRootLockCoordinator, type StorageRootLease } from "./storage-root-lock";
 
 export { StaleReviewStateError };
 
@@ -143,7 +145,7 @@ extends CoherentFileSystemReviewStateRepository {
       target
     );
 
-    await this.serializeOuterWrite(route.rootPath, async () => {
+    await this.serializeOuterWrite(route.rootPath, async (lease) => {
       const preparation = await this.prepareTarget(target, "save");
       const currentContext =
         preparation === "uncertain" ? undefined : await super.load(target);
@@ -179,7 +181,7 @@ extends CoherentFileSystemReviewStateRepository {
         };
       }
 
-      await super.save(target, nextCommit);
+      await super.save(target, nextCommit, lease);
       this.clearUncertain(target, route.rootPath);
     });
   }
@@ -207,11 +209,11 @@ extends CoherentFileSystemReviewStateRepository {
       target
     );
 
-    await this.serializeOuterWrite(route.rootPath, async () => {
+    await this.serializeOuterWrite(route.rootPath, async (lease) => {
       if (await this.prepareTarget(target, "commit") === "uncertain") {
         throw new StaleReviewStateError(target);
       }
-      await super.commit(transaction);
+      await super.commit(transaction, lease);
       this.clearUncertain(target, route.rootPath);
     });
   }
@@ -238,11 +240,11 @@ extends CoherentFileSystemReviewStateRepository {
       target
     );
 
-    await this.serializeOuterWrite(route.rootPath, async () => {
+    await this.serializeOuterWrite(route.rootPath, async (lease) => {
       if (await this.prepareTarget(target, "commit") === "uncertain") {
         throw new StaleReviewStateError(target);
       }
-      await super.create(transaction);
+      await super.create(transaction, lease);
       this.clearUncertain(target, route.rootPath);
     });
   }
@@ -308,8 +310,26 @@ extends CoherentFileSystemReviewStateRepository {
 
   private async serializeOuterWrite<T>(
     storageRoot: string,
-    operation: () => Promise<T>
+    operation: (lease: StorageRootLease) => Promise<T>
   ): Promise<T> {
+    const runUnderCoordinator = async (): Promise<T> => {
+      const coordinator = this.repositoryOptions.storageLockCoordinator ?? (
+        this.repositoryOptions.atomicFileStore !== undefined &&
+        !(this.repositoryOptions.atomicFileStore instanceof NodeAtomicTextFileStore)
+          ? new InProcessStorageRootLockCoordinator()
+          : undefined
+      );
+      return withStorageRootLockCoordinator(coordinator, {
+        rootPath: storageRoot,
+        timeoutMs: this.repositoryOptions.storageLock?.timeoutMs,
+        leaseMs: this.repositoryOptions.storageLock?.leaseMs,
+        retryDelayMs: this.repositoryOptions.storageLock?.retryDelayMs,
+        notifyDiagnostic: this.repositoryOptions.notifyStorageLockDiagnostic
+      }, operation);
+    };
+    if (this.repositoryOptions.disableOuterWriteSerializationForTest) {
+      return runUnderCoordinator();
+    }
     const previous = sharedOuterWriteTailByStorageRoot.get(storageRoot);
     let release: () => void = () => undefined;
     const tail = new Promise<void>((resolve) => {
@@ -319,7 +339,7 @@ extends CoherentFileSystemReviewStateRepository {
 
     await previous;
     try {
-      return await operation();
+      return await runUnderCoordinator();
     } finally {
       release();
       if (sharedOuterWriteTailByStorageRoot.get(storageRoot) === tail) {

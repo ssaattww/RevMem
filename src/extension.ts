@@ -19,6 +19,7 @@ import {
 import { NodeNonGitSnapshotCodec, NodeNonGitSnapshotStorage } from "./adapters/non-git-snapshots/index";
 import { SnapshotTrackingWorkspaceReviewStateSessionProvider } from "./adapters/workspace-review-state/index";
 import { NonGitSnapshotTracker } from "./application/non-git-snapshots/index";
+import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import {
   DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
   resolveConfiguredNonGitSnapshotLimits
@@ -284,12 +285,16 @@ export function activate(
       }
     });
   fileExclusionConfigurationController.start();
+  const reportStorageLockDiagnostic = (diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }): void => {
+    reportActiveStorageLockDiagnostic(diagnostic);
+  };
 
   const atomicRepository = new FileSystemReviewStateRepository({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
-    }
+    },
+    notifyStorageLockDiagnostic: reportStorageLockDiagnostic
   });
   const repository = new DebouncedReviewStateRepository({
     delegate: atomicRepository
@@ -301,7 +306,8 @@ export function activate(
       storageUris: {
         globalStorageUri: context.globalStorageUri,
         storageUri: context.storageUri
-      }
+      },
+      notifyStorageLockDiagnostic: reportStorageLockDiagnostic
     })
   });
   const workspaceStorageUris = {
@@ -311,7 +317,8 @@ export function activate(
   const snapshotStorage = new NodeNonGitSnapshotStorage({
     snapshotDirectory: resolveReviewStateStorageRoute(workspaceStorageUris, {
       kind: "workspace", repositoryId: "extension-runtime", contextId: "extension-runtime"
-    }).snapshotDirectory
+    }).snapshotDirectory,
+    notifyStorageLockDiagnostic: reportStorageLockDiagnostic
   });
   const workspaceSessionProvider = new SnapshotTrackingWorkspaceReviewStateSessionProvider({
     identityService: new WorkspaceIdentityService(stableHash),

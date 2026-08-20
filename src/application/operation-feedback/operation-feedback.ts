@@ -217,6 +217,7 @@ export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
   private readonly pendingBoundaryDuplicates = new WeakSet<object>();
   private nextId = 0;
+  private readonly reportedStorageLockScopes = new Set<string>();
 
   public constructor(
     private readonly host: OperationFeedbackHost,
@@ -275,6 +276,20 @@ export class OperationFeedback {
     this.appendFailure(requireLabel(label), error, this.now());
   }
 
+  /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
+  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered", operationId: string): void {
+    const scope = `${operationId}\0${kind}`;
+    if (this.reportedStorageLockScopes.has(scope)) return;
+    this.reportedStorageLockScopes.add(scope);
+    this.host.appendLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: "Storage lock",
+      event: kind === "stale-recovered" ? "succeeded" : "failed",
+      message: `Storage lock ${kind}.`
+    });
+    if (kind !== "stale-recovered") this.host.revealLog();
+  }
+
   private recordRunFailure(
     label: string,
     error: unknown,
@@ -330,10 +345,14 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
+const pendingStorageLockDiagnostics: Array<{ readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }> = [];
 
 /** Sets the process-wide operation feedback used by UI/application integration points. */
 export const setActiveOperationFeedback = (feedback: OperationFeedback | undefined): void => {
   activeOperationFeedback = feedback;
+  if (feedback !== undefined) {
+    for (const diagnostic of pendingStorageLockDiagnostics.splice(0)) feedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
+  }
 };
 
 /** Runs through the active UI feedback when available, otherwise executes directly. */
@@ -348,4 +367,18 @@ export const runWithActiveOperationFeedback = <T>(
 /** Reports a handled failure to active diagnostics when the UI host is installed. */
 export const reportActiveOperationFailure = (label: string, error: unknown): void => {
   activeOperationFeedback?.reportFailure(label, error);
+};
+
+/** Returns whether activation has already installed the shared Output lifecycle. */
+export const hasActiveOperationFeedback = (): boolean => activeOperationFeedback !== undefined;
+
+/** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
+export const reportActiveStorageLockDiagnostic = (
+  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }
+): void => {
+  if (activeOperationFeedback === undefined) {
+    pendingStorageLockDiagnostics.push(diagnostic);
+    return;
+  }
+  activeOperationFeedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
 };

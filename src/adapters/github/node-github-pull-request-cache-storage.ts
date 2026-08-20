@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -9,9 +10,12 @@ import {
 } from "../../application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../application/github-pr-diff/index";
 import {
+  InProcessStorageRootLockCoordinator,
   NodeAtomicTextFileStore,
-  type AtomicTextFileStore
+  type AtomicTextFileStore,
+  withStorageRootLockCoordinator
 } from "../state-repository/index";
+import { createTrustedPersistencePathGuard } from "../state-repository/persistence-schema-recovery";
 
 /** Constructor options for repository-local GitHub metadata and diff cache persistence. */
 export interface NodeGitHubPullRequestCacheStorageOptions {
@@ -19,8 +23,12 @@ export interface NodeGitHubPullRequestCacheStorageOptions {
   readonly cacheDirectory: string;
   /** Optional atomic store used by tests and alternate Extension Host filesystems. */
   readonly atomicFileStore?: AtomicTextFileStore;
+  /** Coordinator shared with an alternate AtomicTextFileStore namespace. */
+  readonly storageLockCoordinator?: import("../state-repository/index").StorageRootLockCoordinator;
   /** Optional immutable generation identifier source. */
   readonly createGenerationId?: () => string;
+  /** Privacy-safe observation of storage lock timeout, failure, or stale recovery. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: import("../state-repository/index").StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 interface PersistedGitHubCachePointer {
@@ -160,11 +168,19 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
   private readonly cacheDirectory: string;
   private readonly atomicFileStore: AtomicTextFileStore;
   private readonly createGenerationId: () => string;
+  private readonly notifyStorageLockDiagnostic: NodeGitHubPullRequestCacheStorageOptions["notifyStorageLockDiagnostic"];
+  private readonly storageLockCoordinator: NodeGitHubPullRequestCacheStorageOptions["storageLockCoordinator"];
 
   public constructor(options: NodeGitHubPullRequestCacheStorageOptions) {
     this.cacheDirectory = requireNonEmptyPath(options.cacheDirectory);
-    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore();
+    this.atomicFileStore = options.atomicFileStore ?? new NodeAtomicTextFileStore(path.dirname(this.cacheDirectory));
     this.createGenerationId = options.createGenerationId ?? randomUUID;
+    this.notifyStorageLockDiagnostic = options.notifyStorageLockDiagnostic;
+    this.storageLockCoordinator = options.storageLockCoordinator ?? (
+      options.atomicFileStore !== undefined && !(options.atomicFileStore instanceof NodeAtomicTextFileStore)
+        ? new InProcessStorageRootLockCoordinator()
+        : undefined
+    );
   }
 
   public async read(
@@ -257,17 +273,52 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
       expiresAt: validated.expiresAt
     };
 
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, metadataFile),
-      JSON.stringify(metadataDocument)
-    );
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, diffFile),
-      JSON.stringify(diffDocument)
-    );
-    await this.atomicFileStore.writeTextAtomically(
-      absoluteCacheFile(this.cacheDirectory, pointerFile),
-      JSON.stringify(pointer)
-    );
+    await withStorageRootLockCoordinator(this.storageLockCoordinator, { rootPath: path.dirname(this.cacheDirectory), notifyDiagnostic: this.notifyStorageLockDiagnostic }, async (lease) => {
+      const guard = createTrustedPersistencePathGuard(path.dirname(this.cacheDirectory), this.atomicFileStore);
+      await guard(this.cacheDirectory);
+      await guard(absoluteCacheFile(this.cacheDirectory, metadataFile));
+      await guard(absoluteCacheFile(this.cacheDirectory, diffFile));
+      await guard(absoluteCacheFile(this.cacheDirectory, pointerFile));
+      await lease.assertOwned();
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, metadataFile),
+        JSON.stringify(metadataDocument)
+      );
+      await lease.assertOwned();
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, diffFile),
+        JSON.stringify(diffDocument)
+      );
+      await lease.assertOwned();
+      await this.atomicFileStore.writeTextAtomically(
+        absoluteCacheFile(this.cacheDirectory, pointerFile),
+        JSON.stringify(pointer)
+      );
+      await this.removeSupersededGenerations(key, generation, guard, lease);
+    });
+  }
+
+  /** Retains the published immutable pair and removes only older generations for the same exact cache identity. */
+  private async removeSupersededGenerations(
+    key: string,
+    publishedGeneration: string,
+    guard: (filePath: string) => Promise<void>,
+    lease: import("../state-repository/index").StorageRootLease
+  ): Promise<void> {
+    if (this.atomicFileStore.deleteText === undefined) return;
+    for (const [directory, prefix] of [[path.join(this.cacheDirectory, "github", key), "metadata-"], [path.join(this.cacheDirectory, "diffs", key), "diff-"]] as const) {
+      const names = await readdir(directory).catch((error: unknown) => {
+        if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+      });
+      for (const name of names) {
+        if (name.startsWith(prefix) && name !== `${prefix}${publishedGeneration}.json` && /^[-A-Za-z0-9._]+\.json$/u.test(name)) {
+          const filePath = path.join(directory, name);
+          await guard(filePath);
+          await lease.assertOwned();
+          await this.atomicFileStore.deleteText(filePath);
+        }
+      }
+    }
   }
 }

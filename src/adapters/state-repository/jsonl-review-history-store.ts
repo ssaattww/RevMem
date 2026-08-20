@@ -16,10 +16,12 @@ import type {
 import {
   publishSchemaMigration,
   quarantinePersistedText,
+  createTrustedPersistencePathGuard,
   runSchemaMigrationChain,
   UnsupportedPersistedSchemaVersionError
 } from "./persistence-schema-recovery";
 import { resolveReviewStateStorageRoute } from "./storage-router";
+import { InProcessStorageRootLockCoordinator, withStorageRootLockCoordinator } from "./storage-root-lock";
 
 const monthFileName = (occurredAt: string): string => `events-${occurredAt.slice(0, 7)}.jsonl`;
 const sharedHistoryTailByFilePath = new Map<string, Promise<void>>();
@@ -182,17 +184,32 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
     const month = event.occurredAt.slice(0, 7);
     const filePath = path.join(route.historyDirectory, monthFileName(event.occurredAt));
     const previous = sharedHistoryTailByFilePath.get(filePath) ?? Promise.resolve();
-    const operation = previous.then(async () => {
+    const coordinator = this.options.storageLockCoordinator ?? (
+      this.options.atomicFileStore !== undefined && !(this.atomicFileStore instanceof NodeAtomicTextFileStore)
+        ? new InProcessStorageRootLockCoordinator()
+        : undefined
+    );
+    const operation = previous.then(() => withStorageRootLockCoordinator(coordinator, {
+      rootPath: route.rootPath,
+      lockPath: route.lockPath,
+      notifyDiagnostic: this.options.notifyStorageLockDiagnostic
+    }, async (lease) => {
+      const guard = createTrustedPersistencePathGuard(route.rootPath, this.atomicFileStore);
+      await guard(filePath);
       const existing = await this.atomicFileStore.readText(filePath) ?? "";
       const prepared = prepareExistingHistory(existing, target.repositoryId, month);
       if (prepared.corrupt) {
         if (existing.length > 0) {
+          await lease.assertOwned();
           await quarantinePersistedText(
             this.atomicFileStore,
             filePath,
-            existing
+            existing,
+            true,
+            guard
           );
         }
+        await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(filePath, `${canonical}\n`);
         return;
       }
@@ -201,15 +218,17 @@ export class JsonlReviewHistoryStore implements ReviewHistoryEventAppender {
       }
       const next = `${prepared.content}${canonical}\n`;
       if (prepared.migrated) {
+        await lease.assertOwned();
         await publishSchemaMigration(this.atomicFileStore, [{
           filePath,
           original: existing,
           migrated: next
-        }]);
+        }], guard);
       } else {
+        await lease.assertOwned();
         await this.atomicFileStore.writeTextAtomically(filePath, next);
       }
-    });
+    }));
     const tail = operation.catch(() => undefined);
     sharedHistoryTailByFilePath.set(filePath, tail);
     try {

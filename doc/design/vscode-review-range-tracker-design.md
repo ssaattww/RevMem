@@ -690,6 +690,10 @@ globalStorageUri/
 
 複数window競合には排他的file lockと期限切れ判定を使う。contextとGlobalの更新は完全snapshot CASとして1 transactionで置換する。
 
+lockは同じ`ReviewStateStorageRoute.rootPath`内の`lock`を`wx`で作成して取得し、opaque owner token、process liveness identity、短いlease expiryを保存する。取得待ちの上限はmonotonic elapsed timeで判定し、協調ownerがliveである限りclock expiryだけでは奪わない。crash、dead owner、partial lockだけをbounded recoveryし、recoveryはsuccessorの`lock`を再公開・削除しない。renew/releaseは取得済みdescriptorでowner tokenを再検証してから更新し、leaseを失ったoperationはContext、Global、manifest、history、cache、snapshot、migration/quarantineを含む各不可逆publication直前にfail closedにする。Node mutationはrootのphysical descendantへ解決し、開始時またはoperation中に検出したsymlink、junction、reparse ancestor・identity changeをrejectしてfail closedにする。stateのload/save/create/commit、history append、startup migration、snapshot/cache cleanupは同じroot lock transaction内で行う。snapshot save transactionはgeneration write、in-flight protection、latest pointer publish、retention/count/byte cleanupを一体化し、current pointerが参照するgenerationを保持する。alternate `AtomicTextFileStore`は同じroot transaction coordinatorを全persistence familyへ渡す。lock timeout、失敗、stale recoveryはoperation種別だけを`Review Range` Output lifecycleへoperationごと一度だけ通知し、起動失敗時にもactivation-safe hostへflush/revealし、repository path、source、owner tokenを出力しない。既存の同一process直列化は維持する。
+
+filesystem脅威モデルは、VS Codeが提供する信頼済みstorage root内で動くRevMemの協調Extension Host/window、crash、partial I/O、およびoperation開始時に存在するlink/reparseを対象とする。同じhost上の攻撃者がrootまたはancestorをsyscall間で意図的に差し替える競合は対象外であり、pure Node実装は`openat`/handle-relative rename等のnative filesystem primitiveを導入しない。この非保証はroot外mutationを許容するものではなく、検出可能なidentity変化でoperationを停止し、既存link/reparse経由ではroot外sentinelに触れないという保証を定義する。
+
 新contextを作成するtransactionは、対象contextが存在しないこととowner-wide Globalの期待snapshotおよびversionを同じCAS条件に含める。入力は対象Context ID、現在Git snapshot、context不存在期待、Globalの存在状態を含む完全snapshot、Global versionである。Globalが異revisionなら、その入力snapshotからmappingしたnext contextとnext Globalを1 transactionで公開する。読込、mapping、保存を分離した非atomicなwindowを設けない。
 
 create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を返す。呼び出し側は最新Globalと現在Git snapshotを再読込してmappingを再計画する。既存contextの通常更新と新context初期化はともに、片側だけの保存または古いGlobal snapshotによる置換を許可しない。
@@ -708,9 +712,9 @@ ContextとGlobalを同時に更新する新規file eventは、既存range field�
 
 file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`、`marked-file-reviewed`、`unmarked-file-reviewed`、編集結果の`invalidated-by-edit`、Git diff再計算結果の`remapped-by-diff`、renameの`file-renamed`、deleteの`file-deleted`、一意に対応付けられない場合の`mapping-unresolved`である。context event typeは`context-created`と`context-revision-changed`である。各成功したstate transactionまたはcontext初期化・revision mapping結果は、affected fileごとに1 eventをappendする。失敗、cancel、no-op、またはstate commit前の計画はeventをappendしない。state commit後のhistory append失敗はstate rollbackを要求せず、呼び出し側へobservable partial successとしてrejectする。
 
-保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、後続eventをappendせずrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
+保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceは`storageUri/history/events-YYYY-MM.jsonl`であり、月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、同じroot lock内で既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、active file全体をquarantineへ保持してactive pathから除去する。次のvalid eventだけが新しいactive monthly fileの1行目となり、旧fileのvalid recordはsalvage・replay・mergeしない。未知future schemaはquarantine/resetせず互換性errorとしてrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
 
-現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。保持期間・閲覧UI・export・複数windowのcross-process history lock・schema migration readerは将来の履歴管理機能の責務とし、初期の永続化層はevent append、厳密な入力validation、同一process内の順序付けだけを提供する。履歴は原則無期限保持する。
+現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。履歴は原則無期限保持し、`historyRetentionDays=0`は無期限を意味する。cacheとsnapshotのimmutable generationは、active pointerが参照するgenerationを保護した上でbounded cleanupの対象にできる。cleanupはroot内だけを対象にし、symbolic link、junction、reparse pointを経由して書込みまたは削除しない。閲覧UI・exportは将来の履歴管理機能の責務とする。
 
 ## 16. UIと設定
 
@@ -1008,6 +1012,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - GitHub 401/403/404/429、network断、patch欠落
 - storage容量不足、JSON/snapshot破損、途中終了
 - stale lock、複数window競合
+- storage root identity変化または既存symlink/junction/reparseの検出時はfail closedし、current stateを推測・公開しない
 - PR Progress取得失敗が無言で非表示にならずOutputへ診断されること
 
 CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。

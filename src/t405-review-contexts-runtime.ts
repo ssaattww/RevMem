@@ -36,6 +36,7 @@ import {
   type GitHubRepositoryIdentity,
 } from "./application/github-pr-context/index";
 import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+import { reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import {
   OperationDiagnosticError,
   reportActiveOperationFailure,
@@ -644,7 +645,10 @@ export function registerT405ReviewContextsRuntime(
     }
     const cache = new GitHubPullRequestCacheService({
       acquisition,
-      storage: new NodeGitHubPullRequestCacheStorage({ cacheDirectory: route.cacheDirectory }),
+      storage: new NodeGitHubPullRequestCacheStorage({
+        cacheDirectory: route.cacheDirectory,
+        notifyStorageLockDiagnostic: reportActiveStorageLockDiagnostic
+      }),
       freshnessMs: CACHE_FRESHNESS_MS,
     });
     const result = await cache.acquire(diffRequest(context));
