@@ -265,7 +265,12 @@ export function registerReviewContextsRuntime(
   ): Promise<void> => {
     let terminalFailure = false;
     await runOperation("Review Contextsを更新", async (feedbackContext) => {
-      await operation(feedbackContext);
+      try {
+        await operation(feedbackContext);
+      } catch (error) {
+        terminalFailure = hasOperationFeedbackFailure(feedbackContext);
+        throw error;
+      }
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
     });

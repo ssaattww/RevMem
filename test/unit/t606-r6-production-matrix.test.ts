@@ -22,8 +22,9 @@ const runtimeRequire = createRequire(__filename);
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => { resolve = complete; });
-  return { promise, resolve };
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail; });
+  return { promise, resolve, reject };
 };
 
 class FeedbackHost implements OperationFeedbackHost {
@@ -107,7 +108,7 @@ test("T606 R6 Current Context production runtime cross-supersedes refresh/select
   }
 });
 
-test("T606 R6 Review Contexts rejects failed old-root publication and preserves later fresh root data", async () => {
+test("T606 R7 absorbs a failed old-root load and preserves the fresh-root stale/unknown transition", async () => {
   const old = deferred<readonly { label: string }[]>();
   const signals: AbortSignal[] = [];
   const runtime = withVscode<typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js")>(
@@ -125,12 +126,12 @@ test("T606 R6 Review Contexts rejects failed old-root publication and preserves 
   const current = provider.refresh();
   await current;
   assert.equal(signals[0]?.aborted, true);
-  old.resolve([{ label: "old-root-a" }]);
-  await stale;
+  old.reject(Object.assign(new Error("old root failed after switch"), { code: "ECONNRESET" }));
+  await assert.rejects(stale, (error: unknown) => error instanceof Error && error.name === "OperationCancelledError");
   assert.deepEqual(provider.getChildren(), [{ label: "fresh-root-b" }]);
 });
 
-test("T606 R6 Review Contexts mutation forwards its explicit feedback context and emits no outer OK after cache-lock failure", async () => {
+test("T606 R7 cache publish mutation records a terminal failure, rethrows to its boundary, and starts no post-mutation refresh", async () => {
   const commands = new Map<string, (...argumentsList: unknown[]) => Promise<void>>();
   const vscode = {
     ...fakeVscodeBase(),
@@ -143,23 +144,30 @@ test("T606 R6 Review Contexts mutation forwards its explicit feedback context an
   const host = new FeedbackHost();
   const feedback = new OperationFeedback(host, () => 1);
   let receivedOwner = false;
+  let loads = 0;
+  let writes = 0;
   setActiveOperationFeedback(feedback);
   try {
     runtime.registerReviewContextsRuntime({ subscriptions: [] } as never, {
-      source: { load: async () => [] },
+      source: { load: async () => { loads += 1; return []; } },
       controller: {
         refreshCache: async (_context: unknown, feedbackContext: { owner?: unknown } | undefined) => {
           receivedOwner = feedbackContext?.owner === feedback;
+          writes += 1;
           reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "r6-cache-lock" }, feedbackContext as never);
+          throw Object.assign(new Error("cache publish failed"), { code: "ENOSPC" });
         },
       } as never,
       refreshDecorations: async () => undefined,
       reportError: async () => undefined,
     });
     await new Promise((resolve) => setImmediate(resolve));
+    const loadsBeforeMutation = loads;
     host.logs.splice(0);
     await commands.get("reviewRange.refreshReviewContextCache")!({ context: { kind: "pull-request", contextId: "pr:r6", pullRequest: {} } });
     assert.equal(receivedOwner, true);
+    assert.equal(writes, 1, "a publish failure is a single non-retryable write");
+    assert.equal(loads, loadsBeforeMutation, "a thrown terminal mutation cannot start post-mutation refresh");
     assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
   } finally {
     setActiveOperationFeedback(undefined);
