@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import {
   OperationFeedback,
+  formatOperationFailureForUser,
   hasActiveOperationFeedback,
   runWithActiveOperationFeedback,
   setActiveOperationFeedback
@@ -256,14 +257,15 @@ export const registerGlobalUnderstandingRuntime = (
   const refresh = (): Promise<void> =>
     runWithActiveOperationFeedback(
       "Global理解率を再計算",
-      () => refreshController.refresh().then(() => undefined)
+      () => refreshController.refresh().then(() => undefined),
+      { maxAttempts: 3 }
     );
 
   const refreshWithErrorBoundary = async (): Promise<void> => {
     try {
       await refresh();
     } catch (error) {
-      await dependencies.reportError(error);
+      await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
 

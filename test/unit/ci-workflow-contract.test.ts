@@ -242,3 +242,19 @@ test("T605 multi-root and remote workspace boundary coverage is exposed by packa
     /- name: T605 multi-root and remote workspace boundary tests[\s\S]*?node tools\/run-ci-command\.mjs test-t605 npm run test:t605\b/u
   );
 });
+
+test("T606 focused failure-policy coverage is exposed by package and CI", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  assert.match(
+    requireScript(manifest.scripts ?? {}, "test:t606"),
+    /test-dist\/test\/unit\/t606-failure-policy-retry-diagnostics\.test\.js/u,
+  );
+  assert.match(
+    workflow,
+    /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,
+  );
+});

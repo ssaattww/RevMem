@@ -5,16 +5,16 @@
 ## 現在位置
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
-- GitHub Issue: #74
+- GitHub Issue: #76
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
-- 現在のタスク: T605 / Issue #74 multi-root and remote workspace boundaries
-- 次のタスク: 同一independent reviewerによるadministrative delta attestation後、exact-head pull_request CI Greenを確認してPR #75をsquash mergeする
-- 実装状態: T405、T406、T506、T603、T604はmainへ統合済み。T605はnormal/independent findings closed、final attestationとexact-head CI merge gate待ち
+- 現在のタスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics
+- 次のタスク: T606のnormal reviewへ進める
+- 実装状態: T405、T406、T506、T603〜T605はmainへ統合済み。T605はPR #75をsquash mergeし、merge commit `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenで統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
-- Gitブランチ: `task/t605-multi-root-remote-boundaries`
-- Pull Request: #75（draft、通常review待ち）
+- Gitブランチ: `task/t606-failure-policy-retry-diagnostics`
+- Pull Request: 未作成（implementation complete、normal review待ち）
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -362,8 +362,8 @@
 | T602 | 完了 | L | rebase・force-push時に旧Git object直接diff、snapshot diff、一意mapping、未確認化の順で回復する | T203、T204、T403、T601 | 通常reviewと一度限りの全範囲独立review findingsをclosedし、PR #49をcurrent mainへsquash merge済み |
 | T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
 | T604 | 完了 | L | cross-window storage lock and bounded cleanupを実装した | T104、T403、T603 | PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。 |
-| T605 | normal/independent findings closed・merge gate pending | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験した | T103、T202、T401、T601、T604 | normal findings R001〜R006とindependent findings IFR001〜003を全件closedした。focused `test:t605` 70件と指定local validationを完了し、final attestationとexact-head CI待ちである。 |
-| T606 | 未着手 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装する | T403、T601〜T605 | token・source本文をlogへ出さず、全障害fixtureで誤った確認済み表示をしない。AC-24を満たす |
+| T605 | 完了 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験した | T103、T202、T401、T601、T604 | PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み。 |
+| T606 | 実装完了・normal review待ち | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | retryable/permanent/stale/authentication/validationを型で分類し、最大3回のread/refresh retry、cancel、redacted/dedup Output、fail-closed UIをproduction compositionへ接続した。focused `test:t606` Red/Greenと指定local validationを完了。実装レポート: `reports/issue-76-t606-implementation-20260820225743.md`。 |
 | T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607 | AC-01〜AC-24の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
 
@@ -387,4 +387,4 @@
 
 ## 次回開始時の選択
 
-T605 / Issue #74 は `task/t605-multi-root-remote-boundaries` のdraft PR #75でnormal findings R001〜R006と、一度限りのindependent reviewで確定したIFR001〜003を全件closedした。focused `test:t605` 70件と静的検証を完了し、同じindependent reviewerによるadministrative delta attestationとexact-head CI merge gate待ちである。
+T606 / Issue #76 は `task/t606-failure-policy-retry-diagnostics` で実装完了・normal review待ちである。Git、GitHub、storageの失敗分類・bounded retry・stale/unknown UI・privacy-safe Output診断を既存production compositionへ接続し、focused Red/Greenと指定local validationを完了した。

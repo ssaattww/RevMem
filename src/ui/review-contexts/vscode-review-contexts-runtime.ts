@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 
-import { runWithActiveOperationFeedback } from "../../application/operation-feedback/index";
+import {
+  formatOperationFailureForUser,
+  runWithActiveOperationFeedback
+} from "../../application/operation-feedback/index";
 
 import {
   formatReviewContextCacheStatus,
@@ -198,11 +201,16 @@ export function registerReviewContextsRuntime(
   const runOperation = async (
     label: string,
     operation: () => Promise<void>,
+    retry = true,
   ): Promise<void> => {
     try {
-      await runWithActiveOperationFeedback(label, operation);
+      await runWithActiveOperationFeedback(
+        label,
+        operation,
+        retry ? { maxAttempts: 3 } : undefined
+      );
     } catch (error) {
-      await dependencies.reportError(error);
+      await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
@@ -214,7 +222,7 @@ export function registerReviewContextsRuntime(
     await runOperation("Review Contextsを更新", async () => {
       await operation();
       if (refreshDecorations) await dependencies.refreshDecorations();
-    });
+    }, false);
     await runOperation("Review Contextsを更新", () => provider.refresh());
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {

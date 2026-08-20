@@ -1,0 +1,16 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
+status: implementation_complete_normal_review_pending
+report: reports/issue-76-t606-implementation-20260820225743.md
+validation:
+  focused_red: observed missing T606 exports before implementation
+  focused_green: npm run test:t606
+  build: npm run build
+  contracts: npm run typecheck:contracts
+  lint: npm run lint
+  architecture: positive and negative passed
+next_request: Run normal review against the uncommitted T606 implementation; do not commit, push, or create a PR before the owner directs it.

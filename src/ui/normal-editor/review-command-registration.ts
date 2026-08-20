@@ -1,4 +1,7 @@
-import { runWithActiveOperationFeedback } from "../../application/operation-feedback/index";
+import {
+  formatOperationFailureForUser,
+  runWithActiveOperationFeedback
+} from "../../application/operation-feedback/index";
 
 /** Command IDs defined by the editor command design. */
 export const NORMAL_EDITOR_REVIEW_COMMAND_IDS = {
@@ -103,7 +106,7 @@ const runReviewOperation = async (
   try {
     await runWithActiveOperationFeedback(label, async () => operation());
   } catch (error) {
-    await host.showCommandError(error);
+    await host.showCommandError(formatOperationFailureForUser(error));
   }
 };
 
