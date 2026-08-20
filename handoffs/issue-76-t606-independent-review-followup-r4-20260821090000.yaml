@@ -4,7 +4,7 @@ issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 branch: task/t606-failure-policy-retry-diagnostics
 base_head: 70813a854f2881695dee421074c1873f22556cad
-technical_implementation_head: pending
+technical_implementation_head: c19bddd54827143520ca6070c28db37c66de218c
 status: ifr001_closed_ifr002_through_ifr005_r4_addressed_same_reviewer_closure_pending
 report: reports/issue-76-t606-independent-review-followup-r4-20260821090000.md
 validation:
@@ -18,7 +18,7 @@ validation:
   architecture_negative: "pass; expected 11 violations"
   diff_check: pass
 ci: held
-external_sync: PR body external sync pending
+external_sync: PR body external sync pending after admin commit
 markdown_word_check: "focused/full unsupported and held: no tools/lint, lint:md, cspell, or prh wiring"
 evidence:
   ifr002: "Current Context -> T405 lifecycle/auth -> GitHub fetch/local Git/blob/cache storage shares typed owner and AbortSignal; pending Node cache I/O returns AbortError after abort and never publishes its result"

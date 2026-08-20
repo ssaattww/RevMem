@@ -2,7 +2,7 @@
 
 ## タスク
 
-T606 / Issue #76 / PR #77 の既存 independent finding `T606-IFR002`〜`T606-IFR005` だけをR4として実装した。`T606-IFR001` はclosedを維持し、再作業していない。technical implementation SHA はcommit前のため pending である。
+T606 / Issue #76 / PR #77 の既存 independent finding `T606-IFR002`〜`T606-IFR005` だけをR4として実装した。`T606-IFR001` はclosedを維持し、再作業していない。technical implementation SHA は`c19bddd54827143520ca6070c28db37c66de218c`である。
 
 ## sub-agentを使う理由
 
@@ -33,8 +33,8 @@ GitHub lifecycle/auth/cache adapters、local Git blob/content boundary、cache s
 
 ## 結果
 
-IFR002〜IFR005はimplementation scopeでaddressed。technical implementation SHA pending、same independent reviewer finding-limited closure R4 pending、exact-head CI held、PR body外部同期pendingである。`test:t606`は202 pass / 0 fail / 2 Windows POSIX skip。`npm run build`、`npm run typecheck:contracts`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`（expected 11 violations）、`git diff --check`は各一回passした。
+IFR002〜IFR005はimplementation scopeでaddressed。technical implementation SHAは`c19bddd54827143520ca6070c28db37c66de218c`、same independent reviewer finding-limited closure R4 pending、exact-head CI held、PR body外部同期はadmin commit後pendingである。`test:t606`は202 pass / 0 fail / 2 Windows POSIX skip。`npm run build`、`npm run typecheck:contracts`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`（expected 11 violations）、`git diff --check`は各一回passした。
 
 ## リスク
 
-same reviewer closure R4、exact-head CI、PR body外部同期は未実施である。Markdown wording focused/full checkは`tools/lint/`、`lint:md`、cspell/prh wiringがないためunsupported/heldであり、passへ変換していない。real Remote/network E2E、性能、VSIXはIssueの対象外である。
+same reviewer closure R4、exact-head CI、admin commit後のPR body外部同期は未実施である。Markdown wording focused/full checkは`tools/lint/`、`lint:md`、cspell/prh wiringがないためunsupported/heldであり、passへ変換していない。real Remote/network E2E、性能、VSIXはIssueの対象外である。
