@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import {
   formatOperationFailureForUser,
+  hasOperationFeedbackFailure,
   runWithBoundedRetry,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
@@ -259,13 +260,16 @@ export function registerReviewContextsRuntime(
   const refreshWithErrorBoundary = (): Promise<void> =>
     runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   const mutate = async (
-    operation: () => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     refreshDecorations = false,
   ): Promise<void> => {
-    await runOperation("Review Contextsを更新", async () => {
-      await operation();
+    let terminalFailure = false;
+    await runOperation("Review Contextsを更新", async (feedbackContext) => {
+      await operation(feedbackContext);
       if (refreshDecorations) await dependencies.refreshDecorations();
+      terminalFailure = hasOperationFeedbackFailure(feedbackContext);
     });
+    if (terminalFailure) return;
     await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
@@ -278,18 +282,18 @@ export function registerReviewContextsRuntime(
     provider,
     vscode.commands.registerCommand("reviewRange.refreshReviewContexts", refreshWithErrorBoundary),
     vscode.commands.registerCommand("reviewRange.redetectPullRequest", () =>
-      mutate(() => dependencies.controller.redetectPullRequest())),
+      mutate((feedbackContext) => dependencies.controller.redetectPullRequest(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.reconnectGitHub", () =>
-      mutate(() => dependencies.controller.reconnectGitHub())),
+      mutate((feedbackContext) => dependencies.controller.reconnectGitHub(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.refreshReviewContextCache", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
-      return mutate(() => dependencies.controller.refreshCache(item.context));
+      return mutate((feedbackContext) => dependencies.controller.refreshCache(item.context, feedbackContext));
     }),
     vscode.commands.registerCommand("reviewRange.toggleReviewContextLayer", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
       if (item.layerEnabled === undefined) throw new Error("PRコンテキストだけがLayerを持ちます。");
       return mutate(
-        () => dependencies.controller.setLayerEnabled(item.context, !item.layerEnabled),
+        (feedbackContext) => dependencies.controller.setLayerEnabled(item.context, !item.layerEnabled, feedbackContext),
         true,
       );
     }),
@@ -301,7 +305,7 @@ export function registerReviewContextsRuntime(
       const item = requireItem(raw);
       return runOperation(
         "PR差分を開く",
-        () => dependencies.controller.openDiff(item.context)
+        (feedbackContext) => dependencies.controller.openDiff(item.context, feedbackContext)
       );
     }),
   );

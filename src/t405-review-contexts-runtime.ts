@@ -857,7 +857,8 @@ export function registerT405ReviewContextsRuntime(
 
   const controller = new ReviewContextsController({
     visibility,
-    setPullRequestLayerEnabled: async (context, enabled) => {
+    setPullRequestLayerEnabled: async (context, enabled, _feedbackContext) => {
+      void _feedbackContext;
       const pullRequest = context.pullRequest;
       if (pullRequest === undefined) throw new Error("PR context is required");
       await contextStateService.update({
@@ -866,8 +867,8 @@ export function registerT405ReviewContextsRuntime(
         pullRequest: { ...pullRequest, decorationEnabled: enabled },
       });
     },
-    refreshPullRequestCache: async (context) => {
-      const { result } = await acquire(context, true);
+    refreshPullRequestCache: async (context, feedbackContext) => {
+      const { result } = await acquire(context, true, undefined, feedbackContext);
       if (result.kind !== "acquired") {
         throw new Error(`PR cacheを更新できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }
@@ -878,8 +879,8 @@ export function registerT405ReviewContextsRuntime(
         throw new Error("PR cacheを更新できませんでした: live取得結果をcacheへ保存できませんでした。");
       }
     },
-    openPullRequestDiff: async (context) => {
-      const { result } = await acquire(context);
+    openPullRequestDiff: async (context, feedbackContext) => {
+      const { result } = await acquire(context, false, undefined, feedbackContext);
       if (result.kind !== "acquired") {
         throw new Error(`PR diffを取得できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }
@@ -905,7 +906,7 @@ export function registerT405ReviewContextsRuntime(
         `${selected.label} (PR #${pullRequest.number})`
       );
     },
-    redetectPullRequest: async () => {
+    redetectPullRequest: async (feedbackContext) => {
       const local = await inspectActiveRepository();
       if (local.head === undefined || local.remote === undefined) {
         throw new Error("PR再検出にはHEADとGit remoteが必要です。");
@@ -988,6 +989,7 @@ export function registerT405ReviewContextsRuntime(
               code: "GITHUB_PR_DETECTION_UNAVAILABLE",
               reason: search.reason,
             }),
+            feedbackContext,
           );
         }
       }

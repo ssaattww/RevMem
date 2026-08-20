@@ -478,6 +478,12 @@ export class OperationFeedback {
     this.appendFailure(normalizedLabel, error, timestamp);
   }
 
+  /** Returns whether an explicit parent operation already has a terminal handled failure. */
+  public hasBoundaryFailure(context: OperationFeedbackContext | undefined): boolean {
+    if (context?.owner !== this) return false;
+    return this.active.some((candidate) => candidate.id === context.id && candidate.boundaryFailure !== undefined);
+  }
+
   /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
   public reportStorageLock(
     kind: "timeout" | "failure" | "stale-recovered",
@@ -599,6 +605,10 @@ export const reportActiveOperationFailure = (
 
 /** Returns whether activation has already installed the shared Output lifecycle. */
 export const hasActiveOperationFeedback = (): boolean => activeOperationFeedback !== undefined;
+
+/** Tests an explicit operation context without consulting the process-wide active owner. */
+export const hasOperationFeedbackFailure = (context: OperationFeedbackContext | undefined): boolean =>
+  context?.owner.hasBoundaryFailure(context) ?? false;
 
 /** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
 export const reportActiveStorageLockDiagnostic = (

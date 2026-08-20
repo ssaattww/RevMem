@@ -9,12 +9,12 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
 - 現在のタスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics
-- 次のタスク: R001〜R005/R007 R5 addressed後の同一normal reviewerによるfinding限定closure（R006 closed維持）
+- 次のタスク: R001〜R005 R6 addressed後のtechnical commit、SHA-only admin sync、同一normal reviewerによるfinding限定closure（R006 closed維持）
 - 実装状態: T405、T406、T506、T603〜T605はmainへ統合済み。T605はPR #75をsquash mergeし、merge commit `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenで統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t606-failure-policy-retry-diagnostics`
-- Pull Request: #77（draft、R001〜R005/R007のR5 local implementation・same normal reviewer closure待ち、CI未実施）
+- Pull Request: #77（draft、R001〜R005のR6 local implementation・technical commitとsame normal reviewer closure待ち、CI未実施）
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -363,7 +363,7 @@
 | T603 | 完了 | L | schema migration chain、移行前backup、JSON/JSONL/snapshot破損検出・隔離・回復を実装した | T104、T206、T601 | 一度限りの全範囲独立review findingsをclosedし、exact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmainへ統合済み。旧schema移行、rollback、quarantine、fail-closed recoveryを固定した |
 | T604 | 完了 | L | cross-window storage lock and bounded cleanupを実装した | T104、T403、T603 | PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。 |
 | T605 | 完了 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験した | T103、T202、T401、T601、T604 | PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み。 |
-| T606 | R001〜R005/R007 R5 addressed・normal closure待ち | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | R006はclosed維持。R5はCurrent Context shared cancellation/Quick Pick non-retry、T405 cache read/write分離、Global/T405 production composition wiringを191 passing（POSIX 2 skip）で固定した。CI未実施、same normal reviewer closure R5待ち。R5 follow-up: `reports/issue-76-t606-normal-review-followup-r5-20260821010000.md`。 |
+| T606 | R001〜R005 R6 addressed・technical commit/normal closure待ち | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | R006はclosed維持。R6はCurrent Context cross-supersede、explicit feedback context、T405 cache read/write分離、Global/T405 production composition wiringを195 passing（POSIX 2 skip）で固定した。technical commit pending、CI未実施、same normal reviewer closure R6待ち。R6 follow-up: `reports/issue-76-t606-normal-review-followup-r6-20260821020000.md`。 |
 | T607 | 未着手 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最適化を行う | T301、T504、T606 | Treeを段階表示し、入力を阻害せず、選択後装飾100ms目標と計測結果を記録する |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607 | AC-01〜AC-24の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
 
@@ -387,4 +387,4 @@
 
 ## 次回開始時の選択
 
-T606 / Issue #76 は `task/t606-failure-policy-retry-diagnostics` のuncommitted R5 local implementationでR001〜R005/R007のCurrent Context shared cancellation、Quick Pick non-retry、T405 cache pure-read/publication分離、Global/T405 production composition wiringとlocal validationをaddressedし、同一normal reviewerのfinding限定closure待ちである。R006はclosedを維持して再探索していない。focused Red/Green は最終191 passing/2 skip、CIは未実施である。
+T606 / Issue #76 は `task/t606-failure-policy-retry-diagnostics` のuncommitted R6 local implementationでR001〜R005のCurrent Context cross-supersede、explicit feedback context、T405 cache pure-read/publication分離、Global/T405 production composition wiringとlocal validationをaddressedした。R006はclosedを維持して再探索していない。technical commit pending後にSHA-only admin syncと同一normal reviewerのfinding限定closureを行う。focused Red/Green は最終195 passing/2 skip、CIは未実施である。

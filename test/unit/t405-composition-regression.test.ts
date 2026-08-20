@@ -1066,7 +1066,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       entry.event === "failed" && entry.message === "GITHUB_PR_DETECTION_UNAVAILABLE reason=network"
     );
     assert.equal(diagnostics.length, 1);
-    assert.ok(operationLog.some((entry) => entry.event === "succeeded"));
+    assert.equal(operationLog.some((entry) => entry.event === "succeeded"), false);
     assert.doesNotMatch(JSON.stringify(operationLog), /network interrupted|repositoryRoot|targetHeadSha/u);
 
     // T406-R001: the selected branch owner is the production normal-editor

@@ -1,0 +1,16 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
+implementation_head: technical_commit_pending
+starting_head: 0c938d0cbb458cc60c17f9e45a1486af03d74a83
+status: r001_through_r005_r6_addressed_same_normal_reviewer_closure_pending_r006_closed_technical_commit_pending
+report: reports/issue-76-t606-normal-review-followup-r6-20260821020000.md
+validation:
+  focused_red: "npm run test:t606 observed Review Contexts refreshCache receiving no explicit OperationFeedbackContext"
+  focused_green: "npm run test:t606: 195 passing, 2 Windows POSIX fixture skips, 0 failed"
+  static: "npm run build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative, and git diff --check passed; Markdown wording tooling is unavailable"
+  ci: unstarted; exact-head CI remains a merge gate held
+next_request: Parent creates the technical commit, then run a SHA-only administrative tracking sync; retain R006 closed and do not re-explore it.

@@ -253,6 +253,7 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
   for (const suite of [
     "t606-failure-policy-retry-diagnostics",
     "t606-production-failure-matrix",
+    "t606-r6-production-matrix",
     "local-git-adapter",
     "t405-github-lifecycle",
     "t405-composition-regression",
