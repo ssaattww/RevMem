@@ -42,5 +42,3 @@ Read-only evidence collection として `git status --short`、`git rev-parse HE
 ## リスク
 
 Provided local validationは受領済みだが、productionの未bounded同期work、stale command generation、未同期provenanceを閉じない。exact-head `pull_request` CIはmerge gateまでheldであり、local evidenceまたはreport persistenceを成功へ読み替えない。worktree persistence modeはfail verdictを記録する単一report-only changeであり、reviewed HEAD `0f7ef9d81648cb4b41bf7956a8b7785f15fdf58b` 自体は変更しない。
-
-
