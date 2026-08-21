@@ -298,7 +298,7 @@ export class GitContextRevisionMapper {
       },
       unresolvedFileIds,
       unresolvedReasonsByFileId: oldObjectAvailable
-        ? contextMapping.unresolvedReasonsByFileId
+        ? contextMapping.unresolvedReasonsByFileId ?? {}
         : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
     };
   }

@@ -156,6 +156,11 @@ extends RegisteredReviewContextsRuntime {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]>;
+  /** Test-only read-only evidence that repository selection preserved tree and Review State. */
+  getCancellationSnapshotForTest(): Promise<{
+    readonly providerProjection: readonly string[];
+    readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
+  }>;
 }
 
 interface LocalRepositoryOwner {
@@ -327,6 +332,11 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   public repositoryRoot(repositoryId: string): string | undefined {
     const roots = this.roots.get(repositoryId);
     return roots === undefined ? undefined : resolveUniqueRepositoryRoot(roots);
+  }
+
+  /** Repository owners observed while building the current projection. */
+  public repositoryIds(): readonly string[] {
+    return [...this.roots.keys()].sort();
   }
 
   private rememberRoot(repositoryId: string, repositoryRoot: string): void {
@@ -1129,5 +1139,12 @@ export function registerT405ReviewContextsRuntime(
     ...registered,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
       source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
+    getCancellationSnapshotForTest: async () => ({
+      providerProjection: registered.getProjectionSnapshotForTest().map((item) => item.context.contextId),
+      authoritativeContextCounts: await Promise.all(source.repositoryIds().map(async (repositoryId) => ({
+        repositoryId,
+        count: (await repository.listRepositoryContexts(repositoryId)).length,
+      }))),
+    }),
   };
 }

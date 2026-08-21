@@ -7,7 +7,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "type-fixtures/contracts/t609-git-context-revision-mapping-old-shape.fixture.ts"
   ],
   "exclude": [
     "dist",

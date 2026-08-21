@@ -185,7 +185,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: 一度の全範囲通常reviewでHigh 4件、Medium 3件を一括確定。T405 encoding実配線、all-opened hint、T602 recovery、multi-root cancellation、reason付きunresolved、gate配線、公開互換性を実装済み。focused `test:t609` 44/44、storage+gate 22/22、actual Extension Host全phase Greenで、same reviewer closure待ち。
+- T609: 一度の全範囲通常reviewでHigh 4件、Medium 3件を一括確定。4件closed後、R16でactual `redetectPullRequest` cancel/stale非破壊と公開旧shape互換を実装した。`test:t609` 51/51、actual Host functional 3 phase Green、cleanup timeout heldで、same reviewerの残る3件限定closure待ち。
 - T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
 - T608: T609・T610完了後に実施する。
 

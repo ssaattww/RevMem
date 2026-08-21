@@ -22,6 +22,11 @@ interface T609ExtensionApi {
     readonly progress: { readonly files: readonly { readonly path: string }[] };
   } | undefined>;
   setReviewContextsRepositorySelection(selection: "cancel" | "stale"): void;
+  getReviewContextsCancellationSnapshot(): Promise<{
+    readonly providerProjection: readonly string[];
+    readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
+    readonly repositorySelectionRequestCount: number;
+  }>;
 }
 
 interface ReviewedIntervalSnapshot {
@@ -167,8 +172,27 @@ export async function run(): Promise<void> {
   }
 
   await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
+  await within("seed multi-root Review Contexts projection", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  const before = await within("read accepted multi-root Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  assert.ok(before.providerProjection.length > 0, "multi-root cancellation must retain an accepted provider projection");
   api.setReviewContextsRepositorySelection("cancel");
-  await within("multi-root cancellation boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  await within("multi-root cancellation boundary", vscode.commands.executeCommand("reviewRange.redetectPullRequest"));
+  const afterCancel = await within("read cancel Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  assert.equal(
+    afterCancel.repositorySelectionRequestCount,
+    before.repositorySelectionRequestCount + 1,
+    "cancel must reach the multi-root repository-selection seam through the T405 command"
+  );
+  assert.deepEqual(afterCancel.providerProjection, before.providerProjection, "cancel must retain the accepted provider projection");
+  assert.deepEqual(afterCancel.authoritativeContextCounts, before.authoritativeContextCounts, "cancel must not mutate authoritative Review State");
   api.setReviewContextsRepositorySelection("stale");
-  await within("multi-root stale cancellation boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  await within("multi-root stale cancellation boundary", vscode.commands.executeCommand("reviewRange.redetectPullRequest"));
+  const afterStale = await within("read stale Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  assert.equal(
+    afterStale.repositorySelectionRequestCount,
+    afterCancel.repositorySelectionRequestCount + 1,
+    "stale selection must reach the multi-root repository-selection seam through the T405 command"
+  );
+  assert.deepEqual(afterStale.providerProjection, before.providerProjection, "stale selection must retain the accepted provider projection");
+  assert.deepEqual(afterStale.authoritativeContextCounts, before.authoritativeContextCounts, "stale selection must not mutate authoritative Review State");
 }

@@ -98,6 +98,8 @@ test("T609 Host fixture separates active-editor lifecycle, command persistence, 
 
 test("T609 phase ownership keeps mixed encoding in single-root and repository cancellation in multi-root", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src/t305-extension.ts"), "utf8");
+  const runtime = await readFile(path.join(projectRoot, "src/t405-review-contexts-runtime.ts"), "utf8");
   const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
   const restartStart = hostSuite.indexOf("if (!isPrepare) {");
   const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
@@ -109,6 +111,25 @@ test("T609 phase ownership keeps mixed encoding in single-root and repository ca
   assert.doesNotMatch(multiRootPhase, /openTextDocument|markAndSynchronizeFixtureReview|Current Context/u);
   assert.match(multiRootPhase, /multi-root cancellation boundary/u);
   assert.match(multiRootPhase, /multi-root stale cancellation boundary/u);
+  assert.match(multiRootPhase, /reviewRange\.redetectPullRequest/u);
+  assert.match(multiRootPhase, /getReviewContextsCancellationSnapshot/u);
+  assert.match(multiRootPhase, /providerProjection, before\.providerProjection/u);
+  assert.match(multiRootPhase, /authoritativeContextCounts, before\.authoritativeContextCounts/u);
+  assert.match(multiRootPhase, /repositorySelectionRequestCount/u);
+  assert.match(extension, /getReviewContextsCancellationSnapshot/u);
+  assert.match(extension, /testReviewContextsRepositorySelectionRequestCount \+= 1/u);
+  assert.match(runtime, /getProjectionSnapshotForTest/u);
+  assert.match(runtime, /getCancellationSnapshotForTest/u);
+});
+
+test("T609 contract fixture compiles a legacy Git revision mapping result once through the focused gate", async () => {
+  const testConfig = await readFile(path.join(projectRoot, "tsconfig.test.json"), "utf8");
+  const manifest = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as PackageManifest;
+  const focused = manifest.scripts?.["test:t609"] ?? "";
+  const fixture = "type-fixtures/contracts/t609-git-context-revision-mapping-old-shape.fixture.ts";
+
+  assert.equal(occurrences(testConfig, fixture), 1, "compile:test must include the old-shape compatibility fixture once");
+  assert.equal(commandOccurrences(focused, "npm run compile:test"), 1, "test:t609 must compile the compatibility fixture once");
 });
 
 test("T609 single-root reuses its no-active Current Context selection without an active-editor refresh", async () => {

@@ -118,7 +118,7 @@ export class GitContextRevisionMapper {
       ...recovered.unresolvedFileIds
     ]);
     const unresolvedReasonsByFileId: Record<string, "immutable-text-unavailable" | "mapping-unresolved"> = {
-      ...direct.unresolvedReasonsByFileId
+      ...(direct.unresolvedReasonsByFileId ?? {})
     };
     for (const fileId of recovered.unresolvedFileIds) {
       unresolvedReasonsByFileId[fileId] ??= "mapping-unresolved";

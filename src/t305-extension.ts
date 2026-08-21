@@ -524,6 +524,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   );
 
   let testReviewContextsRepositorySelection: "cancel" | "stale" | undefined;
+  let testReviewContextsRepositorySelectionRequestCount = 0;
   reviewContextsRuntimeRef.current = registerT405ReviewContextsRuntime({
     context,
     git,
@@ -543,8 +544,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     reviewStateRepository: runtimePort.reviewStateRepository,
     reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
     ...(context.extensionMode === vscode.ExtensionMode.Test ? {
-      requestRepositorySelection: async (candidates) =>
-        testReviewContextsRepositorySelection === "stale" ? { ...candidates[0]! } : undefined,
+      requestRepositorySelection: async (candidates) => {
+        testReviewContextsRepositorySelectionRequestCount += 1;
+        return testReviewContextsRepositorySelection === "stale" ? { ...candidates[0]! } : undefined;
+      },
     } : {}),
   });
 
@@ -654,6 +657,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
         testReviewContextsRepositorySelection = selection;
+      },
+      getReviewContextsCancellationSnapshot: async () => {
+        const snapshot = await reviewContextsRuntimeRef.current?.getCancellationSnapshotForTest();
+        if (snapshot === undefined) throw new Error("T609 Review Contexts runtime is unavailable.");
+        return {
+          ...snapshot,
+          repositorySelectionRequestCount: testReviewContextsRepositorySelectionRequestCount,
+        };
       },
       seedSavedPullRequestContext: async (document: vscode.TextDocument, pullRequestNumber: number) => {
         const inspection = await git.inspectRepository(document.uri.fsPath);

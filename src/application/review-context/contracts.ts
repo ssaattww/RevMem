@@ -123,8 +123,8 @@ export interface GitContextRevisionMappingResult {
   readonly globalState: RepositoryGlobalState;
   /** File identities whose prior review evidence was conservatively invalidated without a proven mapping. */
   readonly unresolvedFileIds: readonly string[];
-  /** Generic, privacy-safe diagnostics for identities whose immutable text could not be mapped. */
-  readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
+  /** Optional generic, privacy-safe diagnostics for identities whose immutable text could not be mapped. */
+  readonly unresolvedReasonsByFileId?: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
 }
 
 /** Complete fallback input used only after both old context and Global objects are proven missing. */

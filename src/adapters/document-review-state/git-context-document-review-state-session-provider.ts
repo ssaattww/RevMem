@@ -421,7 +421,7 @@ export class GitContextDocumentReviewStateSessionProvider {
           { contextState: clone(next.contextState), globalState: clone(next.globalState) },
           mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
           mapped.unresolvedFileIds,
-          mapped.unresolvedReasonsByFileId
+          mapped.unresolvedReasonsByFileId ?? {}
         );
         return;
       } catch (error) {
@@ -536,7 +536,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         globalState: clone(mapped.globalState)
       },
       unresolvedFileIds: [...mapped.unresolvedFileIds],
-      unresolvedReasonsByFileId: { ...mapped.unresolvedReasonsByFileId }
+      unresolvedReasonsByFileId: { ...(mapped.unresolvedReasonsByFileId ?? {}) }
     };
   }
 
