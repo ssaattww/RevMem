@@ -203,6 +203,22 @@ test("T609 Host persists mapping seeds through one Test-mode production transact
   assert.doesNotMatch(singleRootPhase, /markAndSynchronizeFixtureReview\(`mapping seed/u);
 });
 
+test("T609 Test-only mapping seed settles after its durable production transaction without decoration publication", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const helperStart = extension.indexOf("const seedT609InitialReviewedRanges = async");
+  const testApiStart = extension.indexOf("return {", helperStart);
+  assert.ok(helperStart >= 0 && testApiStart > helperStart);
+  const helper = extension.slice(helperStart, testApiStart);
+
+  assert.match(helper, /await initial\.committer\.commit\(batchTransaction\);/u);
+  assert.match(helper, /await historyRecorder\.recordTransaction\(batchTransaction, "test-mapping-seed"\);/u);
+  assert.match(helper, /batchTransaction\.next\.contextState\.files/u);
+  assert.match(helper, /batchTransaction\.next\.globalState\.files/u);
+  assert.doesNotMatch(helper, /documentSessionProvider\.loadForDecoration/u);
+  assert.doesNotMatch(helper, /reviewStateChanged\.fire\(\)/u);
+  assert.doesNotMatch(helper, /refreshVisibleEditorDecorations|drainVisibleEditorDecorations/u);
+});
+
 test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");

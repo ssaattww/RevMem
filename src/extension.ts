@@ -1068,14 +1068,12 @@ export function activate(
       throw new Error("T609 mapping seed editors must identify distinct documents.");
     }
 
-    const descriptors: DocumentEditorReviewDescriptor[] = [];
     const sessions: Array<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>> = [];
     for (const editor of editors) {
       const descriptor = await toDocumentDescriptor(editor);
       if (descriptor === undefined) {
         throw new Error("T609 mapping seed document changed while its production descriptor was captured.");
       }
-      descriptors.push(descriptor);
       sessions.push(await documentSessionProvider.open(descriptor, selectedContext));
     }
     const initial = sessions[0]!;
@@ -1122,25 +1120,15 @@ export function activate(
     };
     await initial.committer.commit(batchTransaction);
     await historyRecorder.recordTransaction(batchTransaction, "test-mapping-seed");
-    reviewStateChanged.fire();
-    const readback: Array<{
-      readonly documentUri: string;
-      readonly contextIntervals: readonly ReviewedIntervalSnapshot[];
-      readonly globalIntervals: readonly ReviewedIntervalSnapshot[];
-    }> = [];
-    for (let index = 0; index < descriptors.length; index += 1) {
-      const descriptor = descriptors[index]!;
-      const session = sessions[index]!;
-      const persisted = await documentSessionProvider.loadForDecoration(descriptor, selectedContext);
-      const contextFile = persisted?.contextState.files[session.target.fileId];
-      const globalFile = persisted?.globalState.files[session.target.fileId];
-      readback.push({
+    return sessions.map((session, index) => {
+      const contextFile = batchTransaction.next.contextState.files[session.target.fileId];
+      const globalFile = batchTransaction.next.globalState.files[session.target.fileId];
+      return {
         documentUri: editors[index]!.document.uri.toString(),
         contextIntervals: (contextFile?.modifiedReviewed ?? []).map((interval) => ({ ...interval })),
         globalIntervals: (globalFile?.reviewed ?? []).map((interval) => ({ ...interval }))
-      });
-    }
-    return readback;
+      };
+    });
   };
 
   return {
