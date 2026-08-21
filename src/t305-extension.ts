@@ -642,8 +642,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     documentChangeRefresh.cancel();
     refreshGlobalUnderstanding();
   };
+  let testReviewStateDependentRefresh = Promise.resolve();
+  const refreshReviewStateDependentsForTest = async (): Promise<void> => {
+    await globalRuntime.refreshWithErrorBoundary();
+    await refreshPullRequestProgressForSelection().catch(reportPullRequestProgressError);
+    await reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
+  };
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
+      if (context.extensionMode === vscode.ExtensionMode.Test) {
+        testReviewStateDependentRefresh = testReviewStateDependentRefresh.then(refreshReviewStateDependentsForTest);
+        return;
+      }
       refreshGlobalUnderstanding();
       refreshPullRequestProgress();
       void reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
@@ -672,6 +682,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return {
       ...baseApi,
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
+      drainReviewStateDependentsForTest: () => testReviewStateDependentRefresh,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {

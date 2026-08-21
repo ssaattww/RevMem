@@ -10,6 +10,7 @@ assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T
 
 interface T609ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
+  drainReviewStateDependentsForTest(): Promise<void>;
   drainDocumentReviewEdits(): Promise<void>;
   seedT609InitialReviewedRanges(editors: readonly vscode.TextEditor[]): Promise<readonly {
     readonly documentUri: string;
@@ -105,6 +106,7 @@ const markAndSynchronizeFixtureReview = async (
     }
     throw error;
   }
+  await within(`drain ${label} review-state dependents`, api.drainReviewStateDependentsForTest());
   await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
   await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
   await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());
@@ -185,7 +187,6 @@ export async function run(): Promise<void> {
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
-    await assertMixedEncodingFixture(folder, api);
     const mappingSeedEditors: vscode.TextEditor[] = [];
     for (const name of ["rename-source.txt", "whitespace.txt", "eol.txt"]) {
       const document = await within(`open mapping seed ${name}`, vscode.workspace.openTextDocument(fixtureUri(folder, name)));
@@ -201,6 +202,7 @@ export async function run(): Promise<void> {
       })),
       "the T609 seed must persist all initial intervals through the read-only production state query"
     );
+    await assertMixedEncodingFixture(folder, api);
     return;
   }
 

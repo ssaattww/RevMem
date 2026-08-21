@@ -219,6 +219,38 @@ test("T609 Test-only mapping seed settles after its durable production transacti
   assert.doesNotMatch(helper, /refreshVisibleEditorDecorations|drainVisibleEditorDecorations/u);
 });
 
+test("T609 single-root bounds durable seed before public mixed-encoding marks and queues Test-mode event feedback", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
+  const restartStart = hostSuite.indexOf("if (!isPrepare) {");
+  assert.ok(singleRootStart >= 0 && restartStart > singleRootStart);
+  const singleRoot = hostSuite.slice(singleRootStart, restartStart);
+  const startupDrain = hostSuite.indexOf('await within("drain startup Current Context", api.drainCurrentContextStartupForTest());');
+  const noActiveContext = singleRoot.indexOf('await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));');
+  const seed = singleRoot.indexOf('await within("seed initial mapping ranges", api.seedT609InitialReviewedRanges(mappingSeedEditors));');
+  const mixedEncoding = singleRoot.indexOf("await assertMixedEncodingFixture(folder, api);");
+
+  assert.ok(startupDrain >= 0 && noActiveContext >= 0 && seed > noActiveContext && mixedEncoding > seed);
+  const normalCommandRegistration = extension.slice(
+    extension.indexOf("const registrations = registerNormalEditorReviewCommands"),
+    extension.indexOf("context.subscriptions.push", extension.indexOf("const registrations = registerNormalEditorReviewCommands"))
+  );
+  assert.equal(
+    occurrences(normalCommandRegistration, 'if (result === "applied") reviewStateChanged.fire();'),
+    4,
+    "every normal mark operation must publish exactly one applied event"
+  );
+  assert.match(extension, /deferAppliedDecorationRefresh: true/u);
+  assert.match(hostSuite, /drainReviewStateDependentsForTest\(\): Promise<void>;/u);
+  assert.match(hostSuite, /drain \$\{label\} review-state dependents/u);
+  const composition = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  assert.match(composition, /testReviewStateDependentRefresh = testReviewStateDependentRefresh\.then\(refreshReviewStateDependentsForTest\);/u);
+  assert.match(composition, /drainReviewStateDependentsForTest: \(\) => testReviewStateDependentRefresh/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
+});
+
 test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
