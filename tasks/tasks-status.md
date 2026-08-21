@@ -9,12 +9,12 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
 - 現在のタスク: T607 / Issue #79 large-workload performance and incremental UI
-- 次のタスク: T607-R001/R003/R004/R006のthree closure fixturesをsame reviewerがfinding-limitedで確認する
+- 次のタスク: T607-R003/R004のproduction composition follow-upをsame reviewerがfinding-limitedで確認する
 - 実装状態: T405、T406、T506、T603〜T606はmainへ統合済み。T606はPR #77をsquash mergeし、merge commit `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Greenで統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t607-performance-incremental-ui`
-- Pull Request: #80（initial HEAD `a695806`、fix HEAD `0c57486`。normal closureはR002/R005 closed、R001/R003/R004/R006はthree closure fixture追加後のsame reviewer確認待ち。initial exact-head runs `32433837209` / `32433825463` はhistorical design structure failure、current-head CIはheld）
+- Pull Request: #80（initial HEAD `a695806`、closure R2 HEAD `753093e`。R001/R002/R005/R006 closed、R003/R004はproduction composition follow-up後のsame reviewer確認待ち。initial exact-head runs `32433837209` / `32433825463` はhistorical design structure failure、current-head CIはheld）
 - T607 implementation report: `reports/issue-79-t607-implementation-20260821094238.md` はhistorical initial evidenceである。normal review: `reports/issue-79-t607-normal-review-20260821095112.md`。follow-up implementation: `reports/issue-79-t607-normal-review-followup-20260821143000.md`、same reviewer closure待ち
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録

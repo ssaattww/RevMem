@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80のopen findings T607-R001/R003/R004/R006へthree closure fixture追加済み、same reviewer確認待ち）
-- 次の工程: T607-R001/R003/R004/R006のsame reviewer finding-limited closure
+- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80のopen findings T607-R003/R004へproduction composition follow-up追加済み、same reviewer確認待ち）
+- 次の工程: T607-R003/R004のsame reviewer finding-limited closure
 - 後続候補: T608
 
 ## P0 開発基盤

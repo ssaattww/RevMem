@@ -60,7 +60,8 @@ import {
   registerNormalEditorReviewCommands,
   type NormalEditorCommandHost,
   type NormalEditorDecorationHost,
-  type NormalEditorDecorationSettings
+  type NormalEditorDecorationSettings,
+  type NormalEditorDecorationWorkBudget
 } from "./ui/normal-editor/index";
 import { LocalBaseHeadRuntime } from "./t306-local-base-head-runtime";
 
@@ -74,6 +75,11 @@ const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showOverviewRuler"
 ] as const;
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
+const DECORATION_WORK_BUDGET: NormalEditorDecorationWorkBudget = Object.freeze({
+  maxDecorationsPerStage: 128,
+  yieldControl: () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+});
+const HASH_CHARACTERS_PER_STAGE = 65_536;
 
 const workspaceSidePathSemantics = () =>
   process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -212,7 +218,8 @@ const createHoverMessage = (
 const toDecorationOptions = async (
   editor: vscode.TextEditor,
   decorations: readonly NormalEditorReviewedDecoration[],
-  context: { readonly signal: AbortSignal; readonly isCurrent: () => boolean }
+  context: { readonly signal: AbortSignal; readonly isCurrent: () => boolean },
+  workBudget: NormalEditorDecorationWorkBudget = DECORATION_WORK_BUDGET
 ): Promise<vscode.DecorationOptions[] | undefined> => {
   const options: vscode.DecorationOptions[] = [];
   for (let index = 0; index < decorations.length; index += 1) {
@@ -220,7 +227,7 @@ const toDecorationOptions = async (
     const decoration = decorations[index]!;
     const lastLine = decoration.interval.endLineExclusive - 1;
     options.push({ range: new vscode.Range(new vscode.Position(decoration.interval.startLine, 0), editor.document.lineAt(lastLine).range.end), hoverMessage: createHoverMessage(decoration) });
-    if ((index + 1) % 128 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if ((index + 1) % workBudget.maxDecorationsPerStage === 0) await workBudget.yieldControl();
   }
   return context.signal.aborted || !context.isCurrent() ? undefined : options;
 };
@@ -398,9 +405,10 @@ export function activate(
     vscode.TextEditor,
     readonly NormalEditorReviewedDecoration[]
   >();
-  const toDocumentDescriptor = (
-    editor: vscode.TextEditor
-  ): DocumentEditorReviewDescriptor => {
+  const toDocumentDescriptor = async (
+    editor: vscode.TextEditor,
+    isCurrent: () => boolean = () => true
+  ): Promise<DocumentEditorReviewDescriptor | undefined> => {
     const documentUri = editor.document.uri;
     if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
       throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
@@ -420,17 +428,27 @@ export function activate(
           displayName: membership.workspaceFolder.name
         };
 
+    const contentHash = await stableHash.digestCooperatively(
+      editor.document.getText(),
+      HASH_CHARACTERS_PER_STAGE,
+      DECORATION_WORK_BUDGET.yieldControl,
+      isCurrent
+    );
+    if (contentHash === undefined) return undefined;
     return {
       documentUri: toResourceUri(documentUri),
       documentFsPath: documentUri.fsPath,
       fileSystemPathSemantics: workspaceSidePathSemantics(),
       ...(workspace === undefined ? {} : { workspace }),
       lineCount: editor.document.lineCount,
-      contentHash: stableHash.digest(editor.document.getText())
+      contentHash
     };
   };
-  const openDocumentSession = (editor: vscode.TextEditor) =>
-    documentSessionProvider.open(toDocumentDescriptor(editor), selectedContext);
+  const openDocumentSession = async (editor: vscode.TextEditor) => {
+    const descriptor = await toDocumentDescriptor(editor);
+    if (descriptor === undefined) throw new Error("Document decoration request was superseded.");
+    return documentSessionProvider.open(descriptor, selectedContext);
+  };
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
@@ -455,7 +473,11 @@ export function activate(
       if (!loadContext.isCurrent() || loadContext.signal.aborted) {
         return [];
       }
-      const descriptor = toDocumentDescriptor(editor);
+      const descriptor = await toDocumentDescriptor(
+        editor,
+        () => loadContext.isCurrent() && !loadContext.signal.aborted
+      );
+      if (descriptor === undefined) return [];
       if (!loadContext.isCurrent() || loadContext.signal.aborted) {
         return [];
       }
@@ -497,12 +519,17 @@ export function activate(
       return vscode.window.createTextEditorDecorationType(options);
     },
     setDecorations: async (editor, decorationType, decorations, loadContext) => {
-      const options = await toDecorationOptions(editor, decorations, loadContext);
+      const options = await toDecorationOptions(editor, decorations, loadContext, DECORATION_WORK_BUDGET);
       if (options === undefined || loadContext.signal.aborted || !loadContext.isCurrent()) return;
-      appliedDecorations.set(editor, decorations.map((decoration) => ({
-        ...decoration,
-        interval: { ...decoration.interval }
-      })));
+      const applied: NormalEditorReviewedDecoration[] = [];
+      for (let index = 0; index < decorations.length; index += 1) {
+        if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
+        const decoration = decorations[index]!;
+        applied.push({ ...decoration, interval: { ...decoration.interval } });
+        if ((index + 1) % DECORATION_WORK_BUDGET.maxDecorationsPerStage === 0) await DECORATION_WORK_BUDGET.yieldControl();
+      }
+      if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
+      appliedDecorations.set(editor, applied);
       editor.setDecorations(
         decorationType,
         options
@@ -533,7 +560,7 @@ export function activate(
       }),
     showDecorationError: (error) => reportDecorationError(error)
   };
-  const decorationController = new NormalEditorDecorationController(decorationHost);
+  const decorationController = new NormalEditorDecorationController(decorationHost, DECORATION_WORK_BUDGET);
   const commandService = new NormalEditorReviewCommandService<vscode.TextEditor>({
     getLineCount: (editor) => editor.document.lineCount,
     getSelections: (editor) =>

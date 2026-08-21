@@ -2,7 +2,7 @@
 
 ## タスク
 
-Issue #79 / PR #80 のinitial normal review findings `T607-R001`〜`T607-R006`のinitial fix HEADは`0c57486bb08d8e096be971c7c3c58e26415857bd`でcommit済みである。same reviewer closureはR002/R005をclosed、R001/R003/R004/R006をopenとした。本reportの追補はopen four findingsだけを扱う。
+Issue #79 / PR #80 のsame reviewer closure R2はcommitted HEAD `753093eb2ba3cd98d25f54fa6aaaeca3425e15c6`でR001/R002/R005/R006をclosedとし、R003/R004だけをopenとした。本追補はこの二findingのrequired actionだけを扱う。
 
 ## sub-agentを使う理由
 
@@ -10,7 +10,7 @@ initial normal reviewとは独立したimplementation workerが、reviewerの六
 
 ## 対象範囲
 
-`T607-R001`はGlobal Treeのvalidation/sort/projectionをcooperative budgetへ移し、status summaryをfile projectionから分離した。追加fixtureはactual 10,000 file-node build、128-item accounting、各published modelがprepared prefix arrayを二重copyせず保持することを固定した。`T607-R002`はactual T301 10,000 changed-line/hunk aggregation、128-file checkpoint、cooperative final category sort、一回のgeneration-fenced tree swap、stale/cancel時の旧complete tree保持を追加した。`T607-R003`はproduction VS Code Global runtimeでpartial Tree publish直後にinvalidate/disposeし、owner signal abort、stale open rejection、stale status terminal非発行を固定した。`T607-R004`はlarge documentのdescriptor/hashからstate load、2,048 interval model/options projection、split editor apply、generation supersessionまでを同一composition fixtureで固定した。`T607-R005`はdesign本文のtask IDを恒久contractから除去し、performance contractを具体化した。`T607-R006`はREADME、tracking、handoff、当reportへPR #80、historical failed CI、finding status、next actionを同期した。
+`T607-R003`はproduction VS Code Global runtimeでold/new concurrent refresh、old owner abort、invalidate-only、dispose、stale node open rejection、shared operation feedbackのstart/terminal一対一を固定した。`T607-R004`は実production `NodeSha256StableHash`へlarge documentの65,536-character checkpointを追加し、extensionのdescriptor hash、options projection、applied-decoration copy、host applyを128-item work budgetで同じsupersession fenceへ接続した。既存R004 split editor/2,048 interval fixtureは保持する。
 
 ## 対象外
 
@@ -18,7 +18,7 @@ new review finding、独立review、exact-head CI、Extension Host E2E、commit�
 
 ## 実行コマンド
 
-既存follow-upのRed/Green証跡に加え、今回のfixture account hook未接続Redを一回だけ`npm run test:t607`で観測した（65 pass / 1 fail、10,000 built-file-node accountが0件）。三fixture追加・最小production修正後のcombined Green `npm run test:t607`は68 pass / 0 fail。`npm run build`と`npm run typecheck:contracts`はexit 0、minor unused-import修正後に`git diff --check`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`もexit 0である（negative architectureは期待どおり11 violations）。CIは起動・待機していない。
+R003 production-feedback fixtureの初回Redは`npm run test:t607`で70件中1件fail（feedback start数はstale-node commandを含む5であり、初期想定4を訂正）を観測した。assertionを実operation境界へ合わせたGreen `npm run test:t607`は70 pass / 0 fail。`git diff --check`、`npm run build`、`npm run typecheck:contracts`、`npm run lint`、`npm run validate:architecture`、`npm run validate:architecture:negative`はexit 0（negative architectureは期待どおり11 violations）。CIは起動・待機していない。
 
 ## 対象ファイル
 
@@ -26,11 +26,11 @@ PR Progress production runtime/provider、Global UI model/runtime、normal-edito
 
 ## 指摘事項
 
-R002/R005はsame reviewer closureでclosed済みである。R001は10,000-file deterministic accounting/single-copy model evidence、R003はproduction lifecycle composition、R004はdescriptor/state/options/host apply composition、R006はfix head/lifecycle synchronizationを追加実装した。severityはinitial reportから変更しない。closure verdictはimplementation ownerにはないためpendingである。
+R001/R002/R005/R006はsame reviewer closure R2でclosed済みであり再変更していない。R003はproduction lifecycle/feedback composition、R004はproduction hash と decoration pipeline budgetを追加実装した。severityはinitial reportから変更しない。closure verdictはimplementation ownerにはないためpendingである。
 
 ## 結果
 
-initial fix HEAD `0c57486`のclosure factsを同期した。current worktreeにはR001/R003/R004/R006 follow-upの未commit changesがあり、three missing closure fixturesのGreen 68 passを取得した。same normal reviewerはopen four IDsだけをclosure確認し、新しい観点・findingを追加しない。current-head CI evidenceは存在しない。
+closure R2 HEAD `753093e`のfactsを同期した。current worktreeにはR003/R004 follow-upの未commit changesがあり、focused Green 70 passを取得した。same normal reviewerはR003/R004だけをclosure確認し、新しい観点・findingを追加しない。current-head CI evidenceは存在しない。
 
 ## リスク
 

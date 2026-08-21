@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { createNormalEditorDecorationModel } from "../../src/application/editor-decoration/index";
+import { NodeSha256StableHash } from "../../src/adapters/crypto/node-sha256-stable-hash";
 import type { RepositoryGlobalUnderstandingProgress } from "../../src/core/global-understanding/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type DiffLine, type GlobalFileReviewState, type PullRequestFileChange, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
@@ -200,6 +201,70 @@ test("T607 production VS Code Global runtime fences partial publication on inval
   }
 });
 
+test("T607 production Global runtime supersedes old/new refreshes and gives each feedback operation one terminal", async () => {
+  const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
+  let provider: { getChildren(node?: { readonly kind: string }): readonly { readonly kind: string }[] } | undefined;
+  const signals: AbortSignal[] = [];
+  const deferred = <T>() => { let resolve!: (value: T) => void; return { promise: new Promise<T>((complete) => { resolve = complete; }), resolve }; };
+  const old = deferred<GlobalUnderstandingTreeSnapshot>();
+  const invalidated = deferred<GlobalUnderstandingTreeSnapshot>();
+  const disposed = deferred<GlobalUnderstandingTreeSnapshot>();
+  let call = 0;
+  const logs: Array<{ readonly event: string }> = [];
+  const opened: unknown[] = [];
+  const reported: unknown[] = [];
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 }, StatusBarAlignment: { Left: 1 },
+    window: {
+      createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+      registerTreeDataProvider: (_id: string, next: typeof provider) => { provider = next; return { dispose(): void {} }; }
+    },
+    commands: { registerCommand: (id: string, callback: (...args: unknown[]) => Promise<void>) => { commands.set(id, callback); return { dispose(): void {} }; } },
+    workspace: { onDidChangeConfiguration: () => ({ dispose(): void {} }) }
+  };
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>("../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode);
+  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { logs.push({ event: entry.event }); }, revealLog(): void {} });
+  const current = snapshot(129);
+  const withTargets = (value: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeSnapshot => ({ ...value, fileOpenTargets: value.progress.files.map((file) => ({ kind: "working-tree" as const, repositoryId: "repo", contextId: "context", revisionId: "revision", repositoryPath: file.path, filePath: `/repo/${file.path}` })) });
+  setActiveOperationFeedback(feedback);
+  try {
+    const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+      source: { recalculate: async (signal) => { signals.push(signal!); return call++ === 0 ? old.promise : call === 2 ? withTargets(current) : call === 3 ? invalidated.promise : disposed.promise; } },
+      readGlobalLayerEnabled: () => false, writeGlobalLayerEnabled: async () => undefined, refreshDecorations: async () => undefined,
+      openFile: async (target) => { opened.push(target); }, reportError: async (error) => { reported.push(error); }
+    });
+    const oldRefresh = registered.refresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    const newRefresh = registered.refresh();
+    await newRefresh;
+    assert.equal(signals[0]?.aborted, true, "the new production refresh aborts the old owner before old publication");
+    old.resolve(withTargets(current));
+    await oldRefresh;
+    const group = provider!.getChildren().find((node) => node.kind === "files-group");
+    const staleNode = provider!.getChildren(group).find((node) => node.kind === "file");
+    const invalidateRefresh = registered.refresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    registered.invalidate();
+    assert.equal(signals[2]?.aborted, true, "invalidate-only aborts its distinct in-flight refresh");
+    invalidated.resolve(withTargets(current));
+    await invalidateRefresh;
+    await commands.get(runtime.OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID)!(staleNode);
+    assert.equal(opened.length, 0, "an old node cannot open after invalidate-only clears the production model");
+    assert.equal(reported.length, 1);
+    const disposeRefresh = registered.refresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    registered.dispose();
+    assert.equal(signals[3]?.aborted, true, "dispose aborts a distinct in-flight refresh");
+    disposed.resolve(withTargets(current));
+    await disposeRefresh;
+    const starts = logs.filter((entry) => entry.event === "started").length;
+    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed").length;
+    assert.equal(starts, 5, "four refreshes plus the stale-node command each enter the shared production feedback boundary");
+    assert.equal(terminals, starts, "every relevant production operation has exactly one feedback terminal");
+  } finally { setActiveOperationFeedback(undefined); }
+});
+
 test("T607 aggregates actual 10,000 changed T301 lines and publishes only the complete current Tree", async () => {
   const diff = tenThousandLineT301Snapshot();
   const progress = calculatePullRequestDiffProgress({
@@ -356,6 +421,18 @@ test("T607 extension decoration composition carries descriptor hash through stat
   assert.deepEqual(applies.map((apply) => apply.editor), ["split-a", "split-b", "split-a"]);
   assert.ok(applies.every((apply) => apply.decorationCount === 2_048 && apply.optionCount === 2_048), "each current split editor receives exactly one 2,048-interval projection and host option apply");
   assert.ok(yields >= 48, "three current 2,048-interval projections use the 128-item deterministic budget");
+});
+
+test("T607 uses the production SHA-256 adapter in deterministic large-document checkpoints", async () => {
+  const account: number[] = [];
+  let yields = 0;
+  const text = "x".repeat(1_048_576);
+  const hash = new NodeSha256StableHash();
+  const value = await hash.digestCooperatively(text, 65_536, () => { yields += 1; }, () => true, (count) => { account.push(count); });
+  assert.equal(value, hash.digest(text));
+  assert.equal(account.length, 16);
+  assert.ok(account.every((count) => count <= 65_536));
+  assert.equal(yields, 15, "the production hashing adapter yields between bounded document chunks");
 });
 
 test("T607 focused workload harness is wired through the diagnostic CI runner", async () => {
