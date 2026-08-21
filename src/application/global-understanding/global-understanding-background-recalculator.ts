@@ -188,40 +188,78 @@ interface SnapshotWork {
   item(kind: string): Promise<void>;
 }
 
-const globalFilesByPath = async (
-  state: RepositoryGlobalState,
+interface CapturedCalculationInput {
+  readonly repositoryId: string;
+  readonly currentRevisionId: string;
+  readonly globalByPath: ReadonlyMap<string, GlobalFileReviewState>;
+  readonly included: readonly IncludedGlobalUnderstandingFile[];
+  readonly openFilePaths: readonly string[];
+}
+
+const captureCalculationInput = (
+  input: GlobalUnderstandingRecalculationInput
+): CapturedCalculationInput => {
+  const repositoryId = input.globalState.repositoryId;
+  const currentRevisionId = input.globalState.currentRevisionId;
+  const globalByPath = new Map<string, GlobalFileReviewState>();
+  for (const fileId in input.globalState.files) {
+    if (!Object.hasOwn(input.globalState.files, fileId)) continue;
+    const file = input.globalState.files[fileId]!;
+    const captured = Object.freeze({
+      fileId: file.fileId,
+      currentPath: file.currentPath,
+      revisionId: file.revisionId,
+      // Review intervals are a public readonly vector. Retaining that immutable
+      // vector avoids a second repository-sized interval copy while detaching
+      // the operation from later replacement of the file's reviewed property.
+      reviewed: file.reviewed,
+      contentHash: file.contentHash,
+      updatedAt: file.updatedAt
+    }) as GlobalFileReviewState;
+    if (globalByPath.has(captured.currentPath)) {
+      throw new RangeError(`duplicate Global currentPath: ${captured.currentPath}`);
+    }
+    globalByPath.set(captured.currentPath, captured);
+  }
+  return Object.freeze({
+    repositoryId,
+    currentRevisionId,
+    globalByPath,
+    included: Object.freeze(input.included.map((file) => Object.freeze({
+      path: file.path,
+      nonEmptyLineCount: file.nonEmptyLineCount
+    }))),
+    openFilePaths: Object.freeze([...(input.openFilePaths ?? [])])
+  });
+};
+
+const validateGlobalFilesByPath = async (
+  captured: CapturedCalculationInput,
   work: SnapshotWork
 ): Promise<ReadonlyMap<string, GlobalFileReviewState>> => {
-  requireNonEmptyString(state.repositoryId, "globalState.repositoryId");
-  requireNonEmptyString(state.currentRevisionId, "globalState.currentRevisionId");
-  const files = new Map<string, GlobalFileReviewState>();
-  for (const fileId in state.files) {
-    if (!Object.hasOwn(state.files, fileId)) continue;
+  requireNonEmptyString(captured.repositoryId, "globalState.repositoryId");
+  requireNonEmptyString(captured.currentRevisionId, "globalState.currentRevisionId");
+  for (const file of captured.globalByPath.values()) {
     await work.item("mapped-global-file");
-    const file = state.files[fileId]!;
     requireNonEmptyString(file.currentPath, "Global currentPath");
-    if (files.has(file.currentPath)) {
-      throw new RangeError(`duplicate Global currentPath: ${file.currentPath}`);
-    }
-    files.set(file.currentPath, file);
   }
-  return files;
+  return captured.globalByPath;
 };
 
 const snapshotCalculationInput = async (
-  input: GlobalUnderstandingRecalculationInput,
+  captured: CapturedCalculationInput,
   work: SnapshotWork
 ): Promise<GlobalUnderstandingCalculationInputSnapshot> => {
-  // The caller owns an immutable recalculation input; retaining its read-only
-  // references avoids a second repository-sized interval/state copy.
-  const globalByPath = await globalFilesByPath(input.globalState, work);
-  const included = input.included;
-  const openFilePaths = input.openFilePaths ?? [];
+  const globalByPath = await validateGlobalFilesByPath(captured, work);
   return Object.freeze({
-    repositoryId: input.globalState.repositoryId,
-    currentRevisionId: input.globalState.currentRevisionId,
+    repositoryId: captured.repositoryId,
+    currentRevisionId: captured.currentRevisionId,
     globalByPath,
-    ordered: Object.freeze(await orderedIncludedFiles(included, openFilePaths, work))
+    ordered: Object.freeze(await orderedIncludedFiles(
+      captured.included,
+      captured.openFilePaths,
+      work
+    ))
   });
 };
 
@@ -312,6 +350,10 @@ export class GlobalUnderstandingBackgroundRecalculator {
       yieldControl: this.dependencies.yieldControl
     };
 
+    // Capture every mutable scalar/reference used by this operation before the
+    // first cooperative await. Later validation and ordering remain staged.
+    const capturedInput = captureCalculationInput(input);
+
     let snapshotPending = 0;
     const snapshotWork: SnapshotWork = {
       item: async (kind): Promise<void> => {
@@ -324,7 +366,7 @@ export class GlobalUnderstandingBackgroundRecalculator {
         assertCurrent();
       }
     };
-    const snapshot = await snapshotCalculationInput(input, snapshotWork);
+    const snapshot = await snapshotCalculationInput(capturedInput, snapshotWork);
     const { repositoryId, currentRevisionId, globalByPath, ordered } = snapshot;
     const calculated: GlobalUnderstandingFileProgress[] = [];
     let reviewedNonEmptyLineCount = 0;
