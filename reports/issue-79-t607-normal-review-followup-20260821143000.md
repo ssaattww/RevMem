@@ -2,7 +2,7 @@
 
 ## タスク
 
-Issue #79 / PR #80 のsame reviewer closure R3はcommitted HEAD `e336de3be55f3ac520475464307be7c3a2475b38`でR001/R002/R003/R005/R006をclosedとし、R004だけをopenとした。本追補はこの一findingのrequired actionだけを扱う。
+Issue #79 / PR #80 のsame reviewer closure R4はtechnical fix HEAD `7ce06c1114a5ebd9830e801a93205ae9e85cd4d4`でR001〜R006をすべてclosedとした。report-normalized head `11d4c5d52ff4d07f9998c9951c9349ab1168748d`はR2/R3 report末尾空行だけを正規化したadministrative headである。
 
 ## sub-agentを使う理由
 
@@ -26,12 +26,12 @@ PR Progress production runtime/provider、Global UI model/runtime、normal-edito
 
 ## 指摘事項
 
-R001/R002/R003/R005/R006はclosed済みであり再変更していない。R004だけをactual activation compositionで追加実装した。severityはinitial reportから変更しない。closure verdictはimplementation ownerにはないためpendingである。
+R001〜R006はsame reviewer closure R4でclosed済みである。severity変更および新規findingはない。normal-review verdictは`pass_with_held`であり、独立final review待ちである。
 
 ## 結果
 
-closure R3 HEAD `e336de3`のfactsを同期した。current worktreeにはR004 follow-upの未commit changesがあり、focused Green 71 passを取得した。same normal reviewerはR004だけをclosure確認し、新しい観点・findingを追加しない。current-head CI evidenceは存在しない。
+technical HEAD `7ce06c1`とreport-normalized HEAD `11d4c5d`のfactsを同期した。`test:t607`は71 pass / 0 fail、local static gatesはGreenである。normal reviewは`pass_with_held`、独立final reviewはpending、exact-head `pull_request` CIはheldである。
 
 ## リスク
 
-abortを尊重しないstate providerは中断できなくても、post-load/model/copy/apply fenceによりstale outputをapplyしない。巨大documentの実測はadvisoryのままである。PR Treeはpartial treeをpublishせず前のcomplete projectionを維持するため、長いpreparation中は旧表示が残る。exact-head CIとindependent reviewは未実施である。
+abortを尊重しないstate providerは中断できなくても、post-load/model/copy/apply fenceによりstale outputをapplyしない。巨大documentの実測はadvisoryのままである。PR Treeはpartial treeをpublishせず前のcomplete projectionを維持するため、長いpreparation中は旧表示が残る。exact-head `pull_request` CIはmerge gateとしてheld、Markdown wording toolingはunsupported、independent final reviewはpendingである。
