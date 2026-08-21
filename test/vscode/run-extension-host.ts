@@ -1,8 +1,19 @@
 import { execFile } from "node:child_process";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
+import { DocumentReviewStateSessionProvider, type DocumentEditorReviewDescriptor } from "../../src/adapters/document-review-state/index";
+import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
+import {
+  DebouncedReviewStateRepository,
+  FileSystemReviewStateRepository,
+  JsonlReviewHistoryStore
+} from "../../src/adapters/state-repository/index";
+import { markReviewedRanges, type ReviewStateTransaction } from "../../src/core/review-state/index";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
 import { createTemporaryDirectory, pathExists } from "../support/temporary-directory";
 import { runOwnedExtensionHostLaunch } from "./owned-extension-host-launch";
 import { cleanupOwnedTemporaryDirectory } from "./owned-temporary-directory-cleanup";
@@ -70,6 +81,83 @@ const advanceT609Fixture = async (root: string): Promise<void> => {
 const prepareT609SecondRoot = async (root: string): Promise<void> => {
   await writeFile(join(root, "second-root.txt"), "T609 second repository fixture\n", "utf8");
   await initializeGitRepository(root);
+};
+
+/** Seeds the initial Git-review ranges using the same repository/session path that the Host subsequently loads. */
+const prepareT609InitialReviewState = async (root: string, userData: string): Promise<void> => {
+  const storageUris = {
+    globalStorageUri: { fsPath: join(userData, "User", "globalStorage", "taiga.review-range-tracker") }
+  };
+  const repository = new DebouncedReviewStateRepository({
+    delegate: new FileSystemReviewStateRepository({ storageUris })
+  });
+  const historyRecorder = new ReviewHistoryRecorder({
+    sessionId: "t609-runner-seed",
+    createEventId: (() => {
+      let sequence = 0;
+      return () => `t609-runner-seed-${++sequence}`;
+    })(),
+    appender: new JsonlReviewHistoryStore({ storageUris })
+  });
+  const stableHash = new NodeSha256StableHash();
+  const documentSessionProvider = new DocumentReviewStateSessionProvider({
+    gitInspector: createNodeLocalGitAdapter(),
+    repository,
+    workspaceProvider: {} as never,
+    stableHash,
+    historyRecorder,
+    gitMappingOptions: {
+      ignoreWhitespaceChanges: true,
+      ignoreEolChanges: true
+    }
+  });
+  const descriptors = await Promise.all(["rename-source.txt", "whitespace.txt", "eol.txt"].map(async (name) => {
+    const documentFsPath = join(root, name);
+    const text = await readFile(documentFsPath, "utf8");
+    const uri = pathToFileURL(documentFsPath);
+    return {
+      documentUri: { scheme: uri.protocol.slice(0, -1), authority: "", path: uri.pathname, query: "", fragment: "" },
+      documentFsPath,
+      fileSystemPathSemantics: process.platform === "win32" ? "windows" as const : "posix" as const,
+      lineCount: text.split(/\r\n|\r|\n/u).length,
+      contentHash: stableHash.digest(text)
+    } satisfies DocumentEditorReviewDescriptor;
+  }));
+  try {
+    const sessions = await Promise.all(descriptors.map((descriptor) => documentSessionProvider.open(descriptor)));
+    const initial = sessions[0]!;
+    if (initial.owner !== "git" || sessions.some((session) =>
+      session.owner !== "git" ||
+      session.contextState.repositoryId !== initial.contextState.repositoryId ||
+      session.contextState.contextId !== initial.contextState.contextId ||
+      JSON.stringify(session.contextState) !== JSON.stringify(initial.contextState) ||
+      JSON.stringify(session.globalState) !== JSON.stringify(initial.globalState)
+    )) {
+      throw new Error("T609 runner seed requires one unchanged Git production snapshot.");
+    }
+    const expected = { contextState: initial.contextState, globalState: initial.globalState };
+    let contextState: ReviewStateTransaction["next"]["contextState"] = expected.contextState;
+    let globalState: ReviewStateTransaction["next"]["globalState"] = expected.globalState;
+    let transaction: ReviewStateTransaction | undefined;
+    for (const session of sessions) {
+      transaction = markReviewedRanges({
+        contextState,
+        globalState,
+        target: session.target,
+        intervals: [{ startLine: 0, endLineExclusive: 1 }],
+        occurredAt: "2026-08-22T00:00:00.000Z"
+      });
+      contextState = transaction.next.contextState;
+      globalState = transaction.next.globalState;
+    }
+    if (transaction === undefined) throw new Error("T609 runner seed requires initial sessions.");
+    const batchTransaction: ReviewStateTransaction = { ...transaction, expected, next: { contextState, globalState } };
+    await initial.committer.commit(batchTransaction);
+    await historyRecorder.recordTransaction(batchTransaction, "test-mapping-seed");
+  } finally {
+    documentSessionProvider.dispose();
+    await repository.dispose();
+  }
 };
 
 const launchTimeout = (): number => {
@@ -176,6 +264,7 @@ async function main(): Promise<void> {
     if (focusedT609) {
       await prepareT609Fixture(t609Paths.workspace);
       await prepareT609SecondRoot(t609Paths.additionalWorkspace);
+      await prepareT609InitialReviewState(t609Paths.workspace, t609Paths.userData);
       await writeFile(t609Paths.workspaceFile, `${JSON.stringify({
         folders: [
           { path: t609Paths.workspace },

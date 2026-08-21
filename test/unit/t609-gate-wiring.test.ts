@@ -183,43 +183,38 @@ test("T609 Host reaches normal-editor review through its public command", async 
   assert.doesNotMatch(hostSuite, /api\.markNormalEditorSelectionForTest\(editor\)/u);
 });
 
-test("T609 Host persists mapping seeds through one Test-mode production transaction while retaining public encoding coverage", async () => {
-  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+test("T609 runner seeds persisted mapping state before Host activation through production storage", async () => {
+  const runner = await readFile(path.join(projectRoot, "test", "vscode", "run-extension-host.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
   const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
   const restartStart = hostSuite.indexOf("if (!isPrepare) {");
   assert.ok(singleRootStart >= 0 && restartStart > singleRootStart);
   const singleRootPhase = hostSuite.slice(singleRootStart, restartStart);
 
-  assert.match(extension, /seedT609InitialReviewedRanges/u);
-  assert.match(extension, /documentSessionProvider\.open\(/u);
-  assert.match(extension, /documentSessionProvider\.loadForDecoration\(/u);
-  assert.match(extension, /committer\.commit\(/u);
-  assert.match(extension, /historyRecorder\.recordTransaction\(/u);
-  assert.match(singleRootPhase, /api\.seedT609InitialReviewedRanges\(mappingSeedEditors\)/u);
+  assert.match(runner, /const prepareT609InitialReviewState = async/u);
+  assert.match(runner, /new DocumentReviewStateSessionProvider\(/u);
+  assert.match(runner, /new FileSystemReviewStateRepository\(/u);
+  assert.match(runner, /new DebouncedReviewStateRepository\(/u);
+  assert.match(runner, /new JsonlReviewHistoryStore\(/u);
+  assert.match(runner, /await initial\.committer\.commit\(batchTransaction\);/u);
+  assert.match(runner, /await historyRecorder\.recordTransaction\(batchTransaction, "test-mapping-seed"\);/u);
+  assert.match(runner, /await prepareT609InitialReviewState\(t609Paths\.workspace, t609Paths\.userData\);/u);
+  assert.doesNotMatch(hostSuite, /seedT609InitialReviewedRanges/u);
+  assert.doesNotMatch(singleRootPhase, /mappingSeedEditors/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
-  assert.match(singleRootPhase, /for \(const name of \["rename-source\.txt", "whitespace\.txt", "eol\.txt"\]/u);
-  assert.doesNotMatch(singleRootPhase, /markAndSynchronizeFixtureReview\(`mapping seed/u);
+  assert.match(hostSuite, /assertMappedGitTransitions\(folder, api\)/u);
 });
 
-test("T609 Test-only mapping seed settles after its durable production transaction without decoration publication", async () => {
+test("T609 production activation does not retain the obsolete Test-only mapping seed", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
-  const helperStart = extension.indexOf("const seedT609InitialReviewedRanges = async");
-  const testApiStart = extension.indexOf("return {", helperStart);
-  assert.ok(helperStart >= 0 && testApiStart > helperStart);
-  const helper = extension.slice(helperStart, testApiStart);
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
-  assert.match(helper, /await initial\.committer\.commit\(batchTransaction\);/u);
-  assert.match(helper, /await historyRecorder\.recordTransaction\(batchTransaction, "test-mapping-seed"\);/u);
-  assert.match(helper, /batchTransaction\.next\.contextState\.files/u);
-  assert.match(helper, /batchTransaction\.next\.globalState\.files/u);
-  assert.doesNotMatch(helper, /documentSessionProvider\.loadForDecoration/u);
-  assert.doesNotMatch(helper, /reviewStateChanged\.fire\(\)/u);
-  assert.doesNotMatch(helper, /refreshVisibleEditorDecorations|drainVisibleEditorDecorations/u);
+  assert.doesNotMatch(extension, /seedT609InitialReviewedRanges/u);
+  assert.doesNotMatch(hostSuite, /seedT609InitialReviewedRanges/u);
 });
 
-test("T609 single-root bounds durable seed before public mixed-encoding marks and queues Test-mode event feedback", async () => {
+test("T609 single-root uses public mixed-encoding marks after startup settlement and queues Test-mode event feedback", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
   const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
@@ -228,10 +223,9 @@ test("T609 single-root bounds durable seed before public mixed-encoding marks an
   const singleRoot = hostSuite.slice(singleRootStart, restartStart);
   const startupDrain = hostSuite.indexOf('await within("drain startup Current Context", api.drainCurrentContextStartupForTest());');
   const noActiveContext = singleRoot.indexOf('await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));');
-  const seed = singleRoot.indexOf('await within("seed initial mapping ranges", api.seedT609InitialReviewedRanges(mappingSeedEditors));');
   const mixedEncoding = singleRoot.indexOf("await assertMixedEncodingFixture(folder, api);");
 
-  assert.ok(startupDrain >= 0 && noActiveContext >= 0 && seed > noActiveContext && mixedEncoding > seed);
+  assert.ok(startupDrain >= 0 && noActiveContext >= 0 && mixedEncoding > noActiveContext);
   const normalCommandRegistration = extension.slice(
     extension.indexOf("const registrations = registerNormalEditorReviewCommands"),
     extension.indexOf("context.subscriptions.push", extension.indexOf("const registrations = registerNormalEditorReviewCommands"))

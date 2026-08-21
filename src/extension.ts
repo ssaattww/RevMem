@@ -6,10 +6,7 @@ import {
   DocumentReviewStateSessionProvider,
   type DocumentEditorReviewDescriptor
 } from "./adapters/document-review-state/index";
-import {
-  markReviewedRanges,
-  type ReviewStateTransaction
-} from "./core/review-state/index";
+import { type ReviewStateTransaction } from "./core/review-state/index";
 import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   createNodeLocalGitAdapter
@@ -169,12 +166,6 @@ export interface ReviewRangeRuntimePort {
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
-  /** Seeds the T609 transition fixtures through the normal document-state persistence path in one transaction. */
-  seedT609InitialReviewedRanges(editors: readonly vscode.TextEditor[]): Promise<readonly {
-    readonly documentUri: string;
-    readonly contextIntervals: readonly ReviewedIntervalSnapshot[];
-    readonly globalIntervals: readonly ReviewedIntervalSnapshot[];
-  }[]>;
   /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
   markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
   /** Last public normal-editor command failure captured before headless UI presentation. */
@@ -1054,87 +1045,9 @@ export function activate(
     return runtimePort;
   }
 
-  const seedT609InitialReviewedRanges = async (
-    editors: readonly vscode.TextEditor[]
-  ): Promise<readonly {
-    readonly documentUri: string;
-    readonly contextIntervals: readonly ReviewedIntervalSnapshot[];
-    readonly globalIntervals: readonly ReviewedIntervalSnapshot[];
-  }[]> => {
-    if (editors.length !== 3) {
-      throw new RangeError("T609 mapping seed requires exactly three initial editors.");
-    }
-    if (new Set(editors.map((editor) => editor.document.uri.toString())).size !== editors.length) {
-      throw new Error("T609 mapping seed editors must identify distinct documents.");
-    }
-
-    const sessions: Array<Awaited<ReturnType<DocumentReviewStateSessionProvider["open"]>>> = [];
-    for (const editor of editors) {
-      const descriptor = await toDocumentDescriptor(editor);
-      if (descriptor === undefined) {
-        throw new Error("T609 mapping seed document changed while its production descriptor was captured.");
-      }
-      sessions.push(await documentSessionProvider.open(descriptor, selectedContext));
-    }
-    const initial = sessions[0]!;
-    if (initial.owner !== "git") {
-      throw new Error("T609 mapping seed requires Git-owned production sessions.");
-    }
-    const expected = {
-      contextState: initial.contextState,
-      globalState: initial.globalState
-    };
-    for (const session of sessions.slice(1)) {
-      if (
-        session.owner !== "git" ||
-        session.contextState.repositoryId !== expected.contextState.repositoryId ||
-        session.contextState.contextId !== expected.contextState.contextId ||
-        JSON.stringify(session.contextState) !== JSON.stringify(expected.contextState) ||
-        JSON.stringify(session.globalState) !== JSON.stringify(expected.globalState)
-      ) {
-        throw new Error("T609 mapping seed requires one unchanged Git review-state snapshot.");
-      }
-    }
-
-    let contextState: ReviewStateTransaction["next"]["contextState"] = expected.contextState;
-    let globalState: ReviewStateTransaction["next"]["globalState"] = expected.globalState;
-    let transaction: ReviewStateTransaction | undefined;
-    for (const session of sessions) {
-      transaction = markReviewedRanges({
-        contextState,
-        globalState,
-        target: session.target,
-        intervals: [{ startLine: 0, endLineExclusive: 1 }],
-        occurredAt: new Date().toISOString()
-      });
-      contextState = transaction.next.contextState;
-      globalState = transaction.next.globalState;
-    }
-    if (transaction === undefined) {
-      throw new Error("T609 mapping seed requires one transaction.");
-    }
-    const batchTransaction: ReviewStateTransaction = {
-      ...transaction,
-      expected,
-      next: { contextState, globalState }
-    };
-    await initial.committer.commit(batchTransaction);
-    await historyRecorder.recordTransaction(batchTransaction, "test-mapping-seed");
-    return sessions.map((session, index) => {
-      const contextFile = batchTransaction.next.contextState.files[session.target.fileId];
-      const globalFile = batchTransaction.next.globalState.files[session.target.fileId];
-      return {
-        documentUri: editors[index]!.document.uri.toString(),
-        contextIntervals: (contextFile?.modifiedReviewed ?? []).map((interval) => ({ ...interval })),
-        globalIntervals: (globalFile?.reviewed ?? []).map((interval) => ({ ...interval }))
-      };
-    });
-  };
-
   return {
     ...runtimePort,
     drainVisibleEditorDecorations: () => decorationController.drain(),
-    seedT609InitialReviewedRanges,
     markNormalEditorSelectionForTest: (editor: vscode.TextEditor) =>
       commandService.markSelectionReviewed(editor),
     getNormalEditorCommandFailureForTest: () => normalEditorCommandFailureForTest,
