@@ -8,6 +8,13 @@ import {
   type CurrentContextUiSnapshot
 } from "./current-context-ui-controller";
 
+/** A user cancellation or a post-picker identity mismatch must not clear accepted UI state. */
+export interface CurrentContextNonDestructiveOutcome {
+  readonly kind: "cancelled" | "stale";
+}
+
+export type CurrentContextResolution = CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined;
+
 const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
@@ -33,7 +40,7 @@ export class CurrentContextRuntimeComposition {
     private readonly port: CurrentContextRuntimeCompositionPort
   ) {}
 
-  public async recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
+  public async recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution> {
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
     if (candidates.length === 0) {
@@ -42,15 +49,17 @@ export class CurrentContextRuntimeComposition {
     const fallback = await this.port.resolveFallback(candidates, signal);
     if (isAborted(signal)) throw new OperationCancelledError();
     if (fallback === undefined && candidates.length > 1) {
-      return this.selection.select(
+      const selected = await this.selection.select(
         candidates,
         (available) => this.port.requestSelection(available, signal)
       );
+      if (selected === undefined) return { kind: "cancelled" };
+      return this.revalidateSelection(selected, signal, feedbackContext);
     }
     return this.selection.resolve(candidates, fallback);
   }
 
-  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution> {
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
     const selected = await this.selection.select(
@@ -60,14 +69,20 @@ export class CurrentContextRuntimeComposition {
     if (isAborted(signal)) {
       throw new OperationCancelledError();
     }
-    if (selected === undefined) {
-      return undefined;
-    }
+    if (selected === undefined) return { kind: "cancelled" };
+    return this.revalidateSelection(selected, signal, feedbackContext);
+  }
+
+  private async revalidateSelection(
+    selected: CurrentContextUiSnapshot,
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext
+  ): Promise<CurrentContextResolution> {
     const currentCandidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
     return currentCandidates.find((candidate) =>
       currentContextSelectionKey(candidate) === currentContextSelectionKey(selected)
-    );
+    ) ?? { kind: "stale" };
   }
 
   public acceptRecomputed(snapshot: CurrentContextUiSnapshot | undefined): void {

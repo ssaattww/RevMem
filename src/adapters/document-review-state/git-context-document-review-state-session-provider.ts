@@ -394,7 +394,7 @@ export class GitContextDocumentReviewStateSessionProvider {
         ) {
           return;
         }
-        const mapped = await this.mapCommit(current, commit, descriptor);
+        const mapped = await this.mapCommit(current, commit, descriptor, encodingChanged);
         if (!isCurrentGeneration()) {
           return;
         }
@@ -475,7 +475,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     const mapped =
       initial.globalState.currentRevisionId === current.revisionId
         ? { commit: initial, unresolvedFileIds: [], unresolvedReasonsByFileId: {} }
-        : await this.mapCommit(current, initial, descriptor);
+        : await this.mapCommit(current, initial, descriptor, false);
     if (!isCurrentGeneration()) {
       return;
     }
@@ -507,7 +507,8 @@ export class GitContextDocumentReviewStateSessionProvider {
   private async mapCommit(
     current: ResolvedGitReviewContext,
     commit: ReviewStateCommit,
-    descriptor: DocumentEditorReviewDescriptor
+    descriptor: DocumentEditorReviewDescriptor,
+    encodingChanged = false
   ): Promise<{
     readonly commit: ReviewStateCommit;
     readonly unresolvedFileIds: readonly string[];
@@ -519,6 +520,7 @@ export class GitContextDocumentReviewStateSessionProvider {
       );
     }
     const encodingHintsByPath = this.encodingHintsForRepository(current.repositoryRoot);
+    const changedPath = this.repositoryRelativePath(current.repositoryRoot, descriptor.documentFsPath, descriptor.fileSystemPathSemantics);
     const mapped = await this.mapper.map({
       current,
       contextState: clone(commit.contextState),
@@ -527,7 +529,8 @@ export class GitContextDocumentReviewStateSessionProvider {
       options: this.mappingOptions,
       ...(Object.keys(encodingHintsByPath).length === 0
         ? {}
-        : { encodingHintsByPath })
+        : { encodingHintsByPath }),
+      ...(encodingChanged && changedPath !== undefined ? { encodingChangedPaths: [changedPath] } : {})
     });
     return {
       commit: {
@@ -538,6 +541,14 @@ export class GitContextDocumentReviewStateSessionProvider {
       unresolvedFileIds: [...mapped.unresolvedFileIds],
       unresolvedReasonsByFileId: { ...(mapped.unresolvedReasonsByFileId ?? {}) }
     };
+  }
+
+  private repositoryRelativePath(repositoryRoot: string, documentPath: string, semantics: "posix" | "windows"): string | undefined {
+    const pathApi = semantics === "windows" ? path.win32 : path.posix;
+    const relative = pathApi.relative(repositoryRoot, documentPath);
+    return relative.length === 0 || pathApi.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${pathApi.sep}`)
+      ? undefined
+      : relative.split(pathApi.sep).join("/");
   }
 
   /** Records the transient VS Code hint; a change must re-read immutable text. */

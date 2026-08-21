@@ -44,11 +44,10 @@ test("T609-NR-004 keeps the accepted Current Context when the ambiguous-root Qui
   });
 
   const cancelled = await composition.recompute();
-  assert.equal(cancelled, undefined);
-  composition.acceptRecomputed(cancelled);
-  assert.equal(
+  assert.deepEqual(cancelled, { kind: "cancelled" });
+  assert.deepEqual(
     await composition.recompute(),
-    undefined,
+    { kind: "cancelled" },
     "a cancellation does not substitute the first candidate or mutate the committed selection"
   );
 });

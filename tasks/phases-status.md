@@ -38,7 +38,7 @@ Lを超える見込みになった場合は再分解する。
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T607 大規模処理の段階表示と性能改善（PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
 - 実装中タスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化（通常review closed、full local gate実施済み）
-- 次の工程: fresh sol high reviewerによる一度限りの全範囲independent final review
+- 次の工程: T609 IFR001〜IFR006 follow-up の完了後、同一reviewerによるfinding限定closure
 - 後続候補: T610 / Issue #78、その後T608
 
 ## P0 開発基盤
@@ -185,7 +185,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: 通常review 7 findingsは全件closed。full local gateはstatic、Git、GitHub、T502、通常VS Code HostがGreenでT609 failure 0。unitの既知Windows環境22件、Markdown lint、exact-head CIはheld。independent final review待ち。
+- T609: IFR001〜IFR006 follow-up はcode/fixture/tracking/handoff/reportまで同期。static gateはGreen。focused fullは新規fixture期待値で53/54まで、修正後のname-limited IFR001はGreen。one-shot Hostは`mark UTF-8 BOM public command` timeoutとcleanup timeoutでRed（再試行禁止）。同一reviewer closureはHost failure dispositionとparent commit/push/PR body external action後に必要。
 - T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
 - T608: T609・T610完了後に実施する。
 

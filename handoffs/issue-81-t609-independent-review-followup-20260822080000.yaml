@@ -1,0 +1,97 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: implementation
+  generated_at: 2026-08-22T08:00:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #81 / PR #82"
+task_id: T609
+branch: task/issue-81-repository-encoding
+base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
+target:
+  current_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
+  reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
+  commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
+verification:
+  capability: local_execution_available
+  capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
+  technical_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
+  administrative_parent: null
+  commit: { state: commit_pending, review_target_sha: null }
+  push: { state: push_pending, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c }
+  ci_wait: { state: ci_wait_pending, required_for: merge_gate }
+  final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
+authoritative_requirements:
+  - source: report
+    reference: reports/issue-81-t609-independent-final-review-20260822060225.md
+    summary: IFR001〜IFR006 only; no new scope.
+development_policy:
+  method: review follow-up
+  testing_order: combined Red, production batch, focused Green, one Host gate after matrix completion
+  governing_source: parent instruction 2026-08-22
+validation_plan:
+  commands: [npm run test:t609, npm run test:t609:extension-host]
+  required_failure_diagnostics: ["Do not rerun the one-shot Host gate after failure."]
+blocked:
+  - { item: "one-shot T609 Extension Host gate", reason: "t609-single-root timed out at mark UTF-8 BOM public command and cleanup timed out; retry is forbidden by parent instruction", required_input_or_decision: "Parent-authorized diagnosis route" }
+authorized_actions: [read_repository, edit_code, edit_tests, edit_documentation, write_handoff, write_report]
+write_boundary:
+  allowed: [src, test, tasks, handoffs, reserved report]
+  forbidden: [commit, push, GitHub, PR body update, historical reports]
+scope: ["Resolve IFR001〜IFR006 in one batch."]
+non_goals: ["No new scope, commit, push, CI wait, or independent verdict."]
+files:
+  changed: []
+  inspected: ["reports/issue-81-t609-independent-final-review-20260822060225.md"]
+  intentionally_untouched: ["Historical reports and PR body; parent owns external PR update."]
+commands:
+  - { command: npm run test:t609, purpose: focused follow-up evidence, exit_code: 1, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "Runs were 52/54 then 53/54 then 53/54; each Red was only the newly added IFR001 telemetry expectation. Corrected name-limited IFR001 run passed 1/1; no further full rerun." }
+  - { command: npm run build, purpose: static build, exit_code: 0, result: passed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "current worktree" }
+  - { command: npm run typecheck:contracts && npm run lint && npm run validate:architecture && npm run validate:architecture:negative && git diff --check, purpose: static contracts/lint/architecture/diffcheck, exit_code: 0, result: passed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "negative architecture expected 11" }
+  - { command: npm run test:t609:extension-host, purpose: one-shot actual Host matrix, exit_code: 1, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "t609-single-root timed out at mark UTF-8 BOM public command; cleanup timed out; no retry. Diagnostics in test-output/vscode-launch-diagnostics." }
+tests:
+  - { name: T609 focused suite, phase: verification, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "53/54 final full run; remaining Red was corrected test-only telemetry expectation. Name-limited corrected IFR001 test passed 1/1." }
+  - { name: T609 Extension Host suite, phase: verification, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "one-shot failure: mark UTF-8 BOM public command timeout, cleanup timeout; no retry." }
+implementation:
+  outcome: partial
+  final_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
+  commits: []
+  addressed_findings:
+    - { id: T609-IFR001, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Changed stable path only is re-read twice (Context/Global) with new hint; interval clear, line-count/hash, unaffected preservation and privacy-safe unresolved fixtures added." }
+    - { id: T609-IFR002, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Typed cancelled/stale outcome reaches controller/coordinator; public multi-root commands assert selection/dependent refresh invariance." }
+    - { id: T609-IFR003, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Containment preflight and root/final-link/outside-mkdir sibling sentinels added." }
+    - { id: T609-IFR004, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Shared T305/T405 URI boundary rejects query, fragment, unsafe authority and unsupported schemes." }
+    - { id: T609-IFR005, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: partial, evidence: "Host matrix implemented including public command, Current cancel/stale and runner-side Git transitions, but its one-shot execution timed out at UTF-8 BOM mark." }
+    - { id: T609-IFR006, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: partial, evidence: "tasks/phases/handoff/report synchronized; PR body remains parent external pending after commit/push." }
+  failure_diagnostics: []
+  blocked_items: []
+  summary: ["Do not retry the consumed Host gate. Preserve diagnostics and route any later Host diagnosis through parent authorization."]
+review:
+  mode: not_applicable
+  reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
+  reviewer: { identity: unknown, role: not_applicable, continuity: { previous_reviewer_identity: null, changed: false, reason: null }, independence: { implemented_change: true, implemented_review_fix: true, served_as_normal_reviewer: false, inherited_conversation: true, evidence: ["Implementation worker is not an independent reviewer."] } }
+  verdict: incomplete
+  required_coverage: []
+  independent_closure: { initial_independent_reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, closure_reviewed_heads: [], reviewer_continuity: null, closure_scope: [], completeness_matrix: [] }
+  validation_assessment: []
+  reserved_report_paths: [reports/issue-81-t609-independent-review-followup-20260822063139.md]
+  report_attestation: { allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [executable], no_later_commits_required: false, validation_status: pending, validation_evidence: [] }
+  summary: ["No independent verdict issued."]
+report: { report_type: implementation_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-independent-review-followup-20260822063139.md], reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, attestation_head: null, pr_comments: [], summary: ["Evidence-faithful follow-up report records the one-shot Host failure and external PR body pending action."] }
+findings: []
+held: []
+unexplored: []
+unknown: []
+not_applicable: []
+remaining_risks: ["One-shot Host matrix is failed; full focused gate has no post-last-test-fix rerun; exact-head CI and Markdown wording remain held; PR body is external pending."]
+source_payloads: []
+extensions: []
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: review follow-up
+  summary: Parent must preserve this worktree and decide the allowed route for one-shot Host timeout diagnosis, then commit/push and update PR body externally before same-reviewer finding-limited closure.
+  instructions: ["Do not retry the consumed Host command from this follow-up.", "Preserve diagnostics and all uncommitted changes."]
+  required_attachments_or_references: [reports/issue-81-t609-independent-final-review-20260822060225.md]
+  requested_authorized_actions: [edit_code, edit_tests, edit_documentation, write_report]
+transport: { method: repository_file, packet_path: handoffs/issue-81-t609-independent-review-followup-20260822080000.yaml, packet_url: null, transport_note: "Partial implementation handoff; not a completion or review attestation." }

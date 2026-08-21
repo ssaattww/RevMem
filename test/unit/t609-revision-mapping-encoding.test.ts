@@ -154,7 +154,8 @@ test("T609-NR-005 retains a privacy-safe unresolved reason when a current-revisi
     globalState: currentGlobal,
     fileSystemPathSemantics: "posix",
     options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
-    encodingHintsByPath: { "src/unsupported.txt": "shift_jis" }
+    encodingHintsByPath: { "src/unsupported.txt": "shift_jis" },
+    encodingChangedPaths: ["src/unsupported.txt"]
   });
 
   assert.deepEqual(result.unresolvedFileIds, ["unsupported"]);
@@ -168,6 +169,67 @@ test("T609-NR-005 retains a privacy-safe unresolved reason when a current-revisi
     JSON.stringify(Object.values(reasoned.unresolvedReasonsByFileId ?? {})),
     /unsupported|shift_jis|src\//u
   );
+});
+
+test("T609 clears only the changed same-revision encoding intervals while preserving unrelated Context and Global state", async () => {
+  const source = new EncodingSource("");
+  const resolver = new GitReviewContextResolver({ stableHash: hash });
+  const current = resolver.resolve({
+    repositoryId,
+    rootPath: "/repo",
+    branch: { kind: "branch", fullRef: "refs/heads/main" },
+    head: newRevision
+  });
+  const changed = file("changed", "src/encoding.txt", newRevision);
+  changed.lineCount = 2;
+  changed.contentHash = hash.digest("same bytes decoded as UTF-8\n");
+  const unaffected = file("unaffected", "src/unaffected.txt", newRevision);
+  const currentState = contextState(current.contextId, { changed, unaffected });
+  currentState.branch = { refName: "refs/heads/main", headRevision: newRevision };
+  const currentGlobal = globalState({ changed, unaffected });
+  currentGlobal.currentRevisionId = newRevision;
+  currentGlobal.files.changed!.revisionId = newRevision;
+  currentGlobal.files.unaffected!.revisionId = newRevision;
+  const originalUnaffected = structuredClone(unaffected);
+  const originalGlobalUnaffected = structuredClone(currentGlobal.files.unaffected!);
+  const originalRead = source.readTextFileAtRevision.bind(source);
+  source.readTextFileAtRevision = async (...args) => {
+    const [,,,,,, encodingHint] = args;
+    const repositoryPath = args[2];
+    source.reads.push([repositoryPath, encodingHint]);
+    if (repositoryPath === "src/encoding.txt") {
+      return {
+        kind: "found" as const,
+        content: encodingHint === "shift_jis"
+          ? "same bytes decoded as Shift-JIS\nwith another line\n"
+          : "same bytes decoded as UTF-8\n"
+      };
+    }
+    return originalRead(...args);
+  };
+
+  const result = await mapperFor(source).map({
+    current,
+    contextState: currentState,
+    globalState: currentGlobal,
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+    encodingHintsByPath: { "src/encoding.txt": "shift_jis" },
+    encodingChangedPaths: ["src/encoding.txt"]
+  });
+
+  assert.deepEqual(result.unresolvedFileIds, []);
+  assert.deepEqual(result.contextState.files.changed?.modifiedReviewed, []);
+  assert.equal(result.contextState.files.changed?.lineCount, 3);
+  assert.equal(result.contextState.files.changed?.contentHash, hash.digest("same bytes decoded as Shift-JIS\nwith another line\n"));
+  assert.deepEqual(result.globalState.files.changed?.reviewed, []);
+  assert.equal(result.globalState.files.changed?.contentHash, hash.digest("same bytes decoded as Shift-JIS\nwith another line\n"));
+  assert.deepEqual(result.contextState.files.unaffected, originalUnaffected);
+  assert.deepEqual(result.globalState.files.unaffected, originalGlobalUnaffected);
+  assert.deepEqual(source.reads, [
+    ["src/encoding.txt", "shift_jis"],
+    ["src/encoding.txt", "shift_jis"]
+  ], "Context and Global re-read only the affected stable path with the new hint");
 });
 
 test("T609 inherits an opened encoding hint only for a unique rename", async () => {

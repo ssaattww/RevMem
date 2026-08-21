@@ -9,13 +9,13 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T607 大規模処理の段階表示と性能改善（Issue #79、PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
 - 現在のタスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化
-- 次のタスク: T609の一度限りの全範囲independent final reviewをfresh sol high reviewerで実施する
+- 次のタスク: T609 independent final review findings IFR001〜IFR006を同一batchで完了し、同一reviewerのfinding限定closureへ渡す
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/issue-81-repository-encoding`
-- Pull Request: #82（draft。設計commit `68951cd`を公開済み。通常review 7 findingsは全件closed。full local gate実施済みで、独立review・final exact-head CIは未完了）
-- T609 reports: 通常review 7 findingsはR3 closureで全件closed。`test:t609` 52/52、actual Extension Host functional phaseはGreen。full local gateはstatic 6/6、Git 35/35、GitHub 48/48、T502 11/11、通常VS Code Host全phase Green。unitは既知Windows/POSIX path 19件、SIGKILL診断1件、owned Host cleanup 2件の計22件でfailしheld。T609/changed-file failureは0。Markdown lintとexact-head CIもheld
+- Pull Request: #82（draft。independent final review `reports/issue-81-t609-independent-final-review-20260822060225.md` は IFR001〜IFR006 でfail。PR body更新は親がcommit/push後に外部で実施する pending action）
+- T609 reports: IFR001〜IFR006 production/fixture follow-up は実装済み。focused full runs は52/54、53/54、53/54で新規IFR001 telemetry期待だけがRed、修正後name-limited IFR001 は1/1 Green。current static gatesはGreen。one-shot Hostは`mark UTF-8 BOM public command` timeoutとcleanup timeoutでRed、再試行禁止。current handoff は `handoffs/issue-81-t609-independent-review-followup-20260822080000.yaml`、follow-up reportは `reports/issue-81-t609-independent-review-followup-20260822063139.md`。PR body更新は親のcommit/push後 external pending。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録

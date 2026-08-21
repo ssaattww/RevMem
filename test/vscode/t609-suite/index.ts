@@ -12,7 +12,6 @@ interface T609ExtensionApi {
   drainDocumentReviewEdits(): Promise<void>;
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
-  markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
   getObservedEncodingHintsForTest(): readonly {
     readonly documentFsPath: string;
     readonly encodingHint?: string;
@@ -22,6 +21,11 @@ interface T609ExtensionApi {
     readonly progress: { readonly files: readonly { readonly path: string }[] };
   } | undefined>;
   setReviewContextsRepositorySelection(selection: "cancel" | "stale"): void;
+  setCurrentContextSelectionForTest(selection: "first" | "cancel" | "stale"): void;
+  getCurrentContextCancellationSnapshotForTest(): {
+    readonly selectedContext: string | undefined;
+    readonly dependentRefreshCount: number;
+  };
   getReviewContextsCancellationSnapshot(): Promise<{
     readonly providerProjection: readonly string[];
     readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
@@ -82,7 +86,7 @@ const markAndSynchronizeFixtureReview = async (
     editor.document.uri.toString(),
     `${label} fixture must be the active editor before its selected-root review starts`
   );
-  await within(`mark ${label} direct application`, api.markNormalEditorSelectionForTest(editor));
+  await within(`mark ${label} public command`, vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
   await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
   await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
   await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());
@@ -116,6 +120,39 @@ const assertMixedEncodingFixture = async (
   assert.equal(paths.includes("utf8-bom.txt"), true);
 };
 
+const assertMappedGitTransitions = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi
+): Promise<void> => {
+  const reviewed = async (name: string): Promise<readonly ReviewedIntervalSnapshot[]> => {
+    const document = await within(`open mapped ${name}`, vscode.workspace.openTextDocument(fixtureUri(folder, name)));
+    await within(`show mapped ${name}`, vscode.window.showTextDocument(document, { preview: false }));
+    await within(`refresh mapped ${name}`, api.refreshVisibleEditorDecorations());
+    await within(`drain mapped ${name}`, api.drainVisibleEditorDecorations());
+    return api.getVisibleReviewedIntervals(document.uri.toString());
+  };
+  assert.deepEqual(
+    await reviewed("renamed.txt"),
+    [{ startLine: 0, endLineExclusive: 1 }],
+    "a committed Git rename must retain the reviewed stable identity through the public normal-editor composition"
+  );
+  assert.deepEqual(
+    await reviewed("new-file.txt"),
+    [],
+    "a newly committed file must not inherit the renamed source's reviewed interval"
+  );
+  assert.deepEqual(
+    await reviewed("whitespace.txt"),
+    [{ startLine: 0, endLineExclusive: 1 }],
+    "a whitespace-only Git transition must preserve review through the configured production mapping option"
+  );
+  assert.deepEqual(
+    await reviewed("eol.txt"),
+    [{ startLine: 0, endLineExclusive: 1 }],
+    "an EOL-only Git transition must preserve review through the configured production mapping option"
+  );
+};
+
 /** Exercises the T609 gate through one owned runner invocation and explicit lifecycle phases. */
 export async function run(): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -130,6 +167,12 @@ export async function run(): Promise<void> {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
     await assertMixedEncodingFixture(folder, api);
+    for (const name of ["rename-source.txt", "whitespace.txt", "eol.txt"]) {
+      const document = await within(`open mapping seed ${name}`, vscode.workspace.openTextDocument(fixtureUri(folder, name)));
+      const editor = await within(`show mapping seed ${name}`, vscode.window.showTextDocument(document, { preview: false }));
+      editor.selection = new vscode.Selection(0, 0, 0, 0);
+      await markAndSynchronizeFixtureReview(`mapping seed ${name}`, editor, api);
+    }
     return;
   }
 
@@ -172,6 +215,17 @@ export async function run(): Promise<void> {
   }
 
   await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
+  await within("committed rename/new/whitespace/EOL mapping", assertMappedGitTransitions(folder, api));
+  api.setCurrentContextSelectionForTest("first");
+  await within("seed multi-root Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
+  const currentBefore = api.getCurrentContextCancellationSnapshotForTest();
+  assert.ok(currentBefore.selectedContext, "a deterministic initial selection must be published through the public command");
+  api.setCurrentContextSelectionForTest("cancel");
+  await within("multi-root Current Context cancel", vscode.commands.executeCommand("reviewRange.refreshContext"));
+  assert.deepEqual(api.getCurrentContextCancellationSnapshotForTest(), currentBefore, "Current Context cancel must retain selection and dependent state");
+  api.setCurrentContextSelectionForTest("stale");
+  await within("multi-root Current Context stale", vscode.commands.executeCommand("reviewRange.selectContext"));
+  assert.deepEqual(api.getCurrentContextCancellationSnapshotForTest(), currentBefore, "post-pick stale selection must retain accepted state");
   await within("seed multi-root Review Contexts projection", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
   const before = await within("read accepted multi-root Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
   assert.ok(before.providerProjection.length > 0, "multi-root cancellation must retain an accepted provider projection");

@@ -15,14 +15,15 @@ import {
   type CurrentContextTreeItem,
   type CurrentContextUiSnapshot
 } from "./current-context-ui-controller";
+import type { CurrentContextResolution } from "./current-context-runtime-composition";
 
 export const CURRENT_CONTEXT_VIEW_ID = "reviewRange.currentContext";
 export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }

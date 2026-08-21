@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -40,12 +40,31 @@ const initializeGitRepository = async (root: string): Promise<void> => {
 const prepareT609Fixture = async (root: string): Promise<void> => {
   await mkdir(join(root, ".vscode"), { recursive: true });
   await Promise.all([
-    writeFile(join(root, ".vscode", "settings.json"), `${JSON.stringify({ "files.encoding": "shift_jis" })}\n`, "utf8"),
+    writeFile(join(root, ".vscode", "settings.json"), `${JSON.stringify({
+      "files.encoding": "shift_jis",
+      "reviewRange.ignoreWhitespaceChanges": true,
+      "reviewRange.ignoreEolChanges": true
+    })}\n`, "utf8"),
     writeFile(join(root, "shift-jis.txt"), Buffer.from([0x82, 0xa0, 0x0a])),
     writeFile(join(root, "utf8-bom.txt"), Buffer.from([0xef, 0xbb, 0xbf, 0x62, 0x65, 0x74, 0x61, 0x0a])),
-    writeFile(join(root, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd]))
+    writeFile(join(root, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd])),
+    writeFile(join(root, "rename-source.txt"), "rename fixture\n", "utf8"),
+    writeFile(join(root, "whitespace.txt"), "whitespace fixture\n", "utf8"),
+    writeFile(join(root, "eol.txt"), "eol fixture\n", "utf8")
   ]);
   await initializeGitRepository(root);
+};
+
+/** Advances the persisted Host fixture so the next Extension Host maps actual Git transitions. */
+const advanceT609Fixture = async (root: string): Promise<void> => {
+  await rename(join(root, "rename-source.txt"), join(root, "renamed.txt"));
+  await Promise.all([
+    writeFile(join(root, "new-file.txt"), "new fixture\n", "utf8"),
+    writeFile(join(root, "whitespace.txt"), "whitespace  fixture\n", "utf8"),
+    writeFile(join(root, "eol.txt"), "eol fixture\r\n", "utf8")
+  ]);
+  await execFileAsync("git", ["add", "-A"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["commit", "-m", "T609 Host mapping transitions"], { cwd: root, windowsHide: true });
 };
 
 const prepareT609SecondRoot = async (root: string): Promise<void> => {
@@ -206,6 +225,7 @@ async function main(): Promise<void> {
         extensions: t609Paths.extensions
       };
       for (const phase of t609Phases) {
+        if (phase === "prepare") await advanceT609Fixture(t609Paths.workspace);
         await launch(
           `t609-${phase}`,
           phase === "single-root" ? t609SingleRootLaunchPaths : t609LaunchPaths,

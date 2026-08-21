@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   resolveCurrentContextRepositories,
+  workspaceUriToFilesystemPath,
   type RepositoryResolutionInspection
 } from "../../src/t609-repository-resolution.js";
 
@@ -56,4 +57,36 @@ test("T609 deduplicates a repository and fails closed for unsafe candidates", as
 
   assert.deepEqual(result.map((candidate) => candidate.source), ["active-document"]);
   assert.equal(result[0]?.repository.rootPath, "/repo");
+});
+
+test("T609 rejects query, fragment, and mismatched authority before T305 or T405 can use a URI filesystem path", () => {
+  const uri = (overrides: Partial<{
+    scheme: string;
+    authority: string;
+    fsPath: string;
+    query: string;
+    fragment: string;
+  }> = {}) => ({
+    scheme: "file",
+    authority: "",
+    fsPath: "/workspace/repository/file.txt",
+    query: "",
+    fragment: "",
+    ...overrides
+  });
+
+  assert.equal(workspaceUriToFilesystemPath(uri()), "/workspace/repository/file.txt");
+  assert.equal(workspaceUriToFilesystemPath(uri({ query: "revision=old" })), undefined);
+  assert.equal(workspaceUriToFilesystemPath(uri({ fragment: "selection" })), undefined);
+  assert.equal(workspaceUriToFilesystemPath(uri({ authority: "server" })), undefined);
+  assert.equal(workspaceUriToFilesystemPath(uri({ scheme: "untitled" })), undefined);
+  assert.equal(
+    workspaceUriToFilesystemPath(uri({ scheme: "vscode-remote", authority: "ssh-remote+host" })),
+    "/workspace/repository/file.txt",
+    "a remote authority is valid only for the explicitly supported vscode-remote scheme"
+  );
+  assert.equal(
+    workspaceUriToFilesystemPath(uri({ scheme: "vscode-remote", authority: "" })),
+    undefined
+  );
 });

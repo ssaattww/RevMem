@@ -17,7 +17,7 @@ export class CurrentContextRuntimeCoordinator {
 
   public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<void> {
     const result = await this.controller.refresh(signal, feedbackContext);
-    if (result.stale) {
+    if (result.stale || result.nonDestructive) {
       return;
     }
     this.dependentRefresher.setSelectedContext?.(result.snapshot?.context.selection);

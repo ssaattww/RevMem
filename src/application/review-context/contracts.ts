@@ -113,6 +113,8 @@ export interface GitContextRevisionMappingInput {
   readonly currentCandidatePaths?: readonly string[];
   /** Opened documentから再観測したrepository-relative file encoding hint。 */
   readonly encodingHintsByPath?: Readonly<Record<string, string>>;
+  /** Stable paths whose observed encoding changed during this mapping request. */
+  readonly encodingChangedPaths?: readonly string[];
 }
 
 /** Complete next snapshots after revision mapping. */

@@ -82,6 +82,7 @@ import {
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
 import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
+import { workspaceUriToFilesystemPath } from "./t609-repository-resolution";
 import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
@@ -624,9 +625,9 @@ export function registerT405ReviewContextsRuntime(
     const hints: Record<string, string> = {};
     const pathApi = PATH_SEMANTICS === "windows" ? path.win32 : path.posix;
     for (const document of vscode.workspace.textDocuments) {
-      if (document.isClosed || document.encoding.length === 0 ||
-          (document.uri.scheme !== "file" && document.uri.scheme !== "vscode-remote")) continue;
-      const relative = pathApi.relative(repositoryRoot, document.uri.fsPath);
+      const documentPath = workspaceUriToFilesystemPath(document.uri);
+      if (document.isClosed || document.encoding.length === 0 || documentPath === undefined) continue;
+      const relative = pathApi.relative(repositoryRoot, documentPath);
       if (relative.length === 0 || pathApi.isAbsolute(relative) || relative === ".." ||
           relative.startsWith(`..${pathApi.sep}`)) continue;
       hints[relative.split(pathApi.sep).join("/")] = document.encoding;
@@ -635,11 +636,7 @@ export function registerT405ReviewContextsRuntime(
   };
 
   const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
-    const filesystemPath = (document: vscode.TextDocument): string | undefined =>
-      (document.uri.scheme === "file" || document.uri.scheme === "vscode-remote") &&
-      (document.uri.query?.length ?? 0) === 0 && (document.uri.fragment?.length ?? 0) === 0
-        ? document.uri.fsPath
-        : undefined;
+    const filesystemPath = (document: vscode.TextDocument): string | undefined => workspaceUriToFilesystemPath(document.uri);
     const active = vscode.window.activeTextEditor?.document;
     const knownRootPaths = (await options.enumerateCurrentContexts()).flatMap((snapshot) => {
       const selection = snapshot.context.selection;
@@ -651,10 +648,7 @@ export function registerT405ReviewContextsRuntime(
       activeDocumentPath: active === undefined ? undefined : filesystemPath(active),
       openedDocumentPaths: (vscode.workspace.textDocuments ?? []).map(filesystemPath),
       knownRootPaths,
-      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) =>
-        folder.uri.scheme === "file" || folder.uri.scheme === "vscode-remote"
-          ? folder.uri.fsPath
-          : undefined),
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceUriToFilesystemPath(folder.uri)),
       inspectRepository: (startPath) => options.git.inspectRepository(startPath),
       requestSelection: options.requestRepositorySelection ?? (async (candidates) => {
         const choices = candidates.map((candidate) => ({

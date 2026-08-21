@@ -634,7 +634,11 @@ test("T609-NR-002 aggregates all reopened document hints across mapping and an e
 
   source.encodingHints.length = 0;
   await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le"));
-  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+  assert.equal(
+    source.encodingHints.some(([filePath]) => filePath === "src/shifted.ts"),
+    false,
+    "a same-revision encoding change must not re-read an unaffected stable identity"
+  );
   provider.dispose();
 
   provider = createProvider(stableHash, repository, inspector, source);

@@ -108,7 +108,9 @@ test("T609 phase ownership keeps mixed encoding in single-root and repository ca
   const singleRootPhase = hostSuite.slice(singleRootStart, restartStart);
   const multiRootPhase = hostSuite.slice(multiRootStart);
   assert.match(singleRootPhase, /assertMixedEncodingFixture\(folder, api\)/u);
-  assert.doesNotMatch(multiRootPhase, /openTextDocument|markAndSynchronizeFixtureReview|Current Context/u);
+  assert.doesNotMatch(multiRootPhase, /openTextDocument|markAndSynchronizeFixtureReview/u);
+  assert.match(multiRootPhase, /reviewRange\.refreshContext/u);
+  assert.match(multiRootPhase, /reviewRange\.selectContext/u);
   assert.match(multiRootPhase, /multi-root cancellation boundary/u);
   assert.match(multiRootPhase, /multi-root stale cancellation boundary/u);
   assert.match(multiRootPhase, /reviewRange\.redetectPullRequest/u);
@@ -156,21 +158,11 @@ test("T609 single-root reuses its no-active Current Context selection without an
   assert.doesNotMatch(reviewSync, /reviewRange\.refreshContext/u);
 });
 
-test("T609 Host marks fixture selections through the test-only application seam", async () => {
-  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+test("T609 Host reaches normal-editor review through its public command", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
-  assert.match(
-    extension,
-    /markNormalEditorSelectionForTest:\s*\(editor:\s*vscode\.TextEditor\)\s*=>\s*commandService\.markSelectionReviewed\(editor\)/u,
-    "the Test API must call the production normal-editor command service directly"
-  );
-  assert.match(hostSuite, /api\.markNormalEditorSelectionForTest\(editor\)/u);
-  assert.doesNotMatch(
-    hostSuite,
-    /executeCommand\("reviewRange\.markSelectionReviewed"\)/u,
-    "the T609 fixture must not wait on the public command wrapper"
-  );
+  assert.match(hostSuite, /executeCommand\("reviewRange\.markSelectionReviewed"/u);
+  assert.doesNotMatch(hostSuite, /api\.markNormalEditorSelectionForTest\(editor\)/u);
 });
 
 test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {

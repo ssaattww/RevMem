@@ -39,6 +39,22 @@ export interface CurrentContextRepositoryResolutionInput {
   readonly inspectRepository: (path: string) => Promise<RepositoryResolutionInspection>;
 }
 
+/** Minimal VS Code URI boundary shared by T305 and T405 before `fsPath` is trusted. */
+export interface WorkspaceFilesystemUri {
+  readonly scheme: string;
+  readonly authority: string;
+  readonly fsPath: string;
+  readonly query: string;
+  readonly fragment: string;
+}
+
+/** Converts only an unambiguous local or remote workspace URI to an OS path. */
+export const workspaceUriToFilesystemPath = (uri: WorkspaceFilesystemUri): string | undefined => {
+  if (uri.query.length > 0 || uri.fragment.length > 0 || uri.fsPath.length === 0 || uri.fsPath.includes("\0")) return undefined;
+  if (uri.scheme === "file") return uri.authority.length === 0 ? uri.fsPath : undefined;
+  return uri.scheme === "vscode-remote" && uri.authority.length > 0 ? uri.fsPath : undefined;
+};
+
 const nonEmpty = (path: string | undefined): path is string =>
   path !== undefined && path.length > 0 && !path.includes("\0");
 

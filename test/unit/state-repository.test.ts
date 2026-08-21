@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -714,6 +714,8 @@ test("NodeAtomicTextFileStore rejects an outside sibling and a symbolic link or 
   const outside = path.join(temporary.root, "outside");
   const sibling = path.join(temporary.root, "storage-sibling", "state.json");
   const link = path.join(storageRoot, "linked");
+  const finalLink = path.join(storageRoot, "final-link.json");
+  const rootLink = path.join(temporary.root, "storage-root-link");
   const sentinel = path.join(outside, "sentinel.txt");
   const store = new NodeAtomicTextFileStore(storageRoot);
 
@@ -722,6 +724,8 @@ test("NodeAtomicTextFileStore rejects an outside sibling and a symbolic link or 
     await mkdir(outside, { recursive: true });
     await writeFile(sentinel, "unchanged", "utf8");
     await symlink(outside, link, process.platform === "win32" ? "junction" : "dir");
+    await symlink(sentinel, finalLink, process.platform === "win32" ? "file" : undefined);
+    await symlink(outside, rootLink, process.platform === "win32" ? "junction" : "dir");
 
     await assert.rejects(
       () => store.writeTextAtomically(sibling, "outside"),
@@ -731,6 +735,17 @@ test("NodeAtomicTextFileStore rejects an outside sibling and a symbolic link or 
       () => store.writeTextAtomically(path.join(link, "state.json"), "linked"),
       /symbolic link or junction/u
     );
+    await assert.rejects(
+      () => store.readText(finalLink),
+      /symbolic link or junction/u,
+      "a final symlink must never be followed during read"
+    );
+    await assert.rejects(
+      () => new NodeAtomicTextFileStore(rootLink).writeTextAtomically(path.join(rootLink, "state.json"), "root link"),
+      /symbolic link or junction/u,
+      "the configured root itself must not be a symlink or junction"
+    );
+    await assert.rejects(lstat(path.dirname(sibling)), /ENOENT/u, "outside rejection must precede mkdir");
     assert.equal(await readFile(sentinel, "utf8"), "unchanged");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
