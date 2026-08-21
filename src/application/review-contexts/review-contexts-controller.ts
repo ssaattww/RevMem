@@ -72,7 +72,7 @@ export interface ReviewContextsProjectionInput {
 
 /** Shared generation-aware work scheduler used by the production projection. */
 export interface ReviewContextsProjectionWork {
-  readonly item: (kind: "projected-context" | "deduplicated-context" | "sorted-context") => Promise<void>;
+  readonly item: (kind: "projected-context" | "deduplicated-context" | "materialized-context" | "sorted-context") => Promise<void>;
   readonly isCurrent: () => boolean;
 }
 
@@ -225,7 +225,11 @@ export const projectReviewContextsCooperatively = async (
     await work.item("deduplicated-context");
     if (!unique.has(item.context.contextId)) unique.set(item.context.contextId, item);
   }
-  let sorted = [...unique.values()];
+  let sorted: ReviewContextListItem[] = [];
+  for (const item of unique.values()) {
+    await work.item("materialized-context");
+    sorted.push(item);
+  }
   for (let width = 1; width < sorted.length; width *= 2) {
     const next: ReviewContextListItem[] = [];
     for (let start = 0; start < sorted.length; start += width * 2) {

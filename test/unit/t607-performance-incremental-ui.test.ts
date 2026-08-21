@@ -693,6 +693,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     assert.equal(cachePublishes, 1, "only the accepted generation owns the PR cache publish");
     assert.equal(provider?.getChildren().length, 258, "the actual T405 source projects more than 128 saved contexts into the registered Review Contexts Tree");
     assert.ok(commands.has("reviewRange.refreshReviewContexts"), "the controller/tree command composition is the extension registration path, not a fabricated source load");
+    assert.ok(contextBatches.some((entry) => entry.kind === "materialized-context"), "candidate materialization is accounted before the bounded merge sort");
     assert.ok(contextBatches.some((entry) => entry.kind === "sorted-context"));
     assert.ok(contextBatches.every((entry) => entry.count <= 128), "saved-context collection, projection, and merge sort share the <=128 scheduler");
     const cacheBeforeDispose = cachePublishes;
