@@ -814,7 +814,11 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
     now: () => new Date("2026-08-21T00:00:00.000Z")
   });
   const revision = "b".repeat(40);
-  const repositoryRoot = "C:\\repo";
+  const pathSemantics = process.platform === "win32" ? "windows" as const : "posix" as const;
+  const repositoryRoot = pathSemantics === "windows" ? "C:\\repo" : "/repo";
+  const repositoryUriPath = pathSemantics === "windows" ? "/C:/repo" : "/repo";
+  const documentFsPath = path.join(repositoryRoot, "src", "😀.ts");
+  const documentUriPath = `${repositoryUriPath}/src/😀.ts`;
   const repositoryId = "repo";
   const contextId = "github-pr:repo#79";
   const stateProvider = new DocumentReviewStateSessionProvider({
@@ -825,7 +829,7 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
   const calls: Array<{ readonly editor: string; readonly options: number }> = [];
   const disposables = { dispose(): void {} };
   const document = {
-    uri: { scheme: "file", authority: "", path: "/C:/repo/src/😀.ts", fsPath: "C:\\repo\\src\\😀.ts", query: "", fragment: "", toString: () => "file:///C:/repo/src/%F0%9F%98%80.ts" },
+    uri: { scheme: "file", authority: "", path: documentUriPath, fsPath: documentFsPath, query: "", fragment: "", toString: () => `file://${documentUriPath.replace("😀", "%F0%9F%98%80")}` },
     version: 1, lineCount: unicode.length, eol: 1,
     lineAt: (line: number) => ({ text: unicode[line]!, range: { end: { line, character: unicode[line]!.length } } })
   };
@@ -846,7 +850,7 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
       onDidChangeVisibleTextEditors: () => disposables, onDidChangeActiveTextEditor: () => disposables
     },
     workspace: {
-      workspaceFolders: [{ uri: { scheme: "file", authority: "", path: "/C:/repo", fsPath: repositoryRoot, query: "", fragment: "" }, name: "repo" }],
+      workspaceFolders: [{ uri: { scheme: "file", authority: "", path: repositoryUriPath, fsPath: repositoryRoot, query: "", fragment: "" }, name: "repo" }],
       getConfiguration: () => ({ get: <T>(_key: string, fallback: T): T => fallback }),
       onDidChangeConfiguration: () => disposables, onDidChangeTextDocument: () => disposables
     }
@@ -883,17 +887,19 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
   });
   const descriptor = await activation.toDocumentDescriptor(first as never);
   assert.ok(descriptor, "the exact factory extracts and hashes the Unicode document before state I/O");
+  assert.equal(descriptor.fileSystemPathSemantics, pathSemantics, "the fixture follows the workspace-side host path semantics");
+  assert.equal(descriptor.workspace?.relativePath, "src/😀.ts", "the fixture resolves one cross-platform repository-relative owner");
   const intervals = Array.from({ length: 2_048 }, (_, index) => ({ startLine: index * 4, endLineExclusive: index * 4 + 1 }));
   const fileId = `repository-file:${stableHash.digest(["repository-file", repositoryId, "src/😀.ts"].join("\0"))}`;
   const file = { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId, currentPath: "src/😀.ts", previousPaths: [], revisionId: revision, modifiedReviewed: intervals, originalReviewedByDiff: {}, contentHash: descriptor!.contentHash, lineCount: 10_000, updatedAt: "2026-08-21T00:00:00.000Z" };
   const globalFile = { fileId, currentPath: "src/😀.ts", revisionId: revision, reviewed: intervals, contentHash: descriptor!.contentHash, updatedAt: "2026-08-21T00:00:00.000Z" };
   const workspaceContextId = "workspace:repo";
-  entries.set(key({ kind: "workspace", repositoryId, contextId: workspaceContextId }), {
+  await repository.save({ kind: "workspace", repositoryId, contextId: workspaceContextId }, {
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
     contextState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: workspaceContextId, kind: "workspace", repositoryId, displayName: "Workspace", workspace: { workspaceId: repositoryId, snapshotRevision: revision }, files: {}, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z" },
     globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: revision, files: {}, updatedAt: "2026-08-21T00:00:00.000Z" }
   });
-  entries.set(key({ kind: "pull-request", repositoryId, contextId }), {
+  await repository.save({ kind: "pull-request", repositoryId, contextId }, {
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
     contextState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId, kind: "pull-request", repositoryId, displayName: "PR #79", pullRequest: { host: "github.com", owner: "example", repository: "repo", number: 79, state: "open", baseSha: "a".repeat(40), headSha: revision }, files: { [fileId]: file }, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z" },
     globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: revision, files: { [fileId]: globalFile }, updatedAt: "2026-08-21T00:00:00.000Z" }
