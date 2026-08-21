@@ -668,15 +668,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     documentChangeRefresh
   );
 
-  void currentContextRuntime.refresh().catch(async (error) => {
-    await vscode.window.showErrorMessage(
-      `現在のPRコンテキストを復元できませんでした: ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
   if (context.extensionMode === vscode.ExtensionMode.Test) {
     return {
       ...baseApi,
+      drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {

@@ -9,6 +9,7 @@ const isSingleRoot = phase === "single-root";
 assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T609 phase: ${String(phase)}`);
 
 interface T609ExtensionApi {
+  drainCurrentContextStartupForTest(): Promise<void>;
   drainDocumentReviewEdits(): Promise<void>;
   seedT609InitialReviewedRanges(editors: readonly vscode.TextEditor[]): Promise<readonly {
     readonly documentUri: string;
@@ -179,6 +180,7 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
   assert.ok(extension, "The Extension Development Host must load the extension.");
   const api = (await within("activate extension", extension.activate())) as T609ExtensionApi;
+  await within("drain startup Current Context", api.drainCurrentContextStartupForTest());
 
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));

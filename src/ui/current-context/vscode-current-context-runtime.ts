@@ -64,6 +64,8 @@ implements vscode.TreeDataProvider<CurrentContextTreeItem> {
 
 export interface RegisteredCurrentContextRuntime extends vscode.Disposable {
   readonly controller: CurrentContextUiController;
+  /** The single startup refresh, including its handled error presentation. */
+  readonly startupRefresh: Promise<void>;
   refresh(): Promise<void>;
 }
 
@@ -148,10 +150,11 @@ export const registerCurrentContextRuntime = (
   ];
 
   context.subscriptions.push(...registrations);
-  void runRefresh();
+  const startupRefresh = runRefresh();
 
   return {
     controller,
+    startupRefresh,
     refresh: runRefresh,
     dispose: () => {
       currentCancellation?.abort();

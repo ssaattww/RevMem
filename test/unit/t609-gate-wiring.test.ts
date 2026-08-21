@@ -158,6 +158,24 @@ test("T609 single-root reuses its no-active Current Context selection without an
   assert.doesNotMatch(reviewSync, /reviewRange\.refreshContext/u);
 });
 
+test("T609 Host waits for the single handled startup Current Context refresh before its public no-active-editor command", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src/t305-extension.ts"), "utf8");
+  const runtime = await readFile(path.join(projectRoot, "src/ui/current-context/vscode-current-context-runtime.ts"), "utf8");
+  const activationIndex = hostSuite.indexOf('const api = (await within("activate extension", extension.activate())) as T609ExtensionApi;');
+  const drainIndex = hostSuite.indexOf('await within("drain startup Current Context", api.drainCurrentContextStartupForTest());');
+  const commandIndex = hostSuite.indexOf('await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));');
+
+  assert.ok(activationIndex >= 0 && drainIndex > activationIndex && commandIndex > drainIndex);
+  assert.match(hostSuite, /drainCurrentContextStartupForTest\(\): Promise<void>;/u);
+  assert.match(runtime, /readonly startupRefresh: Promise<void>;/u);
+  assert.match(runtime, /const startupRefresh = runRefresh\(\);/u);
+  assert.equal(occurrences(runtime, "void runRefresh();"), 1, "only the active-editor event remains fire-and-forget");
+  assert.match(runtime, /await reportRefreshError\(formatOperationFailureForUser\(error\)\);/u);
+  assert.match(extension, /drainCurrentContextStartupForTest: \(\) => currentContextRuntime\.startupRefresh/u);
+  assert.doesNotMatch(extension, /void currentContextRuntime\.refresh\(\)\.catch/u);
+});
+
 test("T609 Host reaches normal-editor review through its public command", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
@@ -181,7 +199,7 @@ test("T609 Host persists mapping seeds through one Test-mode production transact
   assert.match(singleRootPhase, /api\.seedT609InitialReviewedRanges\(mappingSeedEditors\)/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
-  assert.doesNotMatch(singleRootPhase, /for \(const name of \["rename-source\.txt", "whitespace\.txt", "eol\.txt"\]/u);
+  assert.match(singleRootPhase, /for \(const name of \["rename-source\.txt", "whitespace\.txt", "eol\.txt"\]/u);
   assert.doesNotMatch(singleRootPhase, /markAndSynchronizeFixtureReview\(`mapping seed/u);
 });
 
