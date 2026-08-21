@@ -1,5 +1,6 @@
 export {
   createGlobalUnderstandingTreeModel,
+  createGlobalUnderstandingTreeModelIncrementally,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
   GlobalUnderstandingRefreshCoalescer,
@@ -16,6 +17,7 @@ export type {
   GlobalUnderstandingStatusBarModel,
   GlobalUnderstandingSummaryNode,
   GlobalUnderstandingTreeModel,
+  GlobalUnderstandingTreeStagingOptions,
   GlobalUnderstandingTreeSnapshot
 } from "./global-understanding-ui-model";
 

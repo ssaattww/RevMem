@@ -10,7 +10,7 @@ import {
 import { VscodeOperationFeedbackHost } from "../operation-feedback/index";
 
 import {
-  createGlobalUnderstandingTreeModel,
+  createGlobalUnderstandingTreeModelIncrementally,
   formatGlobalUnderstandingStatusBar,
   GlobalLayerToggleController,
   GlobalUnderstandingFileOpenController,
@@ -237,14 +237,22 @@ export const registerGlobalUnderstandingRuntime = (
   const refreshController = new GlobalUnderstandingRefreshController(
     dependencies.source,
     {
-      show: (snapshot) => {
-        const model = createGlobalUnderstandingTreeModel(snapshot);
-        openController.replaceModel(model);
-        tree.setModel(model);
-        const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
-        status.text = statusModel.text;
-        status.tooltip = statusModel.tooltip;
-        status.show();
+      show: async (snapshot, isCurrent) => {
+        const model = await createGlobalUnderstandingTreeModelIncrementally(snapshot, {
+          maxFilesPerStage: 128,
+          yieldControl: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
+          isCurrent,
+          onStage: (stage) => {
+            if (!isCurrent()) return;
+            openController.replaceModel(stage);
+            tree.setModel(stage);
+            const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
+            status.text = statusModel.text;
+            status.tooltip = statusModel.tooltip;
+            status.show();
+          }
+        });
+        if (model === undefined || !isCurrent()) return;
       },
       clear: clearPresentation
     }

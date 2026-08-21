@@ -162,19 +162,39 @@ test("controller loads only visible normal editors and clears visible diff edito
   assert.deepEqual(host.loadCalls, [
     { editor: normalEditor, showGlobalReviewed: true }
   ]);
-  assert.deepEqual(host.setCalls, [
-    {
-      editor: normalEditor,
-      decorationType: host.decorationTypes[0],
-      decorations: [decoration(1, 3)]
-    },
+  assert.deepEqual([...host.setCalls].sort((left, right) => left.editor.id.localeCompare(right.editor.id)), [
     {
       editor: diffEditor,
       decorationType: host.decorationTypes[0],
       decorations: []
+    },
+    {
+      editor: normalEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 3)]
     }
   ]);
   assert.equal(host.loadCalls.some(({ editor }) => editor === hiddenEditor), false);
+});
+
+test("T607 starts every visible-editor decoration load before waiting for a slow editor", async () => {
+  const first: FakeEditor = { id: "first" };
+  const second: FakeEditor = { id: "second" };
+  const third: FakeEditor = { id: "third" };
+  const host = new FakeHost();
+  host.visibleEditors = [first, second, third];
+  const pending: Array<() => void> = [];
+  for (const editor of host.visibleEditors) {
+    host.models.set(editor, new Promise<readonly NormalEditorReviewedDecoration[]>((resolve) => {
+      pending.push(() => resolve([]));
+    }));
+  }
+  const controller = new NormalEditorDecorationController(host);
+  const started = controller.start();
+
+  assert.equal(host.loadCalls.length, 3, "the visible-editor work budget starts all three independent loads");
+  for (const resolve of pending) resolve();
+  await started;
 });
 
 test("controller ignores a stale async result after the editor stops being visible", async () => {

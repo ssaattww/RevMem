@@ -1,0 +1,26 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #79"
+task_id: T607
+branch: task/t607-performance-incremental-ui
+base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
+implementation_head: uncommitted
+status: implementation_complete_normal_review_pending
+report: reports/issue-79-t607-implementation-20260821094238.md
+validation:
+  focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
+  focused_green: "npm run test:t607: 63 pass, 0 fail"
+  build: "npm run build: passed"
+  compile_test: "npm run compile:test: passed"
+  contracts: "npm run typecheck:contracts: passed"
+  lint: "npm run lint: passed"
+  architecture: "npm run validate:architecture and npm run validate:architecture:negative: passed (negative expected 11)"
+  diffcheck: "git diff --check: passed"
+measurement:
+  environment: "Windows, Node v24.18.0, one 10,000-file fixture run"
+  synchronous_projection_ms: 6.18
+  incremental_first_stage_ms: 4.04
+  incremental_total_ms: 5.87
+  deterministic_yields: 156
+  note: "advisory only; regression gate is work/count budget, not wall-clock"
+next_request: "Run normal review for the uncommitted implementation; do not treat local validation as CI or merge evidence."

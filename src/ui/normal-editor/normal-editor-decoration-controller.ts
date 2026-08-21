@@ -108,9 +108,7 @@ export class NormalEditorDecorationController<
       }
     }
 
-    for (const editor of visibleEditors) {
-      await this.refreshEditor(editor);
-    }
+    await Promise.all(visibleEditors.map(async (editor) => this.refreshEditor(editor)));
   }
 
   /** Refreshes one editor immediately when it remains visible. */
