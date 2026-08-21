@@ -4,8 +4,8 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: a695806250550be7dc3bd99650ef2e440833892e
-status: followup_implementation_complete_normal_closure_pending
+implementation_head: 0c57486bb08d8e096be971c7c3c58e26415857bd
+status: normal_closure_partial_followup_in_progress
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
@@ -26,5 +26,6 @@ measurement:
 normal_review: "PR #80 initial normal review failed with T607-R001 through T607-R006; report: reports/issue-79-t607-normal-review-20260821095112.md"
 ci: "exact-head runs 32433837209 and 32433825463 failed design-document-structure; do not treat focused CI as executed"
 followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
-followup_validation: "Red once TS2554 decoration work budget constructor; Green once npm run test:t607 65 pass/0 fail; git diff --check, build, contracts, lint, architecture positive/negative passed locally"
-next_request: "Request same-reviewer finding-limited closure for T607-R001 through R006 only; do not introduce new findings, run CI, or merge."
+followup_validation: "Historical Red once TS2554 decoration work budget constructor; closure-fixture Red once npm run test:t607 65 pass/1 fail (unconnected 10,000-file accounting); Green once after all three closure fixtures npm run test:t607 68 pass/0 fail; build/contracts and final diffcheck/lint/architecture positive/negative passed locally"
+normal_closure: "0c57486: R002/R005 closed; R001/R003/R004/R006 open. Historical initial head a695806 and failed CI remain historical; current-head CI is held."
+next_request: "Request same-reviewer finding-limited closure for T607-R001/R003/R004/R006 only. The uncommitted follow-up now includes 10,000-file accounting, VS Code Global lifecycle, and descriptor-to-host decoration composition fixtures; do not introduce new findings, run CI, or merge."

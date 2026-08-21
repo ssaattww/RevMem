@@ -246,6 +246,10 @@ export const registerGlobalUnderstandingRuntime = (
             if (!isCurrent()) return;
             openController.replaceModel(stage);
             tree.setModel(stage);
+            if (!isCurrent()) {
+              clearPresentation();
+              return;
+            }
             const statusModel = formatGlobalUnderstandingStatusBar(snapshot);
             status.text = statusModel.text;
             status.tooltip = statusModel.tooltip;
@@ -258,8 +262,14 @@ export const registerGlobalUnderstandingRuntime = (
     }
   );
 
-  const invalidate = (): void => refreshController.invalidate();
-  const clear = (): void => refreshController.clear();
+  const invalidate = (): void => {
+    retryCancellation?.abort();
+    refreshController.invalidate();
+  };
+  const clear = (): void => {
+    retryCancellation?.abort();
+    refreshController.clear();
+  };
   let retryCancellation: AbortController | undefined;
   const refresh = (): Promise<void> => {
     retryCancellation?.abort();

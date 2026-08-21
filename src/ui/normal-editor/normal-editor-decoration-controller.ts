@@ -54,8 +54,9 @@ export interface NormalEditorDecorationHost<
   setDecorations(
     editor: Editor,
     decorationType: DecorationType,
-    decorations: readonly NormalEditorReviewedDecoration[]
-  ): void;
+    decorations: readonly NormalEditorReviewedDecoration[],
+    context: NormalEditorDecorationLoadContext
+  ): void | Promise<void>;
   /** Subscribes to visible-editor changes. */
   onDidChangeVisibleEditors(
     listener: () => void | Promise<void>
@@ -155,7 +156,10 @@ export class NormalEditorDecorationController<
     this.requestGeneration.set(editor, generation);
 
     if (this.host.isDiffEditor(editor)) {
-      this.host.setDecorations(editor, decorationType, []);
+      await this.host.setDecorations(editor, decorationType, [], {
+        signal: cancellation.signal,
+        isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
+      });
       return;
     }
 
@@ -176,12 +180,18 @@ export class NormalEditorDecorationController<
       if (projected === undefined || !this.canApply(editor, generation, decorationType, cancellation)) {
         return;
       }
-      this.host.setDecorations(editor, decorationType, projected);
+      await this.host.setDecorations(editor, decorationType, projected, {
+        signal: cancellation.signal,
+        isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
+      });
     } catch (error) {
       if (!this.canApply(editor, generation, decorationType, cancellation)) {
         return;
       }
-      this.host.setDecorations(editor, decorationType, []);
+      await this.host.setDecorations(editor, decorationType, [], {
+        signal: cancellation.signal,
+        isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
+      });
       await this.host.showDecorationError(error);
     }
   }

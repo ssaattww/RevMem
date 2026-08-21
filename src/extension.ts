@@ -209,19 +209,21 @@ const createHoverMessage = (
   return hover;
 };
 
-const toDecorationOptions = (
+const toDecorationOptions = async (
   editor: vscode.TextEditor,
-  decorations: readonly NormalEditorReviewedDecoration[]
-): vscode.DecorationOptions[] => decorations.map((decoration) => {
-  const lastLine = decoration.interval.endLineExclusive - 1;
-  return {
-    range: new vscode.Range(
-      new vscode.Position(decoration.interval.startLine, 0),
-      editor.document.lineAt(lastLine).range.end
-    ),
-    hoverMessage: createHoverMessage(decoration)
-  };
-});
+  decorations: readonly NormalEditorReviewedDecoration[],
+  context: { readonly signal: AbortSignal; readonly isCurrent: () => boolean }
+): Promise<vscode.DecorationOptions[] | undefined> => {
+  const options: vscode.DecorationOptions[] = [];
+  for (let index = 0; index < decorations.length; index += 1) {
+    if (context.signal.aborted || !context.isCurrent()) return undefined;
+    const decoration = decorations[index]!;
+    const lastLine = decoration.interval.endLineExclusive - 1;
+    options.push({ range: new vscode.Range(new vscode.Position(decoration.interval.startLine, 0), editor.document.lineAt(lastLine).range.end), hoverMessage: createHoverMessage(decoration) });
+    if ((index + 1) % 128 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  return context.signal.aborted || !context.isCurrent() ? undefined : options;
+};
 
 const uniqueVisibleIntervals = (
   documentUri: string,
@@ -494,14 +496,16 @@ export function activate(
       }
       return vscode.window.createTextEditorDecorationType(options);
     },
-    setDecorations: (editor, decorationType, decorations) => {
+    setDecorations: async (editor, decorationType, decorations, loadContext) => {
+      const options = await toDecorationOptions(editor, decorations, loadContext);
+      if (options === undefined || loadContext.signal.aborted || !loadContext.isCurrent()) return;
       appliedDecorations.set(editor, decorations.map((decoration) => ({
         ...decoration,
         interval: { ...decoration.interval }
       })));
       editor.setDecorations(
         decorationType,
-        toDecorationOptions(editor, decorations)
+        options
       );
     },
     onDidChangeVisibleEditors: (listener) =>

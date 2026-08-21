@@ -82,6 +82,16 @@ export interface GlobalUnderstandingTreeStagingOptions {
   readonly isCurrent?: () => boolean;
   /** Receives an immutable, sorted prefix of the current generation. */
   readonly onStage?: (model: GlobalUnderstandingTreeModel, complete: boolean) => void | Promise<void>;
+  /** Optional deterministic accounting hook for large-workload contract fixtures. */
+  readonly accountWork?: (entry: GlobalUnderstandingTreeWorkAccount) => void;
+}
+
+/** A bounded projection operation observed by a deterministic workload fixture. */
+export interface GlobalUnderstandingTreeWorkAccount {
+  readonly kind: "validated-open-target" | "built-file-node" | "published-stage";
+  readonly count: number;
+  readonly stageFileCount: number;
+  readonly modelRetainsInputArray?: boolean;
 }
 
 export interface GlobalUnderstandingStatusBarModel {
@@ -196,6 +206,33 @@ const validateTreeSnapshot = (
   };
 };
 
+const validateTreeSnapshotIncrementally = async (
+  snapshot: GlobalUnderstandingTreeSnapshot,
+  maxItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => boolean,
+  accountWork?: (entry: GlobalUnderstandingTreeWorkAccount) => void
+): Promise<ValidatedTreeSnapshot | undefined> => {
+  const { progress } = snapshot;
+  validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount"); requireCount(unopenedFileCount, "unopenedFileCount");
+  requireCount(snapshot.excludedFileCount, "excludedFileCount"); requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  if (openedFileCount !== progress.files.length) throw new RangeError("openedFileCount must match Global progress file count.");
+  const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+  const targets = snapshot.fileOpenTargets ?? [];
+  for (let index = 0; index < targets.length; index += 1) {
+    const target = targets[index]!;
+    if (openTargetsByPath.has(target.repositoryPath)) throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
+    openTargetsByPath.set(target.repositoryPath, target);
+    accountWork?.({ kind: "validated-open-target", count: 1, stageFileCount: 1 });
+    if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
+  }
+  if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
+  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath };
+};
+
 const createTreeModel = (
   snapshot: ValidatedTreeSnapshot,
   files: readonly GlobalUnderstandingFileNode[]
@@ -208,7 +245,7 @@ const createTreeModel = (
     totalNonEmptyLineCount: snapshot.progress.totalNonEmptyLineCount,
     progress: snapshot.progress.progress
   }),
-  files: Object.freeze([...files]),
+  files: Object.freeze(files),
   diagnostics: Object.freeze({
     kind: "diagnostics" as const,
     label: "ファイル状況" as const,
@@ -285,7 +322,8 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
   }
   const isCurrent = (): boolean => options.isCurrent?.() !== false;
   if (!isCurrent()) return undefined;
-  const validated = validateTreeSnapshot(snapshot);
+  const validated = await validateTreeSnapshotIncrementally(snapshot, options.maxFilesPerStage, options.yieldControl, isCurrent, options.accountWork);
+  if (validated === undefined) return undefined;
   const built: GlobalUnderstandingFileNode[] = [];
   const paths = new Set<string>();
   for (let index = 0; index < validated.progress.files.length; index += 1) {
@@ -298,6 +336,7 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
     if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
     paths.add(file.path);
     built.push(fileNode(file, target));
+    options.accountWork?.({ kind: "built-file-node", count: 1, stageFileCount: 1 });
     if ((index + 1) % options.maxFilesPerStage === 0 && index + 1 < validated.progress.files.length) {
       await options.yieldControl();
     }
@@ -312,12 +351,16 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
   if (sorted === undefined) return undefined;
   for (let end = options.maxFilesPerStage; end < built.length; end += options.maxFilesPerStage) {
     if (!isCurrent()) return undefined;
-    await options.onStage?.(createTreeModel(validated, sorted.slice(0, end)), false);
+    const stageFiles = sorted.slice(0, end);
+    const stage = createTreeModel(validated, stageFiles);
+    options.accountWork?.({ kind: "published-stage", count: end % options.maxFilesPerStage || options.maxFilesPerStage, stageFileCount: stage.files.length, modelRetainsInputArray: stage.files === stageFiles });
+    await options.onStage?.(stage, false);
     if (!isCurrent()) return undefined;
     await options.yieldControl();
   }
   if (!isCurrent()) return undefined;
   const complete = createTreeModel(validated, sorted);
+  options.accountWork?.({ kind: "published-stage", count: sorted.length % options.maxFilesPerStage || Math.min(sorted.length, options.maxFilesPerStage), stageFileCount: complete.files.length, modelRetainsInputArray: complete.files === sorted });
   await options.onStage?.(complete, true);
   return isCurrent() ? complete : undefined;
 };
