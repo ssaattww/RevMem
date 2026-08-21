@@ -117,7 +117,13 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const candidatePaths = new Set<string>();
+    let candidateWork = 0;
     for (const repositoryPath of pathEnumeration.includedPaths) {
+      if (++candidateWork === 128) {
+        candidateWork = 0;
+        await this.yieldControl();
+        assertCurrent();
+      }
       const canonicalPath = this.canonicalEvidencePath(repositoryPath);
       if (candidatePaths.has(canonicalPath)) {
         throw new Error(`Duplicate Global candidate path: ${canonicalPath}`);
@@ -126,15 +132,28 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }
     const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths);
     assertCurrent();
-    const availablePaths = new Set([...candidatePaths, ...pullRequestHeadPaths]);
+    const availablePaths = new Set(candidatePaths);
+    for (const path of pullRequestHeadPaths) {
+      availablePaths.add(path);
+      if (++candidateWork === 128) {
+        candidateWork = 0;
+        await this.yieldControl();
+        assertCurrent();
+      }
+    }
     const evidenceByPath = this.captureOpenedDocuments(owner);
-    const openedByPath = new Map(
-      [...evidenceByPath].filter(([repositoryPath]) => availablePaths.has(repositoryPath))
-    );
-    const included = [...openedByPath].map(([repositoryPath, evidence]) => ({
-      path: repositoryPath,
-      nonEmptyLineCount: evidence.nonEmptyLines.length
-    }));
+    const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
+    const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
+    for (const [repositoryPath, evidence] of evidenceByPath) {
+      if (!availablePaths.has(repositoryPath)) continue;
+      openedByPath.set(repositoryPath, evidence);
+      included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+      if (++candidateWork === 128) {
+        candidateWork = 0;
+        await this.yieldControl();
+        assertCurrent();
+      }
+    }
 
     const persisted = await this.repository.loadGlobal(owner.target);
     assertCurrent();
@@ -164,13 +183,20 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       globalState,
       included,
       openFilePaths: [...openedByPath.keys()],
-      configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`
+      configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`,
+      signal
     });
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
-    const fileOpenTargets = result.progress.files.map((file) =>
-      this.createFileOpenTarget(owner, file.path)
-    );
+    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
+    for (const file of result.progress.files) {
+      fileOpenTargets.push(this.createFileOpenTarget(owner, file.path));
+      if (++candidateWork === 128) {
+        candidateWork = 0;
+        await this.yieldControl();
+        assertCurrent();
+      }
+    }
     return {
       progress: result.progress,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),

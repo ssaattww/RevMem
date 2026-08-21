@@ -306,6 +306,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
+    let scheduledItems = 0;
+    const checkpoint = async (): Promise<void> => {
+      assertCurrent();
+      if (++scheduledItems < 128) return;
+      scheduledItems = 0;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assertCurrent();
+    };
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
     const progressByContextId: Record<string, ReviewContextListProgress> = {};
@@ -313,6 +321,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
 
     for (const snapshot of await this.enumerateCurrentContexts(signal)) {
       assertCurrent();
+      await checkpoint();
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
         this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
@@ -320,7 +329,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         assertCurrent();
         const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
         assertCurrent();
-        for (const context of synchronized) saved.set(context.contextId, context);
+        for (const context of synchronized) { saved.set(context.contextId, context); await checkpoint(); }
 
         if (owner.branchRef !== undefined) {
           const branch = synchronized.find((context) =>
@@ -342,6 +351,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
         for (const context of synchronized) {
+          await checkpoint();
           if (context.kind !== "pull-request") continue;
           const progress = await this.progressFor(context, owner.repositoryRoot, signal, feedbackContext);
           assertCurrent();
@@ -353,13 +363,13 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     }
 
     const hiddenContextIds = new Set(await this.visibility.readHiddenContextIds());
-    const project = async (): Promise<readonly ReviewContextListItem[]> => projectReviewContexts({
-      current,
-      saved: [...saved.values()],
-      hiddenContextIds,
-      progressByContextId,
-      cacheByContextId: Object.fromEntries(this.cacheStatusByContextId),
-    });
+    const project = async (): Promise<readonly ReviewContextListItem[]> => {
+      assertCurrent();
+      const savedValues: ReviewContextState[] = [];
+      for (const context of saved.values()) { savedValues.push(context); await checkpoint(); }
+      assertCurrent();
+      return projectReviewContexts({ current, saved: savedValues, hiddenContextIds, progressByContextId, cacheByContextId: Object.fromEntries(this.cacheStatusByContextId) });
+    };
     this.pendingProjection = project;
     return project();
   }

@@ -4,9 +4,9 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: 7ce06c1114a5ebd9830e801a93205ae9e85cd4d4
-report_normalized_head: 11d4c5d52ff4d07f9998c9951c9349ab1168748d
-status: normal_review_pass_with_held_independent_final_pending
+implementation_head: c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3
+report_normalized_head: c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3
+status: independent_final_review_followup_in_progress
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
@@ -28,5 +28,6 @@ normal_review: "PR #80 initial normal review failed with T607-R001 through T607-
 ci: "exact-head runs 32433837209 and 32433825463 failed design-document-structure; do not treat focused CI as executed"
 followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
 followup_validation: "R004 valid Red once: npm run test:t607 compile failure for missing cooperative model export; Green once: npm run test:t607 71 pass/0 fail. npm run build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative (expected 11), and git diff --check each passed once locally; CI not started."
-normal_closure: "R4 PASS_WITH_HELD: R001-R006 all closed at technical head 7ce06c1; report-normalized head 11d4c5d changes R2/R3 trailing blank lines only. Independent final review pending; exact-head pull_request CI held; Markdown wording unsupported."
-next_request: "Freeze the current report-normalized implementation head for one independent final review. Do not repeat normal review, run CI before the merge gate, or introduce new scope."
+normal_closure: "Historical R4 PASS_WITH_HELD is preserved. Independent final review at c4a99db found IFR001-IFR006; its current erratum/follow-up must not rewrite historical closure evidence."
+independent_final_review: "FAIL at frozen head c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3: IFR001 PR cooperative scheduler, IFR002 Global/Review Contexts aggregation, IFR003 document snapshot invalidation, IFR004 decoration composition budget, IFR005 Unicode digest boundary, IFR006 provenance synchronization. Report: reports/issue-79-t607-independent-final-review-20260821110000.md"
+next_request: "Commit the complete IFR001-IFR006 follow-up batch, then ask the same normal reviewer for finding-limited closure only. Do not run or wait for CI before the merge gate."

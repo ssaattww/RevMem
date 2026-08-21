@@ -448,7 +448,11 @@ export function activate(
     editor: vscode.TextEditor,
     isCurrent: () => boolean = () => true
   ): Promise<DocumentEditorReviewDescriptor | undefined> => {
-    const documentUri = editor.document.uri;
+    const document = editor.document;
+    const documentUri = document.uri;
+    const version = document.version;
+    const lineCount = document.lineCount;
+    const stillCurrent = (): boolean => isCurrent() && editor.document === document && document.version === version;
     if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
       throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
     }
@@ -467,19 +471,26 @@ export function activate(
           displayName: membership.workspaceFolder.name
         };
 
-    const contentHash = await stableHash.digestCooperatively(
-      editor.document.getText(),
+    const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+    const fragments = (function* (): Iterable<string> {
+      for (let line = 0; line < lineCount; line += 1) {
+        yield document.lineAt(line).text;
+        if (line + 1 < lineCount) yield eol;
+      }
+    })();
+    const contentHash = await stableHash.digestFragmentsCooperatively(
+      fragments,
       HASH_CHARACTERS_PER_STAGE,
       DECORATION_WORK_BUDGET.yieldControl,
-      isCurrent
+      stillCurrent
     );
-    if (contentHash === undefined) return undefined;
+    if (contentHash === undefined || !stillCurrent()) return undefined;
     return {
       documentUri: toResourceUri(documentUri),
       documentFsPath: documentUri.fsPath,
       fileSystemPathSemantics: workspaceSidePathSemantics(),
       ...(workspace === undefined ? {} : { workspace }),
-      lineCount: editor.document.lineCount,
+      lineCount,
       contentHash
     };
   };
@@ -579,6 +590,11 @@ export function activate(
           invokeDecorationListener(listener);
         }
       }),
+    onDidChangeDocument: (listener) => vscode.workspace.onDidChangeTextDocument((event) => {
+      for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document === event.document) invokeDecorationListener(() => listener(editor));
+      }
+    }),
     showDecorationError: (error) => reportDecorationError(error)
   };
   const decorationController = new NormalEditorDecorationController(decorationHost, DECORATION_WORK_BUDGET);

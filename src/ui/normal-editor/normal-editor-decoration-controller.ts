@@ -28,7 +28,7 @@ export interface NormalEditorDecorationLoadContext {
 
 const DEFAULT_WORK_BUDGET: NormalEditorDecorationWorkBudget = Object.freeze({
   maxDecorationsPerStage: 128,
-  yieldControl: async () => await Promise.resolve()
+  yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve))
 });
 
 /** Platform boundary used to keep decoration orchestration independent from VS Code. */
@@ -69,6 +69,8 @@ export interface NormalEditorDecorationHost<
   onDidChangeSettings(
     listener: () => void | Promise<void>
   ): DecorationDisposable;
+  /** Invalidates work for an editor when its document content changes. */
+  onDidChangeDocument?(listener: (editor: Editor) => void | Promise<void>): DecorationDisposable;
   /** Reports a failed state load after the uncertain editor output has been cleared. */
   showDecorationError(error: unknown): void | Promise<void>;
 }
@@ -113,7 +115,8 @@ export class NormalEditorDecorationController<
       this.subscriptions.push(
         this.host.onDidChangeVisibleEditors(() => this.refreshVisibleEditors()),
         this.host.onDidChangeActiveEditor(() => this.refreshVisibleEditors()),
-        this.host.onDidChangeSettings(() => this.refreshSettings())
+        this.host.onDidChangeSettings(() => this.refreshSettings()),
+        ...(this.host.onDidChangeDocument === undefined ? [] : [this.host.onDidChangeDocument((editor) => this.refreshEditor(editor))])
       );
     }
 

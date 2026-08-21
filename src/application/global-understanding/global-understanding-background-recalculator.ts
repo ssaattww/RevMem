@@ -3,7 +3,6 @@ import type {
   RepositoryGlobalState
 } from "../../core/contracts/index";
 import {
-  aggregateRepositoryGlobalUnderstandingProgress,
   type GlobalUnderstandingFileProgress,
   type GlobalUnderstandingFileSnapshot,
   type RepositoryGlobalUnderstandingProgress
@@ -38,6 +37,8 @@ export interface GlobalUnderstandingFileLoadOptions {
   readonly maxWorkBytes: number;
   /** Scheduler boundary used between non-final source chunks. */
   readonly yieldControl: () => void | Promise<void>;
+  /** Runtime cancellation fence shared with the enclosing recalculation. */
+  readonly signal?: AbortSignal;
 }
 
 /** Runtime-neutral source used to load one included repository file. */
@@ -152,16 +153,18 @@ export interface GlobalUnderstandingRecalculationInput {
   readonly chunkSize?: number;
   /** Maximum source bytes processed before yielding within one file; defaults to 64 KiB. */
   readonly fileWorkChunkBytes?: number;
-  /** Maximum post-load evidence, interval, or line items processed before yielding; defaults to 4096. */
+  /** Maximum post-load evidence, interval, or line items processed before yielding; defaults to 128. */
   readonly calculationWorkChunkItems?: number;
   /** Optional progress callback invoked after every chunk, including the final chunk. */
   readonly onProgress?: (
     progress: GlobalUnderstandingRecalculationProgress
   ) => void | Promise<void>;
+  /** Aborts stale recalculation before cache mutation or projection publication. */
+  readonly signal?: AbortSignal;
 }
 
 const DEFAULT_FILE_WORK_CHUNK_BYTES = 64 * 1024;
-const DEFAULT_CALCULATION_WORK_CHUNK_ITEMS = 4096;
+const DEFAULT_CALCULATION_WORK_CHUNK_ITEMS = 128;
 
 const requireNonEmptyString = (value: string, label: string): void => {
   if (value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
@@ -195,33 +198,14 @@ const globalFilesByPath = (
   return files;
 };
 
-const copyGlobalFile = (file: GlobalFileReviewState): GlobalFileReviewState => {
-  const reviewed = Object.freeze(file.reviewed.map((interval) => Object.freeze({
-    startLine: interval.startLine,
-    endLineExclusive: interval.endLineExclusive
-  }))) as unknown as GlobalFileReviewState["reviewed"];
-  return Object.freeze({
-    fileId: file.fileId,
-    currentPath: file.currentPath,
-    revisionId: file.revisionId,
-    reviewed,
-    contentHash: file.contentHash,
-    updatedAt: file.updatedAt
-  }) as GlobalFileReviewState;
-};
-
 const snapshotCalculationInput = (
   input: GlobalUnderstandingRecalculationInput
 ): GlobalUnderstandingCalculationInputSnapshot => {
-  const globalByPath = new Map<string, GlobalFileReviewState>();
-  for (const [repositoryPath, file] of globalFilesByPath(input.globalState)) {
-    globalByPath.set(repositoryPath, copyGlobalFile(file));
-  }
-  const included = Object.freeze(input.included.map((file) => Object.freeze({
-    path: file.path,
-    nonEmptyLineCount: file.nonEmptyLineCount
-  })));
-  const openFilePaths = Object.freeze([...(input.openFilePaths ?? [])]);
+  // The caller owns an immutable recalculation input; retaining its read-only
+  // references avoids a second repository-sized interval/state copy.
+  const globalByPath = globalFilesByPath(input.globalState);
+  const included = input.included;
+  const openFilePaths = input.openFilePaths ?? [];
   return Object.freeze({
     repositoryId: input.globalState.repositoryId,
     currentRevisionId: input.globalState.currentRevisionId,
@@ -281,6 +265,39 @@ const validateLoadedFile = (
   }
 };
 
+const aggregateCooperatively = async (
+  files: readonly GlobalUnderstandingFileProgress[],
+  maxItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => void
+): Promise<RepositoryGlobalUnderstandingProgress> => {
+  let pending = 0;
+  const checkpoint = async (): Promise<void> => {
+    isCurrent();
+    if (++pending < maxItems) return;
+    pending = 0;
+    await yieldControl();
+    isCurrent();
+  };
+  let source = [...files];
+  for (let width = 1; width < source.length; width *= 2) {
+    const next: GlobalUnderstandingFileProgress[] = [];
+    for (let start = 0; start < source.length; start += width * 2) {
+      let left = start; const leftEnd = Math.min(start + width, source.length);
+      let right = leftEnd; const rightEnd = Math.min(start + width * 2, source.length);
+      while (left < leftEnd || right < rightEnd) {
+        const takeLeft = right >= rightEnd || (left < leftEnd && source[left]!.path <= source[right]!.path);
+        next.push(takeLeft ? source[left++]! : source[right++]!);
+        await checkpoint();
+      }
+    }
+    source = next;
+  }
+  let reviewed = 0; let total = 0;
+  for (const file of source) { reviewed += file.reviewedNonEmptyLineCount; total += file.totalNonEmptyLineCount; await checkpoint(); }
+  return { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: source };
+};
+
 /**
  * Recalculates Global understanding asynchronously, prioritizing open files and yielding within source, post-load calculation, and between file chunks.
  */
@@ -293,6 +310,10 @@ export class GlobalUnderstandingBackgroundRecalculator {
   public async recalculate(
     input: GlobalUnderstandingRecalculationInput
   ): Promise<GlobalUnderstandingRecalculationProgress> {
+    const assertCurrent = (): void => {
+      if (input.signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    };
+    assertCurrent();
     requireNonEmptyString(input.configurationKey, "configurationKey");
     const chunkSize = input.chunkSize ?? 25;
     validatePositiveCount(chunkSize, "chunkSize");
@@ -313,8 +334,9 @@ export class GlobalUnderstandingBackgroundRecalculator {
     let calculatedFileCount = 0;
 
     const emit = async (complete: boolean): Promise<GlobalUnderstandingRecalculationProgress> => {
+      assertCurrent();
       const event: GlobalUnderstandingRecalculationProgress = {
-        progress: aggregateRepositoryGlobalUnderstandingProgress(calculated),
+        progress: await aggregateCooperatively(calculated, calculationWorkChunkItems, this.dependencies.yieldControl, assertCurrent),
         processedFileCount: calculated.length,
         totalFileCount: ordered.length,
         complete,
@@ -330,14 +352,17 @@ export class GlobalUnderstandingBackgroundRecalculator {
     for (let chunkStart = 0; chunkStart < ordered.length; chunkStart += chunkSize) {
       const chunk = ordered.slice(chunkStart, chunkStart + chunkSize);
       for (const included of chunk) {
+        assertCurrent();
         const loaded = await this.dependencies.source.load(
           included.path,
           currentRevisionId,
           {
             maxWorkBytes: fileWorkChunkBytes,
-            yieldControl: this.dependencies.yieldControl
+            yieldControl: this.dependencies.yieldControl,
+            signal: input.signal
           }
         );
+        assertCurrent();
         validateLoadedFile(included, currentRevisionId, loaded);
         const globalFile = globalByPath.get(included.path);
         const identity = `${repositoryId}\0${included.path}`;
@@ -350,11 +375,13 @@ export class GlobalUnderstandingBackgroundRecalculator {
           loaded,
           globalFile
         }, calculationWorkOptions);
+        assertCurrent();
         const cached = await this.dependencies.cache.get(
           identity,
           evidenceKey,
           calculationWorkOptions
         );
+        assertCurrent();
         if (cached !== undefined) {
           await loaded.validateCurrent?.();
           calculated.push(cached);
@@ -367,6 +394,7 @@ export class GlobalUnderstandingBackgroundRecalculator {
           globalFile,
           calculationWorkOptions
         );
+        assertCurrent();
         await loaded.validateCurrent?.();
         this.dependencies.cache.set(identity, evidenceKey, progress);
         calculated.push(progress);
@@ -377,6 +405,7 @@ export class GlobalUnderstandingBackgroundRecalculator {
       const event = await emit(complete);
       if (complete) return event;
       await this.dependencies.yieldControl();
+      assertCurrent();
     }
 
     throw new Error("Global understanding recalculation ended without a final chunk.");

@@ -30,6 +30,7 @@ import type { FileSystemPathSemantics } from "./application/workspace-identity/i
 import type { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
+  calculatePullRequestDiffProgressCooperatively,
   type PullRequestDiffFileProgress,
   type PullRequestDiffProgress,
   type PullRequestDiffSnapshot,
@@ -490,7 +491,7 @@ export class PullRequestReviewRuntime<Uri> {
             lineReviewabilityByFileId,
           }, {
             maxFilesPerStage: 128,
-            yieldControl: async () => await Promise.resolve(),
+            yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve)),
             isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, registration) && !cancellation.signal.aborted,
           });
           assertCurrent();
@@ -616,11 +617,22 @@ export class PullRequestReviewRuntime<Uri> {
     }
     this.requireMatchingContext(registration, persisted);
     this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
-    const progress = calculatePullRequestDiffProgress({
+    const calculationInput = {
       diff: registration.snapshot,
       reviewContext: this.projectContextFileIdentities(registration, persisted),
       exclusionPolicy: this.options.getExclusionPolicy(),
-    });
+    };
+    const progress = signal === undefined
+      ? calculatePullRequestDiffProgress(calculationInput)
+      : await calculatePullRequestDiffProgressCooperatively(calculationInput, {
+        maxWorkItems: 128,
+        yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve)),
+        isCurrent: () => !signal.aborted,
+      });
+    if (progress === undefined) {
+      throwIfProgressCancelled(signal);
+      throw new DOMException("PR Progress refresh was superseded.", "AbortError");
+    }
     return { registration, persisted, progress };
   }
 

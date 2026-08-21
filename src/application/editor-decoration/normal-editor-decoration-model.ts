@@ -12,6 +12,7 @@ import {
 } from "../../core/intervals/index";
 import {
   calculatePullRequestDiffProgress,
+  calculatePullRequestDiffProgressCooperatively,
   type PullRequestDiffSnapshot
 } from "../../core/pr-progress/index";
 import type { ReviewStateFileTarget } from "../../core/review-state/index";
@@ -58,6 +59,8 @@ class CooperativeWork {
     return this.budget.isCurrent();
   }
   public current(): boolean { return this.budget.isCurrent(); }
+  public maxItems(): number { return this.budget.maxWorkItems; }
+  public yieldControl(): () => void | Promise<void> { return this.budget.yieldControl; }
 }
 
 const compareIntervals = (left: LineInterval, right: LineInterval): number =>
@@ -336,6 +339,37 @@ const currentPullRequestChangedIntervals = (
   };
 };
 
+const currentPullRequestChangedIntervalsCooperatively = async (
+  input: NormalEditorDecorationModelInput,
+  work: CooperativeWork
+): Promise<CurrentPullRequestChangeEvidence | undefined> => {
+  const context = input.contextState;
+  if (context.kind !== "pull-request") return { certain: true, intervals: [] };
+  const diff = input.currentPullRequestDiff;
+  if (context.pullRequest === undefined || diff === undefined || diff.contextId !== context.contextId || diff.baseSha !== context.pullRequest.baseSha || diff.headSha !== context.pullRequest.headSha) return { certain: false, intervals: [] };
+  try {
+    const validated = await calculatePullRequestDiffProgressCooperatively({ diff, reviewContext: context, exclusionPolicy: DIFF_VALIDATION_POLICY }, {
+      maxWorkItems: work.maxItems(), yieldControl: work.yieldControl(), isCurrent: () => work.current()
+    });
+    if (validated === undefined) return undefined;
+    let file: typeof diff.files[number] | undefined;
+    for (const candidate of diff.files) { if (!await work.item()) return undefined; if (candidate.fileId === input.target.fileId) { file = candidate; break; } }
+    if (file === undefined) {
+      const targetPath = DIFF_VALIDATION_POLICY.evaluate({ path: input.target.currentPath, isBinary: false }).normalizedPath;
+      for (const candidate of validated.files) { if (!await work.item()) return undefined; if (candidate.path === targetPath) return { certain: false, intervals: [] }; }
+      return { certain: true, intervals: [] };
+    }
+    if (file.newPath !== input.target.currentPath) return { certain: false, intervals: [] };
+    const intervals: LineInterval[] = [];
+    for (const hunk of file.hunks) for (const line of hunk.lines) {
+      if (!await work.item()) return undefined;
+      if (line.kind === "addition" && line.newLine !== undefined) intervals.push({ startLine: line.newLine - 1, endLineExclusive: line.newLine });
+    }
+    const normalized = await normalizedIntervalsCooperatively(intervals, input.target.lineCount, work);
+    return normalized === undefined ? undefined : { certain: true, intervals: normalized };
+  } catch { return { certain: false, intervals: [] }; }
+};
+
 const appendDecorationRanges = (
   decorations: NormalEditorReviewedDecoration[],
   intervals: readonly LineInterval[],
@@ -481,8 +515,8 @@ export async function createNormalEditorDecorationModelIncrementally(
   if (!work.current()) return undefined;
   if (global !== undefined && global.intervals === undefined) return undefined;
   const visibleGlobal = input.showGlobalReviewed ? global?.intervals ?? [] : [];
-  // The synchronous diff validator is retained for its public contract; interval work below is cooperative.
-  const changeEvidence = currentPullRequestChangedIntervals(input);
+  const changeEvidence = await currentPullRequestChangedIntervalsCooperatively(input, work);
+  if (changeEvidence === undefined) return undefined;
   const currentIntervals = current?.intervals ?? [];
   const currentReviewedChanges = await intersectIntervalsCooperatively(currentIntervals, changeEvidence.intervals, work);
   if (currentReviewedChanges === undefined) return undefined;

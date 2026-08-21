@@ -9,7 +9,7 @@ import { NodeSha256StableHash } from "../../src/adapters/crypto/node-sha256-stab
 import type { RepositoryGlobalUnderstandingProgress } from "../../src/core/global-understanding/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type DiffLine, type GlobalFileReviewState, type PullRequestFileChange, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
-import { calculatePullRequestDiffProgress, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
+import { calculatePullRequestDiffProgress, calculatePullRequestDiffProgressCooperatively, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 import { calculateGlobalUnderstandingFileProgressCooperatively } from "../../src/application/global-understanding/cooperative-global-understanding-calculation";
 import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
 import {
@@ -306,6 +306,26 @@ test("T607 aggregates actual 10,000 changed T301 lines and publishes only the co
   assert.ok(yields >= stages.length, "T301 validation and final category projection use deterministic work checkpoints");
 });
 
+test("T607 cooperatively calculates all 10,000 production PR hunk lines and fences supersession", async () => {
+  const diff = tenThousandLineT301Snapshot();
+  const input = { diff, reviewContext: t301Context(diff.baseSha, diff.headSha), exclusionPolicy: new ReviewFileExclusionPolicy({ userGlobs: [] }) };
+  let yields = 0;
+  const complete = await calculatePullRequestDiffProgressCooperatively(input, {
+    maxWorkItems: 128,
+    yieldControl: () => { yields += 1; },
+    isCurrent: () => true
+  });
+  assert.equal(complete?.totalLineCount, 10_000);
+  assert.ok(yields >= 78, "actual hunk-line validation yields no later than 128 items");
+  let current = true;
+  const stale = await calculatePullRequestDiffProgressCooperatively(input, {
+    maxWorkItems: 128,
+    yieldControl: () => { current = false; },
+    isCurrent: () => current
+  });
+  assert.equal(stale, undefined, "a superseded PR calculation has no result to publish");
+});
+
 test("T607 stale or cancelled PR Tree preparation preserves the last complete projection", async () => {
   const diff = tenThousandLineT301Snapshot();
   const progress = calculatePullRequestDiffProgress({
@@ -439,6 +459,24 @@ test("T607 uses the production SHA-256 adapter in deterministic large-document c
   assert.equal(account.length, 16);
   assert.ok(account.every((count) => count <= 65_536));
   assert.equal(yields, 15, "the production hashing adapter yields between bounded document chunks");
+});
+
+test("T607 cooperative SHA-256 preserves Unicode identities across surrogate stage boundaries", async () => {
+  const hash = new NodeSha256StableHash();
+  for (const boundary of [65_535, 65_536, 65_537]) {
+    const text = "x".repeat(boundary - 1) + "😀" + "終";
+    const cooperative = await hash.digestCooperatively(text, 65_536, () => new Promise<void>((resolve) => setImmediate(resolve)), () => true);
+    assert.equal(cooperative, hash.digest(text), `surrogate at ${boundary} remains canonical`);
+  }
+});
+
+test("T607 streams normal-document fragments without a full text materialization", async () => {
+  const hash = new NodeSha256StableHash();
+  const fragments = Array.from({ length: 10_000 }, (_, index) => `行${index}😀\n`);
+  let yields = 0;
+  const streamed = await hash.digestFragmentsCooperatively(fragments, 128, () => { yields += 1; }, () => true);
+  assert.equal(streamed, hash.digest(fragments.join("")));
+  assert.ok(yields > 100, "line fragments share the same bounded scheduler budget");
 });
 
 test("T607 builds a 2,048-interval normal-editor model cooperatively and fences a superseded generation", async () => {

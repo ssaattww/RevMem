@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80 normal review `pass_with_held`、R001〜R006全件closed、independent final review待ち）
-- 次の工程: T607 report-normalized head `11d4c5d`の一度だけのindependent final review
+- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80 independent final reviewがfrozen head `c4a99db`でIFR001〜IFR006を検出、同一batch follow-up実装中）
+- 次の工程: T607 IFR001〜IFR006の通常finding-limited verification
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: PR #80 normal reviewは`pass_with_held`、R001〜R006はtechnical head `7ce06c1`で全件closed。report-normalized head `11d4c5d`を独立final reviewする。`test:t607` 71/71とlocal static gates Green、exact-head `pull_request` CI held、Markdown wording unsupported。R4 closure: `reports/issue-79-t607-normal-finding-closure-r4-20260821104627.md`。
+- T607: PR #80 independent final review はfrozen technical head `c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3`でIFR001〜IFR006を検出した。historical normal R4 evidenceは保持し、follow-up実装後に同一normal reviewerがfinding-limited verificationを行う。exact-head `pull_request` CIはfollow-upの最終headまでheld、Markdown wordingはunsupported。independent report: `reports/issue-79-t607-independent-final-review-20260821110000.md`。
 - T608: 未着手
 
 ### 終了チェックポイント
