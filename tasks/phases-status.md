@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（committed base `6bc0304` 上の未コミット R5 follow-upがIFR002 candidate materializationを補完、79/79 focused Green・static gates Green）
-- 次の工程: technical commit freeze後の同一reviewerによるT607 IFR002/IFR006 R5 independent finding-limited closure
+- 実装中タスク: T607 / Issue #79 / PR #80（technical/pre-freeze HEAD `9d5759c`、IFR001〜IFR005 technical findings closed、IFR006 admin sync未コミット完了）
+- 次の工程: final administrative freeze後の同一reviewerによるT607 IFR006 R6 report-only attestation
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: R4 independent closure `reports/issue-79-t607-independent-finding-closure-r4-20260821163000.md` はIFR004をclosed、IFR002/IFR006をopenとした。IFR001/IFR003/IFR005もclosedを維持。committed base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` 上の未コミット R5 follow-up `reports/issue-79-t607-independent-finding-followup-r5-20260821170000.md` はcandidate materialization accounting、actual 256-context lifecycle fixture、`npm run test:t607` 79/79、static gates Greenを記録した。historical normal R4 evidenceは保持し、next actionはtechnical commit freeze後の同一independent reviewerによるIFR002/IFR006 R5 finding-limited closure。exact-head `pull_request` CIはその最終headまでheld、Markdown wordingはunsupported。
+- T607: R5 follow-up `reports/issue-79-t607-independent-finding-followup-r5-20260821170000.md` の technical delta は historical base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` から current technical/pre-freeze HEAD `9d5759caaac648c679cd893f44e16ce494e56424` までである。R5 closure `reports/issue-79-t607-independent-finding-closure-r5-20260821173000.md` はIFR002をclosed、IFR006をopenとし、IFR001〜IFR005 technical findingsはすべてclosed。provided `npm run test:t607` 79/79とstatic gatesはpass。IFR006 admin syncは未コミットで完了し、next actionはfinal administrative freeze後の同一independent reviewerによるR6 report-only attestation。exact-head `pull_request` CIはheld、Markdown wordingはunsupported。
 - T608: 未着手
 
 ### 終了チェックポイント

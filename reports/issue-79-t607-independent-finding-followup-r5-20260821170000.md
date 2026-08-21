@@ -2,7 +2,7 @@
 
 ## タスク
 
-Issue #79 / PR #80 の independent closure R4 で残った `T607-IFR002` と provenance `T607-IFR006` だけを、committed base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` 上の未コミット technical working tree に補完した。
+Issue #79 / PR #80 の independent closure R4 で残った `T607-IFR002` と provenance `T607-IFR006` を、historical committed base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` 上で補完した。technical delta は `6bc0304af5b6d096c3d5dd040ce771b716aeef1d..9d5759caaac648c679cd893f44e16ce494e56424` として commit freeze され、R5 closure は IFR002 を closed、IFR006 の current-record sync のみ open とした。
 
 ## sub-agentを使う理由
 
@@ -14,7 +14,7 @@ implementation owner が reviewer と独立し、R4 の required action のみ�
 
 ## 対象外
 
-R4 closure で closed の IFR004、従来から closed の IFR001/IFR003/IFR005、新しい finding 観点、CI、commit、push、PR metadata、review、self-review、全 unit suite は対象外である。
+closed の IFR001〜IFR005 technical findings、新しい finding 観点、CI、PR metadata、review、self-review、全 unit suite は対象外である。現在の変更は IFR006 admin sync のみである。
 
 ## 実行コマンド
 
@@ -26,12 +26,12 @@ Focused Red は actual IFR002 runtime test が `materialized-context` batch 不�
 
 ## 指摘事項
 
-新規指摘は作成しない。IFR002 の未計上全量 spread のみを除去し、候補コピー自体を AbortSignal/generation-aware scheduler で段階化した。IFR006 は current records を actual committed base、R4 disposition、R5 local evidence、same reviewer closure pending、CI/Markdown held へ同期した。
+新規指摘は作成しない。IFR002 の未計上全量 spread を除去し、候補コピー自体を AbortSignal/generation-aware scheduler で段階化した technical finding は R5 closure で closed。IFR006 は current records を current technical/pre-freeze HEAD `9d5759caaac648c679cd893f44e16ce494e56424`、R5 disposition、provided validation、same reviewer R6 admin closure pending、CI/Markdown held へ同期した。
 
 ## 結果
 
-IFR002 の minimal production fix と actual fixture は local Green。technical HEAD は committed base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` のままで、R5 technical delta は未コミット。same independent reviewer による IFR002/IFR006 R5 finding-limited closure が pending。CI は technical commit freeze 後の merge gate まで held。
+IFR001〜IFR005 technical findings は closed。current committed technical/pre-freeze HEAD は `9d5759caaac648c679cd893f44e16ce494e56424`。provided evidence は `npm run test:t607` 79/79 と static gates pass。IFR006 admin sync は未コミットで完了し、final administrative freeze 後に same independent reviewer の R6 report-only attestation が pending。exact-head `pull_request` CI は held、Markdown wording tooling は unsupported。
 
 ## リスク
 
-local focused/static evidence は exact-head `pull_request` CI の代替ではない。same independent reviewer が R5 finding-limited scope で最終 technical diff を確認するまで merge は認可されない。
+provided local evidence は exact-head `pull_request` CI の代替ではない。final administrative freeze 後に same independent reviewer が IFR006 R6 report-only attestation を完了するまで merge は認可されない。
