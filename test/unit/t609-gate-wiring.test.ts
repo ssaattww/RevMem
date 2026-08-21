@@ -165,6 +165,26 @@ test("T609 Host reaches normal-editor review through its public command", async 
   assert.doesNotMatch(hostSuite, /api\.markNormalEditorSelectionForTest\(editor\)/u);
 });
 
+test("T609 Host persists mapping seeds through one Test-mode production transaction while retaining public encoding coverage", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
+  const restartStart = hostSuite.indexOf("if (!isPrepare) {");
+  assert.ok(singleRootStart >= 0 && restartStart > singleRootStart);
+  const singleRootPhase = hostSuite.slice(singleRootStart, restartStart);
+
+  assert.match(extension, /seedT609InitialReviewedRanges/u);
+  assert.match(extension, /documentSessionProvider\.open\(/u);
+  assert.match(extension, /documentSessionProvider\.loadForDecoration\(/u);
+  assert.match(extension, /committer\.commit\(/u);
+  assert.match(extension, /historyRecorder\.recordTransaction\(/u);
+  assert.match(singleRootPhase, /api\.seedT609InitialReviewedRanges\(mappingSeedEditors\)/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
+  assert.doesNotMatch(singleRootPhase, /for \(const name of \["rename-source\.txt", "whitespace\.txt", "eol\.txt"\]/u);
+  assert.doesNotMatch(singleRootPhase, /markAndSynchronizeFixtureReview\(`mapping seed/u);
+});
+
 test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");

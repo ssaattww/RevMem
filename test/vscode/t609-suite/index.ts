@@ -10,6 +10,11 @@ assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T
 
 interface T609ExtensionApi {
   drainDocumentReviewEdits(): Promise<void>;
+  seedT609InitialReviewedRanges(editors: readonly vscode.TextEditor[]): Promise<readonly {
+    readonly documentUri: string;
+    readonly contextIntervals: readonly ReviewedIntervalSnapshot[];
+    readonly globalIntervals: readonly ReviewedIntervalSnapshot[];
+  }[]>;
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
   getObservedEncodingHintsForTest(): readonly {
@@ -179,12 +184,21 @@ export async function run(): Promise<void> {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
     await assertMixedEncodingFixture(folder, api);
+    const mappingSeedEditors: vscode.TextEditor[] = [];
     for (const name of ["rename-source.txt", "whitespace.txt", "eol.txt"]) {
       const document = await within(`open mapping seed ${name}`, vscode.workspace.openTextDocument(fixtureUri(folder, name)));
       const editor = await within(`show mapping seed ${name}`, vscode.window.showTextDocument(document, { preview: false }));
-      editor.selection = new vscode.Selection(0, 0, 0, 0);
-      await markAndSynchronizeFixtureReview(`mapping seed ${name}`, editor, api);
+      mappingSeedEditors.push(editor);
     }
+    const seed = await within("seed initial mapping ranges", api.seedT609InitialReviewedRanges(mappingSeedEditors));
+    assert.deepEqual(
+      seed.map((entry) => ({ contextIntervals: entry.contextIntervals, globalIntervals: entry.globalIntervals })),
+      Array.from({ length: 3 }, () => ({
+        contextIntervals: [{ startLine: 0, endLineExclusive: 1 }],
+        globalIntervals: [{ startLine: 0, endLineExclusive: 1 }]
+      })),
+      "the T609 seed must persist all initial intervals through the read-only production state query"
+    );
     return;
   }
 
