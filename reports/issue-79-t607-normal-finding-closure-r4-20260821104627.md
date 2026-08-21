@@ -35,5 +35,3 @@ R004に限定し、async normal-editor modelとpublic export、extension activat
 ## リスク
 
 Held: exact-head `pull_request` CIは未起動・未確認のmerge gateであり、provided local passを代用しない。Markdown wording checkはrepository wiring不在のためunsupported held。実測値はmachine-dependent advisory evidenceのままであり、deterministic work/count budgetをacceptance contractとする。当technical verdictはimplementation HEAD `7ce06c1114a5ebd9830e801a93205ae9e85cd4d4`へ適用し、current HEAD `11d4c5d52ff4d07f9998c9951c9349ab1168748d`はR2/R3 report末尾空行だけを正規化したadministrative headとして区別する。当reportはnormal fix-verification用repository fileであり、merge authorizationではない。
-
-
