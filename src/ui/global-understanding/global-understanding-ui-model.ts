@@ -72,6 +72,28 @@ export interface GlobalUnderstandingTreeModel {
   readonly diagnostics: GlobalUnderstandingDiagnosticsNode;
 }
 
+/** Deterministic work budget and publication callbacks for a large Tree projection. */
+export interface GlobalUnderstandingTreeStagingOptions {
+  /** Maximum file-node operations between scheduler checkpoints and stage publication. */
+  readonly maxFilesPerStage: number;
+  /** Gives the Extension Host a chance to process input between bounded stages. */
+  readonly yieldControl: () => void | Promise<void>;
+  /** Returns false when this projection generation is stale, cancelled, or disposed. */
+  readonly isCurrent?: () => boolean;
+  /** Receives an immutable, sorted prefix of the current generation. */
+  readonly onStage?: (model: GlobalUnderstandingTreeModel, complete: boolean) => void | Promise<void>;
+  /** Optional deterministic accounting hook for large-workload contract fixtures. */
+  readonly accountWork?: (entry: GlobalUnderstandingTreeWorkAccount) => void;
+}
+
+/** A bounded projection operation observed by a deterministic workload fixture. */
+export interface GlobalUnderstandingTreeWorkAccount {
+  readonly kind: "validated-open-target" | "built-file-node" | "published-stage";
+  readonly count: number;
+  readonly stageFileCount: number;
+  readonly modelRetainsInputArray?: boolean;
+}
+
 export interface GlobalUnderstandingStatusBarModel {
   readonly text: string;
   readonly tooltip: string;
@@ -86,7 +108,10 @@ export interface GlobalUnderstandingRefreshSource {
 }
 
 export interface GlobalUnderstandingRefreshHost {
-  show(snapshot: GlobalUnderstandingTreeSnapshot): void;
+  show(
+    snapshot: GlobalUnderstandingTreeSnapshot,
+    isCurrent: () => boolean
+  ): unknown;
   clear(): void;
 }
 
@@ -138,7 +163,18 @@ const fileNode = (
   });
 };
 
-export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
+interface ValidatedTreeSnapshot {
+  readonly progress: RepositoryGlobalUnderstandingProgress;
+  readonly openedFileCount: number;
+  readonly unopenedFileCount: number;
+  readonly excludedFileCount: number;
+  readonly prunedExcludedDirectoryCount: number;
+  readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
+}
+
+const validateTreeSnapshot = (
+  snapshot: GlobalUnderstandingTreeSnapshot
+): ValidatedTreeSnapshot => {
   const { progress } = snapshot;
   validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
   const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
@@ -160,8 +196,106 @@ export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstanding
   if (snapshot.fileOpenTargets !== undefined && snapshot.fileOpenTargets.length !== progress.files.length) {
     throw new RangeError("Global understanding open target count must match file progress count.");
   }
-  const files = progress.files.map((file) => {
-    const target = openTargetsByPath.get(file.path);
+  return {
+    progress,
+    openedFileCount,
+    unopenedFileCount,
+    excludedFileCount: snapshot.excludedFileCount,
+    prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
+    openTargetsByPath
+  };
+};
+
+const validateTreeSnapshotIncrementally = async (
+  snapshot: GlobalUnderstandingTreeSnapshot,
+  maxItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => boolean,
+  accountWork?: (entry: GlobalUnderstandingTreeWorkAccount) => void
+): Promise<ValidatedTreeSnapshot | undefined> => {
+  const { progress } = snapshot;
+  validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount"); requireCount(unopenedFileCount, "unopenedFileCount");
+  requireCount(snapshot.excludedFileCount, "excludedFileCount"); requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  if (openedFileCount !== progress.files.length) throw new RangeError("openedFileCount must match Global progress file count.");
+  const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+  const targets = snapshot.fileOpenTargets ?? [];
+  for (let index = 0; index < targets.length; index += 1) {
+    const target = targets[index]!;
+    if (openTargetsByPath.has(target.repositoryPath)) throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
+    openTargetsByPath.set(target.repositoryPath, target);
+    accountWork?.({ kind: "validated-open-target", count: 1, stageFileCount: 1 });
+    if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
+  }
+  if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
+  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath };
+};
+
+const createTreeModel = (
+  snapshot: ValidatedTreeSnapshot,
+  files: readonly GlobalUnderstandingFileNode[]
+): GlobalUnderstandingTreeModel => Object.freeze({
+  summary: Object.freeze({
+    kind: "summary" as const,
+    label: "リポジトリ全体" as const,
+    description: `${formatPercent(snapshot.progress.progress)} (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})`,
+    reviewedNonEmptyLineCount: snapshot.progress.reviewedNonEmptyLineCount,
+    totalNonEmptyLineCount: snapshot.progress.totalNonEmptyLineCount,
+    progress: snapshot.progress.progress
+  }),
+  files: Object.freeze(files),
+  diagnostics: Object.freeze({
+    kind: "diagnostics" as const,
+    label: "ファイル状況" as const,
+    openedFileCount: snapshot.openedFileCount,
+    unopenedFileCount: snapshot.unopenedFileCount,
+    excludedFileCount: snapshot.excludedFileCount,
+    prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
+  })
+});
+
+const cooperativeSortFileNodes = async (
+  values: readonly GlobalUnderstandingFileNode[],
+  maxItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => boolean
+): Promise<GlobalUnderstandingFileNode[] | undefined> => {
+  let source = [...values];
+  let target = new Array<GlobalUnderstandingFileNode>(source.length);
+  let pending = 0;
+  const step = async (): Promise<boolean> => {
+    pending += 1;
+    if (pending < maxItems) return isCurrent();
+    pending = 0;
+    await yieldControl();
+    return isCurrent();
+  };
+  for (let width = 1; width < source.length; width *= 2) {
+    for (let left = 0; left < source.length; left += width * 2) {
+      const middle = Math.min(left + width, source.length);
+      const right = Math.min(left + width * 2, source.length);
+      let first = left;
+      let second = middle;
+      for (let output = left; output < right; output += 1) {
+        if (first < middle && (second >= right || compareCodeUnits(source[first]!.path, source[second]!.path) <= 0)) {
+          target[output] = source[first++]!;
+        } else target[output] = source[second++]!;
+        if (!await step()) return undefined;
+      }
+    }
+    const previous = source;
+    source = target;
+    target = previous;
+  }
+  return source;
+};
+
+export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
+  const validated = validateTreeSnapshot(snapshot);
+  const files = validated.progress.files.map((file) => {
+    const target = validated.openTargetsByPath.get(file.path);
     if (snapshot.fileOpenTargets !== undefined && target === undefined) {
       throw new RangeError(`Global understanding open target is missing: ${file.path}`);
     }
@@ -172,40 +306,85 @@ export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstanding
     if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
     paths.add(file.path);
   }
-  return Object.freeze({
-    summary: Object.freeze({
-      kind: "summary" as const,
-      label: "リポジトリ全体" as const,
-      description: `${formatPercent(progress.progress)} (${progress.reviewedNonEmptyLineCount}/${progress.totalNonEmptyLineCount})`,
-      reviewedNonEmptyLineCount: progress.reviewedNonEmptyLineCount,
-      totalNonEmptyLineCount: progress.totalNonEmptyLineCount,
-      progress: progress.progress
-    }),
-    files: Object.freeze(files),
-    diagnostics: Object.freeze({
-      kind: "diagnostics" as const,
-      label: "ファイル状況" as const,
-      openedFileCount,
-      unopenedFileCount,
-      excludedFileCount: snapshot.excludedFileCount,
-      prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
-    })
-  });
+  return createTreeModel(validated, files);
+};
+
+/**
+ * Builds and publishes a sorted Global Tree in bounded deterministic file stages.
+ * A stale generation returns undefined and never publishes after invalidation.
+ */
+export const createGlobalUnderstandingTreeModelIncrementally = async (
+  snapshot: GlobalUnderstandingTreeSnapshot,
+  options: GlobalUnderstandingTreeStagingOptions
+): Promise<GlobalUnderstandingTreeModel | undefined> => {
+  if (!Number.isSafeInteger(options.maxFilesPerStage) || options.maxFilesPerStage <= 0) {
+    throw new RangeError("maxFilesPerStage must be a positive integer.");
+  }
+  const isCurrent = (): boolean => options.isCurrent?.() !== false;
+  if (!isCurrent()) return undefined;
+  const validated = await validateTreeSnapshotIncrementally(snapshot, options.maxFilesPerStage, options.yieldControl, isCurrent, options.accountWork);
+  if (validated === undefined) return undefined;
+  const built: GlobalUnderstandingFileNode[] = [];
+  const paths = new Set<string>();
+  for (let index = 0; index < validated.progress.files.length; index += 1) {
+    if (!isCurrent()) return undefined;
+    const file = validated.progress.files[index]!;
+    const target = validated.openTargetsByPath.get(file.path);
+    if (snapshot.fileOpenTargets !== undefined && target === undefined) {
+      throw new RangeError(`Global understanding open target is missing: ${file.path}`);
+    }
+    if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
+    paths.add(file.path);
+    built.push(fileNode(file, target));
+    options.accountWork?.({ kind: "built-file-node", count: 1, stageFileCount: 1 });
+    if ((index + 1) % options.maxFilesPerStage === 0 && index + 1 < validated.progress.files.length) {
+      await options.yieldControl();
+    }
+  }
+  if (!isCurrent()) return undefined;
+  const sorted = await cooperativeSortFileNodes(
+    built,
+    options.maxFilesPerStage,
+    options.yieldControl,
+    isCurrent
+  );
+  if (sorted === undefined) return undefined;
+  for (let end = options.maxFilesPerStage; end < built.length; end += options.maxFilesPerStage) {
+    if (!isCurrent()) return undefined;
+    const stageFiles = sorted.slice(0, end);
+    const stage = createTreeModel(validated, stageFiles);
+    options.accountWork?.({ kind: "published-stage", count: end % options.maxFilesPerStage || options.maxFilesPerStage, stageFileCount: stage.files.length, modelRetainsInputArray: stage.files === stageFiles });
+    await options.onStage?.(stage, false);
+    if (!isCurrent()) return undefined;
+    await options.yieldControl();
+  }
+  if (!isCurrent()) return undefined;
+  const complete = createTreeModel(validated, sorted);
+  options.accountWork?.({ kind: "published-stage", count: sorted.length % options.maxFilesPerStage || Math.min(sorted.length, options.maxFilesPerStage), stageFileCount: complete.files.length, modelRetainsInputArray: complete.files === sorted });
+  await options.onStage?.(complete, true);
+  return isCurrent() ? complete : undefined;
 };
 
 export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingStatusBarModel => {
-  const model = createGlobalUnderstandingTreeModel(snapshot);
-  const percent = formatPercent(model.summary.progress);
+  const { progress } = snapshot;
+  validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount");
+  requireCount(unopenedFileCount, "unopenedFileCount");
+  requireCount(snapshot.excludedFileCount, "excludedFileCount");
+  requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  const percent = formatPercent(progress.progress);
   return {
-    text: `$(book) Global: ${percent} (${model.summary.reviewedNonEmptyLineCount}/${model.summary.totalNonEmptyLineCount})`,
+    text: `$(book) Global: ${percent} (${progress.reviewedNonEmptyLineCount}/${progress.totalNonEmptyLineCount})`,
     tooltip: [
       `Global理解率: ${percent}`,
-      `確認済み非空行: ${model.summary.reviewedNonEmptyLineCount}`,
-      `対象非空行: ${model.summary.totalNonEmptyLineCount}`,
-      `開いたことがあるファイル: ${model.diagnostics.openedFileCount}`,
-      `未オープンファイル: ${model.diagnostics.unopenedFileCount}`,
-      `除外ファイル: ${model.diagnostics.excludedFileCount}`,
-      `pruneした除外ディレクトリ: ${model.diagnostics.prunedExcludedDirectoryCount}`
+      `確認済み非空行: ${progress.reviewedNonEmptyLineCount}`,
+      `対象非空行: ${progress.totalNonEmptyLineCount}`,
+      `開いたことがあるファイル: ${openedFileCount}`,
+      `未オープンファイル: ${unopenedFileCount}`,
+      `除外ファイル: ${snapshot.excludedFileCount}`,
+      `pruneした除外ディレクトリ: ${snapshot.prunedExcludedDirectoryCount}`
     ].join("\n")
   };
 };
@@ -287,7 +466,7 @@ export class GlobalUnderstandingFileOpenController {
 export class GlobalUnderstandingRefreshController {
   private generation = 0;
   public constructor(private readonly source: GlobalUnderstandingRefreshSource, private readonly host: GlobalUnderstandingRefreshHost) {}
-  public invalidate(): void { this.generation += 1; }
+  public invalidate(): void { this.generation += 1; this.host.clear(); }
   public clear(): void { this.invalidate(); this.host.clear(); }
   public async refresh(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
@@ -302,7 +481,13 @@ export class GlobalUnderstandingRefreshController {
         this.host.clear();
         return undefined;
       }
-      this.host.show(snapshot);
+      await this.host.show(
+        snapshot,
+        () => currentGeneration === this.generation && signal?.aborted !== true
+      );
+      if (currentGeneration !== this.generation || signal?.aborted) {
+        return undefined;
+      }
       return snapshot;
     } catch (error) {
       if (currentGeneration !== this.generation) return undefined;

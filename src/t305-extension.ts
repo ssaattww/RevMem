@@ -95,9 +95,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
+  const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     selectedContext = next;
     runtimePort.setSelectedContext(next);
+    runtimePort.setCurrentPullRequestDiff(
+      next?.kind === "pull-request"
+        ? pullRequestReviewRuntimeRef.current?.snapshotForContext(next.contextId)
+        : undefined
+    );
   };
   const git = createNodeLocalGitAdapter();
   const stableHash = new NodeSha256StableHash();
@@ -325,7 +331,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }
   });
 
-  const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const openGlobalFile = async (target: GlobalUnderstandingFileOpenTarget): Promise<void> => {
     let uri: vscode.Uri;
     if (target.kind === "working-tree") {
@@ -502,7 +507,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     enumerateCurrentContexts: enumerateLocalContexts,
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
     refreshCurrentContext: () => currentContextRuntime.refresh(),
-    registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
+    registerPullRequestReviewDiff: (registration) => {
+      pullRequestReviewRuntime.register(registration);
+      if (selectedContext?.kind === "pull-request" && selectedContext.contextId === registration.snapshot.contextId) {
+        runtimePort.setCurrentPullRequestDiff(registration.snapshot);
+      }
+    },
     openPullRequestReviewDiff: (contextId, fileId, title) =>
       pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
     getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>

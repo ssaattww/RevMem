@@ -5,6 +5,7 @@ export {
   formatReviewContextCacheStatus,
   formatReviewContextProgress,
   projectReviewContexts,
+  projectReviewContextsCooperatively,
   type ReviewContextCacheStatus,
   type ReviewContextListGroup,
   type ReviewContextListItem,
@@ -12,6 +13,7 @@ export {
   type ReviewContextVisibilityStore,
   type ReviewContextsControllerDependencies,
   type ReviewContextsProjectionInput,
+  type ReviewContextsProjectionWork,
 } from "./review-contexts-controller";
 export { findCurrentPullRequestContext } from "./current-pull-request-context";
 export {

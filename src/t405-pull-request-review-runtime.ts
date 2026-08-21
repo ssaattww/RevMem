@@ -30,6 +30,7 @@ import type { FileSystemPathSemantics } from "./application/workspace-identity/i
 import type { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
+  calculatePullRequestDiffProgressCooperatively,
   type PullRequestDiffFileProgress,
   type PullRequestDiffProgress,
   type PullRequestDiffSnapshot,
@@ -68,6 +69,13 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly diffHost: ReviewDiffEditorHost<Uri>;
   readonly openFile?: (uri: Uri) => Promise<void>;
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
+  /** Optional deterministic scheduler seam; production keeps the 128-item default. */
+  readonly progressWork?: {
+    readonly maxItems?: number;
+    readonly yieldControl?: () => void | Promise<void>;
+    readonly account?: (count: number) => void;
+    readonly onYield?: (completedItems: number) => void;
+  };
 }
 
 export interface PullRequestReviewCommandDependencies<Editor>
@@ -101,6 +109,10 @@ const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
 const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted) throw new DOMException("PR Progress refresh was superseded.", "AbortError");
 };
+
+interface ProgressWork {
+  item(): Promise<void>;
+}
 
 const sameRegistrationSnapshot = (
   left: PullRequestReviewRuntimeRegistration,
@@ -464,11 +476,13 @@ export class PullRequestReviewRuntime<Uri> {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
         async (feedbackContext) => {
-          const calculated = await this.calculateProgress(contextId, cancellation.signal);
+          const work = this.createProgressWork(cancellation.signal);
+          const calculated = await this.calculateProgress(contextId, cancellation.signal, work);
           assertCurrent();
           const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
           for (const file of calculated.progress.files) {
             assertCurrent();
+            await work.item();
             lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
               calculated.registration,
               file,
@@ -479,7 +493,7 @@ export class PullRequestReviewRuntime<Uri> {
           }
           assertCurrent();
           const { snapshot } = calculated.registration;
-          this.progress.replaceSnapshot({
+          await this.progress.replaceSnapshotIncrementally({
             snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
             contextId: snapshot.contextId,
             baseSha: snapshot.baseSha,
@@ -488,7 +502,12 @@ export class PullRequestReviewRuntime<Uri> {
             fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
             progress: calculated.progress,
             lineReviewabilityByFileId,
+          }, {
+            maxFilesPerStage: 128,
+            yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve)),
+            isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, registration) && !cancellation.signal.aborted,
           });
+          assertCurrent();
         },
         { maxAttempts: 3, signal: cancellation.signal },
       );
@@ -601,6 +620,7 @@ export class PullRequestReviewRuntime<Uri> {
   private async calculateProgress(
     contextId: string,
     signal?: AbortSignal,
+    work?: ProgressWork,
   ): Promise<CalculatedPullRequestProgress> {
     throwIfProgressCancelled(signal);
     const registration = this.requireRegistration(contextId);
@@ -611,11 +631,24 @@ export class PullRequestReviewRuntime<Uri> {
     }
     this.requireMatchingContext(registration, persisted);
     this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
-    const progress = calculatePullRequestDiffProgress({
+    const calculationInput = {
       diff: registration.snapshot,
-      reviewContext: this.projectContextFileIdentities(registration, persisted),
+      reviewContext: signal === undefined
+        ? this.projectContextFileIdentities(registration, persisted)
+        : await this.projectContextFileIdentitiesCooperatively(registration, persisted, signal, work ?? this.createProgressWork(signal)),
       exclusionPolicy: this.options.getExclusionPolicy(),
-    });
+    };
+    const progress = signal === undefined
+      ? calculatePullRequestDiffProgress(calculationInput)
+      : await calculatePullRequestDiffProgressCooperatively(calculationInput, {
+        maxWorkItems: this.progressWorkItemLimit(),
+        yieldControl: this.progressYieldControl(),
+        isCurrent: () => !signal.aborted,
+      });
+    if (progress === undefined) {
+      throwIfProgressCancelled(signal);
+      throw new DOMException("PR Progress refresh was superseded.", "AbortError");
+    }
     return { registration, persisted, progress };
   }
 
@@ -640,6 +673,69 @@ export class PullRequestReviewRuntime<Uri> {
       };
     }
     return projected;
+  }
+
+  /** Returns the immutable registered diff for normal-editor PR decoration composition. */
+  public snapshotForContext(contextId: string): Readonly<PullRequestDiffSnapshot> | undefined {
+    return this.registrations.get(contextId)?.snapshot;
+  }
+
+  private async projectContextFileIdentitiesCooperatively(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    signal: AbortSignal,
+    work: ProgressWork
+  ): Promise<ReviewStateCommit["contextState"]> {
+    const filesByPath = new Map<string, { readonly fileId: string; readonly file: ReviewStateCommit["contextState"]["files"][string] }>();
+    const persistedFiles = persisted.contextState.files;
+    for (const fileId in persistedFiles) {
+      if (!Object.hasOwn(persistedFiles, fileId)) continue;
+      await work.item();
+      const file = persistedFiles[fileId]!;
+      const path = this.canonicalRepositoryPath(registration, file.currentPath);
+      if (filesByPath.has(path)) throw new Error(`Persisted PR context has conflicting file identities for ${path}`);
+      filesByPath.set(path, { fileId, file });
+    }
+    const projectedFiles: ReviewStateCommit["contextState"]["files"] = {};
+    for (const diffFile of registration.snapshot.files) {
+      await work.item();
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const matching = filesByPath.get(this.canonicalRepositoryPath(registration, logicalPath));
+      if (matching === undefined) continue;
+      // Progress needs only changed-file identities; retain no cloned unrelated state.
+      projectedFiles[diffFile.fileId] = { ...matching.file, fileId: diffFile.fileId, currentPath: logicalPath };
+    }
+    throwIfProgressCancelled(signal);
+    return { ...persisted.contextState, files: projectedFiles };
+  }
+
+  private progressWorkItemLimit(): number {
+    return this.options.progressWork?.maxItems ?? 128;
+  }
+
+  private progressYieldControl(): () => void | Promise<void> {
+    return this.options.progressWork?.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+  }
+
+  private createProgressWork(signal: AbortSignal): ProgressWork {
+    const limit = this.progressWorkItemLimit();
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 128) {
+      throw new RangeError("progressWork.maxItems must be a positive integer no greater than 128.");
+    }
+    let pending = 0;
+    return {
+      item: async (): Promise<void> => {
+        throwIfProgressCancelled(signal);
+        pending += 1;
+        this.options.progressWork?.account?.(1);
+        if (pending < limit) return;
+        this.options.progressWork?.onYield?.(pending);
+        pending = 0;
+        await this.progressYieldControl()();
+        throwIfProgressCancelled(signal);
+      }
+    };
   }
 
   private persistedContextFileForPath(
@@ -711,6 +807,9 @@ export class PullRequestReviewRuntime<Uri> {
     if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
       return { kind: "unsupported", reason: { kind: "binary" } };
     }
+    // Excluded files have a zero effective denominator and never need content
+    // acquisition merely to prepare a Tree node.
+    if (file.excluded) return { kind: "reviewable" };
     const filePath = file.newPath ?? file.oldPath;
     if (filePath === undefined) {
       throw new Error(`PR progress file has no content path: ${file.fileId}`);

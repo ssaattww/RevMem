@@ -74,6 +74,7 @@ interface FileExclusionDecision {
 
 interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
+  drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedInterval[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
@@ -325,6 +326,7 @@ export async function run(): Promise<void> {
   if (phase === "confirm") {
     await within("mark selection command", vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
     await within("refresh confirmed decorations", extensionApi.refreshVisibleEditorDecorations());
+    await within("drain confirmed decorations", extensionApi.drainVisibleEditorDecorations());
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [{ startLine: 0, endLineExclusive: 1 }],
@@ -334,6 +336,7 @@ export async function run(): Promise<void> {
   }
 
   await within("refresh restored decorations", extensionApi.refreshVisibleEditorDecorations());
+  await within("drain restored decorations", extensionApi.drainVisibleEditorDecorations());
   if (phase === "restore-confirmed-and-unmark") {
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
@@ -344,6 +347,7 @@ export async function run(): Promise<void> {
     splitEditor.selection = new vscode.Selection(0, 0, 0, 0);
     await within("unmark selection command", vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed"));
     await within("refresh unmarked decorations", extensionApi.refreshVisibleEditorDecorations());
+    await within("drain unmarked decorations", extensionApi.drainVisibleEditorDecorations());
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [],

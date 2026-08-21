@@ -6,6 +6,7 @@ import {
   DocumentReviewStateSessionProvider,
   type DocumentEditorReviewDescriptor
 } from "./adapters/document-review-state/index";
+import type { ReviewStateTransaction } from "./core/review-state/index";
 import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   createNodeLocalGitAdapter
@@ -28,12 +29,13 @@ import {
   resolveConfiguredNonGitSnapshotLimits
 } from "./application/non-git-snapshots/non-git-snapshot-settings";
 import {
-  createNormalEditorDecorationModel,
+  createNormalEditorDecorationModelIncrementally,
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
 import {
-  NormalEditorReviewCommandService
+  NormalEditorReviewCommandService,
+  type NormalEditorReviewStateSession
 } from "./application/review-commands/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
 import {
@@ -41,6 +43,9 @@ import {
   WorkspaceIdentityService
 } from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
+import type { RepositoryGlobalState, ReviewContextState } from "./core/contracts/index";
+import type { PullRequestDiffSnapshot } from "./core/pr-progress/index";
+import type { ReviewStateFileTarget } from "./core/review-state/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
   ReviewFileExclusionPolicy,
@@ -60,7 +65,8 @@ import {
   registerNormalEditorReviewCommands,
   type NormalEditorCommandHost,
   type NormalEditorDecorationHost,
-  type NormalEditorDecorationSettings
+  type NormalEditorDecorationSettings,
+  type NormalEditorDecorationWorkBudget
 } from "./ui/normal-editor/index";
 import { LocalBaseHeadRuntime } from "./t306-local-base-head-runtime";
 
@@ -74,9 +80,44 @@ const DECORATION_CONFIGURATION_KEYS = [
   "reviewRange.showOverviewRuler"
 ] as const;
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
+const DECORATION_WORK_BUDGET: NormalEditorDecorationWorkBudget = Object.freeze({
+  maxDecorationsPerStage: 128,
+  yieldControl: () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+});
+const HASH_CHARACTERS_PER_STAGE = 65_536;
+const DOCUMENT_LINES_PER_STAGE = 128;
 
 const workspaceSidePathSemantics = () =>
   process.platform === "win32" ? "windows" as const : "posix" as const;
+
+/** Exact activation helper for bounded document extraction plus canonical hashing. */
+export const hashNormalEditorDocumentIncrementally = async (
+  input: {
+    readonly lineCount: number;
+    readonly lineAt: (line: number) => string;
+    readonly eol: string;
+    readonly isCurrent: () => boolean;
+    readonly yieldControl: () => void | Promise<void>;
+    readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
+  },
+  stableHash: Pick<NodeSha256StableHash, "digestFragmentsCooperatively">
+): Promise<string | undefined> => {
+  const fragments = async function* (): AsyncIterable<string> {
+    for (let line = 0; line < input.lineCount; line += 1) {
+      if (!input.isCurrent()) return;
+      yield input.lineAt(line);
+      if (line + 1 < input.lineCount) yield input.eol;
+      if ((line + 1) % DOCUMENT_LINES_PER_STAGE === 0) {
+        input.accountWorkBatch?.({ kind: "extracted-document-line", count: DOCUMENT_LINES_PER_STAGE });
+        await input.yieldControl();
+        if (!input.isCurrent()) return;
+      }
+    }
+  };
+  return await stableHash.digestFragmentsCooperatively(
+    fragments(), HASH_CHARACTERS_PER_STAGE, input.yieldControl, input.isCurrent
+  );
+};
 
 type ReviewDiffEditorCommandOperation =
   | "markSelectionReviewed"
@@ -112,6 +153,8 @@ export interface ReviewRangeRuntimePort {
   readonly reviewHistoryRecorder: ReviewHistoryRecorder;
   /** Applies an explicit Current Context identity to commands and decorations. */
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
+  /** Applies the immutable current-PR diff used by normal-editor decoration evidence. */
+  setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
   refreshVisibleEditorDecorations(): Promise<void>;
   /** Subscribes UI projections that must be recalculated after review-state commands. */
@@ -122,6 +165,7 @@ export interface ReviewRangeRuntimePort {
 
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
+  drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
@@ -209,19 +253,250 @@ const createHoverMessage = (
   return hover;
 };
 
-const toDecorationOptions = (
+const toDecorationOptions = async (
   editor: vscode.TextEditor,
-  decorations: readonly NormalEditorReviewedDecoration[]
-): vscode.DecorationOptions[] => decorations.map((decoration) => {
-  const lastLine = decoration.interval.endLineExclusive - 1;
-  return {
-    range: new vscode.Range(
-      new vscode.Position(decoration.interval.startLine, 0),
-      editor.document.lineAt(lastLine).range.end
-    ),
-    hoverMessage: createHoverMessage(decoration)
+  decorations: readonly NormalEditorReviewedDecoration[],
+  context: { readonly signal: AbortSignal; readonly isCurrent: () => boolean },
+  workBudget: NormalEditorDecorationWorkBudget = DECORATION_WORK_BUDGET
+): Promise<vscode.DecorationOptions[] | undefined> => {
+  const options: vscode.DecorationOptions[] = [];
+  for (let index = 0; index < decorations.length; index += 1) {
+    if (context.signal.aborted || !context.isCurrent()) return undefined;
+    const decoration = decorations[index]!;
+    const lastLine = decoration.interval.endLineExclusive - 1;
+    options.push({ range: new vscode.Range(new vscode.Position(decoration.interval.startLine, 0), editor.document.lineAt(lastLine).range.end), hoverMessage: createHoverMessage(decoration) });
+    if ((index + 1) % workBudget.maxDecorationsPerStage === 0) {
+      workBudget.accountWorkBatch?.({ kind: "projected-decoration-option", count: workBudget.maxDecorationsPerStage });
+      await workBudget.yieldControl();
+    }
+  }
+  return context.signal.aborted || !context.isCurrent() ? undefined : options;
+};
+
+/** Small activation seam: the same descriptor → state → cooperative model path used by VS Code. */
+export interface NormalEditorDecorationActivationComposition<Editor, Descriptor> {
+  readonly toDocumentDescriptor: (editor: Editor, isCurrent: () => boolean) => Promise<Descriptor | undefined>;
+  readonly loadForDecoration: (descriptor: Descriptor, context: SelectedReviewContext | undefined) => Promise<{
+    readonly contextState: ReviewContextState;
+    readonly globalState: RepositoryGlobalState;
+    readonly target: ReviewStateFileTarget;
+    readonly currentPullRequestDiff?: Readonly<PullRequestDiffSnapshot>;
+  } | undefined>;
+  readonly selectedContext: () => SelectedReviewContext | undefined;
+  readonly workBudget: NormalEditorDecorationWorkBudget;
+}
+
+export const createNormalEditorDecorationLoadHandler = <Editor, Descriptor>(
+  composition: NormalEditorDecorationActivationComposition<Editor, Descriptor>
+) => async (
+  editor: Editor,
+  showGlobalReviewed: boolean,
+  loadContext: { readonly signal: AbortSignal; readonly isCurrent: () => boolean }
+): Promise<readonly NormalEditorReviewedDecoration[]> => {
+  if (!loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const descriptor = await composition.toDocumentDescriptor(editor, () => loadContext.isCurrent() && !loadContext.signal.aborted);
+  if (descriptor === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const session = await composition.loadForDecoration(descriptor, composition.selectedContext());
+  if (session === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const model = await createNormalEditorDecorationModelIncrementally({
+    contextState: session.contextState,
+    globalState: session.globalState,
+    target: session.target,
+    ...(session.currentPullRequestDiff === undefined ? {} : { currentPullRequestDiff: session.currentPullRequestDiff }),
+    showGlobalReviewed
+  }, {
+    maxWorkItems: composition.workBudget.maxDecorationsPerStage,
+    yieldControl: composition.workBudget.yieldControl,
+    accountWorkBatch: composition.workBudget.accountWorkBatch,
+    isCurrent: () => loadContext.isCurrent() && !loadContext.signal.aborted
+  });
+  return model === undefined || !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
+};
+
+/**
+ * Creates the exact normal-editor decoration composition installed by activate().
+ * Keeping this narrow factory separate lets the activation path retain its real
+ * VS Code descriptor, state-provider, options, bookkeeping, and host-apply
+ * boundaries while tests double only the VS Code host.
+ */
+export const createNormalEditorDecorationActivation = (dependencies: {
+  readonly context: Pick<vscode.ExtensionContext, "extensionUri">;
+  readonly documentSessionProvider: Pick<DocumentReviewStateSessionProvider, "loadForDecoration">;
+  readonly selectedContext: () => SelectedReviewContext | undefined;
+  readonly currentPullRequestDiff?: () => Readonly<PullRequestDiffSnapshot> | undefined;
+  readonly reportError: (error: unknown) => void | Promise<void>;
+  readonly workBudget?: NormalEditorDecorationWorkBudget;
+}): {
+  readonly controller: NormalEditorDecorationController<vscode.TextEditor, vscode.TextEditorDecorationType>;
+  readonly toDocumentDescriptor: (editor: vscode.TextEditor, isCurrent?: () => boolean) => Promise<DocumentEditorReviewDescriptor | undefined>;
+  /** Test-mode runtime query shares the production host bookkeeping ownership. */
+  readonly appliedDecorations: ReadonlyMap<vscode.TextEditor, readonly NormalEditorReviewedDecoration[]>;
+} => {
+  const workBudget = dependencies.workBudget ?? DECORATION_WORK_BUDGET;
+  const appliedDecorations = new Map<vscode.TextEditor, readonly NormalEditorReviewedDecoration[]>();
+  const toDocumentDescriptor = async (
+    editor: vscode.TextEditor,
+    isCurrent: () => boolean = () => true
+  ): Promise<DocumentEditorReviewDescriptor | undefined> => {
+    const document = editor.document;
+    const documentUri = document.uri;
+    const version = document.version;
+    const lineCount = document.lineCount;
+    const stillCurrent = (): boolean => isCurrent() && editor.document === document && document.version === version;
+    if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
+      throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
+    }
+    const membership = resolveWorkspaceFolderMembership({
+      documentUri: toResourceUri(documentUri),
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+        uri: toResourceUri(folder.uri), name: folder.name
+      })),
+      fileSystemPathSemantics: workspaceSidePathSemantics()
+    });
+    const workspace = membership === undefined
+      ? undefined
+      : {
+          workspaceFolderUri: membership.workspaceFolder.uri,
+          relativePath: membership.relativePath,
+          displayName: membership.workspaceFolder.name
+        };
+    const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+    const contentHash = await hashNormalEditorDocumentIncrementally({
+      lineCount,
+      lineAt: (line) => document.lineAt(line).text,
+      eol,
+      isCurrent: stillCurrent,
+      yieldControl: workBudget.yieldControl,
+      accountWorkBatch: workBudget.accountWorkBatch
+    }, new NodeSha256StableHash());
+    if (contentHash === undefined || !stillCurrent()) return undefined;
+    return {
+      documentUri: toResourceUri(documentUri),
+      documentFsPath: documentUri.fsPath,
+      fileSystemPathSemantics: workspaceSidePathSemantics(),
+      ...(workspace === undefined ? {} : { workspace }),
+      lineCount,
+      contentHash
+    };
   };
-});
+  const invokeListener = (listener: () => void | Promise<void>): void => {
+    void Promise.resolve(listener()).catch(dependencies.reportError);
+  };
+  const loadDecorations = createNormalEditorDecorationLoadHandler({
+    toDocumentDescriptor,
+    loadForDecoration: async (descriptor, selected) => {
+      const session = await dependencies.documentSessionProvider.loadForDecoration(descriptor, selected);
+      const currentPullRequestDiff = dependencies.currentPullRequestDiff?.();
+      return session === undefined ? undefined : {
+        ...session,
+        ...(currentPullRequestDiff === undefined
+          ? {}
+          : { currentPullRequestDiff })
+      };
+    },
+    selectedContext: dependencies.selectedContext,
+    workBudget
+  });
+  const host: NormalEditorDecorationHost<vscode.TextEditor, vscode.TextEditorDecorationType> = {
+    getVisibleEditors: () => vscode.window.visibleTextEditors,
+    isDiffEditor: (editor) => isVisibleDiffEditor(editor),
+    getSettings: () => readDecorationSettings(),
+    loadDecorations: async (editor, showGlobalReviewed, loadContext) =>
+      FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)
+        ? loadDecorations(editor, showGlobalReviewed, loadContext)
+        : [],
+    createDecorationType: (settings) => {
+      const options: vscode.DecorationRenderOptions = {
+        isWholeLine: true,
+        backgroundColor: new vscode.ThemeColor(REVIEWED_BACKGROUND_COLOR),
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+      };
+      if (settings.showGutterIcon) {
+        options.gutterIconPath = vscode.Uri.joinPath(dependencies.context.extensionUri, "media", "reviewed-gutter.svg");
+        options.gutterIconSize = "contain";
+      }
+      if (settings.showOverviewRuler) {
+        options.overviewRulerColor = new vscode.ThemeColor(REVIEWED_OVERVIEW_RULER_COLOR);
+        options.overviewRulerLane = vscode.OverviewRulerLane.Right;
+      }
+      return vscode.window.createTextEditorDecorationType(options);
+    },
+    setDecorations: async (editor, decorationType, decorations, loadContext) => {
+      const options = await toDecorationOptions(editor, decorations, loadContext, workBudget);
+      if (options === undefined || loadContext.signal.aborted || !loadContext.isCurrent()) return;
+      const applied: NormalEditorReviewedDecoration[] = [];
+      for (let index = 0; index < decorations.length; index += 1) {
+        if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
+        const decoration = decorations[index]!;
+        applied.push({ ...decoration, interval: { ...decoration.interval } });
+        if ((index + 1) % workBudget.maxDecorationsPerStage === 0) {
+          workBudget.accountWorkBatch?.({ kind: "copied-applied-decoration", count: workBudget.maxDecorationsPerStage });
+          await workBudget.yieldControl();
+        }
+      }
+      if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
+      appliedDecorations.set(editor, applied);
+      editor.setDecorations(decorationType, options);
+    },
+    onDidChangeVisibleEditors: (listener) => vscode.window.onDidChangeVisibleTextEditors(() => {
+      for (const editor of appliedDecorations.keys()) {
+        if (!vscode.window.visibleTextEditors.includes(editor)) appliedDecorations.delete(editor);
+      }
+      invokeListener(listener);
+    }),
+    onDidChangeActiveEditor: (listener) => vscode.window.onDidChangeActiveTextEditor(() => invokeListener(listener)),
+    onDidChangeSettings: (listener) => vscode.workspace.onDidChangeConfiguration((event) => {
+      if (DECORATION_CONFIGURATION_KEYS.some((key) => event.affectsConfiguration(key))) invokeListener(listener);
+    }),
+    onDidChangeDocument: (listener) => vscode.workspace.onDidChangeTextDocument((event) => {
+      for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document === event.document) invokeListener(() => listener(editor));
+      }
+    }),
+    showDecorationError: (error) => dependencies.reportError(error)
+  };
+  return {
+    controller: new NormalEditorDecorationController(host, workBudget),
+    toDocumentDescriptor,
+    appliedDecorations
+  };
+};
+
+/**
+ * Shared command activation seam. It carries one immutable document generation
+ * from descriptor acquisition through state I/O and the atomic commit boundary.
+ */
+export interface NormalEditorReviewCommandSessionComposition<Editor, Descriptor, Generation> {
+  readonly captureGeneration: (editor: Editor) => Generation;
+  readonly isCurrentGeneration: (editor: Editor, generation: Generation) => boolean;
+  readonly toDocumentDescriptor: (editor: Editor) => Promise<Descriptor | undefined>;
+  readonly openSession: (
+    descriptor: Descriptor,
+    selectedContext: SelectedReviewContext | undefined
+  ) => Promise<NormalEditorReviewStateSession>;
+  readonly selectedContext: () => SelectedReviewContext | undefined;
+}
+
+export const createNormalEditorReviewCommandSessionLoader = <Editor, Descriptor, Generation>(
+  composition: NormalEditorReviewCommandSessionComposition<Editor, Descriptor, Generation>
+) => async (editor: Editor): Promise<NormalEditorReviewStateSession> => {
+  const generation = composition.captureGeneration(editor);
+  const isCurrent = (): boolean => composition.isCurrentGeneration(editor, generation);
+  const descriptor = await composition.toDocumentDescriptor(editor);
+  if (descriptor === undefined || !isCurrent()) throw new Error("Document review command was superseded.");
+  const session = await composition.openSession(descriptor, composition.selectedContext());
+  if (!isCurrent()) throw new Error("Document review command was superseded.");
+  return {
+    ...session,
+    isCurrent,
+    committer: {
+      commit: async (transaction: Readonly<ReviewStateTransaction>) => {
+        if (!isCurrent()) throw new Error("Document review command was superseded.");
+        await session.committer.commit(transaction);
+      }
+    }
+  };
+};
 
 const uniqueVisibleIntervals = (
   documentUri: string,
@@ -392,136 +667,27 @@ export function activate(
     historyRecorder
   });
   let selectedContext: SelectedReviewContext | undefined;
-  const appliedDecorations = new Map<
-    vscode.TextEditor,
-    readonly NormalEditorReviewedDecoration[]
-  >();
-  const toDocumentDescriptor = (
-    editor: vscode.TextEditor
-  ): DocumentEditorReviewDescriptor => {
-    const documentUri = editor.document.uri;
-    if (!FILESYSTEM_SCHEMES.has(documentUri.scheme)) {
-      throw new Error("ローカルまたはRemoteの通常ファイルを開いてください。");
-    }
-    const membership = resolveWorkspaceFolderMembership({
-      documentUri: toResourceUri(documentUri),
-      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
-        uri: toResourceUri(folder.uri), name: folder.name
-      })),
-      fileSystemPathSemantics: workspaceSidePathSemantics()
-    });
-    const workspace = membership === undefined
-      ? undefined
-      : {
-          workspaceFolderUri: membership.workspaceFolder.uri,
-          relativePath: membership.relativePath,
-          displayName: membership.workspaceFolder.name
-        };
-
-    return {
-      documentUri: toResourceUri(documentUri),
-      documentFsPath: documentUri.fsPath,
-      fileSystemPathSemantics: workspaceSidePathSemantics(),
-      ...(workspace === undefined ? {} : { workspace }),
-      lineCount: editor.document.lineCount,
-      contentHash: stableHash.digest(editor.document.getText())
-    };
-  };
-  const openDocumentSession = (editor: vscode.TextEditor) =>
-    documentSessionProvider.open(toDocumentDescriptor(editor), selectedContext);
+  let currentPullRequestDiff: Readonly<PullRequestDiffSnapshot> | undefined;
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
     );
   };
-  const invokeDecorationListener = (
-    listener: () => void | Promise<void>
-  ): void => {
-    void Promise.resolve(listener()).catch(reportDecorationError);
-  };
-  const decorationHost: NormalEditorDecorationHost<
-    vscode.TextEditor,
-    vscode.TextEditorDecorationType
-  > = {
-    getVisibleEditors: () => vscode.window.visibleTextEditors,
-    isDiffEditor: (editor) => isVisibleDiffEditor(editor),
-    getSettings: () => readDecorationSettings(),
-    loadDecorations: async (editor, showGlobalReviewed) => {
-      if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
-        return [];
-      }
-      const session = await documentSessionProvider.loadForDecoration(
-        toDocumentDescriptor(editor),
-        selectedContext
-      );
-      if (session === undefined) {
-        return [];
-      }
-      return createNormalEditorDecorationModel({
-        contextState: session.contextState,
-        globalState: session.globalState,
-        target: session.target,
-        showGlobalReviewed
-      });
-    },
-    createDecorationType: (settings) => {
-      const options: vscode.DecorationRenderOptions = {
-        isWholeLine: true,
-        backgroundColor: new vscode.ThemeColor(REVIEWED_BACKGROUND_COLOR),
-        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-      };
-      if (settings.showGutterIcon) {
-        options.gutterIconPath = vscode.Uri.joinPath(
-          context.extensionUri,
-          "media",
-          "reviewed-gutter.svg"
-        );
-        options.gutterIconSize = "contain";
-      }
-      if (settings.showOverviewRuler) {
-        options.overviewRulerColor = new vscode.ThemeColor(
-          REVIEWED_OVERVIEW_RULER_COLOR
-        );
-        options.overviewRulerLane = vscode.OverviewRulerLane.Right;
-      }
-      return vscode.window.createTextEditorDecorationType(options);
-    },
-    setDecorations: (editor, decorationType, decorations) => {
-      appliedDecorations.set(editor, decorations.map((decoration) => ({
-        ...decoration,
-        interval: { ...decoration.interval }
-      })));
-      editor.setDecorations(
-        decorationType,
-        toDecorationOptions(editor, decorations)
-      );
-    },
-    onDidChangeVisibleEditors: (listener) =>
-      vscode.window.onDidChangeVisibleTextEditors(() => {
-        for (const editor of appliedDecorations.keys()) {
-          if (!vscode.window.visibleTextEditors.includes(editor)) {
-            appliedDecorations.delete(editor);
-          }
-        }
-        invokeDecorationListener(listener);
-      }),
-    onDidChangeActiveEditor: (listener) =>
-      vscode.window.onDidChangeActiveTextEditor(() => {
-        invokeDecorationListener(listener);
-      }),
-    onDidChangeSettings: (listener) =>
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          DECORATION_CONFIGURATION_KEYS.some((key) =>
-            event.affectsConfiguration(key)
-          )
-        ) {
-          invokeDecorationListener(listener);
-        }
-      }),
-    showDecorationError: (error) => reportDecorationError(error)
-  };
-  const decorationController = new NormalEditorDecorationController(decorationHost);
+  const decorationActivation = createNormalEditorDecorationActivation({
+    context,
+    documentSessionProvider,
+    selectedContext: () => selectedContext,
+    currentPullRequestDiff: () => currentPullRequestDiff,
+    reportError: reportDecorationError
+  });
+  const { toDocumentDescriptor, controller: decorationController, appliedDecorations } = decorationActivation;
+  const openDocumentSession = createNormalEditorReviewCommandSessionLoader({
+    captureGeneration: (editor: vscode.TextEditor) => ({ document: editor.document, version: editor.document.version }),
+    isCurrentGeneration: (editor, generation) => editor.document === generation.document && editor.document.version === generation.version,
+    toDocumentDescriptor,
+    openSession: (descriptor, selected) => documentSessionProvider.open(descriptor, selected),
+    selectedContext: () => selectedContext
+  });
   const commandService = new NormalEditorReviewCommandService<vscode.TextEditor>({
     getLineCount: (editor) => editor.document.lineCount,
     getSelections: (editor) =>
@@ -659,6 +825,9 @@ export function activate(
     reviewHistoryRecorder: historyRecorder,
     setSelectedContext: (selection) => {
       selectedContext = selection;
+    },
+    setCurrentPullRequestDiff: (snapshot) => {
+      currentPullRequestDiff = snapshot;
     },
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),
@@ -848,6 +1017,7 @@ export function activate(
 
   return {
     ...runtimePort,
+    drainVisibleEditorDecorations: () => decorationController.drain(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
     getFileExclusionPolicySnapshot: () => ({

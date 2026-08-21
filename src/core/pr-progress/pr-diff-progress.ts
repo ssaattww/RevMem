@@ -65,6 +65,13 @@ export interface CalculatePullRequestDiffProgressInput {
   readonly exclusionPolicy: ReviewFileExclusionPolicy;
 }
 
+/** Runtime scheduler and generation fence for large PR snapshots. */
+export interface PullRequestDiffProgressWorkBudget {
+  readonly maxWorkItems: number;
+  readonly yieldControl: () => void | Promise<void>;
+  readonly isCurrent: () => boolean;
+}
+
 const validateCount = (value: number, label: string): void => {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${label} must be a non-negative integer.`);
 };
@@ -354,4 +361,140 @@ export const calculatePullRequestDiffProgress = (input: Readonly<CalculatePullRe
   }
 
   return { reviewedLineCount: aggregateReviewed, totalLineCount: aggregateTotal, progress: ratio(aggregateReviewed, aggregateTotal), files };
+};
+
+/**
+ * Yields through every raw snapshot hunk and line before the canonical
+ * calculator performs its identity-preserving result construction. The public
+ * synchronous calculator remains available to existing non-UI consumers.
+ */
+export const calculatePullRequestDiffProgressCooperatively = async (
+  input: Readonly<CalculatePullRequestDiffProgressInput>,
+  budget: PullRequestDiffProgressWorkBudget
+): Promise<PullRequestDiffProgress | undefined> => {
+  if (!Number.isSafeInteger(budget.maxWorkItems) || budget.maxWorkItems <= 0) throw new RangeError("maxWorkItems must be a positive integer.");
+  let pending = 0;
+  const checkpoint = async (): Promise<boolean> => {
+    if (!budget.isCurrent()) return false;
+    if (++pending < budget.maxWorkItems) return true;
+    pending = 0;
+    await budget.yieldControl();
+    return budget.isCurrent();
+  };
+  validateContext(input.reviewContext, input.diff);
+  const normalizeCooperatively = async (intervals: readonly LineInterval[], label: string, upperBound?: number): Promise<readonly NormalizedInterval[] | undefined> => {
+    const sorted: NormalizedInterval[] = [];
+    for (const interval of intervals) {
+      if (!await checkpoint()) return undefined;
+      if (!Number.isSafeInteger(interval.startLine) || !Number.isSafeInteger(interval.endLineExclusive) || interval.startLine < 0 || interval.endLineExclusive < interval.startLine) throw new RangeError(`${label} intervals must be zero-based half-open ranges.`);
+      if (upperBound !== undefined && interval.endLineExclusive > upperBound) throw new RangeError(`${label} interval exceeds lineCount ${upperBound}.`);
+      sorted.push({ startLine: interval.startLine, endLineExclusive: interval.endLineExclusive });
+    }
+    // Insertion keeps comparison and movement under the same item budget and is
+    // intentionally used here because persisted review intervals are sparse.
+    for (let index = 1; index < sorted.length; index += 1) {
+      const value = sorted[index]!;
+      let cursor = index - 1;
+      while (cursor >= 0 && (sorted[cursor]!.startLine > value.startLine || (sorted[cursor]!.startLine === value.startLine && sorted[cursor]!.endLineExclusive > value.endLineExclusive))) {
+        if (!await checkpoint()) return undefined;
+        sorted[cursor + 1] = sorted[cursor]!;
+        cursor -= 1;
+      }
+      sorted[cursor + 1] = value;
+      if (!await checkpoint()) return undefined;
+    }
+    const merged: NormalizedInterval[] = [];
+    for (const interval of sorted) {
+      if (!await checkpoint()) return undefined;
+      const previous = merged[merged.length - 1];
+      if (previous === undefined || interval.startLine > previous.endLineExclusive) merged.push(interval);
+      else if (interval.endLineExclusive > previous.endLineExclusive) merged[merged.length - 1] = { startLine: previous.startLine, endLineExclusive: interval.endLineExclusive };
+    }
+    return merged;
+  };
+  const changedCoordinatesCooperatively = async (file: PullRequestFileChange): Promise<ChangedCoordinates | undefined> => {
+    const additions = new Set<number>();
+    const deletions = new Set<number>();
+    let previous: HunkPosition | undefined;
+    let cumulativeDelta = 0;
+    let maxModifiedExtent = 0;
+    for (const hunk of file.hunks) {
+      if (!await checkpoint()) return undefined;
+      validateCount(hunk.oldStart, "Diff hunk oldStart"); validateCount(hunk.newStart, "Diff hunk newStart"); validateCount(hunk.oldCount, "Diff hunk oldCount"); validateCount(hunk.newCount, "Diff hunk newCount");
+      let oldCursor = hunk.oldStart;
+      let newCursor = hunk.newStart;
+      let changedLineCount = 0;
+      for (const line of hunk.lines) {
+        if (!await checkpoint()) return undefined;
+        switch ((line as { kind: unknown }).kind) {
+          case "context": {
+            const oldLine = validateCoordinate(line.oldLine, `Context oldLine for ${file.fileId}`); const newLine = validateCoordinate(line.newLine, `Context newLine for ${file.fileId}`);
+            if (oldLine !== oldCursor || newLine !== newCursor) throw new RangeError(`Diff context coordinate mismatch for ${file.fileId}.`);
+            oldCursor += 1; newCursor += 1; break;
+          }
+          case "deletion": {
+            if (line.newLine !== undefined) throw new RangeError(`Deletion must not have newLine for ${file.fileId}.`);
+            const oldLine = validateCoordinate(line.oldLine, `Deletion oldLine for ${file.fileId}`);
+            if (oldLine !== oldCursor || deletions.has(oldLine)) throw new RangeError(`Diff deletion coordinate mismatch for ${file.fileId}.`);
+            deletions.add(oldLine); changedLineCount += 1; oldCursor += 1; break;
+          }
+          case "addition": {
+            if (line.oldLine !== undefined) throw new RangeError(`Addition must not have oldLine for ${file.fileId}.`);
+            const newLine = validateCoordinate(line.newLine, `Addition newLine for ${file.fileId}`);
+            if (newLine !== newCursor || additions.has(newLine)) throw new RangeError(`Diff addition coordinate mismatch for ${file.fileId}.`);
+            additions.add(newLine); changedLineCount += 1; newCursor += 1; break;
+          }
+          default: throw new RangeError(`Unknown diff line kind for ${file.fileId}.`);
+        }
+      }
+      if (changedLineCount === 0 || oldCursor !== hunk.oldStart + hunk.oldCount || newCursor !== hunk.newStart + hunk.newCount) throw new RangeError(`Diff hunk header/body mismatch for ${file.fileId}.`);
+      const position: HunkPosition = { oldAnchor: hunkAnchor(hunk.oldStart, hunk.oldCount), newAnchor: hunkAnchor(hunk.newStart, hunk.newCount), oldEndAnchor: hunkAnchor(hunk.oldStart, hunk.oldCount) + hunk.oldCount, newEndAnchor: hunkAnchor(hunk.newStart, hunk.newCount) + hunk.newCount };
+      if (position.newAnchor - position.oldAnchor !== cumulativeDelta) throw new RangeError(`Diff hunk delta mismatch for ${file.fileId}.`);
+      if (previous !== undefined && (position.oldAnchor - previous.oldEndAnchor < 0 || position.newAnchor - previous.newEndAnchor < 0 || position.oldAnchor - previous.oldEndAnchor !== position.newAnchor - previous.newEndAnchor)) throw new RangeError(`Diff hunk order mismatch for ${file.fileId}.`);
+      maxModifiedExtent = Math.max(maxModifiedExtent, position.newAnchor, position.newEndAnchor); cumulativeDelta += hunk.newCount - hunk.oldCount; previous = position;
+    }
+    if (additions.size !== file.additions || deletions.size !== file.deletions) throw new RangeError(`PR diff statistics mismatch for ${file.fileId}.`);
+    return { additions, deletions, maxModifiedExtent };
+  };
+  const countCooperatively = async (intervals: readonly NormalizedInterval[], changed: ReadonlySet<number>): Promise<number | undefined> => {
+    let count = 0;
+    for (const coordinate of changed) {
+      if (!await checkpoint()) return undefined;
+      if (containsCoordinate(intervals, coordinate)) count += 1;
+    }
+    return count;
+  };
+  const seenFileIds = new Set<string>(); const seenPaths = new Set<string>();
+  const files: PullRequestDiffFileProgress[] = []; let aggregateReviewed = 0; let aggregateTotal = 0;
+  for (const file of input.diff.files) {
+    if (!await checkpoint()) return undefined;
+    validateCount(file.additions, "PR diff additions"); validateCount(file.deletions, "PR diff deletions");
+    if (seenFileIds.has(file.fileId)) throw new RangeError(`Duplicate PR diff file: ${file.fileId}`); seenFileIds.add(file.fileId);
+    const paths = validateStatusMatrix(file, input.exclusionPolicy);
+    const decision = input.exclusionPolicy.evaluate({ path: paths.displayPath, isBinary: file.status === "binary" });
+    if (seenPaths.has(decision.normalizedPath)) throw new RangeError(`Duplicate PR diff path: ${decision.normalizedPath}`); seenPaths.add(decision.normalizedPath);
+    const actual = file.status === "binary" ? undefined : await changedCoordinatesCooperatively(file);
+    if (file.status !== "binary" && actual === undefined) return undefined;
+    const state = input.reviewContext.files[file.fileId];
+    let modifiedReviewed: readonly NormalizedInterval[] = []; let originalReviewed: readonly NormalizedInterval[] = [];
+    if (state !== undefined) {
+      if (state.fileId !== file.fileId || state.revisionId !== input.diff.headSha) throw new RangeError(`File review identity mismatch for ${file.fileId}.`);
+      validateCount(state.lineCount, `File review lineCount for ${file.fileId}`);
+      if (normalizePath(state.currentPath, input.exclusionPolicy) !== paths.statePath) throw new RangeError(`File review currentPath mismatch for ${file.fileId}.`);
+      if (actual !== undefined && actual.maxModifiedExtent > state.lineCount) throw new RangeError(`PR diff modified extent exceeds lineCount for ${file.fileId}.`);
+      const modified = await normalizeCooperatively(state.modifiedReviewed, "Modified reviewed", state.lineCount);
+      const original = await normalizeCooperatively(state.originalReviewedByDiff[input.diff.originalDiffId] ?? [], "Original reviewed");
+      if (modified === undefined || original === undefined) return undefined;
+      modifiedReviewed = modified; originalReviewed = original;
+    }
+    const base = { fileId: file.fileId, oldPath: paths.oldPath, newPath: paths.newPath, status: file.status, path: decision.normalizedPath, additions: file.additions, deletions: file.deletions };
+    if (decision.excluded) { files.push({ ...base, reviewedLineCount: 0, totalLineCount: 0, progress: 1, excluded: true, exclusionReason: decision.reason }); continue; }
+    if (actual === undefined) throw new RangeError(`Included binary file is not reviewable: ${file.fileId}.`);
+    const modifiedCount = await countCooperatively(modifiedReviewed, actual.additions); const originalCount = await countCooperatively(originalReviewed, actual.deletions);
+    if (modifiedCount === undefined || originalCount === undefined) return undefined;
+    const reviewedLineCount = modifiedCount + originalCount; const totalLineCount = file.additions + file.deletions;
+    aggregateReviewed += reviewedLineCount; aggregateTotal += totalLineCount;
+    files.push({ ...base, reviewedLineCount, totalLineCount, progress: ratio(reviewedLineCount, totalLineCount), excluded: false });
+  }
+  return budget.isCurrent() ? { reviewedLineCount: aggregateReviewed, totalLineCount: aggregateTotal, progress: ratio(aggregateReviewed, aggregateTotal), files } : undefined;
 };

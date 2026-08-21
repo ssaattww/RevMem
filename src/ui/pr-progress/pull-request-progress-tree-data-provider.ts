@@ -49,6 +49,15 @@ export interface PullRequestProgressTreeSnapshot
   >;
 }
 
+/** Bounded publication controls for a complete immutable PR progress snapshot. */
+export interface PullRequestProgressTreeStagingOptions {
+  readonly maxFilesPerStage: number;
+  readonly yieldControl: () => void | Promise<void>;
+  readonly isCurrent?: () => boolean;
+  /** Observes bounded preparation checkpoints; it never publishes a partial tree. */
+  readonly onStage?: (preparedFileCount: number, totalFileCount: number) => void | Promise<void>;
+}
+
 /** One immutable present side of a selected PR diff. */
 export interface PullRequestProgressTreePresentDiffSide {
   readonly kind: "present";
@@ -569,6 +578,42 @@ const EMPTY_EFFECTIVE_PROGRESS: PullRequestEffectiveProgress = Object.freeze({
   files: Object.freeze([])
 });
 
+const sortFileNodesCooperatively = async (
+  values: readonly PullRequestProgressTreeFileNode[],
+  maxWorkItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => boolean
+): Promise<readonly PullRequestProgressTreeFileNode[] | undefined> => {
+  let source = [...values];
+  let target = new Array<PullRequestProgressTreeFileNode>(source.length);
+  let pending = 0;
+  const checkpoint = async (): Promise<boolean> => {
+    pending += 1;
+    if (pending < maxWorkItems) return isCurrent();
+    pending = 0;
+    await yieldControl();
+    return isCurrent();
+  };
+  for (let width = 1; width < source.length; width *= 2) {
+    for (let left = 0; left < source.length; left += width * 2) {
+      const middle = Math.min(left + width, source.length);
+      const right = Math.min(left + width * 2, source.length);
+      let first = left;
+      let second = middle;
+      for (let output = left; output < right; output += 1) {
+        if (first < middle && (second >= right || compareFileNodes(source[first]!, source[second]!) <= 0)) {
+          target[output] = source[first++]!;
+        } else target[output] = source[second++]!;
+        if (!await checkpoint()) return undefined;
+      }
+    }
+    const previous = source;
+    source = target;
+    target = previous;
+  }
+  return source;
+};
+
 /** Stores one exact identity-bound PR progress snapshot as five deterministic categories. */
 export class PullRequestProgressTreeDataProvider {
   private readonly filesByCategory = new Map<
@@ -702,6 +747,112 @@ export class PullRequestProgressTreeDataProvider {
       progress: ratio(effectiveReviewed, effectiveTotal),
       files: Object.freeze(effectiveFiles)
     });
+  }
+
+  /**
+   * Gives callers deterministic cancellation checkpoints before publishing a new
+   * immutable PR snapshot. A stale request never replaces the current nodes.
+   */
+  public async replaceSnapshotIncrementally(
+    snapshot: PullRequestProgressTreeSnapshot,
+    options: PullRequestProgressTreeStagingOptions
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(options.maxFilesPerStage) || options.maxFilesPerStage <= 0) {
+      throw new RangeError("maxFilesPerStage must be a positive integer.");
+    }
+    const isCurrent = (): boolean => options.isCurrent?.() !== false;
+    if (!isCurrent()) return false;
+    validateSnapshotIdentity(snapshot);
+    const { progress } = snapshot;
+    validateCount(progress.reviewedLineCount, "PR aggregate reviewedLineCount");
+    validateCount(progress.totalLineCount, "PR aggregate totalLineCount");
+    if (progress.reviewedLineCount > progress.totalLineCount) {
+      throw new RangeError("PR aggregate reviewedLineCount exceeds totalLineCount.");
+    }
+    if (!Number.isFinite(progress.progress) || progress.progress < 0 || progress.progress > 1) {
+      throw new RangeError("PR aggregate progress must be in 0..1.");
+    }
+    const rawReviewability = snapshot.lineReviewabilityByFileId as unknown;
+    if (typeof rawReviewability !== "object" || rawReviewability === null || Array.isArray(rawReviewability)) {
+      throw new RangeError("PR progress line reviewability must be a file-ID record.");
+    }
+    const reviewabilityByFileId = rawReviewability as Readonly<
+      Record<string, PullRequestLineReviewability | undefined>
+    >;
+    const seenFileIds = new Set<string>();
+    const seenPaths = new Set<string>();
+    const next = new Map<PullRequestProgressTreeCategory, PullRequestProgressTreeFileNode[]>();
+    const nextCurrentFileNodes = new Set<PullRequestProgressTreeFileNode>();
+    const effectiveFiles: PullRequestEffectiveFileProgress[] = [];
+    for (const { category } of CATEGORY_DEFINITIONS) next.set(category, []);
+    let rawReviewed = 0;
+    let rawTotal = 0;
+    let effectiveReviewed = 0;
+    let effectiveTotal = 0;
+    let pending = 0;
+    for (const rawFile of progress.files) {
+      validateFile(rawFile, snapshot.fileSystemPathSemantics);
+      if (seenFileIds.has(rawFile.fileId)) throw new RangeError(`Duplicate PR progress fileId: ${rawFile.fileId}`);
+      if (seenPaths.has(rawFile.path)) throw new RangeError(`Duplicate PR progress path: ${rawFile.path}`);
+      if (!Object.prototype.hasOwnProperty.call(reviewabilityByFileId, rawFile.fileId)) {
+        throw new RangeError(`PR progress line reviewability is missing for ${rawFile.fileId}.`);
+      }
+      seenFileIds.add(rawFile.fileId);
+      seenPaths.add(rawFile.path);
+      rawReviewed += rawFile.reviewedLineCount;
+      rawTotal += rawFile.totalLineCount;
+      const reviewability = validateReviewability(rawFile, reviewabilityByFileId[rawFile.fileId]);
+      const effectiveFile = defineEffectiveFile(rawFile, reviewability);
+      effectiveFiles.push(effectiveFile);
+      effectiveReviewed += effectiveFile.reviewedLineCount;
+      effectiveTotal += effectiveFile.totalLineCount;
+      const node = toFileNode(snapshot, effectiveFile);
+      next.get(node.category)!.push(node);
+      nextCurrentFileNodes.add(node);
+      pending += 1;
+      if (pending === options.maxFilesPerStage) {
+        pending = 0;
+        await options.onStage?.(seenFileIds.size, progress.files.length);
+        await options.yieldControl();
+        if (!isCurrent()) return false;
+      }
+    }
+    if (pending > 0) {
+      await options.onStage?.(seenFileIds.size, progress.files.length);
+      await options.yieldControl();
+      if (!isCurrent()) return false;
+    }
+    for (const fileId of Object.keys(reviewabilityByFileId)) {
+      if (!seenFileIds.has(fileId)) throw new RangeError(`PR progress line reviewability references unknown file ${fileId}.`);
+    }
+    if (rawReviewed !== progress.reviewedLineCount || rawTotal !== progress.totalLineCount) {
+      throw new RangeError("PR aggregate counts do not match file progress records.");
+    }
+    if (!ratiosEqual(progress.progress, ratio(rawReviewed, rawTotal))) {
+      throw new RangeError("PR aggregate progress does not match aggregate counts.");
+    }
+    const sortedByCategory = new Map<PullRequestProgressTreeCategory, readonly PullRequestProgressTreeFileNode[]>();
+    for (const { category } of CATEGORY_DEFINITIONS) {
+      const sorted = await sortFileNodesCooperatively(next.get(category)!, options.maxFilesPerStage, options.yieldControl, isCurrent);
+      if (sorted === undefined) return false;
+      sortedByCategory.set(category, Object.freeze(sorted));
+    }
+    if (!isCurrent()) return false;
+    // Publication is a single synchronous swap after every validation, node build,
+    // and category sort checkpoint has accepted this generation. Stale work leaves
+    // the previous immutable tree intact rather than clearing or partially replacing it.
+    this.filesByCategory.clear();
+    for (const { category } of CATEGORY_DEFINITIONS) {
+      this.filesByCategory.set(category, sortedByCategory.get(category)!);
+    }
+    this.currentFileNodes = nextCurrentFileNodes;
+    this.effectiveProgress = Object.freeze({
+      reviewedLineCount: effectiveReviewed,
+      totalLineCount: effectiveTotal,
+      progress: ratio(effectiveReviewed, effectiveTotal),
+      files: Object.freeze(effectiveFiles)
+    });
+    return true;
   }
 
   /** Returns a detached T304 effective projection, never a raw T301 result. */

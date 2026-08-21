@@ -56,6 +56,7 @@ interface DisposableLike {
 }
 
 interface CapturedReviewContextsProvider {
+  onDidChangeTreeData(listener: () => void): DisposableLike;
   getChildren(): ReviewContextListItem[];
 }
 
@@ -431,6 +432,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
 
     const commands = new Map<string, (...argumentsList: unknown[]) => unknown>();
     const providers: CapturedReviewContextsProvider[] = [];
+    const initialProviderRefreshes = new WeakMap<CapturedReviewContextsProvider, Promise<void>>();
     const errors: string[] = [];
     let injectCacheStorage = false;
     let cacheAtomicWriteFailure: "ENOSPC" | "EACCES" | undefined;
@@ -474,8 +476,14 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           },
         },
         createTreeView: (_id: string, options: { treeDataProvider: CapturedReviewContextsProvider }): DisposableLike => {
-          providers.push(options.treeDataProvider);
-          return { dispose: () => undefined };
+          const provider = options.treeDataProvider;
+          let resolveInitialRefresh!: () => void;
+          initialProviderRefreshes.set(provider, new Promise<void>((resolve) => {
+            resolveInitialRefresh = resolve;
+          }));
+          const initialRefreshListener = provider.onDidChangeTreeData(() => resolveInitialRefresh());
+          providers.push(provider);
+          return { dispose: () => initialRefreshListener.dispose() };
         },
         showQuickPick: async (items: readonly unknown[], options?: { placeHolder?: string }): Promise<unknown> => {
           if (options?.placeHolder === "現在HEADのPRを選択") {
@@ -611,10 +619,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       return { context, subscriptions };
     };
 
-    const registerRuntime = (): {
+    const registerRuntime = async (): Promise<{
       runtime: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime>;
       provider: CapturedReviewContextsProvider;
-    } => {
+    }> => {
       enumerateEnabled = false;
       const extensionContext = createExtensionContext();
       const runtime = runtimeModule.registerT405ReviewContextsRuntime({
@@ -635,6 +643,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       enumerateEnabled = true;
       const provider = providers.at(-1);
       assert.ok(provider);
+      const initialRefresh = initialProviderRefreshes.get(provider);
+      assert.ok(initialRefresh);
+      await initialRefresh;
+      assert.deepEqual(errors, [], "the automatic empty startup refresh must drain before commands begin");
       return { runtime, provider };
     };
 
@@ -646,7 +658,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     };
 
     // R405-1 + R405-7: redetect itself must cross the T405 synchronization/resolver seam.
-    let current = registerRuntime();
+    let current = await registerRuntime();
     await invoke("reviewRange.redetectPullRequest");
     const mapped = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",
@@ -692,7 +704,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     );
 
     // R405-1 restart proof: rebuild the actual T405 runtime over the same durable storage.
-    current = registerRuntime();
+    current = await registerRuntime();
     await current.runtime.refresh();
     const restarted = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",
@@ -983,7 +995,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       [],
     );
 
-    current = registerRuntime();
+    current = await registerRuntime();
     await current.runtime.refresh();
     const restarted52AfterTransactions = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",
@@ -1035,7 +1047,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     // A write fault must be terminal even though this factory deliberately does
     // not forward a diagnostic callback into the storage adapter.
     injectCacheStorage = true;
-    current = registerRuntime();
+    current = await registerRuntime();
     await new Promise((resolve) => setImmediate(resolve));
     await current.runtime.refresh();
     cacheAtomicWrites = 0;
@@ -1077,7 +1089,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(durable53?.contextState.pullRequest?.state, "merged");
     assert.equal(isPullRequestDecorationEnabled(durable53!.contextState.pullRequest!), false);
 
-    current = registerRuntime();
+    current = await registerRuntime();
     await current.runtime.refresh();
     assert.equal(findPullRequestItem(current.provider, 52).group, "saved-closed-pull-request");
     assert.equal(findPullRequestItem(current.provider, 53).group, "saved-closed-pull-request");

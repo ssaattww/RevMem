@@ -43,6 +43,8 @@ export interface NormalEditorReviewStateSession {
    * commit both context and Global snapshots or neither, and its rejection (including stale state) prevents history from being requested.
    */
   readonly committer: ReviewStateTransactionCommitter;
+  /** Immutable editor content-generation fence supplied by the composition root. */
+  readonly isCurrent?: () => boolean;
 }
 
 /** Platform-neutral dependencies supplied by the VS Code composition root. */
@@ -144,7 +146,7 @@ export class NormalEditorReviewCommandService<Editor> {
       target: session.target,
       intervals,
       occurredAt: this.now().toISOString(),
-      committer: session.committer
+      committer: this.currentCommitter(session)
     });
     return result.status;
   }
@@ -166,7 +168,7 @@ export class NormalEditorReviewCommandService<Editor> {
       globalState: session.globalState,
       target: session.target,
       occurredAt: this.now().toISOString(),
-      committer: session.committer
+      committer: this.currentCommitter(session)
     });
     return result.status;
   }
@@ -176,6 +178,7 @@ export class NormalEditorReviewCommandService<Editor> {
     lineCount: number
   ): Promise<NormalEditorReviewStateSession> {
     const session = await this.dependencies.openSession(editor);
+    if (session.isCurrent?.() === false) throw new Error("Review-state session document generation was superseded.");
     if (session.target.lineCount !== lineCount) {
       throw new Error(
         "Review-state session line count must match the current editor document."
@@ -183,5 +186,14 @@ export class NormalEditorReviewCommandService<Editor> {
     }
 
     return session;
+  }
+
+  private currentCommitter(session: NormalEditorReviewStateSession): ReviewStateTransactionCommitter {
+    return {
+      commit: async (transaction) => {
+        if (session.isCurrent?.() === false) throw new Error("Review-state commit document generation was superseded.");
+        await session.committer.commit(transaction);
+      }
+    };
   }
 }

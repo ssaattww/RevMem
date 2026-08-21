@@ -3,7 +3,6 @@ import type {
   RepositoryGlobalState
 } from "../../core/contracts/index";
 import {
-  aggregateRepositoryGlobalUnderstandingProgress,
   type GlobalUnderstandingFileProgress,
   type GlobalUnderstandingFileSnapshot,
   type RepositoryGlobalUnderstandingProgress
@@ -38,6 +37,8 @@ export interface GlobalUnderstandingFileLoadOptions {
   readonly maxWorkBytes: number;
   /** Scheduler boundary used between non-final source chunks. */
   readonly yieldControl: () => void | Promise<void>;
+  /** Runtime cancellation fence shared with the enclosing recalculation. */
+  readonly signal?: AbortSignal;
 }
 
 /** Runtime-neutral source used to load one included repository file. */
@@ -120,6 +121,8 @@ export interface GlobalUnderstandingBackgroundRecalculatorDependencies {
   readonly cache: GlobalUnderstandingProgressCache;
   /** Cooperative scheduler used within source, post-load calculation, and between file chunks. */
   readonly yieldControl: () => void | Promise<void>;
+  /** Optional deterministic evidence for scheduler batches. */
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
 }
 
 /** Partial or complete background recalculation result. */
@@ -152,16 +155,18 @@ export interface GlobalUnderstandingRecalculationInput {
   readonly chunkSize?: number;
   /** Maximum source bytes processed before yielding within one file; defaults to 64 KiB. */
   readonly fileWorkChunkBytes?: number;
-  /** Maximum post-load evidence, interval, or line items processed before yielding; defaults to 4096. */
+  /** Maximum post-load evidence, interval, or line items processed before yielding; defaults to 128. */
   readonly calculationWorkChunkItems?: number;
   /** Optional progress callback invoked after every chunk, including the final chunk. */
   readonly onProgress?: (
     progress: GlobalUnderstandingRecalculationProgress
   ) => void | Promise<void>;
+  /** Aborts stale recalculation before cache mutation or projection publication. */
+  readonly signal?: AbortSignal;
 }
 
 const DEFAULT_FILE_WORK_CHUNK_BYTES = 64 * 1024;
-const DEFAULT_CALCULATION_WORK_CHUNK_ITEMS = 4096;
+const DEFAULT_CALCULATION_WORK_CHUNK_ITEMS = 128;
 
 const requireNonEmptyString = (value: string, label: string): void => {
   if (value.length === 0) throw new TypeError(`${label} must be a non-empty string.`);
@@ -179,63 +184,93 @@ const validatePositiveCount = (value: number, label: string): void => {
   }
 };
 
-const globalFilesByPath = (
-  state: RepositoryGlobalState
-): ReadonlyMap<string, GlobalFileReviewState> => {
-  requireNonEmptyString(state.repositoryId, "globalState.repositoryId");
-  requireNonEmptyString(state.currentRevisionId, "globalState.currentRevisionId");
-  const files = new Map<string, GlobalFileReviewState>();
-  for (const file of Object.values(state.files)) {
-    requireNonEmptyString(file.currentPath, "Global currentPath");
-    if (files.has(file.currentPath)) {
-      throw new RangeError(`duplicate Global currentPath: ${file.currentPath}`);
-    }
-    files.set(file.currentPath, file);
-  }
-  return files;
-};
+interface SnapshotWork {
+  item(kind: string): Promise<void>;
+}
 
-const copyGlobalFile = (file: GlobalFileReviewState): GlobalFileReviewState => {
-  const reviewed = Object.freeze(file.reviewed.map((interval) => Object.freeze({
-    startLine: interval.startLine,
-    endLineExclusive: interval.endLineExclusive
-  }))) as unknown as GlobalFileReviewState["reviewed"];
-  return Object.freeze({
-    fileId: file.fileId,
-    currentPath: file.currentPath,
-    revisionId: file.revisionId,
-    reviewed,
-    contentHash: file.contentHash,
-    updatedAt: file.updatedAt
-  }) as GlobalFileReviewState;
-};
+interface CapturedCalculationInput {
+  readonly repositoryId: string;
+  readonly currentRevisionId: string;
+  readonly globalByPath: ReadonlyMap<string, GlobalFileReviewState>;
+  readonly included: readonly IncludedGlobalUnderstandingFile[];
+  readonly openFilePaths: readonly string[];
+}
 
-const snapshotCalculationInput = (
+const captureCalculationInput = (
   input: GlobalUnderstandingRecalculationInput
-): GlobalUnderstandingCalculationInputSnapshot => {
+): CapturedCalculationInput => {
+  const repositoryId = input.globalState.repositoryId;
+  const currentRevisionId = input.globalState.currentRevisionId;
   const globalByPath = new Map<string, GlobalFileReviewState>();
-  for (const [repositoryPath, file] of globalFilesByPath(input.globalState)) {
-    globalByPath.set(repositoryPath, copyGlobalFile(file));
+  for (const fileId in input.globalState.files) {
+    if (!Object.hasOwn(input.globalState.files, fileId)) continue;
+    const file = input.globalState.files[fileId]!;
+    const captured = Object.freeze({
+      fileId: file.fileId,
+      currentPath: file.currentPath,
+      revisionId: file.revisionId,
+      // Review intervals are a public readonly vector. Retaining that immutable
+      // vector avoids a second repository-sized interval copy while detaching
+      // the operation from later replacement of the file's reviewed property.
+      reviewed: file.reviewed,
+      contentHash: file.contentHash,
+      updatedAt: file.updatedAt
+    }) as GlobalFileReviewState;
+    if (globalByPath.has(captured.currentPath)) {
+      throw new RangeError(`duplicate Global currentPath: ${captured.currentPath}`);
+    }
+    globalByPath.set(captured.currentPath, captured);
   }
-  const included = Object.freeze(input.included.map((file) => Object.freeze({
-    path: file.path,
-    nonEmptyLineCount: file.nonEmptyLineCount
-  })));
-  const openFilePaths = Object.freeze([...(input.openFilePaths ?? [])]);
   return Object.freeze({
-    repositoryId: input.globalState.repositoryId,
-    currentRevisionId: input.globalState.currentRevisionId,
+    repositoryId,
+    currentRevisionId,
     globalByPath,
-    ordered: Object.freeze(orderedIncludedFiles(included, openFilePaths))
+    included: Object.freeze(input.included.map((file) => Object.freeze({
+      path: file.path,
+      nonEmptyLineCount: file.nonEmptyLineCount
+    }))),
+    openFilePaths: Object.freeze([...(input.openFilePaths ?? [])])
   });
 };
 
-const orderedIncludedFiles = (
+const validateGlobalFilesByPath = async (
+  captured: CapturedCalculationInput,
+  work: SnapshotWork
+): Promise<ReadonlyMap<string, GlobalFileReviewState>> => {
+  requireNonEmptyString(captured.repositoryId, "globalState.repositoryId");
+  requireNonEmptyString(captured.currentRevisionId, "globalState.currentRevisionId");
+  for (const file of captured.globalByPath.values()) {
+    await work.item("mapped-global-file");
+    requireNonEmptyString(file.currentPath, "Global currentPath");
+  }
+  return captured.globalByPath;
+};
+
+const snapshotCalculationInput = async (
+  captured: CapturedCalculationInput,
+  work: SnapshotWork
+): Promise<GlobalUnderstandingCalculationInputSnapshot> => {
+  const globalByPath = await validateGlobalFilesByPath(captured, work);
+  return Object.freeze({
+    repositoryId: captured.repositoryId,
+    currentRevisionId: captured.currentRevisionId,
+    globalByPath,
+    ordered: Object.freeze(await orderedIncludedFiles(
+      captured.included,
+      captured.openFilePaths,
+      work
+    ))
+  });
+};
+
+const orderedIncludedFiles = async (
   included: readonly IncludedGlobalUnderstandingFile[],
-  openFilePaths: readonly string[]
-): readonly IncludedGlobalUnderstandingFile[] => {
+  openFilePaths: readonly string[],
+  work: SnapshotWork
+): Promise<readonly IncludedGlobalUnderstandingFile[]> => {
   const byPath = new Map<string, IncludedGlobalUnderstandingFile>();
   for (const file of included) {
+    await work.item("mapped-included-file");
     requireNonEmptyString(file.path, "included.path");
     validateCount(file.nonEmptyLineCount, `included.nonEmptyLineCount for ${file.path}`);
     if (byPath.has(file.path)) {
@@ -247,6 +282,7 @@ const orderedIncludedFiles = (
   const ordered: IncludedGlobalUnderstandingFile[] = [];
   const added = new Set<string>();
   for (const repositoryPath of openFilePaths) {
+    await work.item("ordered-open-file");
     const file = byPath.get(repositoryPath);
     if (file !== undefined && !added.has(repositoryPath)) {
       ordered.push(file);
@@ -254,6 +290,7 @@ const orderedIncludedFiles = (
     }
   }
   for (const file of included) {
+    await work.item("ordered-included-file");
     if (!added.has(file.path)) {
       ordered.push(file);
       added.add(file.path);
@@ -293,6 +330,10 @@ export class GlobalUnderstandingBackgroundRecalculator {
   public async recalculate(
     input: GlobalUnderstandingRecalculationInput
   ): Promise<GlobalUnderstandingRecalculationProgress> {
+    const assertCurrent = (): void => {
+      if (input.signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    };
+    assertCurrent();
     requireNonEmptyString(input.configurationKey, "configurationKey");
     const chunkSize = input.chunkSize ?? 25;
     validatePositiveCount(chunkSize, "chunkSize");
@@ -301,20 +342,49 @@ export class GlobalUnderstandingBackgroundRecalculator {
     const calculationWorkChunkItems = input.calculationWorkChunkItems ??
       DEFAULT_CALCULATION_WORK_CHUNK_ITEMS;
     validatePositiveCount(calculationWorkChunkItems, "calculationWorkChunkItems");
+    if (calculationWorkChunkItems > 128) {
+      throw new RangeError("calculationWorkChunkItems must be no greater than 128.");
+    }
     const calculationWorkOptions: GlobalUnderstandingCalculationWorkOptions = {
       maxWorkItems: calculationWorkChunkItems,
       yieldControl: this.dependencies.yieldControl
     };
 
-    const snapshot = snapshotCalculationInput(input);
+    // Capture every mutable scalar/reference used by this operation before the
+    // first cooperative await. Later validation and ordering remain staged.
+    const capturedInput = captureCalculationInput(input);
+
+    let snapshotPending = 0;
+    const snapshotWork: SnapshotWork = {
+      item: async (kind): Promise<void> => {
+        assertCurrent();
+        snapshotPending += 1;
+        if (snapshotPending < calculationWorkChunkItems) return;
+        this.dependencies.accountWorkBatch?.({ kind, count: snapshotPending });
+        snapshotPending = 0;
+        await this.dependencies.yieldControl();
+        assertCurrent();
+      }
+    };
+    const snapshot = await snapshotCalculationInput(capturedInput, snapshotWork);
     const { repositoryId, currentRevisionId, globalByPath, ordered } = snapshot;
     const calculated: GlobalUnderstandingFileProgress[] = [];
+    let reviewedNonEmptyLineCount = 0;
+    let totalNonEmptyLineCount = 0;
     let cacheHitCount = 0;
     let calculatedFileCount = 0;
 
     const emit = async (complete: boolean): Promise<GlobalUnderstandingRecalculationProgress> => {
+      assertCurrent();
       const event: GlobalUnderstandingRecalculationProgress = {
-        progress: aggregateRepositoryGlobalUnderstandingProgress(calculated),
+        // `calculated` is append-only for one request. Retaining it avoids
+        // recalculating every already-accepted 25-file prefix at each emit.
+        progress: {
+          reviewedNonEmptyLineCount,
+          totalNonEmptyLineCount,
+          progress: totalNonEmptyLineCount === 0 ? 1 : reviewedNonEmptyLineCount / totalNonEmptyLineCount,
+          files: calculated
+        },
         processedFileCount: calculated.length,
         totalFileCount: ordered.length,
         complete,
@@ -330,14 +400,17 @@ export class GlobalUnderstandingBackgroundRecalculator {
     for (let chunkStart = 0; chunkStart < ordered.length; chunkStart += chunkSize) {
       const chunk = ordered.slice(chunkStart, chunkStart + chunkSize);
       for (const included of chunk) {
+        assertCurrent();
         const loaded = await this.dependencies.source.load(
           included.path,
           currentRevisionId,
           {
             maxWorkBytes: fileWorkChunkBytes,
-            yieldControl: this.dependencies.yieldControl
+            yieldControl: this.dependencies.yieldControl,
+            signal: input.signal
           }
         );
+        assertCurrent();
         validateLoadedFile(included, currentRevisionId, loaded);
         const globalFile = globalByPath.get(included.path);
         const identity = `${repositoryId}\0${included.path}`;
@@ -350,14 +423,18 @@ export class GlobalUnderstandingBackgroundRecalculator {
           loaded,
           globalFile
         }, calculationWorkOptions);
+        assertCurrent();
         const cached = await this.dependencies.cache.get(
           identity,
           evidenceKey,
           calculationWorkOptions
         );
+        assertCurrent();
         if (cached !== undefined) {
           await loaded.validateCurrent?.();
           calculated.push(cached);
+          reviewedNonEmptyLineCount += cached.reviewedNonEmptyLineCount;
+          totalNonEmptyLineCount += cached.totalNonEmptyLineCount;
           cacheHitCount += 1;
           continue;
         }
@@ -367,9 +444,12 @@ export class GlobalUnderstandingBackgroundRecalculator {
           globalFile,
           calculationWorkOptions
         );
+        assertCurrent();
         await loaded.validateCurrent?.();
         this.dependencies.cache.set(identity, evidenceKey, progress);
         calculated.push(progress);
+        reviewedNonEmptyLineCount += progress.reviewedNonEmptyLineCount;
+        totalNonEmptyLineCount += progress.totalNonEmptyLineCount;
         calculatedFileCount += 1;
       }
 
@@ -377,6 +457,7 @@ export class GlobalUnderstandingBackgroundRecalculator {
       const event = await emit(complete);
       if (complete) return event;
       await this.dependencies.yieldControl();
+      assertCurrent();
     }
 
     throw new Error("Global understanding recalculation ended without a final chunk.");

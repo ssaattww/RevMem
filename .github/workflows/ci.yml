@@ -70,6 +70,8 @@ jobs:
         run: node tools/run-ci-command.mjs test-t605 npm run test:t605
       - name: T606 failure policy and diagnostics tests
         run: node tools/run-ci-command.mjs test-t606 npm run test:t606
+      - name: T607 performance and incremental UI tests
+        run: node tools/run-ci-command.mjs test-t607 npm run test:t607
       - name: Temporary Git integration tests
         run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests

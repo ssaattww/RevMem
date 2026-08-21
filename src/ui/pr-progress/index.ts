@@ -16,5 +16,6 @@ export {
   type PullRequestProgressTreePresentDiffSide,
   type PullRequestProgressTreeSelectionResult,
   type PullRequestProgressTreeSnapshot,
+  type PullRequestProgressTreeStagingOptions,
   type PullRequestProgressTreeSnapshotIdentity
 } from "./pull-request-progress-tree-data-provider";

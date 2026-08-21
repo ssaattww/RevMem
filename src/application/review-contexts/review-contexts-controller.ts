@@ -70,6 +70,12 @@ export interface ReviewContextsProjectionInput {
   readonly cacheByContextId?: Readonly<Record<string, ReviewContextCacheStatus>>;
 }
 
+/** Shared generation-aware work scheduler used by the production projection. */
+export interface ReviewContextsProjectionWork {
+  readonly item: (kind: "projected-context" | "deduplicated-context" | "materialized-context" | "sorted-context") => Promise<void>;
+  readonly isCurrent: () => boolean;
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const groupFor = (
@@ -186,6 +192,65 @@ export const projectReviewContexts = (
     left.label.localeCompare(right.label) ||
     left.context.contextId.localeCompare(right.context.contextId)
   );
+};
+
+/** Cooperative counterpart used by the VS Code runtime for large saved-context sets. */
+export const projectReviewContextsCooperatively = async (
+  input: ReviewContextsProjectionInput,
+  work: ReviewContextsProjectionWork
+): Promise<ReviewContextListItem[]> => {
+  const currentIds = new Set<string>();
+  for (const context of input.current) {
+    await work.item("projected-context");
+    currentIds.add(context.contextId);
+  }
+  const candidates: ReviewContextListItem[] = [];
+  const append = async (context: ReviewContextState, current: boolean): Promise<void> => {
+    await work.item("projected-context");
+    if (input.hiddenContextIds.has(context.contextId) || (!current && currentIds.has(context.contextId))) return;
+    const group = groupFor(context, current);
+    if (group === undefined) return;
+    candidates.push(toItem(
+      context,
+      current,
+      group,
+      input.progressByContextId?.[context.contextId],
+      input.cacheByContextId?.[context.contextId]
+    ));
+  };
+  for (const context of input.current) await append(context, true);
+  for (const context of input.saved) await append(context, false);
+  const unique = new Map<string, ReviewContextListItem>();
+  for (const item of candidates) {
+    await work.item("deduplicated-context");
+    if (!unique.has(item.context.contextId)) unique.set(item.context.contextId, item);
+  }
+  let sorted: ReviewContextListItem[] = [];
+  for (const item of unique.values()) {
+    await work.item("materialized-context");
+    sorted.push(item);
+  }
+  for (let width = 1; width < sorted.length; width *= 2) {
+    const next: ReviewContextListItem[] = [];
+    for (let start = 0; start < sorted.length; start += width * 2) {
+      let left = start;
+      let right = Math.min(start + width, sorted.length);
+      const leftEnd = right;
+      const rightEnd = Math.min(start + width * 2, sorted.length);
+      while (left < leftEnd || right < rightEnd) {
+        await work.item("sorted-context");
+        const takeLeft = right >= rightEnd || (left < leftEnd && (
+          GROUP_ORDER[sorted[left]!.group] - GROUP_ORDER[sorted[right]!.group] ||
+          sorted[left]!.label.localeCompare(sorted[right]!.label) ||
+          sorted[left]!.context.contextId.localeCompare(sorted[right]!.context.contextId)
+        ) <= 0);
+        next.push(takeLeft ? sorted[left++]! : sorted[right++]!);
+      }
+    }
+    sorted = next;
+  }
+  if (!work.isCurrent()) throw new DOMException("Review Contexts projection was superseded.", "AbortError");
+  return sorted;
 };
 
 /** Presentation-only persistence boundary; authoritative Review State and history are deliberately absent. */

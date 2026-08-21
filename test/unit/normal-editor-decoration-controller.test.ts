@@ -162,19 +162,81 @@ test("controller loads only visible normal editors and clears visible diff edito
   assert.deepEqual(host.loadCalls, [
     { editor: normalEditor, showGlobalReviewed: true }
   ]);
-  assert.deepEqual(host.setCalls, [
-    {
-      editor: normalEditor,
-      decorationType: host.decorationTypes[0],
-      decorations: [decoration(1, 3)]
-    },
+  assert.deepEqual([...host.setCalls].sort((left, right) => left.editor.id.localeCompare(right.editor.id)), [
     {
       editor: diffEditor,
       decorationType: host.decorationTypes[0],
       decorations: []
+    },
+    {
+      editor: normalEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 3)]
     }
   ]);
   assert.equal(host.loadCalls.some(({ editor }) => editor === hiddenEditor), false);
+});
+
+test("T607 starts every visible-editor decoration load before waiting for a slow editor", async () => {
+  const first: FakeEditor = { id: "first" };
+  const second: FakeEditor = { id: "second" };
+  const third: FakeEditor = { id: "third" };
+  const host = new FakeHost();
+  host.visibleEditors = [first, second, third];
+  const pending: Array<() => void> = [];
+  for (const editor of host.visibleEditors) {
+    host.models.set(editor, new Promise<readonly NormalEditorReviewedDecoration[]>((resolve) => {
+      pending.push(() => resolve([]));
+    }));
+  }
+  const controller = new NormalEditorDecorationController(host);
+  const started = controller.start();
+
+  assert.equal(host.loadCalls.length, 3, "the visible-editor work budget starts all three independent loads");
+  for (const resolve of pending) resolve();
+  await started;
+});
+
+test("T607 decoration drain waits for an event-triggered bounded refresh", async () => {
+  const editor: FakeEditor = { id: "event-drain" };
+  let resolveModel: ((value: readonly NormalEditorReviewedDecoration[]) => void) | undefined;
+  const host = new FakeHost();
+  host.visibleEditors = [editor];
+  host.models.set(editor, new Promise((resolve) => { resolveModel = resolve; }));
+  const controller = new NormalEditorDecorationController(host);
+  const started = controller.start();
+  const drained = controller.drain();
+  let drainCompleted = false;
+  void drained.then(() => { drainCompleted = true; });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(drainCompleted, false, "drain must retain the in-flight event generation");
+  resolveModel!([decoration(0, 1)]);
+  await Promise.all([started, drained]);
+
+  assert.deepEqual(host.setCalls.at(-1)?.decorations, [decoration(0, 1)]);
+});
+
+test("T607 bounds large-document interval projection and applies one complete model to each visible split editor", async () => {
+  const first: FakeEditor = { id: "same-document-first" };
+  const second: FakeEditor = { id: "same-document-second" };
+  const intervals = Array.from({ length: 2_048 }, (_, index) => decoration(index * 2, index * 2 + 1));
+  const host = new FakeHost();
+  host.visibleEditors = [first, second];
+  host.models.set(first, intervals);
+  host.models.set(second, intervals);
+  let yields = 0;
+  const controller = new NormalEditorDecorationController(host, {
+    maxDecorationsPerStage: 128,
+    yieldControl: () => { yields += 1; }
+  });
+
+  await controller.start();
+
+  assert.equal(host.loadCalls.length, 2, "both visible editors traverse their document identity/state/model load independently");
+  assert.equal(host.setCalls.length, 2, "each split editor receives one complete VS Code decoration apply");
+  assert.ok(host.setCalls.every((call) => call.decorations.length === 2_048));
+  assert.ok(yields >= 32, "large interval projection is checkpointed by the deterministic decoration work budget");
 });
 
 test("controller ignores a stale async result after the editor stops being visible", async () => {
