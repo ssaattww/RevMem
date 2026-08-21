@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 / PR #80（`6770d2d` attestation CIがPR68-R003/T505-R005のtest contract 2件で失敗し無効、test-only delta local Green）
-- 次の工程: test-only delta commit/push後の同一reviewerによるT607 finding-limited new attestation
+- 実装中タスク: T607 / Issue #79 / PR #80（`6306197` attestation CIがT405 focused fixtureのstartup refresh未同期で失敗し無効、R2 test-only exact file Green）
+- 次の工程: R2 test-only delta commit/push後の同一reviewerによるT607 finding-limited new attestation
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: attestation HEAD `6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a` の exact `pull_request` CI run `32444576455` / unit job `96661656810` はPR68-R003のlate rejectionとT505-R005のfail-closed clearという既存 test contract 2件で失敗し無効。`reports/issue-79-t607-ci-followup-20260821125018.md` はtest-only deltaを記録し、focused 13/13、`npm run test:t607` 79/79、static gates pass。new attestation pending、exact-head `pull_request` CI held、Markdown wording unsupported。
+- T607: attestation HEAD `63061974b2aead2c71a968c6b882bd3a9bab3106` のexact `pull_request` CI run `32445047413` / job `96662976057` はUnit tests通過後、T405 focused composition fixtureの未同期startup refreshで失敗し無効。R2 report `reports/issue-79-t607-ci-followup-r2-20260821130055.md` は初回Tree publish待機のtest-only delta、exact file 3/3、static gates passを記録。Windows `test:t405` は既知POSIX fixture portability 1件をheld。new attestation pending、exact-head `pull_request` CI held、Markdown wording unsupported。
 - T608: 未着手
 
 ### 終了チェックポイント

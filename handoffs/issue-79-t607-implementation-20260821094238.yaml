@@ -4,9 +4,9 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: 6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a
-report_normalized_head: 6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a
-status: ci_test_only_followup_validated_new_attestation_pending
+implementation_head: 63061974b2aead2c71a968c6b882bd3a9bab3106
+report_normalized_head: 63061974b2aead2c71a968c6b882bd3a9bab3106
+status: ci_test_only_followup_r2_validated_new_attestation_pending
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "focused T607 IFR002 actual-runtime test: failed because materialized-context batch was absent"
@@ -25,11 +25,12 @@ measurement:
   deterministic_yields: 156
   note: "advisory only; regression gate is work/count budget, not wall-clock"
 normal_review: "PR #80 initial normal review failed with T607-R001 through T607-R006; report: reports/issue-79-t607-normal-review-20260821095112.md"
-ci: "attestation HEAD 6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a exact pull_request run 32444576455 / unit job 96661656810 failed only PR68-R003 late rejection handling and T505-R005 fail-closed clear expectation; attestation invalid, new exact-head CI held"
+ci: "attestation HEAD 63061974b2aead2c71a968c6b882bd3a9bab3106 exact pull_request run 32445047413 / job 96662976057 passed Unit tests then failed only T405 focused composition fixture startup-refresh synchronization; attestation invalid, new exact-head CI held"
 followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
 followup_validation: "R5 focused Red once: actual T607 IFR002 runtime fixture failed because candidate materialization had no materialized-context batch. Green: npm run test:t607 79 pass/0 fail after replacing the synchronous unique.values spread with generation-aware shared-scheduler materialization. The 256-context registration fixture retains PR-HEAD abort, dispose, stale nonpublication, cache ownership, exactly-one terminal, and every accounted batch <=128. npm run build, lint, typecheck:contracts, architecture positive, architecture negative (expected 11), and git diff --check passed locally; CI not started."
 normal_closure: "Historical R4 PASS_WITH_HELD is preserved. Independent final review at c4a99db found IFR001-IFR006; its current erratum/follow-up must not rewrite historical closure evidence."
 independent_final_review: "FAIL at frozen head c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3: IFR001 PR cooperative scheduler, IFR002 Global/Review Contexts aggregation, IFR003 document snapshot invalidation, IFR004 decoration composition budget, IFR005 Unicode digest boundary, IFR006 provenance synchronization. Report: reports/issue-79-t607-independent-final-review-20260821110000.md"
 technical_working_tree: "administrative-only IFR006 sync is uncommitted on current technical/pre-freeze head 9d5759caaac648c679cd893f44e16ce494e56424; R5 disposition closes IFR002 and leaves IFR006 open; report: reports/issue-79-t607-independent-finding-followup-r5-20260821170000.md"
 ci_followup: "reports/issue-79-t607-ci-followup-20260821125018.md: test-only PR68-R003 immediate rejection observation and T505-R005 exact single clear expectation; compile plus exact two files 13 pass/0 fail, npm run test:t607 79 pass/0 fail, contracts/lint/architecture positive/negative/diffcheck passed; no CI started."
-next_request: "Commit/push the two test contracts and CI follow-up records, then request the same independent reviewer for a finding-limited new attestation. The prior 6770d2d attestation is invalid. New exact-head pull_request CI remains held and Markdown wording remains unsupported."
+ci_followup_r2: "reports/issue-79-t607-ci-followup-r2-20260821130055.md: T405 composition fixture awaits the automatic initial Tree publication before commands; exact file Red 2/3 then Green 3/3, static gates passed. Windows test:t405 was 49/50 with unrelated known POSIX fixture portability failure; production untouched and test:t607 not rerun."
+next_request: "Commit/push the R2 test-only synchronization and records, then request the same independent reviewer for a finding-limited new attestation. The prior 6306197 attestation is invalid. New exact-head pull_request CI remains held and Markdown wording remains unsupported."
