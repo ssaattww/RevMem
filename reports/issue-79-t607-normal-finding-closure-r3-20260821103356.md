@@ -36,5 +36,3 @@ R003についてproduction Global runtime composition testと既存Global runtim
 ## リスク
 
 残存riskは、多数intervalのnormal decoration modelがExtension Hostを同期占有し、supersessionがmodel完了後まで観測されないこと、およびactual extension end-to-end fixtureがこの段階を回帰固定していないことである。exact-head `pull_request` CIは未起動・未確認のmerge gateとしてheld。Markdown wording checkはunsupported held。当reportはnormal fix-verification用repository fileであり、implementation HEAD `e336de3be55f3ac520475464307be7c3a2475b38`を変更しない。
-
-

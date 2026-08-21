@@ -38,5 +38,3 @@ Global Tree model/runtime、normal editor decoration controllerとextension comp
 ## リスク
 
 残存riskは、Global partial publication後のold/new concurrent refresh、invalidate-only/dispose、operation-feedback terminal lifecycleがproduction compositionで未固定であることと、large document hash、interval model、applied-decoration bookkeepingを含むactual decoration pipelineの同期workが明示budget外に残ることである。exact-head `pull_request` CIは未起動・未確認のmerge gateとしてheld。Markdown wording checkはunsupported held。当reportはnormal fix-verification用repository fileであり、implementation HEAD `753093eb2ba3cd98d25f54fa6aaaeca3425e15c6`を変更しない。
-
-
