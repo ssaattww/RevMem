@@ -37,7 +37,7 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（IFR001〜IFR005 closed、independent finding closure R6 PASS_WITH_HELD complete。technical implementation HEADは`ce584b29e6f584234c7bab050d24d2dd163ae3d3`、reviewed admin targetは`13b8835`、current evidence HEADは`1876e18`。final admin verification/pre-attestation pending、exact-head PR CI/merge held、PR body external closure syncはadmin commit後にpending。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
+- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（IFR001〜IFR005 closed、independent finding closure R6 PASS_WITH_HELD complete。technical implementation HEADは`ce584b29e6f584234c7bab050d24d2dd163ae3d3`、reviewed admin targetは`13b8835`、PR body closure sync済みadmin HEADは`dbbb205`。final admin verification/pre-attestation pending、exact-head PR CI/merge held、PR body external closure syncは`dbbb205`に対して完了、parentがresulting final admin HEADを外部でrefresh。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。Markdown wordingはtooling不在のためheld）
 - 次の工程: 独立最終review
 - 後続候補: T607
 
@@ -183,7 +183,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
-- T606: IFR001〜IFR005 closed、independent finding closure R6 PASS_WITH_HELD complete。technical implementation HEADは`ce584b29e6f584234c7bab050d24d2dd163ae3d3`、reviewed admin targetは`13b8835`、current evidence HEADは`1876e18`（Issue #76、PR #77、final admin verification/pre-attestation pending、exact-head PR CI/merge held、PR body external closure syncはadmin commit後にpending）。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。end-of-Issue skill-gap decisionは`no new action`で、feedbackは既存CodexSkill #58/#61へ集約済み。
+- T606: IFR001〜IFR005 closed、independent finding closure R6 PASS_WITH_HELD complete。technical implementation HEADは`ce584b29e6f584234c7bab050d24d2dd163ae3d3`、reviewed admin targetは`13b8835`、PR body closure sync済みadmin HEADは`dbbb205`（Issue #76、PR #77、final admin verification/pre-attestation pending、exact-head PR CI/merge held、PR body external closure syncは`dbbb205`に対して完了、parentがresulting final admin HEADを外部でrefresh）。`test:t606`は205 pass / 0 fail / 2 Windows POSIX skip。end-of-Issue skill-gap decisionは`no new action`で、feedbackは既存CodexSkill #58/#61へ集約済み。
 - T607〜T608: 未着手
 
 ### 終了チェックポイント
