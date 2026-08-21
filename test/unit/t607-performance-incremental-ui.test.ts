@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { createNormalEditorDecorationModelIncrementally } from "../../src/application/editor-decoration/index";
 import { NodeSha256StableHash } from "../../src/adapters/crypto/node-sha256-stable-hash";
+import { type ReviewStateCommit, type ReviewStateRepositoryTarget } from "../../src/adapters/state-repository/index";
+import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
 import type { RepositoryGlobalUnderstandingProgress } from "../../src/core/global-understanding/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type DiffLine, type GlobalFileReviewState, type PullRequestFileChange, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
+import { NormalEditorReviewCommandService } from "../../src/application/review-commands/index";
 import { calculatePullRequestDiffProgress, calculatePullRequestDiffProgressCooperatively, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 import { calculateGlobalUnderstandingFileProgressCooperatively } from "../../src/application/global-understanding/cooperative-global-understanding-calculation";
 import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
@@ -22,6 +26,8 @@ import {
 } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { NormalEditorDecorationController, type DecorationDisposable, type NormalEditorDecorationHost, type NormalEditorDecorationSettings } from "../../src/ui/normal-editor/index";
 import type { ReviewStateFileTarget } from "../../src/core/review-state/index";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/t405-pull-request-review-runtime";
+import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
 
 const runtimeRequire = createRequire(__filename);
 const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
@@ -506,4 +512,193 @@ test("T607 focused workload harness is wired through the diagnostic CI runner", 
   const scripts = (JSON.parse(manifestText) as { readonly scripts?: Record<string, string> }).scripts ?? {};
   assert.match(scripts["test:t607"] ?? "", /t607-performance-incremental-ui\.test\.js/u);
   assert.match(workflow, /node tools\/run-ci-command\.mjs test-t607 npm run test:t607/u);
+});
+
+test("T607 IFR001 uses the actual PR runtime for a 10,000-line persisted projection and reverse supersession", async () => {
+  const makeSnapshot = (contextId: string, prefix: string): PullRequestDiffSnapshot => {
+    const value = tenThousandLineT301Snapshot();
+    return {
+      ...value,
+      contextId,
+      files: value.files.map((file, index) => ({
+        ...file,
+        fileId: `${prefix}-${index}`,
+        newPath: `src/${prefix}-${index}.ts`
+      }))
+    };
+  };
+  const createCommit = (contextId: string, snapshot: PullRequestDiffSnapshot): ReviewStateCommit => {
+    const files: ReviewContextState["files"] = {};
+    for (const file of snapshot.files) {
+      files[`persisted-${file.fileId}`] = {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId: `persisted-${file.fileId}`,
+        currentPath: file.newPath!, previousPaths: [], revisionId: snapshot.headSha,
+        modifiedReviewed: [], originalReviewedByDiff: {}, lineCount: 100,
+        updatedAt: "2026-08-21T00:00:00.000Z"
+      };
+    }
+    for (let index = 0; index < 10_000; index += 1) {
+      files[`unrelated-${index}`] = {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId: `unrelated-${index}`,
+        currentPath: `unrelated/${index}.ts`, previousPaths: [], revisionId: snapshot.headSha,
+        modifiedReviewed: [], originalReviewedByDiff: {}, lineCount: 1,
+        updatedAt: "2026-08-21T00:00:00.000Z"
+      };
+    }
+    return {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: {
+        ...t301Context(snapshot.baseSha, snapshot.headSha), contextId, files
+      },
+      globalState: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: "github.com/ssaattww/RevMem",
+        currentRevisionId: snapshot.headSha, files: {}, updatedAt: "2026-08-21T00:00:00.000Z"
+      }
+    };
+  };
+  const old = makeSnapshot("github-pr:example#79-old", "old");
+  const current = makeSnapshot("github-pr:example#79-current", "current");
+  const commits = new Map([[old.contextId, createCommit(old.contextId, old)], [current.contextId, createCommit(current.contextId, current)]]);
+  const repository: PullRequestReviewRuntimeRepository = {
+    load: async (target: ReviewStateRepositoryTarget) => structuredClone(commits.get(target.contextId)),
+    commit: async () => undefined
+  };
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository, requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  for (const snapshot of [old, current]) runtime.register({
+    repositoryId: "github.com/ssaattww/RevMem", repositoryRoot: "/repo", fileSystemPathSemantics: "posix", snapshot,
+    readTextContent: async () => ({ kind: "found", content: "x\n".repeat(100) })
+  });
+  const stale = runtime.activateProgress(old.contextId).then(
+    () => undefined,
+    (error: unknown) => error
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await runtime.activateProgress(current.contextId);
+  assert.match(String(await stale), /cancelled|superseded/i);
+  const effective = runtime.progress.getEffectiveProgress();
+  assert.equal(effective.totalLineCount, 10_000);
+  assert.equal(effective.files.length, 100, "the Tree owns only current diff-file projection, never 10,000 unrelated persisted files");
+  assert.ok(effective.files.every((file) => file.raw.path.startsWith("src/current-")), "only one current generation reaches the production Tree swap");
+});
+
+test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts provider without stale publication", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t607-ifr002-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  const revision = "b".repeat(40);
+  await Promise.all(Array.from({ length: 256 }, async (_, index) =>
+    writeFile(path.join(repositoryRoot, `f-${index}.ts`), "opened\n", "utf8")
+  ));
+  let aborting = true;
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService({ userGlobs: [] }),
+    readPullRequestHeadFiles: async () => Array.from({ length: 256 }, (_, index) => ({ path: `f-${index}.ts`, revisionId: revision, content: "開😀\n".repeat(128) })),
+    fileSystemPathSemantics: "posix",
+    yieldControl: () => { if (aborting) controller.abort(); }
+  });
+  const controller = new AbortController();
+  source.setContext({ context: { kind: "pull-request", label: "#79", detail: "T607", baseRevision: "a".repeat(40), headRevision: revision, selection: { kind: "pull-request", repositoryId: "repo-t607", repositoryRoot, contextId: "github-pr:repo-t607#79", pullRequestNumber: 79, headRevision: revision } }, progress: undefined });
+  await assert.rejects(source.recalculate(controller.signal), /AbortError|superseded/u);
+  aborting = false;
+  const fresh = await source.recalculate();
+  assert.equal(fresh?.progress.files.length, 256);
+  assert.equal(fresh?.openedFileCount, 256, "the source publishes only its fresh owner-scoped evidence after abort");
+
+  let oldAborted = false;
+  let publishes = 0;
+  const vscode = { EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 } };
+  const reviewContexts = loadWithVscode<typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js")>("../../src/ui/review-contexts/vscode-review-contexts-runtime.js", vscode);
+  const provider = new reviewContexts.ReviewContextsTreeProvider({
+    load: async (signal) => {
+      for (let index = 0; index < 256; index += 1) {
+        if (signal?.aborted) { oldAborted = true; throw new DOMException("superseded", "AbortError"); }
+        if (index % 128 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      return Array.from({ length: 256 }, (_, index) => ({ context: { contextId: `saved-${index}`, kind: "branch", repositoryId: "repo", displayName: `saved-${index}`, branch: { refName: "main", headRevision: revision }, files: {}, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z", schemaVersion: REVIEW_RANGE_SCHEMA_VERSION }, label: `saved-${index}`, current: false })) as never;
+    },
+    publishLoaded: async () => { publishes += 1; return undefined; }
+  });
+  const stale = provider.refresh().then(
+    () => undefined,
+    (error: unknown) => error
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await provider.refresh();
+  assert.ok(await stale instanceof DOMException);
+  assert.equal(oldAborted, true);
+  assert.equal(provider.getChildren().length, 256, "only the current saved-context projection reaches the runtime provider");
+  assert.equal(publishes, 1, "cache ownership/publish belongs to the accepted generation exactly once");
+  provider.dispose();
+});
+
+test("T607 IFR003 fences same-line-count document edits at descriptor, session I/O, and commit", async () => {
+  interface Editor { readonly lineCount: number; version: number; }
+  const baseContext: ReviewContextState = { ...t301Context("a".repeat(40), "b".repeat(40)), kind: "branch", branch: { refName: "main", headRevision: "b".repeat(40) }, pullRequest: undefined, files: {} };
+  const baseGlobal: RepositoryGlobalState = { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: baseContext.repositoryId, currentRevisionId: "b".repeat(40), files: {}, updatedAt: baseContext.updatedAt };
+  const extension = loadWithVscode<typeof import("../../src/extension.js")>("../../src/extension.js", {});
+  for (const boundary of ["descriptor", "session", "commit"] as const) {
+    const editor: Editor = { lineCount: 10, version: 1 };
+    let commits = 0;
+    const loader = extension.createNormalEditorReviewCommandSessionLoader({
+      captureGeneration: (value: Editor) => value.version,
+      isCurrentGeneration: (value: Editor, generation: number) => value.version === generation,
+      toDocumentDescriptor: async (value: Editor) => { if (boundary === "descriptor") value.version += 1; return { uri: "file:///same-line-count.ts" }; },
+      openSession: async () => {
+        if (boundary === "session") editor.version += 1;
+        return { contextState: baseContext, globalState: baseGlobal, target: { fileId: "f", currentPath: "same-line-count.ts", revisionId: baseGlobal.currentRevisionId, lineCount: 10 }, committer: { commit: async () => { commits += 1; } } };
+      },
+      selectedContext: () => undefined
+    });
+    const service = new NormalEditorReviewCommandService<Editor>({
+      getLineCount: (value) => value.lineCount, getSelections: () => [{ anchor: { line: 0, character: 0 }, active: { line: 0, character: 0 } }],
+      openSession: async (value) => {
+        const session = await loader(value);
+        if (boundary === "commit") editor.version += 1;
+        return session;
+      }, confirmWholeFileOperation: async () => true, requestHistory: async () => undefined
+    });
+    await assert.rejects(service.markSelectionReviewed(editor), /superseded/u, `${boundary} boundary rejects a same-line-count stale document`);
+    assert.equal(commits, 0, `${boundary} boundary allows no stale load/apply/commit`);
+  }
+});
+
+test("T607 IFR004 applies actual activation decorations only for the current Unicode 10,000-line generation", async () => {
+  interface Editor { readonly id: string; readonly uri: string; version: number; }
+  class DecorationType implements DecorationDisposable { public dispose(): void {} }
+  const intervals = Array.from({ length: 2_048 }, (_, index) => ({ startLine: index * 4, endLineExclusive: index * 4 + 1 }));
+  const target: ReviewStateFileTarget = { fileId: "unicode", currentPath: "src/😀.ts", revisionId: "r607", lineCount: 10_000, contentHash: "sha256:unicode" };
+  const contexts = Array.from({ length: 3 }, (_, index): ReviewContextState => ({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: `context-${index}`, kind: "workspace", repositoryId: "repo", displayName: `Context ${index}`, workspace: { workspaceId: `workspace-${index}`, snapshotRevision: "r607" }, files: { [target.fileId]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId: target.fileId, currentPath: target.currentPath, previousPaths: [], revisionId: target.revisionId, modifiedReviewed: intervals, originalReviewedByDiff: {}, contentHash: target.contentHash, lineCount: target.lineCount, updatedAt: "2026-08-21T00:00:00.000Z" } }, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z" }));
+  const [first, second] = ["first", "second"].map((id) => ({ id, uri: "file:///repo/src/%F0%9F%98%80.ts", version: 1 }));
+  const applies: Array<{ readonly id: string; readonly count: number }> = [];
+  let work = 0;
+  const extension = loadWithVscode<typeof import("../../src/extension.js")>("../../src/extension.js", {});
+  const load = extension.createNormalEditorDecorationLoadHandler({
+    toDocumentDescriptor: async (editor: Editor, isCurrent) => isCurrent() ? { uri: editor.uri, version: editor.version } : undefined,
+    loadForDecoration: async () => ({ contextState: contexts[0]!, globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: "repo", currentRevisionId: "r607", files: {}, updatedAt: "2026-08-21T00:00:00.000Z" }, target }),
+    selectedContext: () => undefined,
+    workBudget: { maxDecorationsPerStage: 128, yieldControl: () => { work += 1; } }
+  });
+  const host: NormalEditorDecorationHost<Editor, DecorationType> = {
+    getVisibleEditors: () => [first, second], isDiffEditor: () => false,
+    getSettings: () => ({ showGlobalReviewed: true, showGutterIcon: true, showOverviewRuler: true }),
+    loadDecorations: (editor, show, context) => load(editor, show, context), createDecorationType: () => new DecorationType(),
+    setDecorations: async (editor, _type, decorations, context) => { if (context.isCurrent() && !context.signal.aborted) applies.push({ id: editor.id, count: decorations.length }); },
+    onDidChangeVisibleEditors: () => ({ dispose(): void {} }), onDidChangeActiveEditor: () => ({ dispose(): void {} }), onDidChangeSettings: () => ({ dispose(): void {} }), showDecorationError: () => undefined
+  };
+  const controller = new NormalEditorDecorationController(host, { maxDecorationsPerStage: 128, yieldControl: () => { work += 1; } });
+  await controller.start();
+  const stale = controller.refreshEditor(first);
+  first.version += 1;
+  await controller.refreshEditor(first);
+  await stale;
+  assert.deepEqual(applies.map((entry) => entry.id), ["first", "second", "first"], "split editors receive one current host apply; superseded work never applies");
+  assert.ok(applies.every((entry) => entry.count === 2_048));
+  assert.ok(work >= 48, "model, host-copy, and apply preparation are checkpointed at the shared 128-item budget");
+  controller.dispose();
 });

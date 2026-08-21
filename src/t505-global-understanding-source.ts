@@ -130,7 +130,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
       candidatePaths.add(canonicalPath);
     }
-    const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths);
+    const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths, signal);
     assertCurrent();
     const availablePaths = new Set(candidatePaths);
     for (const path of pullRequestHeadPaths) {
@@ -269,7 +269,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
   private async capturePullRequestHeadFiles(
     owner: T505GlobalUnderstandingOwner,
-    candidatePaths: ReadonlySet<string>
+    candidatePaths: ReadonlySet<string>,
+    signal?: AbortSignal
   ): Promise<ReadonlySet<string>> {
     if (owner.target.kind !== "pull-request") return new Set<string>();
 
@@ -291,7 +292,16 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const seen = new Set<string>();
     const acceptedPaths = new Set<string>();
 
+    let pending = 0;
+    const checkpoint = async (): Promise<void> => {
+      if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+      if (++pending < 128) return;
+      pending = 0;
+      await this.yieldControl();
+      if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    };
     for (const snapshot of snapshots) {
+      await checkpoint();
       const sourcePath = requireCanonicalRepositoryRelativePath(snapshot.path, this.pathSemantics);
       if (this.dependencies.exclusionPolicy.evaluate({ path: sourcePath, isBinary: false }).excluded) continue;
       const canonicalPath = this.canonicalEvidencePath(sourcePath);
@@ -306,16 +316,25 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
       let evidence = parsed.get(canonicalPath);
       if (evidence === undefined) {
-        const lines = snapshot.content.split(/\r\n|\r|\n/u);
         const nonEmptyLines: number[] = [];
-        for (let line = 0; line < lines.length; line += 1) {
-          if (lines[line]!.trim().length > 0) nonEmptyLines.push(line);
+        let line = 0;
+        let nonEmpty = false;
+        for (let index = 0; index < snapshot.content.length; index += 1) {
+          const character = snapshot.content[index]!;
+          if (character === "\r" || character === "\n") {
+            if (nonEmpty) nonEmptyLines.push(line);
+            line += 1; nonEmpty = false;
+            if (character === "\r" && snapshot.content[index + 1] === "\n") index += 1;
+          } else if (character.trim().length > 0) nonEmpty = true;
+          await checkpoint();
         }
-        const contentHash = this.stableHash.digest(snapshot.content);
+        if (nonEmpty) nonEmptyLines.push(line);
+        const contentHash = await this.stableHash.digestCooperatively(snapshot.content, 128, this.yieldControl, () => signal?.aborted !== true);
+        if (contentHash === undefined) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
         evidence = {
           path: canonicalPath,
           revisionId: owner.currentRevisionId,
-          lineCount: lines.length,
+          lineCount: line + 1,
           nonEmptyLines,
           contentHash,
           cacheKey: `pr-head:${owner.target.repositoryId}:${owner.target.contextId}:${owner.currentRevisionId}:${canonicalPath}:${contentHash}`

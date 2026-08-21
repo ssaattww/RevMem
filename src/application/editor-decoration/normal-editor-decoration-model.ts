@@ -150,6 +150,24 @@ const subtractIntervalsCooperatively = async (
   return output;
 };
 
+const unionIntervalsCooperatively = async (
+  left: readonly LineInterval[], right: readonly LineInterval[], work: CooperativeWork
+): Promise<LineInterval[] | undefined> => {
+  const output: LineInterval[] = [];
+  let leftIndex = 0; let rightIndex = 0;
+  const append = (interval: LineInterval): void => {
+    const previous = output[output.length - 1];
+    if (previous === undefined || interval.startLine > previous.endLineExclusive) output.push({ ...interval });
+    else if (interval.endLineExclusive > previous.endLineExclusive) output[output.length - 1] = { startLine: previous.startLine, endLineExclusive: interval.endLineExclusive };
+  };
+  while (leftIndex < left.length || rightIndex < right.length) {
+    if (!await work.item()) return undefined;
+    const takeLeft = rightIndex >= right.length || (leftIndex < left.length && compareIntervals(left[leftIndex]!, right[rightIndex]!) <= 0);
+    append(takeLeft ? left[leftIndex++]! : right[rightIndex++]!);
+  }
+  return output;
+};
+
 const appendDecorationsCooperatively = async (
   output: NormalEditorReviewedDecoration[], intervals: readonly LineInterval[], source: NormalEditorDecorationSource, label: string, reviewedAt: string, globalActive: boolean, work: CooperativeWork
 ): Promise<boolean> => {
@@ -548,7 +566,7 @@ export async function createNormalEditorDecorationModelIncrementally(
       if (otherInactive === undefined || otherActive === undefined) return undefined;
       const label = contextLabel(otherContext);
       if (!await appendDecorationsCooperatively(decorations, otherInactive, "other-context", label, file.updatedAt, false, work) || !await appendDecorationsCooperatively(decorations, otherActive, "other-context", label, file.updatedAt, true, work)) return undefined;
-      const combined = await normalizedIntervalsCooperatively([...occupied, ...visible], input.target.lineCount, work);
+      const combined = await unionIntervalsCooperatively(occupied, visible, work);
       if (combined === undefined) return undefined;
       occupied = combined;
     }
@@ -558,7 +576,11 @@ export async function createNormalEditorDecorationModelIncrementally(
       if (globalOnly === undefined || !await appendDecorationsCooperatively(decorations, globalOnly, "global", "Global", global.file.updatedAt, true, work)) return undefined;
     }
   }
-  let sorted = decorations.map((decoration, index) => ({ decoration, index }));
+  let sorted: Array<{ readonly decoration: NormalEditorReviewedDecoration; readonly index: number }> = [];
+  for (let index = 0; index < decorations.length; index += 1) {
+    if (!await work.item()) return undefined;
+    sorted.push({ decoration: decorations[index]!, index });
+  }
   const compare = (left: typeof sorted[number], right: typeof sorted[number]): number =>
     left.decoration.interval.startLine - right.decoration.interval.startLine ||
     left.decoration.interval.endLineExclusive - right.decoration.interval.endLineExclusive ||
@@ -575,5 +597,11 @@ export async function createNormalEditorDecorationModelIncrementally(
     }
     sorted = next;
   }
-  return work.current() ? sorted.map((item) => item.decoration) : undefined;
+  if (!work.current()) return undefined;
+  const result: NormalEditorReviewedDecoration[] = [];
+  for (const item of sorted) {
+    if (!await work.item()) return undefined;
+    result.push(item.decoration);
+  }
+  return result;
 }

@@ -6,6 +6,7 @@ import {
   DocumentReviewStateSessionProvider,
   type DocumentEditorReviewDescriptor
 } from "./adapters/document-review-state/index";
+import type { ReviewStateTransaction } from "./core/review-state/index";
 import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   createNodeLocalGitAdapter
@@ -33,7 +34,8 @@ import {
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
 import {
-  NormalEditorReviewCommandService
+  NormalEditorReviewCommandService,
+  type NormalEditorReviewStateSession
 } from "./application/review-commands/index";
 import { ReviewHistoryRecorder } from "./application/review-history/index";
 import {
@@ -271,6 +273,42 @@ export const createNormalEditorDecorationLoadHandler = <Editor, Descriptor>(
   return model === undefined || !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
 };
 
+/**
+ * Shared command activation seam. It carries one immutable document generation
+ * from descriptor acquisition through state I/O and the atomic commit boundary.
+ */
+export interface NormalEditorReviewCommandSessionComposition<Editor, Descriptor, Generation> {
+  readonly captureGeneration: (editor: Editor) => Generation;
+  readonly isCurrentGeneration: (editor: Editor, generation: Generation) => boolean;
+  readonly toDocumentDescriptor: (editor: Editor) => Promise<Descriptor | undefined>;
+  readonly openSession: (
+    descriptor: Descriptor,
+    selectedContext: SelectedReviewContext | undefined
+  ) => Promise<NormalEditorReviewStateSession>;
+  readonly selectedContext: () => SelectedReviewContext | undefined;
+}
+
+export const createNormalEditorReviewCommandSessionLoader = <Editor, Descriptor, Generation>(
+  composition: NormalEditorReviewCommandSessionComposition<Editor, Descriptor, Generation>
+) => async (editor: Editor): Promise<NormalEditorReviewStateSession> => {
+  const generation = composition.captureGeneration(editor);
+  const isCurrent = (): boolean => composition.isCurrentGeneration(editor, generation);
+  const descriptor = await composition.toDocumentDescriptor(editor);
+  if (descriptor === undefined || !isCurrent()) throw new Error("Document review command was superseded.");
+  const session = await composition.openSession(descriptor, composition.selectedContext());
+  if (!isCurrent()) throw new Error("Document review command was superseded.");
+  return {
+    ...session,
+    isCurrent,
+    committer: {
+      commit: async (transaction: Readonly<ReviewStateTransaction>) => {
+        if (!isCurrent()) throw new Error("Document review command was superseded.");
+        await session.committer.commit(transaction);
+      }
+    }
+  };
+};
+
 const uniqueVisibleIntervals = (
   documentUri: string,
   appliedDecorations: ReadonlyMap<
@@ -494,11 +532,13 @@ export function activate(
       contentHash
     };
   };
-  const openDocumentSession = async (editor: vscode.TextEditor) => {
-    const descriptor = await toDocumentDescriptor(editor);
-    if (descriptor === undefined) throw new Error("Document decoration request was superseded.");
-    return documentSessionProvider.open(descriptor, selectedContext);
-  };
+  const openDocumentSession = createNormalEditorReviewCommandSessionLoader({
+    captureGeneration: (editor: vscode.TextEditor) => ({ document: editor.document, version: editor.document.version }),
+    isCurrentGeneration: (editor, generation) => editor.document === generation.document && editor.document.version === generation.version,
+    toDocumentDescriptor,
+    openSession: (descriptor, selected) => documentSessionProvider.open(descriptor, selected),
+    selectedContext: () => selectedContext
+  });
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`

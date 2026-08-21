@@ -31,14 +31,14 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T606はmainへ統合済み。T606はPR #77のsquash merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closed。T607は実装中、T608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T606はmainへ統合済み。T606はPR #77のsquash merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closed。T607はIFR follow-up evidence完了・independent closure待ち、T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80 independent final reviewがfrozen head `c4a99db`でIFR001〜IFR006を検出、同一batch follow-up実装中）
-- 次の工程: T607 IFR001〜IFR006の通常finding-limited verification
+- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80 independent final reviewがfrozen head `c4a99db`でIFR001〜IFR006を検出、R2 actual production fixtureは78/78 focused Green・static gates Green）
+- 次の工程: T607 IFR001〜IFR004/IFR006のindependent finding-limited closure
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: PR #80 independent final review はfrozen technical head `c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3`でIFR001〜IFR006を検出した。historical normal R4 evidenceは保持し、follow-up実装後に同一normal reviewerがfinding-limited verificationを行う。exact-head `pull_request` CIはfollow-upの最終headまでheld、Markdown wordingはunsupported。independent report: `reports/issue-79-t607-independent-final-review-20260821110000.md`。
+- T607: PR #80 independent final review はfrozen technical head `c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3`でIFR001〜IFR006を検出した。R2 follow-up `reports/issue-79-t607-independent-followup-r2-20260821130000.md` はactual production fixture、`npm run test:t607` 78/78、static gates Greenを記録した。historical normal R4 evidenceは保持し、next actionは同一independent reviewerのIFR001〜IFR004/IFR006 finding-limited closure。exact-head `pull_request` CIはfollow-upの最終headまでheld、Markdown wordingはunsupported。
 - T608: 未着手
 
 ### 終了チェックポイント

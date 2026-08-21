@@ -619,7 +619,9 @@ export class PullRequestReviewRuntime<Uri> {
     this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
     const calculationInput = {
       diff: registration.snapshot,
-      reviewContext: this.projectContextFileIdentities(registration, persisted),
+      reviewContext: signal === undefined
+        ? this.projectContextFileIdentities(registration, persisted)
+        : await this.projectContextFileIdentitiesCooperatively(registration, persisted, signal),
       exclusionPolicy: this.options.getExclusionPolicy(),
     };
     const progress = signal === undefined
@@ -657,6 +659,40 @@ export class PullRequestReviewRuntime<Uri> {
       };
     }
     return projected;
+  }
+
+  private async projectContextFileIdentitiesCooperatively(
+    registration: PullRequestReviewRuntimeRegistration,
+    persisted: ReviewStateCommit,
+    signal: AbortSignal
+  ): Promise<ReviewStateCommit["contextState"]> {
+    let pending = 0;
+    const checkpoint = async (): Promise<void> => {
+      throwIfProgressCancelled(signal);
+      if (++pending < 128) return;
+      pending = 0;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      throwIfProgressCancelled(signal);
+    };
+    const filesByPath = new Map<string, { readonly fileId: string; readonly file: ReviewStateCommit["contextState"]["files"][string] }>();
+    for (const [fileId, file] of Object.entries(persisted.contextState.files)) {
+      await checkpoint();
+      const path = this.canonicalRepositoryPath(registration, file.currentPath);
+      if (filesByPath.has(path)) throw new Error(`Persisted PR context has conflicting file identities for ${path}`);
+      filesByPath.set(path, { fileId, file });
+    }
+    const projectedFiles: ReviewStateCommit["contextState"]["files"] = {};
+    for (const diffFile of registration.snapshot.files) {
+      await checkpoint();
+      const logicalPath = diffFile.newPath ?? diffFile.oldPath;
+      if (logicalPath === undefined) continue;
+      const matching = filesByPath.get(this.canonicalRepositoryPath(registration, logicalPath));
+      if (matching === undefined) continue;
+      // Progress needs only changed-file identities; retain no cloned unrelated state.
+      projectedFiles[diffFile.fileId] = { ...matching.file, fileId: diffFile.fileId, currentPath: logicalPath };
+    }
+    throwIfProgressCancelled(signal);
+    return { ...persisted.contextState, files: projectedFiles };
   }
 
   private persistedContextFileForPath(
@@ -728,6 +764,9 @@ export class PullRequestReviewRuntime<Uri> {
     if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
       return { kind: "unsupported", reason: { kind: "binary" } };
     }
+    // Excluded files have a zero effective denominator and never need content
+    // acquisition merely to prepare a Tree node.
+    if (file.excluded) return { kind: "reviewable" };
     const filePath = file.newPath ?? file.oldPath;
     if (filePath === undefined) {
       throw new Error(`PR progress file has no content path: ${file.fileId}`);
