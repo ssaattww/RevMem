@@ -9,13 +9,13 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
 - 現在のタスク: T607 / Issue #79 large-workload performance and incremental UI
-- 次のタスク: T607 の deterministic workload、bounded/incremental Tree 公開、selection-to-decoration budget contract、回帰 harness を実装・検証する
+- 次のタスク: T607-R001〜R006 のfollow-up実装をsame reviewerがfinding-limited closureする
 - 実装状態: T405、T406、T506、T603〜T606はmainへ統合済み。T606はPR #77をsquash mergeし、merge commit `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Greenで統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t607-performance-incremental-ui`
-- Pull Request: 未作成（T607 implementation 中。normal review、independent review、exact-head CI、merge は未実施）
-- T607 implementation report: `reports/issue-79-t607-implementation-20260821094238.md`。Red/Green、before/after advisory measurement、required local validation、normal review pendingを記録
+- Pull Request: #80（technical HEAD `a695806250550be7dc3bd99650ef2e440833892e`、initial normal reviewは`fail`、T607-R001〜R006 open。exact-head runs `32433837209` / `32433825463` はdesign structure failure）
+- T607 implementation report: `reports/issue-79-t607-implementation-20260821094238.md` はhistorical initial evidenceである。normal review: `reports/issue-79-t607-normal-review-20260821095112.md`。follow-up implementation: `reports/issue-79-t607-normal-review-followup-20260821143000.md`、same reviewer closure待ち
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -365,7 +365,7 @@
 | T604 | 完了 | L | cross-window storage lock and bounded cleanupを実装した | T104、T403、T603 | PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み。 |
 | T605 | 完了 | L | multi-root、Remote SSH、Dev Containers、Codespacesを想定したworkspace側Extension HostとURI・storage境界を実装・試験した | T103、T202、T401、T601、T604 | PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み。 |
 | T606 | 完了 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。 |
-| T607 | 実装完了・normal review待ち | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最小最適化を行う | T301、T504、T606 | generation-safeなbounded/incremental Tree公開、入力非阻害、selection-to-decorationの決定的work/budget contractとadvisory計測、T301/T504/T606のproduction compositionを含む回帰 harness、`test:t607`とCI wiringを完了。report: `reports/issue-79-t607-implementation-20260821094238.md`。normal review以降は未実施 |
+| T607 | normal review closure待ち | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能計測と最小最適化を行う | T301、T504、T606 | PR #80 initial normal review `fail`のT607-R001〜R006 follow-up実装を完了。historical head `a695806250550be7dc3bd99650ef2e440833892e` のexact-head CI `32433837209` / `32433825463` はdesign structure failure。new head CIは未実施。same reviewer closureが必要 |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607 | AC-01〜AC-24の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
 
 ## 受け入れ条件トレーサビリティ
@@ -388,4 +388,4 @@
 
 ## 次回開始時の選択
 
-T607 / Issue #79 のinitial implementationは完了し、normal review待ちである。T606 は PR #77 のsquash merge commit `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済みである。T607 のreport/handoffは `reports/issue-79-t607-implementation-20260821094238.md` と `handoffs/issue-79-t607-implementation-20260821094238.yaml`。CI、independent review、mergeは未実施である。
+T607 / Issue #79 はPR #80のinitial normal review `fail`（T607-R001〜R006）のfollow-up実装を完了し、same reviewer finding-limited closure待ちである。historical technical HEAD `a695806250550be7dc3bd99650ef2e440833892e` のexact-head CI `32433837209` / `32433825463` はdesign structure failure。follow-up reportは `reports/issue-79-t607-normal-review-followup-20260821143000.md`。CI、independent review、mergeは未実施である。

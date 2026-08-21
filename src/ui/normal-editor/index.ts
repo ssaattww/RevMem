@@ -13,5 +13,7 @@ export {
   NormalEditorDecorationController,
   type DecorationDisposable,
   type NormalEditorDecorationHost,
+  type NormalEditorDecorationLoadContext,
+  type NormalEditorDecorationWorkBudget,
   type NormalEditorDecorationSettings
 } from "./normal-editor-decoration-controller";

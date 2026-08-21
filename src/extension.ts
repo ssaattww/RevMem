@@ -446,23 +446,31 @@ export function activate(
     getVisibleEditors: () => vscode.window.visibleTextEditors,
     isDiffEditor: (editor) => isVisibleDiffEditor(editor),
     getSettings: () => readDecorationSettings(),
-    loadDecorations: async (editor, showGlobalReviewed) => {
+    loadDecorations: async (editor, showGlobalReviewed, loadContext) => {
       if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
         return [];
       }
-      const session = await documentSessionProvider.loadForDecoration(
-        toDocumentDescriptor(editor),
-        selectedContext
-      );
-      if (session === undefined) {
+      if (!loadContext.isCurrent() || loadContext.signal.aborted) {
         return [];
       }
-      return createNormalEditorDecorationModel({
+      const descriptor = toDocumentDescriptor(editor);
+      if (!loadContext.isCurrent() || loadContext.signal.aborted) {
+        return [];
+      }
+      const session = await documentSessionProvider.loadForDecoration(
+        descriptor,
+        selectedContext
+      );
+      if (session === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) {
+        return [];
+      }
+      const model = createNormalEditorDecorationModel({
         contextState: session.contextState,
         globalState: session.globalState,
         target: session.target,
         showGlobalReviewed
       });
+      return !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
     },
     createDecorationType: (settings) => {
       const options: vscode.DecorationRenderOptions = {

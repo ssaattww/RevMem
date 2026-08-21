@@ -14,6 +14,23 @@ export interface NormalEditorDecorationSettings {
   readonly showOverviewRuler: boolean;
 }
 
+/** Deterministic work budget for copying a loaded decoration model before one VS Code apply. */
+export interface NormalEditorDecorationWorkBudget {
+  readonly maxDecorationsPerStage: number;
+  readonly yieldControl: () => void | Promise<void>;
+}
+
+/** Identity and cancellation fence passed through the production decoration load path. */
+export interface NormalEditorDecorationLoadContext {
+  readonly signal: AbortSignal;
+  readonly isCurrent: () => boolean;
+}
+
+const DEFAULT_WORK_BUDGET: NormalEditorDecorationWorkBudget = Object.freeze({
+  maxDecorationsPerStage: 128,
+  yieldControl: async () => await Promise.resolve()
+});
+
 /** Platform boundary used to keep decoration orchestration independent from VS Code. */
 export interface NormalEditorDecorationHost<
   Editor,
@@ -28,7 +45,8 @@ export interface NormalEditorDecorationHost<
   /** Loads certain, non-overlapping decoration ranges for one visible editor. */
   loadDecorations(
     editor: Editor,
-    showGlobalReviewed: boolean
+    showGlobalReviewed: boolean,
+    context: NormalEditorDecorationLoadContext
   ): Promise<readonly NormalEditorReviewedDecoration[]>;
   /** Creates the theme-aware platform decoration type for one settings snapshot. */
   createDecorationType(settings: NormalEditorDecorationSettings): DecorationType;
@@ -68,13 +86,19 @@ export class NormalEditorDecorationController<
   private decorationType: DecorationType | undefined;
   private readonly subscriptions: DecorationDisposable[] = [];
   private readonly requestGeneration = new Map<Editor, number>();
+  private readonly requestCancellation = new Map<Editor, AbortController>();
   private nextGeneration = 0;
   private started = false;
   private disposed = false;
 
   public constructor(
-    private readonly host: NormalEditorDecorationHost<Editor, DecorationType>
-  ) {}
+    private readonly host: NormalEditorDecorationHost<Editor, DecorationType>,
+    private readonly workBudget: NormalEditorDecorationWorkBudget = DEFAULT_WORK_BUDGET
+  ) {
+    if (!Number.isSafeInteger(workBudget.maxDecorationsPerStage) || workBudget.maxDecorationsPerStage <= 0) {
+      throw new RangeError("maxDecorationsPerStage must be a positive integer.");
+    }
+  }
 
   /** Registers editor/settings listeners and performs the initial visible-editor refresh. */
   public async start(): Promise<void> {
@@ -104,6 +128,7 @@ export class NormalEditorDecorationController<
     const visibleEditors = this.host.getVisibleEditors();
     for (const editor of this.requestGeneration.keys()) {
       if (!visibleEditors.includes(editor)) {
+        this.requestCancellation.get(editor)?.abort();
         this.requestGeneration.set(editor, ++this.nextGeneration);
       }
     }
@@ -124,6 +149,9 @@ export class NormalEditorDecorationController<
     }
 
     const generation = ++this.nextGeneration;
+    this.requestCancellation.get(editor)?.abort();
+    const cancellation = new AbortController();
+    this.requestCancellation.set(editor, cancellation);
     this.requestGeneration.set(editor, generation);
 
     if (this.host.isDiffEditor(editor)) {
@@ -135,14 +163,22 @@ export class NormalEditorDecorationController<
     try {
       const decorations = await this.host.loadDecorations(
         editor,
-        settings.showGlobalReviewed
+        settings.showGlobalReviewed,
+        {
+          signal: cancellation.signal,
+          isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
+        }
       );
-      if (!this.canApply(editor, generation, decorationType)) {
+      const projected = await this.copyDecorationsIncrementally(
+        decorations,
+        () => this.canApply(editor, generation, decorationType, cancellation)
+      );
+      if (projected === undefined || !this.canApply(editor, generation, decorationType, cancellation)) {
         return;
       }
-      this.host.setDecorations(editor, decorationType, decorations);
+      this.host.setDecorations(editor, decorationType, projected);
     } catch (error) {
-      if (!this.canApply(editor, generation, decorationType)) {
+      if (!this.canApply(editor, generation, decorationType, cancellation)) {
         return;
       }
       this.host.setDecorations(editor, decorationType, []);
@@ -168,14 +204,34 @@ export class NormalEditorDecorationController<
   private canApply(
     editor: Editor,
     generation: number,
-    decorationType: DecorationType
+    decorationType: DecorationType,
+    cancellation?: AbortController
   ): boolean {
     return (
       !this.disposed &&
       this.decorationType === decorationType &&
       this.requestGeneration.get(editor) === generation &&
+      (cancellation === undefined || (this.requestCancellation.get(editor) === cancellation && !cancellation.signal.aborted)) &&
       this.host.getVisibleEditors().includes(editor)
     );
+  }
+
+  private async copyDecorationsIncrementally(
+    decorations: readonly NormalEditorReviewedDecoration[],
+    isCurrent: () => boolean
+  ): Promise<readonly NormalEditorReviewedDecoration[] | undefined> {
+    const projected: NormalEditorReviewedDecoration[] = [];
+    for (let start = 0; start < decorations.length; start += this.workBudget.maxDecorationsPerStage) {
+      if (!isCurrent()) return undefined;
+      const end = Math.min(start + this.workBudget.maxDecorationsPerStage, decorations.length);
+      for (let index = start; index < end; index += 1) {
+        const decoration = decorations[index]!;
+        projected.push({ ...decoration, interval: { ...decoration.interval } });
+      }
+      await this.workBudget.yieldControl();
+      if (!isCurrent()) return undefined;
+    }
+    return projected;
   }
 
   private async refreshSettings(): Promise<void> {
@@ -191,6 +247,7 @@ export class NormalEditorDecorationController<
 
   private invalidateAllRequests(): void {
     for (const editor of this.requestGeneration.keys()) {
+      this.requestCancellation.get(editor)?.abort();
       this.requestGeneration.set(editor, ++this.nextGeneration);
     }
   }

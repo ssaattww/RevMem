@@ -197,6 +197,28 @@ test("T607 starts every visible-editor decoration load before waiting for a slow
   await started;
 });
 
+test("T607 bounds large-document interval projection and applies one complete model to each visible split editor", async () => {
+  const first: FakeEditor = { id: "same-document-first" };
+  const second: FakeEditor = { id: "same-document-second" };
+  const intervals = Array.from({ length: 2_048 }, (_, index) => decoration(index * 2, index * 2 + 1));
+  const host = new FakeHost();
+  host.visibleEditors = [first, second];
+  host.models.set(first, intervals);
+  host.models.set(second, intervals);
+  let yields = 0;
+  const controller = new NormalEditorDecorationController(host, {
+    maxDecorationsPerStage: 128,
+    yieldControl: () => { yields += 1; }
+  });
+
+  await controller.start();
+
+  assert.equal(host.loadCalls.length, 2, "both visible editors traverse their document identity/state/model load independently");
+  assert.equal(host.setCalls.length, 2, "each split editor receives one complete VS Code decoration apply");
+  assert.ok(host.setCalls.every((call) => call.decorations.length === 2_048));
+  assert.ok(yields >= 32, "large interval projection is checkpointed by the deterministic decoration work budget");
+});
+
 test("controller ignores a stale async result after the editor stops being visible", async () => {
   const editor: FakeEditor = { id: "normal" };
   let resolveModel: ((value: readonly NormalEditorReviewedDecoration[]) => void) | undefined;

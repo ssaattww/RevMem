@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（initial implementation完了、normal review待ち）
-- 次の工程: T607 normal review
+- 実装中タスク: T607 / Issue #79 large-workload performance and incremental UI（PR #80 normal review findings T607-R001〜R006のfollow-up実装完了）
+- 次の工程: T607-R001〜R006のsame reviewer finding-limited closure
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: Issue #79のinitial implementation完了、normal review待ち。report: `reports/issue-79-t607-implementation-20260821094238.md`。
+- T607: PR #80 initial normal review `fail`のT607-R001〜R006 follow-up実装完了、same reviewer closure待ち。historical technical HEAD `a695806250550be7dc3bd99650ef2e440833892e` のexact-head CI `32433837209` / `32433825463` はdesign structure failureであり、新head CIは未実施。follow-up report: `reports/issue-79-t607-normal-review-followup-20260821143000.md`。
 - T608: 未着手
 
 ### 終了チェックポイント

@@ -479,7 +479,7 @@ export class PullRequestReviewRuntime<Uri> {
           }
           assertCurrent();
           const { snapshot } = calculated.registration;
-          this.progress.replaceSnapshot({
+          await this.progress.replaceSnapshotIncrementally({
             snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
             contextId: snapshot.contextId,
             baseSha: snapshot.baseSha,
@@ -488,7 +488,12 @@ export class PullRequestReviewRuntime<Uri> {
             fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
             progress: calculated.progress,
             lineReviewabilityByFileId,
+          }, {
+            maxFilesPerStage: 128,
+            yieldControl: async () => await Promise.resolve(),
+            isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, registration) && !cancellation.signal.aborted,
           });
+          assertCurrent();
         },
         { maxAttempts: 3, signal: cancellation.signal },
       );

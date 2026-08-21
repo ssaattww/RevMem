@@ -4,8 +4,8 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: uncommitted
-status: implementation_complete_normal_review_pending
+implementation_head: a695806250550be7dc3bd99650ef2e440833892e
+status: followup_implementation_complete_normal_closure_pending
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
@@ -23,4 +23,8 @@ measurement:
   incremental_total_ms: 5.87
   deterministic_yields: 156
   note: "advisory only; regression gate is work/count budget, not wall-clock"
-next_request: "Run normal review for the uncommitted implementation; do not treat local validation as CI or merge evidence."
+normal_review: "PR #80 initial normal review failed with T607-R001 through T607-R006; report: reports/issue-79-t607-normal-review-20260821095112.md"
+ci: "exact-head runs 32433837209 and 32433825463 failed design-document-structure; do not treat focused CI as executed"
+followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
+followup_validation: "Red once TS2554 decoration work budget constructor; Green once npm run test:t607 65 pass/0 fail; git diff --check, build, contracts, lint, architecture positive/negative passed locally"
+next_request: "Request same-reviewer finding-limited closure for T607-R001 through R006 only; do not introduce new findings, run CI, or merge."

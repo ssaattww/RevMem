@@ -955,13 +955,13 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 
 ### 19.1 大規模UI公開と測定契約
 
-PR Progress と Global Understanding の Tree projection は、完全な入力 snapshot を先に検証し、generation ごとに bounded stage で公開する。stage は決定的な item budget で区切り、各境界で scheduler へ制御を戻す。新しい generation、cancel、dispose、または失敗が発生した場合、古い stage は以後 publish せず、現在の selection/open target も古い node を受理しない。部分 stage は同じ generation の確定済み prefix だけを表示し、最終 stage だけが complete snapshot として扱われる。
+PR Progress と Global Understanding の Tree projection は、完全な入力 snapshot を先に検証し、generation ごとに bounded stageで処理する。stage は決定的な item budget で区切り、各境界でschedulerへ制御を戻す。新しいgeneration、cancel、dispose、または失敗が発生した場合、古いstageは以後publishせず、現在のselection/open targetも古いnodeを受理しない。Global Treeの部分stageは同じgenerationの確定済みprefixだけを表示し、PR Progressは全validation/projection後の一回のcurrent-generation swapまで前のcomplete Treeを保持する。
 
-各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存の T301 progress、T504 Global aggregation、T606 cancellation/error boundary の contract を変更しない。
+各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。
 
 通常 editor の selection-to-decoration は visible editor のみを対象とし、同一 editor の最新generationだけを適用する。100ms は wall-clock-only の自動gateにせず、装飾作成・適用までの最大同期 work と visible-editor 数を決定的な budget として検証する。実測は advisory evidence とし、環境、workload、回数、before/after 値を implementation report へ記録する。
 
-T607 の性能回帰 harness は少なくとも 10,000 changed-line PR、large repository aggregation、多数の reviewed interval、visible-editor decoration を同じ fixture generation と work/count budget で再現する。benchmark は時間だけで成否を決めず、stage 数、stage 当たりの最大 item 数、yield 回数、stale-generation の非公開、memory を不必要に二重保持しないことを検証する。
+性能回帰 harness は少なくとも 10,000 changed-line PR、large repository aggregation、多数の reviewed interval、visible-editor decoration を同じ fixture generation と work/count budget で再現する。benchmark は時間だけで成否を決めず、stage 数、stage 当たりの最大 item 数、yield 回数、stale-generation の非公開、memory を不必要に二重保持しないことを検証する。validation、sorting、projection、status summary、decoration descriptor/hash、interval model、host apply を含む各同期段階は同じ明示budgetに収める。
 
 Git command結果を最終的に完全なstringとして必要とする既存application contractは維持するため、streamingはchild-process pipeの消費方式を指し、巨大diffを無制限に保持してよいという意味ではない。追加のmemory上限またはincremental parserが必要になった場合は、実測に基づいて別途contractを定義する。
 

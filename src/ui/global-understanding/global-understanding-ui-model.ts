@@ -219,6 +219,42 @@ const createTreeModel = (
   })
 });
 
+const cooperativeSortFileNodes = async (
+  values: readonly GlobalUnderstandingFileNode[],
+  maxItems: number,
+  yieldControl: () => void | Promise<void>,
+  isCurrent: () => boolean
+): Promise<GlobalUnderstandingFileNode[] | undefined> => {
+  let source = [...values];
+  let target = new Array<GlobalUnderstandingFileNode>(source.length);
+  let pending = 0;
+  const step = async (): Promise<boolean> => {
+    pending += 1;
+    if (pending < maxItems) return isCurrent();
+    pending = 0;
+    await yieldControl();
+    return isCurrent();
+  };
+  for (let width = 1; width < source.length; width *= 2) {
+    for (let left = 0; left < source.length; left += width * 2) {
+      const middle = Math.min(left + width, source.length);
+      const right = Math.min(left + width * 2, source.length);
+      let first = left;
+      let second = middle;
+      for (let output = left; output < right; output += 1) {
+        if (first < middle && (second >= right || compareCodeUnits(source[first]!.path, source[second]!.path) <= 0)) {
+          target[output] = source[first++]!;
+        } else target[output] = source[second++]!;
+        if (!await step()) return undefined;
+      }
+    }
+    const previous = source;
+    source = target;
+    target = previous;
+  }
+  return source;
+};
+
 export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const validated = validateTreeSnapshot(snapshot);
   const files = validated.progress.files.map((file) => {
@@ -267,32 +303,45 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
     }
   }
   if (!isCurrent()) return undefined;
-  built.sort((left, right) => compareCodeUnits(left.path, right.path));
+  const sorted = await cooperativeSortFileNodes(
+    built,
+    options.maxFilesPerStage,
+    options.yieldControl,
+    isCurrent
+  );
+  if (sorted === undefined) return undefined;
   for (let end = options.maxFilesPerStage; end < built.length; end += options.maxFilesPerStage) {
     if (!isCurrent()) return undefined;
-    await options.onStage?.(createTreeModel(validated, built.slice(0, end)), false);
+    await options.onStage?.(createTreeModel(validated, sorted.slice(0, end)), false);
     if (!isCurrent()) return undefined;
     await options.yieldControl();
   }
   if (!isCurrent()) return undefined;
-  const complete = createTreeModel(validated, built);
+  const complete = createTreeModel(validated, sorted);
   await options.onStage?.(complete, true);
   return isCurrent() ? complete : undefined;
 };
 
 export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingStatusBarModel => {
-  const model = createGlobalUnderstandingTreeModel(snapshot);
-  const percent = formatPercent(model.summary.progress);
+  const { progress } = snapshot;
+  validateProgress(progress.reviewedNonEmptyLineCount, progress.totalNonEmptyLineCount, progress.progress, "Global understanding repository");
+  const openedFileCount = snapshot.openedFileCount ?? progress.files.length;
+  const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
+  requireCount(openedFileCount, "openedFileCount");
+  requireCount(unopenedFileCount, "unopenedFileCount");
+  requireCount(snapshot.excludedFileCount, "excludedFileCount");
+  requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
+  const percent = formatPercent(progress.progress);
   return {
-    text: `$(book) Global: ${percent} (${model.summary.reviewedNonEmptyLineCount}/${model.summary.totalNonEmptyLineCount})`,
+    text: `$(book) Global: ${percent} (${progress.reviewedNonEmptyLineCount}/${progress.totalNonEmptyLineCount})`,
     tooltip: [
       `Global理解率: ${percent}`,
-      `確認済み非空行: ${model.summary.reviewedNonEmptyLineCount}`,
-      `対象非空行: ${model.summary.totalNonEmptyLineCount}`,
-      `開いたことがあるファイル: ${model.diagnostics.openedFileCount}`,
-      `未オープンファイル: ${model.diagnostics.unopenedFileCount}`,
-      `除外ファイル: ${model.diagnostics.excludedFileCount}`,
-      `pruneした除外ディレクトリ: ${model.diagnostics.prunedExcludedDirectoryCount}`
+      `確認済み非空行: ${progress.reviewedNonEmptyLineCount}`,
+      `対象非空行: ${progress.totalNonEmptyLineCount}`,
+      `開いたことがあるファイル: ${openedFileCount}`,
+      `未オープンファイル: ${unopenedFileCount}`,
+      `除外ファイル: ${snapshot.excludedFileCount}`,
+      `pruneした除外ディレクトリ: ${snapshot.prunedExcludedDirectoryCount}`
     ].join("\n")
   };
 };
@@ -374,7 +423,7 @@ export class GlobalUnderstandingFileOpenController {
 export class GlobalUnderstandingRefreshController {
   private generation = 0;
   public constructor(private readonly source: GlobalUnderstandingRefreshSource, private readonly host: GlobalUnderstandingRefreshHost) {}
-  public invalidate(): void { this.generation += 1; }
+  public invalidate(): void { this.generation += 1; this.host.clear(); }
   public clear(): void { this.invalidate(); this.host.clear(); }
   public async refresh(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
@@ -393,6 +442,9 @@ export class GlobalUnderstandingRefreshController {
         snapshot,
         () => currentGeneration === this.generation && signal?.aborted !== true
       );
+      if (currentGeneration !== this.generation || signal?.aborted) {
+        return undefined;
+      }
       return snapshot;
     } catch (error) {
       if (currentGeneration !== this.generation) return undefined;

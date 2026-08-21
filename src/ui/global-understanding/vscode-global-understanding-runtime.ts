@@ -345,6 +345,9 @@ export const registerGlobalUnderstandingRuntime = (
     invalidate,
     clear,
     dispose: () => {
+      retryCancellation?.abort();
+      retryCancellation = undefined;
+      refreshController.clear();
       for (const registration of registrations) registration.dispose();
     }
   };
