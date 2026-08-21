@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: PR #80 independent final review はfrozen technical head `c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3`でIFR001〜IFR006を検出した。R2 follow-up `reports/issue-79-t607-independent-followup-r2-20260821130000.md` はactual production fixture、`npm run test:t607` 78/78、static gates Greenを記録した。historical normal R4 evidenceは保持し、next actionは同一independent reviewerのIFR001〜IFR004/IFR006 finding-limited closure。exact-head `pull_request` CIはfollow-upの最終headまでheld、Markdown wordingはunsupported。
+- T607: PR #80 independent final review はfrozen technical head `c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3`でIFR001〜IFR006を検出した。base `dca4447f44ffdc810216dcd929d7ed14993245ff` 上の未コミット R3 follow-up `reports/issue-79-t607-independent-finding-followup-r3-20260821150000.md` はactual T405 source/controller/tree と activation factory fixture、`npm run test:t607` 79/79、static gates Greenを記録した。historical normal R4 evidenceは保持し、next actionはtechnical commit freeze後の同一independent reviewerによるIFR001〜IFR004/IFR006 finding-limited closure。exact-head `pull_request` CIはその最終headまでheld、Markdown wordingはunsupported。
 - T608: 未着手
 
 ### 終了チェックポイント

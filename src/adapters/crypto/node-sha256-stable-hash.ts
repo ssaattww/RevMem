@@ -48,7 +48,7 @@ export class NodeSha256StableHash implements StableHash {
 
   /** Hashes document fragments without first materializing one large string. */
   public async digestFragmentsCooperatively(
-    fragments: Iterable<string>,
+    fragments: Iterable<string> | AsyncIterable<string>,
     maxCharactersPerStage: number,
     yieldControl: () => void | Promise<void>,
     isCurrent: () => boolean,
@@ -79,7 +79,7 @@ export class NodeSha256StableHash implements StableHash {
       }
       return true;
     };
-    for (const fragment of fragments) {
+    for await (const fragment of fragments) {
       const value = carried + fragment;
       carried = "";
       if (value.length > 0 && !await update(value, false)) return undefined;

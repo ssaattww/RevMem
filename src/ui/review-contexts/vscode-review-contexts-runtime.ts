@@ -180,28 +180,34 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     const controller = new AbortController();
     this.refreshController = controller;
     const generation = ++this.generation;
-    // The source owns the retryable acquisition; this method performs one
-    // publication only after that read has completed successfully.
-    let loaded = await runReviewContextsPureRead(
-      () => this.source.load(controller.signal, feedbackContext),
-      controller.signal,
-    );
-    if (hasOperationFeedbackFailure(feedbackContext)) {
+    try {
+      // The source owns the retryable acquisition; this method performs one
+      // publication only after that read has completed successfully.
+      let loaded = await runReviewContextsPureRead(
+        () => this.source.load(controller.signal, feedbackContext),
+        controller.signal,
+      );
+      if (hasOperationFeedbackFailure(feedbackContext)) {
+        if (generation === this.generation) this.clear();
+        return;
+      }
+      if (generation !== this.generation) return;
+      const published = await this.source.publishLoaded?.();
+      // A deferred cache write can change cache status or record a terminal
+      // storage failure. Never publish the pre-write projection in either case.
+      if (hasOperationFeedbackFailure(feedbackContext)) {
+        if (generation === this.generation) this.clear();
+        return;
+      }
+      if (generation !== this.generation) return;
+      if (published !== undefined) loaded = published;
+      this.items = [...loaded];
+      this.changed.fire();
+    } catch (error) {
+      // An old operation must never erase the newer accepted projection.
       if (generation === this.generation) this.clear();
-      return;
+      throw error;
     }
-    if (generation !== this.generation) return;
-    const published = await this.source.publishLoaded?.();
-    // A deferred cache write can change cache status or record a terminal
-    // storage failure. Never publish the pre-write projection in either case.
-    if (hasOperationFeedbackFailure(feedbackContext)) {
-      if (generation === this.generation) this.clear();
-      return;
-    }
-    if (generation !== this.generation) return;
-    if (published !== undefined) loaded = published;
-    this.items = [...loaded];
-    this.changed.fire();
   }
   /** Clears the list when its replacement cannot be proven current. */
   public clear(): void {
@@ -270,7 +276,7 @@ export function registerReviewContextsRuntime(
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
-    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
+    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   const mutate = async (
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     refreshDecorations = false,
@@ -290,7 +296,7 @@ export function registerReviewContextsRuntime(
       provider.clear();
       return;
     }
-    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
+    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
@@ -332,7 +338,7 @@ export function registerReviewContextsRuntime(
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true),
+    refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false),
     refreshWithErrorBoundary,
   };
 }

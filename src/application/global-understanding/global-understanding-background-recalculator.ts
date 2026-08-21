@@ -265,39 +265,6 @@ const validateLoadedFile = (
   }
 };
 
-const aggregateCooperatively = async (
-  files: readonly GlobalUnderstandingFileProgress[],
-  maxItems: number,
-  yieldControl: () => void | Promise<void>,
-  isCurrent: () => void
-): Promise<RepositoryGlobalUnderstandingProgress> => {
-  let pending = 0;
-  const checkpoint = async (): Promise<void> => {
-    isCurrent();
-    if (++pending < maxItems) return;
-    pending = 0;
-    await yieldControl();
-    isCurrent();
-  };
-  let source = [...files];
-  for (let width = 1; width < source.length; width *= 2) {
-    const next: GlobalUnderstandingFileProgress[] = [];
-    for (let start = 0; start < source.length; start += width * 2) {
-      let left = start; const leftEnd = Math.min(start + width, source.length);
-      let right = leftEnd; const rightEnd = Math.min(start + width * 2, source.length);
-      while (left < leftEnd || right < rightEnd) {
-        const takeLeft = right >= rightEnd || (left < leftEnd && source[left]!.path <= source[right]!.path);
-        next.push(takeLeft ? source[left++]! : source[right++]!);
-        await checkpoint();
-      }
-    }
-    source = next;
-  }
-  let reviewed = 0; let total = 0;
-  for (const file of source) { reviewed += file.reviewedNonEmptyLineCount; total += file.totalNonEmptyLineCount; await checkpoint(); }
-  return { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: source };
-};
-
 /**
  * Recalculates Global understanding asynchronously, prioritizing open files and yielding within source, post-load calculation, and between file chunks.
  */
@@ -330,13 +297,22 @@ export class GlobalUnderstandingBackgroundRecalculator {
     const snapshot = snapshotCalculationInput(input);
     const { repositoryId, currentRevisionId, globalByPath, ordered } = snapshot;
     const calculated: GlobalUnderstandingFileProgress[] = [];
+    let reviewedNonEmptyLineCount = 0;
+    let totalNonEmptyLineCount = 0;
     let cacheHitCount = 0;
     let calculatedFileCount = 0;
 
     const emit = async (complete: boolean): Promise<GlobalUnderstandingRecalculationProgress> => {
       assertCurrent();
       const event: GlobalUnderstandingRecalculationProgress = {
-        progress: await aggregateCooperatively(calculated, calculationWorkChunkItems, this.dependencies.yieldControl, assertCurrent),
+        // `calculated` is append-only for one request. Retaining it avoids
+        // recalculating every already-accepted 25-file prefix at each emit.
+        progress: {
+          reviewedNonEmptyLineCount,
+          totalNonEmptyLineCount,
+          progress: totalNonEmptyLineCount === 0 ? 1 : reviewedNonEmptyLineCount / totalNonEmptyLineCount,
+          files: calculated
+        },
         processedFileCount: calculated.length,
         totalFileCount: ordered.length,
         complete,
@@ -385,6 +361,8 @@ export class GlobalUnderstandingBackgroundRecalculator {
         if (cached !== undefined) {
           await loaded.validateCurrent?.();
           calculated.push(cached);
+          reviewedNonEmptyLineCount += cached.reviewedNonEmptyLineCount;
+          totalNonEmptyLineCount += cached.totalNonEmptyLineCount;
           cacheHitCount += 1;
           continue;
         }
@@ -398,6 +376,8 @@ export class GlobalUnderstandingBackgroundRecalculator {
         await loaded.validateCurrent?.();
         this.dependencies.cache.set(identity, evidenceKey, progress);
         calculated.push(progress);
+        reviewedNonEmptyLineCount += progress.reviewedNonEmptyLineCount;
+        totalNonEmptyLineCount += progress.totalNonEmptyLineCount;
         calculatedFileCount += 1;
       }
 

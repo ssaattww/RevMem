@@ -69,6 +69,13 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly diffHost: ReviewDiffEditorHost<Uri>;
   readonly openFile?: (uri: Uri) => Promise<void>;
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
+  /** Optional deterministic scheduler seam; production keeps the 128-item default. */
+  readonly progressWork?: {
+    readonly maxItems?: number;
+    readonly yieldControl?: () => void | Promise<void>;
+    readonly account?: (count: number) => void;
+    readonly onYield?: (completedItems: number) => void;
+  };
 }
 
 export interface PullRequestReviewCommandDependencies<Editor>
@@ -102,6 +109,10 @@ const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
 const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted) throw new DOMException("PR Progress refresh was superseded.", "AbortError");
 };
+
+interface ProgressWork {
+  item(): Promise<void>;
+}
 
 const sameRegistrationSnapshot = (
   left: PullRequestReviewRuntimeRegistration,
@@ -465,11 +476,13 @@ export class PullRequestReviewRuntime<Uri> {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
         async (feedbackContext) => {
-          const calculated = await this.calculateProgress(contextId, cancellation.signal);
+          const work = this.createProgressWork(cancellation.signal);
+          const calculated = await this.calculateProgress(contextId, cancellation.signal, work);
           assertCurrent();
           const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
           for (const file of calculated.progress.files) {
             assertCurrent();
+            await work.item();
             lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
               calculated.registration,
               file,
@@ -607,6 +620,7 @@ export class PullRequestReviewRuntime<Uri> {
   private async calculateProgress(
     contextId: string,
     signal?: AbortSignal,
+    work?: ProgressWork,
   ): Promise<CalculatedPullRequestProgress> {
     throwIfProgressCancelled(signal);
     const registration = this.requireRegistration(contextId);
@@ -621,14 +635,14 @@ export class PullRequestReviewRuntime<Uri> {
       diff: registration.snapshot,
       reviewContext: signal === undefined
         ? this.projectContextFileIdentities(registration, persisted)
-        : await this.projectContextFileIdentitiesCooperatively(registration, persisted, signal),
+        : await this.projectContextFileIdentitiesCooperatively(registration, persisted, signal, work ?? this.createProgressWork(signal)),
       exclusionPolicy: this.options.getExclusionPolicy(),
     };
     const progress = signal === undefined
       ? calculatePullRequestDiffProgress(calculationInput)
       : await calculatePullRequestDiffProgressCooperatively(calculationInput, {
-        maxWorkItems: 128,
-        yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve)),
+        maxWorkItems: this.progressWorkItemLimit(),
+        yieldControl: this.progressYieldControl(),
         isCurrent: () => !signal.aborted,
       });
     if (progress === undefined) {
@@ -664,26 +678,22 @@ export class PullRequestReviewRuntime<Uri> {
   private async projectContextFileIdentitiesCooperatively(
     registration: PullRequestReviewRuntimeRegistration,
     persisted: ReviewStateCommit,
-    signal: AbortSignal
+    signal: AbortSignal,
+    work: ProgressWork
   ): Promise<ReviewStateCommit["contextState"]> {
-    let pending = 0;
-    const checkpoint = async (): Promise<void> => {
-      throwIfProgressCancelled(signal);
-      if (++pending < 128) return;
-      pending = 0;
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      throwIfProgressCancelled(signal);
-    };
     const filesByPath = new Map<string, { readonly fileId: string; readonly file: ReviewStateCommit["contextState"]["files"][string] }>();
-    for (const [fileId, file] of Object.entries(persisted.contextState.files)) {
-      await checkpoint();
+    const persistedFiles = persisted.contextState.files;
+    for (const fileId in persistedFiles) {
+      if (!Object.hasOwn(persistedFiles, fileId)) continue;
+      await work.item();
+      const file = persistedFiles[fileId]!;
       const path = this.canonicalRepositoryPath(registration, file.currentPath);
       if (filesByPath.has(path)) throw new Error(`Persisted PR context has conflicting file identities for ${path}`);
       filesByPath.set(path, { fileId, file });
     }
     const projectedFiles: ReviewStateCommit["contextState"]["files"] = {};
     for (const diffFile of registration.snapshot.files) {
-      await checkpoint();
+      await work.item();
       const logicalPath = diffFile.newPath ?? diffFile.oldPath;
       if (logicalPath === undefined) continue;
       const matching = filesByPath.get(this.canonicalRepositoryPath(registration, logicalPath));
@@ -693,6 +703,34 @@ export class PullRequestReviewRuntime<Uri> {
     }
     throwIfProgressCancelled(signal);
     return { ...persisted.contextState, files: projectedFiles };
+  }
+
+  private progressWorkItemLimit(): number {
+    return this.options.progressWork?.maxItems ?? 128;
+  }
+
+  private progressYieldControl(): () => void | Promise<void> {
+    return this.options.progressWork?.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+  }
+
+  private createProgressWork(signal: AbortSignal): ProgressWork {
+    const limit = this.progressWorkItemLimit();
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 128) {
+      throw new RangeError("progressWork.maxItems must be a positive integer no greater than 128.");
+    }
+    let pending = 0;
+    return {
+      item: async (): Promise<void> => {
+        throwIfProgressCancelled(signal);
+        pending += 1;
+        this.options.progressWork?.account?.(1);
+        if (pending < limit) return;
+        this.options.progressWork?.onYield?.(pending);
+        pending = 0;
+        await this.progressYieldControl()();
+        throwIfProgressCancelled(signal);
+      }
+    };
   }
 
   private persistedContextFileForPath(

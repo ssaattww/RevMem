@@ -141,7 +141,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         assertCurrent();
       }
     }
-    const evidenceByPath = this.captureOpenedDocuments(owner);
+    const evidenceByPath = await this.captureOpenedDocuments(owner, signal);
     const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
     const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
     for (const [repositoryPath, evidence] of evidenceByPath) {
@@ -159,7 +159,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const globalState = persisted?.currentRevisionId === owner.currentRevisionId
-      ? this.projectGlobalStatePaths(persisted)
+      ? await this.projectGlobalStatePaths(persisted, signal)
       : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
     const source: GlobalUnderstandingFileSource = {
       load: async (repositoryPath, revisionId) => {
@@ -283,12 +283,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         })
       : await this.dependencies.readPullRequestHeadFiles(owner, candidatePaths);
     const key = this.requireActiveEvidenceKey(owner);
-    let parsed = this.pullRequestEvidenceByOwner.get(key);
-    if (parsed === undefined) {
-      parsed = new Map<string, LoadedGlobalUnderstandingFile>();
-      this.pullRequestEvidenceByOwner.set(key, parsed);
-    }
-    const retained = this.retainedOpenedEvidence(owner);
+    const parsed = new Map(this.pullRequestEvidenceByOwner.get(key));
+    const retained = new Map(this.retainedOpenedEvidence(owner));
     const seen = new Set<string>();
     const acceptedPaths = new Set<string>();
 
@@ -343,15 +339,22 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
       retained.set(canonicalPath, stableOpenedEvidence(evidence, canonicalPath));
     }
+    if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    this.pullRequestEvidenceByOwner.set(key, parsed);
+    this.openedEvidenceByOwner.set(key, retained);
     return acceptedPaths;
   }
 
-  private captureOpenedDocuments(
-    owner: T505GlobalUnderstandingOwner
-  ): ReadonlyMap<string, LoadedGlobalUnderstandingFile> {
-    const retained = this.retainedOpenedEvidence(owner);
+  private async captureOpenedDocuments(
+    owner: T505GlobalUnderstandingOwner,
+    signal?: AbortSignal
+  ): Promise<ReadonlyMap<string, LoadedGlobalUnderstandingFile>> {
+    const retained = new Map(this.retainedOpenedEvidence(owner));
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
+    let pending = 0;
     for (const snapshot of this.dependencies.readOpenDocuments?.(owner) ?? []) {
+      if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+      if (++pending >= 128) { pending = 0; await this.yieldControl(); }
       const canonicalPath = this.canonicalEvidencePath(snapshot.path);
       if (snapshot.revisionId !== owner.currentRevisionId) {
         throw new Error(`Open document revision does not match current owner revision: ${canonicalPath}`);
@@ -366,26 +369,36 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
     const combined = new Map(retained);
     for (const [repositoryPath, snapshot] of current) combined.set(repositoryPath, snapshot);
+    if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    this.openedEvidenceByOwner.set(this.requireActiveEvidenceKey(owner), retained);
     return combined;
   }
 
-  private projectGlobalStatePaths(
-    state: RepositoryGlobalState
-  ): RepositoryGlobalState {
+  private async projectGlobalStatePaths(
+    state: RepositoryGlobalState,
+    signal?: AbortSignal
+  ): Promise<RepositoryGlobalState> {
     const files: RepositoryGlobalState["files"] = {};
     const fileIdByPath = new Map<string, string>();
-    for (const [fileId, file] of Object.entries(state.files)) {
+    let pending = 0;
+    for (const fileId in state.files) {
+      if (!Object.hasOwn(state.files, fileId)) continue;
+      if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+      if (++pending >= 128) { pending = 0; await this.yieldControl(); }
+      const file = state.files[fileId]!;
       const currentPath = this.canonicalEvidencePath(file.currentPath);
       const existingFileId = fileIdByPath.get(currentPath);
       if (existingFileId !== undefined && existingFileId !== fileId) {
         throw new Error(`Persisted Global state has conflicting file identities for ${currentPath}`);
       }
       fileIdByPath.set(currentPath, fileId);
-      files[fileId] = {
-        ...file,
-        currentPath,
-        reviewed: file.reviewed.map((interval) => ({ ...interval }))
-      };
+      const reviewed = [] as typeof file.reviewed extends readonly (infer T)[] ? T[] : never[];
+      for (const interval of file.reviewed) {
+        if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+        if (++pending >= 128) { pending = 0; await this.yieldControl(); }
+        reviewed.push({ ...interval } as never);
+      }
+      files[fileId] = { ...file, currentPath, reviewed };
     }
     return {
       ...state,

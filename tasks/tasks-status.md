@@ -9,13 +9,13 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T406 GitHub PR障害・復旧統合試験（Issue #70、PR #71、merge commit `96057f9e`）
 - 現在のタスク: T607 / Issue #79 large-workload performance and incremental UI
-- 次のタスク: IFR001〜IFR004/IFR006のindependent finding-limited closure
+- 次のタスク: uncommitted R3 technical delta を commit freeze 後、IFR001〜IFR004/IFR006のindependent finding-limited closure
 - 実装状態: T405、T406、T506、T603〜T606はmainへ統合済み。T606はPR #77をsquash mergeし、merge commit `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Greenで統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/t607-performance-incremental-ui`
-- Pull Request: #80（technical head `7ce06c1`、report-normalized head `11d4c5d`。normal review `pass_with_held`でR001〜R006はすべてclosed。independent final review pending、exact-head `pull_request` CI held、Markdown wording unsupported）
-- T607 implementation report: `reports/issue-79-t607-implementation-20260821094238.md` はhistorical initial evidenceである。normal review: `reports/issue-79-t607-normal-review-20260821095112.md`、R4 closure: `reports/issue-79-t607-normal-finding-closure-r4-20260821104627.md`。independent final review: `reports/issue-79-t607-independent-final-review-20260821110000.md` がfrozen head `c4a99db`でIFR001〜IFR006を記録した。R2 follow-up `reports/issue-79-t607-independent-followup-r2-20260821130000.md` はactual production fixtureを追加し、78/78 focused Greenとstatic gates Greenを記録、同一independent reviewer closure待ち
+- Pull Request: #80（base `dca4447f44ffdc810216dcd929d7ed14993245ff` 上にR3 technical deltaが未コミット。normal review `pass_with_held`でR001〜R006はすべてclosed。same independent reviewer のIFR001〜IFR004/IFR006 closure pending、exact-head `pull_request` CI held、Markdown wording unsupported）
+- T607 implementation report: `reports/issue-79-t607-implementation-20260821094238.md` はhistorical initial evidenceである。normal review: `reports/issue-79-t607-normal-review-20260821095112.md`、R4 closure: `reports/issue-79-t607-normal-finding-closure-r4-20260821104627.md`。independent final review: `reports/issue-79-t607-independent-final-review-20260821110000.md` がfrozen head `c4a99db`でIFR001〜IFR006を記録した。R3 follow-up `reports/issue-79-t607-independent-finding-followup-r3-20260821150000.md` はactual T405 source/controller/tree と activation factory fixture、79/79 focused Green、static gates Greenを記録した。new technical SHAは未作成で同一independent reviewer closure待ち
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
