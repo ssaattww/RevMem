@@ -15,7 +15,7 @@
 - ブロッカー: なし
 - Gitブランチ: `task/issue-81-repository-encoding`
 - Pull Request: #82（draft。設計commit `68951cd`を公開済み。通常review 7 findingsの実装とlocal TDDは完了、finding限定closure・独立review・final exact-head CIは未完了）
-- T609 reports: `reports/issue-81-t609-normal-review-20260822013643.md`で通常review 7 findings（High 4、Medium 3）を一括確定。R2〜R15で4件closed後、R16で残るNR-004/006/007をactual `redetectPullRequest` cancel/stale非破壊、公開型旧shape互換として対応した。`test:t609` 51/51、actual Extension Hostのsingle-root・multi-root cancel/stale・restart-reopenはGreen。最新runnerのcleanup timeoutはheld。exact-head CI、full local equivalence、Markdown lintもheld。same reviewer closure待ち
+- T609 reports: `reports/issue-81-t609-normal-review-20260822013643.md`で通常review 7 findings（High 4、Medium 3）を一括確定。NR-004/006はR16でclosedし、R17でNR-007の公開runtime interface旧shape互換も実装した。`test:t609` 52/52、actual Extension Hostのsingle-root・multi-root cancel/stale・restart-reopenはGreen。最新runnerのcleanup timeout、exact-head CI、full local equivalence、Markdown lintはheld。same reviewerのNR-007 closure待ち
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -367,7 +367,7 @@
 | T606 | 完了 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。 |
 | T607 | 完了 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能測定と最小最適化を行う | T301、T504、T606 | PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607、T609、T610 | AC-01〜AC-24とIssue #81・#78の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
-| T609 | 通常review finding closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | 通常review `T609-NR-001`〜`T609-NR-007`のrequired actionを実装済み。`test:t609` 51/51、actual Host functional 3 phase Green、cleanup timeout held。同じsol high reviewerの残る3件限定closureへ進む |
+| T609 | 通常review finding closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | NR-004/006 closed、NR-007旧shape互換をR17で実装済み。`test:t609` 52/52、actual Host functional 3 phase Green、cleanup timeout held。同じsol high reviewerのNR-007限定closureへ進む |
 | T610 | 未着手 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607 | root全体を自動走査せず、開いたfileの所属folderまたは明示選択folderだけを計算する。停止folderはrestart後も強調表示され、file openでは自動再開せず、再開時に再検証する。親folderは直下fileと子folderの合計を部分集計として表示し、兄弟folderへ走査を拡張しない。focused、統合、Extension Host testと通常・独立reviewを通過する |
 
 ## 受け入れ条件トレーサビリティ

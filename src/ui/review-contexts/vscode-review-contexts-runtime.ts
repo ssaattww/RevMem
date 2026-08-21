@@ -247,8 +247,8 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 export interface RegisteredReviewContextsRuntime {
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
-  /** Test-only read-only snapshot of the accepted tree projection. */
-  getProjectionSnapshotForTest(): readonly ReviewContextListItem[];
+  /** Optional Test-only read-only snapshot of the accepted tree projection. */
+  getProjectionSnapshotForTest?(): readonly ReviewContextListItem[];
   dispose(): void;
 }
 

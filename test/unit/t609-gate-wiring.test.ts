@@ -122,14 +122,20 @@ test("T609 phase ownership keeps mixed encoding in single-root and repository ca
   assert.match(runtime, /getCancellationSnapshotForTest/u);
 });
 
-test("T609 contract fixture compiles a legacy Git revision mapping result once through the focused gate", async () => {
+test("T609 contract fixtures compile legacy mapping and Review Context runtime shapes once through the focused gate", async () => {
   const testConfig = await readFile(path.join(projectRoot, "tsconfig.test.json"), "utf8");
   const manifest = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as PackageManifest;
   const focused = manifest.scripts?.["test:t609"] ?? "";
-  const fixture = "type-fixtures/contracts/t609-git-context-revision-mapping-old-shape.fixture.ts";
+  const fixtures = [
+    "type-fixtures/contracts/t609-git-context-revision-mapping-old-shape.fixture.ts",
+    "type-fixtures/contracts/t609-registered-review-contexts-runtime-old-shape.fixture.ts",
+    "type-fixtures/contracts/t609-registered-t405-review-contexts-runtime-old-shape.fixture.ts",
+  ];
 
-  assert.equal(occurrences(testConfig, fixture), 1, "compile:test must include the old-shape compatibility fixture once");
-  assert.equal(commandOccurrences(focused, "npm run compile:test"), 1, "test:t609 must compile the compatibility fixture once");
+  for (const fixture of fixtures) {
+    assert.equal(occurrences(testConfig, fixture), 1, `compile:test must include ${fixture} once`);
+  }
+  assert.equal(commandOccurrences(focused, "npm run compile:test"), 1, "test:t609 must compile each compatibility fixture once");
 });
 
 test("T609 single-root reuses its no-active Current Context selection without an active-editor refresh", async () => {

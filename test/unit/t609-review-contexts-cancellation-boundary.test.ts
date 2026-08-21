@@ -102,8 +102,10 @@ test("T609-NR-004 cancel and stale typed outcomes run one command without termin
     assert.equal(redetects, 1, `${selection} runs the T405 command exactly once`);
     assert.equal(loads, loadsBeforeCancellation, `${selection} must not start a post-cancel provider refresh`);
     assert.equal(terminalErrors.length, 0, `${selection} must not report a terminal failure`);
+    const projection = registered.getProjectionSnapshotForTest?.();
+    assert.ok(projection, `${selection} Test-only projection snapshot must be available`);
     assert.deepEqual(
-      registered.getProjectionSnapshotForTest().map((item) => item.context.contextId),
+      projection.map((item) => item.context.contextId),
       ["accepted"],
       `${selection} must not clear the accepted provider projection`,
     );

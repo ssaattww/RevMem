@@ -659,7 +659,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         testReviewContextsRepositorySelection = selection;
       },
       getReviewContextsCancellationSnapshot: async () => {
-        const snapshot = await reviewContextsRuntimeRef.current?.getCancellationSnapshotForTest();
+        const snapshot = await reviewContextsRuntimeRef.current?.getCancellationSnapshotForTest?.();
         if (snapshot === undefined) throw new Error("T609 Review Contexts runtime is unavailable.");
         return {
           ...snapshot,

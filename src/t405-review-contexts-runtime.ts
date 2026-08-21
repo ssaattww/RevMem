@@ -156,8 +156,8 @@ extends RegisteredReviewContextsRuntime {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]>;
-  /** Test-only read-only evidence that repository selection preserved tree and Review State. */
-  getCancellationSnapshotForTest(): Promise<{
+  /** Optional Test-only read-only evidence that repository selection preserved tree and Review State. */
+  getCancellationSnapshotForTest?(): Promise<{
     readonly providerProjection: readonly string[];
     readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
   }>;
@@ -1140,7 +1140,7 @@ export function registerT405ReviewContextsRuntime(
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
       source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
     getCancellationSnapshotForTest: async () => ({
-      providerProjection: registered.getProjectionSnapshotForTest().map((item) => item.context.contextId),
+      providerProjection: (registered.getProjectionSnapshotForTest?.() ?? []).map((item) => item.context.contextId),
       authoritativeContextCounts: await Promise.all(source.repositoryIds().map(async (repositoryId) => ({
         repositoryId,
         count: (await repository.listRepositoryContexts(repositoryId)).length,
