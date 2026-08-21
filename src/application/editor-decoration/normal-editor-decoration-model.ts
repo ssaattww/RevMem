@@ -41,6 +41,7 @@ export interface NormalEditorDecorationModelWorkBudget {
   readonly maxWorkItems: number;
   readonly yieldControl: () => void | Promise<void>;
   readonly isCurrent: () => boolean;
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
 }
 
 class CooperativeWork {
@@ -54,6 +55,7 @@ class CooperativeWork {
     if (!this.budget.isCurrent()) return false;
     this.pending += 1;
     if (this.pending < this.budget.maxWorkItems) return true;
+    this.budget.accountWorkBatch?.({ kind: "projected-decoration-model", count: this.pending });
     this.pending = 0;
     await this.budget.yieldControl();
     return this.budget.isCurrent();

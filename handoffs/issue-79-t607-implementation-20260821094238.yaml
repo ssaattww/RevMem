@@ -4,13 +4,13 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3
-report_normalized_head: c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3
-status: independent_final_review_finding_r3_evidence_ready_uncommitted
+implementation_head: 68de40686cb5573fcbe71cd72bab1dcb027185f0
+report_normalized_head: 68de40686cb5573fcbe71cd72bab1dcb027185f0
+status: independent_final_review_finding_r4_evidence_ready_uncommitted
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
-  focused_green: "npm run test:t607: 79 pass, 0 fail after R3 actual T405 and activation-factory fixtures"
+  focused_green: "npm run test:t607: 79 pass, 0 fail after R4 actual production Review Contexts and PR decoration composition fixtures"
   build: "npm run build: passed"
   compile_test: "npm run compile:test: passed"
   contracts: "npm run typecheck:contracts: passed"
@@ -27,8 +27,8 @@ measurement:
 normal_review: "PR #80 initial normal review failed with T607-R001 through T607-R006; report: reports/issue-79-t607-normal-review-20260821095112.md"
 ci: "exact-head runs 32433837209 and 32433825463 failed design-document-structure; do not treat focused CI as executed"
 followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
-followup_validation: "R3 Red once: npm run compile:test exposed missing activation factory bookkeeping contract. Green: npm run test:t607 79 pass/0 fail. Actual T405 registration/source/controller/tree fixture covers >128 saved contexts, PR-HEAD cache mutation abort, accepted publish once, and stale nonpublication. Actual activation factory fixture covers 10,000 Unicode lines, DocumentReviewStateSessionProvider, 2,048 intervals, split editors, options, bookkeeping, and host apply. npm run build, lint, typecheck:contracts, architecture positive, architecture negative (expected 11), and git diff --check passed locally; CI not started."
+followup_validation: "R4 source failure is the R3 independent closure FAIL for IFR002/IFR004/IFR006; no synthetic local Red was manufactured after the minimal implementation was present. Green: npm run test:t607 79 pass/0 fail. Actual T405 registration/source/controller/tree fixture covers 256 saved contexts, <=128-item projection/sort, PR-HEAD cache mutation abort, dispose, exactly one terminal per started generation, and stale nonpublication. Actual activation factory PR-context fixture covers 10,000 Unicode lines, a 10,000 changed-line current PR diff, DocumentReviewStateSessionProvider, 2,048 intervals, split editors, reverse supersession, options, bookkeeping, and one current host apply per editor with zero stale I/O/apply. npm run build, lint, typecheck:contracts, architecture positive, architecture negative (expected 11), and git diff --check passed locally; CI not started."
 normal_closure: "Historical R4 PASS_WITH_HELD is preserved. Independent final review at c4a99db found IFR001-IFR006; its current erratum/follow-up must not rewrite historical closure evidence."
 independent_final_review: "FAIL at frozen head c4a99db2bf24286cd39e98efdceeaa9c1cd7a6c3: IFR001 PR cooperative scheduler, IFR002 Global/Review Contexts aggregation, IFR003 document snapshot invalidation, IFR004 decoration composition budget, IFR005 Unicode digest boundary, IFR006 provenance synchronization. Report: reports/issue-79-t607-independent-final-review-20260821110000.md"
-technical_working_tree: "uncommitted delta on dca4447f44ffdc810216dcd929d7ed14993245ff; report: reports/issue-79-t607-independent-finding-followup-r3-20260821150000.md"
-next_request: "Commit the complete IFR001-IFR006 follow-up batch, then ask the same independent reviewer for IFR001-IFR004/IFR006 finding-limited closure only. Do not run or wait for CI before the merge gate."
+technical_working_tree: "uncommitted R4 delta on committed base 68de40686cb5573fcbe71cd72bab1dcb027185f0; report: reports/issue-79-t607-independent-finding-followup-r4-20260821160000.md"
+next_request: "Commit the complete IFR002/IFR004/IFR006 R4 follow-up batch, then ask the same independent reviewer for IFR002/IFR004/IFR006 finding-limited closure only. IFR001/IFR003/IFR005 are closed and out of scope. Do not run or wait for CI before the merge gate."

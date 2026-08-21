@@ -18,6 +18,7 @@ export interface NormalEditorDecorationSettings {
 export interface NormalEditorDecorationWorkBudget {
   readonly maxDecorationsPerStage: number;
   readonly yieldControl: () => void | Promise<void>;
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
 }
 
 /** Identity and cancellation fence passed through the production decoration load path. */
@@ -241,6 +242,7 @@ export class NormalEditorDecorationController<
         const decoration = decorations[index]!;
         projected.push({ ...decoration, interval: { ...decoration.interval } });
       }
+      this.workBudget.accountWorkBatch?.({ kind: "copied-controller-decoration", count: end - start });
       await this.workBudget.yieldControl();
       if (!isCurrent()) return undefined;
     }

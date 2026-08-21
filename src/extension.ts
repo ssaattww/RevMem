@@ -44,6 +44,7 @@ import {
 } from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
 import type { RepositoryGlobalState, ReviewContextState } from "./core/contracts/index";
+import type { PullRequestDiffSnapshot } from "./core/pr-progress/index";
 import type { ReviewStateFileTarget } from "./core/review-state/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
@@ -97,6 +98,7 @@ export const hashNormalEditorDocumentIncrementally = async (
     readonly eol: string;
     readonly isCurrent: () => boolean;
     readonly yieldControl: () => void | Promise<void>;
+    readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
   },
   stableHash: Pick<NodeSha256StableHash, "digestFragmentsCooperatively">
 ): Promise<string | undefined> => {
@@ -106,6 +108,7 @@ export const hashNormalEditorDocumentIncrementally = async (
       yield input.lineAt(line);
       if (line + 1 < input.lineCount) yield input.eol;
       if ((line + 1) % DOCUMENT_LINES_PER_STAGE === 0) {
+        input.accountWorkBatch?.({ kind: "extracted-document-line", count: DOCUMENT_LINES_PER_STAGE });
         await input.yieldControl();
         if (!input.isCurrent()) return;
       }
@@ -150,6 +153,8 @@ export interface ReviewRangeRuntimePort {
   readonly reviewHistoryRecorder: ReviewHistoryRecorder;
   /** Applies an explicit Current Context identity to commands and decorations. */
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
+  /** Applies the immutable current-PR diff used by normal-editor decoration evidence. */
+  setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
   refreshVisibleEditorDecorations(): Promise<void>;
   /** Subscribes UI projections that must be recalculated after review-state commands. */
@@ -259,7 +264,10 @@ const toDecorationOptions = async (
     const decoration = decorations[index]!;
     const lastLine = decoration.interval.endLineExclusive - 1;
     options.push({ range: new vscode.Range(new vscode.Position(decoration.interval.startLine, 0), editor.document.lineAt(lastLine).range.end), hoverMessage: createHoverMessage(decoration) });
-    if ((index + 1) % workBudget.maxDecorationsPerStage === 0) await workBudget.yieldControl();
+    if ((index + 1) % workBudget.maxDecorationsPerStage === 0) {
+      workBudget.accountWorkBatch?.({ kind: "projected-decoration-option", count: workBudget.maxDecorationsPerStage });
+      await workBudget.yieldControl();
+    }
   }
   return context.signal.aborted || !context.isCurrent() ? undefined : options;
 };
@@ -271,6 +279,7 @@ export interface NormalEditorDecorationActivationComposition<Editor, Descriptor>
     readonly contextState: ReviewContextState;
     readonly globalState: RepositoryGlobalState;
     readonly target: ReviewStateFileTarget;
+    readonly currentPullRequestDiff?: Readonly<PullRequestDiffSnapshot>;
   } | undefined>;
   readonly selectedContext: () => SelectedReviewContext | undefined;
   readonly workBudget: NormalEditorDecorationWorkBudget;
@@ -292,10 +301,12 @@ export const createNormalEditorDecorationLoadHandler = <Editor, Descriptor>(
     contextState: session.contextState,
     globalState: session.globalState,
     target: session.target,
+    ...(session.currentPullRequestDiff === undefined ? {} : { currentPullRequestDiff: session.currentPullRequestDiff }),
     showGlobalReviewed
   }, {
     maxWorkItems: composition.workBudget.maxDecorationsPerStage,
     yieldControl: composition.workBudget.yieldControl,
+    accountWorkBatch: composition.workBudget.accountWorkBatch,
     isCurrent: () => loadContext.isCurrent() && !loadContext.signal.aborted
   });
   return model === undefined || !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
@@ -311,6 +322,7 @@ export const createNormalEditorDecorationActivation = (dependencies: {
   readonly context: Pick<vscode.ExtensionContext, "extensionUri">;
   readonly documentSessionProvider: Pick<DocumentReviewStateSessionProvider, "loadForDecoration">;
   readonly selectedContext: () => SelectedReviewContext | undefined;
+  readonly currentPullRequestDiff?: () => Readonly<PullRequestDiffSnapshot> | undefined;
   readonly reportError: (error: unknown) => void | Promise<void>;
   readonly workBudget?: NormalEditorDecorationWorkBudget;
 }): {
@@ -353,7 +365,8 @@ export const createNormalEditorDecorationActivation = (dependencies: {
       lineAt: (line) => document.lineAt(line).text,
       eol,
       isCurrent: stillCurrent,
-      yieldControl: workBudget.yieldControl
+      yieldControl: workBudget.yieldControl,
+      accountWorkBatch: workBudget.accountWorkBatch
     }, new NodeSha256StableHash());
     if (contentHash === undefined || !stillCurrent()) return undefined;
     return {
@@ -370,7 +383,16 @@ export const createNormalEditorDecorationActivation = (dependencies: {
   };
   const loadDecorations = createNormalEditorDecorationLoadHandler({
     toDocumentDescriptor,
-    loadForDecoration: (descriptor, selected) => dependencies.documentSessionProvider.loadForDecoration(descriptor, selected),
+    loadForDecoration: async (descriptor, selected) => {
+      const session = await dependencies.documentSessionProvider.loadForDecoration(descriptor, selected);
+      const currentPullRequestDiff = dependencies.currentPullRequestDiff?.();
+      return session === undefined ? undefined : {
+        ...session,
+        ...(currentPullRequestDiff === undefined
+          ? {}
+          : { currentPullRequestDiff })
+      };
+    },
     selectedContext: dependencies.selectedContext,
     workBudget
   });
@@ -406,7 +428,10 @@ export const createNormalEditorDecorationActivation = (dependencies: {
         if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
         const decoration = decorations[index]!;
         applied.push({ ...decoration, interval: { ...decoration.interval } });
-        if ((index + 1) % workBudget.maxDecorationsPerStage === 0) await workBudget.yieldControl();
+        if ((index + 1) % workBudget.maxDecorationsPerStage === 0) {
+          workBudget.accountWorkBatch?.({ kind: "copied-applied-decoration", count: workBudget.maxDecorationsPerStage });
+          await workBudget.yieldControl();
+        }
       }
       if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
       appliedDecorations.set(editor, applied);
@@ -641,6 +666,7 @@ export function activate(
     historyRecorder
   });
   let selectedContext: SelectedReviewContext | undefined;
+  let currentPullRequestDiff: Readonly<PullRequestDiffSnapshot> | undefined;
   const reportDecorationError = async (error: unknown): Promise<void> => {
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
@@ -650,6 +676,7 @@ export function activate(
     context,
     documentSessionProvider,
     selectedContext: () => selectedContext,
+    currentPullRequestDiff: () => currentPullRequestDiff,
     reportError: reportDecorationError
   });
   const { toDocumentDescriptor, controller: decorationController, appliedDecorations } = decorationActivation;
@@ -797,6 +824,9 @@ export function activate(
     reviewHistoryRecorder: historyRecorder,
     setSelectedContext: (selection) => {
       selectedContext = selection;
+    },
+    setCurrentPullRequestDiff: (snapshot) => {
+      currentPullRequestDiff = snapshot;
     },
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),

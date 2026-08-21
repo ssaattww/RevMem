@@ -63,7 +63,7 @@ import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
   findCurrentPullRequestContext,
-  projectReviewContexts,
+  projectReviewContextsCooperatively,
   type ReviewContextCacheStatus,
   type ReviewContextListItem,
   type ReviewContextListProgress,
@@ -125,6 +125,12 @@ export interface T405ReviewContextsRuntimeOptions {
       remote: PullRequestRemoteDataPort;
     }>,
   ) => PullRequestDiffAcquisitionPort;
+  /** Deterministic scheduler seam for large saved-context projection. */
+  readonly reviewContextsWork?: {
+    readonly maxItems?: number;
+    readonly yieldControl?: () => void | Promise<void>;
+    readonly accountBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
+  };
 }
 
 interface T405ReviewStateRepository {
@@ -285,7 +291,35 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     deferCachePublish?: boolean,
   ) => Promise<ReviewContextListProgress | undefined>,
     private readonly cacheStatusByContextId: ReadonlyMap<string, ReviewContextCacheStatus>,
+    private readonly workOptions: NonNullable<T405ReviewContextsRuntimeOptions["reviewContextsWork"]> = {},
   ) {}
+
+  private createWork(signal?: AbortSignal): {
+    item(kind: string): Promise<void>;
+    isCurrent(): boolean;
+  } {
+    const maxItems = this.workOptions.maxItems ?? 128;
+    if (!Number.isSafeInteger(maxItems) || maxItems <= 0 || maxItems > 128) {
+      throw new RangeError("reviewContextsWork.maxItems must be a positive integer no greater than 128.");
+    }
+    const yieldControl = this.workOptions.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    let pending = 0;
+    let pendingKind = "review-context";
+    const isCurrent = (): boolean => signal?.aborted !== true;
+    return {
+      isCurrent,
+      item: async (kind: string): Promise<void> => {
+        if (!isCurrent()) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
+        pendingKind = kind;
+        pending += 1;
+        if (pending < maxItems) return;
+        this.workOptions.accountBatch?.({ kind: pendingKind, count: pending });
+        pending = 0;
+        await yieldControl();
+        if (!isCurrent()) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
+      }
+    };
+  }
 
   public repositoryRoot(repositoryId: string): string | undefined {
     const roots = this.roots.get(repositoryId);
@@ -306,14 +340,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
-    let scheduledItems = 0;
-    const checkpoint = async (): Promise<void> => {
-      assertCurrent();
-      if (++scheduledItems < 128) return;
-      scheduledItems = 0;
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      assertCurrent();
-    };
+    const work = this.createWork(signal);
+    const checkpoint = (kind = "source-context"): Promise<void> => work.item(kind);
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
     const progressByContextId: Record<string, ReviewContextListProgress> = {};
@@ -321,7 +349,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
 
     for (const snapshot of await this.enumerateCurrentContexts(signal)) {
       assertCurrent();
-      await checkpoint();
+      await checkpoint("enumerated-current-context");
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
         this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
@@ -329,7 +357,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         assertCurrent();
         const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
         assertCurrent();
-        for (const context of synchronized) { saved.set(context.contextId, context); await checkpoint(); }
+        for (const context of synchronized) { saved.set(context.contextId, context); await checkpoint("collected-saved-context"); }
 
         if (owner.branchRef !== undefined) {
           const branch = synchronized.find((context) =>
@@ -351,7 +379,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
         for (const context of synchronized) {
-          await checkpoint();
+          await checkpoint("loaded-context-progress");
           if (context.kind !== "pull-request") continue;
           const progress = await this.progressFor(context, owner.repositoryRoot, signal, feedbackContext);
           assertCurrent();
@@ -366,9 +394,17 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const project = async (): Promise<readonly ReviewContextListItem[]> => {
       assertCurrent();
       const savedValues: ReviewContextState[] = [];
-      for (const context of saved.values()) { savedValues.push(context); await checkpoint(); }
+      for (const context of saved.values()) { savedValues.push(context); await checkpoint("copied-saved-context"); }
       assertCurrent();
-      return projectReviewContexts({ current, saved: savedValues, hiddenContextIds, progressByContextId, cacheByContextId: Object.fromEntries(this.cacheStatusByContextId) });
+      const cacheByContextId: Record<string, ReviewContextCacheStatus> = {};
+      for (const [contextId, status] of this.cacheStatusByContextId) {
+        cacheByContextId[contextId] = status;
+        await checkpoint("copied-cache-status");
+      }
+      return projectReviewContextsCooperatively(
+        { current, saved: savedValues, hiddenContextIds, progressByContextId, cacheByContextId },
+        { item: (kind) => checkpoint(kind), isCurrent: work.isCurrent }
+      );
     };
     this.pendingProjection = project;
     return project();
@@ -396,9 +432,11 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
     };
+    const work = this.createWork(signal);
     const candidates = new Map<string, CurrentContextUiSnapshot>();
     for (const candidate of localCandidates) {
       assertCurrent();
+      await work.item("collected-current-candidate");
       candidates.set(this.candidateKey(candidate), candidate);
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
@@ -442,10 +480,28 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       };
       candidates.set(this.candidateKey(projected), projected);
     }
-    return [...candidates.values()].sort((left, right) =>
-      this.kindOrder(left) - this.kindOrder(right) ||
-      left.context.label.localeCompare(right.context.label)
-    );
+    let sorted: CurrentContextUiSnapshot[] = [];
+    for (const candidate of candidates.values()) {
+      await work.item("copied-current-candidate");
+      sorted.push(candidate);
+    }
+    for (let width = 1; width < sorted.length; width *= 2) {
+      const next: CurrentContextUiSnapshot[] = [];
+      for (let start = 0; start < sorted.length; start += width * 2) {
+        let left = start; let right = Math.min(start + width, sorted.length);
+        const leftEnd = right; const rightEnd = Math.min(start + width * 2, sorted.length);
+        while (left < leftEnd || right < rightEnd) {
+          await work.item("sorted-current-candidate");
+          const takeLeft = right >= rightEnd || (left < leftEnd && (
+            this.kindOrder(sorted[left]!) - this.kindOrder(sorted[right]!) ||
+            sorted[left]!.context.label.localeCompare(sorted[right]!.context.label)
+          ) <= 0);
+          next.push(takeLeft ? sorted[left++]! : sorted[right++]!);
+        }
+      }
+      sorted = next;
+    }
+    return sorted;
   }
 
   private candidateKey(snapshot: CurrentContextUiSnapshot): string {
@@ -909,6 +965,7 @@ export function registerT405ReviewContextsRuntime(
     readSynchronizedRepository,
     progressFor,
     cacheStatusByContextId,
+    options.reviewContextsWork,
   );
   sourceRef.current = source;
 

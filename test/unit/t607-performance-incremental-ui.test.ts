@@ -33,7 +33,6 @@ import {
 } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { NormalEditorDecorationController, type DecorationDisposable, type NormalEditorDecorationHost, type NormalEditorDecorationSettings } from "../../src/ui/normal-editor/index";
 import type { ReviewStateFileTarget } from "../../src/core/review-state/index";
-import { markReviewedRanges } from "../../src/core/review-state/index";
 import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/t405-pull-request-review-runtime";
 import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
 
@@ -609,12 +608,14 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     writeFile(path.join(repositoryRoot, `f-${index}.ts`), "opened\n", "utf8")
   ));
   let aborting = true;
+  const globalBatches: Array<{ readonly kind: string; readonly count: number }> = [];
   const source = new T505GlobalUnderstandingSource({
     storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
     exclusionPolicy: new ReviewFileExclusionPolicyService({ userGlobs: [] }),
     readPullRequestHeadFiles: async () => Array.from({ length: 256 }, (_, index) => ({ path: `f-${index}.ts`, revisionId: revision, content: "開😀\n".repeat(128) })),
     fileSystemPathSemantics: "posix",
-    yieldControl: () => { if (aborting) controller.abort(); }
+    yieldControl: () => { if (aborting) controller.abort(); },
+    accountWorkBatch: (entry) => { globalBatches.push(entry); }
   });
   const controller = new AbortController();
   source.setContext({ context: { kind: "pull-request", label: "#79", detail: "T607", baseRevision: "a".repeat(40), headRevision: revision, selection: { kind: "pull-request", repositoryId: "repo-t607", repositoryRoot, contextId: "github-pr:repo-t607#79", pullRequestNumber: 79, headRevision: revision } }, progress: undefined });
@@ -623,6 +624,9 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   const fresh = await source.recalculate();
   assert.equal(fresh?.progress.files.length, 256);
   assert.equal(fresh?.openedFileCount, 256, "the source publishes only its fresh owner-scoped evidence after abort");
+  assert.ok(globalBatches.some((entry) => entry.kind === "mapped-included-file"));
+  assert.ok(globalBatches.some((entry) => entry.kind.includes("non-empty-line")));
+  assert.ok(globalBatches.every((entry) => entry.count <= 128), "Global snapshot, order, and opened-evidence copy share the <=128 scheduler");
 
   class Memento { private readonly values = new Map<string, unknown>(); public get<T>(name: string, fallback?: T): T | undefined { return this.values.get(name) as T | undefined ?? fallback; } public async update(name: string, value: unknown): Promise<void> { this.values.set(name, value); } }
   let provider: { getChildren(): readonly unknown[] } | undefined;
@@ -633,6 +637,10 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   const writeSignals: AbortSignal[] = [];
   const errors: unknown[] = [];
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
+  const contextBatches: Array<{ readonly kind: string; readonly count: number }> = [];
+  const feedbackLogs: Array<{ readonly event: string }> = [];
+  let disposeDuringLateProjection = false;
+  let registeredRef: { refresh(): Promise<void>; dispose(): void } | undefined;
   const vscode = {
     EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
     commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => { commands.set(id, handler); return { dispose(): void {} }; } },
@@ -655,6 +663,8 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     return new Response(JSON.stringify({ number: 79, title: "T607", html_url: "https://example.invalid/79", state: "open", merged_at: null, changed_files: 1, base: { sha: "a".repeat(40) }, head: { sha: revision } }), { status: 200 });
   };
   const t405 = loadWithVscode<typeof import("../../src/t405-review-contexts-runtime.js")>("../../src/t405-review-contexts-runtime.js", vscode);
+  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { feedbackLogs.push({ event: entry.event }); }, revealLog(): void {} });
+  setActiveOperationFeedback(feedback);
   try {
     const registered = t405.registerT405ReviewContextsRuntime({
       context: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") }, workspaceState: new Memento(), subscriptions: [] } as never,
@@ -663,8 +673,17 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
       getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 1, progress: 0 }),
       reviewStateRepository: { load: async () => undefined, loadGlobal: async () => undefined, listRepositoryContexts: async () => [...saved, pullRequest], commit: async () => undefined, create: async () => undefined },
       reviewHistoryRecorder: { recordContextCreated: async () => undefined, recordRevisionMapping: async () => undefined },
-      createPullRequestCacheStorage: () => ({ read: async () => undefined, write: async (_entry: unknown, _feedback: unknown, signal?: AbortSignal) => { writeSignals.push(signal!); if (phase === "pending") { phase = "success"; await refreshCurrent?.(); } if (signal?.aborted) throw new DOMException("superseded", "AbortError"); cachePublishes += 1; } })
+      createPullRequestCacheStorage: () => ({ read: async () => undefined, write: async (_entry: unknown, _feedback: unknown, signal?: AbortSignal) => { writeSignals.push(signal!); if (phase === "pending") { phase = "success"; await refreshCurrent?.(); } if (signal?.aborted) throw new DOMException("superseded", "AbortError"); cachePublishes += 1; } }),
+      reviewContextsWork: {
+        maxItems: 128,
+        yieldControl: () => undefined,
+        accountBatch: (entry) => {
+          contextBatches.push(entry);
+          if (disposeDuringLateProjection && entry.kind === "sorted-context") registeredRef?.dispose();
+        }
+      }
     });
+    registeredRef = registered;
     await new Promise<void>((resolve) => setImmediate(resolve));
     enabled = true;
     refreshCurrent = () => registered.refresh();
@@ -674,7 +693,17 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     assert.equal(cachePublishes, 1, "only the accepted generation owns the PR cache publish");
     assert.equal(provider?.getChildren().length, 258, "the actual T405 source projects more than 128 saved contexts into the registered Review Contexts Tree");
     assert.ok(commands.has("reviewRange.refreshReviewContexts"), "the controller/tree command composition is the extension registration path, not a fabricated source load");
-  } finally { globalThis.fetch = originalFetch; }
+    assert.ok(contextBatches.some((entry) => entry.kind === "sorted-context"));
+    assert.ok(contextBatches.every((entry) => entry.count <= 128), "saved-context collection, projection, and merge sort share the <=128 scheduler");
+    const cacheBeforeDispose = cachePublishes;
+    disposeDuringLateProjection = true;
+    await registered.refresh();
+    assert.equal(cachePublishes, cacheBeforeDispose, "dispose during late projection cannot transfer deferred cache ownership");
+    assert.equal(provider?.getChildren().length, 0, "disposed late projection publishes no stale Tree rows");
+    const starts = feedbackLogs.filter((entry) => entry.event === "started").length;
+    const terminals = feedbackLogs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
+    assert.equal(terminals, starts, "every actual Review Contexts feedback operation emits exactly one terminal");
+  } finally { setActiveOperationFeedback(undefined); globalThis.fetch = originalFetch; }
 });
 
 test("T607 IFR003 fences same-line-count document edits at descriptor, session I/O, and commit", async () => {
@@ -762,8 +791,10 @@ test("T607 IFR004 applies actual activation decorations only for the current Uni
 test("T607 IFR004 runs the exported activation factory through actual descriptor, state, options, bookkeeping, and split-editor host apply", async () => {
   const entries = new Map<string, ReviewStateCommit>();
   const key = (target: ReviewStateRepositoryTarget): string => `${target.kind}\0${target.repositoryId}\0${target.contextId}`;
+  let loads = 0;
   const repository: DocumentReviewStateRepository = {
     load: async (target) => {
+      loads += 1;
       const value = entries.get(key(target));
       return value === undefined ? undefined : structuredClone(value);
     },
@@ -781,15 +812,19 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
     identityService: new WorkspaceIdentityService(stableHash), repository,
     now: () => new Date("2026-08-21T00:00:00.000Z")
   });
+  const revision = "b".repeat(40);
+  const repositoryRoot = "C:\\repo";
+  const repositoryId = "repo";
+  const contextId = "github-pr:repo#79";
   const stateProvider = new DocumentReviewStateSessionProvider({
-    gitInspector: { inspectRepository: async () => ({ kind: "not-repository", gitVersion: "fixture" }) },
+    gitInspector: { inspectRepository: async () => ({ kind: "repository", repository: { gitVersion: "fixture", rootPath: repositoryRoot, repositoryId, branch: { kind: "branch", fullRef: "refs/heads/main" }, head: revision } }) },
     repository, workspaceProvider, stableHash, now: () => new Date("2026-08-21T00:00:00.000Z")
   });
   const unicode = Array.from({ length: 10_000 }, (_, index) => `行${index}😀`);
   const calls: Array<{ readonly editor: string; readonly options: number }> = [];
   const disposables = { dispose(): void {} };
   const document = {
-    uri: { scheme: "file", authority: "", path: "/repo/src/😀.ts", fsPath: "/repo/src/😀.ts", query: "", fragment: "", toString: () => "file:///repo/src/%F0%9F%98%80.ts" },
+    uri: { scheme: "file", authority: "", path: "/C:/repo/src/😀.ts", fsPath: "C:\\repo\\src\\😀.ts", query: "", fragment: "", toString: () => "file:///C:/repo/src/%F0%9F%98%80.ts" },
     version: 1, lineCount: unicode.length, eol: 1,
     lineAt: (line: number) => ({ text: unicode[line]!, range: { end: { line, character: unicode[line]!.length } } })
   };
@@ -810,43 +845,81 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
       onDidChangeVisibleTextEditors: () => disposables, onDidChangeActiveTextEditor: () => disposables
     },
     workspace: {
-      workspaceFolders: [{ uri: { scheme: "file", authority: "", path: "/repo", fsPath: "/repo", query: "", fragment: "" }, name: "repo" }],
+      workspaceFolders: [{ uri: { scheme: "file", authority: "", path: "/C:/repo", fsPath: repositoryRoot, query: "", fragment: "" }, name: "repo" }],
       getConfiguration: () => ({ get: <T>(_key: string, fallback: T): T => fallback }),
       onDidChangeConfiguration: () => disposables, onDidChangeTextDocument: () => disposables
     }
   };
   const extension = loadWithVscode<typeof import("../../src/extension.js")>("../../src/extension.js", vscode);
   let yields = 0;
+  const workBatches: Array<{ readonly kind: string; readonly count: number }> = [];
+  let pauseNextYield = false;
+  let markYieldStarted: (() => void) | undefined;
+  let releaseYield: (() => void) | undefined;
+  const yieldStarted = new Promise<void>((resolve) => { markYieldStarted = resolve; });
+  const selectedContext = { kind: "pull-request" as const, repositoryId, repositoryRoot, contextId, pullRequestNumber: 79, headRevision: revision };
+  const diff: PullRequestDiffSnapshot = {
+    contextId, baseSha: "a".repeat(40), headSha: revision, originalDiffId: `${"a".repeat(40)}..${revision}`,
+    files: [{ fileId: `repository-file:${stableHash.digest(["repository-file", repositoryId, "src/😀.ts"].join("\0"))}`, status: "added", newPath: "src/😀.ts", additions: 10_000, deletions: 0, hunks: [{ oldStart: 0, oldCount: 0, newStart: 1, newCount: 10_000, lines: Array.from({ length: 10_000 }, (_, index) => changedLine(index + 1)) }] }]
+  };
   const activation = extension.createNormalEditorDecorationActivation({
     context: { extensionUri: { path: "/extension" } } as never,
     documentSessionProvider: stateProvider,
-    selectedContext: () => undefined,
+    selectedContext: () => selectedContext,
+    currentPullRequestDiff: () => diff,
     reportError: () => undefined,
-    workBudget: { maxDecorationsPerStage: 128, yieldControl: () => { yields += 1; } }
+    workBudget: {
+      maxDecorationsPerStage: 128,
+      accountWorkBatch: (entry) => { workBatches.push(entry); },
+      yieldControl: async () => {
+        yields += 1;
+        if (!pauseNextYield) return;
+        pauseNextYield = false;
+        markYieldStarted?.();
+        await new Promise<void>((resolve) => { releaseYield = resolve; });
+      }
+    }
   });
   const descriptor = await activation.toDocumentDescriptor(first as never);
   assert.ok(descriptor, "the exact factory extracts and hashes the Unicode document before state I/O");
-  const initial = await stateProvider.open(descriptor!);
   const intervals = Array.from({ length: 2_048 }, (_, index) => ({ startLine: index * 4, endLineExclusive: index * 4 + 1 }));
-  await initial.committer.commit(markReviewedRanges({
-    contextState: initial.contextState, globalState: initial.globalState, target: initial.target, intervals,
-    occurredAt: "2026-08-21T00:00:00.000Z"
-  }));
-  const persisted = await stateProvider.loadForDecoration(descriptor!);
+  const fileId = `repository-file:${stableHash.digest(["repository-file", repositoryId, "src/😀.ts"].join("\0"))}`;
+  const file = { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId, currentPath: "src/😀.ts", previousPaths: [], revisionId: revision, modifiedReviewed: intervals, originalReviewedByDiff: {}, contentHash: descriptor!.contentHash, lineCount: 10_000, updatedAt: "2026-08-21T00:00:00.000Z" };
+  const globalFile = { fileId, currentPath: "src/😀.ts", revisionId: revision, reviewed: intervals, contentHash: descriptor!.contentHash, updatedAt: "2026-08-21T00:00:00.000Z" };
+  const workspaceContextId = "workspace:repo";
+  entries.set(key({ kind: "workspace", repositoryId, contextId: workspaceContextId }), {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: workspaceContextId, kind: "workspace", repositoryId, displayName: "Workspace", workspace: { workspaceId: repositoryId, snapshotRevision: revision }, files: {}, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z" },
+    globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: revision, files: {}, updatedAt: "2026-08-21T00:00:00.000Z" }
+  });
+  entries.set(key({ kind: "pull-request", repositoryId, contextId }), {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId, kind: "pull-request", repositoryId, displayName: "PR #79", pullRequest: { host: "github.com", owner: "example", repository: "repo", number: 79, state: "open", baseSha: "a".repeat(40), headSha: revision }, files: { [fileId]: file }, createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z" },
+    globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: revision, files: { [fileId]: globalFile }, updatedAt: "2026-08-21T00:00:00.000Z" }
+  });
+  assert.equal(entries.size, 2, "the production activation selects its PR owner while multiple review contexts coexist");
+  const persisted = await stateProvider.loadForDecoration(descriptor!, selectedContext);
   assert.equal(persisted?.contextState.files[persisted.target.fileId]?.modifiedReviewed.length, 2_048, "the actual state provider returns the committed interval owner to activation");
   const currentDescriptor = await activation.toDocumentDescriptor(first as never);
   assert.equal(currentDescriptor?.contentHash, persisted?.target.contentHash, "activation reuses the exact document identity accepted by the state provider");
-  const direct = await extension.createNormalEditorDecorationLoadHandler({
-    toDocumentDescriptor: activation.toDocumentDescriptor,
-    loadForDecoration: (value, selected) => stateProvider.loadForDecoration(value, selected),
-    selectedContext: () => undefined,
-    workBudget: { maxDecorationsPerStage: 128, yieldControl: () => undefined }
-  })(first as never, true, { signal: new AbortController().signal, isCurrent: () => true });
-  assert.equal(direct.length, 2_048, "the activation descriptor and actual provider produce the full model before the VS Code host boundary");
   await activation.controller.start();
   assert.deepEqual(calls.map((entry) => entry.editor), ["first", "second"], "each split visible editor receives exactly one current host apply through the production activation factory");
   assert.deepEqual(calls.map((entry) => entry.options), [2_048, 2_048], "actual Range/hover option projection and host bookkeeping retain every interval");
   assert.ok(yields >= 96, "10,000-line descriptor extraction plus 2,048 interval state/model/options/bookkeeping share <=128-item checkpoints");
   assert.equal(activation.appliedDecorations.get(first as never)?.length, 2_048, "the production applied-decoration cache owns the exact host-applied model");
+  const loadsBeforeSupersession = loads;
+  pauseNextYield = true;
+  const stale = activation.controller.refreshEditor(first as never);
+  await yieldStarted;
+  document.version += 1;
+  const current = activation.controller.refreshEditor(first as never);
+  releaseYield?.();
+  await Promise.all([stale, current]);
+  assert.equal(loads - loadsBeforeSupersession, 1, "the superseded descriptor performs zero state I/O while the reverse current generation loads once");
+  assert.deepEqual(calls.map((entry) => entry.editor), ["first", "second", "first"], "reverse supersession adds one current apply and zero stale applies");
+  assert.ok(workBatches.some((entry) => entry.kind === "extracted-document-line"));
+  assert.ok(workBatches.some((entry) => entry.kind === "projected-decoration-model"));
+  assert.ok(workBatches.some((entry) => entry.kind === "projected-decoration-option"));
+  assert.ok(workBatches.every((entry) => entry.count <= 128), "document, PR evidence, model, options, controller copy, and bookkeeping share <=128 counters");
   activation.controller.dispose();
 });

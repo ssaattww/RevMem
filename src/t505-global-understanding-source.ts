@@ -34,6 +34,8 @@ export interface T505GlobalUnderstandingSourceDependencies {
   ) => Promise<readonly PullRequestGlobalHeadFile[]>;
   readonly fileSystemPathSemantics?: FileSystemPathSemantics;
   readonly yieldControl?: () => void | Promise<void>;
+  /** Optional deterministic scheduler evidence for large-workload tests. */
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
 }
 
 const syntheticWorkspaceDocument = (workspace: ResourceUri): ResourceUri => ({
@@ -59,18 +61,6 @@ const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner): string =>
 
 const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner): string =>
   `${ownerIdentityKey(owner)}\0${owner.currentRevisionId}`;
-
-const stableOpenedEvidence = (
-  snapshot: LoadedGlobalUnderstandingFile,
-  path: string
-): LoadedGlobalUnderstandingFile => ({
-  path,
-  revisionId: snapshot.revisionId,
-  lineCount: snapshot.lineCount,
-  nonEmptyLines: [...snapshot.nonEmptyLines],
-  contentHash: snapshot.contentHash,
-  cacheKey: snapshot.cacheKey
-});
 
 /**
  * Composition-root source for Global understanding.
@@ -171,18 +161,29 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (evidence.revisionId !== revisionId) {
           throw new Error(`Opened document revision does not match current owner revision: ${repositoryPath}`);
         }
-        return { ...evidence, nonEmptyLines: [...evidence.nonEmptyLines] };
+        return this.copyOpenedEvidence(evidence, repositoryPath, signal, "copied-loaded-non-empty-line");
       }
     };
     const recalculator = new GlobalUnderstandingBackgroundRecalculator({
       source,
       cache: this.cache,
-      yieldControl: this.yieldControl
+      yieldControl: this.yieldControl,
+      accountWorkBatch: this.dependencies.accountWorkBatch,
     });
+    const openFilePaths: string[] = [];
+    for (const repositoryPath of openedByPath.keys()) {
+      openFilePaths.push(repositoryPath);
+      if (++candidateWork === 128) {
+        this.dependencies.accountWorkBatch?.({ kind: "copied-open-file-path", count: candidateWork });
+        candidateWork = 0;
+        await this.yieldControl();
+        assertCurrent();
+      }
+    }
     const result = await recalculator.recalculate({
       globalState,
       included,
-      openFilePaths: [...openedByPath.keys()],
+      openFilePaths,
       configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`,
       signal
     });
@@ -337,7 +338,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         };
         parsed.set(canonicalPath, evidence);
       }
-      retained.set(canonicalPath, stableOpenedEvidence(evidence, canonicalPath));
+      retained.set(canonicalPath, await this.copyOpenedEvidence(evidence, canonicalPath, signal, "copied-pr-non-empty-line"));
     }
     if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
     this.pullRequestEvidenceByOwner.set(key, parsed);
@@ -362,9 +363,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       if (current.has(canonicalPath)) {
         throw new Error(`Duplicate open document path: ${canonicalPath}`);
       }
-      const live = { ...snapshot, path: canonicalPath, nonEmptyLines: [...snapshot.nonEmptyLines] };
+      const live = await this.copyOpenedEvidence(snapshot, canonicalPath, signal, "copied-open-non-empty-line");
       current.set(canonicalPath, live);
-      retained.set(canonicalPath, stableOpenedEvidence(live, canonicalPath));
+      retained.set(canonicalPath, await this.copyOpenedEvidence(live, canonicalPath, signal, "retained-open-non-empty-line"));
     }
 
     const combined = new Map(retained);
@@ -372,6 +373,34 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
     this.openedEvidenceByOwner.set(this.requireActiveEvidenceKey(owner), retained);
     return combined;
+  }
+
+  private async copyOpenedEvidence(
+    snapshot: LoadedGlobalUnderstandingFile,
+    repositoryPath: string,
+    signal: AbortSignal | undefined,
+    kind: string
+  ): Promise<LoadedGlobalUnderstandingFile> {
+    const nonEmptyLines: number[] = [];
+    let pending = 0;
+    for (const line of snapshot.nonEmptyLines) {
+      if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+      nonEmptyLines.push(line);
+      pending += 1;
+      if (pending < 128) continue;
+      this.dependencies.accountWorkBatch?.({ kind, count: pending });
+      pending = 0;
+      await this.yieldControl();
+    }
+    if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    return {
+      path: repositoryPath,
+      revisionId: snapshot.revisionId,
+      lineCount: snapshot.lineCount,
+      nonEmptyLines,
+      contentHash: snapshot.contentHash,
+      cacheKey: snapshot.cacheKey
+    };
   }
 
   private async projectGlobalStatePaths(

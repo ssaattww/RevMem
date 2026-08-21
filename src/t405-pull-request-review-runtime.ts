@@ -675,6 +675,11 @@ export class PullRequestReviewRuntime<Uri> {
     return projected;
   }
 
+  /** Returns the immutable registered diff for normal-editor PR decoration composition. */
+  public snapshotForContext(contextId: string): Readonly<PullRequestDiffSnapshot> | undefined {
+    return this.registrations.get(contextId)?.snapshot;
+  }
+
   private async projectContextFileIdentitiesCooperatively(
     registration: PullRequestReviewRuntimeRegistration,
     persisted: ReviewStateCommit,

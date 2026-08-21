@@ -246,6 +246,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 export interface RegisteredReviewContextsRuntime {
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
+  dispose(): void;
 }
 
 /** Registers the T405 Review Contexts tree and all commands that operate on it. */
@@ -340,5 +341,6 @@ export function registerReviewContextsRuntime(
   return {
     refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false),
     refreshWithErrorBoundary,
+    dispose: () => provider.dispose(),
   };
 }
