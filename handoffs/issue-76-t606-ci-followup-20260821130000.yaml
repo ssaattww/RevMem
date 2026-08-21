@@ -3,6 +3,7 @@ repository: ssaattww/RevMem
 issue_or_pr: "Issue #76 / PR #77"
 task_id: T606
 previous_technical_implementation_head: ce584b29e6f584234c7bab050d24d2dd163ae3d3
+technical_implementation_head: 2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e
 previous_reviewed_admin_target: 8a3c86c89fcfea91d18ee621d42d9d178a1425c0
 invalidated_attestation_head: b747c80d62ac293f3a45f8bc932154e2e72421b2
 failed_ci: "run 32431194872 / Unit tests job 96622916836; exact head b747c80d62ac293f3a45f8bc932154e2e72421b2"
@@ -19,6 +20,6 @@ validation:
   architecture_negative: "pass; once; expected 11 violations"
   diff_check: "pass; line-ending warnings only"
 markdown_wording: unsupported_held_no_repository_wiring
-ci: current_corrected_workspace_has_no_exact_head_run; do_not_treat_failed_previous_attestation_run_as_success
-external_sync: PR body external sync pending after a new committed technical head and CI-delta verification
-next_request: Commit the bounded CI fix, obtain matching exact-head CI, request same independent reviewer CI-delta verification, perform PR body external sync, then complete a new attestation lifecycle. Do not reuse b747c80 attestation.
+ci: exact-head rerun for 2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e held; do_not_treat_failed_previous_attestation_run_as_success
+external_sync: PR body external sync pending after the admin commit and CI-delta verification
+next_request: Obtain matching exact-head CI for 2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e, request same independent reviewer CI-delta verification, perform PR body external sync after the admin commit, then complete a new attestation lifecycle. Do not reuse b747c80 attestation.
