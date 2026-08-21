@@ -193,7 +193,7 @@ test("PR69-R001 PR Global snapshot pins immutable HEAD identity even when the fi
   });
 });
 
-test("PR69-R001 stale Global nodes are rejected and PR69-R003 open failures use the dedicated reporter", async (t) => {
+test("PR69-R001 stale Global nodes reject directly while the registered command owns generic error reporting", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-pr69-open-controller-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repositoryRoot = path.join(root, "repository");
@@ -238,7 +238,6 @@ test("PR69-R001 stale Global nodes are rejected and PR69-R003 open failures use 
   const Controller = (module as unknown as {
     readonly GlobalUnderstandingFileOpenController?: new (host: {
       readonly openFile: (target: unknown) => Promise<void>;
-      readonly reportOpenError: (error: unknown) => Promise<void>;
     }) => {
       replaceModel(model: ReturnType<typeof createGlobalUnderstandingTreeModel>): void;
       clear(): void;
@@ -248,10 +247,8 @@ test("PR69-R001 stale Global nodes are rejected and PR69-R003 open failures use 
   assert.equal(typeof Controller, "function");
 
   const opened: unknown[] = [];
-  const errors: unknown[] = [];
   const controller = new Controller!({
-    openFile: async (target) => { opened.push(target); },
-    reportOpenError: async (error) => { errors.push(error); }
+    openFile: async (target) => { opened.push(target); }
   });
   controller.replaceModel(model);
   const node = model.files[0]!;
@@ -260,19 +257,14 @@ test("PR69-R001 stale Global nodes are rejected and PR69-R003 open failures use 
   assert.deepEqual(opened[0], node.openTarget);
 
   controller.clear();
-  await controller.open(node);
+  await assert.rejects(() => controller.open(node), RangeError);
   assert.equal(opened.length, 1, "A stale node must not reach the file-open host.");
-  assert.match(String(errors.at(-1)), /stale|current/i);
 
-  const openFailures: unknown[] = [];
   const failing = new Controller!({
-    openFile: async () => { throw new Error("permission denied"); },
-    reportOpenError: async (error) => { openFailures.push(error); }
+    openFile: async () => { throw new Error("permission denied"); }
   });
   failing.replaceModel(model);
-  await failing.open(node);
-  assert.equal(openFailures.length, 1);
-  assert.match(String(openFailures[0]), /permission denied/u);
+  await assert.rejects(() => failing.open(node), /permission denied/u);
 
   const formatter = (module as unknown as {
     readonly formatGlobalUnderstandingFileOpenError?: (error: unknown) => string;
