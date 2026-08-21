@@ -207,16 +207,12 @@ implements GitHistoryRewriteRecoveryPort {
         input.current.repositoryRoot,
         input.current.revisionId,
         path,
-        input.fileSystemPathSemantics
+        input.fileSystemPathSemantics,
+        undefined,
+        undefined,
+        input.encodingHintsByPath?.[path]
       );
-      if (read.kind === "missing-file") {
-        continue;
-      }
-      if (read.kind !== "found") {
-        throw new Error(
-          `Current immutable catalog is incomplete for ${path}: ${read.kind}`
-        );
-      }
+      if (read.kind !== "found") continue;
       catalog.set(path, {
         fileId: `history-rewrite-candidate:${this.coordinatorOptions.stableHash.digest(path)}`,
         path,

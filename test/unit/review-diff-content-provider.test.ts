@@ -339,7 +339,7 @@ test("local Git adapter isolates unsupported opened encoding instead of acceptin
     undefined,
     undefined,
     "x-unsupported"
-  ), { kind: "unsupported-encoding", encoding: "x-unsupported" });
+  ), { kind: "invalid-encoding", encoding: "utf-8" });
   executor.assertExhausted();
 });
 

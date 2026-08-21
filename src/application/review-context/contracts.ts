@@ -73,8 +73,7 @@ export type GitRevisionMappingTextReadResult =
   | { readonly kind: "found"; readonly content: string }
   | { readonly kind: "missing-revision" }
   | { readonly kind: "missing-file" }
-  | { readonly kind: "invalid-encoding"; readonly encoding: string }
-  | { readonly kind: "unsupported-encoding"; readonly encoding: string };
+  | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" };
 
 /** Local Git operations required by conservative context revision mapping. */
 export interface GitRevisionMappingSource {
@@ -124,6 +123,8 @@ export interface GitContextRevisionMappingResult {
   readonly globalState: RepositoryGlobalState;
   /** File identities whose prior review evidence was conservatively invalidated without a proven mapping. */
   readonly unresolvedFileIds: readonly string[];
+  /** Generic, privacy-safe diagnostics for identities whose immutable text could not be mapped. */
+  readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
 }
 
 /** Complete fallback input used only after both old context and Global objects are proven missing. */
@@ -144,6 +145,8 @@ export interface GitHistoryRewriteRecoveryInput {
   readonly options: Readonly<GitDiffMappingOptions>;
   /** Current paths that may prove a unique rename. */
   readonly currentCandidatePaths: readonly string[];
+  /** Opened documentから再観測したcurrent path単位のencoding hint。 */
+  readonly encodingHintsByPath?: Readonly<Record<string, string>>;
   /** UTC timestamp applied to the complete recovered snapshots. */
   readonly occurredAt: string;
 }

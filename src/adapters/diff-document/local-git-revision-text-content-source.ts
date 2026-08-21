@@ -54,8 +54,6 @@ export class LocalGitRevisionTextContentSource
       filePath,
       descriptor.fileSystemPathSemantics
     );
-    return result.kind === "unsupported-encoding"
-      ? { kind: "invalid-encoding", encoding: "utf-8" }
-      : result;
+    return result;
   }
 }

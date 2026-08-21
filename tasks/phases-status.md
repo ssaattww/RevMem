@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T607 大規模処理の段階表示と性能改善（PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
-- 実装中タスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化（local TDD Green、通常review待ち）
-- 次の工程: review-target commit後、sol highの通常review一巡、必要なら同reviewer finding限定closure、独立review一巡、PR #82のexact-head CI、squash mergeまで完了する
+- 実装中タスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化（通常review 7 findings実装済み、finding限定closure待ち）
+- 次の工程: review-target commit後、同じnormal reviewerが`T609-NR-001`〜`T609-NR-007`だけをfinding限定closureする
 - 後続候補: T610 / Issue #78、その後T608
 
 ## P0 開発基盤
@@ -185,7 +185,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: Issue #81のrepository解決・mixed encoding耐障害化をlocal TDDで実装済み。focused 28件、actual composition 1件、build・compile:test・contracts・architecture正負・lint・diff-check Greenで通常review待ち。
+- T609: 一度の全範囲通常reviewでHigh 4件、Medium 3件を一括確定。T405 encoding実配線、all-opened hint、T602 recovery、multi-root cancellation、reason付きunresolved、gate配線、公開互換性を実装済み。focused `test:t609` 44/44、storage+gate 22/22、actual Extension Host全phase Greenで、same reviewer closure待ち。
 - T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
 - T608: T609・T610完了後に実施する。
 

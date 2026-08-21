@@ -166,6 +166,13 @@ export interface ReviewRangeRuntimePort {
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
+  /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
+  markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
+  /** Test-only read-only snapshot of this Extension Host's observed document encoding hints. */
+  getObservedEncodingHintsForTest(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[];
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
@@ -1021,6 +1028,9 @@ export function activate(
   return {
     ...runtimePort,
     drainVisibleEditorDecorations: () => decorationController.drain(),
+    markNormalEditorSelectionForTest: (editor: vscode.TextEditor) =>
+      commandService.markSelectionReviewed(editor),
+    getObservedEncodingHintsForTest: () => documentSessionProvider.observedEncodingHintsSnapshot(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
     getFileExclusionPolicySnapshot: () => ({

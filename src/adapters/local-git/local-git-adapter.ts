@@ -347,10 +347,7 @@ export class LocalGitAdapter {
           : await this.decodeWithHintOrReject(bytes, encodingHint)
       };
     } catch {
-      if (encodingHint === undefined || this.decodeWithHint === undefined) {
-        return { kind: "invalid-encoding", encoding: "utf-8" };
-      }
-      return { kind: "unsupported-encoding", encoding: encodingHint };
+      return { kind: "invalid-encoding", encoding: "utf-8" };
     }
   }
 

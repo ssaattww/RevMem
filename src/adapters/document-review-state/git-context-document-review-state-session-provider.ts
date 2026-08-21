@@ -227,6 +227,21 @@ export class GitContextDocumentReviewStateSessionProvider {
     this.observedEncodingHints.clear();
   }
 
+  /** Test-only diagnostic snapshot of the transient hints observed by this Host. */
+  public observedEncodingHintsSnapshot(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[] {
+    return [...this.observedEncodingHints].map(([key, encodingHint]) => {
+      const separator = key.indexOf("\0");
+      const documentFsPath = key.slice(separator + 1);
+      return {
+        documentFsPath,
+        ...(encodingHint === undefined ? {} : { encodingHint })
+      };
+    }).sort((left, right) => left.documentFsPath.localeCompare(right.documentFsPath));
+  }
+
   private createDelegate(
     inspection: LocalGitRepositoryInspection
   ): ReconciledDocumentReviewStateSessionProvider {
@@ -405,7 +420,8 @@ export class GitContextDocumentReviewStateSessionProvider {
           { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
           { contextState: clone(next.contextState), globalState: clone(next.globalState) },
           mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
-          mapped.unresolvedFileIds
+          mapped.unresolvedFileIds,
+          mapped.unresolvedReasonsByFileId
         );
         return;
       } catch (error) {
@@ -458,7 +474,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     };
     const mapped =
       initial.globalState.currentRevisionId === current.revisionId
-        ? { commit: initial, unresolvedFileIds: [] }
+        ? { commit: initial, unresolvedFileIds: [], unresolvedReasonsByFileId: {} }
         : await this.mapCommit(current, initial, descriptor);
     if (!isCurrentGeneration()) {
       return;
@@ -492,21 +508,26 @@ export class GitContextDocumentReviewStateSessionProvider {
     current: ResolvedGitReviewContext,
     commit: ReviewStateCommit,
     descriptor: DocumentEditorReviewDescriptor
-  ): Promise<{ readonly commit: ReviewStateCommit; readonly unresolvedFileIds: readonly string[] }> {
+  ): Promise<{
+    readonly commit: ReviewStateCommit;
+    readonly unresolvedFileIds: readonly string[];
+    readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
+  }> {
     if (this.mapper === undefined) {
       throw new Error(
         "Persisted Git state requires revision mapping, but no Git revision mapping source is available."
       );
     }
+    const encodingHintsByPath = this.encodingHintsForRepository(current.repositoryRoot);
     const mapped = await this.mapper.map({
       current,
       contextState: clone(commit.contextState),
       globalState: clone(commit.globalState),
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
       options: this.mappingOptions,
-      ...(descriptor.encodingHint === undefined
+      ...(Object.keys(encodingHintsByPath).length === 0
         ? {}
-        : { encodingHintsByPath: this.encodingHintForDescriptor(current, descriptor) })
+        : { encodingHintsByPath })
     });
     return {
       commit: {
@@ -514,7 +535,8 @@ export class GitContextDocumentReviewStateSessionProvider {
         contextState: clone(mapped.contextState),
         globalState: clone(mapped.globalState)
       },
-      unresolvedFileIds: [...mapped.unresolvedFileIds]
+      unresolvedFileIds: [...mapped.unresolvedFileIds],
+      unresolvedReasonsByFileId: { ...mapped.unresolvedReasonsByFileId }
     };
   }
 
@@ -524,21 +546,23 @@ export class GitContextDocumentReviewStateSessionProvider {
     descriptor: DocumentEditorReviewDescriptor
   ): boolean {
     const key = `${repositoryRoot}\0${descriptor.documentFsPath}`;
+    const observed = this.observedEncodingHints.has(key);
     const previous = this.observedEncodingHints.get(key);
     const next = descriptor.encodingHint;
     this.observedEncodingHints.set(key, next);
-    return previous !== undefined && previous !== next;
+    return observed && previous !== next;
   }
 
-  /** Keeps an opened-document encoding hint scoped to its current repository-relative path. */
-  private encodingHintForDescriptor(
-    current: ResolvedGitReviewContext,
-    descriptor: DocumentEditorReviewDescriptor
-  ): Readonly<Record<string, string>> {
-    const pathApi = descriptor.fileSystemPathSemantics === "windows" ? path.win32 : path.posix;
-    const relativePath = pathApi.relative(current.repositoryRoot, descriptor.documentFsPath)
-      .split(pathApi.sep).join("/");
-    return { [relativePath]: descriptor.encodingHint as string };
+  /** Aggregates live VS Code hints by repository-relative path. */
+  private encodingHintsForRepository(repositoryRoot: string): Readonly<Record<string, string>> {
+    const hints: Record<string, string> = {};
+    for (const [key, hint] of this.observedEncodingHints) {
+      if (hint === undefined || !key.startsWith(`${repositoryRoot}\0`)) continue;
+      const documentPath = key.slice(repositoryRoot.length + 1);
+      const relativePath = path.relative(repositoryRoot, documentPath).split(path.sep).join("/");
+      if (relativePath.length > 0 && !relativePath.startsWith("../")) hints[relativePath] = hint;
+    }
+    return hints;
   }
 
   private advanceSnapshotGeneration(current: ResolvedGitReviewContext): number {

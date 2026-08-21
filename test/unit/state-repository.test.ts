@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,6 +16,7 @@ import {
   type ReviewStateStorageUris
 } from "../../src/adapters/state-repository/index";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../src/core/contracts/index";
+import { isStoragePathContained } from "../../src/adapters/state-repository/atomic-text-file-store";
 import type {
   RepositoryGlobalState,
   ReviewContextState
@@ -663,6 +664,74 @@ test("NodeAtomicTextFileStore replaces a file without leaving temporary files", 
     assert.equal(await fileStore.readText(filePath), "after");
     assert.deepEqual(await readdir(directory), ["state.json"]);
     assert.equal(await fileStore.readText(path.join(directory, "missing.json")), undefined);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
+test("storage-root containment follows the host path semantics without weakening escape rejection", () => {
+  assert.equal(
+    isStoragePathContained(
+      "C:\\Temp\\ReviewRange\\Storage",
+      "c:\\temp\\reviewrange\\storage\\snapshots",
+      "windows"
+    ),
+    true,
+    "Windows case-only differences must remain inside the same storage root"
+  );
+  assert.equal(
+    isStoragePathContained(
+      "C:\\Temp\\ReviewRange\\Storage",
+      "C:\\Temp\\ReviewRange\\Storage-sibling\\state.json",
+      "windows"
+    ),
+    false,
+    "a sibling prefix must not be accepted as a storage descendant"
+  );
+  assert.equal(
+    isStoragePathContained(
+      "C:\\Temp\\ReviewRange\\Storage",
+      "C:\\Temp\\ReviewRange\\Outside\\state.json",
+      "windows"
+    ),
+    false,
+    "an actual Windows outside path must remain rejected"
+  );
+  assert.equal(
+    isStoragePathContained(
+      "/tmp/ReviewRange/Storage",
+      "/tmp/reviewrange/storage/snapshots",
+      "posix"
+    ),
+    false,
+    "POSIX containment remains case-sensitive"
+  );
+});
+
+test("NodeAtomicTextFileStore rejects an outside sibling and a symbolic link or junction", async () => {
+  const temporary = await createTemporaryStorage();
+  const storageRoot = path.join(temporary.root, "storage");
+  const outside = path.join(temporary.root, "outside");
+  const sibling = path.join(temporary.root, "storage-sibling", "state.json");
+  const link = path.join(storageRoot, "linked");
+  const sentinel = path.join(outside, "sentinel.txt");
+  const store = new NodeAtomicTextFileStore(storageRoot);
+
+  try {
+    await mkdir(storageRoot, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(sentinel, "unchanged", "utf8");
+    await symlink(outside, link, process.platform === "win32" ? "junction" : "dir");
+
+    await assert.rejects(
+      () => store.writeTextAtomically(sibling, "outside"),
+      /escapes its configured storage root/u
+    );
+    await assert.rejects(
+      () => store.writeTextAtomically(path.join(link, "state.json"), "linked"),
+      /symbolic link or junction/u
+    );
+    assert.equal(await readFile(sentinel, "utf8"), "unchanged");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }

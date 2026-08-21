@@ -79,7 +79,7 @@ class EncodingSource implements GitRevisionMappingSource {
   ) {
     this.reads.push([path, encodingHint]);
     if (path === "src/unsupported.txt") {
-      return { kind: "unsupported-encoding" as const, encoding: encodingHint ?? "unknown" };
+      return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
     }
     return { kind: "found" as const, content: path === "src/good.txt" ? "after" : "same" };
   }
@@ -130,6 +130,44 @@ test("T609 isolates one unsupported encoded file while Context and Global map th
   assert.equal(result.globalState.files.good?.revisionId, newRevision);
   assert.ok(source.reads.some(([path, hint]) => path === "src/good.txt" && hint === "utf8"));
   assert.ok(source.reads.some(([path, hint]) => path === "src/unsupported.txt" && hint === "shift_jis"));
+});
+
+test("T609-NR-005 retains a privacy-safe unresolved reason when a current-revision text refresh fails", async () => {
+  const source = new EncodingSource("");
+  const resolver = new GitReviewContextResolver({ stableHash: hash });
+  const current = resolver.resolve({
+    repositoryId,
+    rootPath: "/repo",
+    branch: { kind: "branch", fullRef: "refs/heads/main" },
+    head: newRevision
+  });
+  const files = { unsupported: file("unsupported", "src/unsupported.txt", newRevision) };
+  const currentState = contextState(current.contextId, files);
+  currentState.branch = { refName: "refs/heads/main", headRevision: newRevision };
+  const currentGlobal = globalState(files);
+  currentGlobal.currentRevisionId = newRevision;
+  currentGlobal.files.unsupported!.revisionId = newRevision;
+
+  const result = await mapperFor(source).map({
+    current,
+    contextState: currentState,
+    globalState: currentGlobal,
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+    encodingHintsByPath: { "src/unsupported.txt": "shift_jis" }
+  });
+
+  assert.deepEqual(result.unresolvedFileIds, ["unsupported"]);
+  const reasoned = result as typeof result & {
+    readonly unresolvedReasonsByFileId?: Readonly<Record<string, string>>;
+  };
+  assert.deepEqual(reasoned.unresolvedReasonsByFileId, {
+    unsupported: "immutable-text-unavailable"
+  });
+  assert.doesNotMatch(
+    JSON.stringify(Object.values(reasoned.unresolvedReasonsByFileId ?? {})),
+    /unsupported|shift_jis|src\//u
+  );
 });
 
 test("T609 inherits an opened encoding hint only for a unique rename", async () => {

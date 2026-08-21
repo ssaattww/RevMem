@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
@@ -57,7 +58,6 @@ import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
   type GitRevisionMappingSource,
-  type ResolvedGitReviewContext,
 } from "./application/review-context/index";
 import {
   PullRequestRevisionEvidenceLoader,
@@ -86,7 +86,12 @@ import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
 } from "./t405-root-scoped-candidate-identity";
-import { resolveReviewContextsRepository } from "./t609-review-contexts-repository";
+import {
+  ReviewContextsRepositorySelectionCancelled,
+  resolveReviewContextsRepository,
+  type ReviewContextsRepositorySelection
+} from "./t609-review-contexts-repository";
+import { currentGlobalForNewPullRequest } from "./t405-new-pull-request-global-composition";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -132,6 +137,8 @@ export interface T405ReviewContextsRuntimeOptions {
     readonly yieldControl?: () => void | Promise<void>;
     readonly accountBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
   };
+  /** Test-mode-only repository picker supplied by the activation composition. */
+  readonly requestRepositorySelection?: ReviewContextsRepositorySelection;
 }
 
 interface T405ReviewStateRepository {
@@ -157,11 +164,6 @@ interface LocalRepositoryOwner {
   readonly headRevision: string;
   readonly branchRef?: string;
   readonly snapshot: CurrentContextUiSnapshot;
-}
-
-interface PreparedNewPullRequestGlobal {
-  readonly expectedGlobalState: RepositoryGlobalState | undefined;
-  readonly nextGlobalState: RepositoryGlobalState;
 }
 
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
@@ -583,61 +585,6 @@ const pullRequestState = (
   };
 };
 
-const currentGlobalForNewPullRequest = async (
-  repository: T405ReviewStateRepository,
-  current: ResolvedGitReviewContext,
-  mapper: GitContextRevisionMapper,
-  mappingOptions: ReturnType<typeof resolveReviewRangeMappingOptions>,
-): Promise<PreparedNewPullRequestGlobal> => {
-  const expectedGlobalState = await repository.loadGlobal({
-    kind: "git",
-    repositoryId: current.repositoryId,
-    contextId: "review-contexts-current-global",
-  });
-  if (expectedGlobalState === undefined) {
-    return {
-      expectedGlobalState: undefined,
-      nextGlobalState: {
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-        repositoryId: current.repositoryId,
-        currentRevisionId: current.revisionId,
-        files: {},
-        updatedAt: new Date().toISOString(),
-      },
-    };
-  }
-  if (expectedGlobalState.currentRevisionId === current.revisionId) {
-    return {
-      expectedGlobalState,
-      nextGlobalState: expectedGlobalState,
-    };
-  }
-
-  const branch = current.contextState.branch;
-  if (branch === undefined) {
-    throw new Error("Git revision mapping requires branch-schema persistence.");
-  }
-  const mapped = await mapper.map({
-    current,
-    contextState: {
-      ...current.contextState,
-      branch: {
-        ...branch,
-        headRevision: expectedGlobalState.currentRevisionId,
-      },
-      files: {},
-      updatedAt: expectedGlobalState.updatedAt,
-    },
-    globalState: expectedGlobalState,
-    fileSystemPathSemantics: PATH_SEMANTICS,
-    options: mappingOptions,
-  });
-  return {
-    expectedGlobalState,
-    nextGlobalState: mapped.globalState,
-  };
-};
-
 export function registerT405ReviewContextsRuntime(
   options: T405ReviewContextsRuntimeOptions,
 ): RegisteredT405ReviewContextsRuntime {
@@ -662,6 +609,21 @@ export function registerT405ReviewContextsRuntime(
 
   const sourceRef: { current?: T405ReviewContextsSource } = {};
 
+  /** Collects only current, local opened-document hints for this repository. */
+  const openedEncodingHints = (repositoryRoot: string): Readonly<Record<string, string>> => {
+    const hints: Record<string, string> = {};
+    const pathApi = PATH_SEMANTICS === "windows" ? path.win32 : path.posix;
+    for (const document of vscode.workspace.textDocuments) {
+      if (document.isClosed || document.encoding.length === 0 ||
+          (document.uri.scheme !== "file" && document.uri.scheme !== "vscode-remote")) continue;
+      const relative = pathApi.relative(repositoryRoot, document.uri.fsPath);
+      if (relative.length === 0 || pathApi.isAbsolute(relative) || relative === ".." ||
+          relative.startsWith(`..${pathApi.sep}`)) continue;
+      hints[relative.split(pathApi.sep).join("/")] = document.encoding;
+    }
+    return hints;
+  };
+
   const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
     const filesystemPath = (document: vscode.TextDocument): string | undefined =>
       (document.uri.scheme === "file" || document.uri.scheme === "vscode-remote") &&
@@ -684,7 +646,7 @@ export function registerT405ReviewContextsRuntime(
           ? folder.uri.fsPath
           : undefined),
       inspectRepository: (startPath) => options.git.inspectRepository(startPath),
-      requestSelection: async (candidates) => {
+      requestSelection: options.requestRepositorySelection ?? (async (candidates) => {
         const choices = candidates.map((candidate) => ({
           label: candidate.repository.rootPath,
           candidate
@@ -692,13 +654,13 @@ export function registerT405ReviewContextsRuntime(
         return (await vscode.window.showQuickPick(choices, {
           placeHolder: "Gitリポジトリを選択"
         }))?.candidate;
-      }
+      })
     });
     const verified = await options.git.inspectRepository(resolved.rootPath);
     if (verified.kind !== "repository" ||
         verified.repository.rootPath !== resolved.rootPath ||
         verified.repository.repositoryId !== resolved.repositoryId) {
-      throw new Error("Review Contexts repository became stale during selection.");
+      throw new ReviewContextsRepositorySelectionCancelled();
     }
     return verified.repository;
   };
@@ -793,7 +755,6 @@ export function registerT405ReviewContextsRuntime(
     );
     if (local.kind === "found") return local;
     if (local.kind === "invalid-encoding") return local;
-    if (local.kind === "unsupported-encoding") return { kind: "invalid-encoding", encoding: "utf-8" };
     const remote = await createPullRequestRemote(identity, token).readFile(
       identity,
       descriptor.revision,
@@ -1116,6 +1077,7 @@ export function registerT405ReviewContextsRuntime(
                 false,
               ),
             }),
+            openedEncodingHints(local.rootPath),
           );
           await contextStateService.create(
             { contextState: state, globalState: preparedGlobal.nextGlobalState },

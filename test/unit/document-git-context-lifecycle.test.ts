@@ -166,6 +166,7 @@ class MutableGitInspector implements DocumentGitInspector {
 class RevisionSource implements GitRevisionMappingSource {
   public objectsExist = true;
   public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
+  public readonly invalidTextPaths = new Set<string>();
   public diff = [
     "diff --git a/src/example.ts b/src/example.ts",
     "index 1111111..2222222 100644",
@@ -212,6 +213,9 @@ class RevisionSource implements GitRevisionMappingSource {
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
     this.encodingHints.push([repositoryRelativePath, encodingHint]);
+    if (this.invalidTextPaths.has(repositoryRelativePath)) {
+      return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
+    }
     const content = this.texts.get(`${revision}\0${repositoryRelativePath}`);
     return content === undefined
       ? { kind: "missing-file" }
@@ -486,6 +490,43 @@ test("document sessions map branch commits and isolate branch and detached conte
   provider.dispose();
 });
 
+test("T609-NR-005 records a generic unresolved history reason for a failed current-revision text refresh", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string; readonly filePath?: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  source.invalidTextPaths.add("src/example.ts");
+  events.length = 0;
+
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "shift_jis")
+  );
+
+  assert.ok(events.some((event) =>
+    event.type === "mapping-unresolved" && event.reason === "immutable-text-unavailable"
+  ));
+  assert.equal(events.some((event) => event.type === "remapped-by-diff"), false);
+  assert.doesNotMatch(JSON.stringify(events), /shift_jis|src\\example\.ts/u);
+  provider.dispose();
+});
+
 /** An opened document changing encoding must re-read its immutable revision without reopening the host. */
 test("document routing recalculates the current Git snapshot when an opened encoding hint changes", async () => {
   const stableHash = new NodeSha256StableHash();
@@ -514,6 +555,102 @@ test("document routing recalculates the current Git snapshot when an opened enco
   );
 
   assert.ok(source.encodingHints.some(([path, hint]) => path === "src/example.ts" && hint === "shift_jis"));
+  provider.dispose();
+});
+
+test("T609-NR-002 aggregates all reopened document hints across mapping and an encoding change", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "@@ -2 +2 @@",
+    "-beta",
+    "+BETA",
+    "diff --git a/src/shifted.ts b/src/shifted.ts",
+    "@@ -1 +1 @@",
+    "-before",
+    "+after",
+    ""
+  ].join("\n");
+  source.texts.set(`${oldRevision}\0src/shifted.ts`, "before");
+  source.texts.set(`${newRevision}\0src/shifted.ts`, "after");
+  let provider = createProvider(stableHash, repository, inspector, source);
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const initialCommit = await repository.load({
+    kind: "git", repositoryId, contextId: initial.contextState.contextId
+  });
+  assert.ok(initialCommit);
+  const existingContextFile = initialCommit.contextState.files[initial.target.fileId];
+  const existingGlobalFile = initialCommit.globalState.files[initial.target.fileId];
+  assert.ok(existingContextFile);
+  assert.ok(existingGlobalFile);
+  const shiftedId = "shifted-stable-file";
+  const shiftedContext = {
+    ...clone<typeof existingContextFile>(existingContextFile),
+    fileId: shiftedId,
+    currentPath: "src/shifted.ts",
+    revisionId: oldRevision,
+    lineCount: 1,
+    contentHash: stableHash.digest("before")
+  };
+  const shiftedGlobal = {
+    ...clone<typeof existingGlobalFile>(existingGlobalFile),
+    fileId: shiftedId,
+    currentPath: "src/shifted.ts",
+    revisionId: oldRevision,
+    contentHash: stableHash.digest("before")
+  };
+  await repository.save(
+    { kind: "git", repositoryId, contextId: initial.contextState.contextId },
+    {
+      schemaVersion: initialCommit.schemaVersion,
+      contextState: {
+        ...initialCommit.contextState,
+        files: { ...initialCommit.contextState.files, [shiftedId]: shiftedContext }
+      },
+      globalState: {
+        ...initialCommit.globalState,
+        files: { ...initialCommit.globalState.files, [shiftedId]: shiftedGlobal }
+      }
+    }
+  );
+  await provider.open(descriptor("src/shifted.ts", stableHash.digest("before"), 1, "shift_jis"));
+  inspector.head = newRevision;
+  source.encodingHints.length = 0;
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf8"));
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/example.ts" && hint === "utf8"));
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+
+  source.encodingHints.length = 0;
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le"));
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+  provider.dispose();
+
+  provider = createProvider(stableHash, repository, inspector, source);
+  await provider.open(descriptor("src/shifted.ts", stableHash.digest("after"), 1, "shift_jis"));
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le"));
+  source.texts.set(`${pollRevision}\0src/example.ts`, "alpha\nBETA\ngamma");
+  source.texts.set(`${pollRevision}\0src/shifted.ts`, "after");
+  source.diff = "";
+  inspector.head = pollRevision;
+  source.encodingHints.length = 0;
+  const reopened = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le")
+  );
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+  assert.ok(reopened.contextState.files[shiftedId]);
+  assert.ok(reopened.globalState.files[shiftedId]);
   provider.dispose();
 });
 

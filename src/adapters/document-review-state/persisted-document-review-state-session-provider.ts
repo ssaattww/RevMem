@@ -217,6 +217,14 @@ export class DocumentReviewStateSessionProvider {
     this.delegate.dispose();
   }
 
+  /** Test-only diagnostic snapshot of the transient hints observed by this Host. */
+  public observedEncodingHintsSnapshot(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[] {
+    return this.delegate.observedEncodingHintsSnapshot();
+  }
+
   private async openSelectedPullRequest(
     descriptor: DocumentEditorReviewDescriptor,
     selection: Extract<SelectedReviewContext, { readonly kind: "pull-request" }>

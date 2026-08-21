@@ -41,6 +41,12 @@ export class CurrentContextRuntimeComposition {
     }
     const fallback = await this.port.resolveFallback(candidates, signal);
     if (isAborted(signal)) throw new OperationCancelledError();
+    if (fallback === undefined && candidates.length > 1) {
+      return this.selection.select(
+        candidates,
+        (available) => this.port.requestSelection(available, signal)
+      );
+    }
     return this.selection.resolve(candidates, fallback);
   }
 

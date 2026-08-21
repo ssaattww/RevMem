@@ -34,6 +34,8 @@ class RewriteSource implements GitRevisionMappingSource {
   public oldObjectExists = false;
   public readonly missingObjectIds = new Set<string>();
   public readonly texts = new Map<string, string>();
+  public readonly invalidPaths = new Set<string>();
+  public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
   public diffCalls = 0;
 
   public async objectExists(
@@ -53,13 +55,21 @@ class RewriteSource implements GitRevisionMappingSource {
   public async readTextFileAtRevision(
     _repositoryRoot: string,
     revision: string,
-    repositoryRelativePath: string
+    repositoryRelativePath: string,
+    _semantics?: "posix" | "windows",
+    _feedback?: unknown,
+    _signal?: AbortSignal,
+    encodingHint?: string,
   ): Promise<
     | { readonly kind: "found"; readonly content: string }
     | { readonly kind: "missing-revision" }
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
+    this.encodingHints.push([repositoryRelativePath, encodingHint]);
+    if (this.invalidPaths.has(repositoryRelativePath)) {
+      return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
+    }
     const content = this.texts.get(`${revision}\0${repositoryRelativePath}`);
     return content === undefined
       ? { kind: "missing-file" }
@@ -294,4 +304,55 @@ test("Git revision mapper clears a shared file when direct Context and recovered
   assert.deepEqual(result.contextState.files, {});
   assert.deepEqual(result.globalState.files, {});
   assert.deepEqual(result.unresolvedFileIds, ["file-1"]);
+});
+
+test("T609-NR-003 keeps recoverable files when an opened encoded catalog file is unreadable", async () => {
+  const { source, snapshotTracker, current, mapper } = setup();
+  source.texts.set(`${NEW_SHA}\0src/example.ts`, "alpha\nbeta\ngamma");
+  source.invalidPaths.add("src/invalid.txt");
+  const context = contextState(current.contextId);
+  const global = globalState();
+  const invalidContext = {
+    ...context.files["file-1"]!,
+    fileId: "invalid-file",
+    currentPath: "src/invalid.txt",
+    contentHash: stableHash.digest("invalid")
+  };
+  const invalidGlobal = {
+    ...global.files["file-1"]!,
+    fileId: "invalid-file",
+    currentPath: "src/invalid.txt",
+    contentHash: stableHash.digest("invalid")
+  };
+  context.files["invalid-file"] = invalidContext;
+  global.files["invalid-file"] = invalidGlobal;
+  await snapshotTracker.saveLatest({
+    workspaceContextId: current.contextId,
+    fileId: "file-1",
+    content: "alpha\nbeta\ngamma",
+    reviewedRanges: [{ startLine: 0, endLineExclusive: 3 }]
+  }, Date.parse(OCCURRED_AT));
+  await snapshotTracker.saveLatest({
+    workspaceContextId: gitGlobalSnapshotScope(REPOSITORY_ID),
+    fileId: "file-1",
+    content: "alpha\nbeta\ngamma",
+    reviewedRanges: [{ startLine: 0, endLineExclusive: 3 }]
+  }, Date.parse(OCCURRED_AT));
+
+  const result = await mapper.map({
+    current,
+    contextState: context,
+    globalState: global,
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+    currentCandidatePaths: ["src/example.ts", "src/invalid.txt"],
+    encodingHintsByPath: { "src/invalid.txt": "shift_jis" }
+  });
+
+  assert.ok(result.contextState.files["file-1"]);
+  assert.ok(result.globalState.files["file-1"]);
+  assert.equal(result.contextState.files["invalid-file"], undefined);
+  assert.equal(result.globalState.files["invalid-file"], undefined);
+  assert.deepEqual(result.unresolvedFileIds, ["invalid-file"]);
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/invalid.txt" && hint === "shift_jis"));
 });

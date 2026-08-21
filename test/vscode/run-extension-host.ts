@@ -23,8 +23,35 @@ const t506WorkspacePhases = [
   "workspace-mark-edit",
   "workspace-restore"
 ] as const;
-const DEFAULT_LAUNCH_TIMEOUT_MS = 120_000;
+const t609Phases = ["single-root", "prepare", "restart-reopen"] as const;
+// A clean runner must download the pinned VS Code archive before its first
+// launch; keep that bounded separately from individual fixture operations.
+const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;
 const FIXTURE_CLEANUP_TIMEOUT_MS = 10_000;
+
+const initializeGitRepository = async (root: string): Promise<void> => {
+  await execFileAsync("git", ["init", "-b", "main"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["config", "user.email", "review-range@example.invalid"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["config", "user.name", "Review Range Test"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["add", "."], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["commit", "-m", "T609 fixture"], { cwd: root, windowsHide: true });
+};
+
+const prepareT609Fixture = async (root: string): Promise<void> => {
+  await mkdir(join(root, ".vscode"), { recursive: true });
+  await Promise.all([
+    writeFile(join(root, ".vscode", "settings.json"), `${JSON.stringify({ "files.encoding": "shift_jis" })}\n`, "utf8"),
+    writeFile(join(root, "shift-jis.txt"), Buffer.from([0x82, 0xa0, 0x0a])),
+    writeFile(join(root, "utf8-bom.txt"), Buffer.from([0xef, 0xbb, 0xbf, 0x62, 0x65, 0x74, 0x61, 0x0a])),
+    writeFile(join(root, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd]))
+  ]);
+  await initializeGitRepository(root);
+};
+
+const prepareT609SecondRoot = async (root: string): Promise<void> => {
+  await writeFile(join(root, "second-root.txt"), "T609 second repository fixture\n", "utf8");
+  await initializeGitRepository(root);
+};
 
 const launchTimeout = (): number => {
   const configured = process.env.REVIEW_RANGE_VSCODE_LAUNCH_TIMEOUT_MS;
@@ -40,6 +67,7 @@ async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
   const focusedT506 = process.argv.includes("--t506");
   const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
+  const focusedT609 = process.argv.includes("--t609");
   const focusedLifecycleRestore = process.argv.includes("--lifecycle-through-restore");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
@@ -82,6 +110,13 @@ async function main(): Promise<void> {
     userData: join(temporaryDirectory.path, "lifecycle-user-data"),
     extensions: join(temporaryDirectory.path, "lifecycle-extensions")
   };
+  const t609Paths = {
+    workspace: join(temporaryDirectory.path, "t609-workspace"),
+    additionalWorkspace: join(temporaryDirectory.path, "t609-second-root"),
+    workspaceFile: join(temporaryDirectory.path, "t609.code-workspace"),
+    userData: join(temporaryDirectory.path, "t609-user-data"),
+    extensions: join(temporaryDirectory.path, "t609-extensions")
+  };
   const launch = async (
     phase: string,
     paths: { readonly workspace: string; readonly userData: string; readonly extensions: string },
@@ -113,8 +148,23 @@ async function main(): Promise<void> {
       ...Object.values(t506Paths),
       ...Object.values(t506WorkspacePaths),
       ...Object.values(t302Paths),
-      ...Object.values(lifecyclePaths)
+      ...Object.values(lifecyclePaths),
+      t609Paths.workspace,
+      t609Paths.additionalWorkspace,
+      t609Paths.userData,
+      t609Paths.extensions
     ].map((path) => mkdir(path)));
+    if (focusedT609) {
+      await prepareT609Fixture(t609Paths.workspace);
+      await prepareT609SecondRoot(t609Paths.additionalWorkspace);
+      await writeFile(t609Paths.workspaceFile, `${JSON.stringify({
+        folders: [
+          { path: t609Paths.workspace },
+          { path: t609Paths.additionalWorkspace }
+        ],
+        settings: { "files.encoding": "shift_jis" }
+      })}\n`, "utf8");
+    }
 
     if (focusedT506 || focusedT506SavedPullRequest) {
       if (focusedT506SavedPullRequest) {
@@ -141,6 +191,28 @@ async function main(): Promise<void> {
         ],
         { cwd: projectRoot, windowsHide: true }
       );
+      return;
+    }
+
+    if (focusedT609) {
+      const t609SingleRootLaunchPaths = {
+        workspace: t609Paths.workspace,
+        userData: t609Paths.userData,
+        extensions: t609Paths.extensions
+      };
+      const t609LaunchPaths = {
+        workspace: t609Paths.workspaceFile,
+        userData: t609Paths.userData,
+        extensions: t609Paths.extensions
+      };
+      for (const phase of t609Phases) {
+        await launch(
+          `t609-${phase}`,
+          phase === "single-root" ? t609SingleRootLaunchPaths : t609LaunchPaths,
+          join(__dirname, "t609-suite"),
+          phase
+        );
+      }
       return;
     }
 

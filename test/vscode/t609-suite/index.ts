@@ -1,0 +1,174 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+
+import * as vscode from "vscode";
+
+const phase = process.env.REVIEW_RANGE_TEST_PHASE;
+const isPrepare = phase === "prepare";
+const isSingleRoot = phase === "single-root";
+assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T609 phase: ${String(phase)}`);
+
+interface T609ExtensionApi {
+  drainDocumentReviewEdits(): Promise<void>;
+  refreshVisibleEditorDecorations(): Promise<void>;
+  drainVisibleEditorDecorations(): Promise<void>;
+  markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
+  getObservedEncodingHintsForTest(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[];
+  getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getGlobalUnderstandingSnapshot(): Promise<{
+    readonly progress: { readonly files: readonly { readonly path: string }[] };
+  } | undefined>;
+  setReviewContextsRepositorySelection(selection: "cancel" | "stale"): void;
+}
+
+interface ReviewedIntervalSnapshot {
+  readonly startLine: number;
+  readonly endLineExclusive: number;
+}
+
+const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<Value> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(work),
+      new Promise<Value>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`T609 Extension Host timed out: ${label}`)), 10_000);
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
+const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
+  vscode.Uri.joinPath(folder.uri, name);
+
+const closeAllEditors = async (): Promise<void> => {
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
+};
+
+const assertMultiRootCancellation = async (folder: vscode.WorkspaceFolder): Promise<void> => {
+  const initialSecondRootPath = path.join(path.dirname(folder.uri.fsPath), "t609-second-root");
+  assert.equal(
+    (vscode.workspace.workspaceFolders ?? []).some((candidate) => candidate.uri.fsPath === initialSecondRootPath),
+    true,
+    "the T609 runner must start in the two-root workspace before adding another repository"
+  );
+  await closeAllEditors();
+  const workspaceFolderPaths = (vscode.workspace.workspaceFolders ?? []).map((candidate) => candidate.uri.fsPath);
+  assert.equal(
+    workspaceFolderPaths.includes(initialSecondRootPath),
+    true,
+    "the cancellation trigger must observe both initially configured repository roots"
+  );
+};
+
+const markAndSynchronizeFixtureReview = async (
+  label: string,
+  editor: vscode.TextEditor,
+  api: T609ExtensionApi
+): Promise<void> => {
+  assert.equal(
+    vscode.window.activeTextEditor?.document.uri.toString(),
+    editor.document.uri.toString(),
+    `${label} fixture must be the active editor before its selected-root review starts`
+  );
+  await within(`mark ${label} direct application`, api.markNormalEditorSelectionForTest(editor));
+  await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
+  await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
+  await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());
+  assert.deepEqual(
+    api.getVisibleReviewedIntervals(editor.document.uri.toString()),
+    [{ startLine: 0, endLineExclusive: 1 }],
+    `${label} review must persist before its visible decoration is observed`
+  );
+};
+
+const assertMixedEncodingFixture = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi
+): Promise<void> => {
+  const shifted = await within("open Shift-JIS document", vscode.workspace.openTextDocument(fixtureUri(folder, "shift-jis.txt")));
+  const utf8Bom = await within("open UTF-8 BOM document", vscode.workspace.openTextDocument(fixtureUri(folder, "utf8-bom.txt")));
+  await within("open isolated invalid document", vscode.workspace.openTextDocument(fixtureUri(folder, "invalid.txt")));
+  assert.match(shifted.getText(), /あ/u, "opened Shift-JIS text must use the VS Code decoding hint");
+  assert.match(utf8Bom.getText(), /beta/u);
+  const shiftedEditor = await vscode.window.showTextDocument(shifted, { preview: false });
+  shiftedEditor.selection = new vscode.Selection(0, 0, 0, 0);
+  await markAndSynchronizeFixtureReview("Shift-JIS", shiftedEditor, api);
+  const utf8Editor = await vscode.window.showTextDocument(utf8Bom, { preview: false });
+  utf8Editor.selection = new vscode.Selection(0, 0, 0, 0);
+  await markAndSynchronizeFixtureReview("UTF-8 BOM", utf8Editor, api);
+  await within("refresh Global mixed encoding", vscode.commands.executeCommand("reviewRange.refreshGlobalUnderstanding"));
+  const global = await api.getGlobalUnderstandingSnapshot();
+  assert.ok(global, "one invalid file must not prevent Global Understanding from continuing");
+  const paths = global.progress.files.map((file) => file.path);
+  assert.equal(paths.includes("shift-jis.txt"), true);
+  assert.equal(paths.includes("utf8-bom.txt"), true);
+};
+
+/** Exercises the T609 gate through one owned runner invocation and explicit lifecycle phases. */
+export async function run(): Promise<void> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(folder, "T609 requires the dedicated workspace fixture");
+  await within("close editors", closeAllEditors());
+
+  const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
+  assert.ok(extension, "The Extension Development Host must load the extension.");
+  const api = (await within("activate extension", extension.activate())) as T609ExtensionApi;
+
+  if (isSingleRoot) {
+    await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
+    await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+    await assertMixedEncodingFixture(folder, api);
+    return;
+  }
+
+  if (!isPrepare) {
+    const reopened = await within("reopen only UTF-8 BOM document", vscode.workspace.openTextDocument(fixtureUri(folder, "utf8-bom.txt")));
+    assert.match(reopened.getText(), /beta/u);
+    const reopenedEditor = await within(
+      "activate reopened UTF-8 BOM document",
+      vscode.window.showTextDocument(reopened, { preview: false })
+    );
+    assert.equal(
+      vscode.window.activeTextEditor?.document.uri.toString(),
+      reopenedEditor.document.uri.toString(),
+      "restart must restore Current Context from the reopened UTF-8 BOM editor"
+    );
+    assert.equal(
+      vscode.workspace.textDocuments.some((document) => document.uri.path.endsWith("shift-jis.txt")),
+      false,
+      "a restarted host must not reuse an encoding hint by reopening an unopened file"
+    );
+    assert.equal(
+      vscode.workspace.textDocuments.some((document) => document.uri.path.endsWith("invalid.txt")),
+      false,
+      "a restarted host must not reopen the invalid document"
+    );
+    await within("refresh reopened UTF-8 BOM decorations", api.refreshVisibleEditorDecorations());
+    await within("drain reopened UTF-8 BOM decorations", api.drainVisibleEditorDecorations());
+    const observedHints = api.getObservedEncodingHintsForTest();
+    assert.deepEqual(
+      observedHints.map((hint) => hint.documentFsPath),
+      [reopened.uri.fsPath],
+      "restart must observe only the reopened UTF-8 BOM document"
+    );
+    assert.deepEqual(
+      observedHints.map((hint) => hint.encodingHint),
+      [reopened.encoding],
+      "restart must use the current Host's reopened document encoding hint"
+    );
+    return;
+  }
+
+  await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
+  api.setReviewContextsRepositorySelection("cancel");
+  await within("multi-root cancellation boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  api.setReviewContextsRepositorySelection("stale");
+  await within("multi-root stale cancellation boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+}

@@ -26,6 +26,23 @@ const closeIfOpen = async (handle: FileHandle | undefined): Promise<void> => {
   await handle.close();
 };
 
+export type StoragePathSemantics = "windows" | "posix";
+
+/** Determines whether a resolved path has the configured root as an exact ancestor. */
+export const isStoragePathContained = (
+  root: string,
+  candidate: string,
+  semantics: StoragePathSemantics = process.platform === "win32" ? "windows" : "posix"
+): boolean => {
+  const hostPath = semantics === "windows" ? path.win32 : path.posix;
+  const relative = hostPath.relative(root, candidate);
+  return relative.length === 0 || (
+    !hostPath.isAbsolute(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${hostPath.sep}`)
+  );
+};
+
 /** Node filesystem implementation of temp-write, file flush, and atomic replace. */
 export class NodeAtomicTextFileStore implements AtomicTextFileStore {
   private readonly rootPath: string | undefined;
@@ -96,7 +113,7 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
     if (this.rootPath === undefined || this.resolvedRoot === undefined) return filePath;
     const root = this.resolvedRoot;
     const candidate = path.resolve(filePath);
-    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+    if (!isStoragePathContained(root, candidate)) {
       throw new Error("Persistence path escapes its configured storage root.");
     }
     const relative = path.relative(root, candidate);
@@ -123,7 +140,7 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
       if (requireExists || !isErrorCode(error, "ENOENT")) throw error;
       return path.dirname(candidate);
     });
-    if (physicalDirectory !== physicalRoot && !physicalDirectory.startsWith(`${physicalRoot}${path.sep}`)) {
+    if (!isStoragePathContained(physicalRoot, physicalDirectory)) {
       throw new Error("Persistence storage resolves outside its configured storage root.");
     }
     return path.join(physicalDirectory, last ?? "");

@@ -279,6 +279,9 @@ export class GitContextRevisionMapper {
       input.encodingHintsByPath
     );
 
+    const unresolvedFileIds = oldObjectAvailable
+      ? contextMapping.unresolvedFileIds
+      : Object.keys(input.contextState.files).sort();
     return {
       contextState: {
         ...clone(input.contextState),
@@ -293,9 +296,10 @@ export class GitContextRevisionMapper {
         files: globalFiles,
         updatedAt: occurredAt
       },
-      unresolvedFileIds: oldObjectAvailable
-        ? contextMapping.unresolvedFileIds
-        : Object.keys(input.contextState.files).sort()
+      unresolvedFileIds,
+      unresolvedReasonsByFileId: oldObjectAvailable
+        ? contextMapping.unresolvedReasonsByFileId
+        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
     };
   }
 
@@ -331,27 +335,32 @@ export class GitContextRevisionMapper {
     options: Readonly<GitDiffMappingOptions>,
     occurredAt: string,
     encodingHints: Readonly<Record<string, string>> = {}
-  ): Promise<{ readonly files: Record<string, FileReviewState>; readonly unresolvedFileIds: readonly string[] }> {
+  ): Promise<{
+    readonly files: Record<string, FileReviewState>;
+    readonly unresolvedFileIds: readonly string[];
+    readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
+  }> {
     if (oldRevision === newRevision) {
       if (Object.keys(encodingHints).length === 0) {
-        return { files: clone(files), unresolvedFileIds: [] };
+        return { files: clone(files), unresolvedFileIds: [], unresolvedReasonsByFileId: {} };
       }
+      const refreshed = await this.refreshMappedFiles(
+        files, newRevision, repositoryRoot, semantics, occurredAt, new Set(), new Set(), encodingHints
+      );
+      const unresolvedFileIds = Object.values(files)
+        .filter((file) => !Object.hasOwn(refreshed, file.fileId))
+        .map((file) => file.fileId).sort();
       return {
-        files: await this.refreshMappedFiles(
-          files,
-          newRevision,
-          repositoryRoot,
-          semantics,
-          occurredAt,
-          new Set(),
-          new Set(),
-          encodingHints
-        ),
-        unresolvedFileIds: []
+        files: refreshed,
+        unresolvedFileIds,
+        unresolvedReasonsByFileId: Object.fromEntries(
+          unresolvedFileIds.map((fileId) => [fileId, "immutable-text-unavailable" as const])
+        )
       };
     }
     if (!FULL_OBJECT_ID_PATTERN.test(newRevision)) {
-      return { files: {}, unresolvedFileIds: Object.keys(files).sort() };
+      const unresolvedFileIds = Object.keys(files).sort();
+      return { files: {}, unresolvedFileIds, unresolvedReasonsByFileId: Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const])) };
     }
     const oldExists = FULL_OBJECT_ID_PATTERN.test(oldRevision) &&
       await this.options.source.objectExists(repositoryRoot, oldRevision);
@@ -365,7 +374,8 @@ export class GitContextRevisionMapper {
           occurredAt,
           encodingHints
         ),
-        unresolvedFileIds: Object.keys(files).sort()
+        unresolvedFileIds: Object.keys(files).sort(),
+        unresolvedReasonsByFileId: Object.fromEntries(Object.keys(files).map((fileId) => [fileId, "mapping-unresolved" as const]))
       };
     }
 
@@ -428,17 +438,28 @@ export class GitContextRevisionMapper {
       effectiveEncodingHints
     );
     const unresolvedFileIds = new Set<string>();
+    const unresolvedReasonsByFileId: Record<string, "immutable-text-unavailable" | "mapping-unresolved"> = {};
+    for (const file of Object.values(mapped)) {
+      if (!Object.hasOwn(refreshed, file.fileId) &&
+          !binaryResolution.destinationPaths.has(file.currentPath) &&
+          !binaryResolution.unresolvedPaths.has(file.currentPath)) {
+        unresolvedFileIds.add(file.fileId);
+        unresolvedReasonsByFileId[file.fileId] = "immutable-text-unavailable";
+      }
+    }
     const byPath = new Map(Object.values(files).map((file) => [file.currentPath, file.fileId]));
     for (const unresolved of transitioned.unresolved) {
       const fileId = unresolved.oldPath === undefined ? undefined : byPath.get(unresolved.oldPath);
       if (fileId !== undefined) {
         unresolvedFileIds.add(fileId);
+        unresolvedReasonsByFileId[fileId] ??= "mapping-unresolved";
       }
     }
     for (const file of Object.values(files)) {
       if (binaryResolution.destinationPaths.has(file.currentPath) ||
           binaryResolution.unresolvedPaths.has(file.currentPath)) {
         unresolvedFileIds.add(file.fileId);
+        unresolvedReasonsByFileId[file.fileId] ??= "mapping-unresolved";
       }
     }
     let binaryTransitions: readonly GitDiffFile[] = [];
@@ -458,9 +479,10 @@ export class GitContextRevisionMapper {
       const sourceId = byPath.get(file.oldPath);
       if (sourceId !== undefined) {
         unresolvedFileIds.add(sourceId);
+        unresolvedReasonsByFileId[sourceId] ??= "mapping-unresolved";
       }
     }
-    return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort() };
+    return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort(), unresolvedReasonsByFileId };
   }
 
   private async mapGlobalFiles(

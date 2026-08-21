@@ -9,6 +9,14 @@ export type ReviewContextsRepositorySelection = (
   candidates: readonly ResolvedRepositoryCandidate[]
 ) => Promise<ResolvedRepositoryCandidate | undefined>;
 
+/** 選択取消・stale候補を、既存表示を破棄しない操作取消として表す。 */
+export class ReviewContextsRepositorySelectionCancelled extends Error {
+  public constructor() {
+    super("Review Contexts repository selection was cancelled.");
+    this.name = "ReviewContextsRepositorySelectionCancelled";
+  }
+}
+
 /**
  * Resolves the repository used by a Review Contexts command without requiring
  * an active Git editor.  Multiple candidates are never guessed.
@@ -27,7 +35,7 @@ export const resolveReviewContextsRepository = async (
   }
   const selected = await input.requestSelection(candidates);
   if (selected === undefined || !candidates.includes(selected)) {
-    throw new Error("Review Contexts repository selection was cancelled.");
+    throw new ReviewContextsRepositorySelectionCancelled();
   }
   return selected.repository;
 };

@@ -7,6 +7,8 @@ import {
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
+import { settleReviewContextsRepositorySelection } from "../../t609-review-contexts-cancellation-boundary";
+import { ReviewContextsRepositorySelectionCancelled } from "../../t609-review-contexts-repository";
 
 import {
   formatReviewContextCacheStatus,
@@ -272,8 +274,11 @@ export function registerReviewContextsRuntime(
         (feedbackContext) => operation(feedbackContext),
       );
     } catch (error) {
-      if (clearProviderOnFailure) provider.clear();
-      await dependencies.reportError(formatOperationFailureForUser(error));
+      const outcome = await settleReviewContextsRepositorySelection(error, {
+        clear: () => { if (clearProviderOnFailure) provider.clear(); },
+        reportTerminalFailure: () => dependencies.reportError(formatOperationFailureForUser(error)),
+      });
+      if (outcome === "cancelled") return;
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
@@ -287,6 +292,7 @@ export function registerReviewContextsRuntime(
       try {
         await operation(feedbackContext);
       } catch (error) {
+        if (error instanceof ReviewContextsRepositorySelectionCancelled) return;
         terminalFailure = true;
         throw error;
       }

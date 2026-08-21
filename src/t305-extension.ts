@@ -106,7 +106,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         : undefined
     );
   };
-  const git = createNodeLocalGitAdapter();
+  const git = createNodeLocalGitAdapter({
+    decodeWithHint: async (bytes, encoding) => vscode.workspace.decode(bytes, { encoding })
+  });
   const stableHash = new NodeSha256StableHash();
   const documentEditRuntime = new DocumentReviewEditRuntime({
     storageUris: {
@@ -521,6 +523,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }
   );
 
+  let testReviewContextsRepositorySelection: "cancel" | "stale" | undefined;
   reviewContextsRuntimeRef.current = registerT405ReviewContextsRuntime({
     context,
     git,
@@ -539,6 +542,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
     reviewStateRepository: runtimePort.reviewStateRepository,
     reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
+    ...(context.extensionMode === vscode.ExtensionMode.Test ? {
+      requestRepositorySelection: async (candidates) =>
+        testReviewContextsRepositorySelection === "stale" ? { ...candidates[0]! } : undefined,
+    } : {}),
   });
 
   const refreshGlobalUnderstanding = (): void => {
@@ -645,6 +652,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       ...baseApi,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
+      setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
+        testReviewContextsRepositorySelection = selection;
+      },
       seedSavedPullRequestContext: async (document: vscode.TextDocument, pullRequestNumber: number) => {
         const inspection = await git.inspectRepository(document.uri.fsPath);
         if (inspection.kind !== "repository" || inspection.repository.head === undefined) {

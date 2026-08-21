@@ -1,0 +1,172 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+
+const projectRoot = process.cwd();
+
+interface PackageManifest {
+  readonly scripts?: Readonly<Record<string, string>>;
+}
+
+const suitePath = (name: string): string => `test-dist/test/unit/${name}.test.js`;
+
+const occurrences = (value: string, literal: string): number =>
+  value.split(literal).length - 1;
+
+const commandOccurrences = (value: string, command: string): number =>
+  value.match(new RegExp(`${command}(?!:)`, "gu"))?.length ?? 0;
+
+test("T609 gate wires every focused unit suite once and keeps the Extension Host phase separate", async () => {
+  const manifest = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8")) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+  const unit = scripts["test:unit"];
+  const focused = scripts["test:t609"];
+  const extensionHost = scripts["test:t609:extension-host"];
+  assert.ok(unit, "test:unit must be defined");
+  assert.ok(focused, "test:t609 must be defined");
+  assert.ok(extensionHost, "test:t609:extension-host must be defined");
+
+  for (const suite of [
+    "t609-repository-resolution",
+    "t609-review-contexts-repository",
+    "t609-revision-mapping-encoding",
+    "t609-normal-review-followup",
+    "t609-review-contexts-cancellation-boundary",
+    "t609-t405-encoding-composition",
+    "t609-gate-wiring"
+  ]) {
+    const compiled = suitePath(suite);
+    assert.equal(occurrences(unit, compiled), 1, `test:unit must execute ${suite} exactly once`);
+    assert.equal(occurrences(focused, compiled), 1, `test:t609 must execute ${suite} exactly once`);
+  }
+
+  assert.equal(
+    /run-extension-host\.js/u.test(focused),
+    false,
+    "test:t609 must not also execute the dedicated Extension Host phase"
+  );
+  assert.match(extensionHost, /run-extension-host\.js --t609\b/u);
+  assert.equal(
+    occurrences(extensionHost, "run-extension-host.js --t609"),
+    1,
+    "the dedicated Extension Host runner must be invoked once"
+  );
+});
+
+test("T609 CI gate invokes the package-owned unit and Extension Host commands once", async () => {
+  const workflow = await readFile(path.join(projectRoot, ".github", "workflows", "ci.yml"), "utf8");
+  const gate = /- name: T609 repository and encoding tests\r?\n(?<body>[\s\S]*?)(?=\r?\n\s*- name:|\r?\n\s*$)/u.exec(workflow)?.groups?.body;
+  assert.ok(gate, "CI must declare one T609 gate step");
+  assert.equal(commandOccurrences(gate, "npm run test:t609"), 1, "CI must invoke test:t609 once");
+  assert.equal(
+    occurrences(gate, "npm run test:t609:extension-host"),
+    1,
+    "CI must invoke the dedicated T609 Extension Host phase once"
+  );
+});
+
+test("T609 runner prepares both Git fixtures before the Host launches and the Host suite only consumes them", async () => {
+  const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+
+  assert.match(runner, /const prepareT609Fixture = async/u);
+  assert.match(runner, /const prepareT609SecondRoot = async/u);
+  assert.match(runner, /await prepareT609Fixture\(t609Paths\.workspace\);/u);
+  assert.match(runner, /await prepareT609SecondRoot\(t609Paths\.additionalWorkspace\);/u);
+  assert.match(runner, /"files\.encoding": "shift_jis"/u);
+
+  assert.doesNotMatch(hostSuite, /node:child_process/u);
+  assert.doesNotMatch(hostSuite, /workspace\.fs\.(?:stat|writeFile)/u);
+  assert.doesNotMatch(hostSuite, /getConfiguration\("files"/u);
+  assert.doesNotMatch(hostSuite, /git\(/u);
+});
+
+test("T609 Host fixture separates active-editor lifecycle, command persistence, visible refresh, and Global completion", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+
+  assert.match(hostSuite, /const markAndSynchronizeFixtureReview = async/u);
+  assert.match(hostSuite, /vscode\.window\.activeTextEditor\?\.document\.uri\.toString\(\)/u);
+  assert.match(hostSuite, /api\.drainDocumentReviewEdits\(\)/u);
+  assert.match(hostSuite, /api\.refreshVisibleEditorDecorations\(\)/u);
+  assert.match(hostSuite, /api\.drainVisibleEditorDecorations\(\)/u);
+  assert.match(hostSuite, /api\.getVisibleReviewedIntervals\(editor\.document\.uri\.toString\(\)\)/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
+  assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
+  assert.match(hostSuite, /refresh Global mixed encoding/u);
+});
+
+test("T609 phase ownership keeps mixed encoding in single-root and repository cancellation in multi-root", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
+  const restartStart = hostSuite.indexOf("if (!isPrepare) {");
+  const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
+  assert.ok(singleRootStart >= 0 && restartStart > singleRootStart && multiRootStart > restartStart);
+
+  const singleRootPhase = hostSuite.slice(singleRootStart, restartStart);
+  const multiRootPhase = hostSuite.slice(multiRootStart);
+  assert.match(singleRootPhase, /assertMixedEncodingFixture\(folder, api\)/u);
+  assert.doesNotMatch(multiRootPhase, /openTextDocument|markAndSynchronizeFixtureReview|Current Context/u);
+  assert.match(multiRootPhase, /multi-root cancellation boundary/u);
+  assert.match(multiRootPhase, /multi-root stale cancellation boundary/u);
+});
+
+test("T609 single-root reuses its no-active Current Context selection without an active-editor refresh", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
+  const restartStart = hostSuite.indexOf("if (!isPrepare) {");
+  const reviewSyncStart = hostSuite.indexOf("const markAndSynchronizeFixtureReview = async");
+  const reviewSyncEnd = hostSuite.indexOf("const assertMixedEncodingFixture", reviewSyncStart);
+  assert.ok(singleRootStart >= 0 && restartStart > singleRootStart && reviewSyncStart >= 0 && reviewSyncEnd > reviewSyncStart);
+
+  const singleRootPhase = hostSuite.slice(singleRootStart, restartStart);
+  const reviewSync = hostSuite.slice(reviewSyncStart, reviewSyncEnd);
+  assert.equal(
+    occurrences(singleRootPhase, 'vscode.commands.executeCommand("reviewRange.refreshContext")'),
+    1,
+    "single-root must issue only its no-active-editor Current Context refresh"
+  );
+  assert.doesNotMatch(reviewSync, /reviewRange\.refreshContext/u);
+});
+
+test("T609 Host marks fixture selections through the test-only application seam", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+
+  assert.match(
+    extension,
+    /markNormalEditorSelectionForTest:\s*\(editor:\s*vscode\.TextEditor\)\s*=>\s*commandService\.markSelectionReviewed\(editor\)/u,
+    "the Test API must call the production normal-editor command service directly"
+  );
+  assert.match(hostSuite, /api\.markNormalEditorSelectionForTest\(editor\)/u);
+  assert.doesNotMatch(
+    hostSuite,
+    /executeCommand\("reviewRange\.markSelectionReviewed"\)/u,
+    "the T609 fixture must not wait on the public command wrapper"
+  );
+});
+
+test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const restartStart = hostSuite.indexOf("if (!isPrepare) {");
+  const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
+  assert.ok(restartStart >= 0 && multiRootStart > restartStart);
+
+  const restartPhase = hostSuite.slice(restartStart, multiRootStart);
+  const activateIndex = restartPhase.indexOf("showTextDocument(reopened");
+  const refreshIndex = restartPhase.indexOf("refresh reopened UTF-8 BOM decorations");
+  const hintsIndex = restartPhase.indexOf("getObservedEncodingHintsForTest");
+  assert.ok(activateIndex >= 0, "restart must activate the reopened UTF-8 BOM editor");
+  assert.ok(refreshIndex > activateIndex, "restart must observe the active reopened editor through decorations");
+  assert.ok(hintsIndex > refreshIndex, "restart must assert observed hints after decoration observation settles");
+  assert.match(restartPhase, /vscode\.window\.activeTextEditor\?\.document\.uri\.toString\(\)/u);
+  assert.match(restartPhase, /textDocuments\.some\([\s\S]*?shift-jis\.txt/u);
+  assert.match(restartPhase, /textDocuments\.some\([\s\S]*?invalid\.txt/u);
+  assert.doesNotMatch(
+    restartPhase,
+    /openTextDocument\(fixtureUri\(folder, "shift-jis\.txt"\)\)/u
+  );
+  assert.doesNotMatch(restartPhase, /reviewRange\.refreshContext|reviewRange\.refreshGlobalUnderstanding/u);
+  assert.match(extension, /getObservedEncodingHintsForTest:\s*\(\)\s*=>\s*documentSessionProvider\.observedEncodingHintsSnapshot\(\)/u);
+});
