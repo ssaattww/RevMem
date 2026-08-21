@@ -61,5 +61,3 @@ Direct dependencies / consumers / composition として `src/core/pr-progress/pr
 ## リスク
 
 Current exact-head CI は一度の観測で failure であり、merge gateとして held のままである。原因は未調査で、local passを代用しない。Markdown wording focused/full は repository wiring不在の `unsupported` held である。wall-clock measurement は Windows / Node v24.18.0 / one run の advisory evidenceに限られ、deterministic work contractの代替ではない。本 report の persistence mode は fail verdictを記録する reserved repository fileであり、report-attestation head は null である。reportを含む commitを technical completionまたは merge authorizationとして扱ってはならず、今後の repository writeは通常 implementation/review lifecycleへ戻す必要がある。
-
-
