@@ -55,6 +55,20 @@ Git working treeを検出しない
 
 Pull Request context resolverが未接続の環境では、Git管理下のdocumentをbranchまたはdetached HEAD contextへ解決する。resolver接続後もGit ownershipを先に決定する規則は変更しない。
 
+### 3.3 Current ContextとRepository解決
+
+Current Context、Review Contexts、PR取得、Git revision mappingは、active editorの存在またはそのdocumentがGit管理下であることをrepository解決の前提にしない。解決要求ごとに次の順序で候補を収集し、同一のcanonical repository rootへ正規化して重複を除く。
+
+1. active editorがfilesystem-backedかつGit working tree配下なら、そのrepository
+2. active editorでなくても開かれているGit documentのrepository
+3. 明示選択済みのCurrent Contextまたは、同一Extension Host内で検証済みかつ現在も有効な既知root
+4. 開かれているworkspace folder自体、またはその配下から検出したGit repository
+5. 残った複数候補に対するQuick Pickの明示選択
+
+1から4で候補が一意ならそのrepositoryを使う。候補が0件なら操作はrepository未解決として停止し、候補が複数なら自動的な先頭選択、folder名比較、以前の表示順による推測をしない。Quick Pickの取消、選択結果と再検証後のrootの不一致、削除済みまたは到達不能になった既知root、URI境界を越えるroot、workspace-side Extension Hostでfilesystem pathへ安全に変換できないremoteまたはvirtual URIは、いずれもfail-closedである。このときReview Contexts全体の既存表示・保存済み状態を別repositoryへ流用せず、選択操作だけを中止する。
+
+Remote SSH、Dev Containers、Codespacesのように、workspace-side Extension Hostが開いたworkspace folder URIから同じauthorityのfilesystem pathを得られる場合は5.5節のremote workspace規則に従って候補化できる。UI側だけで観測したremote URI、Git仮想document、queryまたはfragment付きURIをroot候補へ降格または昇格させてはならない。したがってactive editorがない場合、またはactive editorが非Git documentの場合も、Git管理workspaceが開かれていればrepository操作を継続できる。
+
 ## 4. Git inspection
 
 ### 4.1 Git管理判定
@@ -150,6 +164,14 @@ VS CodeのUNC securityを迂回しない。
 workspace membershipはUI側のlocal pathやfolder名ではなく、workspace-side Extension Hostが観測したURIの`scheme`、`authority`、正規化pathで決定する。候補rootのうち、document URIとscheme・authorityが一致し、そのpathがdocument pathの厳密な親であるものだけを候補にする。候補が複数ある場合は最長pathのrootを選ぶ。同じ最長canonical URIが複数存在して一意に選べない場合はfail-closedでworkspace ownerを選ばない。
 
 この規則により、入れ子root、同一名root、同じpathだが異なるremote authorityを区別する。`untitled`、virtual URI、queryまたはfragmentを持つURI、workspace外URIはworkspace ownershipへ降格させず、通常editorの操作対象外またはexternal-file ownerの既存規則で扱う。Remote SSH、Dev Containers、Codespaces相当の`vscode-remote` URIはauthorityをidentityへ含め、Extension Hostが稼働する側のfilesystem semanticsとGit adapterだけを使用する。
+
+### 5.6 Document encoding hint
+
+VS Code 1.125以降で開かれた`TextDocument.encoding`は、filesystem-backed documentのfile単位encoding hintとする。live documentの本文は常に同じdocumentの`getText()`を使用し、Git revisionのraw byte blobは対応するhintを指定してVS Code `workspace.decode`でdecodeする。hintはrepository identityとstable file identityに結び付け、同一repository内のShift-JIS、UTF-8、UTF-8 BOMを混在させても他fileのowner、context、mapping、Global stateを変更しない。
+
+hintは開かれたdocumentの観測値であり、repository全体への既定encoding、保存形式の推測、未open fileへの継承には使用しない。一意なrenameまたはmoveでfile identityが維持されるときだけhintを引き継ぐ。copy、add、分割、統合、曖昧なrenameはhintを継承しない。`onDidChangeTextDocument`またはencoding設定変更により同一documentのencodingが変わった場合、旧hintで得たrevision本文・content hash・line mappingを再利用せず、新hintでdecodeして対象fileだけを再計算する。restart後は開いているdocumentから再観測するまで、保存済みhintを根拠に未open fileをdecodeしない。
+
+hintがない、VS Codeが受理しない、またはraw byte列を完全にdecodeできない場合は、当該fileをline-review対象外またはunresolvedとして隔離する。replacement characterによる救済、encoding自動判定、別file hintの流用は行わない。binary判定はdecodeに先行し、binary・unsupported encoding・invalid encodingの各理由をfile単位で保持する。
 
 ## 6. Review State Storage
 
@@ -430,7 +452,7 @@ source評価順はworkspace、external-fileの順とする。ただし順番だ�
 
 ## 8. Extension接続
 
-通常エディタのコマンドと装飾は同じowner routerを使用する。activation compositionはworkspace folderごとにnon-Git provider、snapshot tracker、root-local storage routeを作成し、URI membership routerを経由してdocumentを1つのproviderへだけ渡す。workspace folderの追加・削除・変更ではprovider registryを更新し、削除されたrootのruntimeをdisposeする。Git、PR、file content、GitHub acquisitionは、選択されたdocument URIから得たworkspace-side filesystem pathだけで実行し、UI側local pathを仮定しない。
+通常エディタのコマンドと装飾は同じowner routerを使用する。activation compositionはworkspace folderごとにnon-Git provider、snapshot tracker、root-local storage routeを作成し、URI membership routerを経由してdocumentを1つのproviderへだけ渡す。workspace folderの追加・削除・変更ではprovider registryを更新し、削除されたrootのruntimeをdisposeする。Git、PR、file content、GitHub acquisitionは、選択されたdocument URIまたは3.3節で一意に解決したrepository rootから得たworkspace-side filesystem pathだけで実行し、UI側local pathを仮定しない。
 
 ```text
 DocumentReviewStateSessionProvider.open(document descriptor)
@@ -462,6 +484,8 @@ workspace providerをroot registryでwrapする場合、registryはtyped snapsho
 - revision mapping未完了: 旧revisionを現在revisionへ再ラベルしない
 - workspace root membershipが曖昧またはURI境界を越える: workspace state、history、snapshot、Git/PR acquisitionを開始しない
 - workspace folder削除後の旧provider: disposeし、削除rootのstateを別rootへ再利用しない
+- repository候補のQuick Pick取消、stale root、または安全にfilesystem pathへ変換できないremote/virtual URI: repository操作を中止し、別候補を推測選択しない
+- encoding hintなし、unsupported encoding、invalid encoding、binary: 当該fileを対象外またはunresolvedとして隔離し、他file、context、Global stateを失敗させない
 
 ## 10. 検証条件
 
@@ -481,6 +505,12 @@ workspace providerをroot registryでwrapする場合、registryはtyped snapsho
 - multi-rootでは最長一致URI pathのrootだけを選び、入れ子root・同一名root・異なるauthorityを混同しない
 - untitled、virtual、workspace外、query/fragment URIはworkspace membershipをfail-closedに扱う
 - Remote SSH、Dev Containers、Codespaces相当authorityをworkspace identityとfile identityへ保持する
+- active editorなし、またはactive editorが非Git documentでも、開かれたGit workspace folderからrepositoryを一意に解決できる
+- active Git document、開かれたGit document、明示選択済みCurrent Context、既知root、workspace folderの順序で候補を決定し、複数候補だけをQuick Pickへ出す
+- Quick Pick取消、stale root、remote/virtual URIのpath変換不能、root境界不一致ではrepositoryを推測選択しない
+- 単一rootとmulti-rootで同じrepositoryが候補になり、同一identityでもrootが曖昧なら操作をfail-closedにする
+- opened Shift-JIS、UTF-8、UTF-8 BOM documentの`getText()`と対応Git blobを同じhintで一致させ、同一repository内の混在を許容する
+- encoding変更、rename、new file、hintなし、unsupported encoding、invalid encoding、binaryでfile単位の再計算または隔離を確認する
 
 ### 10.2 Storage
 
@@ -528,3 +558,4 @@ workspace providerをroot registryでwrapする場合、registryはtyped snapsho
 - Git、対象file read、PR acquisitionがworkspace-side Extension HostのURIとfilesystem adapterを使用する
 - non-file remote authorityを含むroot Aとroot BでCurrent Context、review state、history、snapshot、Git/PR acquisitionが混線しない
 - 同一repository identityが複数rootに存在する場合もrepository rootをCurrent Context candidate、PR acquisition、diff readerのsource identityとして保持し、rootを一意に決められない操作はactive document rootへfail-closedに束縛する
+- restart後はopened documentのencoding hintを再観測し、未再観測fileへ以前のhintを適用しない
