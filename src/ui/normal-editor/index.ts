@@ -5,6 +5,7 @@ export {
   registerNormalEditorReviewCommands,
   type CommandDisposable,
   type NormalEditorDecorationRefresher,
+  type RefreshingNormalEditorReviewCommandHandlerOptions,
   type NormalEditorCommandHost,
   type NormalEditorReviewCommandHandlers
 } from "./review-command-registration";

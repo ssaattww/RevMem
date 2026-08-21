@@ -69,6 +69,18 @@ export interface NormalEditorDecorationRefresher {
   refreshVisibleEditors(): void | Promise<void>;
 }
 
+/** Controls whether an applied normal-editor command completes after its automatic decoration refresh. */
+export interface RefreshingNormalEditorReviewCommandHandlerOptions {
+  /**
+   * Defers automatic decoration refresh after an applied command.
+   *
+   * Production callers leave this unset so command completion continues to await
+   * visible-editor synchronization. Extension Test mode uses it when the fixture
+   * owns the explicit refresh and drain observation boundary.
+   */
+  readonly deferAppliedDecorationRefresh?: boolean;
+}
+
 type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
 
 /**
@@ -79,13 +91,14 @@ type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
  */
 export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
   handlers: NormalEditorReviewCommandHandlers<Editor>,
-  refresher: NormalEditorDecorationRefresher
+  refresher: NormalEditorDecorationRefresher,
+  options: RefreshingNormalEditorReviewCommandHandlerOptions = {}
 ): NormalEditorReviewCommandHandlers<Editor> {
   const refreshAfterApplied = async (
     operation: () => void | Promise<unknown>
   ): Promise<unknown> => {
     const result = await operation();
-    if (result === "applied") {
+    if (result === "applied" && !options.deferAppliedDecorationRefresh) {
       await refresher.refreshVisibleEditors();
     }
     return result;

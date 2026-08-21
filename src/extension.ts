@@ -830,7 +830,10 @@ export function activate(
           return result;
         }
       },
-      decorationController
+      decorationController,
+      context.extensionMode === vscode.ExtensionMode.Test
+        ? { deferAppliedDecorationRefresh: true }
+        : undefined
     )
   );
   context.subscriptions.push(

@@ -353,6 +353,47 @@ test("applied commands refresh every visible split editor for the same document"
   assert.equal(host.setCalls.length, 4);
 });
 
+test("Test-mode deferred refresh exposes intervals only after the fixture's explicit refresh", async () => {
+  const sourceEditor: FakeEditor = { id: "source-editor" };
+  const splitEditor: FakeEditor = { id: "split-editor" };
+  const host = new FakeHost();
+  host.visibleEditors = [sourceEditor, splitEditor];
+  host.models.set(sourceEditor, []);
+  host.models.set(splitEditor, []);
+  const controller = new NormalEditorDecorationController(host);
+  await controller.start();
+
+  host.models.set(sourceEditor, [decoration(1, 2)]);
+  host.models.set(splitEditor, [decoration(1, 2)]);
+  const handlers = createRefreshingNormalEditorReviewCommandHandlers(
+    {
+      markSelectionReviewed: async () => "applied",
+      unmarkSelectionReviewed: async () => "no-op",
+      markFileReviewed: async () => "no-op",
+      unmarkFileReviewed: async () => "no-op"
+    },
+    controller,
+    { deferAppliedDecorationRefresh: true }
+  );
+
+  await handlers.markSelectionReviewed(sourceEditor);
+  assert.equal(host.setCalls.length, 2, "the public state command must not render before fixture refresh");
+
+  await controller.refreshVisibleEditors();
+  assert.deepEqual(host.setCalls.slice(-2), [
+    {
+      editor: sourceEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 2)]
+    },
+    {
+      editor: splitEditor,
+      decorationType: host.decorationTypes[0],
+      decorations: [decoration(1, 2)]
+    }
+  ]);
+});
+
 test("controller clears uncertain output and reports decoration load errors", async () => {
   const editor: FakeEditor = { id: "normal" };
   const failure = new Error("state load failed");
