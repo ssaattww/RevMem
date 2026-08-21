@@ -26,9 +26,18 @@ export interface LocalGitRevisionTextInvalidEncoding {
   readonly encoding: "utf-8";
 }
 
+/** VS Codeが指定encodingを安全にdecodeできなかったimmutable blob。 */
+export interface LocalGitRevisionTextUnsupportedEncoding {
+  /** Discriminant meaning that the opened-document encoding cannot be used safely. */
+  readonly kind: "unsupported-encoding";
+  /** Opened documentから観測したencoding hint。 */
+  readonly encoding: string;
+}
+
 /** Deterministic outcome of an immutable Git commit text lookup. */
 export type LocalGitRevisionTextReadResult =
   | LocalGitRevisionTextFound
   | LocalGitRevisionTextMissingRevision
   | LocalGitRevisionTextMissingFile
-  | LocalGitRevisionTextInvalidEncoding;
+  | LocalGitRevisionTextInvalidEncoding
+  | LocalGitRevisionTextUnsupportedEncoding;

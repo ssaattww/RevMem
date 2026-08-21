@@ -376,7 +376,8 @@ export const createNormalEditorDecorationActivation = (dependencies: {
       fileSystemPathSemantics: workspaceSidePathSemantics(),
       ...(workspace === undefined ? {} : { workspace }),
       lineCount,
-      contentHash
+      contentHash,
+      ...(document.encoding.length === 0 ? {} : { encodingHint: document.encoding })
     };
   };
   const invokeListener = (listener: () => void | Promise<void>): void => {
@@ -660,7 +661,9 @@ export function activate(
     );
   }));
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
-    gitInspector: createNodeLocalGitAdapter(),
+    gitInspector: createNodeLocalGitAdapter({
+      decodeWithHint: async (bytes, encoding) => vscode.workspace.decode(bytes, { encoding })
+    }),
     repository,
     workspaceProvider: workspaceSessionProvider,
     stableHash,

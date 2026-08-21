@@ -157,12 +157,18 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         revision,
         repositoryRelativePath,
-        fileSystemPathSemantics
+        fileSystemPathSemantics,
+        feedbackContext,
+        signal,
+        encodingHint
       ) => original.readTextFileAtRevision(
         repositoryRoot,
         revision,
         repositoryRelativePath,
-        fileSystemPathSemantics
+        fileSystemPathSemantics,
+        feedbackContext,
+        signal,
+        encodingHint
       )
     };
     return { source };

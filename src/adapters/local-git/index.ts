@@ -41,7 +41,9 @@ export type {
 export type {
   LocalGitRevisionTextFound,
   LocalGitRevisionTextInvalidEncoding,
+  LocalGitRevisionTextUnsupportedEncoding,
   LocalGitRevisionTextMissingFile,
   LocalGitRevisionTextMissingRevision,
   LocalGitRevisionTextReadResult
 } from "./revision-text-content";
+export type { GitBlobTextDecoder } from "./local-git-adapter";

@@ -113,6 +113,7 @@ export class GitContextDocumentReviewStateSessionProvider {
   private readonly mapper: GitContextRevisionMapper | undefined;
   private readonly monitor: PollingGitStateMonitor;
   private readonly knownDescriptors = new Map<string, DocumentEditorReviewDescriptor>();
+  private readonly observedEncodingHints = new Map<string, string | undefined>();
   private readonly snapshotGenerations = new Map<string, number>();
   private readonly mappingOptions: Readonly<GitDiffMappingOptions>;
 
@@ -223,6 +224,7 @@ export class GitContextDocumentReviewStateSessionProvider {
   public dispose(): void {
     this.monitor.dispose();
     this.knownDescriptors.clear();
+    this.observedEncodingHints.clear();
   }
 
   private createDelegate(
@@ -323,6 +325,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     registerMonitorBaseline = true
   ): Promise<boolean> {
     this.knownDescriptors.set(snapshot.rootPath, clone(descriptor));
+    const encodingChanged = this.observeEncodingHint(snapshot.rootPath, descriptor);
     if (!this.isCurrentSnapshotGeneration(current, generation)) {
       return false;
     }
@@ -330,6 +333,7 @@ export class GitContextDocumentReviewStateSessionProvider {
       current,
       descriptor,
       initializeMissingContext,
+      encodingChanged,
       () => this.isCurrentSnapshotGeneration(current, generation)
     );
     if (!this.isCurrentSnapshotGeneration(current, generation)) {
@@ -346,6 +350,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     current: ResolvedGitReviewContext,
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean,
+    encodingChanged: boolean,
     isCurrentGeneration: () => boolean
   ): Promise<void> {
     const target: ReviewStateRepositoryTarget = {
@@ -369,7 +374,8 @@ export class GitContextDocumentReviewStateSessionProvider {
         }
         if (
           revisionOf(commit) === current.revisionId &&
-          commit.globalState.currentRevisionId === current.revisionId
+          commit.globalState.currentRevisionId === current.revisionId &&
+          !encodingChanged
         ) {
           return;
         }
@@ -497,7 +503,10 @@ export class GitContextDocumentReviewStateSessionProvider {
       contextState: clone(commit.contextState),
       globalState: clone(commit.globalState),
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
-      options: this.mappingOptions
+      options: this.mappingOptions,
+      ...(descriptor.encodingHint === undefined
+        ? {}
+        : { encodingHintsByPath: this.encodingHintForDescriptor(current, descriptor) })
     });
     return {
       commit: {
@@ -507,6 +516,29 @@ export class GitContextDocumentReviewStateSessionProvider {
       },
       unresolvedFileIds: [...mapped.unresolvedFileIds]
     };
+  }
+
+  /** Records the transient VS Code hint; a change must re-read immutable text. */
+  private observeEncodingHint(
+    repositoryRoot: string,
+    descriptor: DocumentEditorReviewDescriptor
+  ): boolean {
+    const key = `${repositoryRoot}\0${descriptor.documentFsPath}`;
+    const previous = this.observedEncodingHints.get(key);
+    const next = descriptor.encodingHint;
+    this.observedEncodingHints.set(key, next);
+    return previous !== undefined && previous !== next;
+  }
+
+  /** Keeps an opened-document encoding hint scoped to its current repository-relative path. */
+  private encodingHintForDescriptor(
+    current: ResolvedGitReviewContext,
+    descriptor: DocumentEditorReviewDescriptor
+  ): Readonly<Record<string, string>> {
+    const pathApi = descriptor.fileSystemPathSemantics === "windows" ? path.win32 : path.posix;
+    const relativePath = pathApi.relative(current.repositoryRoot, descriptor.documentFsPath)
+      .split(pathApi.sep).join("/");
+    return { [relativePath]: descriptor.encodingHint as string };
   }
 
   private advanceSnapshotGeneration(current: ResolvedGitReviewContext): number {
@@ -523,3 +555,4 @@ export class GitContextDocumentReviewStateSessionProvider {
     return this.snapshotGenerations.get(`${current.repositoryId}\0${current.contextId}`) === generation;
   }
 }
+import path from "node:path";

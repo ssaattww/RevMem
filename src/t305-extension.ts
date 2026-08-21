@@ -28,6 +28,7 @@ import {
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
 } from "./t305-current-context-git";
+import { resolveCurrentContextRepositories } from "./t609-repository-resolution";
 import {
   registerCurrentContextRuntime,
 } from "./ui/current-context/vscode-current-context-runtime";
@@ -197,6 +198,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
       uri: toResourceUri(folder.uri), name: folder.name
     }));
+    for (const candidate of await resolveCurrentContextRepositories({
+      activeDocumentPath: vscode.window.activeTextEditor?.document.uri.scheme === "file" ||
+        vscode.window.activeTextEditor?.document.uri.scheme === "vscode-remote"
+        ? vscode.window.activeTextEditor.document.uri.fsPath
+        : undefined,
+      openedDocumentPaths: vscode.workspace.textDocuments.map((document) =>
+        !document.isClosed && FILESYSTEM_SCHEMES.has(document.uri.scheme)
+          ? document.uri.fsPath
+          : undefined),
+      knownRootPaths: selectedContext?.kind === "branch" || selectedContext?.kind === "detached"
+        ? [selectedContext.repositoryRoot]
+        : [],
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) =>
+        FILESYSTEM_SCHEMES.has(folder.uri.scheme) ? folder.uri.fsPath : undefined),
+      inspectRepository: (startPath) => git.inspectRepository(startPath)
+    })) {
+      const snapshot = gitCurrentContextSnapshot(candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0]);
+      contexts.set(currentContextSelectionKey(snapshot), snapshot);
+    }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       if (resolveWorkspaceResourceEligibility({
         documentUri: toResourceUri(folder.uri),

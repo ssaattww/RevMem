@@ -48,11 +48,14 @@ export class LocalGitRevisionTextContentSource
       descriptor.fileSystemPathSemantics,
       "descriptor.filePath"
     );
-    return this.localGitAdapter.readTextFileAtRevision(
+    const result = await this.localGitAdapter.readTextFileAtRevision(
       repositoryRoot,
       descriptor.revision,
       filePath,
       descriptor.fileSystemPathSemantics
     );
+    return result.kind === "unsupported-encoding"
+      ? { kind: "invalid-encoding", encoding: "utf-8" }
+      : result;
   }
 }

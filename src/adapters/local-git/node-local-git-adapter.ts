@@ -9,6 +9,7 @@ import {
 } from "./contracts";
 import { gitInspectionStartPath } from "./git-inspection-start-path";
 import { LocalGitAdapter } from "./history-rewrite-local-git-adapter";
+import type { GitBlobTextDecoder } from "./local-git-adapter";
 import { NodeGitBlobReader } from "./node-git-blob-reader";
 import {
   NodeGitCommandExecutor,
@@ -25,6 +26,8 @@ export interface NodeLocalGitAdapterOptions
   extends NodeGitCommandExecutorOptions {
   /** Grace period between blob SIGTERM and SIGKILL escalation. */
   readonly blobTerminationGraceMs?: number;
+  /** VS Code workspace.decodeへ委譲するopened-document encoding decoder。 */
+  readonly decodeWithHint?: GitBlobTextDecoder;
 }
 
 const requireRevision = (value: string, name: string): string => {
@@ -61,9 +64,10 @@ class NodeLocalGitAdapter extends LocalGitAdapter
 implements GitRevisionMappingSource {
   public constructor(
     private readonly metadataExecutor: GitCommandExecutor,
-    blobReader: NodeGitBlobReader
+    blobReader: NodeGitBlobReader,
+    decodeWithHint?: GitBlobTextDecoder
   ) {
-    super(metadataExecutor, blobReader);
+    super(metadataExecutor, blobReader, decodeWithHint);
   }
 
   /** Accepts either a directory or a normal file as the repository-inspection starting resource. */
@@ -119,6 +123,7 @@ export function createNodeLocalGitAdapter(
 
   return new NodeLocalGitAdapter(
     metadataExecutor,
-    new NodeGitBlobReader(blobReaderOptions)
+    new NodeGitBlobReader(blobReaderOptions),
+    options.decodeWithHint
   );
 }

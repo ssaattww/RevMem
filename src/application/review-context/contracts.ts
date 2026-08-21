@@ -73,7 +73,8 @@ export type GitRevisionMappingTextReadResult =
   | { readonly kind: "found"; readonly content: string }
   | { readonly kind: "missing-revision" }
   | { readonly kind: "missing-file" }
-  | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" };
+  | { readonly kind: "invalid-encoding"; readonly encoding: string }
+  | { readonly kind: "unsupported-encoding"; readonly encoding: string };
 
 /** Local Git operations required by conservative context revision mapping. */
 export interface GitRevisionMappingSource {
@@ -93,6 +94,7 @@ export interface GitRevisionMappingSource {
     fileSystemPathSemantics: FileSystemPathSemantics,
     feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
     signal?: AbortSignal,
+    encodingHint?: string,
   ): Promise<GitRevisionMappingTextReadResult>;
 }
 
@@ -110,6 +112,8 @@ export interface GitContextRevisionMappingInput {
   readonly options: Readonly<GitDiffMappingOptions>;
   /** Known current paths that may prove a unique rename after history rewriting. */
   readonly currentCandidatePaths?: readonly string[];
+  /** Opened documentから再観測したrepository-relative file encoding hint。 */
+  readonly encodingHintsByPath?: Readonly<Record<string, string>>;
 }
 
 /** Complete next snapshots after revision mapping. */

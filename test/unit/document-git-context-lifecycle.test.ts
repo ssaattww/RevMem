@@ -165,6 +165,7 @@ class MutableGitInspector implements DocumentGitInspector {
 
 class RevisionSource implements GitRevisionMappingSource {
   public objectsExist = true;
+  public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
   public diff = [
     "diff --git a/src/example.ts b/src/example.ts",
     "index 1111111..2222222 100644",
@@ -199,13 +200,18 @@ class RevisionSource implements GitRevisionMappingSource {
   public async readTextFileAtRevision(
     _repositoryRoot: string,
     revision: string,
-    repositoryRelativePath: string
+    repositoryRelativePath: string,
+    _fileSystemPathSemantics?: "posix" | "windows",
+    _feedbackContext?: unknown,
+    _signal?: AbortSignal,
+    encodingHint?: string
   ): Promise<
     | { readonly kind: "found"; readonly content: string }
     | { readonly kind: "missing-revision" }
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
+    this.encodingHints.push([repositoryRelativePath, encodingHint]);
     const content = this.texts.get(`${revision}\0${repositoryRelativePath}`);
     return content === undefined
       ? { kind: "missing-file" }
@@ -282,7 +288,8 @@ const createDeferred = (): {
 const descriptor = (
   repositoryRelativePath: string,
   contentHash: string,
-  lineCount = 3
+  lineCount = 3,
+  encodingHint?: string
 ): DocumentEditorReviewDescriptor => ({
   documentUri: {
     scheme: "file",
@@ -292,7 +299,8 @@ const descriptor = (
   documentFsPath: `/repo/${repositoryRelativePath}`,
   fileSystemPathSemantics: "posix",
   lineCount,
-  contentHash
+  contentHash,
+  ...(encodingHint === undefined ? {} : { encodingHint })
 });
 
 const createProvider = (
@@ -475,6 +483,37 @@ test("document sessions map branch commits and isolate branch and detached conte
 
   assert.equal(observed.length, 4);
   assert.equal(observed.at(-1)?.head, newRevision);
+  provider.dispose();
+});
+
+/** An opened document changing encoding must re-read its immutable revision without reopening the host. */
+test("document routing recalculates the current Git snapshot when an opened encoding hint changes", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const provider = createProvider(stableHash, repository, inspector, source);
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  inspector.head = newRevision;
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf8")
+  );
+  source.encodingHints.length = 0;
+
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "shift_jis")
+  );
+
+  assert.ok(source.encodingHints.some(([path, hint]) => path === "src/example.ts" && hint === "shift_jis"));
   provider.dispose();
 });
 

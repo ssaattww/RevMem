@@ -5,7 +5,7 @@ import {
   type GitCommandResult
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
-import { LocalGitAdapter as BaseLocalGitAdapter } from "./local-git-adapter";
+import { LocalGitAdapter as BaseLocalGitAdapter, type GitBlobTextDecoder } from "./local-git-adapter";
 
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
@@ -16,9 +16,10 @@ const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 export class LocalGitAdapter extends BaseLocalGitAdapter {
   public constructor(
     private readonly treeCommandExecutor: GitCommandExecutor,
-    blobReader: GitBlobReader
+    blobReader: GitBlobReader,
+    decodeWithHint?: GitBlobTextDecoder
   ) {
-    super(treeCommandExecutor, blobReader);
+    super(treeCommandExecutor, blobReader, decodeWithHint);
   }
 
   /**

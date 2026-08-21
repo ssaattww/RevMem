@@ -500,6 +500,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       },
       workspace: {
         getConfiguration: () => ({ get: () => undefined }),
+        textDocuments: [],
+        workspaceFolders: [{ uri: { scheme: "file", fsPath: repositoryRoot } }],
       },
       authentication: {
         getSession: async () => undefined,
@@ -659,6 +661,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
 
     // R405-1 + R405-7: redetect itself must cross the T405 synchronization/resolver seam.
     let current = await registerRuntime();
+    fakeVscode.window.activeTextEditor = undefined as never;
     await invoke("reviewRange.redetectPullRequest");
     const mapped = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",

@@ -23,6 +23,12 @@ const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
+/** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
+export type GitBlobTextDecoder = (
+  bytes: Uint8Array,
+  encoding: string
+) => Promise<string>;
+
 const requirePath = (value: string, name: string): string => {
   if (value.trim().length === 0 || value.includes("\0")) {
     throw new TypeError(`${name} must be a non-empty path without null characters`);
@@ -155,7 +161,8 @@ export class LocalGitAdapter {
    */
   public constructor(
     private readonly commandExecutor: GitCommandExecutor,
-    private readonly blobReader: GitBlobReader
+    private readonly blobReader: GitBlobReader,
+    private readonly decodeWithHint?: GitBlobTextDecoder
   ) {}
 
   /**
@@ -283,6 +290,7 @@ export class LocalGitAdapter {
     fileSystemPathSemantics: FileSystemPathSemantics,
     feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
     signal?: AbortSignal,
+    encodingHint?: string,
   ): Promise<LocalGitRevisionTextReadResult> {
     if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
     const rootPath = requirePath(repositoryRoot, "repositoryRoot");
@@ -334,14 +342,28 @@ export class LocalGitAdapter {
     try {
       return {
         kind: "found",
-        content: utf8Decoder.decode(bytes)
+        content: encodingHint === undefined
+          ? utf8Decoder.decode(bytes)
+          : await this.decodeWithHintOrReject(bytes, encodingHint)
       };
     } catch {
-      return {
-        kind: "invalid-encoding",
-        encoding: "utf-8"
-      };
+      if (encodingHint === undefined || this.decodeWithHint === undefined) {
+        return { kind: "invalid-encoding", encoding: "utf-8" };
+      }
+      return { kind: "unsupported-encoding", encoding: encodingHint };
     }
+  }
+
+  /** Applies an opened-document hint only through the injected VS Code boundary. */
+  private async decodeWithHintOrReject(bytes: Uint8Array, encoding: string): Promise<string> {
+    if (this.decodeWithHint === undefined || encoding.length === 0) {
+      throw new TypeError("A non-empty VS Code encoding hint is required.");
+    }
+    const content = await this.decodeWithHint(bytes, encoding);
+    if (content.includes("\uFFFD")) {
+      throw new TypeError("Decoded Git blob contains substitution characters.");
+    }
+    return content;
   }
 
   private execute(

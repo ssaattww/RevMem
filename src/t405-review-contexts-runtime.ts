@@ -86,6 +86,7 @@ import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
 } from "./t405-root-scoped-candidate-identity";
+import { resolveReviewContextsRepository } from "./t609-review-contexts-repository";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -662,13 +663,44 @@ export function registerT405ReviewContextsRuntime(
   const sourceRef: { current?: T405ReviewContextsSource } = {};
 
   const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor === undefined || (editor.document.uri.scheme !== "file" && editor.document.uri.scheme !== "vscode-remote")) {
-      throw new Error("GitHub操作にはGitリポジトリ内のアクティブエディタが必要です。");
+    const filesystemPath = (document: vscode.TextDocument): string | undefined =>
+      (document.uri.scheme === "file" || document.uri.scheme === "vscode-remote") &&
+      (document.uri.query?.length ?? 0) === 0 && (document.uri.fragment?.length ?? 0) === 0
+        ? document.uri.fsPath
+        : undefined;
+    const active = vscode.window.activeTextEditor?.document;
+    const knownRootPaths = (await options.enumerateCurrentContexts()).flatMap((snapshot) => {
+      const selection = snapshot.context.selection;
+      return selection?.kind === "branch" || selection?.kind === "detached" || selection?.kind === "pull-request"
+        ? [selection.repositoryRoot]
+        : [];
+    });
+    const resolved = await resolveReviewContextsRepository({
+      activeDocumentPath: active === undefined ? undefined : filesystemPath(active),
+      openedDocumentPaths: (vscode.workspace.textDocuments ?? []).map(filesystemPath),
+      knownRootPaths,
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) =>
+        folder.uri.scheme === "file" || folder.uri.scheme === "vscode-remote"
+          ? folder.uri.fsPath
+          : undefined),
+      inspectRepository: (startPath) => options.git.inspectRepository(startPath),
+      requestSelection: async (candidates) => {
+        const choices = candidates.map((candidate) => ({
+          label: candidate.repository.rootPath,
+          candidate
+        }));
+        return (await vscode.window.showQuickPick(choices, {
+          placeHolder: "Gitリポジトリを選択"
+        }))?.candidate;
+      }
+    });
+    const verified = await options.git.inspectRepository(resolved.rootPath);
+    if (verified.kind !== "repository" ||
+        verified.repository.rootPath !== resolved.rootPath ||
+        verified.repository.repositoryId !== resolved.repositoryId) {
+      throw new Error("Review Contexts repository became stale during selection.");
     }
-    const inspection = await options.git.inspectRepository(editor.document.uri.fsPath);
-    if (inspection.kind !== "repository") throw new Error("アクティブエディタのGitリポジトリを解決できません。");
-    return inspection.repository;
+    return verified.repository;
   };
 
   const resolveRepositoryRoot = async (repositoryId: string): Promise<string> => {
@@ -761,6 +793,7 @@ export function registerT405ReviewContextsRuntime(
     );
     if (local.kind === "found") return local;
     if (local.kind === "invalid-encoding") return local;
+    if (local.kind === "unsupported-encoding") return { kind: "invalid-encoding", encoding: "utf-8" };
     const remote = await createPullRequestRemote(identity, token).readFile(
       identity,
       descriptor.revision,
