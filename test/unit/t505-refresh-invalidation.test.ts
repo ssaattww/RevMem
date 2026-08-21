@@ -50,7 +50,7 @@ test("T505-R005 requesting a debounced refresh immediately invalidates the in-fl
   rejectInFlight?.(new Error("stale after edit"));
 
   assert.equal(await inFlight, undefined);
-  assert.deepEqual(events, []);
+  assert.deepEqual(events, ["clear"]);
   coalescer.dispose();
   void snapshot;
 });

@@ -31,14 +31,14 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T606はmainへ統合済み。T606はPR #77のsquash merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closed。T607はIFR follow-up evidence完了・independent closure待ち、T608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T606はmainへ統合済み。T606はPR #77のsquash merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closed。T607はattestation CIのtest-only follow-upとnew attestation待ち、T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T607 / Issue #79 / PR #80（technical/pre-freeze HEAD `9d5759c`、IFR001〜IFR005 technical findings closed、IFR006 admin sync未コミット完了）
-- 次の工程: final administrative freeze後の同一reviewerによるT607 IFR006 R6 report-only attestation
+- 実装中タスク: T607 / Issue #79 / PR #80（`6770d2d` attestation CIがPR68-R003/T505-R005のtest contract 2件で失敗し無効、test-only delta local Green）
+- 次の工程: test-only delta commit/push後の同一reviewerによるT607 finding-limited new attestation
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -184,7 +184,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: R5 follow-up `reports/issue-79-t607-independent-finding-followup-r5-20260821170000.md` の technical delta は historical base `6bc0304af5b6d096c3d5dd040ce771b716aeef1d` から current technical/pre-freeze HEAD `9d5759caaac648c679cd893f44e16ce494e56424` までである。R5 closure `reports/issue-79-t607-independent-finding-closure-r5-20260821173000.md` はIFR002をclosed、IFR006をopenとし、IFR001〜IFR005 technical findingsはすべてclosed。provided `npm run test:t607` 79/79とstatic gatesはpass。IFR006 admin syncは未コミットで完了し、next actionはfinal administrative freeze後の同一independent reviewerによるR6 report-only attestation。exact-head `pull_request` CIはheld、Markdown wordingはunsupported。
+- T607: attestation HEAD `6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a` の exact `pull_request` CI run `32444576455` / unit job `96661656810` はPR68-R003のlate rejectionとT505-R005のfail-closed clearという既存 test contract 2件で失敗し無効。`reports/issue-79-t607-ci-followup-20260821125018.md` はtest-only deltaを記録し、focused 13/13、`npm run test:t607` 79/79、static gates pass。new attestation pending、exact-head `pull_request` CI held、Markdown wording unsupported。
 - T608: 未着手
 
 ### 終了チェックポイント

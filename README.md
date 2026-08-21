@@ -23,7 +23,7 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 - **Review Contexts** View では、現在の PR/branch、保存済み open・closed・merged PR、workspace context を並列表示できます。PR の再検出、GitHub 再接続、cache 更新、PR layer 切替、表示だけの削除、進捗確認、PR diff の表示を行えます。
 - Review Contexts から開く PR diff は通常の review diff と同じ canonical virtual document を使用し、original・modified 両側の確認・解除操作と永続状態を共有します。
 
-現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算、失敗分類・bounded retry・privacy-safe Output 診断が production runtime へ接続されています。T607（PR #80）の current committed technical/pre-freeze HEAD は `9d5759caaac648c679cd893f44e16ce494e56424` で、IFR001〜IFR005 の technical findings は closed です。provided evidence は `npm run test:t607` 79/79 と static gates pass、exact-head `pull_request` CI は held、Markdown wording tooling は repository wiring 不在のため unsupported です。現在は IFR006 admin sync の未コミット完了状態で、次は final administrative freeze 後に同一 independent reviewer が R6 report-only attestation を行います。
+現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算、失敗分類・bounded retry・privacy-safe Output 診断が production runtime へ接続されています。T607（PR #80）の exact attestation HEAD `6770d2d8cbf66a11bf6747cc3e6e1f052ad86e0a` の `pull_request` CI run `32444576455` / unit job `96661656810` は、PR68-R003 の遅延 rejection 処理と T505-R005 の fail-closed clear 期待値という既存 test contract 2件だけで失敗しました。両test-only delta は local focused 13/13、`npm run test:t607` 79/79、static gates で確認済みです。旧 attestation は無効であり、新しい attestation とその exact-head `pull_request` CI は pending/held、Markdown wording tooling は repository wiring 不在のため unsupported です。
 
 ## インストール方法
 

@@ -565,7 +565,10 @@ const activeProgressFileId = (runtime: PullRequestReviewRuntime<string>): string
 
 test("PR68-R003 stale PR A success cannot overwrite newer PR B progress", async () => {
   const { runtime, aText, bText } = createConcurrentRuntime();
-  const aActivation = runtime.activateProgress(CONTEXT_A);
+  const aActivation = runtime.activateProgress(CONTEXT_A).then(
+    () => ({ status: "resolved" as const }),
+    (error: unknown) => ({ status: "rejected" as const, error }),
+  );
   const bActivation = runtime.activateProgress(CONTEXT_B);
 
   bText.resolve({ kind: "found", content: CONTENT_B });
@@ -573,7 +576,9 @@ test("PR68-R003 stale PR A success cannot overwrite newer PR B progress", async 
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 
   aText.resolve({ kind: "found", content: CONTENT_A });
-  await assert.rejects(aActivation, OperationCancelledError);
+  const aOutcome = await aActivation;
+  assert.equal(aOutcome.status, "rejected");
+  assert.ok(aOutcome.error instanceof OperationCancelledError);
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 });
 
