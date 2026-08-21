@@ -34,6 +34,11 @@ class FakeHost implements NormalEditorCommandHost<FakeEditor> {
   public readonly disposables: FakeDisposable[] = [];
   public unavailableMessages = 0;
   public readonly errors: unknown[] = [];
+  public readonly capturedFailures: Array<{
+    readonly operation: string;
+    readonly error: unknown;
+  }> = [];
+  public captureCommandOperationErrorForTest: ((operation: string, error: unknown) => void) | undefined;
 
   public getActiveEditor(): FakeEditor | undefined {
     return this.activeEditor;
@@ -59,6 +64,12 @@ class FakeHost implements NormalEditorCommandHost<FakeEditor> {
 
   public showCommandError(error: unknown): void {
     this.errors.push(error);
+  }
+
+  public enableFailureCaptureForTest(): void {
+    this.captureCommandOperationErrorForTest = (operation, error) => {
+      this.capturedFailures.push({ operation, error });
+    };
   }
 }
 
@@ -195,4 +206,24 @@ test("handler failure is recorded as failed operation before the UI host reports
   } finally {
     setActiveOperationFeedback(undefined);
   }
+});
+
+test("Test-mode command failure is captured by operation and rejects with the original error without waiting for UI", async () => {
+  const failure = new Error("state commit failed");
+  const host = new FakeHost();
+  host.enableFailureCaptureForTest();
+  const { handlers } = createHandlers(failure);
+  host.activeEditor = { id: "editor-1" };
+  registerNormalEditorReviewCommands(host, handlers);
+
+  await assert.rejects(
+    host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed)!(),
+    (error: unknown) => error === failure
+  );
+
+  assert.deepEqual(host.capturedFailures, [{
+    operation: "markSelectionReviewed",
+    error: failure
+  }]);
+  assert.deepEqual(host.errors, []);
 });

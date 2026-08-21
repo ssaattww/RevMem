@@ -17,6 +17,10 @@ interface T609ExtensionApi {
     readonly encodingHint?: string;
   }[];
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getNormalEditorCommandFailureForTest(): {
+    readonly operation: string;
+    readonly message: string;
+  } | undefined;
   getGlobalUnderstandingSnapshot(): Promise<{
     readonly progress: { readonly files: readonly { readonly path: string }[] };
   } | undefined>;
@@ -86,7 +90,15 @@ const markAndSynchronizeFixtureReview = async (
     editor.document.uri.toString(),
     `${label} fixture must be the active editor before its selected-root review starts`
   );
-  await within(`mark ${label} public command`, vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
+  try {
+    await within(`mark ${label} public command`, vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
+  } catch (error) {
+    const diagnostic = api.getNormalEditorCommandFailureForTest();
+    if (diagnostic !== undefined && error instanceof Error) {
+      error.message += ` [T609 public command diagnostic: operation=${diagnostic.operation}; error=${diagnostic.message}]`;
+    }
+    throw error;
+  }
   await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
   await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
   await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());

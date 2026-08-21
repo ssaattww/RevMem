@@ -168,6 +168,11 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   drainVisibleEditorDecorations(): Promise<void>;
   /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
   markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
+  /** Last public normal-editor command failure captured before headless UI presentation. */
+  getNormalEditorCommandFailureForTest(): {
+    readonly operation: string;
+    readonly message: string;
+  } | undefined;
   /** Test-only read-only snapshot of this Extension Host's observed document encoding hints. */
   getObservedEncodingHintsForTest(): readonly {
     readonly documentFsPath: string;
@@ -748,6 +753,10 @@ export function activate(
       unmarkFileReviewed(editor: vscode.TextEditor): Promise<unknown>;
     } | undefined;
   } = { current: undefined };
+  let normalEditorCommandFailureForTest: {
+    readonly operation: string;
+    readonly message: string;
+  } | undefined;
   const localBaseHeadTreeReference: {
     current: VscodePullRequestProgressTreeDataProvider | undefined;
   } = { current: undefined };
@@ -786,7 +795,15 @@ export function activate(
       await vscode.window.showErrorMessage(
         `レビュー状態を更新できませんでした: ${errorMessage(error)}`
       );
-    }
+    },
+    ...(context.extensionMode === vscode.ExtensionMode.Test ? {
+      captureCommandOperationErrorForTest: (operation: string, error: unknown) => {
+        normalEditorCommandFailureForTest = {
+          operation,
+          message: errorMessage(error)
+        };
+      }
+    } : {})
   };
   const registrations = registerNormalEditorReviewCommands(
     host,
@@ -1030,6 +1047,7 @@ export function activate(
     drainVisibleEditorDecorations: () => decorationController.drain(),
     markNormalEditorSelectionForTest: (editor: vscode.TextEditor) =>
       commandService.markSelectionReviewed(editor),
+    getNormalEditorCommandFailureForTest: () => normalEditorCommandFailureForTest,
     getObservedEncodingHintsForTest: () => documentSessionProvider.observedEncodingHintsSnapshot(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
