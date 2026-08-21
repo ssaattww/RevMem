@@ -28,7 +28,7 @@ import {
   resolveConfiguredNonGitSnapshotLimits
 } from "./application/non-git-snapshots/non-git-snapshot-settings";
 import {
-  createNormalEditorDecorationModel,
+  createNormalEditorDecorationModelIncrementally,
   type NormalEditorReviewedDecoration
 } from "./application/editor-decoration/index";
 import { ReviewFileExclusionPolicyService } from "./application/file-exclusion/index";
@@ -41,6 +41,8 @@ import {
   WorkspaceIdentityService
 } from "./application/workspace-identity/index";
 import type { SelectedReviewContext } from "./application/review-context/index";
+import type { RepositoryGlobalState, ReviewContextState } from "./core/contracts/index";
+import type { ReviewStateFileTarget } from "./core/review-state/index";
 import {
   DEFAULT_REVIEW_FILE_EXCLUDE_GLOBS,
   ReviewFileExclusionPolicy,
@@ -230,6 +232,43 @@ const toDecorationOptions = async (
     if ((index + 1) % workBudget.maxDecorationsPerStage === 0) await workBudget.yieldControl();
   }
   return context.signal.aborted || !context.isCurrent() ? undefined : options;
+};
+
+/** Small activation seam: the same descriptor → state → cooperative model path used by VS Code. */
+export interface NormalEditorDecorationActivationComposition<Editor, Descriptor> {
+  readonly toDocumentDescriptor: (editor: Editor, isCurrent: () => boolean) => Promise<Descriptor | undefined>;
+  readonly loadForDecoration: (descriptor: Descriptor, context: SelectedReviewContext | undefined) => Promise<{
+    readonly contextState: ReviewContextState;
+    readonly globalState: RepositoryGlobalState;
+    readonly target: ReviewStateFileTarget;
+  } | undefined>;
+  readonly selectedContext: () => SelectedReviewContext | undefined;
+  readonly workBudget: NormalEditorDecorationWorkBudget;
+}
+
+export const createNormalEditorDecorationLoadHandler = <Editor, Descriptor>(
+  composition: NormalEditorDecorationActivationComposition<Editor, Descriptor>
+) => async (
+  editor: Editor,
+  showGlobalReviewed: boolean,
+  loadContext: { readonly signal: AbortSignal; readonly isCurrent: () => boolean }
+): Promise<readonly NormalEditorReviewedDecoration[]> => {
+  if (!loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const descriptor = await composition.toDocumentDescriptor(editor, () => loadContext.isCurrent() && !loadContext.signal.aborted);
+  if (descriptor === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const session = await composition.loadForDecoration(descriptor, composition.selectedContext());
+  if (session === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) return [];
+  const model = await createNormalEditorDecorationModelIncrementally({
+    contextState: session.contextState,
+    globalState: session.globalState,
+    target: session.target,
+    showGlobalReviewed
+  }, {
+    maxWorkItems: composition.workBudget.maxDecorationsPerStage,
+    yieldControl: composition.workBudget.yieldControl,
+    isCurrent: () => loadContext.isCurrent() && !loadContext.signal.aborted
+  });
+  return model === undefined || !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
 };
 
 const uniqueVisibleIntervals = (
@@ -459,6 +498,12 @@ export function activate(
   ): void => {
     void Promise.resolve(listener()).catch(reportDecorationError);
   };
+  const loadDecorationsFromProductionComposition = createNormalEditorDecorationLoadHandler({
+    toDocumentDescriptor,
+    loadForDecoration: (descriptor, selected) => documentSessionProvider.loadForDecoration(descriptor, selected),
+    selectedContext: () => selectedContext,
+    workBudget: DECORATION_WORK_BUDGET
+  });
   const decorationHost: NormalEditorDecorationHost<
     vscode.TextEditor,
     vscode.TextEditorDecorationType
@@ -470,31 +515,7 @@ export function activate(
       if (!FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
         return [];
       }
-      if (!loadContext.isCurrent() || loadContext.signal.aborted) {
-        return [];
-      }
-      const descriptor = await toDocumentDescriptor(
-        editor,
-        () => loadContext.isCurrent() && !loadContext.signal.aborted
-      );
-      if (descriptor === undefined) return [];
-      if (!loadContext.isCurrent() || loadContext.signal.aborted) {
-        return [];
-      }
-      const session = await documentSessionProvider.loadForDecoration(
-        descriptor,
-        selectedContext
-      );
-      if (session === undefined || !loadContext.isCurrent() || loadContext.signal.aborted) {
-        return [];
-      }
-      const model = createNormalEditorDecorationModel({
-        contextState: session.contextState,
-        globalState: session.globalState,
-        target: session.target,
-        showGlobalReviewed
-      });
-      return !loadContext.isCurrent() || loadContext.signal.aborted ? [] : model;
+      return loadDecorationsFromProductionComposition(editor, showGlobalReviewed, loadContext);
     },
     createDecorationType: (settings) => {
       const options: vscode.DecorationRenderOptions = {

@@ -4,7 +4,7 @@ import Module, { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
 
-import { createNormalEditorDecorationModel } from "../../src/application/editor-decoration/index";
+import { createNormalEditorDecorationModelIncrementally } from "../../src/application/editor-decoration/index";
 import { NodeSha256StableHash } from "../../src/adapters/crypto/node-sha256-stable-hash";
 import type { RepositoryGlobalUnderstandingProgress } from "../../src/core/global-understanding/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type DiffLine, type GlobalFileReviewState, type PullRequestFileChange, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index";
@@ -384,20 +384,26 @@ test("T607 extension decoration composition carries descriptor hash through stat
   let yields = 0;
   let deferFirstLoad = false;
   let resolveFirstLoad: (() => void) | undefined;
+  const extension = loadWithVscode<typeof import("../../src/extension.js")>("../../src/extension.js", {});
+  const productionLoad = extension.createNormalEditorDecorationLoadHandler({
+    toDocumentDescriptor: async (editor: Editor, isCurrent) => {
+      const descriptor = { documentUri: editor.uri, contentHash: editor.contentHash };
+      descriptors.push(descriptor);
+      if (editor === first && deferFirstLoad) { deferFirstLoad = false; await new Promise<void>((resolve) => { resolveFirstLoad = resolve; }); }
+      return isCurrent() ? descriptor : undefined;
+    },
+    loadForDecoration: async (descriptor, selectedContext) => {
+      void selectedContext;
+      stateLoads.push(`${descriptor.documentUri}:${descriptor.contentHash}`);
+      return { contextState, globalState, target };
+    },
+    selectedContext: () => undefined,
+    workBudget: { maxDecorationsPerStage: 128, yieldControl: () => { yields += 1; } }
+  });
   const host: NormalEditorDecorationHost<Editor, DecorationType> = {
     getVisibleEditors: () => [first, second], isDiffEditor: () => false,
     getSettings: (): NormalEditorDecorationSettings => ({ showGlobalReviewed: true, showGutterIcon: true, showOverviewRuler: true }),
-    loadDecorations: async (editor, showGlobalReviewed, loadContext) => {
-      const descriptor = { documentUri: editor.uri, contentHash: editor.contentHash };
-      descriptors.push(descriptor);
-      stateLoads.push(`${descriptor.documentUri}:${descriptor.contentHash}`);
-      if (editor === first && deferFirstLoad) {
-        deferFirstLoad = false;
-        await new Promise<void>((resolve) => { resolveFirstLoad = resolve; });
-      }
-      if (loadContext.signal.aborted || !loadContext.isCurrent()) return [];
-      return createNormalEditorDecorationModel({ contextState, globalState, target, showGlobalReviewed });
-    },
+    loadDecorations: (editor, showGlobalReviewed, loadContext) => productionLoad(editor, showGlobalReviewed, loadContext),
     createDecorationType: () => new DecorationType(),
     setDecorations: async (editor, _type, decorations, loadContext) => {
       if (loadContext.signal.aborted || !loadContext.isCurrent()) return;
@@ -417,7 +423,7 @@ test("T607 extension decoration composition carries descriptor hash through stat
   await stale;
   assert.equal(descriptors.length, 4, "two split editors plus a superseded/current refresh each build their actual descriptor");
   assert.ok(descriptors.every((descriptor) => descriptor.documentUri === first.uri && descriptor.contentHash === target.contentHash));
-  assert.equal(stateLoads.length, 4, "each descriptor/hash enters the decoration state-load boundary");
+  assert.equal(stateLoads.length, 3, "the superseded descriptor is fenced before state I/O while each current descriptor enters the production state-load boundary");
   assert.deepEqual(applies.map((apply) => apply.editor), ["split-a", "split-b", "split-a"]);
   assert.ok(applies.every((apply) => apply.decorationCount === 2_048 && apply.optionCount === 2_048), "each current split editor receives exactly one 2,048-interval projection and host option apply");
   assert.ok(yields >= 48, "three current 2,048-interval projections use the 128-item deterministic budget");
@@ -433,6 +439,24 @@ test("T607 uses the production SHA-256 adapter in deterministic large-document c
   assert.equal(account.length, 16);
   assert.ok(account.every((count) => count <= 65_536));
   assert.equal(yields, 15, "the production hashing adapter yields between bounded document chunks");
+});
+
+test("T607 builds a 2,048-interval normal-editor model cooperatively and fences a superseded generation", async () => {
+  const intervals = Array.from({ length: 2_048 }, (_, index) => ({ startLine: index * 2, endLineExclusive: index * 2 + 1 }));
+  const target: ReviewStateFileTarget = { fileId: "async-model", currentPath: "src/async-model.ts", revisionId: "r607", lineCount: 4_096, contentHash: "sha256:async" };
+  const contextState: ReviewContextState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: "workspace:async", kind: "workspace", repositoryId: "repo:async", displayName: "Async",
+    workspace: { workspaceId: "workspace:async", snapshotRevision: "r607" },
+    files: { [target.fileId]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId: target.fileId, currentPath: target.currentPath, previousPaths: [], revisionId: target.revisionId, modifiedReviewed: intervals, originalReviewedByDiff: {}, contentHash: target.contentHash, lineCount: target.lineCount, updatedAt: "2026-08-21T00:00:00.000Z" } },
+    createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z"
+  };
+  let yields = 0;
+  const built = await createNormalEditorDecorationModelIncrementally({ contextState, globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: contextState.repositoryId, currentRevisionId: target.revisionId, files: {}, updatedAt: contextState.updatedAt }, target, showGlobalReviewed: true }, { maxWorkItems: 128, yieldControl: () => { yields += 1; }, isCurrent: () => true });
+  assert.equal(built?.length, 2_048);
+  assert.ok(yields >= 16, "validation, normalization, projection, and final sort stay within the 128-item budget");
+  let current = true;
+  const stale = createNormalEditorDecorationModelIncrementally({ contextState, globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: contextState.repositoryId, currentRevisionId: target.revisionId, files: {}, updatedAt: contextState.updatedAt }, target, showGlobalReviewed: true }, { maxWorkItems: 128, yieldControl: () => { current = false; }, isCurrent: () => current });
+  assert.equal(await stale, undefined, "a superseded model never reaches apply");
 });
 
 test("T607 focused workload harness is wired through the diagnostic CI runner", async () => {

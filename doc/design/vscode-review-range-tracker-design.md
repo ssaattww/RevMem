@@ -959,7 +959,7 @@ PR Progress と Global Understanding の Tree projection は、完全な入力 s
 
 各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。
 
-通常 editor の selection-to-decoration は visible editor のみを対象とし、同一 editor の最新generationだけを適用する。100ms は wall-clock-only の自動gateにせず、装飾作成・適用までの最大同期 work と visible-editor 数を決定的な budget として検証する。実測は advisory evidence とし、環境、workload、回数、before/after 値を implementation report へ記録する。
+通常 editor の selection-to-decoration は visible editor のみを対象とし、同一 editor の最新generationだけを適用する。descriptor/hash、interval validation・normalization、merge-sort、intersection/subtraction、decoration append、host option/apply のすべてを同じgeneration-aware item budgetで協調実行し、各checkpointでsupersessionを拒否する。100ms は wall-clock-only の自動gateにせず、装飾作成・適用までの最大同期 work と visible-editor 数を決定的な budget として検証する。実測は advisory evidence とし、環境、workload、回数、before/after 値を implementation report へ記録する。
 
 性能回帰 harness は少なくとも 10,000 changed-line PR、large repository aggregation、多数の reviewed interval、visible-editor decoration を同じ fixture generation と work/count budget で再現する。benchmark は時間だけで成否を決めず、stage 数、stage 当たりの最大 item 数、yield 回数、stale-generation の非公開、memory を不必要に二重保持しないことを検証する。validation、sorting、projection、status summary、decoration descriptor/hash、interval model、host apply を含む各同期段階は同じ明示budgetに収める。
 

@@ -4,8 +4,8 @@ issue_or_pr: "Issue #79"
 task_id: T607
 branch: task/t607-performance-incremental-ui
 base_head: 2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6
-implementation_head: 753093eb2ba3cd98d25f54fa6aaaeca3425e15c6
-status: normal_closure_partial_followup_in_progress
+implementation_head: e336de3be55f3ac520475464307be7c3a2475b38
+status: normal_closure_r004_followup_in_progress
 report: reports/issue-79-t607-implementation-20260821094238.md
 validation:
   focused_red: "npm run test:t607: missing createGlobalUnderstandingTreeModelIncrementally export"
@@ -26,6 +26,6 @@ measurement:
 normal_review: "PR #80 initial normal review failed with T607-R001 through T607-R006; report: reports/issue-79-t607-normal-review-20260821095112.md"
 ci: "exact-head runs 32433837209 and 32433825463 failed design-document-structure; do not treat focused CI as executed"
 followup_report: "reports/issue-79-t607-normal-review-followup-20260821143000.md"
-followup_validation: "R003 fixture Red once npm run test:t607 69 pass/1 fail (feedback boundary count); Green once after correction npm run test:t607 70 pass/0 fail; final diffcheck/build/contracts/lint/architecture positive/negative passed locally"
-normal_closure: "753093e: R001/R002/R005/R006 closed; R003/R004 open. Historical initial head a695806 and failed CI remain historical; current-head CI is held."
-next_request: "Request same-reviewer finding-limited closure for T607-R003/R004 only. The uncommitted follow-up adds old/new Global runtime lifecycle/feedback evidence and production SHA-256 plus decoration pipeline work budgets; do not introduce new findings, run CI, or merge."
+followup_validation: "R004 valid Red once: npm run test:t607 compile failure for missing cooperative model export; Green once: npm run test:t607 71 pass/0 fail. npm run build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative (expected 11), and git diff --check each passed once locally; CI not started."
+normal_closure: "e336de3: R001/R002/R003/R005/R006 closed; R004 open. R2/R3 reports are preserved. Historical initial head a695806 and failed CI remain historical; current-head CI is held."
+next_request: "Request same-reviewer finding-limited closure for T607-R004 only after local build/contracts/lint/architecture/diffcheck. The follow-up moves actual production interval-model work into a cooperative generation-aware budget and tests the activation composition factory; do not introduce new findings, run CI, or merge."
