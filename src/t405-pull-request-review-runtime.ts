@@ -1,4 +1,8 @@
-import { runWithActiveOperationFeedback } from "./application/operation-feedback/index";
+import {
+  OperationCancelledError,
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext,
+} from "./application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
@@ -52,7 +56,9 @@ export interface PullRequestReviewRuntimeRegistration {
   readonly fileSystemPathSemantics: FileSystemPathSemantics;
   readonly snapshot: PullRequestDiffSnapshot;
   readonly readTextContent: (
-    descriptor: GitCommitReviewDiffDocumentDescriptor
+    descriptor: GitCommitReviewDiffDocumentDescriptor,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ) => Promise<RevisionTextContentReadResult>;
 }
 
@@ -92,6 +98,10 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
 const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
   `${revision}\0${repositoryPath}`;
 
+const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
+  if (signal?.aborted) throw new DOMException("PR Progress refresh was superseded.", "AbortError");
+};
+
 const sameRegistrationSnapshot = (
   left: PullRequestReviewRuntimeRegistration,
   right: PullRequestReviewRuntimeRegistration
@@ -114,6 +124,7 @@ export class PullRequestReviewRuntime<Uri> {
   private readonly revisionTextContentProvider: RevisionTextContentProvider;
   private activeProgressContextId: string | undefined;
   private progressGeneration = 0;
+  private progressCancellation: AbortController | undefined;
   public readonly documentContentProvider: ReviewDiffTextDocumentContentProvider;
   public readonly diffController: ReviewDiffEditorController<Uri>;
   public readonly progress: PullRequestProgressTreeDataProvider;
@@ -354,7 +365,9 @@ export class PullRequestReviewRuntime<Uri> {
     cache: PullRequestFullTextCache,
     repositoryPath: string,
     revision: string,
-    side: "original" | "modified"
+    side: "original" | "modified",
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<RevisionTextContentReadResult> {
     const key = fullTextCacheKey(revision, repositoryPath);
     let pending = cache.files.get(key);
@@ -366,7 +379,7 @@ export class PullRequestReviewRuntime<Uri> {
         side,
         revisionSource: "git-commit",
         revision,
-      }).catch((error: unknown) => {
+      }, feedbackContext, signal).catch((error: unknown) => {
         cache.files.delete(key);
         throw error;
       });
@@ -418,52 +431,75 @@ export class PullRequestReviewRuntime<Uri> {
     });
   }
 
-  public async getProgress(contextId: string): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
+  public async getProgress(
+    contextId: string,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<Pick<PullRequestDiffProgress, "reviewedLineCount" | "totalLineCount" | "progress">> {
     return runWithActiveOperationFeedback("PR進捗を計算", async () => {
-      const calculated = await this.calculateProgress(contextId);
+      const calculated = await this.calculateProgress(contextId, signal);
       return {
         reviewedLineCount: calculated.progress.reviewedLineCount,
         totalLineCount: calculated.progress.totalLineCount,
         progress: calculated.progress.progress,
       };
-    });
+    }, { maxAttempts: 3, signal }, feedbackContext);
   }
 
   /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
   public async activateProgress(contextId: string): Promise<void> {
+    this.progressCancellation?.abort();
+    const cancellation = new AbortController();
+    this.progressCancellation = cancellation;
     const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
     this.progress.clear();
     const registration = this.requireRegistration(contextId);
-    try {
-      const calculated = await runWithActiveOperationFeedback(
-        "PR進捗を計算",
-        () => this.calculateProgress(contextId)
-      );
-      const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
-      for (const file of calculated.progress.files) {
-        lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
-          calculated.registration,
-          file
-        );
-        if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+    const assertCurrent = (): void => {
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration) || cancellation.signal.aborted) {
+        throw new OperationCancelledError();
       }
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
-      const { snapshot } = calculated.registration;
-      this.progress.replaceSnapshot({
-        snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
-        contextId: snapshot.contextId,
-        baseSha: snapshot.baseSha,
-        headSha: snapshot.headSha,
-        originalDiffId: snapshot.originalDiffId,
-        fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
-        progress: calculated.progress,
-        lineReviewabilityByFileId,
-      });
+    };
+    try {
+      await runWithActiveOperationFeedback(
+        "PR進捗を計算",
+        async (feedbackContext) => {
+          const calculated = await this.calculateProgress(contextId, cancellation.signal);
+          assertCurrent();
+          const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
+          for (const file of calculated.progress.files) {
+            assertCurrent();
+            lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
+              calculated.registration,
+              file,
+              feedbackContext,
+              cancellation.signal,
+            );
+            assertCurrent();
+          }
+          assertCurrent();
+          const { snapshot } = calculated.registration;
+          this.progress.replaceSnapshot({
+            snapshotId: `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}`,
+            contextId: snapshot.contextId,
+            baseSha: snapshot.baseSha,
+            headSha: snapshot.headSha,
+            originalDiffId: snapshot.originalDiffId,
+            fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
+            progress: calculated.progress,
+            lineReviewabilityByFileId,
+          });
+        },
+        { maxAttempts: 3, signal: cancellation.signal },
+      );
     } catch (error) {
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) return;
+      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) {
+        throw error instanceof OperationCancelledError ? error : new OperationCancelledError();
+      }
       this.progress.clear();
       throw error;
+    } finally {
+      if (this.progressCancellation === cancellation) this.progressCancellation = undefined;
     }
   }
 
@@ -473,6 +509,8 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   public clearProgress(): void {
+    this.progressCancellation?.abort();
+    this.progressCancellation = undefined;
     this.progressGeneration += 1;
     this.activeProgressContextId = undefined;
     this.progress.clear();
@@ -561,10 +599,13 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   private async calculateProgress(
-    contextId: string
+    contextId: string,
+    signal?: AbortSignal,
   ): Promise<CalculatedPullRequestProgress> {
+    throwIfProgressCancelled(signal);
     const registration = this.requireRegistration(contextId);
     const persisted = await this.options.repository.load(targetFor(registration));
+    throwIfProgressCancelled(signal);
     if (persisted === undefined) {
       throw new Error("Persisted pull-request review context is unavailable");
     }
@@ -663,7 +704,9 @@ export class PullRequestReviewRuntime<Uri> {
 
   private async lineReviewabilityFor(
     registration: PullRequestReviewRuntimeRegistration,
-    file: PullRequestDiffFileProgress
+    file: PullRequestDiffFileProgress,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestLineReviewability> {
     if (file.status === "binary" || file.exclusionReason?.kind === "binary") {
       return { kind: "unsupported", reason: { kind: "binary" } };
@@ -681,7 +724,9 @@ export class PullRequestReviewRuntime<Uri> {
       this.fullTextCacheFor(registration),
       filePath,
       revision,
-      modified ? "modified" : "original"
+      modified ? "modified" : "original",
+      feedbackContext,
+      signal,
     );
     if (result.kind === "invalid-encoding") {
       return {

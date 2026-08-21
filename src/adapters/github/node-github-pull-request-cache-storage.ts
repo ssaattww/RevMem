@@ -184,15 +184,22 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
   }
 
   public async read(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheEntry | undefined> {
+    if (signal?.aborted) throw new DOMException("PR cache read was superseded.", "AbortError");
     const key = identityKey(request);
+    const assertNotAborted = (): void => {
+      if (signal?.aborted === true) throw new DOMException("PR cache read was superseded.", "AbortError");
+    };
     const pointer = parsePointer(
       parseJson(await this.atomicFileStore.readText(
         absoluteCacheFile(this.cacheDirectory, relativePointerFile(key))
       )),
       key
     );
+    assertNotAborted();
     if (pointer === undefined) return undefined;
 
     const [metadataValue, diffValue] = await Promise.all([
@@ -203,6 +210,7 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
         absoluteCacheFile(this.cacheDirectory, pointer.diffFile)
       )
     ]);
+    assertNotAborted();
     const metadataDocument = parseJson(metadataValue);
     const diffDocument = parseJson(diffValue);
     if (!isObject(metadataDocument) || !isObject(diffDocument)) return undefined;
@@ -235,7 +243,15 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
     }, request);
   }
 
-  public async write(entry: GitHubPullRequestCacheEntry): Promise<void> {
+  public async write(
+    entry: GitHubPullRequestCacheEntry,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) throw new DOMException("PR cache write was superseded.", "AbortError");
+    const assertNotAborted = (): void => {
+      if (signal?.aborted === true) throw new DOMException("PR cache write was superseded.", "AbortError");
+    };
     const validated = parseGitHubPullRequestCacheEntry(entry, entry.request);
     if (validated === undefined) {
       throw new TypeError("GitHub cache persistence requires an exact source-redacted entry");
@@ -280,21 +296,26 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
       await guard(absoluteCacheFile(this.cacheDirectory, diffFile));
       await guard(absoluteCacheFile(this.cacheDirectory, pointerFile));
       await lease.assertOwned();
+      assertNotAborted();
       await this.atomicFileStore.writeTextAtomically(
         absoluteCacheFile(this.cacheDirectory, metadataFile),
         JSON.stringify(metadataDocument)
       );
+      assertNotAborted();
       await lease.assertOwned();
       await this.atomicFileStore.writeTextAtomically(
         absoluteCacheFile(this.cacheDirectory, diffFile),
         JSON.stringify(diffDocument)
       );
+      assertNotAborted();
       await lease.assertOwned();
       await this.atomicFileStore.writeTextAtomically(
         absoluteCacheFile(this.cacheDirectory, pointerFile),
         JSON.stringify(pointer)
       );
+      assertNotAborted();
       await this.removeSupersededGenerations(key, generation, guard, lease);
+      assertNotAborted();
     });
   }
 

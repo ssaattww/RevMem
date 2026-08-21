@@ -37,25 +37,87 @@ export type OperationDiagnostic = {
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
 } | {
   readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
-  readonly reason: "rate-limit" | "network" | "api";
+  readonly reason: "rate-limit" | "network" | "api" | "authentication";
 };
+
+/** Stable disposition used by the shared retry and UI failure boundary. */
+export type OperationFailureCategory =
+  | "retryable"
+  | "permanent"
+  | "stale"
+  | "authentication"
+  | "validation";
+
+/** Source-content-free classification of one operation failure. */
+export interface OperationFailureClassification {
+  readonly kind: OperationFailureCategory;
+  readonly code?: string;
+}
+
+/** One retry that occurred before the terminal operation result. */
+export interface OperationRetryAttempt {
+  readonly category: OperationFailureCategory;
+  readonly code?: string;
+}
+
+/** Bounded retry controls for idempotent read or refresh operations only. */
+export interface BoundedRetryOptions {
+  readonly maxAttempts?: number;
+  readonly signal?: AbortSignal;
+  readonly sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+}
+
+/** Successful value plus the safe retry sequence that preceded it. */
+export interface BoundedRetryResult<T> {
+  readonly value: T;
+  readonly attempts: readonly OperationRetryAttempt[];
+}
+
+/** Explicit owner-scoped identity used to join a child to its parent lifecycle. */
+export interface OperationFeedbackContext {
+  readonly owner: OperationFeedback;
+  readonly id: number;
+}
+
+/** Explicit stale/cancelled terminal state; it is never retried. */
+export class OperationCancelledError extends Error {
+  public constructor() {
+    super("Operation was cancelled or superseded.");
+    this.name = "OperationCancelledError";
+  }
+}
 
 interface ActiveOperation {
   readonly id: number;
   readonly label: string;
   readonly startedAt: number;
+  /** A handled child failure makes the enclosing lifecycle terminally failed. */
+  boundaryFailure?: unknown;
 }
+
+const MAX_OPERATION_LABEL_LENGTH = 96;
+const MAX_DIAGNOSTIC_LINE_LENGTH = 512;
 
 const requireLabel = (label: string): string => {
   const normalized = label.trim();
-  if (normalized.length === 0 || normalized.includes("\0")) {
-    throw new TypeError("operation label must be a non-empty string without null characters");
+  if (
+    normalized.length === 0 ||
+    normalized.length > MAX_OPERATION_LABEL_LENGTH ||
+    normalized.includes("\0") ||
+    /[\r\n\u2028\u2029]/u.test(normalized)
+  ) {
+    throw new TypeError("operation label must be a bounded non-empty single line without null characters");
   }
   return normalized;
 };
 
 const singleLine = (value: string): string =>
   value.replace(/[\r\n\u2028\u2029]+/gu, " ").trim();
+
+const boundedSingleLine = (value: string, maximum = MAX_DIAGNOSTIC_LINE_LENGTH): string => {
+  const normalized = singleLine(value);
+  return normalized.length <= maximum ? normalized : `${normalized.slice(0, Math.max(0, maximum - 1))}…`;
+};
 
 const SAFE_ERROR_NAMES = new Set([
   "Error",
@@ -67,7 +129,8 @@ const SAFE_ERROR_NAMES = new Set([
   "AggregateError",
   "GitCommandFailedError",
   "GitExecutableNotFoundError",
-  "OperationDiagnosticError"
+  "OperationDiagnosticError",
+  "OperationCancelledError"
 ]);
 
 const SAFE_ERROR_CODES = new Set([
@@ -99,11 +162,13 @@ const SAFE_PR_PROGRESS_SOURCES = new Set([
 
 const SAFE_PR_PROGRESS_REASONS = new Set([
   "git-unavailable",
+  "git-timeout",
   "missing-revision",
   "git-failure",
   "rate-limit",
   "network",
   "api",
+  "authentication",
   "missing-file",
   "invalid-encoding",
   "missing-patch",
@@ -113,7 +178,7 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "diff-too-large"
 ]);
 
-const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api"]);
+const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication"]);
 
 const validatePrProgressAttempts = (
   attempts: readonly PullRequestDiffAcquisitionAttempt[]
@@ -131,11 +196,11 @@ const validatePrProgressAttempts = (
 
 const validateGitHubPullRequestDetectionReason = (
   reason: unknown
-): "rate-limit" | "network" | "api" => {
+): "rate-limit" | "network" | "api" | "authentication" => {
   if (typeof reason !== "string" || !SAFE_GITHUB_PR_DETECTION_REASONS.has(reason)) {
     throw new TypeError("GitHub PR detection diagnostic reason is not allowlisted");
   }
-  return reason as "rate-limit" | "network" | "api";
+  return reason as "rate-limit" | "network" | "api" | "authentication";
 };
 
 /**
@@ -171,14 +236,119 @@ const safeErrorCode = (error: unknown): string | undefined => {
   return typeof code === "string" && SAFE_ERROR_CODES.has(code) ? code : undefined;
 };
 
+const errorField = (error: unknown, field: "code" | "status" | "name"): unknown =>
+  typeof error === "object" && error !== null && field in error
+    ? (error as Record<string, unknown>)[field]
+    : undefined;
+
+const isTimedOutGitCommand = (error: unknown): boolean => {
+  if (errorField(error, "name") !== "GitCommandFailedError") return false;
+  if (typeof error !== "object" || error === null || !("result" in error)) return false;
+  const result = (error as { readonly result?: unknown }).result;
+  return typeof result === "object" && result !== null &&
+    (result as { readonly exitCode?: unknown }).exitCode === -1;
+};
+
+/**
+ * Classifies dependency failures without copying their text, path, token, or
+ * source content. Authentication, validation, stale, and permanent failures
+ * deliberately never enter the retry loop.
+ */
+export const classifyOperationFailure = (error: unknown): OperationFailureClassification => {
+  if (
+    error instanceof OperationCancelledError ||
+    errorField(error, "name") === "AbortError" ||
+    errorField(error, "name") === "StaleReviewStateError"
+  ) {
+    return { kind: "stale" };
+  }
+  if (error instanceof OperationDiagnosticError) {
+    if (error.diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
+      switch (error.diagnostic.reason) {
+        case "authentication": return { kind: "authentication" };
+        case "rate-limit":
+        case "network": return { kind: "retryable" };
+        case "api": return { kind: "validation" };
+      }
+    }
+    const finalReason = error.diagnostic.attempts.at(-1)?.reason;
+    if (finalReason === "authentication") return { kind: "authentication" };
+    if (finalReason === "rate-limit" || finalReason === "network" || finalReason === "git-timeout") return { kind: "retryable" };
+    if (finalReason === "git-failure" || finalReason === "git-unavailable") return { kind: "permanent" };
+    return { kind: "validation" };
+  }
+  const status = errorField(error, "status");
+  if (status === 401 || status === 403) return { kind: "authentication" };
+  if (status === 429) return { kind: "retryable" };
+  if (error instanceof TypeError || errorField(error, "name") === "ValidationError") {
+    return { kind: "validation" };
+  }
+  const code = safeErrorCode(error);
+  if (isTimedOutGitCommand(error) || code === "ETIMEDOUT" || code === "ECONNREFUSED" || code === "ECONNRESET") {
+    return { kind: "retryable", code };
+  }
+  return code === undefined ? { kind: "permanent" } : { kind: "permanent", code };
+};
+
+const retryAttemptsByError = new WeakMap<object, readonly OperationRetryAttempt[]>();
+
+const rememberRetryAttempts = (error: unknown, attempts: readonly OperationRetryAttempt[]): void => {
+  const identity = errorIdentity(error);
+  if (identity !== undefined && attempts.length > 0) retryAttemptsByError.set(identity, attempts);
+};
+
+const defaultSleep = (milliseconds: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted === true) {
+    reject(new OperationCancelledError());
+    return;
+  }
+  const timer = setTimeout(resolve, milliseconds);
+  signal?.addEventListener("abort", () => {
+    clearTimeout(timer);
+    reject(new OperationCancelledError());
+  }, { once: true });
+});
+
+/** Runs an idempotent operation with at most three attempts and exponential backoff. */
+export const runWithBoundedRetry = async <T>(
+  operation: () => Promise<T>,
+  options: BoundedRetryOptions = {}
+): Promise<BoundedRetryResult<T>> => {
+  const maxAttempts = options.maxAttempts ?? 3;
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
+    throw new RangeError("maxAttempts must be an integer from 1 through 3");
+  }
+  const attempts: OperationRetryAttempt[] = [];
+  const sleep = options.sleep ?? defaultSleep;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (options.signal?.aborted === true) throw new OperationCancelledError();
+    try {
+      return { value: await operation(), attempts: Object.freeze([...attempts]) };
+    } catch (error) {
+      const classification = classifyOperationFailure(error);
+      if (classification.kind !== "retryable" || attempt === maxAttempts) {
+        rememberRetryAttempts(error, attempts);
+        throw error;
+      }
+      attempts.push(Object.freeze({
+        category: classification.kind,
+        ...(classification.code === undefined ? {} : { code: classification.code })
+      }));
+      await sleep(25 * (2 ** (attempt - 1)), options.signal);
+    }
+  }
+  throw new Error("unreachable retry state");
+};
+
 const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
   if (diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
     return `${diagnostic.code} reason=${diagnostic.reason}`;
   }
-  const attempts = diagnostic.attempts
+  const attempts = diagnostic.attempts.slice(0, 3)
     .map((attempt) => `${attempt.source}:${attempt.reason}`);
   const finalAttempt = attempts.at(-1) ?? "none";
-  return `${diagnostic.code} attempts=${attempts.length === 0 ? "none" : attempts.join(" -> ")}; final=${finalAttempt}`;
+  const omitted = diagnostic.attempts.length > attempts.length ? "; attempts-truncated" : "";
+  return `${diagnostic.code} attempts=${attempts.length === 0 ? "none" : attempts.join(" -> ")}; final=${finalAttempt}${omitted}`;
 };
 
 const sanitizedFailureMessage = (error: unknown): string => {
@@ -191,9 +361,24 @@ const sanitizedFailureMessage = (error: unknown): string => {
   if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
 
   const code = safeErrorCode(error);
-  return code === undefined
+  const base = code === undefined
     ? "Operation failed; details were redacted."
     : `Operation failed (code ${code}); details were redacted.`;
+  const attempts = errorIdentity(error) === undefined ? undefined : retryAttemptsByError.get(errorIdentity(error)!);
+  if (attempts === undefined || attempts.length === 0) return base;
+  const retrySequence = attempts.map((attempt) => attempt.code ?? attempt.category).join(" -> ");
+  return `${base} retries=${retrySequence}; final=${classifyOperationFailure(error).kind}.`;
+};
+
+/** Projects a failure to a generic UI message without exposing dependency text. */
+export const formatOperationFailureForUser = (error: unknown): string => {
+  switch (classifyOperationFailure(error).kind) {
+    case "authentication": return "認証を確認してから再試行してください。";
+    case "stale": return "操作結果が古くなったため、最新状態を再計算してください。";
+    case "validation": return "操作を実行できませんでした。入力または現在の状態を確認してください。";
+    case "retryable": return "一時的な障害のため操作を完了できませんでした。再試行してください。";
+    case "permanent": return "操作を完了できませんでした。詳細は Review Range Output を確認してください。";
+  }
 };
 
 const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message"> =>
@@ -225,7 +410,7 @@ export class OperationFeedback {
   ) {}
 
   /** Runs one operation while publishing start, success/failure, and busy status. */
-  public async run<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  public async run<T>(label: string, operation: (context: OperationFeedbackContext) => Promise<T>): Promise<T> {
     const normalizedLabel = requireLabel(label);
     const active: ActiveOperation = {
       id: ++this.nextId,
@@ -241,14 +426,23 @@ export class OperationFeedback {
     this.publishStatus();
 
     try {
-      const result = await operation();
+      const result = await operation({ owner: this, id: active.id });
       const finishedAt = this.now();
-      this.host.appendLog({
-        timestamp: new Date(finishedAt).toISOString(),
-        label: active.label,
-        event: "succeeded",
-        durationMs: Math.max(0, finishedAt - active.startedAt)
-      });
+      if (active.boundaryFailure === undefined) {
+        this.host.appendLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "succeeded",
+          durationMs: Math.max(0, finishedAt - active.startedAt)
+        });
+      } else {
+        this.recordRunFailure(
+          active.label,
+          active.boundaryFailure,
+          finishedAt,
+          Math.max(0, finishedAt - active.startedAt)
+        );
+      }
       return result;
     } catch (error) {
       const finishedAt = this.now();
@@ -267,22 +461,53 @@ export class OperationFeedback {
   }
 
   /** Records an error intentionally handled by a fail-closed or UI boundary. */
-  public reportFailure(label: string, error: unknown): void {
+  public reportFailure(label: string, error: unknown, context?: OperationFeedbackContext): void {
     const identity = errorIdentity(error);
     if (identity !== undefined && this.pendingBoundaryDuplicates.has(identity)) {
       this.pendingBoundaryDuplicates.delete(identity);
       return;
     }
-    this.appendFailure(requireLabel(label), error, this.now());
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : undefined;
+    if (active !== undefined) {
+      active.boundaryFailure ??= error;
+      return;
+    }
+    const timestamp = this.now();
+    const normalizedLabel = requireLabel(label);
+    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started" });
+    this.appendFailure(normalizedLabel, error, timestamp);
+  }
+
+  /** Returns whether an explicit parent operation already has a terminal handled failure. */
+  public hasBoundaryFailure(context: OperationFeedbackContext | undefined): boolean {
+    if (context?.owner !== this) return false;
+    return this.active.some((candidate) => candidate.id === context.id && candidate.boundaryFailure !== undefined);
   }
 
   /** Emits a single source-content-free storage-lock observation to the shared Output lifecycle. */
-  public reportStorageLock(kind: "timeout" | "failure" | "stale-recovered", operationId: string): void {
+  public reportStorageLock(
+    kind: "timeout" | "failure" | "stale-recovered",
+    operationId: string,
+    context?: OperationFeedbackContext,
+  ): void {
     const scope = `${operationId}\0${kind}`;
     if (this.reportedStorageLockScopes.has(scope)) return;
     this.reportedStorageLockScopes.add(scope);
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : undefined;
+    if (active !== undefined) {
+      if (kind !== "stale-recovered") {
+        active.boundaryFailure ??= Object.assign(new Error("Storage lock operation failed."), { code: "EBUSY" });
+      }
+      return;
+    }
+    const timestamp = new Date(this.now()).toISOString();
+    this.host.appendLog({ timestamp, label: "Storage lock", event: "started" });
     this.host.appendLog({
-      timestamp: new Date(this.now()).toISOString(),
+      timestamp,
       label: "Storage lock",
       event: kind === "stale-recovered" ? "succeeded" : "failed",
       message: `Storage lock ${kind}.`
@@ -340,8 +565,8 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
   const error = entry.event !== "failed" || entry.message === undefined
     ? ""
-    : `: ${entry.errorName === undefined ? "" : `${singleLine(entry.errorName)}: `}${singleLine(entry.message)}`;
-  return `[${entry.timestamp}] ${stage} ${singleLine(entry.label)}${duration}${error}`;
+    : `: ${entry.errorName === undefined ? "" : `${boundedSingleLine(entry.errorName, 80)}: `}${boundedSingleLine(entry.message, 320)}`;
+  return boundedSingleLine(`[${entry.timestamp}] ${stage} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${duration}${error}`);
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
@@ -358,27 +583,47 @@ export const setActiveOperationFeedback = (feedback: OperationFeedback | undefin
 /** Runs through the active UI feedback when available, otherwise executes directly. */
 export const runWithActiveOperationFeedback = <T>(
   label: string,
-  operation: () => Promise<T>
-): Promise<T> =>
-  activeOperationFeedback === undefined
-    ? operation()
-    : activeOperationFeedback.run(label, operation);
+  operation: (context: OperationFeedbackContext | undefined) => Promise<T>,
+  retry?: BoundedRetryOptions,
+  parentContext?: OperationFeedbackContext,
+): Promise<T> => {
+  const execute = (context: OperationFeedbackContext | undefined): Promise<T> => retry === undefined
+    ? operation(context)
+    : runWithBoundedRetry(() => operation(context), retry).then((result) => result.value);
+  const feedback = activeOperationFeedback;
+  if (parentContext !== undefined) return execute(parentContext);
+  if (feedback === undefined) return execute(undefined);
+  return feedback.run(label, execute);
+};
 
 /** Reports a handled failure to active diagnostics when the UI host is installed. */
-export const reportActiveOperationFailure = (label: string, error: unknown): void => {
-  activeOperationFeedback?.reportFailure(label, error);
+export const reportActiveOperationFailure = (
+  label: string,
+  error: unknown,
+  context?: OperationFeedbackContext,
+): void => {
+  (context?.owner ?? activeOperationFeedback)?.reportFailure(label, error, context);
 };
 
 /** Returns whether activation has already installed the shared Output lifecycle. */
 export const hasActiveOperationFeedback = (): boolean => activeOperationFeedback !== undefined;
 
+/** Tests an explicit operation context without consulting the process-wide active owner. */
+export const hasOperationFeedbackFailure = (context: OperationFeedbackContext | undefined): boolean =>
+  context?.owner.hasBoundaryFailure(context) ?? false;
+
 /** Records a privacy-safe storage-lock lifecycle event when the Output host is active. */
 export const reportActiveStorageLockDiagnostic = (
-  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string }
+  diagnostic: { readonly kind: "timeout" | "failure" | "stale-recovered"; readonly operationId: string },
+  context?: OperationFeedbackContext,
 ): void => {
-  if (activeOperationFeedback === undefined) {
+  if (activeOperationFeedback === undefined && context === undefined) {
     pendingStorageLockDiagnostics.push(diagnostic);
     return;
   }
-  activeOperationFeedback.reportStorageLock(diagnostic.kind, diagnostic.operationId);
+  (context?.owner ?? activeOperationFeedback)?.reportStorageLock(
+    diagnostic.kind,
+    diagnostic.operationId,
+    context,
+  );
 };

@@ -280,8 +280,11 @@ export class LocalGitAdapter {
     repositoryRoot: string,
     revision: string,
     repositoryRelativePath: string,
-    fileSystemPathSemantics: FileSystemPathSemantics
+    fileSystemPathSemantics: FileSystemPathSemantics,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<LocalGitRevisionTextReadResult> {
+    if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
     const rootPath = requirePath(repositoryRoot, "repositoryRoot");
     const object = requireImmutableCommitObjectId(revision, "revision");
     const filePath = requireCanonicalRepositoryRelativePath(
@@ -298,7 +301,7 @@ export class LocalGitAdapter {
         `${object}^{commit}`
       ]
     };
-    const revisionResult = await this.commandExecutor.execute(revisionInvocation);
+    const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
 
     if (revisionResult.exitCode === 1) {
       return { kind: "missing-revision" };
@@ -319,14 +322,15 @@ export class LocalGitAdapter {
         `:(literal)${filePath}`
       ]
     };
-    const fileResult = await this.commandExecutor.execute(fileInvocation);
+    const fileResult = await this.commandExecutor.execute(fileInvocation, feedbackContext, signal);
     this.requireSuccess(fileInvocation, fileResult);
     const blobObjectId = parseLsTreeBlobObjectId(fileResult.stdout, filePath);
     if (blobObjectId === undefined) {
       return { kind: "missing-file" };
     }
 
-    const bytes = await this.blobReader.readBlob(rootPath, blobObjectId);
+    const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
+    if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
     try {
       return {
         kind: "found",

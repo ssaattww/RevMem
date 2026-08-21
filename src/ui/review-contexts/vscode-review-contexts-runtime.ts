@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 
-import { runWithActiveOperationFeedback } from "../../application/operation-feedback/index";
+import {
+  formatOperationFailureForUser,
+  hasOperationFeedbackFailure,
+  runWithBoundedRetry,
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext,
+} from "../../application/operation-feedback/index";
 
 import {
   formatReviewContextCacheStatus,
@@ -15,7 +21,10 @@ const HIDDEN_CONTEXTS_KEY = "reviewRange.hiddenReviewContexts.v1";
 const CURRENT_PULL_REQUEST_SELECTIONS_KEY = "reviewRange.currentPullRequestSelections.v1";
 
 export interface ReviewContextsRuntimeSource {
-  load(): Promise<readonly ReviewContextListItem[]>;
+  /** Loads read-only tree data and must stop downstream acquisition when aborted. */
+  load(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly ReviewContextListItem[]>;
+  /** Commits a successful pure acquisition once, immediately before tree publication. */
+  publishLoaded?(): Promise<readonly ReviewContextListItem[] | undefined>;
 }
 
 export interface ReviewContextsRuntimeDependencies {
@@ -24,6 +33,15 @@ export interface ReviewContextsRuntimeDependencies {
   readonly refreshDecorations: () => Promise<void>;
   readonly reportError: (error: unknown) => Promise<void>;
 }
+
+/**
+ * Runs the read-only Review Contexts acquisition boundary with the shared
+ * bounded retry policy. Stateful commands deliberately do not call this.
+ */
+export const runReviewContextsPureRead = async <T>(
+  read: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> => (await runWithBoundedRetry(read, { maxAttempts: 3, signal })).value;
 
 /** Stores display-only removals in workspaceState, separate from authoritative Review State and history. */
 export class VscodeReviewContextVisibilityStore implements ReviewContextVisibilityStore {
@@ -118,9 +136,12 @@ export class VscodeCurrentPullRequestSelectionStore {
   }
 }
 
-class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
+/** Runtime tree provider with generation-fenced publication. */
+export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContextListItem> {
   private readonly changed = new vscode.EventEmitter<ReviewContextListItem | undefined | null | void>();
   private items: readonly ReviewContextListItem[] = [];
+  private generation = 0;
+  private refreshController: AbortController | undefined;
 
   public readonly onDidChangeTreeData = this.changed.event;
 
@@ -154,12 +175,46 @@ class ReviewContextsTreeProvider implements vscode.TreeDataProvider<ReviewContex
     return [...this.items];
   }
 
-  public async refresh(): Promise<void> {
-    this.items = [...await this.source.load()];
+  public async refresh(feedbackContext?: OperationFeedbackContext): Promise<void> {
+    this.refreshController?.abort();
+    const controller = new AbortController();
+    this.refreshController = controller;
+    const generation = ++this.generation;
+    // The source owns the retryable acquisition; this method performs one
+    // publication only after that read has completed successfully.
+    let loaded = await runReviewContextsPureRead(
+      () => this.source.load(controller.signal, feedbackContext),
+      controller.signal,
+    );
+    if (hasOperationFeedbackFailure(feedbackContext)) {
+      if (generation === this.generation) this.clear();
+      return;
+    }
+    if (generation !== this.generation) return;
+    const published = await this.source.publishLoaded?.();
+    // A deferred cache write can change cache status or record a terminal
+    // storage failure. Never publish the pre-write projection in either case.
+    if (hasOperationFeedbackFailure(feedbackContext)) {
+      if (generation === this.generation) this.clear();
+      return;
+    }
+    if (generation !== this.generation) return;
+    if (published !== undefined) loaded = published;
+    this.items = [...loaded];
+    this.changed.fire();
+  }
+  /** Clears the list when its replacement cannot be proven current. */
+  public clear(): void {
+    this.refreshController?.abort();
+    this.refreshController = undefined;
+    this.generation += 1;
+    this.items = [];
     this.changed.fire();
   }
 
   public dispose(): void {
+    this.refreshController?.abort();
+    this.refreshController = undefined;
     this.changed.dispose();
   }
 
@@ -197,25 +252,45 @@ export function registerReviewContextsRuntime(
 
   const runOperation = async (
     label: string,
-    operation: () => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
+    retry = false,
+    clearProviderOnFailure = true,
   ): Promise<void> => {
+    // `retry` documents the command classification for wiring tests; retrying
+    // itself is deliberately confined to ReviewContextsTreeProvider.load().
+    void retry;
     try {
-      await runWithActiveOperationFeedback(label, operation);
+      await runWithActiveOperationFeedback(
+        label,
+        (feedbackContext) => operation(feedbackContext),
+      );
     } catch (error) {
-      await dependencies.reportError(error);
+      if (clearProviderOnFailure) provider.clear();
+      await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
   const refreshWithErrorBoundary = (): Promise<void> =>
-    runOperation("Review Contextsを更新", () => provider.refresh());
+    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   const mutate = async (
-    operation: () => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     refreshDecorations = false,
   ): Promise<void> => {
-    await runOperation("Review Contextsを更新", async () => {
-      await operation();
+    let terminalFailure = false;
+    await runOperation("Review Contextsを更新", async (feedbackContext) => {
+      try {
+        await operation(feedbackContext);
+      } catch (error) {
+        terminalFailure = true;
+        throw error;
+      }
       if (refreshDecorations) await dependencies.refreshDecorations();
-    });
-    await runOperation("Review Contextsを更新", () => provider.refresh());
+      terminalFailure = hasOperationFeedbackFailure(feedbackContext);
+    }, false, false);
+    if (terminalFailure) {
+      provider.clear();
+      return;
+    }
+    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
@@ -227,18 +302,18 @@ export function registerReviewContextsRuntime(
     provider,
     vscode.commands.registerCommand("reviewRange.refreshReviewContexts", refreshWithErrorBoundary),
     vscode.commands.registerCommand("reviewRange.redetectPullRequest", () =>
-      mutate(() => dependencies.controller.redetectPullRequest())),
+      mutate((feedbackContext) => dependencies.controller.redetectPullRequest(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.reconnectGitHub", () =>
-      mutate(() => dependencies.controller.reconnectGitHub())),
+      mutate((feedbackContext) => dependencies.controller.reconnectGitHub(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.refreshReviewContextCache", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
-      return mutate(() => dependencies.controller.refreshCache(item.context));
+      return mutate((feedbackContext) => dependencies.controller.refreshCache(item.context, feedbackContext));
     }),
     vscode.commands.registerCommand("reviewRange.toggleReviewContextLayer", (raw?: ReviewContextListItem) => {
       const item = requireItem(raw);
       if (item.layerEnabled === undefined) throw new Error("PRコンテキストだけがLayerを持ちます。");
       return mutate(
-        () => dependencies.controller.setLayerEnabled(item.context, !item.layerEnabled),
+        (feedbackContext) => dependencies.controller.setLayerEnabled(item.context, !item.layerEnabled, feedbackContext),
         true,
       );
     }),
@@ -250,14 +325,14 @@ export function registerReviewContextsRuntime(
       const item = requireItem(raw);
       return runOperation(
         "PR差分を開く",
-        () => dependencies.controller.openDiff(item.context)
+        (feedbackContext) => dependencies.controller.openDiff(item.context, feedbackContext)
       );
     }),
   );
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runOperation("Review Contextsを更新", () => provider.refresh()),
+    refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true),
     refreshWithErrorBoundary,
   };
 }

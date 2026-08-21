@@ -242,3 +242,38 @@ test("T605 multi-root and remote workspace boundary coverage is exposed by packa
     /- name: T605 multi-root and remote workspace boundary tests[\s\S]*?node tools\/run-ci-command\.mjs test-t605 npm run test:t605\b/u
   );
 });
+
+test("T606 focused failure-policy coverage is exposed by package and CI", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  const focused = requireScript(manifest.scripts ?? {}, "test:t606");
+  for (const suite of [
+    "t606-failure-policy-retry-diagnostics",
+    "t606-production-failure-matrix",
+    "t606-r6-production-matrix",
+    "t606-r6-real-composition",
+    "t606-r5-production-activation",
+    "local-git-adapter",
+    "t405-github-lifecycle",
+    "t405-composition-regression",
+    "state-repository",
+    "debounced-review-state-repository",
+    "current-context-ui",
+    "review-contexts-runtime-wiring",
+    "global-understanding-ui",
+    "t505-global-understanding-source",
+    "github-pull-request-cache",
+    "t604-storage-lock-cleanup",
+    "t605-multi-root-remote-boundaries",
+  ]) assert.match(focused, new RegExp(`test-dist/test/unit/${suite}\\.test\\.js`, "u"));
+  assert.match(focused, /test-dist\/test\/integration\/mock-github\.test\.js/u);
+  assert.match(focused, /test-dist\/test\/integration\/t302-review-followup\.integration\.test\.js/u);
+  assert.match(focused, /test-dist\/test\/integration\/t402-pr-diff-acquisition\.test\.js/u);
+  assert.match(
+    workflow,
+    /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,
+  );
+});

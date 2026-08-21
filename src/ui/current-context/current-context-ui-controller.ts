@@ -1,3 +1,5 @@
+import { runWithBoundedRetry, type OperationFeedbackContext } from "../../application/operation-feedback/index";
+
 export type CurrentContextKind = "pull-request" | "branch" | "workspace";
 
 export interface CurrentContextDescriptor {
@@ -40,8 +42,9 @@ export interface CurrentContextUiHost {
 }
 
 export interface CurrentContextUiActions {
-  recompute(): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
+  /** Read-only candidate acquisition; callers may cancel a superseded owner. */
+  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -153,10 +156,15 @@ export class CurrentContextUiController {
     this.host.setCurrentContext({ label: projectContextLabel(snapshot.context), ...(snapshot.context.detail === undefined ? {} : { description: snapshot.context.detail }), tooltip });
     this.host.setStatusBar({ text: `${projectStatusPrefix(snapshot.context)}${percent === undefined ? "" : `: ${percent}`}`, tooltip });
   }
-  public async refresh(): Promise<CurrentContextRefreshResult> {
+  public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextRefreshResult> {
     if (this.actions === undefined) return { snapshot: undefined, stale: false };
     const generation = ++this.generation;
-    const snapshot = await this.actions.recompute();
+    if (signal !== undefined && signal.aborted) return { snapshot: undefined, stale: true };
+    const snapshot = (await runWithBoundedRetry(
+      () => this.actions!.recompute(signal, feedbackContext),
+      { maxAttempts: 3, signal },
+    )).value;
+    if (signal?.aborted === true) return { snapshot: undefined, stale: true };
     if (snapshot !== undefined && generation === this.generation) {
       this.update(snapshot);
       this.actions.acceptRecomputed?.(snapshot);
@@ -169,16 +177,27 @@ export class CurrentContextUiController {
     }
     return { snapshot: undefined, stale: generation !== this.generation };
   }
-  public async selectContext(): Promise<CurrentContextUiSnapshot | undefined> {
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
     if (this.actions === undefined) return undefined;
     const generation = ++this.generation;
-    const selection = await this.actions.selectContext();
+    if (signal !== undefined && signal.aborted) return undefined;
+    // A Quick Pick is an observable user interaction.  Unlike the preceding
+    // candidate acquisition it must never be replayed after a partial result.
+    const selection = await this.actions.selectContext(signal, feedbackContext);
+    if (signal?.aborted === true) return undefined;
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);
       this.actions.acceptExplicit?.(selection);
       return selection;
     }
     return undefined;
+  }
+  /** Clears an indeterminate context so an old snapshot is never presented as fresh. */
+  public failClosed(): void {
+    this.generation += 1;
+    this.host.clearCurrentContext();
+    this.host.clearStatusBar();
+    this.actions?.acceptRecomputed?.(undefined);
   }
 }
 import type { SelectedReviewContext } from "../../application/review-context/index";

@@ -159,7 +159,7 @@ test("registered commands reject missing and diff editors without invoking state
   assert.deepEqual(host.errors, []);
 });
 
-test("registered commands report handler failures through the UI host", async () => {
+test("registered commands report a privacy-safe handler failure through the UI host", async () => {
   const failure = new Error("state commit failed");
   const host = new FakeHost();
   const { handlers, calls } = createHandlers(failure);
@@ -171,7 +171,7 @@ test("registered commands report handler failures through the UI host", async ()
   )!();
 
   assert.deepEqual(calls, []);
-  assert.deepEqual(host.errors, [failure]);
+  assert.deepEqual(host.errors, ["操作を完了できませんでした。詳細は Review Range Output を確認してください。"]);
 });
 
 test("handler failure is recorded as failed operation before the UI host reports it", async () => {
@@ -188,7 +188,7 @@ test("handler failure is recorded as failed operation before the UI host reports
       NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed
     )!();
 
-    assert.deepEqual(host.errors, [failure]);
+    assert.deepEqual(host.errors, ["操作を完了できませんでした。詳細は Review Range Output を確認してください。"]);
     assert.deepEqual(operationHost.logs.map((entry) => entry.event), ["started", "failed"]);
     assert.equal(operationHost.logs.at(-1)?.message, "Operation failed; details were redacted.");
     assert.equal(operationHost.revealCount, 1);

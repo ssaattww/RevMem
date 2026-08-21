@@ -1,0 +1,29 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: f4c815d6bab84fb453276e212f7773cfdab9a042
+technical_implementation_head: bdf6f4ab693e8fb126b0306cdf7690d12b813128
+status: independent_ifr001_through_ifr005_r2_addressed_same_reviewer_closure_pending
+findings:
+  - T606-IFR001
+  - T606-IFR002
+  - T606-IFR003
+  - T606-IFR004
+  - T606-IFR005
+report: reports/issue-76-t606-independent-review-followup-r2-20260821072632.md
+validation:
+  focused_red: "T606 R6 production matrix: 5 pass, 2 fail"
+  test_t606: "executed once: 197 pass, 1 fail, 2 Windows POSIX skips"
+  focused_green: "T406 production seam old-expectation selection: 1 pass, 0 fail"
+  build: pass
+  typecheck_contracts: pass
+  lint: pass
+  architecture: pass
+  architecture_negative: "pass; expected 11 violations"
+  diff_check: pass
+  markdown_wording: "held; repository tooling is absent"
+ci: held_exact_head_pr_ci
+external_sync: "completed for technical head bdf6f4a; parent will refresh current admin head after this admin commit without Git writes"
+next_request: "Same independent reviewer performs finding-limited closure R2 for IFR001 through IFR005 after the technical fix is committed; no full review or merge authorization."

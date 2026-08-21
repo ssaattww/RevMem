@@ -24,6 +24,7 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index.js";
+import { OperationCancelledError } from "../../src/application/operation-feedback/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -572,7 +573,7 @@ test("PR68-R003 stale PR A success cannot overwrite newer PR B progress", async 
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 
   aText.resolve({ kind: "found", content: CONTENT_A });
-  await aActivation;
+  await assert.rejects(aActivation, OperationCancelledError);
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 });
 
@@ -582,6 +583,7 @@ test("PR68-R003 stale PR A failure cannot clear newer PR B progress", async () =
     () => "resolved" as const,
     () => "rejected" as const,
   );
+  await new Promise((resolve) => setImmediate(resolve));
   const bActivation = runtime.activateProgress(CONTEXT_B);
 
   bText.resolve({ kind: "found", content: CONTENT_B });
@@ -589,7 +591,7 @@ test("PR68-R003 stale PR A failure cannot clear newer PR B progress", async () =
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 
   aText.reject(new Error("stale A failure"));
-  assert.equal(await aActivation, "resolved");
+  assert.equal(await aActivation, "rejected");
   assert.equal(activeProgressFileId(runtime), RAW_PATH_B);
 });
 
@@ -599,7 +601,7 @@ test("PR68-R003 leaving the PR context invalidates a pending PR activation", asy
 
   runtime.clearProgress();
   aText.resolve({ kind: "found", content: CONTENT_A });
-  await aActivation;
+  await assert.rejects(aActivation, OperationCancelledError);
 
   const progress = runtime.progress.getEffectiveProgress();
   assert.equal(progress.files.length, 0);
@@ -625,7 +627,7 @@ test("PR68-R003 same-context re-registration prevents an old revision from publi
     readTextContent: async () => newText.promise,
   });
   oldText.resolve({ kind: "found", content: CONTENT_A });
-  await oldActivation;
+  await assert.rejects(oldActivation, OperationCancelledError);
   assert.equal(runtime.progress.getEffectiveProgress().files.length, 0);
 
   const newActivation = runtime.activateProgress(CONTEXT_A);

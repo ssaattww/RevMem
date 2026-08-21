@@ -5,6 +5,7 @@ import type {
   PullRequestDiffUnavailableReason
 } from "../../application/github-pr-diff/index";
 import {
+  GitCommandFailedError,
   GitExecutableNotFoundError,
   type GitCommandExecutor,
   type GitCommandResult
@@ -38,38 +39,49 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
     this.repositoryRoot = requireRoot(repositoryRoot);
   }
 
-  public async loadDiff(request: PullRequestDiffAcquisitionRequest): ReturnType<LocalPullRequestDiffPort["loadDiff"]> {
+  public async loadDiff(
+    request: PullRequestDiffAcquisitionRequest,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): ReturnType<LocalPullRequestDiffPort["loadDiff"]> {
     requirePullRequestDiffAcquisitionRequest(request);
+    if (signal?.aborted) throw new DOMException("Local PR diff acquisition was superseded.", "AbortError");
     try {
       for (const revision of [request.baseSha, request.headSha]) {
-        const unavailable = await this.verifyCommitObject(revision);
+        const unavailable = await this.verifyCommitObject(revision, _feedbackContext, signal);
         if (unavailable !== undefined) {
           return { kind: "unavailable", reason: unavailable };
         }
       }
 
-      const ordinary = await this.executeDiff(request, false);
+      const ordinary = await this.executeDiff(request, false, _feedbackContext, signal);
       const ordinaryFailure = this.classifyDiffFailure(ordinary);
       if (ordinaryFailure !== undefined) return { kind: "unavailable", reason: ordinaryFailure };
       if (!containsAddedFile(ordinary.stdout)) {
         return { kind: "available", diff: ordinary.stdout };
       }
 
-      const exhaustive = await this.executeDiff(request, true);
+      const exhaustive = await this.executeDiff(request, true, _feedbackContext, signal);
       const exhaustiveFailure = this.classifyDiffFailure(exhaustive);
       if (exhaustiveFailure !== undefined) return { kind: "unavailable", reason: exhaustiveFailure };
       return { kind: "available", diff: exhaustive.stdout };
     } catch (error) {
       return {
         kind: "unavailable",
-        reason: error instanceof GitExecutableNotFoundError ? "git-unavailable" : "git-failure"
+        reason: error instanceof GitExecutableNotFoundError
+          ? "git-unavailable"
+          : error instanceof GitCommandFailedError && error.result.exitCode === -1
+            ? "git-timeout"
+            : "git-failure"
       };
     }
   }
 
   private executeDiff(
     request: PullRequestDiffAcquisitionRequest,
-    exhaustiveCopies: boolean
+    exhaustiveCopies: boolean,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitCommandResult> {
     const copyArguments = exhaustiveCopies
       ? ["--find-copies-harder"]
@@ -89,24 +101,28 @@ export class LocalGitPullRequestDiffAdapter implements LocalPullRequestDiffPort 
         request.headSha,
         "--"
       ]
-    });
+    }, feedbackContext, signal);
   }
 
   private classifyDiffFailure(result: GitCommandResult): PullRequestDiffUnavailableReason | undefined {
     const diagnostic = `${result.stdout}\n${result.stderr}`;
     if (skippedRenameOrCopyDetection(diagnostic)) return "diff-too-large";
     if (result.exitCode === 0) return undefined;
+    if (result.exitCode === -1) return "git-timeout";
     return missingRevision(diagnostic) ? "missing-revision" : "git-failure";
   }
 
   private async verifyCommitObject(
-    revision: string
+    revision: string,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestDiffUnavailableReason | undefined> {
     const result = await this.commandExecutor.execute({
       cwd: this.repositoryRoot,
       argumentsList: ["rev-parse", "--verify", "--quiet", `${revision}^{commit}`]
-    });
+    }, feedbackContext, signal);
     if (result.exitCode === 1) return "missing-revision";
+    if (result.exitCode === -1) return "git-timeout";
     if (result.exitCode !== 0 || result.stdout.trim() !== revision) return "git-failure";
     return undefined;
   }

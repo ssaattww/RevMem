@@ -40,9 +40,11 @@ export interface PullRequestRemoteFile {
 /** Stable reason that one local or remote acquisition boundary was unavailable. */
 export type PullRequestDiffUnavailableReason =
   | "git-unavailable"
+  | "git-timeout"
   | "missing-revision"
   | "git-failure"
   | "rate-limit"
+  | "authentication"
   | "network"
   | "api"
   | "missing-file"
@@ -56,7 +58,9 @@ export type PullRequestDiffUnavailableReason =
 /** Local immutable base/head Git diff boundary. */
 export interface LocalPullRequestDiffPort {
   loadDiff(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<
     | { readonly kind: "available"; readonly diff: string }
     | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason }
@@ -72,7 +76,9 @@ export type PullRequestRemoteTextReadResult =
 /** GitHub metadata, changed-file, and immutable content boundary. */
 export interface PullRequestRemoteDataPort {
   fetch(
-    request: PullRequestDiffAcquisitionRequest
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<
     | {
         readonly kind: "available";
@@ -85,7 +91,9 @@ export interface PullRequestRemoteDataPort {
   readFile(
     repository: GitHubRepositoryIdentity,
     revision: string,
-    path: string
+    path: string,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<PullRequestRemoteTextReadResult>;
 }
 

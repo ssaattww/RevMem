@@ -132,15 +132,16 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
 
 test("Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics", async () => {
   const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
 
   assert.match(composition, /reportActiveOperationFailure/u);
   assert.match(
     composition,
-    /result\.kind !== "acquired"[\s\S]{0,700}reportActiveOperationFailure\("PR進捗を取得"/u,
+    /result\.kind !== "acquired"[\s\S]{0,700}throw new OperationDiagnosticError/u,
   );
   assert.match(
-    composition,
-    /catch \(error\)[\s\S]{0,300}reportActiveOperationFailure\("PR進捗を取得"/u,
+    reviewContextsUi,
+    /runReviewContextsPureRead[\s\S]{0,260}runWithBoundedRetry/u,
   );
 });
 
@@ -169,7 +170,8 @@ test("R65-005 preserves safe PR progress acquisition attempts and final cause", 
 
   feedback.reportFailure("PR進捗を取得", failure);
 
-  const terminal = host.logs[0];
+  assert.equal(host.logs[0]?.event, "started");
+  const terminal = host.logs[1];
   assert.equal(terminal?.event, "failed");
   assert.equal(terminal?.errorName, "OperationDiagnosticError");
   assert.equal(
@@ -179,17 +181,16 @@ test("R65-005 preserves safe PR progress acquisition attempts and final cause", 
   assert.doesNotMatch(terminal?.message ?? "", /Customer Payroll Dashboard/u);
 });
 
-test("Issue #63 lets operation feedback observe Review Contexts failures before UI reporting", async () => {
+test("T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure", async () => {
   const reviewContextsUi = await readFile(
     "src/ui/review-contexts/vscode-review-contexts-runtime.ts",
     "utf8",
   );
 
   assert.match(reviewContextsUi, /const runOperation = async/u);
-  assert.match(
-    reviewContextsUi,
-    /await runWithActiveOperationFeedback\(label, operation\)[\s\S]{0,240}catch \(error\)[\s\S]{0,240}dependencies\.reportError\(error\)/u,
-  );
+  assert.match(reviewContextsUi, /retry = false/u);
+  assert.match(reviewContextsUi, /provider\.clear\(\)[\s\S]{0,240}formatOperationFailureForUser/u);
+  assert.match(reviewContextsUi, /openReviewContextDiff[\s\S]{0,500}runOperation/u);
   assert.doesNotMatch(
     reviewContextsUi,
     /runWithActiveOperationFeedback\([\s\S]{0,140}\(\) => report\(/u,

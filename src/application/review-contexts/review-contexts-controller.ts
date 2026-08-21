@@ -1,4 +1,5 @@
 import { isPullRequestDecorationEnabled } from "../github-pr-context/index";
+import type { OperationFeedbackContext } from "../operation-feedback/index";
 import type { ReviewContextState } from "../../core/contracts/index";
 
 /** Presentation groups required by the Review Contexts View. */
@@ -212,12 +213,13 @@ export interface ReviewContextsControllerDependencies {
   readonly visibility: ReviewContextVisibilityStore;
   readonly setPullRequestLayerEnabled: (
     context: ReviewContextState,
-    enabled: boolean
+    enabled: boolean,
+    feedbackContext?: OperationFeedbackContext,
   ) => Promise<void>;
-  readonly refreshPullRequestCache: (context: ReviewContextState) => Promise<void>;
-  readonly openPullRequestDiff: (context: ReviewContextState) => Promise<void>;
-  readonly redetectPullRequest: () => Promise<void>;
-  readonly reconnectGitHub: () => Promise<void>;
+  readonly refreshPullRequestCache: (context: ReviewContextState, feedbackContext?: OperationFeedbackContext) => Promise<void>;
+  readonly openPullRequestDiff: (context: ReviewContextState, feedbackContext?: OperationFeedbackContext) => Promise<void>;
+  readonly redetectPullRequest: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
+  readonly reconnectGitHub: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
 }
 
 const requirePullRequest = (context: ReviewContextState): void => {
@@ -236,27 +238,28 @@ export class ReviewContextsController {
 
   public async setLayerEnabled(
     context: ReviewContextState,
-    enabled: boolean
+    enabled: boolean,
+    feedbackContext?: OperationFeedbackContext,
   ): Promise<void> {
     requirePullRequest(context);
-    await this.dependencies.setPullRequestLayerEnabled(clone(context), enabled);
+    await this.dependencies.setPullRequestLayerEnabled(clone(context), enabled, feedbackContext);
   }
 
-  public async refreshCache(context: ReviewContextState): Promise<void> {
+  public async refreshCache(context: ReviewContextState, feedbackContext?: OperationFeedbackContext): Promise<void> {
     requirePullRequest(context);
-    await this.dependencies.refreshPullRequestCache(clone(context));
+    await this.dependencies.refreshPullRequestCache(clone(context), feedbackContext);
   }
 
-  public async openDiff(context: ReviewContextState): Promise<void> {
+  public async openDiff(context: ReviewContextState, feedbackContext?: OperationFeedbackContext): Promise<void> {
     requirePullRequest(context);
-    await this.dependencies.openPullRequestDiff(clone(context));
+    await this.dependencies.openPullRequestDiff(clone(context), feedbackContext);
   }
 
-  public redetectPullRequest(): Promise<void> {
-    return this.dependencies.redetectPullRequest();
+  public redetectPullRequest(feedbackContext?: OperationFeedbackContext): Promise<void> {
+    return this.dependencies.redetectPullRequest(feedbackContext);
   }
 
-  public reconnectGitHub(): Promise<void> {
-    return this.dependencies.reconnectGitHub();
+  public reconnectGitHub(feedbackContext?: OperationFeedbackContext): Promise<void> {
+    return this.dependencies.reconnectGitHub(feedbackContext);
   }
 }

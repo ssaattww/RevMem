@@ -8,10 +8,12 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index.js";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
   JsonlReviewHistoryStore,
+  NodeAtomicTextFileStore,
   resolveReviewStateStorageRoute,
 } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
@@ -430,6 +432,28 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     const commands = new Map<string, (...argumentsList: unknown[]) => unknown>();
     const providers: CapturedReviewContextsProvider[] = [];
     const errors: string[] = [];
+    let injectCacheStorage = false;
+    let cacheAtomicWriteFailure: "ENOSPC" | "EACCES" | undefined;
+    let cacheAtomicWrites = 0;
+    const cacheStorageFactory = (cacheDirectory: string) => {
+      const nodeStore = new NodeAtomicTextFileStore(path.dirname(cacheDirectory));
+      return new NodeGitHubPullRequestCacheStorage({
+        cacheDirectory,
+        atomicFileStore: {
+          readText: (filePath) => nodeStore.readText(filePath),
+          writeTextAtomically: async (filePath, content) => {
+            cacheAtomicWrites += 1;
+            if (cacheAtomicWriteFailure !== undefined) {
+              throw Object.assign(new Error(`deterministic cache atomic write failure: ${cacheAtomicWriteFailure}`), {
+                code: cacheAtomicWriteFailure,
+              });
+            }
+            await nodeStore.writeTextAtomically(filePath, content);
+          },
+          deleteText: (filePath) => nodeStore.deleteText(filePath),
+        },
+      });
+    };
     const workspaceState = new MemoryMemento();
     let redetectChoice: 52 | 53 | undefined = 53;
     const fakeVscode = {
@@ -605,7 +629,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
         reviewStateRepository: stateRepository,
         reviewHistoryRecorder: historyRecorder,
-      });
+        ...(injectCacheStorage ? { createPullRequestCacheStorage: cacheStorageFactory } : {}),
+      } as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]);
       registered = runtime;
       enumerateEnabled = true;
       const provider = providers.at(-1);
@@ -697,8 +722,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(liveRefreshErrors, []);
     const liveCache = findPullRequestItem(current.provider, 52).cache;
     assert.equal(liveCache?.origin, "live");
-    assert.equal(liveCache?.freshness, "fresh");
-    assert.ok(liveCache !== undefined && "updatedAt" in liveCache);
+    assert.equal(liveCache?.freshness, "not-cached");
+    assert.ok(liveCache !== undefined);
 
     const cacheDirectory = resolveReviewStateStorageRoute(storageUris, {
       kind: "pull-request",
@@ -717,27 +742,27 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     refreshTransport = "offline";
     const offlineRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(offlineRefreshErrors.length, 1);
-    assert.match(offlineRefreshErrors[0]!, /offline cache \(stale\)/u);
-    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
-      origin: "offline",
-      freshness: "stale",
-      updatedAt: "2000-01-01T00:00:00.000Z",
-    });
+    assert.match(offlineRefreshErrors[0]!, /詳細は Review Range Output/u);
+    assert.throws(
+      () => findPullRequestItem(current.provider, 52),
+      /PR #52 should be projected/u,
+      "a terminal cache refresh failure must clear the old fresh projection",
+    );
 
     refreshTransport = "live";
+    await rm(cacheDirectory, { recursive: true, force: true });
+    await mkdir(cacheDirectory, { recursive: true });
+    await current.runtime.refresh();
+    assert.ok(findPullRequestItem(current.provider, 52));
     await rm(cacheDirectory, { recursive: true, force: true });
     await writeFile(cacheDirectory, "cache write blocked", "utf8");
     const writeFailureErrors = await refreshCache(findPullRequestItem(current.provider, 52));
     assert.equal(writeFailureErrors.length, 1);
-    assert.match(writeFailureErrors[0]!, /live取得結果をcacheへ保存できませんでした/u);
-    assert.deepEqual(findPullRequestItem(current.provider, 52).cache, {
-      origin: "live",
-      freshness: "not-cached",
-    });
+    assert.match(writeFailureErrors[0]!, /詳細は Review Range Output/u);
+    assert.throws(() => findPullRequestItem(current.provider, 52), /PR #52 should be projected/u);
 
-    // T406-R003: a stale offline A cache and a cache-write failure must not terminate
-    // recovery. A subsequent live B acquisition has to replace every T405-owned
-    // immutable identity, rather than leaving an A snapshot registered in memory.
+    // T406-R003: terminal cache mutations do not republish the tree. A subsequent
+    // explicit live B acquisition has to replace every T405-owned immutable identity.
     await rm(cacheDirectory, { force: true });
     await mkdir(cacheDirectory, { recursive: true });
     await writeFile(sourcePath, "keep\nrecovered", "utf8");
@@ -758,7 +783,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(recoveredRefreshErrors, []);
     const recoveredCache = findPullRequestItem(current.provider, 52).cache;
     assert.equal(recoveredCache?.origin, "live");
-    assert.equal(recoveredCache?.freshness, "fresh");
+    assert.equal(recoveredCache?.freshness, "not-cached");
     const recovered52 = await new FileSystemReviewStateRepository({ storageUris }).load({
       kind: "pull-request",
       repositoryId: REPOSITORY_ID,
@@ -1006,9 +1031,37 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       historyEvents.filter((event) => event.contextId === contextId53 && event.revisionId === recoveredHeadSha),
     );
 
-    // R405-2: lifecycle changes must enter through Review Contexts load/synchronize, then survive restart.
+    // T606-R8: the actual T405 cache mutation uses Node-backed atomic storage.
+    // A write fault must be terminal even though this factory deliberately does
+    // not forward a diagnostic callback into the storage adapter.
+    injectCacheStorage = true;
+    current = registerRuntime();
+    await new Promise((resolve) => setImmediate(resolve));
+    await current.runtime.refresh();
+    cacheAtomicWrites = 0;
+    cacheAtomicWriteFailure = "ENOSPC";
+    const cacheFailureLog: Array<{ event: string; label: string; message?: string }> = [];
+    setActiveOperationFeedback(new OperationFeedback({
+      showBusy: () => undefined,
+      clearBusy: () => undefined,
+      appendLog: (entry) => cacheFailureLog.push(entry),
+      revealLog: () => undefined,
+    }, () => Date.parse("2026-08-20T00:00:00.000Z")));
+    errors.length = 0;
+    const cacheHandler = commands.get("reviewRange.refreshReviewContextCache");
+    assert.ok(cacheHandler);
+    await cacheHandler(findPullRequestItem(current.provider, 52));
+    setActiveOperationFeedback(undefined);
+    assert.equal(cacheAtomicWrites, 1, "a Node-backed atomic write fault cannot retry or start post-mutation refresh");
+    assert.equal(errors.length, 1, "the command boundary reports the terminal cache mutation failure");
+    assert.deepEqual(cacheFailureLog.map((entry) => entry.event), ["started", "failed"]);
+    cacheAtomicWriteFailure = undefined;
+    errors.length = 0;
+
+    // R405-2: lifecycle changes use an explicit mutation command, while refresh remains a pure projection read.
     lifecycle52 = "closed";
     lifecycle53 = "merged";
+    await invoke("reviewRange.redetectPullRequest");
     await current.runtime.refresh();
     const closed52 = findPullRequestItem(current.provider, 52);
     const merged53 = findPullRequestItem(current.provider, 53);
@@ -1065,7 +1118,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       entry.event === "failed" && entry.message === "GITHUB_PR_DETECTION_UNAVAILABLE reason=network"
     );
     assert.equal(diagnostics.length, 1);
-    assert.ok(operationLog.some((entry) => entry.event === "succeeded"));
+    assert.equal(operationLog.some((entry) => entry.event === "succeeded"), false);
     assert.doesNotMatch(JSON.stringify(operationLog), /network interrupted|repositoryRoot|targetHeadSha/u);
 
     // T406-R001: the selected branch owner is the production normal-editor

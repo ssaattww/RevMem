@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 
 import {
+  formatOperationFailureForUser,
+  runWithActiveOperationFeedback,
+  type OperationFeedbackContext
+} from "../../application/operation-feedback/index";
+
+import {
   CurrentContextRuntimeCoordinator,
   type CurrentContextDependentRefresher
 } from "./current-context-runtime-coordinator";
@@ -15,8 +21,8 @@ export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  recompute(): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -91,31 +97,63 @@ export const registerCurrentContextRuntime = (
   const coordinator = new CurrentContextRuntimeCoordinator(controller, {
     ...dependentRefresher
   });
+  let currentCancellation: AbortController | undefined;
+  const runRefresh = async (): Promise<void> => {
+    currentCancellation?.abort();
+    const cancellation = new AbortController();
+    currentCancellation = cancellation;
+    try {
+      await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext));
+    } catch (error) {
+      if (currentCancellation === cancellation) {
+        controller.failClosed();
+        await reportRefreshError(formatOperationFailureForUser(error));
+      }
+    } finally {
+      if (currentCancellation === cancellation) currentCancellation = undefined;
+    }
+  };
+  const runSelection = async (): Promise<void> => {
+    currentCancellation?.abort();
+    const cancellation = new AbortController();
+    currentCancellation = cancellation;
+    try {
+      await runWithActiveOperationFeedback("Current Contextを選択", (feedbackContext) => coordinator.selectContext(cancellation.signal, feedbackContext));
+    } catch (error) {
+      if (currentCancellation === cancellation) {
+        controller.failClosed();
+        await reportRefreshError(formatOperationFailureForUser(error));
+      }
+    } finally {
+      if (currentCancellation === cancellation) currentCancellation = undefined;
+    }
+  };
 
   const registrations: vscode.Disposable[] = [
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
     vscode.commands.registerCommand(
       REFRESH_CONTEXT_COMMAND_ID,
-      () => coordinator.refresh()
+      runRefresh
     ),
     vscode.commands.registerCommand(
       SELECT_CONTEXT_COMMAND_ID,
-      () => coordinator.selectContext()
+      runSelection
     ),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      void coordinator.refreshWithErrorBoundary(reportRefreshError);
+      void runRefresh();
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  void coordinator.refreshWithErrorBoundary(reportRefreshError);
+  void runRefresh();
 
   return {
     controller,
-    refresh: () => coordinator.refresh(),
+    refresh: runRefresh,
     dispose: () => {
+      currentCancellation?.abort();
       for (const registration of registrations) {
         registration.dispose();
       }

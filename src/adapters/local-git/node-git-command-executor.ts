@@ -130,7 +130,12 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
   }
 
   /** Executes Git directly and captures streamed UTF-8 output. */
-  public async execute(invocation: GitCommandInvocation): Promise<GitCommandResult> {
+  public async execute(
+    invocation: GitCommandInvocation,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<GitCommandResult> {
+    if (signal?.aborted) throw new DOMException("Git command was superseded.", "AbortError");
     const normalizedInvocation: GitCommandInvocation = {
       cwd: invocation.cwd,
       argumentsList: [...invocation.argumentsList]
@@ -147,6 +152,7 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
         throw new TypeError("Git command cwd must identify a directory.");
       }
     }
+    if (signal?.aborted) throw new DOMException("Git command was superseded.", "AbortError");
 
     return new Promise<GitCommandResult>((resolve, reject) => {
       const child = this.processFactory(
@@ -171,11 +177,17 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
       let timeoutDiagnostic = "";
       let terminationTimer: NodeJS.Timeout | undefined;
       let forceCloseTimer: NodeJS.Timeout | undefined;
+      const onAbort = (): void => {
+        if (settled) return;
+        child.kill("SIGTERM");
+        rejectOnce(new DOMException("Git command was superseded.", "AbortError"));
+      };
 
       const clearTimers = (): void => {
         clearTimeout(timeoutTimer);
         if (terminationTimer !== undefined) clearTimeout(terminationTimer);
         if (forceCloseTimer !== undefined) clearTimeout(forceCloseTimer);
+        signal?.removeEventListener("abort", onAbort);
       };
       const capturedResult = (
         exitCode: number,
@@ -265,6 +277,9 @@ export class NodeGitCommandExecutor implements GitCommandExecutor {
         }
         finishFailure(-1, signal);
       });
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
 
       const timeoutTimer = setTimeout(() => {
         if (settled) return;

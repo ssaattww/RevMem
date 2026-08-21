@@ -28,7 +28,7 @@ import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewHistoryEvent } from "../../src/
 import { NonGitSnapshotTracker } from "../../src/application/non-git-snapshots/index";
 import type { GitHubPullRequestCacheEntry } from "../../src/application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../src/application/github-pr-diff/index";
-import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
+import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index";
 import { composeStartupFeedback } from "../../src/application/operation-feedback/startup-feedback-composition";
 import { runPersistenceStartupMigration } from "../../src/adapters/persistence-startup-migration";
 
@@ -300,7 +300,7 @@ test("T604 bounds fresh zero, truncated, malformed, and future-invalid partial r
 });
 
 test("T604 deduplicates pending privacy-safe diagnostics by operation scope", () => {
-  const entries: Array<{ readonly message?: string }> = [];
+  const entries: OperationLogEntry[] = [];
   setActiveOperationFeedback(undefined);
   reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
   reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
@@ -312,7 +312,8 @@ test("T604 deduplicates pending privacy-safe diagnostics by operation scope", ()
   reportActiveStorageLockDiagnostic({ kind: "failure", operationId: "scope-a" });
   reportActiveStorageLockDiagnostic({ kind: "stale-recovered", operationId: "scope-b" });
   setActiveOperationFeedback(undefined);
-  assert.equal(entries.length, 2);
+  assert.equal(entries.length, 4);
+  assert.deepEqual(entries.map((entry) => entry.event), ["started", "failed", "started", "succeeded"]);
   assert.doesNotMatch(JSON.stringify(entries), /scope-a|repository-t604|secret|path/u);
 });
 
@@ -725,7 +726,7 @@ test("T604 flushes a terminal startup lock failure through the production feedba
     notify({ kind: "failure", operationId: "startup-terminal" });
     throw new StorageRootLockTimeoutError();
   }), StorageRootLockTimeoutError);
-  assert.equal(entries.length, 1);
+  assert.equal(entries.length, 2);
   assert.equal(reveals, 1);
   assert.doesNotMatch(JSON.stringify(entries), /startup-terminal|repository|path/u);
   setActiveOperationFeedback(undefined);

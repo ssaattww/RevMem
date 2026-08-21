@@ -1,0 +1,18 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
+implementation_head: 2353eb2d1be4199d1dfbbb152b1ace112701a660
+status: r001_through_r005_and_r007_r4_addressed_same_normal_reviewer_closure_pending_r006_closed
+report: reports/issue-76-t606-implementation-20260820225743.md
+validation:
+  focused_red: npm run test:t606 observed the added matrix fixture TypeScript compile failure; follow-up diagnostics corrected the storage-cause assertion and replaced a Windows timing-sensitive imported timeout suite with the T606 deterministic production timeout assertion
+  focused_green: "npm run test:t606: 175 passing, 2 Windows POSIX fixture skips, 0 failed"
+  build: npm run build
+  contracts: npm run typecheck:contracts
+  lint: npm run lint (passed after final fixture lint correction)
+  architecture: npm run validate:architecture and npm run validate:architecture:negative (passed)
+followup_report: reports/issue-76-t606-normal-review-followup-r4-20260821001157.md
+next_request: Have the same normal reviewer perform finding-limited closure for addressed T606-R001 through R005 and R007; R006 is closed and must not be re-explored. CI remains unstarted.

@@ -1,0 +1,24 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: e1ea5d9858760b3f944d22740f4db8ba2b78edad
+technical_implementation_head: 663b4078d91197b102c80825064d8b7bb73f8771
+status: ifr001_through_ifr005_r3_addressed_same_reviewer_closure_pending
+report: reports/issue-76-t606-independent-review-followup-r3-20260821074236.md
+validation:
+  red: "actual cache write failure: 0 pass, 1 fail"
+  green: "cache publish failure focused tests: 2 pass, 0 fail"
+  test_t606: "201 pass, 0 fail, 2 Windows POSIX skips"
+  build: pass
+  typecheck_contracts: pass
+  lint: pass
+  architecture: pass
+  architecture_negative: "pass; expected 11 violations"
+ci: held
+external_sync: "completed for technical head 663b407; parent refreshes final admin head externally after this commit"
+evidence:
+  current_context: "T305 refresh/select owner -> T405 candidate acquisition -> T402/T403 local Git, GitHub diff, cache read/write typed context/signal propagation; transient result union max 3, authentication permanent one attempt"
+  pr_progress: "pending deepest content I/O observes active owner/signal; clear aborts; stale publication absent; cancellation/failure/success each have one terminal"
+next_request: "Same independent reviewer performs finding-limited closure R3 for IFR001 through IFR005 after technical commit."

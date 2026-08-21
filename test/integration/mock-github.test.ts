@@ -276,8 +276,8 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
   }
 
   for (const scenario of [
-    { status: 401, expectedReason: "api" },
-    { status: 403, expectedReason: "api" },
+    { status: 401, expectedReason: "authentication" },
+    { status: 403, expectedReason: "authentication" },
     { status: 404, expectedReason: "api" },
     { status: 429, expectedReason: "rate-limit" }
   ] as const) {

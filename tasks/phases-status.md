@@ -31,15 +31,15 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T604はmainへ統合済み。T605はnormal/independent findings closed、final attestationとexact-head CI merge gate待ち、T606以降は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T608 | P1〜P5 | T601〜T605はmainへ統合済み。T606 technical HEAD `2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e` のPR body external syncはcompleted、parentによるresulting final admin HEAD refresh・same independent reviewer CI-delta verification・new attestation待ち、exact-head CI rerun held、T607〜T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T603 schema migration・破損隔離・回復（PR #53、merge commit `8cbdaa55`）
-- 実装中タスク: T605 / Issue #74 multi-root and remote workspace boundaries（normal/independent findings closed、final attestation pending）
-- 次の工程: 同一independent reviewerがadministrative deltaをattestし、exact-head pull_request CI Green後にsquash mergeする
-- 後続候補: T606
+- 実装中タスク: T606 / Issue #76 unified failure policy, retry, stale UI, and privacy-safe diagnostics（CI follow-up technical HEAD `2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e`。PR body external syncはtechnical HEADにcompleted、parentがresulting final admin HEADをexternal refreshする。same independent reviewer CI-delta verification、new attestation pending、technical HEADのexact-head PR CI rerun/merge held。focused Greenは15 pass / 0 fail、full unitは521 pass / 20 fail / 2 skippedでWindows対象外failureのためheld。Markdown wordingはtooling不在のためunsupported/held）
+- 次の工程: technical HEADのexact-head CI後のsame independent reviewer CI-delta verification
+- 後続候補: T607
 
 ## P0 開発基盤
 
@@ -182,8 +182,9 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T602 rebase・force-push回復: 完了・PR #49でmain統合済み
 - T603 schema migration・破損隔離・回復: 完了・独立review finding closureとexact-head CI `31983927383`成功後、PR #53をmerge commit `8cbdaa55`でmain統合済み
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
-- T605: multi-rootとRemote SSH / Dev Containers / Codespaces相当workspace URI境界はnormal findings R001〜R006、independent findings IFR001〜003を全件closedし、final attestationとexact-head CI待ち（Issue #74、PR #75）
-- T606〜T608: 未着手
+- T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
+- T606: CI follow-up technical HEAD `2a2b59fe0cf8a9f65c79fd87ebd50386ae6a488e`。previous attestation `b747c80d62ac293f3a45f8bc932154e2e72421b2` のCI failure（run `32431194872` / Unit tests job `96622916836`）をaddressed。PR body external syncはtechnical HEADにcompleted、parentによるresulting final admin HEAD external refresh、same independent reviewer CI-delta verification、new attestationはpending、technical HEADのexact-head PR CI rerun/mergeはheld。focused Greenは15 pass / 0 fail、full unitは521 pass / 20 fail / 2 skippedでWindows対象外failureのためheld。end-of-Issue skill-gap decisionは`no new action`で、feedbackは既存CodexSkill #58/#61へ集約済み。
+- T607〜T608: 未着手
 
 ### 終了チェックポイント
 

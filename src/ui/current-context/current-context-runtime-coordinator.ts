@@ -1,5 +1,6 @@
 import type { CurrentContextUiController } from "./current-context-ui-controller";
 import type { SelectedReviewContext } from "../../application/review-context/index";
+import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
 
 export interface CurrentContextDependentRefresher {
   /** Sets the identity that command and decoration consumers must use. */
@@ -14,8 +15,8 @@ export class CurrentContextRuntimeCoordinator {
     private readonly dependentRefresher: CurrentContextDependentRefresher
   ) {}
 
-  public async refresh(): Promise<void> {
-    const result = await this.controller.refresh();
+  public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<void> {
+    const result = await this.controller.refresh(signal, feedbackContext);
     if (result.stale) {
       return;
     }
@@ -23,8 +24,8 @@ export class CurrentContextRuntimeCoordinator {
     await this.dependentRefresher.refreshDependents();
   }
 
-  public async selectContext(): Promise<void> {
-    const selection = await this.controller.selectContext();
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<void> {
+    const selection = await this.controller.selectContext(signal, feedbackContext);
     if (selection === undefined) {
       return;
     }
@@ -39,6 +40,7 @@ export class CurrentContextRuntimeCoordinator {
     try {
       await this.refresh();
     } catch (error) {
+      this.controller.failClosed();
       await report(error);
     }
   }

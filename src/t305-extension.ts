@@ -44,10 +44,8 @@ import {
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
 } from "./t305-projection-refresh";
-import {
-  formatGlobalUnderstandingFileOpenError,
-  type GlobalUnderstandingFileOpenTarget
-} from "./ui/global-understanding/global-understanding-ui-model";
+import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
+import type { OperationFeedbackContext } from "./application/operation-feedback/index";
 import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingOwner
@@ -262,19 +260,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
 
   const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
-  const enumerateContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
+  const enumerateContexts = async (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot[]> => {
     const local = await enumerateLocalContexts();
+    if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
-    return reviewContextsRuntime === undefined
-      ? local
-      : [...await reviewContextsRuntime.augmentCurrentContextCandidates(local)];
+    if (reviewContextsRuntime === undefined) return local;
+    const augmented = await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext);
+    // The Current Context owner is authoritative: an aborted composition must
+    // never publish candidates returned by an in-flight T405 acquisition.
+    return signal?.aborted ? [] : [...augmented];
   };
 
-  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[]): Promise<CurrentContextUiSnapshot | undefined> => {
+  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
     if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
       const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
+      if (signal?.aborted === true) return undefined;
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
           candidate.context.selection?.kind === "pull-request" &&
@@ -301,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextComposition = new CurrentContextRuntimeComposition(selection, {
     enumerateCandidates: enumerateContexts,
     resolveFallback,
-    requestSelection: async (available) => {
+    requestSelection: async (available, signal) => {
       if (available.length === 0) {
         await vscode.window.showInformationMessage("表示できるレビューコンテキストがありません。");
         return undefined;
@@ -318,6 +320,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       const selected = await vscode.window.showQuickPick(items, {
         placeHolder: "レビューコンテキストを選択"
       });
+      if (signal?.aborted === true) return undefined;
       return selected?.snapshot;
     }
   });
@@ -371,9 +374,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       await vscode.window.showErrorMessage(
         `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
       );
-    },
-    reportOpenError: async (error) => {
-      await vscode.window.showErrorMessage(formatGlobalUnderstandingFileOpenError(error));
     }
   });
 
@@ -464,7 +464,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: () => currentContextComposition.recompute(),
+      recompute: (signal, feedbackContext) => currentContextComposition.recompute(signal, feedbackContext),
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
@@ -475,7 +475,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         currentContextComposition.acceptExplicit(snapshot);
         globalSource.setContext(snapshot);
       },
-      selectContext: () => currentContextComposition.selectContext()
+      selectContext: (signal, feedbackContext) => currentContextComposition.selectContext(signal, feedbackContext)
     },
     {
       setSelectedContext: acceptSelectedContext,
@@ -505,8 +505,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
     openPullRequestReviewDiff: (contextId, fileId, title) =>
       pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
-    getPullRequestReviewProgress: (contextId) =>
-      pullRequestReviewRuntime.getProgress(contextId),
+    getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
+      pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
     reviewStateRepository: runtimePort.reviewStateRepository,
     reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
   });

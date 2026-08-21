@@ -698,6 +698,19 @@ test("refresh ignores stale asynchronous snapshots", async () => {
   assert.equal(host.contextLabel, "Branch: new");
 });
 
+test("T606 never retries a Current Context Quick Pick selection after a retryable failure", async () => {
+  let selections = 0;
+  const controller = new CurrentContextUiController(createHost(), {
+    recompute: async () => undefined,
+    selectContext: async () => {
+      selections += 1;
+      throw Object.assign(new Error("selection transport failed"), { code: "ECONNRESET" });
+    },
+  });
+  await assert.rejects(() => controller.selectContext(), /selection transport failed/u);
+  assert.equal(selections, 1);
+});
+
 const createHost = (events: string[] = []): CurrentContextUiHost & {
   contextLabel?: string;
   contextDescription?: string;

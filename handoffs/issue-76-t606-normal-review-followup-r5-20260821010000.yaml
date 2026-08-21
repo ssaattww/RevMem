@@ -1,0 +1,15 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
+implementation_head: c317c56f3102c535b33a4958b444786d69596507
+status: r001_through_r005_and_r007_r5_addressed_same_normal_reviewer_closure_pending_r006_closed
+report: reports/issue-76-t606-normal-review-followup-r5-20260821010000.md
+validation:
+  focused_red: "npm run test:t606 observed Current Context selectContext retrying a retryable Quick Pick failure three times"
+  focused_green: "npm run test:t606: 191 passing, 2 Windows POSIX fixture skips, 0 failed"
+  static: "npm run build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative, and git diff --check passed; Markdown wording tooling is unavailable"
+  ci: unstarted; exact-head CI remains a merge gate held
+next_request: Have the same normal reviewer perform finding-limited closure R5 for addressed T606-R001 through R005 and R007 only; retain R006 closed and do not re-explore it.

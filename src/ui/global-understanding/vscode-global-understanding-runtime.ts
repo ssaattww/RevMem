@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import {
   OperationFeedback,
+  formatOperationFailureForUser,
   hasActiveOperationFeedback,
   runWithActiveOperationFeedback,
   setActiveOperationFeedback
@@ -29,7 +30,7 @@ export const TOGGLE_GLOBAL_LAYER_COMMAND_ID = "reviewRange.toggleGlobalLayer";
 export const OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID = "reviewRange.openGlobalUnderstandingFile";
 
 export interface GlobalUnderstandingRuntimeSource {
-  recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
 }
 
 export interface GlobalUnderstandingRuntimeDependencies {
@@ -39,7 +40,6 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly refreshDecorations: () => void | Promise<void>;
   readonly openFile: (target: GlobalUnderstandingFileOpenTarget) => void | Promise<void>;
   readonly reportError: (error: unknown) => void | Promise<void>;
-  readonly reportOpenError: (error: unknown) => void | Promise<void>;
 }
 
 interface FilesGroupNode {
@@ -219,8 +219,7 @@ export const registerGlobalUnderstandingRuntime = (
   }
   const tree = new GlobalUnderstandingTreeDataProvider();
   const openController = new GlobalUnderstandingFileOpenController({
-    openFile: dependencies.openFile,
-    reportOpenError: dependencies.reportOpenError
+    openFile: dependencies.openFile
   });
   const status = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -253,17 +252,24 @@ export const registerGlobalUnderstandingRuntime = (
 
   const invalidate = (): void => refreshController.invalidate();
   const clear = (): void => refreshController.clear();
-  const refresh = (): Promise<void> =>
-    runWithActiveOperationFeedback(
+  let retryCancellation: AbortController | undefined;
+  const refresh = (): Promise<void> => {
+    retryCancellation?.abort();
+    const currentCancellation = new AbortController();
+    retryCancellation = currentCancellation;
+    return runWithActiveOperationFeedback(
       "Global理解率を再計算",
-      () => refreshController.refresh().then(() => undefined)
-    );
+      () => refreshController.refresh(currentCancellation.signal).then(() => undefined),
+    ).finally(() => {
+      if (retryCancellation === currentCancellation) retryCancellation = undefined;
+    });
+  };
 
   const refreshWithErrorBoundary = async (): Promise<void> => {
     try {
       await refresh();
     } catch (error) {
-      await dependencies.reportError(error);
+      await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
 
@@ -289,16 +295,26 @@ export const registerGlobalUnderstandingRuntime = (
       OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
       async (node: GlobalUnderstandingFileNode | undefined) => {
         if (node === undefined || node.kind !== "file") return;
-        await openController.open(node);
+        try {
+          await runWithActiveOperationFeedback(
+            "Global理解率ファイルを開く",
+            () => openController.open(node),
+          );
+        } catch (error) {
+          await dependencies.reportError(formatOperationFailureForUser(error));
+        }
       }
     ),
     vscode.commands.registerCommand(
       TOGGLE_GLOBAL_LAYER_COMMAND_ID,
       async () => {
         try {
-          await toggle.toggle();
+          await runWithActiveOperationFeedback(
+            "Global理解率Layerを切り替える",
+            () => toggle.toggle(),
+          );
         } catch (error) {
-          await dependencies.reportError(error);
+          await dependencies.reportError(formatOperationFailureForUser(error));
         }
       }
     ),

@@ -9,7 +9,11 @@ import type {
 
 /** T402-compatible immutable pull-request diff acquisition boundary. */
 export interface PullRequestDiffAcquisitionPort {
-  acquire(request: PullRequestDiffAcquisitionRequest): Promise<PullRequestDiffAcquisitionResult>;
+  acquire(
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<PullRequestDiffAcquisitionResult>;
 }
 
 /** Persisted metadata and source-redacted diff for one exact pull-request comparison. */
@@ -24,8 +28,16 @@ export interface GitHubPullRequestCacheEntry {
 
 /** Durable cache boundary selected by exact repository, pull request, and revision identity. */
 export interface GitHubPullRequestCacheStorage {
-  read(request: PullRequestDiffAcquisitionRequest): Promise<GitHubPullRequestCacheEntry | undefined>;
-  write(entry: GitHubPullRequestCacheEntry): Promise<void>;
+  read(
+    request: PullRequestDiffAcquisitionRequest,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<GitHubPullRequestCacheEntry | undefined>;
+  write(
+    entry: GitHubPullRequestCacheEntry,
+    feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void>;
 }
 
 /** Constructor dependencies for the T403 cache-aware acquisition service. */

@@ -32,7 +32,8 @@ export class VsCodeGitHubAuthenticationProvider {
   }
 
   /** Returns an existing host-appropriate access token or `undefined` so public API fallback can proceed. */
-  public async getAccessToken(authority: string): Promise<string | undefined> {
+  public async getAccessToken(authority: string, signal?: AbortSignal): Promise<string | undefined> {
+    if (signal?.aborted) throw new DOMException("GitHub authentication was superseded.", "AbortError");
     const canonicalAuthority = canonicalGitHubAuthority(authority);
     if (canonicalAuthority === undefined) {
       return undefined;
@@ -49,8 +50,10 @@ export class VsCodeGitHubAuthenticationProvider {
         this.scopes,
         { createIfNone: false }
       );
+      if (signal?.aborted) throw new DOMException("GitHub authentication was superseded.", "AbortError");
       return session?.accessToken;
     } catch {
+      if (signal?.aborted) throw new DOMException("GitHub authentication was superseded.", "AbortError");
       return undefined;
     }
   }

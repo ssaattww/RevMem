@@ -1,0 +1,29 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: 70813a854f2881695dee421074c1873f22556cad
+technical_implementation_head: c19bddd54827143520ca6070c28db37c66de218c
+status: ifr001_closed_ifr002_through_ifr005_r4_addressed_same_reviewer_closure_pending
+report: reports/issue-76-t606-independent-review-followup-r4-20260821090000.md
+validation:
+  red: "PR Progress supersede old success expectation: 0 pass, 1 fail"
+  green: "pending Node cache abort and PR Progress cancellation: 2 pass, 0 fail"
+  test_t606: "202 pass, 0 fail, 2 Windows POSIX skips"
+  build: pass
+  typecheck_contracts: pass
+  lint: pass
+  architecture: pass
+  architecture_negative: "pass; expected 11 violations"
+  diff_check: pass
+ci: held
+admin_head: 59da2b4a5f04bc2d2fb24501aadfaefb8c1c544d
+external_sync: PR body external sync completed for technical head c19bddd; parent refreshes final admin head after this admin commit
+markdown_word_check: "focused/full unsupported and held: no tools/lint, lint:md, cspell, or prh wiring"
+evidence:
+  ifr002: "Current Context -> T405 lifecycle/auth -> GitHub fetch/local Git/blob/cache storage shares typed owner and AbortSignal; pending Node cache I/O returns AbortError after abort and never publishes its result"
+  ifr003: "PR Progress local content I/O shares owner/signal; supersede returns OperationCancelledError with one terminal; Global production command keeps generic UI and one redacted terminal"
+  ifr004: "R6 production regressions remain required by test:t606 and its CI contract"
+  ifr005: "current README/tasks/phases use only R4 pending identity and 202/0/2 validation; historical reports unchanged"
+next_request: "Same independent reviewer performs finding-limited closure R4 for IFR002 through IFR005; IFR001 remains closed."

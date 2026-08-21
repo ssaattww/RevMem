@@ -3,6 +3,7 @@ export {
   VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
+  runReviewContextsPureRead,
   type RegisteredReviewContextsRuntime,
   type ReviewContextsRuntimeDependencies,
   type ReviewContextsRuntimeSource,

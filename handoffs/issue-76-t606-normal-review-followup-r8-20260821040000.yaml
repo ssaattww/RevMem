@@ -1,0 +1,17 @@
+schema_version: 1
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #76 / PR #77"
+task_id: T606
+branch: task/t606-failure-policy-retry-diagnostics
+base_head: fb7df6ab79bb23ae16b43b61aa66ab743460be69
+technical_implementation_head: d5193ba3513d1cb62c7d9a053b3f87086e310d51
+normal_evidence_closure_head: 43e782171a77311f6a774934aef724f5a6d3f8ea
+independent_target: pending_final_freeze
+status: normal_closure_r8_pass_with_held_independent_final_review_pending_r001_through_r007_closed
+report: reports/issue-76-t606-normal-review-followup-r8-20260821040000.md
+validation:
+  focused_red: "npm run test:t606 observed the actual T405 composition ignoring the injected Node-backed cache storage and recording zero atomic writes"
+  focused_green: "npm run test:t606: 195 passing, 2 Windows POSIX fixture skips, 0 failed"
+  static: "build, typecheck:contracts, lint, validate:architecture, validate:architecture:negative, and git diff --check each passed once; Markdown wording tooling is unavailable"
+  ci: unstarted; exact-head CI remains a merge gate held
+next_request: Parent freezes the final committed HEAD after the accepted normal admin verification report; no repository writes thereafter. Have an independent reviewer review that frozen HEAD, retain R001 through R007 closed, and keep exact-head PR CI held.

@@ -68,6 +68,8 @@ jobs:
         run: node tools/run-ci-command.mjs test-t604 npm run test:t604
       - name: T605 multi-root and remote workspace boundary tests
         run: node tools/run-ci-command.mjs test-t605 npm run test:t605
+      - name: T606 failure policy and diagnostics tests
+        run: node tools/run-ci-command.mjs test-t606 npm run test:t606
       - name: Temporary Git integration tests
         run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests

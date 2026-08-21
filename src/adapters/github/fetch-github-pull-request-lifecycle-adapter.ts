@@ -1,7 +1,7 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
 
-export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api";
+export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
 
 export type GitHubPullRequestLifecycleResult =
   | { readonly kind: "available"; readonly metadata: PullRequestRemoteMetadata }
@@ -36,6 +36,7 @@ const classify = (response: Response): GitHubPullRequestLifecycleUnavailableReas
     response.status === 429 ||
     (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")
   ) return "rate-limit";
+  if (response.status === 401 || response.status === 403) return "authentication";
   return response.ok ? undefined : "api";
 };
 
@@ -63,18 +64,23 @@ export class FetchGitHubPullRequestLifecycleAdapter {
 
   public async fetchCurrent(
     repository: GitHubRepositoryIdentity,
-    number: number
+    number: number,
+    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestLifecycleResult> {
+    if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
     requirePositiveNumber(number);
     const url = new URL(
       `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/pulls/${number}`
     );
     let response: Response;
     try {
-      response = await this.fetchImplementation(url, { headers: this.headers() });
+      response = await this.fetchImplementation(url, { headers: this.headers(), signal });
     } catch {
+      if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
       return { kind: "unavailable", reason: "network" };
     }
+    if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
     const failure = classify(response);
     if (failure !== undefined) return { kind: "unavailable", reason: failure };
     let value: unknown;
@@ -83,6 +89,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     } catch {
       return { kind: "unavailable", reason: "api" };
     }
+    if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
     if (!isObject(value)) return { kind: "unavailable", reason: "api" };
     const payload = value as PullRequestPayload;
     if (

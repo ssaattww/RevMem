@@ -102,7 +102,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
   public setContext(snapshot: CurrentContextUiSnapshot | undefined): void { this.currentContext = snapshot; }
 
-  public async recalculate(): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
+  public async recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
+    const assertCurrent = (): void => {
+      if (signal?.aborted === true) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
+    };
+    assertCurrent();
     const owner = this.resolveOwner(this.currentContext);
     if (owner === undefined) return undefined;
     this.activateEvidenceRevision(owner);
@@ -110,6 +114,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const pathEnumeration = await new NodeRepositoryFilePathEnumerator(
       this.dependencies.exclusionPolicy
     ).enumerate(owner.repositoryRoot);
+    assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const candidatePaths = new Set<string>();
     for (const repositoryPath of pathEnumeration.includedPaths) {
@@ -120,6 +125,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       candidatePaths.add(canonicalPath);
     }
     const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths);
+    assertCurrent();
     const availablePaths = new Set([...candidatePaths, ...pullRequestHeadPaths]);
     const evidenceByPath = this.captureOpenedDocuments(owner);
     const openedByPath = new Map(
@@ -131,6 +137,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }));
 
     const persisted = await this.repository.loadGlobal(owner.target);
+    assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const globalState = persisted?.currentRevisionId === owner.currentRevisionId
       ? this.projectGlobalStatePaths(persisted)
@@ -159,6 +166,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       openFilePaths: [...openedByPath.keys()],
       configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`
     });
+    assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const fileOpenTargets = result.progress.files.map((file) =>
       this.createFileOpenTarget(owner, file.path)
