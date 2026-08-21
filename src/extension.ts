@@ -165,6 +165,7 @@ export interface ReviewRangeRuntimePort {
 
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
+  drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
@@ -1016,6 +1017,7 @@ export function activate(
 
   return {
     ...runtimePort,
+    drainVisibleEditorDecorations: () => decorationController.drain(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
     getFileExclusionPolicySnapshot: () => ({

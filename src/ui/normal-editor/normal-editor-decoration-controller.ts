@@ -91,6 +91,7 @@ export class NormalEditorDecorationController<
   private readonly subscriptions: DecorationDisposable[] = [];
   private readonly requestGeneration = new Map<Editor, number>();
   private readonly requestCancellation = new Map<Editor, AbortController>();
+  private readonly activeRefreshes = new Set<Promise<void>>();
   private nextGeneration = 0;
   private started = false;
   private disposed = false;
@@ -125,7 +126,11 @@ export class NormalEditorDecorationController<
   }
 
   /** Refreshes every currently visible editor and invalidates loads for hidden editors. */
-  public async refreshVisibleEditors(): Promise<void> {
+  public refreshVisibleEditors(): Promise<void> {
+    return this.trackRefresh(this.refreshVisibleEditorsCore());
+  }
+
+  private async refreshVisibleEditorsCore(): Promise<void> {
     if (!this.started || this.disposed) {
       return;
     }
@@ -142,7 +147,11 @@ export class NormalEditorDecorationController<
   }
 
   /** Refreshes one editor immediately when it remains visible. */
-  public async refreshEditor(editor: Editor): Promise<void> {
+  public refreshEditor(editor: Editor): Promise<void> {
+    return this.trackRefresh(this.refreshEditorCore(editor));
+  }
+
+  private async refreshEditorCore(editor: Editor): Promise<void> {
     const decorationType = this.decorationType;
     if (
       !this.started ||
@@ -197,6 +206,18 @@ export class NormalEditorDecorationController<
         isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
       });
       await this.host.showDecorationError(error);
+    }
+  }
+
+  /** Waits until event-triggered and explicit decoration refreshes reach an idle turn. */
+  public async drain(): Promise<void> {
+    for (;;) {
+      // VS Code can deliver a visible-editor event after showTextDocument resolves.
+      // One scheduler turn admits that listener before the in-flight snapshot.
+      await this.workBudget.yieldControl();
+      const active = [...this.activeRefreshes];
+      if (active.length === 0) return;
+      await Promise.all(active);
     }
   }
 
@@ -265,5 +286,14 @@ export class NormalEditorDecorationController<
       this.requestCancellation.get(editor)?.abort();
       this.requestGeneration.set(editor, ++this.nextGeneration);
     }
+  }
+
+  private trackRefresh(operation: Promise<void>): Promise<void> {
+    this.activeRefreshes.add(operation);
+    void operation.then(
+      () => this.activeRefreshes.delete(operation),
+      () => this.activeRefreshes.delete(operation)
+    );
+    return operation;
   }
 }

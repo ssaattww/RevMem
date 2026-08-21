@@ -197,6 +197,26 @@ test("T607 starts every visible-editor decoration load before waiting for a slow
   await started;
 });
 
+test("T607 decoration drain waits for an event-triggered bounded refresh", async () => {
+  const editor: FakeEditor = { id: "event-drain" };
+  let resolveModel: ((value: readonly NormalEditorReviewedDecoration[]) => void) | undefined;
+  const host = new FakeHost();
+  host.visibleEditors = [editor];
+  host.models.set(editor, new Promise((resolve) => { resolveModel = resolve; }));
+  const controller = new NormalEditorDecorationController(host);
+  const started = controller.start();
+  const drained = controller.drain();
+  let drainCompleted = false;
+  void drained.then(() => { drainCompleted = true; });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(drainCompleted, false, "drain must retain the in-flight event generation");
+  resolveModel!([decoration(0, 1)]);
+  await Promise.all([started, drained]);
+
+  assert.deepEqual(host.setCalls.at(-1)?.decorations, [decoration(0, 1)]);
+});
+
 test("T607 bounds large-document interval projection and applies one complete model to each visible split editor", async () => {
   const first: FakeEditor = { id: "same-document-first" };
   const second: FakeEditor = { id: "same-document-second" };

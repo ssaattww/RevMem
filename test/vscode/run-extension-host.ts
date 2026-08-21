@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   const focusedT306 = process.argv.includes("--t306");
   const focusedT506 = process.argv.includes("--t506");
   const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
+  const focusedLifecycleRestore = process.argv.includes("--lifecycle-through-restore");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
   const workerPath = join(__dirname, "run-extension-host-launch-worker.js");
@@ -140,6 +141,13 @@ async function main(): Promise<void> {
         ],
         { cwd: projectRoot, windowsHide: true }
       );
+      return;
+    }
+
+    if (focusedLifecycleRestore) {
+      for (const phase of testPhases.slice(0, 2)) {
+        await launch(`lifecycle-${phase}`, lifecyclePaths, join(__dirname, "suite"), phase);
+      }
       return;
     }
 
