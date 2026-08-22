@@ -9,16 +9,16 @@ task_id: T609
 branch: task/issue-81-repository-encoding
 base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
 target:
-  current_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
+  current_head: f5a506d68762252047625764658befccccc0b649
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
   commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...5501cd7b613066ac8a6300aabd75d1ff4a407069
 verification:
   capability: local_execution_available
   capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
   technical_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
-  administrative_parent: 5501cd7b613066ac8a6300aabd75d1ff4a407069
-  commit: { state: commit_pending, review_target_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069 }
-  push: { state: push_pending, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069 }
+  administrative_parent: f5a506d68762252047625764658befccccc0b649
+  commit: { state: commit_pending, review_target_sha: f5a506d68762252047625764658befccccc0b649 }
+  push: { state: push_pending, head_sha: f5a506d68762252047625764658befccccc0b649 }
   ci_wait: { state: ci_wait_pending, required_for: merge_gate }
   final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
 authoritative_requirements:
@@ -66,17 +66,17 @@ implementation:
   blocked_items: []
   summary: ["All six independent findings are addressed; route only bounded same-reviewer verification and closure, with exact-head CI held until the merge gate."]
 review:
-  mode: not_applicable
-  reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
-  reviewer: { identity: unknown, role: not_applicable, continuity: { previous_reviewer_identity: null, changed: false, reason: null }, independence: { implemented_change: true, implemented_review_fix: true, served_as_normal_reviewer: false, inherited_conversation: true, evidence: ["Implementation worker is not an independent reviewer."] } }
-  verdict: incomplete
-  required_coverage: []
+  mode: fix_verification
+  reviewed_head: f5a506d68762252047625764658befccccc0b649
+  reviewer: { identity: /root/issue81_normal_review, role: normal_reviewer, continuity: { previous_reviewer_identity: /root/issue81_normal_review, changed: false, reason: null }, independence: { implemented_change: false, implemented_review_fix: false, served_as_normal_reviewer: true, inherited_conversation: true, evidence: ["Same normal reviewer performed bounded IFR001-006 verification without implementation writes."] } }
+  verdict: pass_with_held
+  required_coverage: ["IFR001-006 required action", "production path", "actual composition fixture", "focused evidence"]
   independent_closure: { initial_independent_reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, closure_reviewed_heads: [], reviewer_continuity: null, closure_scope: [], completeness_matrix: [] }
-  validation_assessment: []
-  reserved_report_paths: [reports/issue-81-t609-independent-review-followup-20260822063139.md]
+  validation_assessment: ["Provided T609 77/77 and actual Host all-phase Green evidence accepted without rerun."]
+  reserved_report_paths: [reports/issue-81-t609-normal-fix-verification-r2-after-independent-20260822160939.md]
   report_attestation: { allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [executable], no_later_commits_required: false, validation_status: pending, validation_evidence: [] }
-  summary: ["No independent verdict issued."]
-report: { report_type: implementation_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-independent-review-followup-r28-restart-mapping-20260822153933.md], reviewed_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069, attestation_head: null, pr_comments: [], summary: ["R28 records the final local T609 and actual Host Green evidence; external PR body synchronization follows the admin commit."] }
+  summary: ["Same normal reviewer marked IFR001-006 ready and returned pass_with_held; same independent reviewer closure is next."]
+report: { report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-normal-fix-verification-r2-after-independent-20260822160939.md], reviewed_head: f5a506d68762252047625764658befccccc0b649, attestation_head: null, pr_comments: [], summary: ["Same normal reviewer verified IFR001-006 ready; exact-head CI remains held until the merge gate."] }
 findings: []
 held: ["Markdown lint unsupported", "exact-head pull_request CI pending merge gate"]
 unexplored: []
@@ -88,8 +88,8 @@ extensions: []
 next_action:
   type: review
   target_skill: review-enforcer
-  mode: finding-limited closure
-  summary: Run normal fix verification and the same independent reviewer closure for IFR001〜IFR006, then perform the exact-head CI merge gate.
+  mode: independent_final_closure
+  summary: Run the same independent reviewer closure for IFR001〜IFR006, then perform the exact-head CI merge gate.
   instructions: ["Do not open new review viewpoints during finding-limited closure.", "Treat cleanup timeout separately from the successful Host semantic matrix."]
   required_attachments_or_references: [reports/issue-81-t609-independent-final-review-20260822060225.md]
   requested_authorized_actions: [edit_code, edit_tests, edit_documentation, write_report]
