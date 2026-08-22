@@ -230,6 +230,7 @@ export async function run(): Promise<void> {
 
   await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
   await assertMappedGitTransitions(folder, api);
+  await within("clear mapped editor before Current Context selection", closeAllEditors());
   api.setCurrentContextSelectionForTest("first");
   await vscode.commands.executeCommand("reviewRange.refreshContext");
   assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 1, "the explicit refresh command must request selection");

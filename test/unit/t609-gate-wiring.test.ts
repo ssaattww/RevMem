@@ -218,6 +218,15 @@ test("T609 multi-root Current Context commands retain their public path without 
   assert.match(multiRootPhase, /assert\.deepEqual\(api\.getCurrentContextCancellationSnapshotForTest\(\), currentBefore/u);
 });
 
+test("T609 multi-root Current Context selection clears mapped editors before the public commands", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const mappingIndex = hostSuite.indexOf("await assertMappedGitTransitions(folder, api);");
+  const clearEditorIndex = hostSuite.indexOf('await within("clear mapped editor before Current Context selection", closeAllEditors());');
+  const seedIndex = hostSuite.indexOf('api.setCurrentContextSelectionForTest("first");');
+
+  assert.ok(mappingIndex >= 0 && clearEditorIndex > mappingIndex && seedIndex > clearEditorIndex);
+});
+
 test("T609 Host reaches normal-editor review through its public command", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
