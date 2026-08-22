@@ -472,7 +472,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       window: {
         activeTextEditor: {
           document: {
-            uri: { scheme: "file", fsPath: sourcePath },
+            uri: { scheme: "file", authority: "", fsPath: sourcePath, query: "", fragment: "" },
           },
         },
         createTreeView: (_id: string, options: { treeDataProvider: CapturedReviewContextsProvider }): DisposableLike => {
@@ -501,7 +501,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       workspace: {
         getConfiguration: () => ({ get: () => undefined }),
         textDocuments: [],
-        workspaceFolders: [{ uri: { scheme: "file", fsPath: repositoryRoot } }],
+        workspaceFolders: [{ uri: { scheme: "file", authority: "", fsPath: repositoryRoot, query: "", fragment: "" } }],
       },
       authentication: {
         getSession: async () => undefined,

@@ -265,7 +265,7 @@ export function registerReviewContextsRuntime(
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     retry = false,
     clearProviderOnFailure = true,
-  ): Promise<"completed" | "cancelled"> => {
+  ): Promise<"completed" | "cancelled" | "terminal"> => {
     // `retry` documents the command classification for wiring tests; retrying
     // itself is deliberately confined to ReviewContextsTreeProvider.load().
     void retry;
@@ -281,7 +281,7 @@ export function registerReviewContextsRuntime(
         reportTerminalFailure: () => dependencies.reportError(formatOperationFailureForUser(error)),
       });
       if (outcome === "cancelled") return "cancelled";
-      return "completed";
+      return "terminal";
     }
   };
   const refreshWithErrorBoundary = async (): Promise<void> => {
@@ -298,6 +298,10 @@ export function registerReviewContextsRuntime(
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
     if (outcome === "cancelled") return;
+    if (outcome === "terminal") {
+      provider.clear();
+      return;
+    }
     if (terminalFailure) {
       provider.clear();
       return;
