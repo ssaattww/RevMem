@@ -201,7 +201,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readOpenDocuments,
     globalStoragePath: context.globalStorageUri.fsPath,
     readAutoStartDescendants: () => vscode.workspace.getConfiguration("reviewRange.globalUnderstanding")
-      .get("autoStartDescendants", false)
+      .get("autoStartDescendants", false),
+    resolveRepositoryRootUri: (repositoryRoot) => {
+      const matches = (vscode.workspace.workspaceFolders ?? []).filter((folder) => path.resolve(folder.uri.fsPath) === path.resolve(repositoryRoot));
+      return matches.length === 1 ? toResourceUri(matches[0]!.uri) : undefined;
+    }
   });
 
   const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
@@ -671,7 +675,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.observe(toEditSnapshot(document));
-        void globalSource.observeFileOpen(document.uri.fsPath);
+        void globalSource.observeFileOpen(document.uri.fsPath).then(
+          () => documentChangeRefresh.request(),
+          async (error) => { await globalRuntime.refreshWithErrorBoundary(); await vscode.window.showErrorMessage(`Global Understanding folderを開始できませんでした: ${error instanceof Error ? error.message : String(error)}`); }
+        );
       }
     }),
     vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
@@ -684,6 +691,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }),
     documentChangeRefresh,
     { dispose: () => testReviewStateDependentQueue?.dispose() }
+  );
+
+  // Recalculation remains scope-gated by the source: filesystem events never start
+  // inactive/stopped folders, but active direct scopes and their ancestors refresh.
+  const folderEntryWatcher = vscode.workspace.createFileSystemWatcher("**/*");
+  const requestRefreshForFolderEntry = (uri: vscode.Uri): void => {
+    if (!FILESYSTEM_SCHEMES.has(uri.scheme)) return;
+    documentChangeRefresh.request();
+  };
+  context.subscriptions.push(
+    folderEntryWatcher,
+    folderEntryWatcher.onDidCreate(requestRefreshForFolderEntry),
+    folderEntryWatcher.onDidDelete(requestRefreshForFolderEntry),
+    folderEntryWatcher.onDidChange(requestRefreshForFolderEntry)
   );
 
   if (context.extensionMode === vscode.ExtensionMode.Test) {
@@ -776,6 +797,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         reviewContextsRuntimeRef.current?.workspaceUriToFilesystemPathForTest?.(uri),
       getGitReviewStateSnapshotForTest: gitReviewStateSnapshotForTest,
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
+      /** Test-mode T610 lifecycle seam; production commands remain the runtime owner. */
+      startGlobalUnderstandingFolderForTest: async (folderPath: string) => {
+        await globalSource.startFolder(folderPath);
+        await globalRuntime.refreshWithErrorBoundary();
+      },
+      stopGlobalUnderstandingFolderForTest: async (folderPath: string) => {
+        await globalSource.stopFolder(folderPath);
+        await globalRuntime.refreshWithErrorBoundary();
+      },
+      resumeGlobalUnderstandingFolderForTest: async (folderPath: string) => {
+        await globalSource.resumeFolder(folderPath);
+        await globalRuntime.refreshWithErrorBoundary();
+      },
+      /** Reuses the registered watcher path without Extension Host fixture I/O. */
+      notifyGlobalUnderstandingFolderEntryForTest: async (uri: vscode.Uri) => {
+        requestRefreshForFolderEntry(uri);
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      },
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
         testReviewContextsRepositorySelection = selection;
       },

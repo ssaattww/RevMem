@@ -13,6 +13,13 @@ export interface RepositoryFilePathEnumerationResult {
   readonly excludedDirectories: readonly ExcludedRepositoryDirectory[];
 }
 
+/** Scheduler and pruning seams shared by folder discovery and direct enumeration. */
+export interface NodeRepositoryFilePathEnumeratorOptions {
+  readonly maxEntriesPerStage?: number;
+  readonly yieldControl?: () => void | Promise<void>;
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: "repository-entry"; count: number }>) => void;
+}
+
 interface GitIgnoreRule {
   readonly pattern: string;
   readonly negated: boolean;
@@ -92,7 +99,15 @@ const matchingGitIgnoreRule = (
  * a file is actually opened and contributes line evidence.
  */
 export class NodeRepositoryFilePathEnumerator {
-  public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy) {}
+  private readonly maxEntriesPerStage: number;
+  private readonly yieldControl: () => void | Promise<void>;
+  private readonly accountWorkBatch: NodeRepositoryFilePathEnumeratorOptions["accountWorkBatch"];
+  public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy, options: NodeRepositoryFilePathEnumeratorOptions = {}) {
+    this.maxEntriesPerStage = options.maxEntriesPerStage ?? 128;
+    if (!Number.isSafeInteger(this.maxEntriesPerStage) || this.maxEntriesPerStage <= 0) throw new RangeError("maxEntriesPerStage must be a positive integer.");
+    this.yieldControl = options.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    this.accountWorkBatch = options.accountWorkBatch;
+  }
 
   public async enumerate(repositoryRoot: string, signal?: AbortSignal): Promise<RepositoryFilePathEnumerationResult> {
     throwIfAborted(signal);
@@ -130,6 +145,12 @@ export class NodeRepositoryFilePathEnumerator {
     const includedPaths: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
+    let pending = 0;
+    const checkpoint = async (): Promise<void> => {
+      if (++pending < this.maxEntriesPerStage) return;
+      this.accountWorkBatch?.({ kind: "repository-entry", count: pending }); pending = 0;
+      await this.yieldControl(); throwIfAborted(signal);
+    };
     for (const folder of [...new Set(folders)].sort(compareRepositoryPaths)) {
       throwIfAborted(signal);
       const directory = folder.length === 0
@@ -139,6 +160,7 @@ export class NodeRepositoryFilePathEnumerator {
       throwIfAborted(signal);
       for (const entry of entries) {
         throwIfAborted(signal);
+        await checkpoint();
         const absolutePath = path.join(directory, entry.name);
         const repositoryPath = toRepositoryPath(path.relative(repositoryRoot, absolutePath));
         if (entry.isSymbolicLink()) { excluded.push({ path: repositoryPath, reason: { kind: "symbolic-link" } }); continue; }
@@ -167,14 +189,19 @@ export class NodeRepositoryFilePathEnumerator {
   }
 
   /** Recursively discovers folders only beneath an explicitly selected scope. */
-  public async enumerateSubtreeFolders(repositoryRoot: string, folder: string, signal?: AbortSignal): Promise<readonly string[]> {
+  public async enumerateSubtreeFolders(
+    repositoryRoot: string,
+    folder: string,
+    signal?: AbortSignal,
+    shouldPruneFolder?: (repositoryRelativeFolder: string) => boolean
+  ): Promise<readonly string[]> {
     throwIfAborted(signal);
     const normalized = folder.replace(/^\/+|\/+$/gu, "");
     const root = normalized.length === 0 ? repositoryRoot : path.join(repositoryRoot, ...normalized.split("/"));
     const includedPaths: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
-    await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal);
+    await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal, shouldPruneFolder);
     throwIfAborted(signal);
     const folders = new Set<string>([normalized]);
     for (const entry of [...includedPaths, ...excluded.map((item) => item.path), ...excludedDirectories.map((item) => item.path)]) {
@@ -203,13 +230,19 @@ export class NodeRepositoryFilePathEnumerator {
     includedPaths: string[],
     excluded: ExcludedRepositoryFile[],
     excludedDirectories: ExcludedRepositoryDirectory[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    shouldPruneFolder?: (repositoryRelativeFolder: string) => boolean
   ): Promise<void> {
     throwIfAborted(signal);
     const entries = await readdir(currentDirectory, { withFileTypes: true });
     throwIfAborted(signal);
+    let pending = 0;
     for (const entry of entries) {
       throwIfAborted(signal);
+      if (++pending >= this.maxEntriesPerStage) {
+        this.accountWorkBatch?.({ kind: "repository-entry", count: pending }); pending = 0;
+        await this.yieldControl(); throwIfAborted(signal);
+      }
       const absolutePath = path.join(currentDirectory, entry.name);
       const repositoryPath = toRepositoryPath(path.relative(repositoryRoot, absolutePath));
       if (entry.isSymbolicLink()) {
@@ -238,6 +271,7 @@ export class NodeRepositoryFilePathEnumerator {
       }
 
       if (entry.isDirectory()) {
+        if (shouldPruneFolder?.(repositoryPath) === true) continue;
         await this.walk(
           repositoryRoot,
           absolutePath,
@@ -245,7 +279,8 @@ export class NodeRepositoryFilePathEnumerator {
           includedPaths,
           excluded,
           excludedDirectories,
-          signal
+          signal,
+          shouldPruneFolder
         );
       } else if (entry.isFile()) {
         includedPaths.push(repositoryPath);

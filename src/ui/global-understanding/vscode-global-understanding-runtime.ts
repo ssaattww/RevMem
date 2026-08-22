@@ -74,6 +74,11 @@ const FILES_GROUP: FilesGroupNode = Object.freeze({
   label: "ファイル別",
   count: 0
 });
+const folderParent = (value: string): string | undefined => {
+  if (value.length === 0) return undefined;
+  const index = value.lastIndexOf("/");
+  return index < 0 ? "" : value.slice(0, index);
+};
 
 class GlobalUnderstandingTreeDataProvider
 implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposable {
@@ -143,13 +148,14 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
         return item;
       }
       case "folder": {
-        const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+        const hasChildren = this.model?.folders?.some((candidate) => folderParent(candidate.path) === node.path) === true;
+        const item = new vscode.TreeItem(node.label, hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         item.description = node.description;
         item.tooltip = `状態: ${node.state}\n${node.partial ? "部分集計" : "完全集計"}`;
         item.iconPath = new vscode.ThemeIcon(node.state === "stopped" ? "debug-pause" : node.partial ? "warning" : "folder");
         item.contextValue = `reviewRange.globalUnderstandingFolder.${node.action}`;
         const command = node.action === "start" ? START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : node.action === "stop" ? STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID;
-        item.command = { command, title: "Global Understanding folder action", arguments: [node.path] };
+        item.command = { command, title: "Global Understanding folder action", arguments: [node] };
         return item;
       }
       case "diagnostics": {
@@ -181,12 +187,16 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
     if (node === undefined) {
       return [
         model.summary,
-        ...(model.folders ?? []),
+        ...(model.folders ?? []).filter((folder) => {
+          const parent = folderParent(folder.path);
+          return parent === undefined || !(model.folders ?? []).some((candidate) => candidate.path === parent);
+        }),
         { ...FILES_GROUP, count: model.files.length },
         model.diagnostics
       ];
     }
     if (node.kind === "files-group") return [...model.files];
+    if (node.kind === "folder") return (model.folders ?? []).filter((folder) => folderParent(folder.path) === node.path);
     if (node.kind === "diagnostics") {
       return [
         {
@@ -226,6 +236,15 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
   clear(): void;
 }
 
+const requireCurrentFolderNode = (value: unknown, current: ReadonlySet<GlobalUnderstandingFolderNode>): GlobalUnderstandingFolderNode => {
+  if (typeof value !== "object" || value === null || (value as { kind?: unknown }).kind !== "folder") {
+    throw new RangeError("Select a current Global Understanding folder row before running this command.");
+  }
+  const node = value as GlobalUnderstandingFolderNode;
+  if (!current.has(node)) throw new RangeError("Selected Global Understanding folder row is stale or belongs to another repository.");
+  return node;
+};
+
 /** Registers the T505 Tree View, adjacent Status Bar item, refresh command, and Global layer toggle. */
 export const registerGlobalUnderstandingRuntime = (
   context: vscode.ExtensionContext,
@@ -244,10 +263,12 @@ export const registerGlobalUnderstandingRuntime = (
     vscode.StatusBarAlignment.Left,
     99
   );
+  let currentFolderNodes = new Set<GlobalUnderstandingFolderNode>();
   status.name = "Review Range Global Understanding";
   status.command = TOGGLE_GLOBAL_LAYER_COMMAND_ID;
   const clearPresentation = (): void => {
     openController.clear();
+    currentFolderNodes.clear();
     tree.clear();
     status.text = "";
     status.tooltip = undefined;
@@ -264,6 +285,7 @@ export const registerGlobalUnderstandingRuntime = (
           onStage: (stage) => {
             if (!isCurrent()) return;
             openController.replaceModel(stage);
+            currentFolderNodes = new Set(stage.folders ?? []);
             tree.setModel(stage);
             if (!isCurrent()) {
               clearPresentation();
@@ -330,26 +352,41 @@ export const registerGlobalUnderstandingRuntime = (
     ),
     vscode.commands.registerCommand(
       START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
-      async (folderPath: string | undefined) => {
-        if (folderPath === undefined || dependencies.source.startFolder === undefined) return;
-        await dependencies.source.startFolder(folderPath);
-        await refreshWithErrorBoundary();
+      async (value: unknown) => {
+        try {
+          if (dependencies.source.startFolder === undefined) return;
+          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          await dependencies.source.startFolder(folder.path);
+          await refreshWithErrorBoundary();
+        } catch (error) {
+          await dependencies.reportError(formatOperationFailureForUser(error));
+        }
       }
     ),
     vscode.commands.registerCommand(
       STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
-      async (folderPath: string | undefined) => {
-        if (folderPath === undefined || dependencies.source.stopFolder === undefined) return;
-        await dependencies.source.stopFolder(folderPath);
-        invalidate();
+      async (value: unknown) => {
+        try {
+          if (dependencies.source.stopFolder === undefined) return;
+          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          await dependencies.source.stopFolder(folder.path);
+          await refreshWithErrorBoundary();
+        } catch (error) {
+          await dependencies.reportError(formatOperationFailureForUser(error));
+        }
       }
     ),
     vscode.commands.registerCommand(
       RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
-      async (folderPath: string | undefined) => {
-        if (folderPath === undefined || dependencies.source.resumeFolder === undefined) return;
-        await dependencies.source.resumeFolder(folderPath);
-        await refreshWithErrorBoundary();
+      async (value: unknown) => {
+        try {
+          if (dependencies.source.resumeFolder === undefined) return;
+          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          await dependencies.source.resumeFolder(folder.path);
+          await refreshWithErrorBoundary();
+        } catch (error) {
+          await dependencies.reportError(formatOperationFailureForUser(error));
+        }
       }
     ),
     vscode.commands.registerCommand(

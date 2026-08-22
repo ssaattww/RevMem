@@ -104,7 +104,7 @@ test("T505 source keeps unopened file contents out of the line denominator while
       files: []
     },
     openedFileCount: 0,
-    unopenedFileCount: 1,
+    unopenedFileCount: 2,
     excludedFileCount: 0,
     prunedExcludedDirectoryCount: 1
   });
@@ -129,7 +129,7 @@ test("T505 source keeps unopened file contents out of the line denominator while
   assert.equal(staleRevision?.progress.totalNonEmptyLineCount, 0);
   assert.deepEqual(staleRevision?.progress.files, []);
   assert.equal(staleRevision?.openedFileCount, 0);
-  assert.equal(staleRevision?.unopenedFileCount, 1);
+  assert.equal(staleRevision?.unopenedFileCount, 2);
 });
 
 test("Issue #59 uses only previously opened files for Global line progress and reports unopened files separately", async (t) => {

@@ -2,6 +2,8 @@
 export interface FolderUnderstandingStoppedStore {
   loadStopped(repositoryId: string, canonicalRepositoryRoot: string): Promise<readonly string[]>;
   saveStopped(repositoryId: string, canonicalRepositoryRoot: string, paths: readonly string[]): Promise<void>;
+  /** Atomically applies explicit-marker additions/removals when the storage adapter supports it. */
+  mutateStopped?(repositoryId: string, canonicalRepositoryRoot: string, mutation: Readonly<{ add: readonly string[]; remove: readonly string[] }>): Promise<readonly string[]>;
 }
 
 export type FolderUnderstandingScopeState = "inactive" | "running" | "active" | "stopped" | "failed";
@@ -22,10 +24,19 @@ interface ScopeRecord {
   state: FolderUnderstandingScopeState;
   generation: number;
   total?: Omit<FolderUnderstandingTotal, "complete">;
+  /** Only this marker survives restart; descendant stops can be inherited. */
+  explicitStop?: boolean;
 }
 
 const keyOf = (repositoryId: string, repositoryRoot: string): string => `${repositoryId}\0${repositoryRoot}`;
-const normalizeFolder = (value: string): string => value.replace(/\\/gu, "/").replace(/^\/+|\/+$/gu, "");
+const normalizeFolder = (value: string): string => {
+  const normalized = value.replace(/\\/gu, "/").replace(/^\/+|\/+$/gu, "");
+  if (normalized.length === 0) return "";
+  if (normalized.split("/").some((part) => part.length === 0 || part === "." || part === "..")) {
+    throw new RangeError("Folder understanding scope path must be a canonical repository-relative folder.");
+  }
+  return normalized;
+};
 const parentFolder = (filePath: string): string => {
   const normalized = normalizeFolder(filePath);
   const index = normalized.lastIndexOf("/");
@@ -43,6 +54,7 @@ export class FolderUnderstandingScopeController {
   private readonly restored = new Set<string>();
   private readonly cancellations = new Map<string, AbortController>();
 
+  /** Uses the supplied durable marker store; active results and content evidence remain session-local. */
   public constructor(private readonly store: FolderUnderstandingStoppedStore) {}
 
   /** Restores stopped markers only; all unmarked scopes remain inactive. */
@@ -52,9 +64,12 @@ export class FolderUnderstandingScopeController {
     const records = this.records(repositoryId, canonicalRepositoryRoot);
     const markers = await this.store.loadStopped(repositoryId, canonicalRepositoryRoot);
     for (const marker of markers) {
-      const folder = normalizeFolder(marker);
-      if (marker !== folder || records.has(folder)) continue;
-      records.set(folder, { state: "stopped", generation: 0 });
+      try {
+        const folder = normalizeFolder(marker);
+        if (marker !== folder || records.has(folder)) continue;
+        this.ensureAncestors(records, folder);
+        records.set(folder, { state: "stopped", generation: 0, explicitStop: true });
+      } catch { /* corrupt marker is fail-closed and never reused */ }
     }
     this.restored.add(owner);
   }
@@ -64,7 +79,7 @@ export class FolderUnderstandingScopeController {
     const folder = parentFolder(filePath);
     const records = this.records(repositoryId, canonicalRepositoryRoot);
     const record = this.record(records, folder);
-    if (record.state === "stopped") return;
+    if (this.hasStoppedAncestor(records, folder)) return;
     record.state = "active";
     if (autoStartDescendants) void autoStartDescendants;
   }
@@ -76,8 +91,7 @@ export class FolderUnderstandingScopeController {
     for (const candidate of [folder, ...discoveredFolders.map(normalizeFolder)]) {
       if (!isDescendantOrSelf(candidate, folder)) continue;
       const record = this.record(records, candidate);
-      const stoppedAncestor = [...records].some(([path, value]) =>
-        value.state === "stopped" && isDescendantOrSelf(candidate, path));
+      const stoppedAncestor = this.hasStoppedAncestor(records, candidate);
       if (record.state !== "stopped" && !stoppedAncestor) record.state = "active";
     }
   }
@@ -92,17 +106,25 @@ export class FolderUnderstandingScopeController {
       this.cancellations.get(this.scopeKey(repositoryId, canonicalRepositoryRoot, candidate))?.abort();
       record.generation += 1;
       record.state = "stopped";
+      record.explicitStop = candidate === folder;
     }
-    await this.persist(repositoryId, canonicalRepositoryRoot);
+    await this.persist(repositoryId, canonicalRepositoryRoot, { add: [folder], remove: [] });
   }
 
   /** Removes a stopped marker and returns the scope to a new running generation. */
   public async resume(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): Promise<number> {
     const records = this.records(repositoryId, canonicalRepositoryRoot);
-    const record = this.record(records, normalizeFolder(folderPath));
+    const folder = normalizeFolder(folderPath);
+    const record = this.record(records, folder);
+    for (const [candidate, descendant] of records) {
+      if (candidate !== folder && isDescendantOrSelf(candidate, folder) && descendant.state === "stopped" && !descendant.explicitStop) {
+        descendant.state = "inactive";
+      }
+    }
+    record.explicitStop = false;
     record.state = "running";
     record.generation += 1;
-    await this.persist(repositoryId, canonicalRepositoryRoot);
+    await this.persist(repositoryId, canonicalRepositoryRoot, { add: [], remove: [folder] });
     return record.generation;
   }
 
@@ -110,7 +132,7 @@ export class FolderUnderstandingScopeController {
   public begin(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): number {
     const folder = normalizeFolder(folderPath);
     const record = this.record(this.records(repositoryId, canonicalRepositoryRoot), folder);
-    if (record.state === "stopped") return -1;
+    if (this.hasStoppedAncestor(this.records(repositoryId, canonicalRepositoryRoot), folder)) return -1;
     this.cancellations.get(this.scopeKey(repositoryId, canonicalRepositoryRoot, folder))?.abort();
     this.cancellations.set(this.scopeKey(repositoryId, canonicalRepositoryRoot, folder), new AbortController());
     record.state = "running";
@@ -140,6 +162,7 @@ export class FolderUnderstandingScopeController {
     return true;
   }
 
+  /** Publishes a validated direct total; stopped scopes reject publication fail-closed. */
   public setComplete(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string, total: Omit<FolderUnderstandingTotal, "complete">): void {
     const record = this.record(this.records(repositoryId, canonicalRepositoryRoot), normalizeFolder(folderPath));
     if (record.state === "stopped") return;
@@ -147,10 +170,18 @@ export class FolderUnderstandingScopeController {
     record.total = { reviewed: total.reviewed, total: total.total };
   }
 
+  /** Returns an owner-isolated scope state without starting I/O. */
   public state(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): FolderUnderstandingScopeState {
     return this.record(this.records(repositoryId, canonicalRepositoryRoot), normalizeFolder(folderPath)).state;
   }
 
+  /** Returns whether an explicit or inherited stopped marker prevents subtree discovery. */
+  public isStopped(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): boolean {
+    const records = this.records(repositoryId, canonicalRepositoryRoot);
+    return this.hasStoppedAncestor(records, normalizeFolder(folderPath));
+  }
+
+  /** Lists only active/running scopes; inactive or stopped scopes are never auto-enqueued. */
   public activeFolders(repositoryId: string, canonicalRepositoryRoot: string): string[] {
     return [...this.records(repositoryId, canonicalRepositoryRoot)]
       .filter(([, record]) => record.state === "active" || record.state === "running")
@@ -174,13 +205,14 @@ export class FolderUnderstandingScopeController {
     let reviewed = self.total?.reviewed ?? 0;
     let total = self.total?.total ?? 0;
     let complete = self.state === "active" && self.total !== undefined;
-    for (const [, child] of directChildren) {
-      if (child.state !== "active" || child.total === undefined) {
+    for (const [childPath] of directChildren) {
+      const child = this.aggregate(repositoryId, canonicalRepositoryRoot, childPath);
+      if (!child.complete) {
         complete = false;
         continue;
       }
-      reviewed += child.total.reviewed;
-      total += child.total.total;
+      reviewed += child.reviewed;
+      total += child.total;
     }
     return { reviewed, total, complete };
   }
@@ -196,6 +228,7 @@ export class FolderUnderstandingScopeController {
   }
 
   private record(records: Map<string, ScopeRecord>, folder: string): ScopeRecord {
+    this.ensureAncestors(records, folder);
     let record = records.get(folder);
     if (record === undefined) {
       record = { state: "inactive", generation: 0 };
@@ -204,9 +237,21 @@ export class FolderUnderstandingScopeController {
     return record;
   }
 
-  private async persist(repositoryId: string, repositoryRoot: string): Promise<void> {
+  private async persist(repositoryId: string, repositoryRoot: string, mutation?: Readonly<{ add: readonly string[]; remove: readonly string[] }>): Promise<void> {
+    if (mutation !== undefined && this.store.mutateStopped !== undefined) {
+      const stopped = await this.store.mutateStopped(repositoryId, repositoryRoot, mutation);
+      const records = this.records(repositoryId, repositoryRoot);
+      for (const [folder, record] of records) {
+        if (record.explicitStop === true && !stopped.includes(folder)) { record.explicitStop = false; if (record.state === "stopped") record.state = "inactive"; }
+      }
+      for (const folder of stopped) {
+        this.ensureAncestors(records, folder);
+        const record = this.record(records, folder); record.state = "stopped"; record.explicitStop = true;
+      }
+      return;
+    }
     const stopped = [...this.records(repositoryId, repositoryRoot)]
-      .filter(([, record]) => record.state === "stopped")
+      .filter(([, record]) => record.state === "stopped" && record.explicitStop === true)
       .map(([folder]) => folder)
       .sort();
     await this.store.saveStopped(repositoryId, repositoryRoot, stopped);
@@ -214,5 +259,16 @@ export class FolderUnderstandingScopeController {
 
   private scopeKey(repositoryId: string, repositoryRoot: string, folder: string): string {
     return `${keyOf(repositoryId, repositoryRoot)}\0${folder}`;
+  }
+
+  private ensureAncestors(records: Map<string, ScopeRecord>, folder: string): void {
+    for (let current = parentFolder(folder); ; current = parentFolder(current)) {
+      if (!records.has(current)) records.set(current, { state: "inactive", generation: 0 });
+      if (current.length === 0) return;
+    }
+  }
+
+  private hasStoppedAncestor(records: ReadonlyMap<string, ScopeRecord>, folder: string): boolean {
+    return [...records].some(([candidate, record]) => record.state === "stopped" && isDescendantOrSelf(folder, candidate));
   }
 }
