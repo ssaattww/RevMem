@@ -41,6 +41,8 @@ const initializeGit = async (root: string): Promise<void> => {
   await execFileAsync("git", ["init", "-b", "main"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["config", "user.email", "review-range@example.invalid"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["config", "user.name", "Review Range Test"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["config", "core.autocrlf", "false"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["config", "core.eol", "lf"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["add", "."], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["commit", "-m", "T609 composition fixture"], { cwd: root, windowsHide: true });
 };
@@ -51,6 +53,37 @@ const recorder = (storageUris: { readonly globalStorageUri: { readonly fsPath: s
     createEventId: (() => { let sequence = 0; return () => `${sessionId}-${++sequence}`; })(),
     appender: new JsonlReviewHistoryStore({ storageUris })
   });
+
+test("T609 deterministic Git fixture commits the raw EOL-only transition used by mapper regressions", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "review-range-vscode-t609-eol-"));
+  const root = path.join(temporaryRoot, "repository");
+  try {
+    await mkdir(root);
+    await writeFile(path.join(root, "eol.txt"), "eol fixture\n", "utf8");
+    await initializeGit(root);
+    const previousRevision = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root, windowsHide: true })).stdout.trim();
+    await writeFile(path.join(root, "eol.txt"), "eol fixture\r\n", "utf8");
+    await execFileAsync("git", ["add", "-A"], { cwd: root, windowsHide: true });
+    await execFileAsync("git", ["commit", "-m", "T609 EOL fixture"], { cwd: root, windowsHide: true });
+    const currentRevision = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root, windowsHide: true })).stdout.trim();
+    const [oldBlob, newBlob, workingText] = await Promise.all([
+      execFileAsync("git", ["show", `${previousRevision}:eol.txt`], { cwd: root, windowsHide: true }).then((result) => result.stdout),
+      execFileAsync("git", ["show", `${currentRevision}:eol.txt`], { cwd: root, windowsHide: true }).then((result) => result.stdout),
+      readFile(path.join(root, "eol.txt"), "utf8")
+    ]);
+    assert.equal(oldBlob, "eol fixture\n");
+    assert.equal(newBlob, "eol fixture\r\n");
+    assert.equal(workingText, newBlob);
+  } finally {
+    await cleanupOwnedTemporaryDirectory({
+      rootPath: temporaryRoot,
+      workerPath: path.join(__dirname, "../vscode/run-extension-host-cleanup-worker.js"),
+      timeoutMs: 10_000,
+      diagnosticDirectory: path.join(process.cwd(), "test-output", "vscode-launch-diagnostics"),
+      redactPaths: [temporaryRoot, process.cwd()]
+    });
+  }
+});
 
 test("T609 production rename decoration composition settles concurrent visible and explicit refreshes", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "review-range-vscode-t609-rename-"));

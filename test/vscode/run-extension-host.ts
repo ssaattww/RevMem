@@ -44,6 +44,10 @@ const initializeGitRepository = async (root: string): Promise<void> => {
   await execFileAsync("git", ["init", "-b", "main"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["config", "user.email", "review-range@example.invalid"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["config", "user.name", "Review Range Test"], { cwd: root, windowsHide: true });
+  // The Host fixture must commit the raw CRLF transition it later maps; a
+  // developer's global autocrlf setting must not rewrite it during git add.
+  await execFileAsync("git", ["config", "core.autocrlf", "false"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["config", "core.eol", "lf"], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["add", "."], { cwd: root, windowsHide: true });
   await execFileAsync("git", ["commit", "-m", "T609 fixture"], { cwd: root, windowsHide: true });
 };
