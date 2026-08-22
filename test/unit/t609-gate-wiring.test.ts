@@ -448,6 +448,27 @@ test("T609 Host observes actual VS Code URI safety and persisted encoding mappin
   assert.doesNotMatch(hostSuite, /seed.*Encoding.*ForTest/u);
 });
 
+test("T609 mixed-encoding composition observes persisted Shift-JIS state at every public boundary", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const mixedStart = hostSuite.indexOf("const assertMixedEncodingFixture = async");
+  const mixedEnd = hostSuite.indexOf("const findStateFile", mixedStart);
+  assert.ok(mixedStart >= 0 && mixedEnd > mixedStart);
+
+  const mixedFixture = hostSuite.slice(mixedStart, mixedEnd);
+  for (const boundary of ["Shift-JIS public mark", "UTF-8 BOM public mark", "Global refresh"]) {
+    assert.equal(
+      mixedFixture.includes(`assertPersistedMixedEncodingBoundary("${boundary}", shifted, api)`),
+      true,
+      `${boundary} must retain the same read-only persisted-state observation`
+    );
+  }
+  assert.match(
+    hostSuite,
+    /owner=\$\{snapshot\.owner\}; repositoryId=\$\{snapshot\.repositoryId\}; contextId=\$\{snapshot\.contextId\}; contextFiles=\$\{JSON\.stringify\(snapshot\.contextFiles\)\}; globalFiles=\$\{JSON\.stringify\(snapshot\.globalFiles\)\}/u
+  );
+  assert.doesNotMatch(hostSuite, /seed.*MixedEncoding.*ForTest/u);
+});
+
 test("T609 persisted Git snapshot reads the Current Context owner without mutating state", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
   const snapshotStart = extension.indexOf("const gitReviewStateSnapshotForTest");

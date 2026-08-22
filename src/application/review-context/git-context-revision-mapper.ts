@@ -347,12 +347,21 @@ export class GitContextRevisionMapper {
       if (encodingChangedPaths.size === 0) {
         return { files: clone(files), unresolvedFileIds: [], unresolvedReasonsByFileId: {} };
       }
+      const unavailableEncodingChangedFileIds = new Set<string>();
       const refreshed = await this.refreshMappedFiles(
-        files, newRevision, repositoryRoot, semantics, occurredAt, new Set(), new Set(), encodingHints, encodingChangedPaths, true
+        files,
+        newRevision,
+        repositoryRoot,
+        semantics,
+        occurredAt,
+        new Set(),
+        new Set(),
+        encodingHints,
+        encodingChangedPaths,
+        true,
+        unavailableEncodingChangedFileIds
       );
-      const unresolvedFileIds = Object.values(files)
-        .filter((file) => !Object.hasOwn(refreshed, file.fileId))
-        .map((file) => file.fileId).sort();
+      const unresolvedFileIds = [...unavailableEncodingChangedFileIds].sort();
       return {
         files: refreshed,
         unresolvedFileIds,
@@ -858,7 +867,18 @@ export class GitContextRevisionMapper {
         undefined,
         encodingHints[file.currentPath]
       );
-      if (read.kind !== "found") continue;
+      if (read.kind !== "found") {
+        // An opened-document encoding change can make the immutable blob
+        // undecodable through the newly selected VS Code decoder.  The file
+        // remains part of this unchanged Git revision, so retain its stable
+        // identity while conservatively clearing only its reviewed ranges.
+        refreshed[file.fileId] = {
+          ...clone(file),
+          reviewed: [],
+          updatedAt: occurredAt
+        };
+        continue;
+      }
       refreshed[file.fileId] = {
         ...clone(file),
         reviewed: [],
@@ -879,7 +899,8 @@ export class GitContextRevisionMapper {
     unresolvedBinaryPaths: ReadonlySet<string> = new Set(),
     encodingHints: Readonly<Record<string, string>> = {},
     encodingChangedPaths: ReadonlySet<string> = new Set(),
-    clearChangedIntervals = false
+    clearChangedIntervals = false,
+    unavailableEncodingChangedFileIds?: Set<string>
   ): Promise<Record<string, FileReviewState>> {
     const refreshed: Record<string, FileReviewState> = {};
     for (const file of Object.values(files)) {
@@ -900,6 +921,17 @@ export class GitContextRevisionMapper {
         encodingHints[file.currentPath]
       );
       if (result.kind !== "found") {
+        if (clearChangedIntervals && encodingChangedPaths.has(file.currentPath)) {
+          // Keep the stable identity available to future decoding transitions
+          // even when the new decoder cannot expose immutable text.
+          refreshed[file.fileId] = {
+            ...clone(file),
+            revisionId: newRevision,
+            modifiedReviewed: [],
+            updatedAt: occurredAt
+          };
+          unavailableEncodingChangedFileIds?.add(file.fileId);
+        }
         continue;
       }
       const content = result.content;

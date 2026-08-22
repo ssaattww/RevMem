@@ -165,6 +165,18 @@ test("T609-NR-005 retains a privacy-safe unresolved reason when a current-revisi
   assert.deepEqual(reasoned.unresolvedReasonsByFileId, {
     unsupported: "immutable-text-unavailable"
   });
+  assert.deepEqual(
+    Object.keys(result.contextState.files),
+    ["unsupported"],
+    "a failed same-revision re-decode must retain the stable Context file identity"
+  );
+  assert.deepEqual(result.contextState.files.unsupported?.modifiedReviewed, []);
+  assert.deepEqual(
+    Object.keys(result.globalState.files),
+    ["unsupported"],
+    "a failed same-revision re-decode must retain the stable Global file identity"
+  );
+  assert.deepEqual(result.globalState.files.unsupported?.reviewed, []);
   assert.doesNotMatch(
     JSON.stringify(Object.values(reasoned.unresolvedReasonsByFileId ?? {})),
     /unsupported|shift_jis|src\//u

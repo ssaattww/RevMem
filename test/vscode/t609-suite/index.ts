@@ -170,15 +170,18 @@ const assertMixedEncodingFixture = async (
   const shiftedEditor = await vscode.window.showTextDocument(shifted, { preview: false });
   shiftedEditor.selection = new vscode.Selection(0, 0, 0, 0);
   await markAndSynchronizeFixtureReview("Shift-JIS", shiftedEditor, api);
+  await assertPersistedMixedEncodingBoundary("Shift-JIS public mark", shifted, api);
   const utf8Editor = await vscode.window.showTextDocument(utf8Bom, { preview: false });
   utf8Editor.selection = new vscode.Selection(0, 0, 0, 0);
   await markAndSynchronizeFixtureReview("UTF-8 BOM", utf8Editor, api);
+  await assertPersistedMixedEncodingBoundary("UTF-8 BOM public mark", shifted, api);
   await within("refresh Global mixed encoding", vscode.commands.executeCommand("reviewRange.refreshGlobalUnderstanding"));
   const global = await api.getGlobalUnderstandingSnapshot();
   assert.ok(global, "one invalid file must not prevent Global Understanding from continuing");
   const paths = global.progress.files.map((file) => file.path);
   assert.equal(paths.includes("shift-jis.txt"), true);
   assert.equal(paths.includes("utf8-bom.txt"), true);
+  await assertPersistedMixedEncodingBoundary("Global refresh", shifted, api);
 };
 
 const findStateFile = (
@@ -188,6 +191,33 @@ const findStateFile = (
   const found = files.find((file) => file.path === path);
   assert.ok(found, `persisted state must contain ${path}`);
   return found;
+};
+
+/** Adds read-only owner and file-state evidence when a public boundary loses Shift-JIS review state. */
+const assertPersistedMixedEncodingBoundary = async (
+  boundary: string,
+  document: vscode.TextDocument,
+  api: T609ExtensionApi
+): Promise<GitReviewStateSnapshot> => {
+  const snapshot = await api.getGitReviewStateSnapshotForTest(document);
+  try {
+    assert.deepEqual(
+      findStateFile(snapshot.contextFiles, "shift-jis.txt").reviewed,
+      [{ startLine: 0, endLineExclusive: 1 }],
+      `${boundary} must retain Shift-JIS Context review state`
+    );
+    assert.deepEqual(
+      findStateFile(snapshot.globalFiles, "shift-jis.txt").reviewed,
+      [{ startLine: 0, endLineExclusive: 1 }],
+      `${boundary} must retain Shift-JIS Global review state`
+    );
+  } catch (error) {
+    if (error instanceof Error) {
+      error.message += ` [T609 persisted-state diagnostic: boundary=${boundary}; owner=${snapshot.owner}; repositoryId=${snapshot.repositoryId}; contextId=${snapshot.contextId}; contextFiles=${JSON.stringify(snapshot.contextFiles)}; globalFiles=${JSON.stringify(snapshot.globalFiles)}]`;
+    }
+    throw error;
+  }
+  return snapshot;
 };
 
 const assertActualUriBoundaries = async (
@@ -222,7 +252,7 @@ const assertLiveEncodingTransition = async (
   const bomUri = fixtureUri(folder, "utf8-bom.txt");
   const shifted = await vscode.workspace.openTextDocument(shiftedUri);
   const bom = await vscode.workspace.openTextDocument(bomUri);
-  const before = await api.getGitReviewStateSnapshotForTest(shifted);
+  const before = await assertPersistedMixedEncodingBoundary("before live encoding transition", shifted, api);
   assert.equal(before.owner, "git");
   assert.deepEqual(findStateFile(before.contextFiles, "shift-jis.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
   assert.deepEqual(findStateFile(before.globalFiles, "shift-jis.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
