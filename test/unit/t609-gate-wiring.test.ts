@@ -448,6 +448,22 @@ test("T609 Host observes actual VS Code URI safety and persisted encoding mappin
   assert.doesNotMatch(hostSuite, /seed.*Encoding.*ForTest/u);
 });
 
+test("T609 persisted Git snapshot reads the Current Context owner without mutating state", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const snapshotStart = extension.indexOf("const gitReviewStateSnapshotForTest");
+  const snapshotEnd = extension.indexOf("return {", snapshotStart);
+  assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+
+  const snapshot = extension.slice(snapshotStart, snapshotEnd);
+  assert.match(snapshot, /selectedContext\?\.kind === "pull-request"/u);
+  assert.match(snapshot, /kind:\s*"pull-request" as const,\s*repositoryId:\s*selectedContext\.repositoryId,\s*contextId:\s*selectedContext\.contextId/u);
+  assert.match(snapshot, /selectedContext\?\.kind === "workspace"/u);
+  assert.match(snapshot, /selectedContext\?\.kind === "branch"/u);
+  assert.match(snapshot, /selectedContext\?\.kind === "detached"/u);
+  assert.match(snapshot, /reviewStateRepository\.load\(target\)/u);
+  assert.doesNotMatch(snapshot, /reviewStateRepository\.(?:save|commit|create)\(/u);
+});
+
 test("T609 virtual URI boundary commands use the owned single-root deadline", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
   const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");

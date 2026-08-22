@@ -694,25 +694,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       if (inspection.kind !== "repository") {
         throw new Error("T609 Git state observation requires an opened Git document.");
       }
+      if (selectedContext?.kind === "workspace") {
+        throw new Error("T609 Git state observation cannot read a Git document through a workspace selection.");
+      }
+      if (
+        selectedContext !== undefined &&
+        (selectedContext.repositoryId !== inspection.repository.repositoryId ||
+          selectedContext.repositoryRoot !== inspection.repository.rootPath)
+      ) {
+        throw new Error("T609 Git state observation requires the selected context to own the opened document.");
+      }
+      if (
+        selectedContext?.kind === "branch" &&
+        (inspection.repository.branch.kind !== "branch" ||
+          inspection.repository.branch.fullRef !== selectedContext.branchRef)
+      ) {
+        throw new Error("T609 Git state observation requires the selected branch to match the opened document.");
+      }
+      if (
+        selectedContext?.kind === "detached" &&
+        (inspection.repository.branch.kind !== "detached" ||
+          inspection.repository.head !== selectedContext.headRevision)
+      ) {
+        throw new Error("T609 Git state observation requires the selected detached revision to match the opened document.");
+      }
+      if (
+        selectedContext?.kind === "pull-request" &&
+        inspection.repository.head !== selectedContext.headRevision
+      ) {
+        throw new Error("T609 Git state observation requires the selected pull request revision to match the opened document.");
+      }
       const current = new GitReviewContextResolver({ stableHash }).resolve({
         repositoryId: inspection.repository.repositoryId,
         rootPath: inspection.repository.rootPath,
         branch: inspection.repository.branch,
         ...(inspection.repository.head === undefined ? {} : { head: inspection.repository.head })
       });
-      const commit = await runtimePort.reviewStateRepository.load({
-        kind: "git",
-        repositoryId: current.repositoryId,
-        contextId: current.contextId
-      });
+      const target = selectedContext?.kind === "pull-request"
+        ? {
+            kind: "pull-request" as const,
+            repositoryId: selectedContext.repositoryId,
+            contextId: selectedContext.contextId
+          }
+        : {
+            kind: "git" as const,
+            repositoryId: current.repositoryId,
+            contextId: current.contextId
+          };
+      const commit = await runtimePort.reviewStateRepository.load(target);
       if (commit === undefined) {
         throw new Error("T609 Git state observation requires persisted Review State.");
       }
       return {
-        owner: "git" as const,
-        repositoryId: current.repositoryId,
-        contextId: current.contextId,
-        contextRevisionId: commit.contextState.branch?.headRevision ?? "",
+        owner: target.kind,
+        repositoryId: target.repositoryId,
+        contextId: target.contextId,
+        contextRevisionId: commit.contextState.branch?.headRevision ?? commit.contextState.pullRequest?.headSha ?? "",
         globalRevisionId: commit.globalState.currentRevisionId,
         contextFiles: Object.values(commit.contextState.files).map((file) => ({
           fileId: file.fileId,
