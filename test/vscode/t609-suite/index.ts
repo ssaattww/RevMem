@@ -198,8 +198,8 @@ const assertActualUriBoundaries = async (
   }
   const virtual = await vscode.workspace.openTextDocument({ content: "virtual T609\n" });
   await vscode.window.showTextDocument(virtual, { preview: false });
-  await within("virtual Current Context boundary", vscode.commands.executeCommand("reviewRange.refreshContext"));
-  await within("virtual Review Contexts boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  await vscode.commands.executeCommand("reviewRange.refreshContext");
+  await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
   await closeDocument(virtual);
 };
 

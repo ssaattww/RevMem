@@ -441,9 +441,27 @@ test("T609 Host observes actual VS Code URI safety and persisted encoding mappin
   assert.match(hostSuite, /vscode\.Uri\.file/u);
   assert.match(hostSuite, /query-bearing file Uri must be rejected/u);
   assert.match(hostSuite, /fragment-bearing file Uri must be rejected/u);
-  assert.match(hostSuite, /virtual Current Context boundary/u);
-  assert.match(hostSuite, /virtual Review Contexts boundary/u);
+  assert.match(hostSuite, /await vscode\.commands\.executeCommand\("reviewRange\.refreshContext"\);/u);
+  assert.match(hostSuite, /await vscode\.commands\.executeCommand\("reviewRange\.refreshReviewContexts"\);/u);
   assert.match(hostSuite, /assertLiveEncodingTransition/u);
   assert.match(hostSuite, /getGitReviewStateSnapshotForTest/u);
   assert.doesNotMatch(hostSuite, /seed.*Encoding.*ForTest/u);
+});
+
+test("T609 virtual URI boundary commands use the owned single-root deadline", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");
+  const boundaryStart = hostSuite.indexOf("const assertActualUriBoundaries = async");
+  const boundaryEnd = hostSuite.indexOf("const assertLiveEncodingTransition", boundaryStart);
+  assert.ok(boundaryStart >= 0 && boundaryEnd > boundaryStart);
+
+  const boundaries = hostSuite.slice(boundaryStart, boundaryEnd);
+  for (const command of [
+    'await vscode.commands.executeCommand("reviewRange.refreshContext");',
+    'await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");'
+  ]) {
+    assert.equal(boundaries.includes(command), true, `virtual URI fixture must directly await ${command}`);
+  }
+  assert.doesNotMatch(boundaries, /within\("virtual (?:Current Context|Review Contexts) boundary"/u);
+  assert.match(runner, /const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;/u);
 });
