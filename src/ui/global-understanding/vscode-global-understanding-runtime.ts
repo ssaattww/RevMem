@@ -47,6 +47,8 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly refreshDecorations: () => void | Promise<void>;
   readonly openFile: (target: GlobalUnderstandingFileOpenTarget) => void | Promise<void>;
   readonly reportError: (error: unknown) => void | Promise<void>;
+  /** Test-mode-only observer supplied by the T305 composition after a snapshot is published. */
+  readonly onSnapshotPublishedForTest?: (snapshot: GlobalUnderstandingTreeSnapshot) => void;
 }
 
 interface FilesGroupNode {
@@ -287,6 +289,7 @@ export const registerGlobalUnderstandingRuntime = (
             openController.replaceModel(stage);
             currentFolderNodes = new Set(stage.folders ?? []);
             tree.setModel(stage);
+            dependencies.onSnapshotPublishedForTest?.(snapshot);
             if (!isCurrent()) {
               clearPresentation();
               return;

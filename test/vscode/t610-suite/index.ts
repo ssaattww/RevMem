@@ -12,6 +12,15 @@ interface T610ExtensionApi {
     readonly progress: { readonly files: readonly { readonly path: string }[] };
     readonly folders?: readonly { readonly path: string; readonly state: string }[];
   } | undefined>;
+  getGlobalUnderstandingLifecycleObservationForTest(): {
+    readonly sourceContext: string | undefined;
+    readonly acceptedDocumentOpenCount: number;
+    readonly observedDocumentPath: string | undefined;
+    readonly fileOpenOutcome: string;
+    readonly sourceRefreshOutcome: string;
+    readonly sourceRefreshError: string | undefined;
+    readonly publishedSnapshot: boolean;
+  };
   stopGlobalUnderstandingFolderForTest(folderPath: string): Promise<void>;
   resumeGlobalUnderstandingFolderForTest(folderPath: string): Promise<void>;
   notifyGlobalUnderstandingFolderEntryForTest(uri: vscode.Uri): Promise<void>;
@@ -43,6 +52,13 @@ export async function run(): Promise<void> {
   const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0]!.uri, "src", "a.ts"));
   await vscode.window.showTextDocument(document);
   await api.drainGlobalUnderstandingFileOpenForTest();
+  const lifecycle = api.getGlobalUnderstandingLifecycleObservationForTest();
+  assert.notEqual(lifecycle.sourceContext, undefined, "the selected Current Context remains bound to the Global source after open");
+  assert.ok(lifecycle.acceptedDocumentOpenCount > 0, "the registered document-open event is accepted");
+  assert.equal(lifecycle.observedDocumentPath, document.uri.fsPath, "the source observes the opened fixture path");
+  assert.equal(lifecycle.fileOpenOutcome, "completed", "the source completes the accepted file-open observation");
+  assert.equal(lifecycle.sourceRefreshOutcome, "snapshot", `the source refresh publishes a snapshot: ${lifecycle.sourceRefreshError ?? "no source error"}`);
+  assert.equal(lifecycle.publishedSnapshot, true, "the Global runtime publishes the source snapshot");
   const snapshot = await api.getGlobalUnderstandingSnapshot();
   assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
   assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");

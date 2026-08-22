@@ -310,3 +310,15 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   assert.ok(startupDrain >= 0 && startupDrain < contextRefresh && contextRefresh < documentOpen, "the Host drains and explicitly establishes Current Context before opening its fixture document");
   assert.doesNotMatch(suite, /setTimeout/gu, "the T610 Host fixture uses explicit lifecycle drains instead of fixed sleeps");
 });
+
+test("T610-R4 separates accepted open, source refresh, and published runtime snapshot observations", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  assert.match(activation, /getGlobalUnderstandingLifecycleObservationForTest:/u);
+  assert.match(activation, /drainGlobalUnderstandingFileOpenForTest:/u);
+  assert.match(suite, /getGlobalUnderstandingLifecycleObservationForTest\(\)/u);
+  assert.match(suite, /acceptedDocumentOpenCount/u);
+  assert.match(suite, /sourceRefreshOutcome/u);
+  assert.match(suite, /publishedSnapshot/u);
+});

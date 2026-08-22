@@ -207,6 +207,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       return matches.length === 1 ? toResourceUri(matches[0]!.uri) : undefined;
     }
   });
+  let testGlobalUnderstandingSourceContext: string | undefined;
+  let testGlobalUnderstandingAcceptedDocumentOpenCount = 0;
+  let testGlobalUnderstandingObservedDocumentPath: string | undefined;
+  let testGlobalUnderstandingFileOpenOutcome: "not-started" | "completed" | "error" = "not-started";
+  let testGlobalUnderstandingSourceRefreshOutcome: "not-started" | "snapshot" | "undefined" | "error" = "not-started";
+  let testGlobalUnderstandingSourceRefreshError: string | undefined;
+  let testGlobalUnderstandingPublishedSnapshot = false;
+  const captureTestGlobalUnderstandingContext = (snapshot: CurrentContextUiSnapshot | undefined): void => {
+    if (context.extensionMode !== vscode.ExtensionMode.Test) return;
+    testGlobalUnderstandingSourceContext = snapshot?.context.selection === undefined
+      ? undefined
+      : JSON.stringify(snapshot.context.selection);
+  };
+  const observedGlobalSource = {
+    recalculate: async (signal?: AbortSignal) => {
+      if (context.extensionMode === vscode.ExtensionMode.Test) {
+        testGlobalUnderstandingSourceRefreshOutcome = "not-started";
+        testGlobalUnderstandingSourceRefreshError = undefined;
+      }
+      try {
+        const snapshot = await globalSource.recalculate(signal);
+        if (context.extensionMode === vscode.ExtensionMode.Test) {
+          testGlobalUnderstandingSourceRefreshOutcome = snapshot === undefined ? "undefined" : "snapshot";
+        }
+        return snapshot;
+      } catch (error) {
+        if (context.extensionMode === vscode.ExtensionMode.Test) {
+          testGlobalUnderstandingSourceRefreshOutcome = "error";
+          testGlobalUnderstandingSourceRefreshError = error instanceof Error ? error.message : String(error);
+        }
+        throw error;
+      }
+    },
+    startFolder: (folderPath: string) => globalSource.startFolder(folderPath),
+    stopFolder: (folderPath: string) => globalSource.stopFolder(folderPath),
+    resumeFolder: (folderPath: string) => globalSource.resumeFolder(folderPath)
+  };
 
   const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
     uri,
@@ -421,7 +458,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
 
   const globalRuntime = registerGlobalUnderstandingRuntime(context, {
-    source: globalSource,
+    source: observedGlobalSource,
     readGlobalLayerEnabled: () =>
       vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true),
     writeGlobalLayerEnabled: (enabled) =>
@@ -436,7 +473,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       await vscode.window.showErrorMessage(
         `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
       );
-    }
+    },
+    ...(context.extensionMode === vscode.ExtensionMode.Test ? {
+      onSnapshotPublishedForTest: () => { testGlobalUnderstandingPublishedSnapshot = true; }
+    } : {})
   });
 
   const prRepository = runtimePort.reviewStateRepository;
@@ -531,11 +571,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
         globalSource.setContext(snapshot);
+        captureTestGlobalUnderstandingContext(snapshot);
       },
       acceptExplicit: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptExplicit(snapshot);
         globalSource.setContext(snapshot);
+        captureTestGlobalUnderstandingContext(snapshot);
       },
       selectContext: (signal, feedbackContext) => currentContextComposition.selectContext(signal, feedbackContext)
     },
@@ -676,9 +718,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.observe(toEditSnapshot(document));
+        if (context.extensionMode === vscode.ExtensionMode.Test) {
+          testGlobalUnderstandingAcceptedDocumentOpenCount += 1;
+          testGlobalUnderstandingObservedDocumentPath = document.uri.fsPath;
+          testGlobalUnderstandingFileOpenOutcome = "not-started";
+        }
         const observedFileOpen = globalSource.observeFileOpen(document.uri.fsPath).then(
-          () => documentChangeRefresh.request(),
-          async (error) => { await globalRuntime.refreshWithErrorBoundary(); await vscode.window.showErrorMessage(`Global Understanding folderを開始できませんでした: ${error instanceof Error ? error.message : String(error)}`); }
+          () => {
+            if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = "completed";
+            documentChangeRefresh.request();
+          },
+          async (error) => {
+            if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = "error";
+            await globalRuntime.refreshWithErrorBoundary();
+            await vscode.window.showErrorMessage(`Global Understanding folderを開始できませんでした: ${error instanceof Error ? error.message : String(error)}`);
+          }
         );
         if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpen = observedFileOpen;
         void observedFileOpen;
@@ -805,6 +859,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         reviewContextsRuntimeRef.current?.workspaceUriToFilesystemPathForTest?.(uri),
       getGitReviewStateSnapshotForTest: gitReviewStateSnapshotForTest,
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
+      /** Read-only T610 split observation for actual T305 document-open lifecycle diagnostics. */
+      getGlobalUnderstandingLifecycleObservationForTest: () => ({
+        sourceContext: testGlobalUnderstandingSourceContext,
+        acceptedDocumentOpenCount: testGlobalUnderstandingAcceptedDocumentOpenCount,
+        observedDocumentPath: testGlobalUnderstandingObservedDocumentPath,
+        fileOpenOutcome: testGlobalUnderstandingFileOpenOutcome,
+        sourceRefreshOutcome: testGlobalUnderstandingSourceRefreshOutcome,
+        sourceRefreshError: testGlobalUnderstandingSourceRefreshError,
+        publishedSnapshot: testGlobalUnderstandingPublishedSnapshot
+      }),
       /** Test-mode T610 lifecycle seam; production commands remain the runtime owner. */
       startGlobalUnderstandingFolderForTest: async (folderPath: string) => {
         await globalSource.startFolder(folderPath);
