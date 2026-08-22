@@ -10,7 +10,6 @@ assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T
 
 interface T609ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
-  drainReviewStateDependentsForTest(): Promise<void>;
   drainDocumentReviewEdits(): Promise<void>;
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
@@ -101,7 +100,6 @@ const markAndSynchronizeFixtureReview = async (
     }
     throw error;
   }
-  await within(`drain ${label} review-state dependents`, api.drainReviewStateDependentsForTest());
   await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
   await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
   await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());

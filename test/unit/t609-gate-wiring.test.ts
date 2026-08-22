@@ -34,6 +34,7 @@ test("T609 gate wires every focused unit suite once and keeps the Extension Host
     "t609-normal-review-followup",
     "t609-review-contexts-cancellation-boundary",
     "t609-t405-encoding-composition",
+    "t609-test-review-state-dependent-queue",
     "t609-gate-wiring"
   ]) {
     const compiled = suitePath(suite);
@@ -214,7 +215,7 @@ test("T609 production activation does not retain the obsolete Test-only mapping 
   assert.doesNotMatch(hostSuite, /seedT609InitialReviewedRanges/u);
 });
 
-test("T609 single-root uses public mixed-encoding marks after startup settlement and queues Test-mode event feedback", async () => {
+test("T609 single-root uses public mixed-encoding marks after startup settlement without making background Test fakes a command gate", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
   const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
@@ -236,11 +237,10 @@ test("T609 single-root uses public mixed-encoding marks after startup settlement
     "every normal mark operation must publish exactly one applied event"
   );
   assert.match(extension, /deferAppliedDecorationRefresh: true/u);
-  assert.match(hostSuite, /drainReviewStateDependentsForTest\(\): Promise<void>;/u);
-  assert.match(hostSuite, /drain \$\{label\} review-state dependents/u);
   const composition = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
-  assert.match(composition, /testReviewStateDependentRefresh = testReviewStateDependentRefresh\.then\(refreshReviewStateDependentsForTest\);/u);
-  assert.match(composition, /drainReviewStateDependentsForTest: \(\) => testReviewStateDependentRefresh/u);
+  assert.match(composition, /new TestReviewStateDependentQueue\(/u);
+  assert.match(composition, /enqueueAll\(\)/u);
+  assert.doesNotMatch(hostSuite, /drainReviewStateDependentsForTest/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
 });

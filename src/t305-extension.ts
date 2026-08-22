@@ -63,6 +63,7 @@ import {
 } from "./application/workspace-identity/index";
 import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
+import { TestReviewStateDependentQueue } from "./test-only-review-state-dependent-queue";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
@@ -642,16 +643,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     documentChangeRefresh.cancel();
     refreshGlobalUnderstanding();
   };
-  let testReviewStateDependentRefresh = Promise.resolve();
-  const refreshReviewStateDependentsForTest = async (): Promise<void> => {
-    await globalRuntime.refreshWithErrorBoundary();
-    await refreshPullRequestProgressForSelection().catch(reportPullRequestProgressError);
-    await reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
-  };
+  const testReviewStateDependentQueue = context.extensionMode === vscode.ExtensionMode.Test
+    ? new TestReviewStateDependentQueue({
+        global: async () => undefined,
+        "pull-request-progress": async () => undefined,
+        "review-contexts": async () => undefined
+      })
+    : undefined;
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       if (context.extensionMode === vscode.ExtensionMode.Test) {
-        testReviewStateDependentRefresh = testReviewStateDependentRefresh.then(refreshReviewStateDependentsForTest);
+        testReviewStateDependentQueue?.enqueueAll();
         return;
       }
       refreshGlobalUnderstanding();
@@ -675,14 +677,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       }
       refreshForSavedOrClosedDocument(document);
     }),
-    documentChangeRefresh
+    documentChangeRefresh,
+    { dispose: () => testReviewStateDependentQueue?.dispose() }
   );
 
   if (context.extensionMode === vscode.ExtensionMode.Test) {
     return {
       ...baseApi,
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
-      drainReviewStateDependentsForTest: () => testReviewStateDependentRefresh,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
