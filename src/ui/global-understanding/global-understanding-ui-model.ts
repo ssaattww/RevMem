@@ -34,6 +34,23 @@ export interface GlobalUnderstandingTreeSnapshot {
   readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
+  /** True when the known folder scopes do not cover a complete repository denominator. */
+  readonly repositoryPartial?: boolean;
+  readonly folders?: readonly GlobalUnderstandingFolderSnapshot[];
+}
+
+/** T610 folder scope state used to render action and incomplete aggregation safely. */
+export interface GlobalUnderstandingFolderSnapshot {
+  /** Canonical repository-relative folder identity; empty identifies the root. */
+  readonly path: string;
+  /** Lifecycle state supplied by the owner-isolated folder controller. */
+  readonly state: "inactive" | "running" | "active" | "stopped" | "failed";
+  /** Known reviewed numerator; it is not a repository-wide claim when partial. */
+  readonly reviewedNonEmptyLineCount: number;
+  /** Known denominator; it is not a repository-wide claim when partial. */
+  readonly totalNonEmptyLineCount: number;
+  /** Marks incomplete child/state evidence and suppresses repository percentages. */
+  readonly partial: boolean;
 }
 
 export interface GlobalUnderstandingSummaryNode {
@@ -43,6 +60,8 @@ export interface GlobalUnderstandingSummaryNode {
   readonly reviewedNonEmptyLineCount: number;
   readonly totalNonEmptyLineCount: number;
   readonly progress: number;
+  /** Prevents a known-scope ratio from being presented as repository-wide. */
+  readonly partial?: true;
 }
 
 export interface GlobalUnderstandingFileNode {
@@ -70,6 +89,18 @@ export interface GlobalUnderstandingTreeModel {
   readonly summary: GlobalUnderstandingSummaryNode;
   readonly files: readonly GlobalUnderstandingFileNode[];
   readonly diagnostics: GlobalUnderstandingDiagnosticsNode;
+  readonly folders?: readonly GlobalUnderstandingFolderNode[];
+}
+
+export interface GlobalUnderstandingFolderNode extends GlobalUnderstandingFolderSnapshot {
+  /** Discriminant used by the Tree provider and command stale-target fence. */
+  readonly kind: "folder";
+  /** Human-readable folder label derived from the canonical path. */
+  readonly label: string;
+  /** Partial/full and line-count description shown by the Tree provider. */
+  readonly description: string;
+  /** Only command action valid for this current-generation node. */
+  readonly action: "start" | "stop" | "resume";
 }
 
 /** Deterministic work budget and publication callbacks for a large Tree projection. */
@@ -163,6 +194,12 @@ const fileNode = (
   });
 };
 
+const folderNode = (folder: GlobalUnderstandingFolderSnapshot): GlobalUnderstandingFolderNode => {
+  const action = folder.state === "stopped" ? "resume" : folder.state === "running" || folder.state === "active" ? "stop" : "start";
+  return Object.freeze({ ...folder, kind: "folder" as const, label: folder.path.length === 0 ? "リポジトリroot" : folder.path,
+    description: folder.partial ? `partial (${folder.reviewedNonEmptyLineCount}/${folder.totalNonEmptyLineCount})` : `${formatPercent(ratio(folder.reviewedNonEmptyLineCount, folder.totalNonEmptyLineCount))} (${folder.reviewedNonEmptyLineCount}/${folder.totalNonEmptyLineCount})`, action });
+};
+
 interface ValidatedTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
   readonly openedFileCount: number;
@@ -170,6 +207,8 @@ interface ValidatedTreeSnapshot {
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
   readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
+  readonly folders: readonly GlobalUnderstandingFolderSnapshot[];
+  readonly repositoryPartial: boolean;
 }
 
 const validateTreeSnapshot = (
@@ -202,7 +241,8 @@ const validateTreeSnapshot = (
     unopenedFileCount,
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
-    openTargetsByPath
+    openTargetsByPath,
+    folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true
   };
 };
 
@@ -230,7 +270,7 @@ const validateTreeSnapshotIncrementally = async (
     if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
   }
   if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
-  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath };
+  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath, folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true };
 };
 
 const createTreeModel = (
@@ -240,10 +280,11 @@ const createTreeModel = (
   summary: Object.freeze({
     kind: "summary" as const,
     label: "リポジトリ全体" as const,
-    description: `${formatPercent(snapshot.progress.progress)} (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})`,
+    description: snapshot.repositoryPartial ? `partial (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})` : `${formatPercent(snapshot.progress.progress)} (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})`,
     reviewedNonEmptyLineCount: snapshot.progress.reviewedNonEmptyLineCount,
     totalNonEmptyLineCount: snapshot.progress.totalNonEmptyLineCount,
-    progress: snapshot.progress.progress
+    progress: snapshot.progress.progress,
+    ...(snapshot.repositoryPartial ? { partial: true as const } : {})
   }),
   files: Object.freeze(files),
   diagnostics: Object.freeze({
@@ -253,7 +294,8 @@ const createTreeModel = (
     unopenedFileCount: snapshot.unopenedFileCount,
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
-  })
+  }),
+  ...(snapshot.folders.length === 0 ? {} : { folders: Object.freeze(snapshot.folders.map(folderNode).sort((left, right) => compareCodeUnits(left.path, right.path))) })
 });
 
 const cooperativeSortFileNodes = async (
@@ -374,7 +416,7 @@ export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstanding
   requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
   requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
-  const percent = formatPercent(progress.progress);
+  const percent = snapshot.repositoryPartial === true ? "partial" : formatPercent(progress.progress);
   return {
     text: `$(book) Global: ${percent} (${progress.reviewedNonEmptyLineCount}/${progress.totalNonEmptyLineCount})`,
     tooltip: [

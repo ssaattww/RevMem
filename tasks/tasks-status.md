@@ -4,18 +4,33 @@
 
 ## 現在位置
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
-- GitHub Issue: #81
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev6
+- GitHub Issue: #78
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
-- 直近実装タスク: T607 大規模処理の段階表示と性能改善（Issue #79、PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
-- 現在のタスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化
-- 次のタスク: T609 same independent CI-delta closure、新attestation、exact-head CI、PR #82 squash mergeへ進む
+- 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
+- 現在のタスク: T610 / Issue #78 folder単位Global Understanding
+- 次のタスク: openのT610-NR-004/005/006/007/008/010を一括修正し、同じ通常reviewerで再closureする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
-- Gitブランチ: `task/issue-81-repository-encoding`
-- Pull Request: #82（ready。IFR001〜IFR006はclosed。attestation `625a7c4` のexact-head CI run `32563955876` はT405/T609通過後T607 fixtureでfailedし無効。R3 test-only fix `fd66931`をsame normal reviewerが`pass_with_held`・unexplored 0で確認済み。次はsame independent CI-delta closure）
-- T609 reports: focused `npm run test:t609` 77/77、build/compile/lint/diffcheck Green。actual T609 Host全phase成功。final full local gateは11 command中9 pass。`test:unit` 23件はbase exact-match 22件とWindows symlink fixture `EPERM` 1件に分類されconfirmed regression 0、`test:git` T207 Temp cleanup EBUSY 1件とともにheld。通常VS Code Hostは全phase Green。current handoffは `handoffs/issue-81-t609-independent-review-followup-20260822080000.yaml`、最新normal deltaは `reports/issue-81-t609-normal-unit-baseline-delta-20260822170728.md`。CIはmerge gateまで未待機。
+- Gitブランチ: `task/issue-78-folder-understanding`
+- Pull Request: #83（draft。通常review `fail`、T610-NR-001〜010を修正中）
+- T609 completion: PR #82をexact-head CI `32565706538` Green後にsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`でmainへ統合済み。
+- T610 design: `reviewRange.globalUnderstanding.autoStartDescendants`は既定false。file openは所属folder直下だけを開始し、explicit startだけがsubtreeへ拡張する。stopped markerをrepository単位で永続化し、parentはincomplete childがある間partialとする。設計reportは `reports/issue-78-t610-design-20260822185714.md`。
+- T610 implementation: folder scope controller、signal-aware enumeration、stopped marker store、partial aggregate、Tree start/stop/resume、T305 production composition fixture、`test:t610`/CI wiringを実装した。`test:t610` 31/31、build/contracts/lint/architecture正負/diff-check Green。reportsは `reports/issue-78-t610-implementation-20260822190715.md` と `reports/issue-78-t610-implementation-closure-20260822194055.md`。
+- T610 normal review: `reports/issue-78-t610-normal-review-20260822195818.md`。verdict `fail`、High 5 / Medium 4 / Low 1。T610-NR-001〜010は全件未closeで、既存consumer回帰、stopped subtree/restart、recursive aggregate、URI identity、automatic recalc、storage、performance、actual composition、API docsを一括修正する。
+- T610 normal follow-up R1/R2: `reports/issue-78-t610-normal-review-followup-20260822202251.md` と `reports/issue-78-t610-normal-review-followup-r2-20260822211529.md`。legacy4 37/37、T610 40/40、T607 81/81、static全Green。actual HostはCurrent Context確立前のopenでscopeが開始せずincompleteのため、fixture lifecycle限定R3を残す。
+- T610 Host R3: `reports/issue-78-t610-normal-review-followup-r3-host-20260822213428.md`。Current Context readyまで通過後、actual openのGlobal snapshotが`undefined`で停止。focused 40/40とbuild/lint/diff-checkはGreen。R4でopen lifecycle→source refresh→snapshot publicationを限定診断する。
+- T610 Host R4: `reports/issue-78-t610-normal-review-followup-r4-host-20260822214714.md`。Context保持、open受理、`observeFileOpen`完了を確認し、source refreshがerrorなし`undefined`となるcontroller前owner/scope-root解決へ限定した。R5でWindows workspace URI identity一致を修正する。
+- T610 Host R5: `reports/issue-78-t610-normal-review-followup-r5-host-20260822220339.md`。Windows workspace root URI解決を修正し、Host initial/restart functional phaseは全成功。fixture cleanupのみ10秒timeoutのため、R6でowned lifecycle cleanupを限定修正する。
+- T610 Host R6: `reports/issue-78-t610-normal-review-followup-r6-cleanup-20260822221743.md`。exact Host一回でinitial/restart/cleanup全phase成功。T610 41/41、build/lint/diff-check Green。同じ通常reviewerのT610-NR-001〜010限定closureへ進む。
+- T610 normal closure R1: `reports/issue-78-t610-normal-review-closure-20260822223637.md`。NR-001/002/003/009はclosed。NR-004/005/006/007/008/010はopenのため、partial UI、real command/menu、startup/watcher、storage diagnostics、global budget、JSDoc contractを修正する。
+- T610 open findings R7: `reports/issue-78-t610-normal-review-followup-r7-20260822225009.md`。T610 47/47、T607 81/81、static全Green。actual Host initialが300秒timeoutのため、R8でpublic command/real watcher lifecycleの停止phaseを限定する。
+- T610 Host R8: `reports/issue-78-t610-normal-review-followup-r8-host-20260822232116.md`。exact Host一回でinitial/restart/cleanup全成功。T610 48/48、build/lint/diff-check Green。open 6 findingsを同じreviewerが再closureする。
+- T610 normal closure R2: `reports/issue-78-t610-normal-review-closure-r2-20260822234112.md`。open 6件はHost UI、state-specific command/menu、startup/owner watcher、actual Output failure、indexed aggregate/cancel-stale、symbol-specific JSDocが未完。R9で6件を限定修正する。
+- T610 R9/R10: R9はworker応答不能で中断し、`reports/issue-78-t610-normal-review-followup-r9-20260822235001.md`へpartial diffを記録。R10 `reports/issue-78-t610-normal-review-followup-r10-20260823002028.md`でT610 51/51、T607 81/81、T604 24/24 Green。残るactual composition 4セルをR11へ引き継ぐ。
+- T610 R11: `reports/issue-78-t610-normal-review-followup-r11-20260823004521.md`。actual provider node、two-root、failure composition、257-file cancelをlocal Green化。one-shot Host initialが300秒timeout、cleanup成功のため、R12で追加subphaseを限定する。
+- T610 R12: `reports/issue-78-t610-normal-review-followup-r12-host-20260823011851.md`。Host initial 915.1秒timeout、最初のsuite marker前でsubphase unavailable、cleanup成功。activation内startup Global refresh awaitをR13でqueue/drainへ分離する。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -367,8 +382,8 @@
 | T606 | 完了 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。 |
 | T607 | 完了 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能測定と最小最適化を行う | T301、T504、T606 | PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607、T609、T610 | AC-01〜AC-24とIssue #81・#78の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
-| T609 | independent CI-delta closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | IFR001〜006 closed。T405 delta closed後のCIはT607 fixtureでfailed。R3 `fd66931`はdocumented `utf8`とnon-empty hint伝播をassertしtest:t607 81/81、same normal reviewer `pass_with_held`。same independent CI-delta closureへ進む |
-| T610 | 未着手 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607 | root全体を自動走査せず、開いたfileの所属folderまたは明示選択folderだけを計算する。停止folderはrestart後も強調表示され、file openでは自動再開せず、再開時に再検証する。親folderは直下fileと子folderの合計を部分集計として表示し、兄弟folderへ走査を拡張しない。focused、統合、Extension Host testと通常・独立reviewを通過する |
+| T609 | 完了 | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み |
+| T610 | review修正中 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607、T609 | 通常reviewでT610-NR-001〜010を確定。既存consumer互換、stopped subtree/restart、recursive aggregate、URI identity、automatic recalc、storage/failure、T607 budget、actual activation/Host、API docsを一括修正し同reviewer closureを行う |
 
 ## 受け入れ条件トレーサビリティ
 
@@ -390,4 +405,4 @@
 
 ## 次回開始時の選択
 
-T609 / Issue #81を進める。設計書更新を先行し、active Git editor非依存のrepository解決と、opened documentのencoding hintを利用するmixed-encoding mappingをTDDで実装する。T609をsquash mergeした後にSkillを再取得・再読込し、T610 / Issue #78へ進む。
+T610-NR-001〜010を一括修正し、同じ通常reviewerの限定closureへ進む。その後full local equivalence、独立review、exact-head CI、PR #83 squash mergeを行い、T608へ進む。

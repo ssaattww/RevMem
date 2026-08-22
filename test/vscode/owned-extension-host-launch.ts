@@ -75,8 +75,13 @@ const closeWithin = async <Result>(
   delay(timeoutMs).then(() => undefined)
 ]);
 
-/** Terminates only the process tree rooted at the known worker PID. */
-const terminateOwnedTree = async (child: ChildProcess, closed: Promise<unknown>): Promise<"requested" | "already-exited"> => {
+/** Extracts only Extension Host PIDs which the owned launch worker reported for this phase. */
+const observedExtensionHostPids = (stdout: string): readonly number[] => [...stdout.matchAll(/Started local extension host with pid (\d+)\./gu)]
+  .map((match) => Number(match[1]))
+  .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
+
+/** Terminates only the process tree rooted at the known task-owned worker PID. */
+const terminateOwnedWorkerTree = async (child: ChildProcess, closed: Promise<unknown>): Promise<"requested" | "already-exited"> => {
   if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
     return "already-exited";
   }
@@ -175,7 +180,7 @@ export const runOwnedExtensionHostLaunch = async (
     } else {
       status = "failed";
       workerError = "Worker reported success but did not close before the launch deadline.";
-      termination = await terminateOwnedTree(child, closed);
+      termination = await terminateOwnedWorkerTree(child, closed);
       closedResult = await closeWithin(closed, TERMINATION_GRACE_MS);
     }
   } else {
@@ -184,7 +189,7 @@ export const runOwnedExtensionHostLaunch = async (
     if (observed.kind === "exited") {
       closedResult = await closed;
     } else {
-      termination = await terminateOwnedTree(child, closed);
+      termination = await terminateOwnedWorkerTree(child, closed);
       closedResult = await closeWithin(closed, TERMINATION_GRACE_MS);
     }
   }
@@ -200,6 +205,8 @@ export const runOwnedExtensionHostLaunch = async (
     status,
     timeoutMs,
     pid: child.pid,
+    ownedWorkerPid: child.pid,
+    ownedExtensionHostPids: observedExtensionHostPids(stdout),
     exitCode: closedResult?.exitCode ?? null,
     signal: closedResult?.signal ?? null,
     termination,

@@ -76,6 +76,8 @@ jobs:
           node tools/run-ci-command.mjs test-t609-extension-host xvfb-run -a npm run test:t609:extension-host
       - name: T607 performance and incremental UI tests
         run: node tools/run-ci-command.mjs test-t607 npm run test:t607
+      - name: T610 folder Global Understanding tests
+        run: node tools/run-ci-command.mjs test-t610 npm run test:t610
       - name: Temporary Git integration tests
         run: node tools/run-ci-command.mjs test-git npm run test:git
       - name: Mock GitHub integration tests

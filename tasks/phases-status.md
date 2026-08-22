@@ -4,7 +4,7 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev5
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev6
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
@@ -31,15 +31,15 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T607はmainへ統合済み。T607はPR #80のsquash merge `3bba5defe32b7da134817492427e09c70c97beaf`で完了。T609 / Issue #81を実施中、T610 / Issue #78とT608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T609はPR #82のsquash merge `477725632177f5c4fcbca5eb587644fdef06e4df`で完了。T610 / Issue #78はlocal実装を完了しreview中、T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
-- 直近統合: T607 大規模処理の段階表示と性能改善（PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
-- 実装中タスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化（technical head `5501cd7`、focused 77/77、actual Host全phase Green）
-- 次の工程: T609同一independent reviewerのCI-delta closure、新attestation、exact-head CI、PR #82 squash merge
-- 後続候補: T610 / Issue #78、その後T608
+- 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
+- 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review findings修正中）
+- 次の工程: R13 activation startup drain、同reviewer再closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
+- 後続候補: T608
 
 ## P0 開発基盤
 
@@ -185,8 +185,8 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: IFR001〜IFR006はclosed。attestation `625a7c4` のexact-head CI run `32563955876` はT607 fixtureでfailedし無効。R3 `fd66931` はactual `utf8` encoding hintを同factoryで固定しtest:t607 81/81、same normal reviewer `pass_with_held`・unexplored 0。same independent CI-delta closure、新attestation、exact-head CI、squash mergeが残る。
-- T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
+- T609: PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み。
+- T610: R12でsuite marker前のactivation/startup境界へ限定。R13でstartup Global refreshをactivation awaitからqueue/Test drainへ分離する。
 - T608: T609・T610完了後に実施する。
 
 ### 終了チェックポイント
