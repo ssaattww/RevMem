@@ -29,6 +29,7 @@ import {
   isNonGitCurrentContextWorkspace
 } from "./t305-current-context-git";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "./t609-repository-resolution";
+import { resolveT305RepositoryRootUri } from "./t305-repository-root-uri";
 import {
   registerCurrentContextRuntime,
 } from "./ui/current-context/vscode-current-context-runtime";
@@ -203,8 +204,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readAutoStartDescendants: () => vscode.workspace.getConfiguration("reviewRange.globalUnderstanding")
       .get("autoStartDescendants", false),
     resolveRepositoryRootUri: (repositoryRoot) => {
-      const matches = (vscode.workspace.workspaceFolders ?? []).filter((folder) => path.resolve(folder.uri.fsPath) === path.resolve(repositoryRoot));
-      return matches.length === 1 ? toResourceUri(matches[0]!.uri) : undefined;
+      const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+      const workspaceUris = workspaceFolders.map((folder) => folder.uri);
+      return resolveT305RepositoryRootUri({
+        repositoryRoot,
+        fileSystemPathSemantics: workspaceSidePathSemantics(),
+        workspaceFolders: workspaceFolders.flatMap((folder) => {
+          const filesystemPath = workspaceUriToFilesystemPath(folder.uri, workspaceUris);
+          return filesystemPath === undefined ? [] : [{
+            filesystemPath,
+            uri: toResourceUri(folder.uri)
+          }];
+        })
+      });
     }
   });
   let testGlobalUnderstandingSourceContext: string | undefined;

@@ -22,6 +22,7 @@
 - T610 normal follow-up R1/R2: `reports/issue-78-t610-normal-review-followup-20260822202251.md` と `reports/issue-78-t610-normal-review-followup-r2-20260822211529.md`。legacy4 37/37、T610 40/40、T607 81/81、static全Green。actual HostはCurrent Context確立前のopenでscopeが開始せずincompleteのため、fixture lifecycle限定R3を残す。
 - T610 Host R3: `reports/issue-78-t610-normal-review-followup-r3-host-20260822213428.md`。Current Context readyまで通過後、actual openのGlobal snapshotが`undefined`で停止。focused 40/40とbuild/lint/diff-checkはGreen。R4でopen lifecycle→source refresh→snapshot publicationを限定診断する。
 - T610 Host R4: `reports/issue-78-t610-normal-review-followup-r4-host-20260822214714.md`。Context保持、open受理、`observeFileOpen`完了を確認し、source refreshがerrorなし`undefined`となるcontroller前owner/scope-root解決へ限定した。R5でWindows workspace URI identity一致を修正する。
+- T610 Host R5: `reports/issue-78-t610-normal-review-followup-r5-host-20260822220339.md`。Windows workspace root URI解決を修正し、Host initial/restart functional phaseは全成功。fixture cleanupのみ10秒timeoutのため、R6でowned lifecycle cleanupを限定修正する。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
