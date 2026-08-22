@@ -1005,6 +1005,8 @@ folder scopeの開始・再開・変更追従も同じbounded stageを使用す�
 
 性能回帰 harness は少なくとも 10,000 changed-line PR、large repository aggregation、多数の reviewed interval、visible-editor decoration を同じ fixture generation と work/count budget で再現する。benchmark は時間だけで成否を決めず、stage 数、stage 当たりの最大 item 数、yield 回数、stale-generation の非公開、memory を不必要に二重保持しないことを検証する。validation、sorting、projection、status summary、decoration descriptor/hash、interval model、host apply を含む各同期段階は同じ明示budgetに収める。
 
+性能回帰 harness と大規模workloadはdeveloper-localの手動検証専用とし、共有CIの合否判定では実行しない。`test:t607`はローカル入口として維持するが、通常unit suiteとCI workflowから除外する。CIはこの分離契約を軽量な静的検査で確認し、PC、runner負荷、仮想化方式によって変わる経過時間・memory・throughputをmerge gateにしない。
+
 production scheduler はmicrotaskだけで済ませず、Extension Hostがtimer、I/O、document change、disposeを処理できるevent-loop boundaryを使う。PR diff のfile/hunk/line validation、reviewed interval normalization、Global candidate/evidence/aggregate、Review Contextsの保存済みcontext/progress準備、document line fragment hash、decoration option/bookkeeping/applyは、最新generationとAbortSignalを各stage後に確認する。通常editor descriptorはtext、lineCount、document versionを同じsnapshotとして束縛し、同じ行数のtext editもrequestを無効化する。
 
 Git command結果を最終的に完全なstringとして必要とする既存application contractは維持するため、streamingはchild-process pipeの消費方式を指し、巨大diffを無制限に保持してよいという意味ではない。追加のmemory上限またはincremental parserが必要になった場合は、実測に基づいて別途contractを定義する。

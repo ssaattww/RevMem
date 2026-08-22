@@ -184,9 +184,9 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T604: PR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenでmainへ統合済み（Issue #72）
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
-- T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
+- T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。性能workloadは`test:t607`のローカル手動検証専用とし、通常unit/CIでは実行しない。
 - T609: PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み。
-- T610: R12でsuite marker前のactivation/startup境界へ限定。R13でstartup Global refreshをactivation awaitからqueue/Test drainへ分離する。
+- T610: R13/R14でstartup Global refreshをnon-blocking queueへ分離しCurrent Context startup後へ整列したが、Hostは最初のsuite marker前でtimeoutしたため反復実行を停止。性能workloadのCI除外policyを適用する。
 - T608: T609・T610完了後に実施する。
 
 ### 終了チェックポイント

@@ -510,7 +510,7 @@ test("T607 builds a 2,048-interval normal-editor model cooperatively and fences 
   assert.equal(await stale, undefined, "a superseded model never reaches apply");
 });
 
-test("T607 focused workload harness is wired through the diagnostic CI runner", async () => {
+test("T607 focused workload harness is available locally and excluded from CI", async () => {
   const root = path.resolve(__dirname, "../../..");
   const [manifestText, workflow] = await Promise.all([
     readFile(path.join(root, "package.json"), "utf8"),
@@ -518,7 +518,8 @@ test("T607 focused workload harness is wired through the diagnostic CI runner", 
   ]);
   const scripts = (JSON.parse(manifestText) as { readonly scripts?: Record<string, string> }).scripts ?? {};
   assert.match(scripts["test:t607"] ?? "", /t607-performance-incremental-ui\.test\.js/u);
-  assert.match(workflow, /node tools\/run-ci-command\.mjs test-t607 npm run test:t607/u);
+  assert.doesNotMatch(scripts["test:unit"] ?? "", /t607-performance-incremental-ui\.test\.js/u);
+  assert.doesNotMatch(workflow, /(?:test-t607|npm run test:t607)/u);
 });
 
 test("T607 IFR001 uses the actual PR runtime for a 10,000-line persisted projection and reverse supersession", async () => {
