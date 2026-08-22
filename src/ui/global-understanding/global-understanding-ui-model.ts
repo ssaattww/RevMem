@@ -34,6 +34,16 @@ export interface GlobalUnderstandingTreeSnapshot {
   readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
+  readonly folders?: readonly GlobalUnderstandingFolderSnapshot[];
+}
+
+/** T610 folder scope state used to render action and incomplete aggregation safely. */
+export interface GlobalUnderstandingFolderSnapshot {
+  readonly path: string;
+  readonly state: "inactive" | "running" | "active" | "stopped" | "failed";
+  readonly reviewedNonEmptyLineCount: number;
+  readonly totalNonEmptyLineCount: number;
+  readonly partial: boolean;
 }
 
 export interface GlobalUnderstandingSummaryNode {
@@ -70,6 +80,14 @@ export interface GlobalUnderstandingTreeModel {
   readonly summary: GlobalUnderstandingSummaryNode;
   readonly files: readonly GlobalUnderstandingFileNode[];
   readonly diagnostics: GlobalUnderstandingDiagnosticsNode;
+  readonly folders?: readonly GlobalUnderstandingFolderNode[];
+}
+
+export interface GlobalUnderstandingFolderNode extends GlobalUnderstandingFolderSnapshot {
+  readonly kind: "folder";
+  readonly label: string;
+  readonly description: string;
+  readonly action: "start" | "stop" | "resume";
 }
 
 /** Deterministic work budget and publication callbacks for a large Tree projection. */
@@ -163,6 +181,12 @@ const fileNode = (
   });
 };
 
+const folderNode = (folder: GlobalUnderstandingFolderSnapshot): GlobalUnderstandingFolderNode => {
+  const action = folder.state === "stopped" ? "resume" : folder.state === "running" || folder.state === "active" ? "stop" : "start";
+  return Object.freeze({ ...folder, kind: "folder" as const, label: folder.path.length === 0 ? "リポジトリroot" : folder.path,
+    description: folder.partial ? `partial (${folder.reviewedNonEmptyLineCount}/${folder.totalNonEmptyLineCount})` : `${formatPercent(ratio(folder.reviewedNonEmptyLineCount, folder.totalNonEmptyLineCount))} (${folder.reviewedNonEmptyLineCount}/${folder.totalNonEmptyLineCount})`, action });
+};
+
 interface ValidatedTreeSnapshot {
   readonly progress: RepositoryGlobalUnderstandingProgress;
   readonly openedFileCount: number;
@@ -170,6 +194,7 @@ interface ValidatedTreeSnapshot {
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
   readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
+  readonly folders: readonly GlobalUnderstandingFolderSnapshot[];
 }
 
 const validateTreeSnapshot = (
@@ -202,7 +227,8 @@ const validateTreeSnapshot = (
     unopenedFileCount,
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
-    openTargetsByPath
+    openTargetsByPath,
+    folders: snapshot.folders ?? []
   };
 };
 
@@ -230,7 +256,7 @@ const validateTreeSnapshotIncrementally = async (
     if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
   }
   if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
-  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath };
+  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath, folders: snapshot.folders ?? [] };
 };
 
 const createTreeModel = (
@@ -253,7 +279,8 @@ const createTreeModel = (
     unopenedFileCount: snapshot.unopenedFileCount,
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount
-  })
+  }),
+  ...(snapshot.folders.length === 0 ? {} : { folders: Object.freeze(snapshot.folders.map(folderNode).sort((left, right) => compareCodeUnits(left.path, right.path))) })
 });
 
 const cooperativeSortFileNodes = async (

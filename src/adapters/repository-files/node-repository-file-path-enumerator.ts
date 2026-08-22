@@ -24,6 +24,9 @@ const toRepositoryPath = (value: string): string => value.split(path.sep).join("
 const escapeRegExp = (value: string): string => value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 const compareRepositoryPaths = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
+const throwIfAborted = (signal: AbortSignal | undefined): void => {
+  if (signal?.aborted === true) throw new DOMException("Repository path enumeration was superseded.", "AbortError");
+};
 
 const compileGitIgnorePattern = (pattern: string): string => {
   let source = "";
@@ -91,8 +94,9 @@ const matchingGitIgnoreRule = (
 export class NodeRepositoryFilePathEnumerator {
   public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy) {}
 
-  public async enumerate(repositoryRoot: string): Promise<RepositoryFilePathEnumerationResult> {
-    const rules = await this.readRootGitIgnore(repositoryRoot);
+  public async enumerate(repositoryRoot: string, signal?: AbortSignal): Promise<RepositoryFilePathEnumerationResult> {
+    throwIfAborted(signal);
+    const rules = await this.readRootGitIgnore(repositoryRoot, signal);
     const includedPaths: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
@@ -102,7 +106,8 @@ export class NodeRepositoryFilePathEnumerator {
       rules,
       includedPaths,
       excluded,
-      excludedDirectories
+      excludedDirectories,
+      signal
     );
     includedPaths.sort(compareRepositoryPaths);
     excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
@@ -110,9 +115,81 @@ export class NodeRepositoryFilePathEnumerator {
     return { includedPaths, excluded, excludedDirectories };
   }
 
-  private async readRootGitIgnore(repositoryRoot: string): Promise<readonly GitIgnoreRule[]> {
+  /**
+   * Enumerates only direct entries of already-active T610 folder scopes.
+   * Unlike {@link enumerate}, this never walks an inactive sibling or root
+   * descendant. Recursive discovery is reserved for an explicit folder start.
+   */
+  public async enumerateDirectFolders(
+    repositoryRoot: string,
+    folders: readonly string[],
+    signal?: AbortSignal
+  ): Promise<RepositoryFilePathEnumerationResult> {
+    throwIfAborted(signal);
+    const rules = await this.readRootGitIgnore(repositoryRoot, signal);
+    const includedPaths: string[] = [];
+    const excluded: ExcludedRepositoryFile[] = [];
+    const excludedDirectories: ExcludedRepositoryDirectory[] = [];
+    for (const folder of [...new Set(folders)].sort(compareRepositoryPaths)) {
+      throwIfAborted(signal);
+      const directory = folder.length === 0
+        ? repositoryRoot
+        : path.join(repositoryRoot, ...folder.split("/"));
+      const entries = await readdir(directory, { withFileTypes: true });
+      throwIfAborted(signal);
+      for (const entry of entries) {
+        throwIfAborted(signal);
+        const absolutePath = path.join(directory, entry.name);
+        const repositoryPath = toRepositoryPath(path.relative(repositoryRoot, absolutePath));
+        if (entry.isSymbolicLink()) { excluded.push({ path: repositoryPath, reason: { kind: "symbolic-link" } }); continue; }
+        const policyDecision = entry.isDirectory()
+          ? this.exclusionPolicy.evaluateDirectory(repositoryPath)
+          : this.exclusionPolicy.evaluate({ path: repositoryPath, isBinary: false });
+        if (policyDecision.excluded) {
+          if (entry.isDirectory()) excludedDirectories.push({ path: repositoryPath, reason: policyDecision.reason });
+          else excluded.push({ path: policyDecision.normalizedPath, reason: policyDecision.reason });
+          continue;
+        }
+        const gitIgnoreRule = matchingGitIgnoreRule(repositoryPath, entry.isDirectory(), rules);
+        if (gitIgnoreRule !== undefined) {
+          const reason = { kind: "gitignore" as const, pattern: gitIgnoreRule.pattern };
+          if (entry.isDirectory()) excludedDirectories.push({ path: repositoryPath, reason });
+          else excluded.push({ path: repositoryPath, reason });
+          continue;
+        }
+        if (entry.isFile()) includedPaths.push(repositoryPath);
+      }
+    }
+    includedPaths.sort(compareRepositoryPaths);
+    excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
+    excludedDirectories.sort((left, right) => compareRepositoryPaths(left.path, right.path));
+    return { includedPaths, excluded, excludedDirectories };
+  }
+
+  /** Recursively discovers folders only beneath an explicitly selected scope. */
+  public async enumerateSubtreeFolders(repositoryRoot: string, folder: string, signal?: AbortSignal): Promise<readonly string[]> {
+    throwIfAborted(signal);
+    const normalized = folder.replace(/^\/+|\/+$/gu, "");
+    const root = normalized.length === 0 ? repositoryRoot : path.join(repositoryRoot, ...normalized.split("/"));
+    const includedPaths: string[] = [];
+    const excluded: ExcludedRepositoryFile[] = [];
+    const excludedDirectories: ExcludedRepositoryDirectory[] = [];
+    await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal);
+    throwIfAborted(signal);
+    const folders = new Set<string>([normalized]);
+    for (const entry of [...includedPaths, ...excluded.map((item) => item.path), ...excludedDirectories.map((item) => item.path)]) {
+      const parts = entry.split("/");
+      parts.pop();
+      for (let length = 1; length <= parts.length; length += 1) folders.add(parts.slice(0, length).join("/"));
+    }
+    return [...folders].filter((candidate) => candidate === normalized || candidate.startsWith(normalized.length === 0 ? "" : `${normalized}/`)).sort(compareRepositoryPaths);
+  }
+
+  private async readRootGitIgnore(repositoryRoot: string, signal?: AbortSignal): Promise<readonly GitIgnoreRule[]> {
     try {
-      return parseGitIgnore(await readFile(path.join(repositoryRoot, ".gitignore"), "utf8"));
+      const content = await readFile(path.join(repositoryRoot, ".gitignore"), "utf8");
+      throwIfAborted(signal);
+      return parseGitIgnore(content);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
@@ -125,10 +202,14 @@ export class NodeRepositoryFilePathEnumerator {
     rules: readonly GitIgnoreRule[],
     includedPaths: string[],
     excluded: ExcludedRepositoryFile[],
-    excludedDirectories: ExcludedRepositoryDirectory[]
+    excludedDirectories: ExcludedRepositoryDirectory[],
+    signal?: AbortSignal
   ): Promise<void> {
+    throwIfAborted(signal);
     const entries = await readdir(currentDirectory, { withFileTypes: true });
+    throwIfAborted(signal);
     for (const entry of entries) {
+      throwIfAborted(signal);
       const absolutePath = path.join(currentDirectory, entry.name);
       const repositoryPath = toRepositoryPath(path.relative(repositoryRoot, absolutePath));
       if (entry.isSymbolicLink()) {
@@ -163,7 +244,8 @@ export class NodeRepositoryFilePathEnumerator {
           rules,
           includedPaths,
           excluded,
-          excludedDirectories
+          excludedDirectories,
+          signal
         );
       } else if (entry.isFile()) {
         includedPaths.push(repositoryPath);

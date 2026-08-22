@@ -16,6 +16,7 @@ import {
   GlobalUnderstandingFileOpenController,
   GlobalUnderstandingRefreshController,
   type GlobalUnderstandingDiagnosticsNode,
+  type GlobalUnderstandingFolderNode,
   type GlobalUnderstandingFileOpenTarget,
   type GlobalUnderstandingFileNode,
   type GlobalUnderstandingSummaryNode,
@@ -28,9 +29,15 @@ export const REFRESH_GLOBAL_UNDERSTANDING_COMMAND_ID =
   "reviewRange.refreshGlobalUnderstanding";
 export const TOGGLE_GLOBAL_LAYER_COMMAND_ID = "reviewRange.toggleGlobalLayer";
 export const OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID = "reviewRange.openGlobalUnderstandingFile";
+export const START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.startGlobalUnderstandingFolder";
+export const STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.stopGlobalUnderstandingFolder";
+export const RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.resumeGlobalUnderstandingFolder";
 
 export interface GlobalUnderstandingRuntimeSource {
   recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  startFolder?(folderPath: string): Promise<void>;
+  stopFolder?(folderPath: string): Promise<void>;
+  resumeFolder?(folderPath: string): Promise<void>;
 }
 
 export interface GlobalUnderstandingRuntimeDependencies {
@@ -58,6 +65,7 @@ type GlobalUnderstandingViewNode =
   | GlobalUnderstandingSummaryNode
   | FilesGroupNode
   | GlobalUnderstandingFileNode
+  | GlobalUnderstandingFolderNode
   | GlobalUnderstandingDiagnosticsNode
   | DiagnosticValueNode;
 
@@ -134,6 +142,16 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
         };
         return item;
       }
+      case "folder": {
+        const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+        item.description = node.description;
+        item.tooltip = `状態: ${node.state}\n${node.partial ? "部分集計" : "完全集計"}`;
+        item.iconPath = new vscode.ThemeIcon(node.state === "stopped" ? "debug-pause" : node.partial ? "warning" : "folder");
+        item.contextValue = `reviewRange.globalUnderstandingFolder.${node.action}`;
+        const command = node.action === "start" ? START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : node.action === "stop" ? STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID;
+        item.command = { command, title: "Global Understanding folder action", arguments: [node.path] };
+        return item;
+      }
       case "diagnostics": {
         const item = new vscode.TreeItem(
           node.label,
@@ -163,6 +181,7 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
     if (node === undefined) {
       return [
         model.summary,
+        ...(model.folders ?? []),
         { ...FILES_GROUP, count: model.files.length },
         model.diagnostics
       ];
@@ -310,6 +329,30 @@ export const registerGlobalUnderstandingRuntime = (
       refreshWithErrorBoundary
     ),
     vscode.commands.registerCommand(
+      START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
+      async (folderPath: string | undefined) => {
+        if (folderPath === undefined || dependencies.source.startFolder === undefined) return;
+        await dependencies.source.startFolder(folderPath);
+        await refreshWithErrorBoundary();
+      }
+    ),
+    vscode.commands.registerCommand(
+      STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
+      async (folderPath: string | undefined) => {
+        if (folderPath === undefined || dependencies.source.stopFolder === undefined) return;
+        await dependencies.source.stopFolder(folderPath);
+        invalidate();
+      }
+    ),
+    vscode.commands.registerCommand(
+      RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
+      async (folderPath: string | undefined) => {
+        if (folderPath === undefined || dependencies.source.resumeFolder === undefined) return;
+        await dependencies.source.resumeFolder(folderPath);
+        await refreshWithErrorBoundary();
+      }
+    ),
+    vscode.commands.registerCommand(
       OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
       async (node: GlobalUnderstandingFileNode | undefined) => {
         if (node === undefined || node.kind !== "file") return;
@@ -339,6 +382,7 @@ export const registerGlobalUnderstandingRuntime = (
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
         event.affectsConfiguration("reviewRange.exclude") ||
+        event.affectsConfiguration("reviewRange.globalUnderstanding.autoStartDescendants") ||
         event.affectsConfiguration("reviewRange.showGlobalReviewed")
       ) {
         void refreshWithErrorBoundary();

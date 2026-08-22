@@ -47,10 +47,8 @@ import {
 } from "./t305-projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
 import type { OperationFeedbackContext } from "./application/operation-feedback/index";
-import {
-  T505GlobalUnderstandingSource,
-  type T505GlobalUnderstandingOwner
-} from "./t505-global-understanding-source";
+import type { T505GlobalUnderstandingOwner } from "./t505-global-understanding-source";
+import { createT305GlobalUnderstandingSource } from "./t305-global-understanding-composition";
 import {
   registerT405ReviewContextsRuntime,
   type RegisteredT405ReviewContextsRuntime,
@@ -194,13 +192,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         }
       }];
     });
-  const globalSource = new T505GlobalUnderstandingSource({
+  const globalSource = createT305GlobalUnderstandingSource({
     storageUris: {
       globalStorageUri: context.globalStorageUri,
       storageUri: context.storageUri
     },
     exclusionPolicy,
-    readOpenDocuments
+    readOpenDocuments,
+    globalStoragePath: context.globalStorageUri.fsPath,
+    readAutoStartDescendants: () => vscode.workspace.getConfiguration("reviewRange.globalUnderstanding")
+      .get("autoStartDescendants", false)
   });
 
   const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
@@ -670,6 +671,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.observe(toEditSnapshot(document));
+        void globalSource.observeFileOpen(document.uri.fsPath);
       }
     }),
     vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
