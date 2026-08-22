@@ -235,13 +235,17 @@ test("T610-R8 persists ordered Host subphases and drains the real watcher withou
   assert.match(activation, /drainGlobalUnderstandingFolderEntryForTest:/u);
   assert.match(runner, /t610-host-subphase\.json/u);
   const phases = [
-    "context-ready", "document-opened", "snapshot-observed", "public-stop-completed",
-    "public-resume-completed", "filesystem-write-dispatched", "watcher-drained",
-    "final-stop-completed", "document-closed"
+    "context-ready", "document-opened", "before-tree-node-acquisition", "after-tree-node-acquisition",
+    "before-public-start", "after-public-start", "before-mismatch-feedback-drain",
+    "after-mismatch-feedback-drain", "before-public-stop", "after-public-stop",
+    "before-public-resume", "after-public-resume", "before-second-root-open-owner-observation",
+    "after-second-root-open-owner-observation", "before-hierarchy-status-probe",
+    "after-hierarchy-status-probe", "before-real-watcher-event", "after-real-watcher-event",
+    "final-stop-completed", "before-document-close", "after-document-close"
   ];
   let previous = -1;
   for (const phase of phases) {
-    const current = suite.indexOf(`recordSubphase(api, "${phase}")`);
+    const current = suite.indexOf(`recordT610HostSubphaseForTest("${phase}")`);
     assert.ok(current > previous, `T610 Host records ${phase} after its predecessor`);
     previous = current;
   }
@@ -543,7 +547,7 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   assert.ok(startupDrain >= 0 && startupDrain < contextRefresh && contextRefresh < documentOpen, "the Host drains and explicitly establishes Current Context before opening its fixture document");
   assert.match(suite, /const closeDocument = async/u, "the T610 Host owns an explicit document-close lifecycle");
   assert.match(suite, /onDidCloseTextDocument/u, "the T610 close lifecycle observes and disposes its own close listener");
-  assert.match(suite, /finally \{\s*await closeDocument\(document\);/u, "the T610 fixture closes the document even when a Host assertion fails");
+  assert.match(suite, /finally \{\s*await api\.recordT610HostSubphaseForTest\("before-document-close"\);\s*await closeDocument\(document\);/u, "the T610 fixture records then closes the document even when a Host assertion fails");
   assert.match(ownedLaunch, /ownedWorkerPid/u, "owned worker PID diagnostics remain explicit per Host phase");
   assert.match(ownedLaunch, /ownedExtensionHostPids/u, "observed Extension Host PIDs remain attributable to the owning phase");
   assert.doesNotMatch(suite, /setTimeout/gu, "the T610 Host fixture uses explicit lifecycle drains instead of fixed sleeps");
@@ -595,4 +599,28 @@ test("T610-R10 combined missing-cell contract: presentation hierarchy, startup h
   assert.equal(source.isActiveFolderEntry(path.join(repositoryRoot, "src", "changed.ts")), true);
   assert.equal(source.isActiveFolderEntry(path.join(repositoryRoot, "outside.ts")), false, "an inactive root sibling must not refresh an active child scope");
   assert.equal(source.isActiveFolderEntry(path.join(repositoryRoot, "..", "foreign", "a.ts")), false, "a foreign root never reaches the selected owner");
+});
+
+test("T610-R12 persists before-and-after Host subphases around each R11 actual-composition operation", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  for (const operation of [
+    "second-root-open-owner-observation",
+    "tree-node-acquisition",
+    "public-start",
+    "mismatch-feedback-drain",
+    "public-stop",
+    "public-resume",
+    "hierarchy-status-probe",
+    "real-watcher-event",
+    "document-close"
+  ]) {
+    const before = `before-${operation}`;
+    const after = `after-${operation}`;
+    const beforeIndex = suite.indexOf(`recordT610HostSubphaseForTest("${before}")`);
+    const afterIndex = suite.indexOf(`recordT610HostSubphaseForTest("${after}")`);
+    assert.ok(beforeIndex >= 0, `the Host persists ${before} before its actual operation`);
+    assert.ok(afterIndex > beforeIndex, `the Host persists ${after} after ${operation}`);
+  }
+  assert.doesNotMatch(suite, /const recordSubphase/gu, "R12 calls the persisted Test API directly instead of hiding operation boundaries in a local wrapper");
 });

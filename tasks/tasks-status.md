@@ -30,6 +30,7 @@
 - T610 normal closure R2: `reports/issue-78-t610-normal-review-closure-r2-20260822234112.md`。open 6件はHost UI、state-specific command/menu、startup/owner watcher、actual Output failure、indexed aggregate/cancel-stale、symbol-specific JSDocが未完。R9で6件を限定修正する。
 - T610 R9/R10: R9はworker応答不能で中断し、`reports/issue-78-t610-normal-review-followup-r9-20260822235001.md`へpartial diffを記録。R10 `reports/issue-78-t610-normal-review-followup-r10-20260823002028.md`でT610 51/51、T607 81/81、T604 24/24 Green。残るactual composition 4セルをR11へ引き継ぐ。
 - T610 R11: `reports/issue-78-t610-normal-review-followup-r11-20260823004521.md`。actual provider node、two-root、failure composition、257-file cancelをlocal Green化。one-shot Host initialが300秒timeout、cleanup成功のため、R12で追加subphaseを限定する。
+- T610 R12: `reports/issue-78-t610-normal-review-followup-r12-host-20260823011851.md`。Host initial 915.1秒timeout、最初のsuite marker前でsubphase unavailable、cleanup成功。activation内startup Global refresh awaitをR13でqueue/drainへ分離する。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
