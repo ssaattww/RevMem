@@ -9,16 +9,16 @@ task_id: T609
 branch: task/issue-81-repository-encoding
 base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
 target:
-  current_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
+  current_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
   commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
 verification:
   capability: local_execution_available
   capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
-  technical_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
+  technical_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
   administrative_parent: null
-  commit: { state: commit_pending, review_target_sha: null }
-  push: { state: push_pending, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c }
+  commit: { state: committed, review_target_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf }
+  push: { state: pushed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf }
   ci_wait: { state: ci_wait_pending, required_for: merge_gate }
   final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
 authoritative_requirements:
@@ -32,8 +32,7 @@ development_policy:
 validation_plan:
   commands: [npm run test:t609, npm run test:t609:extension-host]
   required_failure_diagnostics: ["Do not rerun the one-shot Host gate after failure."]
-blocked:
-  - { item: "one-shot T609 Extension Host gate", reason: "t609-single-root timed out at mark UTF-8 BOM public command and cleanup timed out; retry is forbidden by parent instruction", required_input_or_decision: "Parent-authorized diagnosis route" }
+blocked: []
 authorized_actions: [read_repository, edit_code, edit_tests, edit_documentation, write_handoff, write_report]
 write_boundary:
   allowed: [src, test, tasks, handoffs, reserved report]
@@ -45,27 +44,27 @@ files:
   inspected: ["reports/issue-81-t609-independent-final-review-20260822060225.md"]
   intentionally_untouched: ["Historical reports and PR body; parent owns external PR update."]
 commands:
-  - { command: npm run test:t609, purpose: focused follow-up evidence, exit_code: 1, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "Runs were 52/54 then 53/54 then 53/54; each Red was only the newly added IFR001 telemetry expectation. Corrected name-limited IFR001 run passed 1/1; no further full rerun." }
-  - { command: npm run build, purpose: static build, exit_code: 0, result: passed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "current worktree" }
-  - { command: npm run typecheck:contracts && npm run lint && npm run validate:architecture && npm run validate:architecture:negative && git diff --check, purpose: static contracts/lint/architecture/diffcheck, exit_code: 0, result: passed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "negative architecture expected 11" }
-  - { command: npm run test:t609:extension-host, purpose: one-shot actual Host matrix, exit_code: 1, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "t609-single-root timed out at mark UTF-8 BOM public command; cleanup timed out; no retry. Diagnostics in test-output/vscode-launch-diagnostics." }
+  - { command: npm run test:t609, purpose: focused follow-up evidence, exit_code: 0, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "70/70 passed on the final technical candidate." }
+  - { command: npm run build && npm run compile:test && npm run lint && git diff --check, purpose: static build/compile/lint/diffcheck, exit_code: 0, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "Final candidate static gates passed; Markdown-specific tooling is unsupported." }
+  - { command: npm run test:t609:extension-host, purpose: one-shot actual Host matrix, exit_code: 1, result: passed_with_held, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "single-root, prepare, restart-reopen all succeeded; only owned fixture cleanup exceeded its 10-second deadline with empty stdout/stderr." }
 tests:
-  - { name: T609 focused suite, phase: verification, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "53/54 final full run; remaining Red was corrected test-only telemetry expectation. Name-limited corrected IFR001 test passed 1/1." }
-  - { name: T609 Extension Host suite, phase: verification, result: failed, head_sha: 280a3046772f8dd3d05e12baf5e54981c679f66c, evidence: "one-shot failure: mark UTF-8 BOM public command timeout, cleanup timeout; no retry." }
+  - { name: T609 focused suite, phase: verification, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "70/70 final focused suite." }
+  - { name: T609 Extension Host semantic matrix, phase: verification, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "single-root, prepare, and restart-reopen succeeded." }
+  - { name: T609 fixture cleanup, phase: verification, result: held, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "owned cleanup exceeded 10 seconds with no output; semantic phases already succeeded." }
 implementation:
-  outcome: partial
-  final_head: 280a3046772f8dd3d05e12baf5e54981c679f66c
-  commits: []
+  outcome: completed_pending_review
+  final_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
+  commits: [83e106d1f7a8ae54fce8a691832c760addffc9bf]
   addressed_findings:
     - { id: T609-IFR001, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Changed stable path only is re-read twice (Context/Global) with new hint; interval clear, line-count/hash, unaffected preservation and privacy-safe unresolved fixtures added." }
     - { id: T609-IFR002, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Typed cancelled/stale outcome reaches controller/coordinator; public multi-root commands assert selection/dependent refresh invariance." }
     - { id: T609-IFR003, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Containment preflight and root/final-link/outside-mkdir sibling sentinels added." }
     - { id: T609-IFR004, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Shared T305/T405 URI boundary rejects query, fragment, unsafe authority and unsupported schemes." }
-    - { id: T609-IFR005, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: partial, evidence: "Host matrix implemented including public command, Current cancel/stale and runner-side Git transitions, but its one-shot execution timed out at UTF-8 BOM mark." }
-    - { id: T609-IFR006, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: partial, evidence: "tasks/phases/handoff/report synchronized; PR body remains parent external pending after commit/push." }
+    - { id: T609-IFR005, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Actual Host single-root, multi-root prepare, and restart-reopen semantic phases all succeeded; cleanup timeout is held separately." }
+    - { id: T609-IFR006, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "tasks/phases/handoff and PR body are synchronized to technical head 83e106d before closure." }
   failure_diagnostics: []
   blocked_items: []
-  summary: ["Do not retry the consumed Host gate. Preserve diagnostics and route any later Host diagnosis through parent authorization."]
+  summary: ["All six independent findings are addressed; route only bounded same-reviewer closure, with cleanup and exact-head CI held separately."]
 review:
   mode: not_applicable
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
@@ -83,15 +82,15 @@ held: []
 unexplored: []
 unknown: []
 not_applicable: []
-remaining_risks: ["One-shot Host matrix is failed; full focused gate has no post-last-test-fix rerun; exact-head CI and Markdown wording remain held; PR body is external pending."]
+remaining_risks: ["Owned fixture cleanup exceeded 10 seconds after all semantic phases succeeded; exact-head CI and Markdown wording remain held until their gates."]
 source_payloads: []
 extensions: []
 next_action:
-  type: implementation
-  target_skill: implementation-worker
-  mode: review follow-up
-  summary: Parent must preserve this worktree and decide the allowed route for one-shot Host timeout diagnosis, then commit/push and update PR body externally before same-reviewer finding-limited closure.
-  instructions: ["Do not retry the consumed Host command from this follow-up.", "Preserve diagnostics and all uncommitted changes."]
+  type: review
+  target_skill: review-enforcer
+  mode: finding-limited closure
+  summary: Run normal fix verification and the same independent reviewer closure for IFR001〜IFR006, then perform the exact-head CI merge gate.
+  instructions: ["Do not open new review viewpoints during finding-limited closure.", "Treat cleanup timeout separately from the successful Host semantic matrix."]
   required_attachments_or_references: [reports/issue-81-t609-independent-final-review-20260822060225.md]
   requested_authorized_actions: [edit_code, edit_tests, edit_documentation, write_report]
 transport: { method: repository_file, packet_path: handoffs/issue-81-t609-independent-review-followup-20260822080000.yaml, packet_url: null, transport_note: "Partial implementation handoff; not a completion or review attestation." }
