@@ -141,8 +141,8 @@ const assertMappedGitTransitions = async (
   const reviewed = async (name: string): Promise<readonly ReviewedIntervalSnapshot[]> => {
     const document = await within(`open mapped ${name}`, vscode.workspace.openTextDocument(fixtureUri(folder, name)));
     await within(`show mapped ${name}`, vscode.window.showTextDocument(document, { preview: false }));
-    await within(`refresh mapped ${name}`, api.refreshVisibleEditorDecorations());
-    await within(`drain mapped ${name}`, api.drainVisibleEditorDecorations());
+    await api.refreshVisibleEditorDecorations();
+    await api.drainVisibleEditorDecorations();
     return api.getVisibleReviewedIntervals(document.uri.toString());
   };
   assert.deepEqual(

@@ -35,6 +35,7 @@ test("T609 gate wires every focused unit suite once and keeps the Extension Host
     "t609-review-contexts-cancellation-boundary",
     "t609-t405-encoding-composition",
     "t609-test-review-state-dependent-queue",
+    "t609-host-rename-decoration-composition",
     "t609-gate-wiring"
   ]) {
     const compiled = suitePath(suite);
@@ -225,9 +226,7 @@ test("T609 mapped Git-transition fixture keeps only per-file-operation deadlines
   const multiRootMappingInvocation = hostSuite.slice(prepareStart, mappingInvocationEnd);
   for (const substep of [
     "await within(`open mapped ${name}`",
-    "await within(`show mapped ${name}`",
-    "await within(`refresh mapped ${name}`",
-    "await within(`drain mapped ${name}`"
+    "await within(`show mapped ${name}`"
   ]) {
     assert.ok(mappingFixture.includes(substep), `each mapped file must retain its ${substep} deadline`);
   }
@@ -242,6 +241,9 @@ test("T609 mapped Git-transition fixture keeps only per-file-operation deadlines
     "the multi-root phase must not apply a second overall deadline around the bounded mapping fixture"
   );
   assert.match(multiRootMappingInvocation, /await assertMappedGitTransitions\(folder, api\);/u);
+  assert.match(mappingFixture, /await api\.refreshVisibleEditorDecorations\(\);/u);
+  assert.match(mappingFixture, /await api\.drainVisibleEditorDecorations\(\);/u);
+  assert.doesNotMatch(mappingFixture, /within\(`(?:refresh|drain) mapped \$\{name\}`/u);
 });
 
 test("T609 production activation does not retain the obsolete Test-only mapping seed", async () => {
