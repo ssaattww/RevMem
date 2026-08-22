@@ -185,7 +185,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: IFR001〜IFR006はclosed。attestation `4fc4bed` のexact-head CI run `32562360871` はT405二重errorでfailedし無効。CI-delta `e1021f7` はexact T406 1/1 Green、same normal reviewer `pass_with_held`・unexplored 0。same independent CI-delta closure、新attestation、exact-head CI、squash mergeが残る。
+- T609: IFR001〜IFR006はclosed。attestation `625a7c4` のexact-head CI run `32563955876` はT607 fixtureでfailedし無効。R3 `fd66931` はactual `utf8` encoding hintを同factoryで固定しtest:t607 81/81、same normal reviewer `pass_with_held`・unexplored 0。same independent CI-delta closure、新attestation、exact-head CI、squash mergeが残る。
 - T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
 - T608: T609・T610完了後に実施する。
 
