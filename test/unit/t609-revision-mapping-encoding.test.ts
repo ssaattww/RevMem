@@ -5,7 +5,8 @@ import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
 import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
-  type GitRevisionMappingSource
+  type GitRevisionMappingSource,
+  type GitRevisionMappingTextReadResult
 } from "../../src/application/review-context/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -76,7 +77,7 @@ class EncodingSource implements GitRevisionMappingSource {
     _feedback?: unknown,
     _signal?: AbortSignal,
     encodingHint?: string
-  ) {
+  ): Promise<GitRevisionMappingTextReadResult> {
     this.reads.push([path, encodingHint]);
     if (path === "src/unsupported.txt") {
       return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
@@ -181,6 +182,76 @@ test("T609-NR-005 retains a privacy-safe unresolved reason when a current-revisi
     JSON.stringify(Object.values(reasoned.unresolvedReasonsByFileId ?? {})),
     /unsupported|shift_jis|src\//u
   );
+});
+
+test("T609 preserves a restart-unopened encoded identity only when the new immutable blob exists but cannot be decoded", async () => {
+  const source = new EncodingSource([
+    "diff --git a/src/new.txt b/src/new.txt",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/src/new.txt",
+    "@@ -0,0 +1 @@",
+    "+new",
+    "diff --git a/src/deleted.txt b/src/deleted.txt",
+    "deleted file mode 100644",
+    "--- a/src/deleted.txt",
+    "+++ /dev/null",
+    "@@ -1 +0,0 @@",
+    "-before",
+    ""
+  ].join("\n"));
+  const resolver = new GitReviewContextResolver({ stableHash: hash });
+  const current = resolver.resolve({
+    repositoryId,
+    rootPath: "/repo",
+    branch: { kind: "branch", fullRef: "refs/heads/main" },
+    head: newRevision
+  });
+  const files = {
+    shifted: file("shifted", "src/shift-jis.txt"),
+    bom: file("bom", "src/utf8-bom.txt"),
+    deleted: file("deleted", "src/deleted.txt")
+  };
+  const originalRead = source.readTextFileAtRevision.bind(source);
+  source.readTextFileAtRevision = async (...args) => {
+    const [,,,,,, encodingHint] = args;
+    const repositoryPath = args[2];
+    source.reads.push([repositoryPath, encodingHint]);
+    if (repositoryPath === "src/shift-jis.txt" && encodingHint === undefined) {
+      return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
+    }
+    if (repositoryPath === "src/deleted.txt" && args[1] === newRevision) {
+      return { kind: "missing-file" as const };
+    }
+    return originalRead(...args);
+  };
+
+  const result = await mapperFor(source).map({
+    current,
+    contextState: contextState(current.contextId, files),
+    globalState: globalState(files),
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: true, ignoreEolChanges: true },
+    encodingHintsByPath: { "src/utf8-bom.txt": "utf8" }
+  });
+
+  assert.deepEqual(result.unresolvedFileIds, ["shifted"]);
+  assert.deepEqual(result.unresolvedReasonsByFileId, {
+    shifted: "immutable-text-unavailable"
+  });
+  assert.deepEqual(result.contextState.files.shifted?.modifiedReviewed, []);
+  assert.deepEqual(result.globalState.files.shifted?.reviewed, []);
+  assert.equal(result.contextState.files.shifted?.revisionId, newRevision);
+  assert.equal(result.globalState.files.shifted?.revisionId, newRevision);
+  assert.ok(result.contextState.files.bom, "the reopened UTF-8 BOM identity must remain mapped");
+  assert.ok(result.globalState.files.bom, "the reopened UTF-8 BOM Global identity must remain mapped");
+  assert.equal(result.contextState.files.deleted, undefined, "a deleted file must not be retained as an unavailable immutable blob");
+  assert.equal(result.globalState.files.deleted, undefined, "a deleted Global file must not be retained as an unavailable immutable blob");
+  assert.ok(
+    Object.values(result.contextState.files).some((entry) => entry.currentPath === "src/new.txt" && entry.modifiedReviewed.length === 0),
+    "a newly added file must receive a new unreviewed identity"
+  );
+  assert.ok(source.reads.some(([path, hint]) => path === "src/shift-jis.txt" && hint === undefined), "restart mapping must not reuse a stale Shift-JIS hint");
 });
 
 test("T609 clears only the changed same-revision encoding intervals while preserving unrelated Context and Global state", async () => {

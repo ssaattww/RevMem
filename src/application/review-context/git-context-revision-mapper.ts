@@ -401,6 +401,13 @@ export class GitContextRevisionMapper {
     const binaryResolution = resolveBinarySections(rawDiff);
     const transitionDiff = fileTransitionDiff(rawDiff, binaryResolution);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
+    const unchangedPaths = new Set(
+      Object.values(files)
+        .map((file) => file.currentPath)
+        .filter((path) => !parsedFiles.some((changed) =>
+          changed.oldPath === path || changed.newPath === path
+        ))
+    );
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
       oldRevision,
@@ -439,6 +446,7 @@ export class GitContextRevisionMapper {
       oldTexts,
       newFiles
     );
+    const unavailableImmutableTextFileIds = new Set<string>();
     const refreshed = await this.refreshMappedFiles(
       mapped,
       newRevision,
@@ -447,10 +455,18 @@ export class GitContextRevisionMapper {
       occurredAt,
       binaryResolution.destinationPaths,
       binaryResolution.unresolvedPaths,
-      effectiveEncodingHints
+      effectiveEncodingHints,
+      new Set(),
+      false,
+      unavailableImmutableTextFileIds,
+      unchangedPaths
     );
     const unresolvedFileIds = new Set<string>();
     const unresolvedReasonsByFileId: Record<string, "immutable-text-unavailable" | "mapping-unresolved"> = {};
+    for (const fileId of unavailableImmutableTextFileIds) {
+      unresolvedFileIds.add(fileId);
+      unresolvedReasonsByFileId[fileId] = "immutable-text-unavailable";
+    }
     for (const file of Object.values(mapped)) {
       if (!Object.hasOwn(refreshed, file.fileId) &&
           !binaryResolution.destinationPaths.has(file.currentPath) &&
@@ -544,6 +560,24 @@ export class GitContextRevisionMapper {
         encodingHints[file.currentPath]
       );
       if (result.kind !== "found") {
+        if (result.kind === "invalid-encoding") {
+          transitionInput[file.fileId] = {
+            schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+            fileId: file.fileId,
+            currentPath: file.currentPath,
+            previousPaths: [],
+            revisionId: oldRevision,
+            modifiedReviewed: clone(file.reviewed),
+            originalReviewedByDiff: {},
+            ...(file.contentHash === undefined ? {} : { contentHash: file.contentHash }),
+            lineCount: Math.max(
+              1,
+              ...file.reviewed.map((interval) => interval.endLineExclusive)
+            ),
+            updatedAt: file.updatedAt
+          };
+          continue;
+        }
         missingOldFiles.push(clone(file));
         continue;
       }
@@ -827,6 +861,18 @@ export class GitContextRevisionMapper {
         undefined,
         encodingHints[file.currentPath]
       );
+      if (read.kind === "invalid-encoding") {
+        // The current immutable blob is present, but a restarted Host has no
+        // prior document hint with which to decode it. Preserve its stable
+        // identity while invalidating only the reviewed interval.
+        result[file.fileId] = {
+          ...clone(file),
+          revisionId: newRevision,
+          reviewed: [],
+          updatedAt: occurredAt
+        };
+        continue;
+      }
       if (read.kind !== "found") {
         continue;
       }
@@ -900,7 +946,8 @@ export class GitContextRevisionMapper {
     encodingHints: Readonly<Record<string, string>> = {},
     encodingChangedPaths: ReadonlySet<string> = new Set(),
     clearChangedIntervals = false,
-    unavailableEncodingChangedFileIds?: Set<string>
+    unavailableEncodingChangedFileIds?: Set<string>,
+    unchangedPaths: ReadonlySet<string> = new Set()
   ): Promise<Record<string, FileReviewState>> {
     const refreshed: Record<string, FileReviewState> = {};
     for (const file of Object.values(files)) {
@@ -921,7 +968,20 @@ export class GitContextRevisionMapper {
         encodingHints[file.currentPath]
       );
       if (result.kind !== "found") {
-        if (clearChangedIntervals && encodingChangedPaths.has(file.currentPath)) {
+        if (result.kind === "invalid-encoding" &&
+            (clearChangedIntervals || unchangedPaths.has(file.currentPath))) {
+          // `invalid-encoding` proves that this path still resolves to an
+          // immutable blob. It is distinct from `missing-file`, which must
+          // remain absent after deletion. A restarted Host must not reuse a
+          // stale document hint, so retain identity but clear review state.
+          refreshed[file.fileId] = {
+            ...clone(file),
+            revisionId: newRevision,
+            modifiedReviewed: [],
+            updatedAt: occurredAt
+          };
+          unavailableEncodingChangedFileIds?.add(file.fileId);
+        } else if (clearChangedIntervals && encodingChangedPaths.has(file.currentPath)) {
           // Keep the stable identity available to future decoding transitions
           // even when the new decoder cannot expose immutable text.
           refreshed[file.fileId] = {
