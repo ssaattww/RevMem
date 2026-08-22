@@ -100,6 +100,10 @@ test("T609 multi-root workspace fixture preserves the single-root whitespace and
 
 test("T609 Host fixture separates active-editor lifecycle, command persistence, visible refresh, and Global completion", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const reviewSyncStart = hostSuite.indexOf("const markAndSynchronizeFixtureReview = async");
+  const reviewSyncEnd = hostSuite.indexOf("const assertMixedEncodingFixture", reviewSyncStart);
+  assert.ok(reviewSyncStart >= 0 && reviewSyncEnd > reviewSyncStart);
+  const reviewSync = hostSuite.slice(reviewSyncStart, reviewSyncEnd);
 
   assert.match(hostSuite, /const markAndSynchronizeFixtureReview = async/u);
   assert.match(hostSuite, /vscode\.window\.activeTextEditor\?\.document\.uri\.toString\(\)/u);
@@ -110,6 +114,37 @@ test("T609 Host fixture separates active-editor lifecycle, command persistence, 
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("Shift-JIS", shiftedEditor, api\)/u);
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
   assert.match(hostSuite, /refresh Global mixed encoding/u);
+  assert.equal(
+    occurrences(reviewSync, 'vscode.commands.executeCommand("reviewRange.markSelectionReviewed")'),
+    1,
+    "each mixed-encoding fixture must execute the public normal-editor command once"
+  );
+  for (const directAwait of [
+    'await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");',
+    "await api.drainDocumentReviewEdits();",
+    "await api.refreshVisibleEditorDecorations();",
+    "await api.drainVisibleEditorDecorations();"
+  ]) {
+    assert.ok(reviewSync.includes(directAwait), `mixed-encoding synchronization must await ${directAwait} directly`);
+  }
+  assert.doesNotMatch(
+    reviewSync,
+    /within\(`(?:mark|drain|refresh) \$\{label\}/u,
+    "the fixture-only command and decoration chain must use the owned phase deadline instead of 10-second local wrappers"
+  );
+});
+
+test("T609 runner owns a 300-second deadline for the single-root phase", async () => {
+  const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");
+  const focusedStart = runner.indexOf("if (focusedT609) {");
+  const focusedEnd = runner.indexOf("if (focusedLifecycleRestore)", focusedStart);
+  assert.ok(focusedStart >= 0 && focusedEnd > focusedStart);
+  const focusedRunner = runner.slice(focusedStart, focusedEnd);
+
+  assert.match(runner, /const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;/u);
+  assert.match(runner, /timeoutMs: launchTimeout\(\),/u);
+  assert.match(focusedRunner, /phase === "single-root" \? t609SingleRootLaunchPaths : t609LaunchPaths/u);
+  assert.match(focusedRunner, /await launch\(\s*`t609-\$\{phase\}`,[\s\S]*?phase\s*\);/u);
 });
 
 test("T609 phase ownership keeps mixed encoding in single-root and repository cancellation in multi-root", async () => {

@@ -93,7 +93,7 @@ const markAndSynchronizeFixtureReview = async (
     `${label} fixture must be the active editor before its selected-root review starts`
   );
   try {
-    await within(`mark ${label} public command`, vscode.commands.executeCommand("reviewRange.markSelectionReviewed"));
+    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
   } catch (error) {
     const diagnostic = api.getNormalEditorCommandFailureForTest();
     if (diagnostic !== undefined && error instanceof Error) {
@@ -101,9 +101,9 @@ const markAndSynchronizeFixtureReview = async (
     }
     throw error;
   }
-  await within(`drain ${label} document state`, api.drainDocumentReviewEdits());
-  await within(`refresh ${label} decorations`, api.refreshVisibleEditorDecorations());
-  await within(`drain ${label} decorations`, api.drainVisibleEditorDecorations());
+  await api.drainDocumentReviewEdits();
+  await api.refreshVisibleEditorDecorations();
+  await api.drainVisibleEditorDecorations();
   assert.deepEqual(
     api.getVisibleReviewedIntervals(editor.document.uri.toString()),
     [{ startLine: 0, endLineExclusive: 1 }],
