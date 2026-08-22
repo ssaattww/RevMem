@@ -270,7 +270,11 @@ async function main(): Promise<void> {
           { path: t609Paths.workspace },
           { path: t609Paths.additionalWorkspace }
         ],
-        settings: { "files.encoding": "shift_jis" }
+        settings: {
+          "files.encoding": "shift_jis",
+          "reviewRange.ignoreWhitespaceChanges": true,
+          "reviewRange.ignoreEolChanges": true
+        }
       })}\n`, "utf8");
     }
 

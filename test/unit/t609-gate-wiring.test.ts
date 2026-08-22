@@ -84,6 +84,20 @@ test("T609 runner prepares both Git fixtures before the Host launches and the Ho
   assert.doesNotMatch(hostSuite, /git\(/u);
 });
 
+test("T609 multi-root workspace fixture preserves the single-root whitespace and EOL mapping settings exactly once", async () => {
+  const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");
+  const workspaceWrite = /await writeFile\(t609Paths\.workspaceFile, `\$\{JSON\.stringify\(\{(?<body>[\s\S]*?)\}\)\}\\n`, "utf8"\);/u.exec(runner)?.groups?.body;
+  assert.ok(workspaceWrite, "T609 must write one multi-root workspace fixture");
+
+  for (const setting of [
+    '"files.encoding": "shift_jis"',
+    '"reviewRange.ignoreWhitespaceChanges": true',
+    '"reviewRange.ignoreEolChanges": true'
+  ]) {
+    assert.equal(occurrences(workspaceWrite, setting), 1, `multi-root workspace settings must contain ${setting} exactly once`);
+  }
+});
+
 test("T609 Host fixture separates active-editor lifecycle, command persistence, visible refresh, and Global completion", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
