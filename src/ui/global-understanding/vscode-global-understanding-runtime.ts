@@ -260,6 +260,8 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
   refreshWithErrorBoundary(): Promise<void>;
   invalidate(): void;
   clear(): void;
+  /** Returns the current provider-owned folder node for Extension Host assertions only. */
+  getFolderNodeForTest?(path: string): GlobalUnderstandingFolderNode | undefined;
 }
 
 type FolderAction = GlobalUnderstandingFolderNode["action"];
@@ -487,6 +489,7 @@ export const registerGlobalUnderstandingRuntime = (
     refreshWithErrorBoundary,
     invalidate,
     clear,
+    getFolderNodeForTest: (path) => [...currentFolderNodes].find((node) => node.path === path),
     dispose: () => {
       retryCancellation?.abort();
       retryCancellation = undefined;

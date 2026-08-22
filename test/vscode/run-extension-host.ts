@@ -247,6 +247,8 @@ async function main(): Promise<void> {
   };
   const t610Paths = {
     workspace: join(temporaryDirectory.path, "t610-workspace"),
+    additionalWorkspace: join(temporaryDirectory.path, "t610-second-root"),
+    workspaceFile: join(temporaryDirectory.path, "t610.code-workspace"),
     userData: join(temporaryDirectory.path, "t610-user-data"),
     extensions: join(temporaryDirectory.path, "t610-extensions")
   };
@@ -300,7 +302,10 @@ async function main(): Promise<void> {
       t609Paths.additionalWorkspace,
       t609Paths.userData,
       t609Paths.extensions,
-      ...Object.values(t610Paths)
+      t610Paths.workspace,
+      t610Paths.additionalWorkspace,
+      t610Paths.userData,
+      t610Paths.extensions
     ].map((path) => mkdir(path)));
     if (focusedT609) {
       await prepareT609Fixture(t609Paths.workspace);
@@ -320,9 +325,14 @@ async function main(): Promise<void> {
     }
     if (focusedT610) {
       await prepareT610Fixture(t610Paths.workspace);
-      await launch("t610-initial", t610Paths, join(__dirname, "t610-suite"), "t610-initial");
+      await prepareT610Fixture(t610Paths.additionalWorkspace);
+      await writeFile(t610Paths.workspaceFile, `${JSON.stringify({
+        folders: [{ path: t610Paths.workspace }, { path: t610Paths.additionalWorkspace }]
+      })}\n`, "utf8");
+      const t610LaunchPaths = { ...t610Paths, workspace: t610Paths.workspaceFile };
+      await launch("t610-initial", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-initial");
       await advanceT610Fixture(t610Paths.workspace);
-      await launch("t610-restart", t610Paths, join(__dirname, "t610-suite"), "t610-restart");
+      await launch("t610-restart", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-restart");
       return;
     }
 

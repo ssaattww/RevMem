@@ -21,7 +21,7 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
-import { setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
+import { OperationFeedback, formatOperationFailureForUser, reportActiveOperationFailure, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
 
 test("T610 scopes file opens to direct folders, preserves stopped descendants, and isolates repository roots", async () => {
   const saved: string[][] = [];
@@ -79,7 +79,6 @@ test("T610 aborts only superseded or stopped scope work", async () => {
 
 test("T610 contributes one focused package/CI gate and mutually exclusive folder actions", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const hostSuite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
     contributes: { commands: Array<{ command: string }>; configuration: { properties: Record<string, { default?: unknown }> }; menus: { "view/item/context": Array<{ command: string; when?: string }> } };
@@ -286,6 +285,34 @@ test("T610-R10 indexes many scope totals once per snapshot and fences stopped st
   assert.equal(controller.snapshots("repo", "/repo").find((snapshot) => snapshot.path === "")!.total.complete, false, "stopped evidence makes the aggregate partial without duplicating the remaining scopes");
 });
 
+test("T610-R11 cancels an actual many-entry source scope before post-cancel document I/O or publication", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-source-cancel-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await Promise.all(Array.from({ length: 257 }, (_, index) => writeFile(path.join(root, "src", `f-${index}.ts`), "x\n", "utf8")));
+  const context = { context: { kind: "branch" as const, label: "main", detail: root, headRevision: "r11", selection: { kind: "branch" as const, repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined };
+  let stopScope: () => Promise<void> = async () => undefined;
+  let documentReads = 0;
+  let workBatches = 0;
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => { documentReads += 1; return []; },
+    accountWorkBatch: () => { workBatches += 1; },
+    yieldControl: async () => { await stopScope(); }
+  });
+  stopScope = () => source.stopFolder("src");
+  source.setContext(context);
+  await source.observeFileOpen(path.join(root, "src", "f-0.ts"));
+  const snapshot = await source.recalculate();
+  assert.equal(documentReads, 0, "a stopped generation performs no post-cancel document evidence I/O");
+  assert.ok(workBatches > 0, "the deterministic fixture reaches the bounded enumerator checkpoint before cancellation");
+  assert.deepEqual(snapshot?.progress.files, [], "a cancelled source scope publishes no stale file projection");
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+  assert.ok((snapshot?.folders?.length ?? 0) <= 2, "the cancelled source retains only root and direct-scope descriptors");
+});
+
 test("T610-R7 wires the exported T610 documentation contract exactly once", async () => {
   const root = path.resolve(__dirname, "../../..");
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
@@ -304,6 +331,62 @@ test("T610-NR-007 fails closed for corrupt marker text and durable write failure
     atomicFileStore: { readText: async () => undefined, writeTextAtomically: async () => { throw Object.assign(new Error("full"), { code: "ENOSPC" }); } }
   });
   await assert.rejects(() => diskFull.saveStopped("repo", "/repo", ["src"]), FolderUnderstandingStoppedStoreError);
+});
+
+test("T610-R11 routes actual injected Node marker corruption, ENOSPC, and permission faults through exported T305 composition", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-composition-fault-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const context = { context: { kind: "branch" as const, label: "main", detail: root, headRevision: "r11", selection: { kind: "branch" as const, repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined };
+  const dependencies = (folderStoppedStore: NodeFolderUnderstandingStoppedStore) => ({
+    globalStoragePath: root,
+    storageUris: { globalStorageUri: { fsPath: root }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    folderStoppedStore,
+    yieldControl: () => undefined
+  });
+  const corrupt = createT305GlobalUnderstandingSource(dependencies(new NodeFolderUnderstandingStoppedStore(root, {
+    atomicFileStore: { readText: async () => "{corrupt", writeTextAtomically: async () => undefined }
+  })));
+  corrupt.setContext(context);
+  await assert.rejects(() => corrupt.recalculate(), /stopped-marker load failed/u);
+  for (const code of ["ENOSPC", "EACCES"] as const) {
+    const source = createT305GlobalUnderstandingSource(dependencies(new NodeFolderUnderstandingStoppedStore(root, {
+      atomicFileStore: {
+        readText: async () => undefined,
+        writeTextAtomically: async () => { throw Object.assign(new Error(`raw ${code} C:\\private\\marker.tmp`), { code }); }
+      }
+    })));
+    source.setContext(context);
+    await assert.rejects(() => source.stopFolder("src"), /stopped-marker save failed/u, `${code} remains generic at the exported composition boundary`);
+  }
+});
+
+test("T610-R11 sends an actual exported-source document-open fault to shared redacted Output and generic UI", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-raw-open-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const output: string[] = [];
+  setActiveOperationFeedback(new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined, revealLog: () => undefined,
+    appendLog: (entry) => { output.push(`${entry.event}:${entry.message ?? ""}`); }
+  }));
+  try {
+    const source = createT305GlobalUnderstandingSource({
+      globalStoragePath: path.join(root, "storage"),
+      storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+      exclusionPolicy: new ReviewFileExclusionPolicyService(), readAutoStartDescendants: () => true,
+      yieldControl: () => { throw Object.assign(new Error("C:\\private\\secret.ts EACCES"), { code: "EACCES" }); }
+    });
+    source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r11", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+    const error = await assert.rejects(() => source.observeFileOpen(path.join(root, "src", "a.ts")));
+    reportActiveOperationFailure("Global Understanding folder open", error);
+    assert.equal(formatOperationFailureForUser(error), "操作を完了できませんでした。詳細は Review Range Output を確認してください。");
+    assert.ok(output.some((line) => line.includes("details were redacted")), "the shared Output records a redacted terminal");
+    assert.equal(output.join("\n").includes("secret.ts"), false);
+    const extension = await readFile(path.join(path.resolve(__dirname, "../../.."), "src", "t305-extension.ts"), "utf8");
+    assert.match(extension, /reportActiveOperationFailure\("Global Understanding folder open", error\)/u);
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
 });
 
 test("T610-NR-007 serializes independent-window marker mutations without a lost stop", async (t) => {

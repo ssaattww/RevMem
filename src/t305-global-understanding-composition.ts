@@ -1,6 +1,6 @@
 import { NodeFolderUnderstandingStoppedStore } from "./adapters/state-repository/node-folder-understanding-stopped-store";
 import type { StorageRootLockDiagnostic } from "./adapters/state-repository/index";
-import { FolderUnderstandingScopeController } from "./application/global-understanding/index";
+import { FolderUnderstandingScopeController, type FolderUnderstandingStoppedStore } from "./application/global-understanding/index";
 import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingSourceDependencies
@@ -12,6 +12,8 @@ export interface T305GlobalUnderstandingCompositionDependencies extends T505Glob
   readonly globalStoragePath: string;
   /** Routes storage lease recovery diagnostics to the shared Review Range Output. */
   readonly notifyStorageLockDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
+  /** Test composition may inject the actual Node-backed marker store with a deterministic fault boundary. */
+  readonly folderStoppedStore?: FolderUnderstandingStoppedStore;
 }
 
 /**
@@ -25,7 +27,7 @@ export const createT305GlobalUnderstandingSource = (
 ): T505GlobalUnderstandingSource => new T505GlobalUnderstandingSource({
   ...dependencies,
   folderScopes: new FolderUnderstandingScopeController(
-    new NodeFolderUnderstandingStoppedStore(dependencies.globalStoragePath, {
+    dependencies.folderStoppedStore ?? new NodeFolderUnderstandingStoppedStore(dependencies.globalStoragePath, {
       notifyStorageLockDiagnostic: dependencies.notifyStorageLockDiagnostic
     })
   )

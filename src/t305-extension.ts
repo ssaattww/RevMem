@@ -5,7 +5,7 @@ import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
-import { composeStartupFeedback, reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
+import { composeStartupFeedback, reportActiveOperationFailure, reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
 import { VscodeOperationFeedbackHost } from "./ui/operation-feedback/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
@@ -229,6 +229,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testGlobalUnderstandingSourceRefreshError: string | undefined;
   let testGlobalUnderstandingPublishedSnapshot = false;
   let testGlobalUnderstandingPresentation: import("./ui/global-understanding/vscode-global-understanding-runtime").GlobalUnderstandingPresentationForTest | undefined;
+  const testGlobalUnderstandingUiErrors: string[] = [];
   let resolveTestGlobalUnderstandingFolderEntry: (() => void) | undefined;
   const testGlobalUnderstandingFolderEntry = new Promise<void>((resolve) => {
     resolveTestGlobalUnderstandingFolderEntry = resolve;
@@ -489,9 +490,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
     openFile: openGlobalFile,
     reportError: async (error) => {
-      await vscode.window.showErrorMessage(
-        `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const message = `Global理解率を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+      if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingUiErrors.push(message);
+      await vscode.window.showErrorMessage(message);
     },
     ...(context.extensionMode === vscode.ExtensionMode.Test ? {
       onSnapshotPublishedForTest: () => { testGlobalUnderstandingPublishedSnapshot = true; },
@@ -757,8 +758,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = "completed";
             documentChangeRefresh.request();
           },
-          async () => {
+          async (error) => {
             if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = "error";
+            reportActiveOperationFailure("Global Understanding folder open", error);
             await globalRuntime.refreshWithErrorBoundary();
             await vscode.window.showErrorMessage("Global Understanding folderを開始できませんでした。詳細は Review Range Output を確認してください。");
           }
@@ -908,6 +910,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       /** Actual TreeDataProvider hierarchy and Status Bar text captured after production rendering. */
       getGlobalUnderstandingPresentationForTest: () => testGlobalUnderstandingPresentation,
+      /** Returns a current TreeDataProvider-owned folder node without constructing a fixture target. */
+      getGlobalUnderstandingFolderNodeForTest: (folderPath: string) => globalRuntime.getFolderNodeForTest?.(folderPath),
+      /** Test-only observation of UI text emitted by the actual runtime error boundary. */
+      getGlobalUnderstandingUiErrorsForTest: () => [...testGlobalUnderstandingUiErrors],
       /** Read-only T610 split observation for actual T305 document-open lifecycle diagnostics. */
       getGlobalUnderstandingLifecycleObservationForTest: () => ({
         sourceContext: testGlobalUnderstandingSourceContext,

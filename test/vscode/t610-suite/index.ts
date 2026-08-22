@@ -19,6 +19,8 @@ interface T610ExtensionApi {
     readonly summaryDescription: string;
     readonly statusText: string;
   } | undefined;
+  getGlobalUnderstandingFolderNodeForTest(folderPath: string): unknown;
+  getGlobalUnderstandingUiErrorsForTest(): readonly string[];
   getGlobalUnderstandingLifecycleObservationForTest(): {
     readonly sourceContext: string | undefined;
     readonly acceptedDocumentOpenCount: number;
@@ -74,6 +76,7 @@ export async function run(): Promise<void> {
   );
   await recordSubphase(api, "context-ready");
   const workspace = vscode.workspace.workspaceFolders![0]!;
+  const foreignWorkspace = vscode.workspace.workspaceFolders![1]!;
   if (phase === "t610-restart") {
     const restored = await api.getGlobalUnderstandingSnapshot();
     assert.ok(restored, "restart exposes the stopped-only Tree snapshot");
@@ -98,6 +101,34 @@ export async function run(): Promise<void> {
     assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
     assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
     assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
+    const rootNode = api.getGlobalUnderstandingFolderNodeForTest("");
+    assert.ok(rootNode, "the actual TreeDataProvider owns the current root start target");
+    await vscode.commands.executeCommand("reviewRange.startGlobalUnderstandingFolder", rootNode);
+    const activeSrcNode = api.getGlobalUnderstandingFolderNodeForTest("src");
+    assert.ok(activeSrcNode, "the actual TreeDataProvider owns the current src stop target");
+    await vscode.commands.executeCommand("reviewRange.startGlobalUnderstandingFolder", activeSrcNode);
+    assert.ok(
+      api.getGlobalUnderstandingUiErrorsForTest().at(-1)?.includes("Review Range Output"),
+      "a state-mismatched actual Tree target is rejected through the generic UI boundary"
+    );
+    await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder", activeSrcNode);
+    assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    const stoppedSrcNode = api.getGlobalUnderstandingFolderNodeForTest("src");
+    assert.ok(stoppedSrcNode, "the actual TreeDataProvider refreshes the stopped resume target");
+    await vscode.commands.executeCommand("reviewRange.resumeGlobalUnderstandingFolder", stoppedSrcNode);
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await recordSubphase(api, "public-tree-actions-completed");
+    const foreignDocument = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(foreignWorkspace.uri, "src", "a.ts"));
+    await vscode.window.showTextDocument(foreignDocument, { preview: false });
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    assert.deepEqual(
+      (await api.getGlobalUnderstandingSnapshot())?.progress.files.map((file) => file.path),
+      ["src/a.ts"],
+      "an opened document from another workspace root never joins the selected owner"
+    );
+    await closeDocument(foreignDocument);
+    await recordSubphase(api, "foreign-root-isolated");
     const nested = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(workspace.uri, "src", "child", "b.ts"));
     await vscode.window.showTextDocument(nested, { preview: false });
     await api.drainGlobalUnderstandingFileOpenForTest();
@@ -111,7 +142,9 @@ export async function run(): Promise<void> {
     assert.doesNotMatch(presentation!.statusText, /%/u, "a partial repository Status Bar never exposes a percentage");
     await closeDocument(nested);
     await recordSubphase(api, "snapshot-observed");
-    await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
+    const finalStopNode = api.getGlobalUnderstandingFolderNodeForTest("src");
+    assert.ok(finalStopNode, "the final public stop uses a current provider-owned target");
+    await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder", finalStopNode);
     await api.drainGlobalUnderstandingFileOpenForTest();
     assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
     await recordSubphase(api, "public-stop-completed");
