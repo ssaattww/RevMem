@@ -9,16 +9,16 @@ task_id: T609
 branch: task/issue-81-repository-encoding
 base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
 target:
-  current_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
+  current_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
-  commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
+  commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...5501cd7b613066ac8a6300aabd75d1ff4a407069
 verification:
   capability: local_execution_available
   capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
-  technical_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
-  administrative_parent: null
-  commit: { state: committed, review_target_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf }
-  push: { state: pushed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf }
+  technical_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
+  administrative_parent: 5501cd7b613066ac8a6300aabd75d1ff4a407069
+  commit: { state: commit_pending, review_target_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069 }
+  push: { state: push_pending, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069 }
   ci_wait: { state: ci_wait_pending, required_for: merge_gate }
   final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
 authoritative_requirements:
@@ -44,27 +44,27 @@ files:
   inspected: ["reports/issue-81-t609-independent-final-review-20260822060225.md"]
   intentionally_untouched: ["Historical reports and PR body; parent owns external PR update."]
 commands:
-  - { command: npm run test:t609, purpose: focused follow-up evidence, exit_code: 0, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "70/70 passed on the final technical candidate." }
-  - { command: npm run build && npm run compile:test && npm run lint && git diff --check, purpose: static build/compile/lint/diffcheck, exit_code: 0, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "Final candidate static gates passed; Markdown-specific tooling is unsupported." }
-  - { command: npm run test:t609:extension-host, purpose: one-shot actual Host matrix, exit_code: 1, result: passed_with_held, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "single-root, prepare, restart-reopen all succeeded; only owned fixture cleanup exceeded its 10-second deadline with empty stdout/stderr." }
+  - { command: npm run test:t609, purpose: focused follow-up evidence, exit_code: 0, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "77/77 passed on the final technical candidate." }
+  - { command: npm run build && npm run lint && git diff --check, purpose: static build/compile/lint/diffcheck, exit_code: 0, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "Final candidate static gates passed; Markdown-specific tooling is unsupported." }
+  - { command: npm run test:t609:extension-host, purpose: one-shot actual Host matrix, exit_code: 0, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "single-root, prepare, restart-reopen, and owned fixture cleanup all succeeded." }
 tests:
-  - { name: T609 focused suite, phase: verification, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "70/70 final focused suite." }
-  - { name: T609 Extension Host semantic matrix, phase: verification, result: passed, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "single-root, prepare, and restart-reopen succeeded." }
-  - { name: T609 fixture cleanup, phase: verification, result: held, head_sha: 83e106d1f7a8ae54fce8a691832c760addffc9bf, evidence: "owned cleanup exceeded 10 seconds with no output; semantic phases already succeeded." }
+  - { name: T609 focused suite, phase: verification, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "77/77 final focused suite." }
+  - { name: T609 Extension Host semantic matrix, phase: verification, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "single-root, prepare, and restart-reopen succeeded." }
+  - { name: T609 fixture cleanup, phase: verification, result: passed, head_sha: 5501cd7b613066ac8a6300aabd75d1ff4a407069, evidence: "owned cleanup succeeded in the same exact Host run." }
 implementation:
   outcome: completed_pending_review
-  final_head: 83e106d1f7a8ae54fce8a691832c760addffc9bf
-  commits: [83e106d1f7a8ae54fce8a691832c760addffc9bf]
+  final_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
+  commits: [5501cd7b613066ac8a6300aabd75d1ff4a407069]
   addressed_findings:
     - { id: T609-IFR001, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Changed stable path only is re-read twice (Context/Global) with new hint; interval clear, line-count/hash, unaffected preservation and privacy-safe unresolved fixtures added." }
     - { id: T609-IFR002, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Typed cancelled/stale outcome reaches controller/coordinator; public multi-root commands assert selection/dependent refresh invariance." }
     - { id: T609-IFR003, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Containment preflight and root/final-link/outside-mkdir sibling sentinels added." }
-    - { id: T609-IFR004, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Shared T305/T405 URI boundary rejects query, fragment, unsafe authority and unsupported schemes." }
-    - { id: T609-IFR005, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Actual Host single-root, multi-root prepare, and restart-reopen semantic phases all succeeded; cleanup timeout is held separately." }
-    - { id: T609-IFR006, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "tasks/phases/handoff and PR body are synchronized to technical head 83e106d before closure." }
+    - { id: T609-IFR004, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Shared T305/T405 actual vscode.Uri boundary rejects query, fragment, unsupported schemes, and non-workspace remote authority while preserving workspace membership." }
+    - { id: T609-IFR005, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "Actual Host verifies live Shift-JIS to UTF-8 recalculation, mixed encoding isolation, rename/new/whitespace/EOL mapping, cancellation/stale nonmutation, restart without stale hint reuse, and successful cleanup." }
+    - { id: T609-IFR006, reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, disposition: addressed, evidence: "tasks/phases/handoff are synchronized to technical head 5501cd7; parent updates PR body externally after the admin commit." }
   failure_diagnostics: []
   blocked_items: []
-  summary: ["All six independent findings are addressed; route only bounded same-reviewer closure, with cleanup and exact-head CI held separately."]
+  summary: ["All six independent findings are addressed; route only bounded same-reviewer verification and closure, with exact-head CI held until the merge gate."]
 review:
   mode: not_applicable
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
@@ -76,13 +76,13 @@ review:
   reserved_report_paths: [reports/issue-81-t609-independent-review-followup-20260822063139.md]
   report_attestation: { allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [executable], no_later_commits_required: false, validation_status: pending, validation_evidence: [] }
   summary: ["No independent verdict issued."]
-report: { report_type: implementation_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-independent-review-followup-20260822063139.md], reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, attestation_head: null, pr_comments: [], summary: ["Evidence-faithful follow-up report records the one-shot Host failure and external PR body pending action."] }
+report: { report_type: implementation_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-independent-review-followup-r28-restart-mapping-20260822153933.md], reviewed_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069, attestation_head: null, pr_comments: [], summary: ["R28 records the final local T609 and actual Host Green evidence; external PR body synchronization follows the admin commit."] }
 findings: []
-held: []
+held: ["Markdown lint unsupported", "exact-head pull_request CI pending merge gate"]
 unexplored: []
 unknown: []
 not_applicable: []
-remaining_risks: ["Owned fixture cleanup exceeded 10 seconds after all semantic phases succeeded; exact-head CI and Markdown wording remain held until their gates."]
+remaining_risks: ["Exact-head pull_request CI remains pending until the merge gate; Markdown wording tooling is unsupported in this repository."]
 source_payloads: []
 extensions: []
 next_action:
