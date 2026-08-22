@@ -296,8 +296,17 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   const root = path.resolve(__dirname, "../../..");
   const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
   const runner = await readFile(path.join(root, "test", "vscode", "run-extension-host.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   for (const method of ["startGlobalUnderstandingFolderForTest", "stopGlobalUnderstandingFolderForTest", "resumeGlobalUnderstandingFolderForTest"]) {
     assert.equal((activation.match(new RegExp(`${method}:`, "gu")) ?? []).length, 1, `${method} is exported once from actual activation`);
   }
   assert.equal((runner.match(/process\.argv\.includes\("--t610"\)/gu) ?? []).length, 1, "the focused Host selector is registered once");
+  const fixturePreparation = runner.indexOf("await prepareT610Fixture(t610Paths.workspace);");
+  const initialLaunch = runner.indexOf('await launch("t610-initial"');
+  assert.ok(fixturePreparation >= 0 && fixturePreparation < initialLaunch, "the runner owns Git fixture preparation before the initial Host launch");
+  const startupDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");
+  const contextRefresh = suite.indexOf('await vscode.commands.executeCommand("reviewRange.refreshContext");');
+  const documentOpen = suite.indexOf("await vscode.workspace.openTextDocument");
+  assert.ok(startupDrain >= 0 && startupDrain < contextRefresh && contextRefresh < documentOpen, "the Host drains and explicitly establishes Current Context before opening its fixture document");
+  assert.doesNotMatch(suite, /setTimeout/gu, "the T610 Host fixture uses explicit lifecycle drains instead of fixed sleeps");
 });

@@ -38,7 +38,7 @@ Lを超える見込みになった場合は再分解する。
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review findings修正中）
-- 次の工程: T610 Host lifecycle R3、同reviewer finding closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
+- 次の工程: T610 Host snapshot publication R4、同reviewer finding closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -186,7 +186,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
 - T609: PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み。
-- T610: 通常review findingsのlocal修正はT610 40/40、legacy4 37/37、T607 81/81、static全Green。actual HostはCurrent Context確立前のopenで停止したため、R3でfixture lifecycleを限定修正する。
+- T610: Host R3はCurrent Context readyまで通過後、actual openのGlobal snapshotが未生成。R4でopen lifecycle、source refresh、snapshot publicationの境界を限定する。
 - T608: T609・T610完了後に実施する。
 
 ### 終了チェックポイント

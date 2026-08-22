@@ -658,6 +658,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         "review-contexts": async () => undefined
       })
     : undefined;
+  let testGlobalUnderstandingFileOpen = Promise.resolve();
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       if (context.extensionMode === vscode.ExtensionMode.Test) {
@@ -675,10 +676,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.observe(toEditSnapshot(document));
-        void globalSource.observeFileOpen(document.uri.fsPath).then(
+        const observedFileOpen = globalSource.observeFileOpen(document.uri.fsPath).then(
           () => documentChangeRefresh.request(),
           async (error) => { await globalRuntime.refreshWithErrorBoundary(); await vscode.window.showErrorMessage(`Global Understanding folderを開始できませんでした: ${error instanceof Error ? error.message : String(error)}`); }
         );
+        if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpen = observedFileOpen;
+        void observedFileOpen;
       }
     }),
     vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
@@ -791,6 +794,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return {
       ...baseApi,
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
+      /** Test-mode T610 drain for the registered document-open lifecycle. */
+      drainGlobalUnderstandingFileOpenForTest: async () => {
+        await testGlobalUnderstandingFileOpen;
+        await globalRuntime.refreshWithErrorBoundary();
+      },
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getT305WorkspaceUriPathForTest: (uri: vscode.Uri) => workspaceFilesystemPath(uri),
       getT405WorkspaceUriPathForTest: (uri: vscode.Uri) =>
@@ -813,7 +821,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       /** Reuses the registered watcher path without Extension Host fixture I/O. */
       notifyGlobalUnderstandingFolderEntryForTest: async (uri: vscode.Uri) => {
         requestRefreshForFolderEntry(uri);
-        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+        documentChangeRefresh.cancel();
+        await globalRuntime.refreshWithErrorBoundary();
       },
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
         testReviewContextsRepositorySelection = selection;
