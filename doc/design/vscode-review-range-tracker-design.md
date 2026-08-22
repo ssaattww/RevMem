@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev5
+# VS Code レビュー範囲トラッカー 設計書 rev6
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -15,7 +15,7 @@
 - 編集、commit、rename等による変更箇所だけの未確認化
 - 過去の確認をリポジトリ単位で保持するGlobal確認済み状態
 - PRの追加・削除行を基準にした確認進捗
-- リポジトリ全体のGlobal理解率
+- folder階層・scope単位のGlobal理解率
 - GitHub障害、オフライン、Git未導入、非Git環境でのフォールバック
 - original側とmodified側を扱うVS Code diff editor
 
@@ -555,18 +555,34 @@ interface PullRequestEffectiveProgress {
 ### 11.3 Global理解率
 
 ```text
-Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非空行数
+folder理解率 = 現在有効なGlobal確認済み非空行数 / 当該folder scopeで現在完全に把握できる非空行数
 ```
 
 コメント行も非空なら対象とする。PR進捗とは別表示する。確認操作はGlobalへ自動反映し、解除操作は参照数に関係なくGlobalからも解除する。
 
-Global集計用のrepository列挙結果は次の3分類を持つ。
+Global Understandingはrepository rootを起動時、refresh時、またはfile open時に自動再帰走査しない。通常contextでcontentを読む契機は、開いたfileの所属folder scopeの開始、またはユーザーがfolder rowで明示した開始だけとする。PR contextのimmutable PR snapshotは、PR進捗の既存契約を維持するが、Global Understandingのためだけにrepository全体へ拡張しない。
 
-- `included`: Global分母候補となるfile。各fileの非空行数だけを分母へ加算する。
-- `excluded`: 実際にfileとして列挙した後、binary、hintなしのfatal UTF-8 decodeで`invalid-encoding`となったfile、またはopened document hintの`unsupported-encoding`・`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
+folder scopeは`Repository ID + canonical repository root URI + canonical repository-relative folder path`で識別する。repository root自身は空pathのroot scopeとし、root直下の`.sln`等のfileはこのscopeにだけ属する。URI scheme、authority、path semantics、canonical pathが異なるmulti-rootは同じremote identityでも別scope identityとし、別checkoutまたはRemote workspaceの停止状態を混在させない。
+
+fileを開いたときは、そのfileを含むfolder scopeを開始し、そのfolder直下のfileだけを読み取る。兄弟folder、その配下file、repository root全体を開始・読込・再帰列挙してはならない。root直下fileを開いたときだけroot scopeの直下fileを開始する。`reviewRange.globalUnderstanding.autoStartDescendants`がtrueの場合だけ、開始したfolderのdescendant scopeも再帰的に開始して読み取る。既定値falseではdirect fileだけで止める。この設定変更は次回以降のfile openにだけ適用し、既存のinactive scopeを開始せず、既にactiveなscopeを停止せず、停止済みscopeを再開しない。
+
+folder rowの`開始`は、選択folderとそのsubtreeを明示的に開始する。開始中に見つかったpersisted stopped descendantは読込も再帰もせず、そのnodeをstoppedとして残す。これにより、共有folderを開始しても無関係な兄弟projectはinactiveまたはstoppedのままであり、兄弟へ走査を拡張しない。
+
+各scopeは次の状態を持つ。`inactive`はこのsessionで未開始、`running`はcurrent generationを読込中、`active`はcurrent revisionで完全な結果を持ち変更に追従する状態、`stopped`は明示停止済み、`failed`はcurrent generationを完全化できなかった状態である。folder rowの同一action位置は、`inactive`または`failed`では`開始`、`running`または`active`では`停止`、`stopped`では`再開`を表示する。停止は対象scope以下のcurrent generationをabortし、結果をcurrentとしてpublishせず、scopeをrepository-local persisted stopped markerへ追加する。再開はそのmarkerを削除し、current revision、path、除外policy、content evidenceを再検証して新generationとして開始する。停止中folderのfile openは自動再開しない。
+
+stopped markerだけを永続化する。restartではmarkerを復元して強調表示する一方、active/running/failed resultは復元も自動再走査もしない。marker不在のscopeはinactiveから始める。markerのkey、schema version、canonical path、repository root identityが不正または照合不能なら、そのmarkerを採用せず当該scopeをinactiveとしてfail closedに扱い、別scopeへ転用しない。
+
+scopeのdirect resultは次の3分類を持つ。
+
+- `included`: 当該scope直下で実際に読み取り、現在revisionでline-reviewableと確定したfile。各fileの非空行数だけを分母へ加算する。
+- `excluded`: 実際にfileとして読込または判定した後、binary、hintなしのfatal UTF-8 decodeで`invalid-encoding`となったfile、opened document hintの`unsupported-encoding`・`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
 - `excludedDirectories`: 共通除外policyまたは`.gitignore`により再帰前にpruneしたdirectory。1 directoryにつき1件だけ保持し、配下fileへ展開・推定しない。
 
 `included`、`excluded`、`excludedDirectories`はlocaleに依存しないrepository-relative pathのcode-unit昇順で、各配列内に重複pathを持たない。pruneしたdirectoryと配下fileはGlobal理解率の分子・分母へ寄与しない。directory件数は列挙診断としてfile除外数とは別に扱い、除外file数へ加算しない。
+
+folder nodeのcurrent totalは、currentでcompleteなdirect file totalと、currentでcompleteな直下child folder totalの和とする。child folderは自身の理解率を表示する。直下childがinactive、stopped、running、failed、cancelled、またはcurrent revisionで未completeなら、親nodeは`partial`であり、把握済み部分のcountを表示してもrepositoryまたはfolder全体の分母・百分率であるかのように表示してはならない。parentがactiveでも、child scopeがinactive/stopped/incompleteならcompleteへ遷移しない。全直下childがcurrentかつcompleteである場合だけ親はcomplete totalと理解率を表示する。
+
+active scopeに属するdirect file、directory entry、Git/workspace revision、opened-document encoding、除外設定、またはactive childの結果が変化したときは、当該scopeと必要なancestor aggregateを新generationで再計算する。この通知はinactive/stopped siblingを開始せず、停止markerを越えて再帰しない。各I/O、bounded stage、cache write、tree/status publishの前後でgenerationとAbortSignalを照合し、stop、restart、newer change、dispose、failure、cancel後の古い結果をpublishしない。cancelledまたはfailed scopeとそのancestorはcomplete denominatorを保持せずpartialへ戻す。
 
 ### 11.4 表示優先順位
 
@@ -822,14 +838,19 @@ rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「�
 
 表示項目:
 
-- リポジトリ全体の理解率
-- 確認済み非空行数
-- 対象非空行数
-- fileごとの理解率
+- repository rootとfolderの階層tree
+- complete scopeの理解率、確認済み非空行数、対象非空行数
+- direct fileとchild folderごとの理解率
+- `inactive`、`running`、`active`、`stopped`、`failed`、`partial`のscope状態
+- folder rowの同一位置に置く`開始`、`停止`、`再開`action
 - 除外file数
 - pruneした除外directory数（診断情報）
 
-除外file数は列挙結果の`excluded.length`だけを表示し、`excludedDirectories.length`を加算しない。pruneした除外directory数は別の診断項目として表示する。PR Progressとは別sectionで表示する。
+初期treeはrepository全体をcompleteとして表示しない。file openで発見したfolderへのancestor chain、明示開始したfolder、開始scopeのdirect child folderだけを表示し、未開始nodeを`inactive`として表示できる。inactive sibling folderを表示するためのdirectory entry取得は許可するが、そのdescendant file本文を読まない。root scopeはroot直下fileを開くかroot rowで明示開始した場合だけ内容を計算する。
+
+`running`はspinner、`stopped`は視認性を高めたlabelと`再開`action、`failed`はgenericな失敗表示と`開始`actionを持つ。停止済みまたはinherited停止により未計算のchildを含むparentは`partial`を明示し、complete ratioを表示しない。partial nodeのcountは「現在把握済み」としてlabel付けし、未知のinactive/stopped/incomplete childを分母ゼロまたは既知分母だけへ読み替えない。selection、file open、action targetはrepository root identity、canonical scope path、current generationへ束縛し、stale nodeまたは別multi-root nodeのactionを拒否する。
+
+除外file数は開始済みscopeの列挙結果の`excluded.length`だけを表示し、`excludedDirectories.length`を加算しない。pruneした除外directory数は別の診断項目として表示する。PR Progressとは別sectionで表示する。
 
 ### 16.6 Editor decoration
 
@@ -868,8 +889,11 @@ operation labelはpath、repository名、PR title等を含まないgenericな文
 - contextを選択する
 - Global layerを切り替える
 - 表示context layerを管理する
+- Global Understanding folderを開始する
+- Global Understanding folderを停止する
+- Global Understanding folderを再開する
 
-commandはCommand Paletteと適切なeditor context menuへ登録する。
+folder actionはTree rowの同一action位置をprimary UIとし、Command Paletteでは選択中のcurrent-generation folder nodeだけを受け付ける。commandはCommand Paletteと適切なeditor context menuへ登録する。
 
 ### 16.9 主な設定
 
@@ -880,6 +904,7 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
   "reviewRange.ignoreEolChanges": false,
   "reviewRange.showGutterIcon": true,
   "reviewRange.showOverviewRuler": false,
+  "reviewRange.globalUnderstanding.autoStartDescendants": false,
   "reviewRange.exclude": [
     "**/.git/**",
     "**/node_modules/**",
@@ -895,6 +920,8 @@ commandはCommand Paletteと適切なeditor context menuへ登録する。
 ```
 
 `historyRetentionDays = 0`は無期限保持を表す。
+
+`reviewRange.globalUnderstanding.autoStartDescendants`はbooleanであり、file openが開始する所属folder scopeのdeeper descendantを自動開始・読込するかを制御する。既定値falseは、開いたfileの所属folder直下fileだけを対象にして、privacyとExtension Host負荷を優先する。trueでも停止済みdescendantは開始しない。これはGlobal layer表示設定とは独立であり、layerを非表示にしてもscope開始・停止の永続状態を変更しない。
 
 ### 16.10 Output log
 
@@ -932,6 +959,7 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 - 保存失敗: 成功表示せず再試行
 - PR進捗取得失敗: 進捗を表示せず、local Git・GitHub・cache等の取得attemptと最終原因をOutputへ記録
 - Global/Review Contexts等のfail-closed処理: UI上は不確実な結果を採用せず、failureをOutputへ記録してactivity statusを終了する
+- folder scope開始・再開失敗: 当該scopeとancestor aggregateを`failed`または`partial`へ戻し、未complete totalをcompleteとして表示しない。停止・cancel・stale generationはERRORとして扱わず、古い結果をpublishしない
 
 ## 18. セキュリティとプライバシー
 
@@ -942,6 +970,8 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 - logへtoken、credential、source本文、stack traceを出さない
 - operation labelはrepository path、repository名、PR titleを含まないgenericな文言にする
 - private repositoryのpathやPR titleを診断logへ出さない
+- folder scopeの開始は、file open時の所属folder直下file、またはユーザーが明示開始したfolder subtreeだけにcontent readを限定する。設定既定値とrestartはrepository全体の自動読込を発生させない
+- persisted stopped markerはrepository root identityとcanonical relative folder pathだけを保持し、source本文、file一覧、credential、未開始folderのcontent classificationを永続化しない
 
 ## 19. パフォーマンス
 
@@ -969,6 +999,8 @@ PR Progress と Global Understanding の Tree projection は、完全な入力 s
 
 各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。
 
+folder scopeの開始・再開・変更追従も同じbounded stageを使用する。file openのimplicit startは所属folderのdirect fileだけをwork itemにし、設定で許可したdescendantまたはexplicit subtree startだけがchild folderをenqueueできる。stopped descendantとinactive siblingはwork queueへ追加しない。scopeごとのgeneration、AbortSignal、direct result、child aggregateを分離し、child completionでparentを再集計するときも本文再読込ではなくcurrent child resultを使用する。stop、cancel、newer change、disposeで失効したstageはcache、tree、status、parent totalのいずれにもpublishしない。
+
 通常 editor の selection-to-decoration は visible editor のみを対象とし、同一 editor の最新generationだけを適用する。descriptor/hash、interval validation・normalization、merge-sort、intersection/subtraction、decoration append、host option/apply のすべてを同じgeneration-aware item budgetで協調実行し、各checkpointでsupersessionを拒否する。100ms は wall-clock-only の自動gateにせず、装飾作成・適用までの最大同期 work と visible-editor 数を決定的な budget として検証する。実測は advisory evidence とし、環境、workload、回数、before/after 値を implementation report へ記録する。
 
 性能回帰 harness は少なくとも 10,000 changed-line PR、large repository aggregation、多数の reviewed interval、visible-editor decoration を同じ fixture generation と work/count budget で再現する。benchmark は時間だけで成否を決めず、stage 数、stage 当たりの最大 item 数、yield 回数、stale-generation の非公開、memory を不必要に二重保持しないことを検証する。validation、sorting、projection、status summary、decoration descriptor/hash、interval model、host apply を含む各同期段階は同じ明示budgetに収める。
@@ -991,6 +1023,12 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - opened Shift-JIS、UTF-8、UTF-8 BOM documentと同一hintでdecodeしたGit revision blobのmapping、同一repository内のmixed encoding、new fileとhintなしfallback
 - encoding変更時のfile単位再計算、一意rename時だけのhint継承、copy・曖昧renameでのhint非継承、whitespace/EOL mappingとの組合せ
 - Global列挙結果のfile/directory分離、除外数単位、安定sort、重複path禁止
+- file openが所属folderのdirect fileだけを開始し、root fileだけがroot scopeを開始すること。default設定でroot-wide scan、兄弟folder、未開始descendantのcontent readが起きないこと
+- `autoStartDescendants`のtrue/false、設定変更が既存scopeを開始・停止・再開しないこと、explicit folder startが停止済みdescendantをskipすること
+- folder scope identityのcanonical path、repository root URI、path semantics、multi-root別離、restart後のstopped marker復元とactive scope非復元
+- `inactive`/`running`/`active`/`stopped`/`failed`遷移、同一row actionの開始・停止・再開、再開時のrevision・除外policy再検証、停止時のstale publication拒否
+- parent totalがdirect fileとcomplete child totalの和であること、inactive/stopped/running/failed childを持つparentがpartialとなりcomplete denominator・百分率を表示しないこと
+- direct file、active child、Git/workspace revision、encoding hint、除外設定の変更時にactive scopeとancestorだけを再計算し、inactive/stopped siblingを開始しないこと
 - 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
 - `git-commit` / `empty` descriptor union、source dispatch、empty documentの外部port非委譲
 - POSIX特殊path、Windows禁止path・予約デバイス名
@@ -1019,6 +1057,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - invalid UTF-8 blob、binary判定がdecodeより先行すること、hintなしfallback、unsupported encoding
 - Shift-JIS、UTF-8、UTF-8 BOM混在repositoryで各fileを独立に取得・mappingし、1 fileのencoding失敗が他fileの結果を停止しないこと
 - Gitなしfolderと複数repository
+- nested folder、root file、shared folder、停止済みdescendantを含むtemporary repositoryで、explicit subtree startのscope境界、停止・再開、cancel後stale resultの非公開、multi-root restartを確認すること
 
 ### 20.3 VS Code Extension Host
 
@@ -1033,6 +1072,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - `TextDocumentContentProvider`のdelegation
 - active editorなし・非Git editorでもopened Git workspaceを解決してCurrent ContextとReview Contextsを更新できること
 - single/multi-root、Quick Pick取消、stale root、remote/virtual URIのfail-closed、Shift-JIS opened file、mixed encoding、rename、新規file、whitespace/EOL、encoding変更、restartをExtension Hostで確認すること
+- Global Understanding folder rowの開始・停止・再開、file openによるdirect scope開始、default privacy境界、partial parent表示、running中stop、restart後のstopped強調とfile open非再開を確認すること
 
 ### 20.4 Failure
 
@@ -1042,6 +1082,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - stale lock、複数window競合
 - storage root identity変化または既存symlink/junction/reparseの検出時はfail closedし、current stateを推測・公開しない
 - PR Progress取得失敗が無言で非表示にならずOutputへ診断されること
+- folder scopeのread/enumeration、persisted markerのdecode、child aggregate、configuration refresh、cancelが失敗または競合しても、別scopeへの状態漏出、root-wide fallback scan、stale completionの公開を行わないこと
 
 CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
 
