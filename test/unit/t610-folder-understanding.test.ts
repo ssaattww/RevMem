@@ -651,3 +651,25 @@ test("T610-R13 registers startup Global work outside activation and exposes its 
   const firstMarker = suite.indexOf('recordT610HostSubphaseForTest("context-ready")');
   assert.ok(activationDrain >= 0 && activationDrain < firstMarker, "the Host drains startup Global work before its first marker or assertion");
 });
+
+test("T610-R14 settles Current Context startup before queuing non-blocking startup Global work", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  const currentContextRuntime = activation.indexOf("const currentContextRuntime = registerCurrentContextRuntime(");
+  const queuedGlobalStartup = activation.indexOf("const startupGlobalUnderstanding = currentContextRuntime.startupRefresh.then(");
+  assert.ok(currentContextRuntime >= 0 && queuedGlobalStartup > currentContextRuntime, "startup Global work is registered only after the production Current Context startup owner exists");
+  assert.match(
+    activation,
+    /currentContextRuntime\.startupRefresh\.then\(\(\) =>\s*observeStartupGlobalUnderstandingDocuments/u,
+    "startup Global observation waits for Current Context startup settlement"
+  );
+  assert.doesNotMatch(activation, /await currentContextRuntime\.startupRefresh/gu, "activation never waits for Current Context or startup Global completion");
+  const currentContextDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");
+  const globalStartupDrain = suite.indexOf("await api.drainStartupGlobalUnderstandingForTest();");
+  const firstMarker = suite.indexOf('recordT610HostSubphaseForTest("context-ready")');
+  assert.ok(
+    currentContextDrain >= 0 && currentContextDrain < globalStartupDrain && globalStartupDrain < firstMarker,
+    "the Host settles Current Context before draining its dependent startup Global work"
+  );
+});

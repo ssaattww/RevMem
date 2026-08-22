@@ -501,20 +501,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     } : {})
   });
 
-  // Activation can precede this extension's document-open listener. Observe the
-  // already-open documents through the same production source and coalesce one
-  // scoped refresh after the observations settle.
-  const startupGlobalUnderstanding = observeStartupGlobalUnderstandingDocuments(
-    vscode.workspace.textDocuments,
-    (document) => globalSource.observeFileOpen(document.uri.fsPath),
-    () => globalRuntime.refreshWithErrorBoundary()
-  ).catch((error: unknown) => {
-    reportActiveOperationFailure("Global Understanding startup", error);
-  });
-  if (context.extensionMode === vscode.ExtensionMode.Test) {
-    testStartupGlobalUnderstanding = startupGlobalUnderstanding;
-  }
-
   const prRepository = runtimePort.reviewStateRepository;
   const prHistory = runtimePort.reviewHistoryRecorder;
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
@@ -638,6 +624,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       );
     }
   );
+
+  // Startup-open Global work needs the selected Current Context owner. Queue it
+  // behind the contained startup refresh without making activation wait for either.
+  const startupGlobalUnderstanding = currentContextRuntime.startupRefresh.then(() =>
+    observeStartupGlobalUnderstandingDocuments(
+      vscode.workspace.textDocuments,
+      (document) => globalSource.observeFileOpen(document.uri.fsPath),
+      () => globalRuntime.refreshWithErrorBoundary()
+    )
+  ).catch((error: unknown) => {
+    reportActiveOperationFailure("Global Understanding startup", error);
+  });
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    testStartupGlobalUnderstanding = startupGlobalUnderstanding;
+  }
 
   let testReviewContextsRepositorySelection: "cancel" | "stale" | undefined;
   let testReviewContextsRepositorySelectionRequestCount = 0;

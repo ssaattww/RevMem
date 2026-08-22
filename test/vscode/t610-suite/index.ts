@@ -64,8 +64,8 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
   assert.ok(extension, "T610 requires the contributed extension");
   const api = await extension.activate() as T610ExtensionApi;
-  await api.drainStartupGlobalUnderstandingForTest();
   await api.drainCurrentContextStartupForTest();
+  await api.drainStartupGlobalUnderstandingForTest();
   await vscode.commands.executeCommand("reviewRange.refreshContext");
   assert.notEqual(
     api.getCurrentContextCancellationSnapshotForTest().selectedContext,
