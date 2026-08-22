@@ -198,6 +198,26 @@ test("T609 Host waits for the single handled startup Current Context refresh bef
   assert.doesNotMatch(extension, /void currentContextRuntime\.refresh\(\)\.catch/u);
 });
 
+test("T609 multi-root Current Context commands retain their public path without local settle-time wrappers", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
+  assert.ok(multiRootStart >= 0);
+  const multiRootPhase = hostSuite.slice(multiRootStart);
+
+  for (const command of [
+    'await vscode.commands.executeCommand("reviewRange.refreshContext");',
+    'await vscode.commands.executeCommand("reviewRange.refreshContext");',
+    'await vscode.commands.executeCommand("reviewRange.selectContext");'
+  ]) {
+    assert.match(multiRootPhase, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+  assert.doesNotMatch(multiRootPhase, /within\("seed multi-root Current Context"/u);
+  assert.doesNotMatch(multiRootPhase, /within\("multi-root Current Context cancel"/u);
+  assert.doesNotMatch(multiRootPhase, /within\("multi-root Current Context stale"/u);
+  assert.match(multiRootPhase, /assert\.equal\(api\.getCurrentContextSelectionRequestCountForTest\(\), 1/u);
+  assert.match(multiRootPhase, /assert\.deepEqual\(api\.getCurrentContextCancellationSnapshotForTest\(\), currentBefore/u);
+});
+
 test("T609 Host reaches normal-editor review through its public command", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
