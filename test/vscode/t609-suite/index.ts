@@ -229,7 +229,7 @@ export async function run(): Promise<void> {
   }
 
   await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
-  await within("committed rename/new/whitespace/EOL mapping", assertMappedGitTransitions(folder, api));
+  await assertMappedGitTransitions(folder, api);
   api.setCurrentContextSelectionForTest("first");
   await within("seed multi-root Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
   assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 1, "the explicit refresh command must request selection");

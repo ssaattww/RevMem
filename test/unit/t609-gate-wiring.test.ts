@@ -213,6 +213,37 @@ test("T609 runner seeds persisted mapping state before Host activation through p
   assert.match(hostSuite, /assertMappedGitTransitions\(folder, api\)/u);
 });
 
+test("T609 mapped Git-transition fixture keeps only per-file-operation deadlines without an overall mapping deadline", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const mappingStart = hostSuite.indexOf("const assertMappedGitTransitions = async");
+  const mappingEnd = hostSuite.indexOf("/** Exercises the T609 gate", mappingStart);
+  const prepareStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
+  const mappingInvocationEnd = hostSuite.indexOf('api.setCurrentContextSelectionForTest("first")', prepareStart);
+  assert.ok(mappingStart >= 0 && mappingEnd > mappingStart && prepareStart >= 0 && mappingInvocationEnd > prepareStart);
+
+  const mappingFixture = hostSuite.slice(mappingStart, mappingEnd);
+  const multiRootMappingInvocation = hostSuite.slice(prepareStart, mappingInvocationEnd);
+  for (const substep of [
+    "await within(`open mapped ${name}`",
+    "await within(`show mapped ${name}`",
+    "await within(`refresh mapped ${name}`",
+    "await within(`drain mapped ${name}`"
+  ]) {
+    assert.ok(mappingFixture.includes(substep), `each mapped file must retain its ${substep} deadline`);
+  }
+  assert.doesNotMatch(
+    mappingFixture,
+    /within\("committed rename\/new\/whitespace\/EOL mapping"/u,
+    "the mapping fixture itself must not add an overall deadline around independently bounded operations"
+  );
+  assert.doesNotMatch(
+    multiRootMappingInvocation,
+    /await within\("committed rename\/new\/whitespace\/EOL mapping", assertMappedGitTransitions/u,
+    "the multi-root phase must not apply a second overall deadline around the bounded mapping fixture"
+  );
+  assert.match(multiRootMappingInvocation, /await assertMappedGitTransitions\(folder, api\);/u);
+});
+
 test("T609 production activation does not retain the obsolete Test-only mapping seed", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
