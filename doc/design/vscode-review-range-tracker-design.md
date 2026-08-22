@@ -342,7 +342,13 @@ git cat-file blob <blob-id>
 
 stdoutをraw byte streamとして取得し、blob本文へ`execFile.maxBuffer`を適用しない。4 MiBを超える通常textも取得可能とする。
 
-complete byte sequenceを取得後、fatal UTF-8 decoderで1回だけdecodeする。不正UTF-8をreplacement characterへ変換せず`invalid-encoding`とし、行単位レビュー対象外にする。
+binary判定はdecodeより先に行う。binaryであれば本文をtextへ変換せず`binary`として行単位レビュー対象外にする。
+
+VS Code 1.125以降で開かれたfilesystem-backed `TextDocument`には、そのfileの`encoding`をhintとして保持する。live document本文は同一documentの`getText()`を使用する。Git revisionのcomplete raw byte sequenceは、対応するhintがありVS Codeが受理する場合だけ、同じhintを指定したVS Code `workspace.decode`で1回だけdecodeする。UTF-8 BOMはこのhintを通じてVS Codeのdecode結果に従う。これにより同じrepository内でShift-JIS、UTF-8、UTF-8 BOMが混在してもfileごとに独立してrevision mappingできる。
+
+opened documentのhintがないfileは、従来どおりfatal UTF-8 decoderで1回だけdecodeする。この保守的fallbackはunknown fileを推測して別encodingへdecodeしないための境界であり、Shift-JIS等のhintなしfileをreplacement characterへ変換して対象化してはならない。hintがunsupported、または指定decoderでraw byte列が完全にdecodeできない場合は`unsupported-encoding`または`invalid-encoding`とし、当該fileだけを行単位レビュー対象外またはunresolvedとして隔離する。いずれの場合も他fileのmapping、Review Contexts、PR進捗、Global集計を失敗させない。
+
+hintはrepository identityとstable file identityに結び付ける。一意なrenameまたはmoveでidentityを保持できるときだけ引き継ぎ、copy、new file、分割、統合、複数候補renameには引き継がない。document encodingまたは対応設定が変化した場合は、旧hintのdecoded text、content hash、line mappingを使用せず対象fileを再計算する。restart後はopen documentから再観測するまでhintを使わない。source本文、path、credential、encoding名を含む個別diagnosticをOutput logへ出してはならない。
 
 Git objectから再取得可能な本文には固定の4 MiB上限を設けない。巨大入力の追加制御は性能計測に基づいて定義する。
 
@@ -387,7 +393,7 @@ foreground `open`がpollより新しいsnapshotを観測した場合は、foregr
 
 ### 10.3 Rename・move・delete
 
-一意なrenameとdirectory moveはfile identityを追従する。renameと同時に変更された行は未確認にする。
+一意なrenameとdirectory moveはfile identityと、そのfileにのみ結び付くopened document encoding hintを追従する。renameと同時に変更された行は未確認にする。encodingが変化したrenameは、変更後hintでrevision本文を再decodeし、確認済み範囲を推測継承しない。
 
 コピー、分割、統合、複数候補は自動追従せず新規未確認とする。deleteは現在表示から除外するが、履歴とoriginal側review targetを保持できる。
 
@@ -557,7 +563,7 @@ Global理解率 = 現在有効なGlobal確認済み非空行数 / 対象全非�
 Global集計用のrepository列挙結果は次の3分類を持つ。
 
 - `included`: Global分母候補となるfile。各fileの非空行数だけを分母へ加算する。
-- `excluded`: 実際にfileとして列挙した後、binary、fatal UTF-8 decodeで`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
+- `excluded`: 実際にfileとして列挙した後、binary、hintなしのfatal UTF-8 decodeで`invalid-encoding`となったfile、またはopened document hintの`unsupported-encoding`・`invalid-encoding`となったfile、共通除外policy、`.gitignore`、symbolic link等で除外したfile。除外file数はこの件数とする。
 - `excludedDirectories`: 共通除外policyまたは`.gitignore`により再帰前にpruneしたdirectory。1 directoryにつき1件だけ保持し、配下fileへ展開・推定しない。
 
 `included`、`excluded`、`excludedDirectories`はlocaleに依存しないrepository-relative pathのcode-unit昇順で、各配列内に重複pathを持たない。pruneしたdirectoryと配下fileはGlobal理解率の分子・分母へ寄与しない。directory件数は列挙診断としてfile除外数とは別に扱い、除外file数へ加算しない。
@@ -578,7 +584,8 @@ Global集計用のrepository列挙結果は次の3分類を持つ。
 常に対象外:
 
 - binary
-- valid UTF-8としてdecodeできないtext blob
+- hintなしでvalid UTF-8としてdecodeできないtext blob
+- opened document hintがunsupportedまたはinvalidとなるtext blob
 - `.git`配下
 - 本拡張が管理しない仮想document
 
@@ -745,6 +752,8 @@ Activity Barへ「Review Range」containerを追加し、次のviewを表示す�
 - GitHub再接続
 - 現在状態の再計算
 
+Extension activationおよびactive editor変更に伴うCurrent Context更新は非対話で実行する。保存済みCurrent Contextまたは一意な候補を復元できる場合だけ表示を更新し、候補0件または複数候補ではQuick Pickを開かず、既存のCurrent Contextと依存viewを維持する。ユーザーが現在状態の再計算またはCurrent Context選択commandを実行した場合だけ、複数候補のQuick Pickを表示する。取消または選択後の再検証でstaleとなった場合も、受理済みの表示・選択・依存viewを変更しない。
+
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
 PR再検出でGitHub障害、候補0件、または候補選択取消となった場合は、repositoryとimmutable HEADごとに明示したbranch/no-PR選択を表示設定として保存する。この選択は同じHEADの保存済みopen PRが1件だけ存在しても自動推測を抑止し、通常editorの確認操作と装飾はbranch contextへ戻す。成功したPR選択は同じrepository/HEADのbranch/no-PR選択を置換する。表示設定はReview State、review history、PR metadata、Global stateを変更しない。
@@ -908,7 +917,8 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 | `missing-context` | contextからrepository rootを解決できない |
 | `missing-revision` | immutable commitがない、またはcommitでない |
 | `missing-file` | commitはあるがexact pathのblobがない |
-| `invalid-encoding` | blobがvalid UTF-8でない |
+| `invalid-encoding` | hintなしのblobがvalid UTF-8でない、またはopened document hintで完全にdecodeできない |
+| `unsupported-encoding` | opened documentのencoding hintをVS Code decodeへ安全に渡せない |
 
 権限、repository破損、safe.directory、timeout、I/O、実行file欠落はstable codeへ畳み込まない。invocation、exit code、stdout、stderrまたはprocess errorを保持する。
 
@@ -977,6 +987,9 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - PR/file進捗、Global混入防止、除外
 - raw PR進捗とline-reviewability適用後のeffective進捗の型・意味分離
 - binary、不正encoding、未対応encoding nodeのselection resultとtext diff host非呼出し
+- active editorなし・非Git editorでのrepository候補解決、単一root・multi-rootの決定順、Quick Pick取消、stale root、path変換不能なremote/virtual URIのfail-closed
+- opened Shift-JIS、UTF-8、UTF-8 BOM documentと同一hintでdecodeしたGit revision blobのmapping、同一repository内のmixed encoding、new fileとhintなしfallback
+- encoding変更時のfile単位再計算、一意rename時だけのhint継承、copy・曖昧renameでのhint非継承、whitespace/EOL mappingとの組合せ
 - Global列挙結果のfile/directory分離、除外数単位、安定sort、重複path禁止
 - 仮想URI round-trip、collision、canonical性、上限、不正UTF-8
 - `git-commit` / `empty` descriptor union、source dispatch、empty documentの外部port非委譲
@@ -1003,7 +1016,8 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - POSIX特殊filename
 - 4 MiB直下・直上blob
 - 4 MiBを超えるrepository/PR complete diff
-- invalid UTF-8 blob
+- invalid UTF-8 blob、binary判定がdecodeより先行すること、hintなしfallback、unsupported encoding
+- Shift-JIS、UTF-8、UTF-8 BOM混在repositoryで各fileを独立に取得・mappingし、1 fileのencoding失敗が他fileの結果を停止しないこと
 - Gitなしfolderと複数repository
 
 ### 20.3 VS Code Extension Host
@@ -1017,6 +1031,8 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - restart後の復元
 - actual `vscode.Uri`のparse・serialize・decode
 - `TextDocumentContentProvider`のdelegation
+- active editorなし・非Git editorでもopened Git workspaceを解決してCurrent ContextとReview Contextsを更新できること
+- single/multi-root、Quick Pick取消、stale root、remote/virtual URIのfail-closed、Shift-JIS opened file、mixed encoding、rename、新規file、whitespace/EOL、encoding変更、restartをExtension Hostで確認すること
 
 ### 20.4 Failure
 

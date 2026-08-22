@@ -9,6 +9,7 @@ import {
 } from "../../src/application/operation-feedback/index";
 import {
   NORMAL_EDITOR_REVIEW_COMMAND_IDS,
+  createRefreshingNormalEditorReviewCommandHandlers,
   registerNormalEditorReviewCommands,
   type CommandDisposable,
   type NormalEditorCommandHost,
@@ -34,6 +35,11 @@ class FakeHost implements NormalEditorCommandHost<FakeEditor> {
   public readonly disposables: FakeDisposable[] = [];
   public unavailableMessages = 0;
   public readonly errors: unknown[] = [];
+  public readonly capturedFailures: Array<{
+    readonly operation: string;
+    readonly error: unknown;
+  }> = [];
+  public captureCommandOperationErrorForTest: ((operation: string, error: unknown) => void) | undefined;
 
   public getActiveEditor(): FakeEditor | undefined {
     return this.activeEditor;
@@ -59,6 +65,12 @@ class FakeHost implements NormalEditorCommandHost<FakeEditor> {
 
   public showCommandError(error: unknown): void {
     this.errors.push(error);
+  }
+
+  public enableFailureCaptureForTest(): void {
+    this.captureCommandOperationErrorForTest = (operation, error) => {
+      this.capturedFailures.push({ operation, error });
+    };
   }
 }
 
@@ -195,4 +207,84 @@ test("handler failure is recorded as failed operation before the UI host reports
   } finally {
     setActiveOperationFeedback(undefined);
   }
+});
+
+test("Test-mode command failure is captured by operation and rejects with the original error without waiting for UI", async () => {
+  const failure = new Error("state commit failed");
+  const host = new FakeHost();
+  host.enableFailureCaptureForTest();
+  const { handlers } = createHandlers(failure);
+  host.activeEditor = { id: "editor-1" };
+  registerNormalEditorReviewCommands(host, handlers);
+
+  await assert.rejects(
+    host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed)!(),
+    (error: unknown) => error === failure
+  );
+
+  assert.deepEqual(host.capturedFailures, [{
+    operation: "markSelectionReviewed",
+    error: failure
+  }]);
+  assert.deepEqual(host.errors, []);
+});
+
+test("applied production handlers await one automatic decoration refresh", async () => {
+  let resolveRefresh: (() => void) | undefined;
+  let refreshCount = 0;
+  const refreshPending = new Promise<void>((resolve) => {
+    resolveRefresh = resolve;
+  });
+  const handlers = createRefreshingNormalEditorReviewCommandHandlers(
+    {
+      markSelectionReviewed: async () => "applied",
+      unmarkSelectionReviewed: async () => "no-op",
+      markFileReviewed: async () => "no-op",
+      unmarkFileReviewed: async () => "no-op"
+    },
+    {
+      refreshVisibleEditors: async () => {
+        refreshCount += 1;
+        await refreshPending;
+      }
+    }
+  );
+
+  let settled = false;
+  const invocation = Promise.resolve(handlers.markSelectionReviewed({ id: "editor-1" })).then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+
+  assert.equal(refreshCount, 1);
+  assert.equal(settled, false, "production command completion must await its automatic refresh");
+  resolveRefresh!();
+  await invocation;
+  assert.equal(settled, true);
+});
+
+test("Test-mode public command settles after state application without an automatic decoration refresh", async () => {
+  const host = new FakeHost();
+  host.activeEditor = { id: "editor-1" };
+  let applied = 0;
+  let refreshCount = 0;
+  const handlers = createRefreshingNormalEditorReviewCommandHandlers(
+    {
+      markSelectionReviewed: async () => {
+        applied += 1;
+        return "applied";
+      },
+      unmarkSelectionReviewed: async () => "no-op",
+      markFileReviewed: async () => "no-op",
+      unmarkFileReviewed: async () => "no-op"
+    },
+    { refreshVisibleEditors: async () => { refreshCount += 1; } },
+    { deferAppliedDecorationRefresh: true }
+  );
+  registerNormalEditorReviewCommands(host, handlers);
+
+  await host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS.markSelectionReviewed)!();
+
+  assert.equal(applied, 1, "the public command must keep its production state-application path");
+  assert.equal(refreshCount, 0, "Test mode must defer automatic decoration refresh");
 });

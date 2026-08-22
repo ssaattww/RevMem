@@ -3,7 +3,6 @@ import {
   mkdir,
   open,
   readFile,
-  realpath,
   rename,
   rm,
   lstat,
@@ -24,6 +23,23 @@ const closeIfOpen = async (handle: FileHandle | undefined): Promise<void> => {
   }
 
   await handle.close();
+};
+
+export type StoragePathSemantics = "windows" | "posix";
+
+/** Determines whether a resolved path has the configured root as an exact ancestor. */
+export const isStoragePathContained = (
+  root: string,
+  candidate: string,
+  semantics: StoragePathSemantics = process.platform === "win32" ? "windows" : "posix"
+): boolean => {
+  const hostPath = semantics === "windows" ? path.win32 : path.posix;
+  const relative = hostPath.relative(root, candidate);
+  return relative.length === 0 || (
+    !hostPath.isAbsolute(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${hostPath.sep}`)
+  );
 };
 
 /** Node filesystem implementation of temp-write, file flush, and atomic replace. */
@@ -66,11 +82,12 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
    * @throws Rejects with the original filesystem error after best-effort temporary-file cleanup; it never exposes partial content at the destination through this method.
    */
   public async writeTextAtomically(filePath: string, content: string): Promise<void> {
-    const directory = path.dirname(filePath);
     let handle: FileHandle | undefined;
-
-    await mkdir(directory, { recursive: true });
-    const destination = await this.physicalPath(filePath, true);
+    let destination = await this.physicalPath(filePath, true);
+    // Revalidate after directory creation: containment is established before
+    // mutation and every newly materialized component is checked again.
+    await mkdir(path.dirname(destination), { recursive: true });
+    destination = await this.physicalPath(filePath, true);
     const physicalDirectory = path.dirname(destination);
     const physicalTemporaryPath = path.join(
       physicalDirectory,
@@ -91,41 +108,54 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
     }
   }
 
-  /** Resolves final Node I/O through existing physical directories, rejecting every link/reparse ancestor. */
+  /**
+   * Validates logical containment before every I/O operation and rejects the
+   * configured root plus every existing component, including the final path,
+   * when it is a link, junction, or reparse point.  Creation occurs only after
+   * that validation, so an outside sibling can never be created on rejection.
+   */
   private async physicalPath(filePath: string, requireExists: boolean): Promise<string> {
     if (this.rootPath === undefined || this.resolvedRoot === undefined) return filePath;
     const root = this.resolvedRoot;
     const candidate = path.resolve(filePath);
-    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+    if (!isStoragePathContained(root, candidate)) {
       throw new Error("Persistence path escapes its configured storage root.");
     }
-    const relative = path.relative(root, candidate);
-    let logical = root;
-    const pieces = relative.split(path.sep).filter((piece) => piece.length > 0);
-    const last = pieces.pop();
-    for (const piece of pieces) {
-      logical = path.join(logical, piece);
+    const assertNotLink = async (logical: string): Promise<boolean> => {
       try {
-        if ((await lstat(logical)).isSymbolicLink()) {
+        const state = await lstat(logical);
+        if (state.isSymbolicLink()) {
           throw new Error("Persistence storage must not traverse a symbolic link or junction.");
         }
+        return true;
       } catch (error) {
         if (!isErrorCode(error, "ENOENT")) throw error;
-        break;
+        return false;
+      }
+    };
+    if (!(await assertNotLink(root))) {
+      if (!requireExists) return candidate;
+      await mkdir(root, { recursive: true });
+      await assertNotLink(root);
+    }
+    const relative = path.relative(root, candidate);
+    const pieces = relative.split(path.sep).filter((piece) => piece.length > 0);
+    let logical = root;
+    for (const piece of pieces) {
+      logical = path.join(logical, piece);
+      const exists = await assertNotLink(logical);
+      if (!exists) break;
+    }
+    if (requireExists) {
+      // All existing components (including a pre-existing final file) were
+      // checked above; now create only the logical descendant directory.
+      await mkdir(path.dirname(candidate), { recursive: true });
+      logical = root;
+      for (const piece of pieces) {
+        logical = path.join(logical, piece);
+        await assertNotLink(logical);
       }
     }
-    const physicalRoot = await realpath(root).catch(async (error: unknown) => {
-      if (!isErrorCode(error, "ENOENT")) throw error;
-      await mkdir(root, { recursive: true });
-      return realpath(root);
-    });
-    const physicalDirectory = await realpath(path.dirname(candidate)).catch((error: unknown) => {
-      if (requireExists || !isErrorCode(error, "ENOENT")) throw error;
-      return path.dirname(candidate);
-    });
-    if (physicalDirectory !== physicalRoot && !physicalDirectory.startsWith(`${physicalRoot}${path.sep}`)) {
-      throw new Error("Persistence storage resolves outside its configured storage root.");
-    }
-    return path.join(physicalDirectory, last ?? "");
+    return candidate;
   }
 }

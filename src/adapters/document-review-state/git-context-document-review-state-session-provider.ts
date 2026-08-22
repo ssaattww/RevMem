@@ -113,7 +113,9 @@ export class GitContextDocumentReviewStateSessionProvider {
   private readonly mapper: GitContextRevisionMapper | undefined;
   private readonly monitor: PollingGitStateMonitor;
   private readonly knownDescriptors = new Map<string, DocumentEditorReviewDescriptor>();
+  private readonly observedEncodingHints = new Map<string, string | undefined>();
   private readonly snapshotGenerations = new Map<string, number>();
+  private readonly snapshotRevisions = new Map<string, string>();
   private readonly mappingOptions: Readonly<GitDiffMappingOptions>;
 
   /** Creates a provider that reuses existing persistence and reconciliation contracts. */
@@ -223,6 +225,23 @@ export class GitContextDocumentReviewStateSessionProvider {
   public dispose(): void {
     this.monitor.dispose();
     this.knownDescriptors.clear();
+    this.observedEncodingHints.clear();
+    this.snapshotRevisions.clear();
+  }
+
+  /** Test-only diagnostic snapshot of the transient hints observed by this Host. */
+  public observedEncodingHintsSnapshot(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[] {
+    return [...this.observedEncodingHints].map(([key, encodingHint]) => {
+      const separator = key.indexOf("\0");
+      const documentFsPath = key.slice(separator + 1);
+      return {
+        documentFsPath,
+        ...(encodingHint === undefined ? {} : { encodingHint })
+      };
+    }).sort((left, right) => left.documentFsPath.localeCompare(right.documentFsPath));
   }
 
   private createDelegate(
@@ -323,6 +342,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     registerMonitorBaseline = true
   ): Promise<boolean> {
     this.knownDescriptors.set(snapshot.rootPath, clone(descriptor));
+    const encodingChanged = this.observeEncodingHint(snapshot.rootPath, descriptor);
     if (!this.isCurrentSnapshotGeneration(current, generation)) {
       return false;
     }
@@ -330,6 +350,7 @@ export class GitContextDocumentReviewStateSessionProvider {
       current,
       descriptor,
       initializeMissingContext,
+      encodingChanged,
       () => this.isCurrentSnapshotGeneration(current, generation)
     );
     if (!this.isCurrentSnapshotGeneration(current, generation)) {
@@ -346,6 +367,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     current: ResolvedGitReviewContext,
     descriptor: DocumentEditorReviewDescriptor,
     initializeMissingContext: boolean,
+    encodingChanged: boolean,
     isCurrentGeneration: () => boolean
   ): Promise<void> {
     const target: ReviewStateRepositoryTarget = {
@@ -369,11 +391,12 @@ export class GitContextDocumentReviewStateSessionProvider {
         }
         if (
           revisionOf(commit) === current.revisionId &&
-          commit.globalState.currentRevisionId === current.revisionId
+          commit.globalState.currentRevisionId === current.revisionId &&
+          !encodingChanged
         ) {
           return;
         }
-        const mapped = await this.mapCommit(current, commit, descriptor);
+        const mapped = await this.mapCommit(current, commit, descriptor, encodingChanged);
         if (!isCurrentGeneration()) {
           return;
         }
@@ -399,7 +422,8 @@ export class GitContextDocumentReviewStateSessionProvider {
           { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
           { contextState: clone(next.contextState), globalState: clone(next.globalState) },
           mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
-          mapped.unresolvedFileIds
+          mapped.unresolvedFileIds,
+          mapped.unresolvedReasonsByFileId ?? {}
         );
         return;
       } catch (error) {
@@ -452,8 +476,8 @@ export class GitContextDocumentReviewStateSessionProvider {
     };
     const mapped =
       initial.globalState.currentRevisionId === current.revisionId
-        ? { commit: initial, unresolvedFileIds: [] }
-        : await this.mapCommit(current, initial, descriptor);
+        ? { commit: initial, unresolvedFileIds: [], unresolvedReasonsByFileId: {} }
+        : await this.mapCommit(current, initial, descriptor, false);
     if (!isCurrentGeneration()) {
       return;
     }
@@ -485,19 +509,30 @@ export class GitContextDocumentReviewStateSessionProvider {
   private async mapCommit(
     current: ResolvedGitReviewContext,
     commit: ReviewStateCommit,
-    descriptor: DocumentEditorReviewDescriptor
-  ): Promise<{ readonly commit: ReviewStateCommit; readonly unresolvedFileIds: readonly string[] }> {
+    descriptor: DocumentEditorReviewDescriptor,
+    encodingChanged = false
+  ): Promise<{
+    readonly commit: ReviewStateCommit;
+    readonly unresolvedFileIds: readonly string[];
+    readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
+  }> {
     if (this.mapper === undefined) {
       throw new Error(
         "Persisted Git state requires revision mapping, but no Git revision mapping source is available."
       );
     }
+    const encodingHintsByPath = this.encodingHintsForRepository(current.repositoryRoot);
+    const changedPath = this.repositoryRelativePath(current.repositoryRoot, descriptor.documentFsPath, descriptor.fileSystemPathSemantics);
     const mapped = await this.mapper.map({
       current,
       contextState: clone(commit.contextState),
       globalState: clone(commit.globalState),
       fileSystemPathSemantics: descriptor.fileSystemPathSemantics,
-      options: this.mappingOptions
+      options: this.mappingOptions,
+      ...(Object.keys(encodingHintsByPath).length === 0
+        ? {}
+        : { encodingHintsByPath }),
+      ...(encodingChanged && changedPath !== undefined ? { encodingChangedPaths: [changedPath] } : {})
     });
     return {
       commit: {
@@ -505,14 +540,54 @@ export class GitContextDocumentReviewStateSessionProvider {
         contextState: clone(mapped.contextState),
         globalState: clone(mapped.globalState)
       },
-      unresolvedFileIds: [...mapped.unresolvedFileIds]
+      unresolvedFileIds: [...mapped.unresolvedFileIds],
+      unresolvedReasonsByFileId: { ...(mapped.unresolvedReasonsByFileId ?? {}) }
     };
+  }
+
+  private repositoryRelativePath(repositoryRoot: string, documentPath: string, semantics: "posix" | "windows"): string | undefined {
+    const pathApi = semantics === "windows" ? path.win32 : path.posix;
+    const relative = pathApi.relative(repositoryRoot, documentPath);
+    return relative.length === 0 || pathApi.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${pathApi.sep}`)
+      ? undefined
+      : relative.split(pathApi.sep).join("/");
+  }
+
+  /** Records the transient VS Code hint; a change must re-read immutable text. */
+  private observeEncodingHint(
+    repositoryRoot: string,
+    descriptor: DocumentEditorReviewDescriptor
+  ): boolean {
+    const key = `${repositoryRoot}\0${descriptor.documentFsPath}`;
+    const observed = this.observedEncodingHints.has(key);
+    const previous = this.observedEncodingHints.get(key);
+    const next = descriptor.encodingHint;
+    this.observedEncodingHints.set(key, next);
+    return observed && previous !== next;
+  }
+
+  /** Aggregates live VS Code hints by repository-relative path. */
+  private encodingHintsForRepository(repositoryRoot: string): Readonly<Record<string, string>> {
+    const hints: Record<string, string> = {};
+    for (const [key, hint] of this.observedEncodingHints) {
+      if (hint === undefined || !key.startsWith(`${repositoryRoot}\0`)) continue;
+      const documentPath = key.slice(repositoryRoot.length + 1);
+      const relativePath = path.relative(repositoryRoot, documentPath).split(path.sep).join("/");
+      if (relativePath.length > 0 && !relativePath.startsWith("../")) hints[relativePath] = hint;
+    }
+    return hints;
   }
 
   private advanceSnapshotGeneration(current: ResolvedGitReviewContext): number {
     const key = `${current.repositoryId}\0${current.contextId}`;
-    const generation = (this.snapshotGenerations.get(key) ?? 0) + 1;
+    const previousRevision = this.snapshotRevisions.get(key);
+    const existingGeneration = this.snapshotGenerations.get(key);
+    if (previousRevision === current.revisionId && existingGeneration !== undefined) {
+      return existingGeneration;
+    }
+    const generation = (existingGeneration ?? 0) + 1;
     this.snapshotGenerations.set(key, generation);
+    this.snapshotRevisions.set(key, current.revisionId);
     return generation;
   }
 
@@ -523,3 +598,4 @@ export class GitContextDocumentReviewStateSessionProvider {
     return this.snapshotGenerations.get(`${current.repositoryId}\0${current.contextId}`) === generation;
   }
 }
+import path from "node:path";

@@ -16,8 +16,7 @@ import type { FileSystemPathSemantics } from "../workspace-identity/index";
 import type {
   GitContextRevisionMapperOptions,
   GitContextRevisionMappingInput,
-  GitContextRevisionMappingResult,
-  GitRevisionMappingTextReadResult
+  GitContextRevisionMappingResult
 } from "./contracts";
 
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
@@ -40,21 +39,37 @@ const contextRevision = (state: ReviewContextState): string => {
   return state.branch.headRevision;
 };
 
-const requireFound = (
-  result: GitRevisionMappingTextReadResult,
-  revision: string,
-  filePath: string
-): string => {
-  if (result.kind === "found") {
-    return result.content;
-  }
-  throw new Error(
-    `Cannot map ${filePath} at ${revision}: ${result.kind}`
-  );
-};
-
 const unique = (values: readonly (string | undefined)[]): string[] =>
   [...new Set(values.filter((value): value is string => value !== undefined))];
+
+/**
+ * Carries an observed encoding only across an explicit one-to-one rename.
+ * Copies, additions, ambiguous metadata, and paths that were not opened do
+ * not receive a hint.  This keeps a transient VS Code observation local to
+ * the file identity which proved its rename.
+ */
+const inheritUniqueRenameEncodingHints = (
+  rawDiff: string,
+  hints: Readonly<Record<string, string>>
+): Readonly<Record<string, string>> => {
+  const inherited: Record<string, string> = { ...hints };
+  const pairs: Array<readonly [string, string]> = [];
+  for (const section of rawDiff.split(/^diff --git /mu).slice(1)) {
+    if (/^copy (?:from|to) /mu.test(section)) continue;
+    const from = /^rename from (.+)$/mu.exec(section)?.[1];
+    const to = /^rename to (.+)$/mu.exec(section)?.[1];
+    if (from !== undefined && to !== undefined) pairs.push([from, to]);
+  }
+  for (const [from, to] of pairs) {
+    if (pairs.filter(([candidate]) => candidate === from).length !== 1 ||
+        pairs.filter(([, candidate]) => candidate === to).length !== 1 ||
+        hints[to] === undefined) {
+      continue;
+    }
+    inherited[from] = hints[to] as string;
+  }
+  return inherited;
+};
 
 const isBinaryDiffSection = (lines: readonly string[]): boolean =>
   lines.some((line) =>
@@ -249,7 +264,9 @@ export class GitContextRevisionMapper {
       input.current.repositoryRoot,
       input.fileSystemPathSemantics,
       input.options,
-      occurredAt
+      occurredAt,
+      input.encodingHintsByPath,
+      new Set(input.encodingChangedPaths ?? [])
     );
     const globalFiles = await this.mapGlobalFiles(
       input.globalState.files,
@@ -259,9 +276,14 @@ export class GitContextRevisionMapper {
       input.current.repositoryRoot,
       input.fileSystemPathSemantics,
       input.options,
-      occurredAt
+      occurredAt,
+      input.encodingHintsByPath,
+      new Set(input.encodingChangedPaths ?? [])
     );
 
+    const unresolvedFileIds = oldObjectAvailable
+      ? contextMapping.unresolvedFileIds
+      : Object.keys(input.contextState.files).sort();
     return {
       contextState: {
         ...clone(input.contextState),
@@ -276,9 +298,10 @@ export class GitContextRevisionMapper {
         files: globalFiles,
         updatedAt: occurredAt
       },
-      unresolvedFileIds: oldObjectAvailable
-        ? contextMapping.unresolvedFileIds
-        : Object.keys(input.contextState.files).sort()
+      unresolvedFileIds,
+      unresolvedReasonsByFileId: oldObjectAvailable
+        ? contextMapping.unresolvedReasonsByFileId ?? {}
+        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
     };
   }
 
@@ -312,20 +335,59 @@ export class GitContextRevisionMapper {
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
     options: Readonly<GitDiffMappingOptions>,
-    occurredAt: string
-  ): Promise<{ readonly files: Record<string, FileReviewState>; readonly unresolvedFileIds: readonly string[] }> {
+    occurredAt: string,
+    encodingHints: Readonly<Record<string, string>> = {},
+    encodingChangedPaths: ReadonlySet<string> = new Set()
+  ): Promise<{
+    readonly files: Record<string, FileReviewState>;
+    readonly unresolvedFileIds: readonly string[];
+    readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
+  }> {
     if (oldRevision === newRevision) {
-      return { files: clone(files), unresolvedFileIds: [] };
+      if (encodingChangedPaths.size === 0) {
+        return { files: clone(files), unresolvedFileIds: [], unresolvedReasonsByFileId: {} };
+      }
+      const unavailableEncodingChangedFileIds = new Set<string>();
+      const refreshed = await this.refreshMappedFiles(
+        files,
+        newRevision,
+        repositoryRoot,
+        semantics,
+        occurredAt,
+        new Set(),
+        new Set(),
+        encodingHints,
+        encodingChangedPaths,
+        true,
+        unavailableEncodingChangedFileIds
+      );
+      const unresolvedFileIds = [...unavailableEncodingChangedFileIds].sort();
+      return {
+        files: refreshed,
+        unresolvedFileIds,
+        unresolvedReasonsByFileId: Object.fromEntries(
+          unresolvedFileIds.map((fileId) => [fileId, "immutable-text-unavailable" as const])
+        )
+      };
     }
     if (!FULL_OBJECT_ID_PATTERN.test(newRevision)) {
-      return { files: {}, unresolvedFileIds: Object.keys(files).sort() };
+      const unresolvedFileIds = Object.keys(files).sort();
+      return { files: {}, unresolvedFileIds, unresolvedReasonsByFileId: Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const])) };
     }
     const oldExists = FULL_OBJECT_ID_PATTERN.test(oldRevision) &&
       await this.options.source.objectExists(repositoryRoot, oldRevision);
     if (!oldExists) {
       return {
-        files: await this.clearAndRefresh(files, newRevision, repositoryRoot, semantics, occurredAt),
-        unresolvedFileIds: Object.keys(files).sort()
+        files: await this.clearAndRefresh(
+          files,
+          newRevision,
+          repositoryRoot,
+          semantics,
+          occurredAt,
+          encodingHints
+        ),
+        unresolvedFileIds: Object.keys(files).sort(),
+        unresolvedReasonsByFileId: Object.fromEntries(Object.keys(files).map((fileId) => [fileId, "mapping-unresolved" as const]))
       };
     }
 
@@ -334,16 +396,25 @@ export class GitContextRevisionMapper {
       oldRevision,
       newRevision
     );
+    const effectiveEncodingHints = inheritUniqueRenameEncodingHints(rawDiff, encodingHints);
     const diff = reviewableDiff(rawDiff);
     const binaryResolution = resolveBinarySections(rawDiff);
     const transitionDiff = fileTransitionDiff(rawDiff, binaryResolution);
     const parsedFiles = parseZeroContextGitDiff(diff).files;
+    const unchangedPaths = new Set(
+      Object.values(files)
+        .map((file) => file.currentPath)
+        .filter((path) => !parsedFiles.some((changed) =>
+          changed.oldPath === path || changed.newPath === path
+        ))
+    );
     const oldTexts = await this.loadOldTextsWhenRequired(
       Object.values(files),
       oldRevision,
       repositoryRoot,
       semantics,
-      options
+      options,
+      effectiveEncodingHints
     );
     const newFiles = await this.loadNewFileMetadata(
       transitionDiff,
@@ -352,7 +423,8 @@ export class GitContextRevisionMapper {
       newRevision,
       repositoryRoot,
       semantics,
-      binaryResolution.destinationPaths
+      binaryResolution.destinationPaths,
+      effectiveEncodingHints
     );
     const transitioned = applyGitFileStateTransitions({
       files,
@@ -374,6 +446,7 @@ export class GitContextRevisionMapper {
       oldTexts,
       newFiles
     );
+    const unavailableImmutableTextFileIds = new Set<string>();
     const refreshed = await this.refreshMappedFiles(
       mapped,
       newRevision,
@@ -381,20 +454,40 @@ export class GitContextRevisionMapper {
       semantics,
       occurredAt,
       binaryResolution.destinationPaths,
-      binaryResolution.unresolvedPaths
+      binaryResolution.unresolvedPaths,
+      effectiveEncodingHints,
+      new Set(),
+      false,
+      unavailableImmutableTextFileIds,
+      unchangedPaths
     );
     const unresolvedFileIds = new Set<string>();
+    const unresolvedReasonsByFileId: Record<string, "immutable-text-unavailable" | "mapping-unresolved"> = {};
+    for (const fileId of unavailableImmutableTextFileIds) {
+      unresolvedFileIds.add(fileId);
+      unresolvedReasonsByFileId[fileId] = "immutable-text-unavailable";
+    }
+    for (const file of Object.values(mapped)) {
+      if (!Object.hasOwn(refreshed, file.fileId) &&
+          !binaryResolution.destinationPaths.has(file.currentPath) &&
+          !binaryResolution.unresolvedPaths.has(file.currentPath)) {
+        unresolvedFileIds.add(file.fileId);
+        unresolvedReasonsByFileId[file.fileId] = "immutable-text-unavailable";
+      }
+    }
     const byPath = new Map(Object.values(files).map((file) => [file.currentPath, file.fileId]));
     for (const unresolved of transitioned.unresolved) {
       const fileId = unresolved.oldPath === undefined ? undefined : byPath.get(unresolved.oldPath);
       if (fileId !== undefined) {
         unresolvedFileIds.add(fileId);
+        unresolvedReasonsByFileId[fileId] ??= "mapping-unresolved";
       }
     }
     for (const file of Object.values(files)) {
       if (binaryResolution.destinationPaths.has(file.currentPath) ||
           binaryResolution.unresolvedPaths.has(file.currentPath)) {
         unresolvedFileIds.add(file.fileId);
+        unresolvedReasonsByFileId[file.fileId] ??= "mapping-unresolved";
       }
     }
     let binaryTransitions: readonly GitDiffFile[] = [];
@@ -414,9 +507,10 @@ export class GitContextRevisionMapper {
       const sourceId = byPath.get(file.oldPath);
       if (sourceId !== undefined) {
         unresolvedFileIds.add(sourceId);
+        unresolvedReasonsByFileId[sourceId] ??= "mapping-unresolved";
       }
     }
-    return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort() };
+    return { files: refreshed, unresolvedFileIds: [...unresolvedFileIds].sort(), unresolvedReasonsByFileId };
   }
 
   private async mapGlobalFiles(
@@ -427,10 +521,14 @@ export class GitContextRevisionMapper {
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
     options: Readonly<GitDiffMappingOptions>,
-    occurredAt: string
+    occurredAt: string,
+    encodingHints: Readonly<Record<string, string>> = {},
+    encodingChangedPaths: ReadonlySet<string> = new Set()
   ): Promise<Record<string, GlobalFileReviewState>> {
     if (oldRevision === newRevision) {
-      return clone(files);
+      return encodingChangedPaths.size === 0
+        ? clone(files)
+        : this.refreshGlobalFiles(files, newRevision, repositoryRoot, semantics, occurredAt, encodingHints, encodingChangedPaths);
     }
     if (!FULL_OBJECT_ID_PATTERN.test(newRevision)) {
       return {};
@@ -444,7 +542,8 @@ export class GitContextRevisionMapper {
         newRevision,
         repositoryRoot,
         semantics,
-        occurredAt
+        occurredAt,
+        encodingHints
       );
     }
 
@@ -455,9 +554,30 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         oldRevision,
         file.currentPath,
-        semantics
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[file.currentPath]
       );
       if (result.kind !== "found") {
+        if (result.kind === "invalid-encoding") {
+          transitionInput[file.fileId] = {
+            schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+            fileId: file.fileId,
+            currentPath: file.currentPath,
+            previousPaths: [],
+            revisionId: oldRevision,
+            modifiedReviewed: clone(file.reviewed),
+            originalReviewedByDiff: {},
+            ...(file.contentHash === undefined ? {} : { contentHash: file.contentHash }),
+            lineCount: Math.max(
+              1,
+              ...file.reviewed.map((interval) => interval.endLineExclusive)
+            ),
+            updatedAt: file.updatedAt
+          };
+          continue;
+        }
         missingOldFiles.push(clone(file));
         continue;
       }
@@ -485,7 +605,8 @@ export class GitContextRevisionMapper {
       repositoryRoot,
       semantics,
       options,
-      occurredAt
+      occurredAt,
+      encodingHints
     );
     const result: Record<string, GlobalFileReviewState> = Object.fromEntries(
       Object.values(mapped.files).map((file) => [
@@ -505,7 +626,8 @@ export class GitContextRevisionMapper {
       newRevision,
       repositoryRoot,
       semantics,
-      occurredAt
+      occurredAt,
+      encodingHints
     );
     for (const [fileId, file] of Object.entries(conservative)) {
       if (!(fileId in result)) {
@@ -581,6 +703,7 @@ export class GitContextRevisionMapper {
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
     options: Readonly<GitDiffMappingOptions>
+    , encodingHints: Readonly<Record<string, string>> = {}
   ): Promise<Record<string, string> | undefined> {
     if (!options.ignoreWhitespaceChanges && !options.ignoreEolChanges) {
       return undefined;
@@ -591,12 +714,12 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         oldRevision,
         file.currentPath,
-        semantics
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[file.currentPath]
       );
-      entries.push([
-        file.currentPath,
-        requireFound(result, oldRevision, file.currentPath)
-      ]);
+      if (result.kind === "found") entries.push([file.currentPath, result.content]);
     }
     return Object.fromEntries(entries);
   }
@@ -608,7 +731,8 @@ export class GitContextRevisionMapper {
     newRevision: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
-    binaryPaths: ReadonlySet<string>
+    binaryPaths: ReadonlySet<string>,
+    encodingHints: Readonly<Record<string, string>> = {}
   ): Promise<Record<string, GitNewFileStateInput>> {
     const parsedFiles = parseZeroContextGitDiff(diff).files;
     const copyAwareFiles = copyAwareParsedFiles(diff);
@@ -667,9 +791,13 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         newRevision,
         filePath,
-        semantics
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[filePath]
       );
-      const content = requireFound(textResult, newRevision, filePath);
+      if (textResult.kind !== "found") continue;
+      const content = textResult.content;
       result[filePath] = {
         fileId: preservedFileId ??
           this.createUnoccupiedFileId(repositoryId, filePath, occupiedFileIds),
@@ -688,7 +816,8 @@ export class GitContextRevisionMapper {
     newRevision: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
-    occurredAt: string
+    occurredAt: string,
+    encodingHints: Readonly<Record<string, string>> = {}
   ): Promise<Record<string, FileReviewState>> {
     const cleared = Object.fromEntries(
       Object.values(files).map((file) => [
@@ -706,7 +835,10 @@ export class GitContextRevisionMapper {
       newRevision,
       repositoryRoot,
       semantics,
-      occurredAt
+      occurredAt,
+      new Set(),
+      new Set(),
+      encodingHints
     );
   }
 
@@ -715,7 +847,8 @@ export class GitContextRevisionMapper {
     newRevision: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
-    occurredAt: string
+    occurredAt: string,
+    encodingHints: Readonly<Record<string, string>> = {}
   ): Promise<Record<string, GlobalFileReviewState>> {
     const result: Record<string, GlobalFileReviewState> = {};
     for (const file of Object.values(files)) {
@@ -723,8 +856,23 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         newRevision,
         file.currentPath,
-        semantics
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[file.currentPath]
       );
+      if (read.kind === "invalid-encoding") {
+        // The current immutable blob is present, but a restarted Host has no
+        // prior document hint with which to decode it. Preserve its stable
+        // identity while invalidating only the reviewed interval.
+        result[file.fileId] = {
+          ...clone(file),
+          revisionId: newRevision,
+          reviewed: [],
+          updatedAt: occurredAt
+        };
+        continue;
+      }
       if (read.kind !== "found") {
         continue;
       }
@@ -740,6 +888,53 @@ export class GitContextRevisionMapper {
     return result;
   }
 
+  /** Rehashes only the current revision after an opened-document encoding change. */
+  private async refreshGlobalFiles(
+    files: Readonly<Record<string, GlobalFileReviewState>>,
+    revision: string,
+    repositoryRoot: string,
+    semantics: FileSystemPathSemantics,
+    occurredAt: string,
+    encodingHints: Readonly<Record<string, string>>,
+    encodingChangedPaths: ReadonlySet<string>
+  ): Promise<Record<string, GlobalFileReviewState>> {
+    const refreshed: Record<string, GlobalFileReviewState> = {};
+    for (const file of Object.values(files)) {
+      if (!encodingChangedPaths.has(file.currentPath)) {
+        refreshed[file.fileId] = clone(file);
+        continue;
+      }
+      const read = await this.options.source.readTextFileAtRevision(
+        repositoryRoot,
+        revision,
+        file.currentPath,
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[file.currentPath]
+      );
+      if (read.kind !== "found") {
+        // An opened-document encoding change can make the immutable blob
+        // undecodable through the newly selected VS Code decoder.  The file
+        // remains part of this unchanged Git revision, so retain its stable
+        // identity while conservatively clearing only its reviewed ranges.
+        refreshed[file.fileId] = {
+          ...clone(file),
+          reviewed: [],
+          updatedAt: occurredAt
+        };
+        continue;
+      }
+      refreshed[file.fileId] = {
+        ...clone(file),
+        reviewed: [],
+        contentHash: this.digest(read.content),
+        updatedAt: occurredAt
+      };
+    }
+    return refreshed;
+  }
+
   private async refreshMappedFiles(
     files: Readonly<Record<string, FileReviewState>>,
     newRevision: string,
@@ -747,28 +942,65 @@ export class GitContextRevisionMapper {
     semantics: FileSystemPathSemantics,
     occurredAt: string,
     binaryPaths: ReadonlySet<string> = new Set(),
-    unresolvedBinaryPaths: ReadonlySet<string> = new Set()
+    unresolvedBinaryPaths: ReadonlySet<string> = new Set(),
+    encodingHints: Readonly<Record<string, string>> = {},
+    encodingChangedPaths: ReadonlySet<string> = new Set(),
+    clearChangedIntervals = false,
+    unavailableEncodingChangedFileIds?: Set<string>,
+    unchangedPaths: ReadonlySet<string> = new Set()
   ): Promise<Record<string, FileReviewState>> {
     const refreshed: Record<string, FileReviewState> = {};
     for (const file of Object.values(files)) {
       if (binaryPaths.has(file.currentPath)) {
         continue;
       }
+      if (clearChangedIntervals && !encodingChangedPaths.has(file.currentPath)) {
+        refreshed[file.fileId] = clone(file);
+        continue;
+      }
       const result = await this.options.source.readTextFileAtRevision(
         repositoryRoot,
         newRevision,
         file.currentPath,
-        semantics
+        semantics,
+        undefined,
+        undefined,
+        encodingHints[file.currentPath]
       );
-      if (result.kind === "missing-file" || result.kind === "invalid-encoding") {
+      if (result.kind !== "found") {
+        if (result.kind === "invalid-encoding" &&
+            (clearChangedIntervals || unchangedPaths.has(file.currentPath))) {
+          // `invalid-encoding` proves that this path still resolves to an
+          // immutable blob. It is distinct from `missing-file`, which must
+          // remain absent after deletion. A restarted Host must not reuse a
+          // stale document hint, so retain identity but clear review state.
+          refreshed[file.fileId] = {
+            ...clone(file),
+            revisionId: newRevision,
+            modifiedReviewed: [],
+            updatedAt: occurredAt
+          };
+          unavailableEncodingChangedFileIds?.add(file.fileId);
+        } else if (clearChangedIntervals && encodingChangedPaths.has(file.currentPath)) {
+          // Keep the stable identity available to future decoding transitions
+          // even when the new decoder cannot expose immutable text.
+          refreshed[file.fileId] = {
+            ...clone(file),
+            revisionId: newRevision,
+            modifiedReviewed: [],
+            updatedAt: occurredAt
+          };
+          unavailableEncodingChangedFileIds?.add(file.fileId);
+        }
         continue;
       }
-      const content = requireFound(result, newRevision, file.currentPath);
+      const content = result.content;
       refreshed[file.fileId] = {
         ...clone(file),
         revisionId: newRevision,
         ...(unresolvedBinaryPaths.has(file.currentPath)
           ? { modifiedReviewed: [] }
+          : clearChangedIntervals ? { modifiedReviewed: [] }
           : {}),
         contentHash: this.digest(content),
         lineCount: lineCountOf(content),

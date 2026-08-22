@@ -28,6 +28,7 @@ import {
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
 } from "./t305-current-context-git";
+import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "./t609-repository-resolution";
 import {
   registerCurrentContextRuntime,
 } from "./ui/current-context/vscode-current-context-runtime";
@@ -55,13 +56,17 @@ import {
   type RegisteredT405ReviewContextsRuntime,
 } from "./t405-review-contexts-runtime";
 import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
-import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
+import {
+  GitReviewContextResolver,
+  type SelectedReviewContext
+} from "./application/review-context/index";
 import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
 } from "./application/workspace-identity/index";
-import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
+import { readReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
+import { TestReviewStateDependentQueue } from "./test-only-review-state-dependent-queue";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
@@ -95,6 +100,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
+  let testCurrentContextSelection: "first" | "cancel" | "stale" | undefined;
+  let testCurrentContextSelectionRequestCount = 0;
+  let testCurrentContextStaleAfterPick = false;
+  let testCurrentContextDependentRefreshCount = 0;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     selectedContext = next;
@@ -105,7 +114,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         : undefined
     );
   };
-  const git = createNodeLocalGitAdapter();
+  const git = createNodeLocalGitAdapter({
+    decodeWithHint: async (bytes, encoding) => vscode.workspace.decode(bytes, { encoding })
+  });
   const stableHash = new NodeSha256StableHash();
   const documentEditRuntime = new DocumentReviewEditRuntime({
     storageUris: {
@@ -192,23 +203,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readOpenDocuments
   });
 
+  const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
+    uri,
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri)
+  );
   const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
       uri: toResourceUri(folder.uri), name: folder.name
     }));
+    for (const candidate of await resolveCurrentContextRepositories({
+      activeDocumentPath: vscode.window.activeTextEditor === undefined
+        ? undefined
+        : workspaceFilesystemPath(vscode.window.activeTextEditor.document.uri),
+      openedDocumentPaths: vscode.workspace.textDocuments.map((document) =>
+        !document.isClosed
+          ? workspaceFilesystemPath(document.uri)
+          : undefined),
+      knownRootPaths: selectedContext?.kind === "branch" || selectedContext?.kind === "detached"
+        ? [selectedContext.repositoryRoot]
+        : [],
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
+      inspectRepository: (startPath) => git.inspectRepository(startPath)
+    })) {
+      const snapshot = gitCurrentContextSnapshot(candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0]);
+      contexts.set(currentContextSelectionKey(snapshot), snapshot);
+    }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       if (resolveWorkspaceResourceEligibility({
         documentUri: toResourceUri(folder.uri),
         workspaceFolders,
         fileSystemPathSemantics: workspaceSidePathSemantics()
       }) === undefined) continue;
-      if (!(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
+      const folderPath = workspaceFilesystemPath(folder.uri);
+      if (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
           kind: "workspace",
           label: folder.name,
-          detail: folder.uri.fsPath,
+          detail: folderPath,
           selection: {
             kind: "workspace",
             workspaceFolderUri: {
@@ -225,23 +258,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const editor of vscode.window.visibleTextEditors) {
-      if (resolveWorkspaceResourceEligibility({
+      const editorPath = workspaceFilesystemPath(editor.document.uri);
+      if (editorPath === undefined || resolveWorkspaceResourceEligibility({
         documentUri: toResourceUri(editor.document.uri),
         workspaceFolders,
         fileSystemPathSemantics: workspaceSidePathSemantics()
       })?.relativePath === undefined) continue;
-      const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
+      const inspection = await inspectCurrentContextDocument(git, editorPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);
         contexts.set(currentContextSelectionKey(snapshot), snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) continue;
+        const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
+        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath)))) continue;
         const snapshot: CurrentContextUiSnapshot = {
           context: {
             kind: "workspace",
             label: folder?.name ?? editor.document.fileName,
-            detail: folder?.uri.fsPath ?? editor.document.uri.fsPath,
+            detail: folderPath ?? editorPath,
             ...(folder === undefined ? {} : {
               selection: {
                 kind: "workspace" as const,
@@ -267,6 +302,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
   const enumerateContexts = async (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot[]> => {
+    if (testCurrentContextStaleAfterPick) {
+      testCurrentContextStaleAfterPick = false;
+      return [];
+    }
     const local = await enumerateLocalContexts();
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
@@ -280,8 +319,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
     const editor = vscode.window.activeTextEditor;
     let fallback: CurrentContextUiSnapshot | undefined;
-    if (editor !== undefined && FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)) {
-      const inspection = await inspectCurrentContextDocument(git, editor.document.uri.fsPath);
+    const editorPath = editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri);
+    if (editor !== undefined && editorPath !== undefined) {
+      const inspection = await inspectCurrentContextDocument(git, editorPath);
       if (signal?.aborted === true) return undefined;
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
@@ -292,7 +332,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         );
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        if (folder !== undefined && !(await isNonGitCurrentContextWorkspace(git, folder.uri.fsPath))) return undefined;
+        const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
+        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath)))) return undefined;
         fallback = candidates.find((candidate) =>
           candidate.context.kind === "workspace" &&
           candidate.context.selection?.kind === "workspace" &&
@@ -310,6 +351,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     enumerateCandidates: enumerateContexts,
     resolveFallback,
     requestSelection: async (available, signal) => {
+      testCurrentContextSelectionRequestCount += 1;
+      if (context.extensionMode === vscode.ExtensionMode.Test) {
+        const testSelection = testCurrentContextSelection;
+        testCurrentContextSelection = undefined;
+        if (testSelection === "cancel") return undefined;
+        if (testSelection === "stale") {
+          testCurrentContextStaleAfterPick = true;
+          return available[0];
+        }
+        if (testSelection === "first") return available[0];
+      }
       if (available.length === 0) {
         await vscode.window.showInformationMessage("表示できるレビューコンテキストがありません。");
         return undefined;
@@ -469,7 +521,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: (signal, feedbackContext) => currentContextComposition.recompute(signal, feedbackContext),
+      recompute: (signal, feedbackContext, options) => currentContextComposition.recompute(signal, feedbackContext, options),
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
@@ -484,15 +536,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     },
     {
       setSelectedContext: acceptSelectedContext,
-      refreshDependents: () => refreshCurrentContextDependents({
-        refreshPullRequestProgress: refreshPullRequestProgressForSelection,
-        refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
-        refreshGlobal: () => globalRuntime.refresh(),
-        refreshReviewContexts: async () => {
-          await reviewContextsRuntimeRef.current?.refresh();
-        },
-        reportPullRequestProgressError
-      })
+      refreshDependents: async () => {
+        testCurrentContextDependentRefreshCount += 1;
+        await refreshCurrentContextDependents({
+          refreshPullRequestProgress: refreshPullRequestProgressForSelection,
+          refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+          refreshGlobal: () => globalRuntime.refresh(),
+          refreshReviewContexts: async () => {
+            await reviewContextsRuntimeRef.current?.refresh();
+          },
+          reportPullRequestProgressError
+        });
+      }
     },
     async (error) => {
       await vscode.window.showErrorMessage(
@@ -501,6 +556,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }
   );
 
+  let testReviewContextsRepositorySelection: "cancel" | "stale" | undefined;
+  let testReviewContextsRepositorySelectionRequestCount = 0;
   reviewContextsRuntimeRef.current = registerT405ReviewContextsRuntime({
     context,
     git,
@@ -519,6 +576,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
     reviewStateRepository: runtimePort.reviewStateRepository,
     reviewHistoryRecorder: runtimePort.reviewHistoryRecorder,
+    ...(context.extensionMode === vscode.ExtensionMode.Test ? {
+      requestRepositorySelection: async (candidates) => {
+        testReviewContextsRepositorySelectionRequestCount += 1;
+        return testReviewContextsRepositorySelection === "stale" ? { ...candidates[0]! } : undefined;
+      },
+    } : {}),
   });
 
   const refreshGlobalUnderstanding = (): void => {
@@ -553,12 +616,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         rangeLength: change.rangeLength,
         text: change.text
       })),
-      options: resolveReviewRangeMappingOptions({
-        ignoreWhitespaceChanges: vscode.workspace.getConfiguration("reviewRange")
-          .get<unknown>("ignoreWhitespaceChanges"),
-        ignoreEolChanges: vscode.workspace.getConfiguration("reviewRange")
-          .get<unknown>("ignoreEolChanges")
-      }),
+      options: readReviewRangeMappingOptions(vscode.workspace.getConfiguration("reviewRange")),
       selectedContext
     }).then(
       async (result) => {
@@ -588,8 +646,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     documentChangeRefresh.cancel();
     refreshGlobalUnderstanding();
   };
+  const testReviewStateDependentQueue = context.extensionMode === vscode.ExtensionMode.Test
+    ? new TestReviewStateDependentQueue({
+        global: async () => undefined,
+        "pull-request-progress": async () => undefined,
+        "review-contexts": async () => undefined
+      })
+    : undefined;
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
+      if (context.extensionMode === vscode.ExtensionMode.Test) {
+        testReviewStateDependentQueue?.enqueueAll();
+        return;
+      }
       refreshGlobalUnderstanding();
       refreshPullRequestProgress();
       void reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
@@ -611,20 +680,119 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       }
       refreshForSavedOrClosedDocument(document);
     }),
-    documentChangeRefresh
+    documentChangeRefresh,
+    { dispose: () => testReviewStateDependentQueue?.dispose() }
   );
 
-  void currentContextRuntime.refresh().catch(async (error) => {
-    await vscode.window.showErrorMessage(
-      `現在のPRコンテキストを復元できませんでした: ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
   if (context.extensionMode === vscode.ExtensionMode.Test) {
+    const gitReviewStateSnapshotForTest = async (document: vscode.TextDocument) => {
+      const documentPath = workspaceFilesystemPath(document.uri);
+      if (documentPath === undefined) {
+        throw new Error("T609 Git state observation requires a validated workspace URI.");
+      }
+      const inspection = await git.inspectRepository(documentPath);
+      if (inspection.kind !== "repository") {
+        throw new Error("T609 Git state observation requires an opened Git document.");
+      }
+      if (selectedContext?.kind === "workspace") {
+        throw new Error("T609 Git state observation cannot read a Git document through a workspace selection.");
+      }
+      if (
+        selectedContext !== undefined &&
+        (selectedContext.repositoryId !== inspection.repository.repositoryId ||
+          selectedContext.repositoryRoot !== inspection.repository.rootPath)
+      ) {
+        throw new Error("T609 Git state observation requires the selected context to own the opened document.");
+      }
+      if (
+        selectedContext?.kind === "branch" &&
+        (inspection.repository.branch.kind !== "branch" ||
+          inspection.repository.branch.fullRef !== selectedContext.branchRef)
+      ) {
+        throw new Error("T609 Git state observation requires the selected branch to match the opened document.");
+      }
+      if (
+        selectedContext?.kind === "detached" &&
+        (inspection.repository.branch.kind !== "detached" ||
+          inspection.repository.head !== selectedContext.headRevision)
+      ) {
+        throw new Error("T609 Git state observation requires the selected detached revision to match the opened document.");
+      }
+      if (
+        selectedContext?.kind === "pull-request" &&
+        inspection.repository.head !== selectedContext.headRevision
+      ) {
+        throw new Error("T609 Git state observation requires the selected pull request revision to match the opened document.");
+      }
+      const current = new GitReviewContextResolver({ stableHash }).resolve({
+        repositoryId: inspection.repository.repositoryId,
+        rootPath: inspection.repository.rootPath,
+        branch: inspection.repository.branch,
+        ...(inspection.repository.head === undefined ? {} : { head: inspection.repository.head })
+      });
+      const target = selectedContext?.kind === "pull-request"
+        ? {
+            kind: "pull-request" as const,
+            repositoryId: selectedContext.repositoryId,
+            contextId: selectedContext.contextId
+          }
+        : {
+            kind: "git" as const,
+            repositoryId: current.repositoryId,
+            contextId: current.contextId
+          };
+      const commit = await runtimePort.reviewStateRepository.load(target);
+      if (commit === undefined) {
+        throw new Error("T609 Git state observation requires persisted Review State.");
+      }
+      return {
+        owner: target.kind,
+        repositoryId: target.repositoryId,
+        contextId: target.contextId,
+        contextRevisionId: commit.contextState.branch?.headRevision ?? commit.contextState.pullRequest?.headSha ?? "",
+        globalRevisionId: commit.globalState.currentRevisionId,
+        contextFiles: Object.values(commit.contextState.files).map((file) => ({
+          fileId: file.fileId,
+          path: file.currentPath,
+          revisionId: file.revisionId,
+          reviewed: file.modifiedReviewed.map((interval) => ({ ...interval }))
+        })).sort((left, right) => left.path.localeCompare(right.path)),
+        globalFiles: Object.values(commit.globalState.files).map((file) => ({
+          fileId: file.fileId,
+          path: file.currentPath,
+          revisionId: file.revisionId,
+          reviewed: file.reviewed.map((interval) => ({ ...interval }))
+        })).sort((left, right) => left.path.localeCompare(right.path))
+      };
+    };
     return {
       ...baseApi,
+      drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
+      getT305WorkspaceUriPathForTest: (uri: vscode.Uri) => workspaceFilesystemPath(uri),
+      getT405WorkspaceUriPathForTest: (uri: vscode.Uri) =>
+        reviewContextsRuntimeRef.current?.workspaceUriToFilesystemPathForTest?.(uri),
+      getGitReviewStateSnapshotForTest: gitReviewStateSnapshotForTest,
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
+      setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
+        testReviewContextsRepositorySelection = selection;
+      },
+      getReviewContextsCancellationSnapshot: async () => {
+        const snapshot = await reviewContextsRuntimeRef.current?.getCancellationSnapshotForTest?.();
+        if (snapshot === undefined) throw new Error("T609 Review Contexts runtime is unavailable.");
+        return {
+          ...snapshot,
+          repositorySelectionRequestCount: testReviewContextsRepositorySelectionRequestCount,
+        };
+      },
+      setCurrentContextSelectionForTest: (selection: "first" | "cancel" | "stale") => {
+        testCurrentContextSelection = selection;
+      },
+      getCurrentContextCancellationSnapshotForTest: () => ({
+        selectedContext: selectedContext === undefined ? undefined : JSON.stringify(selectedContext),
+        dependentRefreshCount: testCurrentContextDependentRefreshCount,
+      }),
+      getCurrentContextSelectionRequestCountForTest: () => testCurrentContextSelectionRequestCount,
       seedSavedPullRequestContext: async (document: vscode.TextDocument, pullRequestNumber: number) => {
         const inspection = await git.inspectRepository(document.uri.fsPath);
         if (inspection.kind !== "repository" || inspection.repository.head === undefined) {

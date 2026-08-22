@@ -7,6 +7,7 @@ import {
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
+import { settleReviewContextsRepositorySelection } from "../../t609-review-contexts-cancellation-boundary";
 
 import {
   formatReviewContextCacheStatus,
@@ -246,6 +247,8 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 export interface RegisteredReviewContextsRuntime {
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
+  /** Optional Test-only read-only snapshot of the accepted tree projection. */
+  getProjectionSnapshotForTest?(): readonly ReviewContextListItem[];
   dispose(): void;
 }
 
@@ -262,7 +265,7 @@ export function registerReviewContextsRuntime(
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     retry = false,
     clearProviderOnFailure = true,
-  ): Promise<void> => {
+  ): Promise<"completed" | "cancelled" | "terminal"> => {
     // `retry` documents the command classification for wiring tests; retrying
     // itself is deliberately confined to ReviewContextsTreeProvider.load().
     void retry;
@@ -271,28 +274,34 @@ export function registerReviewContextsRuntime(
         label,
         (feedbackContext) => operation(feedbackContext),
       );
+      return "completed";
     } catch (error) {
-      if (clearProviderOnFailure) provider.clear();
-      await dependencies.reportError(formatOperationFailureForUser(error));
+      const outcome = await settleReviewContextsRepositorySelection(error, {
+        clear: () => { if (clearProviderOnFailure) provider.clear(); },
+        reportTerminalFailure: () => dependencies.reportError(formatOperationFailureForUser(error)),
+      });
+      if (outcome === "cancelled") return "cancelled";
+      return "terminal";
     }
   };
-  const refreshWithErrorBoundary = (): Promise<void> =>
-    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+  const refreshWithErrorBoundary = async (): Promise<void> => {
+    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+  };
   const mutate = async (
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     refreshDecorations = false,
   ): Promise<void> => {
     let terminalFailure = false;
-    await runOperation("Review Contextsを更新", async (feedbackContext) => {
-      try {
-        await operation(feedbackContext);
-      } catch (error) {
-        terminalFailure = true;
-        throw error;
-      }
+    const outcome = await runOperation("Review Contextsを更新", async (feedbackContext) => {
+      await operation(feedbackContext);
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
+    if (outcome === "cancelled") return;
+    if (outcome === "terminal") {
+      provider.clear();
+      return;
+    }
     if (terminalFailure) {
       provider.clear();
       return;
@@ -339,8 +348,11 @@ export function registerReviewContextsRuntime(
 
   void refreshWithErrorBoundary();
   return {
-    refresh: () => runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false),
+    refresh: async () => {
+      await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+    },
     refreshWithErrorBoundary,
+    getProjectionSnapshotForTest: () => provider.getChildren(),
     dispose: () => provider.dispose(),
   };
 }

@@ -21,5 +21,7 @@ export { CurrentContextCandidateSelection } from "./current-context-candidate-se
 
 export {
   CurrentContextRuntimeComposition,
-  type CurrentContextRuntimeCompositionPort
+  type CurrentContextRuntimeCompositionPort,
+  type CurrentContextResolution,
+  type CurrentContextNonDestructiveOutcome
 } from "./current-context-runtime-composition";

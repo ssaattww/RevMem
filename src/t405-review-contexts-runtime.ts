@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "./adapters/crypto/index";
@@ -57,7 +58,6 @@ import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
   type GitRevisionMappingSource,
-  type ResolvedGitReviewContext,
 } from "./application/review-context/index";
 import {
   PullRequestRevisionEvidenceLoader,
@@ -82,10 +82,17 @@ import {
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
 import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
+import { workspaceUriToFilesystemPath } from "./t609-repository-resolution";
 import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
 } from "./t405-root-scoped-candidate-identity";
+import {
+  ReviewContextsRepositorySelectionCancelled,
+  resolveReviewContextsRepository,
+  type ReviewContextsRepositorySelection
+} from "./t609-review-contexts-repository";
+import { currentGlobalForNewPullRequest } from "./t405-new-pull-request-global-composition";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
@@ -131,6 +138,8 @@ export interface T405ReviewContextsRuntimeOptions {
     readonly yieldControl?: () => void | Promise<void>;
     readonly accountBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
   };
+  /** Test-mode-only repository picker supplied by the activation composition. */
+  readonly requestRepositorySelection?: ReviewContextsRepositorySelection;
 }
 
 interface T405ReviewStateRepository {
@@ -148,6 +157,13 @@ extends RegisteredReviewContextsRuntime {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]>;
+  /** Optional Test-only read-only evidence that repository selection preserved tree and Review State. */
+  getCancellationSnapshotForTest?(): Promise<{
+    readonly providerProjection: readonly string[];
+    readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
+  }>;
+  /** Test-only read-only probe for the shared actual VS Code URI boundary. */
+  workspaceUriToFilesystemPathForTest?(uri: vscode.Uri): string | undefined;
 }
 
 interface LocalRepositoryOwner {
@@ -156,11 +172,6 @@ interface LocalRepositoryOwner {
   readonly headRevision: string;
   readonly branchRef?: string;
   readonly snapshot: CurrentContextUiSnapshot;
-}
-
-interface PreparedNewPullRequestGlobal {
-  readonly expectedGlobalState: RepositoryGlobalState | undefined;
-  readonly nextGlobalState: RepositoryGlobalState;
 }
 
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
@@ -324,6 +335,11 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   public repositoryRoot(repositoryId: string): string | undefined {
     const roots = this.roots.get(repositoryId);
     return roots === undefined ? undefined : resolveUniqueRepositoryRoot(roots);
+  }
+
+  /** Repository owners observed while building the current projection. */
+  public repositoryIds(): readonly string[] {
+    return [...this.roots.keys()].sort();
   }
 
   private rememberRoot(repositoryId: string, repositoryRoot: string): void {
@@ -582,61 +598,6 @@ const pullRequestState = (
   };
 };
 
-const currentGlobalForNewPullRequest = async (
-  repository: T405ReviewStateRepository,
-  current: ResolvedGitReviewContext,
-  mapper: GitContextRevisionMapper,
-  mappingOptions: ReturnType<typeof resolveReviewRangeMappingOptions>,
-): Promise<PreparedNewPullRequestGlobal> => {
-  const expectedGlobalState = await repository.loadGlobal({
-    kind: "git",
-    repositoryId: current.repositoryId,
-    contextId: "review-contexts-current-global",
-  });
-  if (expectedGlobalState === undefined) {
-    return {
-      expectedGlobalState: undefined,
-      nextGlobalState: {
-        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-        repositoryId: current.repositoryId,
-        currentRevisionId: current.revisionId,
-        files: {},
-        updatedAt: new Date().toISOString(),
-      },
-    };
-  }
-  if (expectedGlobalState.currentRevisionId === current.revisionId) {
-    return {
-      expectedGlobalState,
-      nextGlobalState: expectedGlobalState,
-    };
-  }
-
-  const branch = current.contextState.branch;
-  if (branch === undefined) {
-    throw new Error("Git revision mapping requires branch-schema persistence.");
-  }
-  const mapped = await mapper.map({
-    current,
-    contextState: {
-      ...current.contextState,
-      branch: {
-        ...branch,
-        headRevision: expectedGlobalState.currentRevisionId,
-      },
-      files: {},
-      updatedAt: expectedGlobalState.updatedAt,
-    },
-    globalState: expectedGlobalState,
-    fileSystemPathSemantics: PATH_SEMANTICS,
-    options: mappingOptions,
-  });
-  return {
-    expectedGlobalState,
-    nextGlobalState: mapped.globalState,
-  };
-};
-
 export function registerT405ReviewContextsRuntime(
   options: T405ReviewContextsRuntimeOptions,
 ): RegisteredT405ReviewContextsRuntime {
@@ -661,14 +622,58 @@ export function registerT405ReviewContextsRuntime(
 
   const sourceRef: { current?: T405ReviewContextsSource } = {};
 
-  const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor === undefined || (editor.document.uri.scheme !== "file" && editor.document.uri.scheme !== "vscode-remote")) {
-      throw new Error("GitHub操作にはGitリポジトリ内のアクティブエディタが必要です。");
+  const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
+    uri,
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri),
+  );
+
+  /** Collects only current, local opened-document hints for this repository. */
+  const openedEncodingHints = (repositoryRoot: string): Readonly<Record<string, string>> => {
+    const hints: Record<string, string> = {};
+    const pathApi = PATH_SEMANTICS === "windows" ? path.win32 : path.posix;
+    for (const document of vscode.workspace.textDocuments) {
+      const documentPath = workspaceFilesystemPath(document.uri);
+      if (document.isClosed || document.encoding.length === 0 || documentPath === undefined) continue;
+      const relative = pathApi.relative(repositoryRoot, documentPath);
+      if (relative.length === 0 || pathApi.isAbsolute(relative) || relative === ".." ||
+          relative.startsWith(`..${pathApi.sep}`)) continue;
+      hints[relative.split(pathApi.sep).join("/")] = document.encoding;
     }
-    const inspection = await options.git.inspectRepository(editor.document.uri.fsPath);
-    if (inspection.kind !== "repository") throw new Error("アクティブエディタのGitリポジトリを解決できません。");
-    return inspection.repository;
+    return hints;
+  };
+
+  const inspectActiveRepository = async (): Promise<LocalGitRepository> => {
+    const filesystemPath = (document: vscode.TextDocument): string | undefined => workspaceFilesystemPath(document.uri);
+    const active = vscode.window.activeTextEditor?.document;
+    const knownRootPaths = (await options.enumerateCurrentContexts()).flatMap((snapshot) => {
+      const selection = snapshot.context.selection;
+      return selection?.kind === "branch" || selection?.kind === "detached" || selection?.kind === "pull-request"
+        ? [selection.repositoryRoot]
+        : [];
+    });
+    const resolved = await resolveReviewContextsRepository({
+      activeDocumentPath: active === undefined ? undefined : filesystemPath(active),
+      openedDocumentPaths: (vscode.workspace.textDocuments ?? []).map(filesystemPath),
+      knownRootPaths,
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
+      inspectRepository: (startPath) => options.git.inspectRepository(startPath),
+      requestSelection: options.requestRepositorySelection ?? (async (candidates) => {
+        const choices = candidates.map((candidate) => ({
+          label: candidate.repository.rootPath,
+          candidate
+        }));
+        return (await vscode.window.showQuickPick(choices, {
+          placeHolder: "Gitリポジトリを選択"
+        }))?.candidate;
+      })
+    });
+    const verified = await options.git.inspectRepository(resolved.rootPath);
+    if (verified.kind !== "repository" ||
+        verified.repository.rootPath !== resolved.rootPath ||
+        verified.repository.repositoryId !== resolved.repositoryId) {
+      throw new ReviewContextsRepositorySelectionCancelled();
+    }
+    return verified.repository;
   };
 
   const resolveRepositoryRoot = async (repositoryId: string): Promise<string> => {
@@ -1083,6 +1088,7 @@ export function registerT405ReviewContextsRuntime(
                 false,
               ),
             }),
+            openedEncodingHints(local.rootPath),
           );
           await contextStateService.create(
             { contextState: state, globalState: preparedGlobal.nextGlobalState },
@@ -1134,5 +1140,13 @@ export function registerT405ReviewContextsRuntime(
     ...registered,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
       source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
+    getCancellationSnapshotForTest: async () => ({
+      providerProjection: (registered.getProjectionSnapshotForTest?.() ?? []).map((item) => item.context.contextId),
+      authoritativeContextCounts: await Promise.all(source.repositoryIds().map(async (repositoryId) => ({
+        repositoryId,
+        count: (await repository.listRepositoryContexts(repositoryId)).length,
+      }))),
+    }),
+    workspaceUriToFilesystemPathForTest: (uri) => workspaceFilesystemPath(uri),
   };
 }

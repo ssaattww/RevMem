@@ -15,14 +15,19 @@ import {
   type CurrentContextTreeItem,
   type CurrentContextUiSnapshot
 } from "./current-context-ui-controller";
+import type { CurrentContextRecomputeOptions, CurrentContextResolution } from "./current-context-runtime-composition";
 
 export const CURRENT_CONTEXT_VIEW_ID = "reviewRange.currentContext";
 export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
-  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined>;
+  recompute(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    options?: CurrentContextRecomputeOptions
+  ): Promise<CurrentContextResolution>;
+  selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
 }
@@ -63,6 +68,8 @@ implements vscode.TreeDataProvider<CurrentContextTreeItem> {
 
 export interface RegisteredCurrentContextRuntime extends vscode.Disposable {
   readonly controller: CurrentContextUiController;
+  /** The single startup refresh, including its handled error presentation. */
+  readonly startupRefresh: Promise<void>;
   refresh(): Promise<void>;
 }
 
@@ -98,12 +105,12 @@ export const registerCurrentContextRuntime = (
     ...dependentRefresher
   });
   let currentCancellation: AbortController | undefined;
-  const runRefresh = async (): Promise<void> => {
+  const runRefresh = async (options?: CurrentContextRecomputeOptions): Promise<void> => {
     currentCancellation?.abort();
     const cancellation = new AbortController();
     currentCancellation = cancellation;
     try {
-      await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext));
+      await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext, options));
     } catch (error) {
       if (currentCancellation === cancellation) {
         controller.failClosed();
@@ -133,25 +140,26 @@ export const registerCurrentContextRuntime = (
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
     vscode.commands.registerCommand(
       REFRESH_CONTEXT_COMMAND_ID,
-      runRefresh
+      () => runRefresh({ allowInteraction: true })
     ),
     vscode.commands.registerCommand(
       SELECT_CONTEXT_COMMAND_ID,
       runSelection
     ),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      void runRefresh();
+      void runRefresh({ allowInteraction: false });
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  void runRefresh();
+  const startupRefresh = runRefresh({ allowInteraction: false });
 
   return {
     controller,
-    refresh: runRefresh,
+    startupRefresh,
+    refresh: () => runRefresh({ allowInteraction: true }),
     dispose: () => {
       currentCancellation?.abort();
       for (const registration of registrations) {

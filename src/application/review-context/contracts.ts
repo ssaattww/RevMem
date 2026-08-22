@@ -93,6 +93,7 @@ export interface GitRevisionMappingSource {
     fileSystemPathSemantics: FileSystemPathSemantics,
     feedbackContext?: import("../operation-feedback/index").OperationFeedbackContext,
     signal?: AbortSignal,
+    encodingHint?: string,
   ): Promise<GitRevisionMappingTextReadResult>;
 }
 
@@ -110,6 +111,10 @@ export interface GitContextRevisionMappingInput {
   readonly options: Readonly<GitDiffMappingOptions>;
   /** Known current paths that may prove a unique rename after history rewriting. */
   readonly currentCandidatePaths?: readonly string[];
+  /** Opened documentから再観測したrepository-relative file encoding hint。 */
+  readonly encodingHintsByPath?: Readonly<Record<string, string>>;
+  /** Stable paths whose observed encoding changed during this mapping request. */
+  readonly encodingChangedPaths?: readonly string[];
 }
 
 /** Complete next snapshots after revision mapping. */
@@ -120,6 +125,8 @@ export interface GitContextRevisionMappingResult {
   readonly globalState: RepositoryGlobalState;
   /** File identities whose prior review evidence was conservatively invalidated without a proven mapping. */
   readonly unresolvedFileIds: readonly string[];
+  /** Optional generic, privacy-safe diagnostics for identities whose immutable text could not be mapped. */
+  readonly unresolvedReasonsByFileId?: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
 }
 
 /** Complete fallback input used only after both old context and Global objects are proven missing. */
@@ -140,6 +147,8 @@ export interface GitHistoryRewriteRecoveryInput {
   readonly options: Readonly<GitDiffMappingOptions>;
   /** Current paths that may prove a unique rename. */
   readonly currentCandidatePaths: readonly string[];
+  /** Opened documentから再観測したcurrent path単位のencoding hint。 */
+  readonly encodingHintsByPath?: Readonly<Record<string, string>>;
   /** UTC timestamp applied to the complete recovered snapshots. */
   readonly occurredAt: string;
 }

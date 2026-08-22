@@ -1,6 +1,7 @@
 import type { CurrentContextUiController } from "./current-context-ui-controller";
 import type { SelectedReviewContext } from "../../application/review-context/index";
 import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
+import type { CurrentContextRecomputeOptions } from "./current-context-runtime-composition";
 
 export interface CurrentContextDependentRefresher {
   /** Sets the identity that command and decoration consumers must use. */
@@ -15,9 +16,13 @@ export class CurrentContextRuntimeCoordinator {
     private readonly dependentRefresher: CurrentContextDependentRefresher
   ) {}
 
-  public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<void> {
-    const result = await this.controller.refresh(signal, feedbackContext);
-    if (result.stale) {
+  public async refresh(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    options?: CurrentContextRecomputeOptions
+  ): Promise<void> {
+    const result = await this.controller.refresh(signal, feedbackContext, options);
+    if (result.stale || result.nonDestructive) {
       return;
     }
     this.dependentRefresher.setSelectedContext?.(result.snapshot?.context.selection);

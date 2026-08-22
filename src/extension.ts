@@ -6,7 +6,7 @@ import {
   DocumentReviewStateSessionProvider,
   type DocumentEditorReviewDescriptor
 } from "./adapters/document-review-state/index";
-import type { ReviewStateTransaction } from "./core/review-state/index";
+import { type ReviewStateTransaction } from "./core/review-state/index";
 import { ReviewFileExclusionConfigurationController } from "./adapters/file-exclusion/index";
 import {
   createNodeLocalGitAdapter
@@ -28,6 +28,7 @@ import {
   DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
   resolveConfiguredNonGitSnapshotLimits
 } from "./application/non-git-snapshots/non-git-snapshot-settings";
+import { readReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import {
   createNormalEditorDecorationModelIncrementally,
   type NormalEditorReviewedDecoration
@@ -166,6 +167,18 @@ export interface ReviewRangeRuntimePort {
 interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
+  /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
+  markNormalEditorSelectionForTest(editor: vscode.TextEditor): Promise<unknown>;
+  /** Last public normal-editor command failure captured before headless UI presentation. */
+  getNormalEditorCommandFailureForTest(): {
+    readonly operation: string;
+    readonly message: string;
+  } | undefined;
+  /** Test-only read-only snapshot of this Extension Host's observed document encoding hints. */
+  getObservedEncodingHintsForTest(): readonly {
+    readonly documentFsPath: string;
+    readonly encodingHint?: string;
+  }[];
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
@@ -376,7 +389,8 @@ export const createNormalEditorDecorationActivation = (dependencies: {
       fileSystemPathSemantics: workspaceSidePathSemantics(),
       ...(workspace === undefined ? {} : { workspace }),
       lineCount,
-      contentHash
+      contentHash,
+      ...(document.encoding.length === 0 ? {} : { encodingHint: document.encoding })
     };
   };
   const invokeListener = (listener: () => void | Promise<void>): void => {
@@ -660,11 +674,16 @@ export function activate(
     );
   }));
   const documentSessionProvider = new DocumentReviewStateSessionProvider({
-    gitInspector: createNodeLocalGitAdapter(),
+    gitInspector: createNodeLocalGitAdapter({
+      decodeWithHint: async (bytes, encoding) => vscode.workspace.decode(bytes, { encoding })
+    }),
     repository,
     workspaceProvider: workspaceSessionProvider,
     stableHash,
-    historyRecorder
+    historyRecorder,
+    gitMappingOptions: readReviewRangeMappingOptions(
+      vscode.workspace.getConfiguration("reviewRange")
+    )
   });
   let selectedContext: SelectedReviewContext | undefined;
   let currentPullRequestDiff: Readonly<PullRequestDiffSnapshot> | undefined;
@@ -738,6 +757,10 @@ export function activate(
       unmarkFileReviewed(editor: vscode.TextEditor): Promise<unknown>;
     } | undefined;
   } = { current: undefined };
+  let normalEditorCommandFailureForTest: {
+    readonly operation: string;
+    readonly message: string;
+  } | undefined;
   const localBaseHeadTreeReference: {
     current: VscodePullRequestProgressTreeDataProvider | undefined;
   } = { current: undefined };
@@ -776,7 +799,15 @@ export function activate(
       await vscode.window.showErrorMessage(
         `レビュー状態を更新できませんでした: ${errorMessage(error)}`
       );
-    }
+    },
+    ...(context.extensionMode === vscode.ExtensionMode.Test ? {
+      captureCommandOperationErrorForTest: (operation: string, error: unknown) => {
+        normalEditorCommandFailureForTest = {
+          operation,
+          message: errorMessage(error)
+        };
+      }
+    } : {})
   };
   const registrations = registerNormalEditorReviewCommands(
     host,
@@ -803,7 +834,10 @@ export function activate(
           return result;
         }
       },
-      decorationController
+      decorationController,
+      context.extensionMode === vscode.ExtensionMode.Test
+        ? { deferAppliedDecorationRefresh: true }
+        : undefined
     )
   );
   context.subscriptions.push(
@@ -1018,6 +1052,10 @@ export function activate(
   return {
     ...runtimePort,
     drainVisibleEditorDecorations: () => decorationController.drain(),
+    markNormalEditorSelectionForTest: (editor: vscode.TextEditor) =>
+      commandService.markSelectionReviewed(editor),
+    getNormalEditorCommandFailureForTest: () => normalEditorCommandFailureForTest,
+    getObservedEncodingHintsForTest: () => documentSessionProvider.observedEncodingHintsSnapshot(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
     getFileExclusionPolicySnapshot: () => ({

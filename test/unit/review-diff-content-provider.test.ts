@@ -281,6 +281,68 @@ test("local Git adapter reads exact streamed text content at a commit", async ()
   executor.assertExhausted();
 });
 
+test("local Git adapter accepts an opened Shift-JIS hint only through the VS Code decode boundary", async () => {
+  const executor = new RecordingGitCommandExecutor();
+  const blobReader = new RecordingGitBlobReader([Uint8Array.of(0x82, 0xa0)]);
+  const repositoryRoot = path.resolve("workspace", "repository");
+  executor.queue(
+    repositoryRoot,
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    success(`${originalRevision}\n`)
+  );
+  executor.queue(
+    repositoryRoot,
+    ["ls-tree", "--full-tree", "-z", originalRevision, "--", ":(literal)src/shift-jis.txt"],
+    success(`100644 blob ${blobObjectId}\tsrc/shift-jis.txt\0`)
+  );
+  const decodes: Array<readonly [Uint8Array, string]> = [];
+  const adapter = new LocalGitAdapter(executor, blobReader, async (bytes, encoding) => {
+    decodes.push([bytes, encoding]);
+    return encoding === "shift_jis" ? "あ" : "\uFFFD";
+  });
+
+  assert.deepEqual(await adapter.readTextFileAtRevision(
+    repositoryRoot,
+    originalRevision,
+    "src/shift-jis.txt",
+    "posix",
+    undefined,
+    undefined,
+    "shift_jis"
+  ), { kind: "found", content: "あ" });
+  assert.equal(decodes.length, 1);
+  assert.equal(decodes[0]?.[1], "shift_jis");
+  executor.assertExhausted();
+});
+
+test("local Git adapter isolates unsupported opened encoding instead of accepting decoder fallback text", async () => {
+  const executor = new RecordingGitCommandExecutor();
+  const blobReader = new RecordingGitBlobReader([Uint8Array.of(0xff)]);
+  const repositoryRoot = path.resolve("workspace", "repository");
+  executor.queue(
+    repositoryRoot,
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}^{commit}`],
+    success(`${originalRevision}\n`)
+  );
+  executor.queue(
+    repositoryRoot,
+    ["ls-tree", "--full-tree", "-z", originalRevision, "--", ":(literal)src/unsupported.txt"],
+    success(`100644 blob ${blobObjectId}\tsrc/unsupported.txt\0`)
+  );
+  const adapter = new LocalGitAdapter(executor, blobReader, async () => "\uFFFD");
+
+  assert.deepEqual(await adapter.readTextFileAtRevision(
+    repositoryRoot,
+    originalRevision,
+    "src/unsupported.txt",
+    "posix",
+    undefined,
+    undefined,
+    "x-unsupported"
+  ), { kind: "invalid-encoding", encoding: "utf-8" });
+  executor.assertExhausted();
+});
+
 test("local Git adapter distinguishes missing commits and missing files", async () => {
   const repositoryRoot = path.resolve("workspace", "repository");
   const missingRevisionExecutor = new RecordingGitCommandExecutor();

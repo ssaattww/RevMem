@@ -69,6 +69,8 @@ export interface DocumentEditorReviewDescriptor {
   readonly lineCount: number;
   /** Current content identity used to reject stale persisted file ranges. */
   readonly contentHash: string;
+  /** VS Codeがopened documentから観測したfile単位encoding hint。 */
+  readonly encodingHint?: string;
 }
 
 /** Persistence boundary shared by Git, workspace, and external-file sessions. */

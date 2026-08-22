@@ -165,6 +165,8 @@ class MutableGitInspector implements DocumentGitInspector {
 
 class RevisionSource implements GitRevisionMappingSource {
   public objectsExist = true;
+  public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
+  public readonly invalidTextPaths = new Set<string>();
   public diff = [
     "diff --git a/src/example.ts b/src/example.ts",
     "index 1111111..2222222 100644",
@@ -199,13 +201,21 @@ class RevisionSource implements GitRevisionMappingSource {
   public async readTextFileAtRevision(
     _repositoryRoot: string,
     revision: string,
-    repositoryRelativePath: string
+    repositoryRelativePath: string,
+    _fileSystemPathSemantics?: "posix" | "windows",
+    _feedbackContext?: unknown,
+    _signal?: AbortSignal,
+    encodingHint?: string
   ): Promise<
     | { readonly kind: "found"; readonly content: string }
     | { readonly kind: "missing-revision" }
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
+    this.encodingHints.push([repositoryRelativePath, encodingHint]);
+    if (this.invalidTextPaths.has(repositoryRelativePath)) {
+      return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
+    }
     const content = this.texts.get(`${revision}\0${repositoryRelativePath}`);
     return content === undefined
       ? { kind: "missing-file" }
@@ -282,7 +292,8 @@ const createDeferred = (): {
 const descriptor = (
   repositoryRelativePath: string,
   contentHash: string,
-  lineCount = 3
+  lineCount = 3,
+  encodingHint?: string
 ): DocumentEditorReviewDescriptor => ({
   documentUri: {
     scheme: "file",
@@ -292,7 +303,8 @@ const descriptor = (
   documentFsPath: `/repo/${repositoryRelativePath}`,
   fileSystemPathSemantics: "posix",
   lineCount,
-  contentHash
+  contentHash,
+  ...(encodingHint === undefined ? {} : { encodingHint })
 });
 
 const createProvider = (
@@ -475,6 +487,249 @@ test("document sessions map branch commits and isolate branch and detached conte
 
   assert.equal(observed.length, 4);
   assert.equal(observed.at(-1)?.head, newRevision);
+  provider.dispose();
+});
+
+test("T609-NR-005 records a generic unresolved history reason for a failed current-revision text refresh", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string; readonly filePath?: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  source.invalidTextPaths.add("src/example.ts");
+  events.length = 0;
+
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "shift_jis")
+  );
+
+  assert.ok(events.some((event) =>
+    event.type === "mapping-unresolved" && event.reason === "immutable-text-unavailable"
+  ));
+  assert.equal(events.some((event) => event.type === "remapped-by-diff"), false);
+  assert.doesNotMatch(JSON.stringify(events), /shift_jis|src\\example\.ts/u);
+  provider.dispose();
+});
+
+/** An opened document changing encoding must re-read its immutable revision without reopening the host. */
+test("document routing recalculates the current Git snapshot when an opened encoding hint changes", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const provider = createProvider(stableHash, repository, inspector, source);
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  inspector.head = newRevision;
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf8")
+  );
+  source.encodingHints.length = 0;
+
+  await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "shift_jis")
+  );
+
+  assert.ok(source.encodingHints.some(([path, hint]) => path === "src/example.ts" && hint === "shift_jis"));
+  provider.dispose();
+});
+
+/** The production session provider must invalidate only the stable file whose VS Code decoding changed. */
+test("T609 production Git document session clears a same-revision encoding transition without changing an unrelated BOM file", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.texts.set(`${oldRevision}\0src/shifted.txt`, "UTF-8 view\n");
+  source.texts.set(`${oldRevision}\0src/utf8-bom.txt`, "BOM text\n");
+  const originalRead = source.readTextFileAtRevision.bind(source);
+  source.readTextFileAtRevision = async (...args) => {
+    const [,,,,,, encodingHint] = args;
+    if (args[2] === "src/shifted.txt") {
+      source.encodingHints.push([args[2], encodingHint]);
+      return {
+        kind: "found" as const,
+        content: encodingHint === "shift_jis"
+          ? "Shift-JIS view\nwith another line\n"
+          : "UTF-8 view\n"
+      };
+    }
+    return originalRead(...args);
+  };
+  const provider = createProvider(stableHash, repository, inspector, source);
+  const shiftedInitial = await provider.open(
+    descriptor("src/shifted.txt", stableHash.digest("Shift-JIS view\nwith another line\n"), 3, "shift_jis")
+  );
+  await shiftedInitial.committer.commit(markReviewedRanges({
+    contextState: shiftedInitial.contextState,
+    globalState: shiftedInitial.globalState,
+    target: shiftedInitial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const bomInitial = await provider.open(
+    descriptor("src/utf8-bom.txt", stableHash.digest("BOM text\n"), 2, "utf8")
+  );
+  await bomInitial.committer.commit(markReviewedRanges({
+    contextState: bomInitial.contextState,
+    globalState: bomInitial.globalState,
+    target: bomInitial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const before = await provider.loadForDecoration(
+    descriptor("src/shifted.txt", stableHash.digest("Shift-JIS view\nwith another line\n"), 3, "shift_jis")
+  );
+  assert.ok(before);
+  const beforeBomContext = structuredClone(before.contextState.files[bomInitial.target.fileId]);
+  const beforeBomGlobal = structuredClone(before.globalState.files[bomInitial.target.fileId]);
+  source.encodingHints.length = 0;
+
+  const [transitioned] = await Promise.all([
+    provider.loadForDecoration(
+      descriptor("src/shifted.txt", stableHash.digest("UTF-8 view\n"), 2, "utf8")
+    ),
+    provider.loadForDecoration(
+      descriptor("src/utf8-bom.txt", stableHash.digest("BOM text\n"), 2, "utf8")
+    )
+  ]);
+
+  assert.ok(transitioned);
+  assert.deepEqual(transitioned.contextState.files[shiftedInitial.target.fileId]?.modifiedReviewed, []);
+  assert.equal(transitioned.contextState.files[shiftedInitial.target.fileId]?.lineCount, 2);
+  assert.equal(transitioned.contextState.files[shiftedInitial.target.fileId]?.contentHash, stableHash.digest("UTF-8 view\n"));
+  assert.deepEqual(transitioned.globalState.files[shiftedInitial.target.fileId]?.reviewed, []);
+  assert.equal(transitioned.globalState.files[shiftedInitial.target.fileId]?.contentHash, stableHash.digest("UTF-8 view\n"));
+  assert.deepEqual(transitioned.contextState.files[bomInitial.target.fileId], beforeBomContext);
+  assert.deepEqual(transitioned.globalState.files[bomInitial.target.fileId], beforeBomGlobal);
+  assert.deepEqual(source.encodingHints, [
+    ["src/shifted.txt", "utf8"],
+    ["src/shifted.txt", "utf8"]
+  ]);
+  provider.dispose();
+});
+
+test("T609-NR-002 aggregates all reopened document hints across mapping and an encoding change", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "@@ -2 +2 @@",
+    "-beta",
+    "+BETA",
+    "diff --git a/src/shifted.ts b/src/shifted.ts",
+    "@@ -1 +1 @@",
+    "-before",
+    "+after",
+    ""
+  ].join("\n");
+  source.texts.set(`${oldRevision}\0src/shifted.ts`, "before");
+  source.texts.set(`${newRevision}\0src/shifted.ts`, "after");
+  let provider = createProvider(stableHash, repository, inspector, source);
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"), 3, "utf8")
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const initialCommit = await repository.load({
+    kind: "git", repositoryId, contextId: initial.contextState.contextId
+  });
+  assert.ok(initialCommit);
+  const existingContextFile = initialCommit.contextState.files[initial.target.fileId];
+  const existingGlobalFile = initialCommit.globalState.files[initial.target.fileId];
+  assert.ok(existingContextFile);
+  assert.ok(existingGlobalFile);
+  const shiftedId = "shifted-stable-file";
+  const shiftedContext = {
+    ...clone<typeof existingContextFile>(existingContextFile),
+    fileId: shiftedId,
+    currentPath: "src/shifted.ts",
+    revisionId: oldRevision,
+    lineCount: 1,
+    contentHash: stableHash.digest("before")
+  };
+  const shiftedGlobal = {
+    ...clone<typeof existingGlobalFile>(existingGlobalFile),
+    fileId: shiftedId,
+    currentPath: "src/shifted.ts",
+    revisionId: oldRevision,
+    contentHash: stableHash.digest("before")
+  };
+  await repository.save(
+    { kind: "git", repositoryId, contextId: initial.contextState.contextId },
+    {
+      schemaVersion: initialCommit.schemaVersion,
+      contextState: {
+        ...initialCommit.contextState,
+        files: { ...initialCommit.contextState.files, [shiftedId]: shiftedContext }
+      },
+      globalState: {
+        ...initialCommit.globalState,
+        files: { ...initialCommit.globalState.files, [shiftedId]: shiftedGlobal }
+      }
+    }
+  );
+  await provider.open(descriptor("src/shifted.ts", stableHash.digest("before"), 1, "shift_jis"));
+  inspector.head = newRevision;
+  source.encodingHints.length = 0;
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf8"));
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/example.ts" && hint === "utf8"));
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+
+  source.encodingHints.length = 0;
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le"));
+  assert.equal(
+    source.encodingHints.some(([filePath]) => filePath === "src/shifted.ts"),
+    false,
+    "a same-revision encoding change must not re-read an unaffected stable identity"
+  );
+  provider.dispose();
+
+  provider = createProvider(stableHash, repository, inspector, source);
+  await provider.open(descriptor("src/shifted.ts", stableHash.digest("after"), 1, "shift_jis"));
+  await provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le"));
+  source.texts.set(`${pollRevision}\0src/example.ts`, "alpha\nBETA\ngamma");
+  source.texts.set(`${pollRevision}\0src/shifted.ts`, "after");
+  source.diff = "";
+  inspector.head = pollRevision;
+  source.encodingHints.length = 0;
+  const reopened = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"), 3, "utf16le")
+  );
+  assert.ok(source.encodingHints.some(([filePath, hint]) => filePath === "src/shifted.ts" && hint === "shift_jis"));
+  assert.ok(reopened.contextState.files[shiftedId]);
+  assert.ok(reopened.globalState.files[shiftedId]);
   provider.dispose();
 });
 

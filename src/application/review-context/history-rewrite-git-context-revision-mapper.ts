@@ -101,6 +101,7 @@ export class GitContextRevisionMapper {
       fileSystemPathSemantics: input.fileSystemPathSemantics,
       options: input.options,
       currentCandidatePaths,
+      ...(input.encodingHintsByPath === undefined ? {} : { encodingHintsByPath: input.encodingHintsByPath }),
       occurredAt: direct.contextState.updatedAt
     });
 
@@ -116,6 +117,12 @@ export class GitContextRevisionMapper {
         : direct.unresolvedFileIds),
       ...recovered.unresolvedFileIds
     ]);
+    const unresolvedReasonsByFileId: Record<string, "immutable-text-unavailable" | "mapping-unresolved"> = {
+      ...(direct.unresolvedReasonsByFileId ?? {})
+    };
+    for (const fileId of recovered.unresolvedFileIds) {
+      unresolvedReasonsByFileId[fileId] ??= "mapping-unresolved";
+    }
     reconcileSharedRecoveryFiles(
       input,
       contextFiles,
@@ -132,7 +139,8 @@ export class GitContextRevisionMapper {
         ...clone(direct.globalState),
         files: globalFiles
       },
-      unresolvedFileIds: [...unresolvedFileIds].sort()
+      unresolvedFileIds: [...unresolvedFileIds].sort(),
+      unresolvedReasonsByFileId
     };
   }
 
@@ -157,12 +165,18 @@ export class GitContextRevisionMapper {
         repositoryRoot,
         revision,
         repositoryRelativePath,
-        fileSystemPathSemantics
+        fileSystemPathSemantics,
+        feedbackContext,
+        signal,
+        encodingHint
       ) => original.readTextFileAtRevision(
         repositoryRoot,
         revision,
         repositoryRelativePath,
-        fileSystemPathSemantics
+        fileSystemPathSemantics,
+        feedbackContext,
+        signal,
+        encodingHint
       )
     };
     return { source };

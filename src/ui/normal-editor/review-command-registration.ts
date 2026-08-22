@@ -44,6 +44,11 @@ export interface NormalEditorCommandHost<Editor> {
   showNormalEditorRequired(): void | Promise<void>;
   /** Displays a handler error after it is caught; a failure from this presentation method remains observable to the command host. */
   showCommandError(error: unknown): void | Promise<void>;
+  /** Test-only synchronous capture that lets a headless public command preserve its original failure. */
+  captureCommandOperationErrorForTest?(
+    operation: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
+    error: unknown
+  ): void;
 }
 
 /** Four normal-editor operations implemented by the application command service. */
@@ -64,6 +69,18 @@ export interface NormalEditorDecorationRefresher {
   refreshVisibleEditors(): void | Promise<void>;
 }
 
+/** Controls whether an applied normal-editor command completes after its automatic decoration refresh. */
+export interface RefreshingNormalEditorReviewCommandHandlerOptions {
+  /**
+   * Defers automatic decoration refresh after an applied command.
+   *
+   * Production callers leave this unset so command completion continues to await
+   * visible-editor synchronization. Extension Test mode uses it when the fixture
+   * owns the explicit refresh and drain observation boundary.
+   */
+  readonly deferAppliedDecorationRefresh?: boolean;
+}
+
 type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
 
 /**
@@ -74,13 +91,14 @@ type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
  */
 export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
   handlers: NormalEditorReviewCommandHandlers<Editor>,
-  refresher: NormalEditorDecorationRefresher
+  refresher: NormalEditorDecorationRefresher,
+  options: RefreshingNormalEditorReviewCommandHandlerOptions = {}
 ): NormalEditorReviewCommandHandlers<Editor> {
   const refreshAfterApplied = async (
     operation: () => void | Promise<unknown>
   ): Promise<unknown> => {
     const result = await operation();
-    if (result === "applied") {
+    if (result === "applied" && !options.deferAppliedDecorationRefresh) {
       await refresher.refreshVisibleEditors();
     }
     return result;
@@ -100,12 +118,17 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
 
 const runReviewOperation = async (
   host: NormalEditorCommandHost<unknown>,
+  commandOperation: keyof typeof NORMAL_EDITOR_REVIEW_COMMAND_IDS,
   label: string,
   operation: () => void | Promise<unknown>
 ): Promise<void> => {
   try {
     await runWithActiveOperationFeedback(label, async () => operation());
   } catch (error) {
+    if (host.captureCommandOperationErrorForTest !== undefined) {
+      host.captureCommandOperationErrorForTest(commandOperation, error);
+      throw error;
+    }
     await host.showCommandError(formatOperationFailureForUser(error));
   }
 };
@@ -128,6 +151,7 @@ const invokeForActiveNormalEditor = async <Editor>(
     }
     await runReviewOperation(
       host as NormalEditorCommandHost<unknown>,
+      commandId,
       OPERATION_LABELS[commandId],
       () => host.invokeDiffEditorCommand!(commandId, editor)
     );
@@ -136,6 +160,7 @@ const invokeForActiveNormalEditor = async <Editor>(
 
   await runReviewOperation(
     host as NormalEditorCommandHost<unknown>,
+    commandId,
     OPERATION_LABELS[commandId],
     () => invocation(editor)
   );

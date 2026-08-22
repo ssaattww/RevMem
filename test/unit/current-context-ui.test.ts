@@ -280,6 +280,33 @@ test("production candidate selection resolves accepted Quick Pick, branch replac
   assert.deepEqual(quickPickCalls, ["old,fallback"]);
 });
 
+test("T609 background recompute never opens a multi-root Quick Pick while an explicit refresh does", async () => {
+  const first = branchSnapshot("first", "refs/heads/first");
+  const second = branchSnapshot("second", "refs/heads/second");
+  let quickPickCalls = 0;
+  const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+    enumerateCandidates: async () => [first, second],
+    resolveFallback: async () => undefined,
+    requestSelection: async (available) => {
+      quickPickCalls += 1;
+      return available[0];
+    }
+  });
+
+  assert.deepEqual(
+    await composition.recompute(undefined, undefined, { allowInteraction: false }),
+    { kind: "unresolved" },
+    "activation and active-editor refresh must retain the accepted state when multiple roots remain"
+  );
+  assert.equal(quickPickCalls, 0, "background recompute must not invoke the Quick Pick port");
+  assert.equal(
+    await composition.recompute(undefined, undefined, { allowInteraction: true }),
+    first,
+    "the explicit refresh command remains the user-interactive selection path"
+  );
+  assert.equal(quickPickCalls, 1);
+});
+
 test("a stale candidate resolution cannot clear a newer explicit selection", async () => {
   const selection = new CurrentContextCandidateSelection();
   const selected = branchSnapshot("selected", "refs/heads/selected");
