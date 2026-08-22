@@ -830,7 +830,7 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
   const disposables = { dispose(): void {} };
   const document = {
     uri: { scheme: "file", authority: "", path: documentUriPath, fsPath: documentFsPath, query: "", fragment: "", toString: () => `file://${documentUriPath.replace("😀", "%F0%9F%98%80")}` },
-    version: 1, lineCount: unicode.length, eol: 1, encoding: "",
+    version: 1, lineCount: unicode.length, eol: 1, encoding: "utf8",
     lineAt: (line: number) => ({ text: unicode[line]!, range: { end: { line, character: unicode[line]!.length } } })
   };
   const first = { id: "first", document, selections: [], setDecorations: (_type: unknown, options: readonly unknown[]) => { calls.push({ editor: "first", options: options.length }); } };
@@ -887,6 +887,7 @@ test("T607 IFR004 runs the exported activation factory through actual descriptor
   });
   const descriptor = await activation.toDocumentDescriptor(first as never);
   assert.ok(descriptor, "the exact factory extracts and hashes the Unicode document before state I/O");
+  assert.equal(descriptor.encodingHint, "utf8", "the actual non-empty TextDocument encoding reaches the activation descriptor");
   assert.equal(descriptor.fileSystemPathSemantics, pathSemantics, "the fixture follows the workspace-side host path semantics");
   assert.equal(descriptor.workspace?.relativePath, "src/😀.ts", "the fixture resolves one cross-platform repository-relative owner");
   const intervals = Array.from({ length: 2_048 }, (_, index) => ({ startLine: index * 4, endLineExclusive: index * 4 + 1 }));
