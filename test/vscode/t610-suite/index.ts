@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 interface T610ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
+  drainStartupGlobalUnderstandingForTest(): Promise<void>;
   drainGlobalUnderstandingFileOpenForTest(): Promise<void>;
   drainGlobalUnderstandingFolderEntryForTest(): Promise<void>;
   recordT610HostSubphaseForTest(subphase: string): Promise<void>;
@@ -63,6 +64,7 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
   assert.ok(extension, "T610 requires the contributed extension");
   const api = await extension.activate() as T610ExtensionApi;
+  await api.drainStartupGlobalUnderstandingForTest();
   await api.drainCurrentContextStartupForTest();
   await vscode.commands.executeCommand("reviewRange.refreshContext");
   assert.notEqual(

@@ -228,6 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testGlobalUnderstandingSourceRefreshOutcome: "not-started" | "snapshot" | "undefined" | "error" = "not-started";
   let testGlobalUnderstandingSourceRefreshError: string | undefined;
   let testGlobalUnderstandingPublishedSnapshot = false;
+  let testStartupGlobalUnderstanding = Promise.resolve();
   let testGlobalUnderstandingPresentation: import("./ui/global-understanding/vscode-global-understanding-runtime").GlobalUnderstandingPresentationForTest | undefined;
   const testGlobalUnderstandingUiErrors: string[] = [];
   let resolveTestGlobalUnderstandingFolderEntry: (() => void) | undefined;
@@ -503,11 +504,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   // Activation can precede this extension's document-open listener. Observe the
   // already-open documents through the same production source and coalesce one
   // scoped refresh after the observations settle.
-  void observeStartupGlobalUnderstandingDocuments(
+  const startupGlobalUnderstanding = observeStartupGlobalUnderstandingDocuments(
     vscode.workspace.textDocuments,
     (document) => globalSource.observeFileOpen(document.uri.fsPath),
     () => globalRuntime.refreshWithErrorBoundary()
-  );
+  ).catch((error: unknown) => {
+    reportActiveOperationFailure("Global Understanding startup", error);
+  });
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    testStartupGlobalUnderstanding = startupGlobalUnderstanding;
+  }
 
   const prRepository = runtimePort.reviewStateRepository;
   const prHistory = runtimePort.reviewHistoryRecorder;
@@ -884,6 +890,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return {
       ...baseApi,
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
+      /** Test-mode T610 drain for non-blocking activation startup Global work. */
+      drainStartupGlobalUnderstandingForTest: () => testStartupGlobalUnderstanding,
       /** Test-mode T610 drain for the registered document-open lifecycle. */
       drainGlobalUnderstandingFileOpenForTest: async () => {
         await testGlobalUnderstandingFileOpen;

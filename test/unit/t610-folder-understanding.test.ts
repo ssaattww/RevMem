@@ -624,3 +624,30 @@ test("T610-R12 persists before-and-after Host subphases around each R11 actual-c
   }
   assert.doesNotMatch(suite, /const recordSubphase/gu, "R12 calls the persisted Test API directly instead of hiding operation boundaries in a local wrapper");
 });
+
+test("T610-R13 registers startup Global work outside activation and exposes its Test drain", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  const startup = await import("../../src/t305-global-understanding-startup.js");
+  let releaseObservation: (() => void) | undefined;
+  const observationGate = new Promise<void>((resolve) => { releaseObservation = resolve; });
+  const observed: string[] = [];
+  let refreshed = 0;
+  const pending = startup.observeStartupGlobalUnderstandingDocuments(
+    [{ isClosed: false, uri: { scheme: "file" }, id: "open" }],
+    async (document) => { observed.push(document.id); await observationGate; },
+    async () => { refreshed += 1; }
+  );
+  assert.deepEqual(observed, ["open"], "startup work is registered immediately without waiting for its calculation");
+  assert.equal(refreshed, 0, "the refresh remains pending while startup observation is still running");
+  releaseObservation!();
+  await pending;
+  assert.equal(refreshed, 1, "the queued startup calculation still refreshes once after observation settles");
+
+  assert.doesNotMatch(activation, /await observeStartupGlobalUnderstandingDocuments/gu, "activation never awaits the long startup Global calculation");
+  assert.match(activation, /drainStartupGlobalUnderstandingForTest:/u, "Test mode exposes the registered startup work as an explicit drain");
+  const activationDrain = suite.indexOf("await api.drainStartupGlobalUnderstandingForTest();");
+  const firstMarker = suite.indexOf('recordT610HostSubphaseForTest("context-ready")');
+  assert.ok(activationDrain >= 0 && activationDrain < firstMarker, "the Host drains startup Global work before its first marker or assertion");
+});
