@@ -21,9 +21,6 @@ interface T610ExtensionApi {
     readonly sourceRefreshError: string | undefined;
     readonly publishedSnapshot: boolean;
   };
-  stopGlobalUnderstandingFolderForTest(folderPath: string): Promise<void>;
-  resumeGlobalUnderstandingFolderForTest(folderPath: string): Promise<void>;
-  notifyGlobalUnderstandingFolderEntryForTest(uri: vscode.Uri): Promise<void>;
 }
 
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
@@ -87,17 +84,17 @@ export async function run(): Promise<void> {
     assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
     assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
     assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
-    await api.stopGlobalUnderstandingFolderForTest("src");
+    await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
     assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
-    await api.resumeGlobalUnderstandingFolderForTest("src");
+    await vscode.commands.executeCommand("reviewRange.resumeGlobalUnderstandingFolder");
     assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
-    await api.notifyGlobalUnderstandingFolderEntryForTest(vscode.Uri.joinPath(workspace.uri, "src", "watcher-created.ts"));
+    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(workspace.uri, "src", "watcher-created.ts"), new TextEncoder().encode("export const watcher = true;\n"));
     assert.equal(
       (await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state,
       "active",
       "the registered watcher callback refreshes the resumed folder scope"
     );
-    await api.stopGlobalUnderstandingFolderForTest("src");
+    await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
   } finally {
     await closeDocument(document);
   }

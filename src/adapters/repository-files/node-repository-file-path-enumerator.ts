@@ -115,6 +115,7 @@ export class NodeRepositoryFilePathEnumerator {
     const includedPaths: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
+    const budget = { pending: 0 };
     await this.walk(
       repositoryRoot,
       repositoryRoot,
@@ -122,8 +123,9 @@ export class NodeRepositoryFilePathEnumerator {
       includedPaths,
       excluded,
       excludedDirectories,
-      signal
+      signal, undefined, budget
     );
+    this.flushBudget(budget);
     includedPaths.sort(compareRepositoryPaths);
     excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
     excludedDirectories.sort((left, right) => compareRepositoryPaths(left.path, right.path));
@@ -201,7 +203,9 @@ export class NodeRepositoryFilePathEnumerator {
     const includedPaths: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
-    await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal, shouldPruneFolder);
+    const budget = { pending: 0 };
+    await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal, shouldPruneFolder, budget);
+    this.flushBudget(budget);
     throwIfAborted(signal);
     const folders = new Set<string>([normalized]);
     for (const entry of [...includedPaths, ...excluded.map((item) => item.path), ...excludedDirectories.map((item) => item.path)]) {
@@ -231,16 +235,16 @@ export class NodeRepositoryFilePathEnumerator {
     excluded: ExcludedRepositoryFile[],
     excludedDirectories: ExcludedRepositoryDirectory[],
     signal?: AbortSignal,
-    shouldPruneFolder?: (repositoryRelativeFolder: string) => boolean
+    shouldPruneFolder?: (repositoryRelativeFolder: string) => boolean,
+    budget: { pending: number } = { pending: 0 }
   ): Promise<void> {
     throwIfAborted(signal);
     const entries = await readdir(currentDirectory, { withFileTypes: true });
     throwIfAborted(signal);
-    let pending = 0;
     for (const entry of entries) {
       throwIfAborted(signal);
-      if (++pending >= this.maxEntriesPerStage) {
-        this.accountWorkBatch?.({ kind: "repository-entry", count: pending }); pending = 0;
+      if (++budget.pending >= this.maxEntriesPerStage) {
+        this.accountWorkBatch?.({ kind: "repository-entry", count: budget.pending }); budget.pending = 0;
         await this.yieldControl(); throwIfAborted(signal);
       }
       const absolutePath = path.join(currentDirectory, entry.name);
@@ -280,11 +284,18 @@ export class NodeRepositoryFilePathEnumerator {
           excluded,
           excludedDirectories,
           signal,
-          shouldPruneFolder
+          shouldPruneFolder, budget
         );
       } else if (entry.isFile()) {
         includedPaths.push(repositoryPath);
       }
     }
+  }
+
+  /** Accounts for a final partial operation-wide stage, including pruned entries. */
+  private flushBudget(budget: { pending: number }): void {
+    if (budget.pending === 0) return;
+    this.accountWorkBatch?.({ kind: "repository-entry", count: budget.pending });
+    budget.pending = 0;
   }
 }

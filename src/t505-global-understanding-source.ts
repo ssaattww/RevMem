@@ -206,6 +206,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       totalNonEmptyLineCount: folder.total.total,
       partial: !folder.total.complete
     }));
+    const repositoryPartial = folders?.some((folder) => folder.partial) === true;
     return {
       progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files },
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
@@ -213,7 +214,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       unopenedFileCount,
       excludedFileCount,
       prunedExcludedDirectoryCount,
-      ...(folders === undefined ? {} : { folders })
+      ...(folders === undefined ? {} : { folders }),
+      ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
   }
 
@@ -272,7 +274,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
       totalNonEmptyLineCount: folder.total.total, partial: !folder.total.complete
     }));
-    return { progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, ...(folders === undefined ? {} : { folders }) };
+    return { progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, ...(folders === undefined ? {} : { folders }), ...(folders?.some((folder) => folder.partial) === true ? { repositoryPartial: true } : {}) };
   }
 
   private createFileOpenTarget(

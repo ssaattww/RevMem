@@ -25,6 +25,7 @@
 - T610 Host R5: `reports/issue-78-t610-normal-review-followup-r5-host-20260822220339.md`。Windows workspace root URI解決を修正し、Host initial/restart functional phaseは全成功。fixture cleanupのみ10秒timeoutのため、R6でowned lifecycle cleanupを限定修正する。
 - T610 Host R6: `reports/issue-78-t610-normal-review-followup-r6-cleanup-20260822221743.md`。exact Host一回でinitial/restart/cleanup全phase成功。T610 41/41、build/lint/diff-check Green。同じ通常reviewerのT610-NR-001〜010限定closureへ進む。
 - T610 normal closure R1: `reports/issue-78-t610-normal-review-closure-20260822223637.md`。NR-001/002/003/009はclosed。NR-004/005/006/007/008/010はopenのため、partial UI、real command/menu、startup/watcher、storage diagnostics、global budget、JSDoc contractを修正する。
+- T610 open findings R7: `reports/issue-78-t610-normal-review-followup-r7-20260822225009.md`。T610 47/47、T607 81/81、static全Green。actual Host initialが300秒timeoutのため、R8でpublic command/real watcher lifecycleの停止phaseを限定する。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録

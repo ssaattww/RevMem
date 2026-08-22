@@ -34,6 +34,8 @@ export interface GlobalUnderstandingTreeSnapshot {
   readonly unopenedFileCount?: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
+  /** True when the known folder scopes do not cover a complete repository denominator. */
+  readonly repositoryPartial?: boolean;
   readonly folders?: readonly GlobalUnderstandingFolderSnapshot[];
 }
 
@@ -53,6 +55,8 @@ export interface GlobalUnderstandingSummaryNode {
   readonly reviewedNonEmptyLineCount: number;
   readonly totalNonEmptyLineCount: number;
   readonly progress: number;
+  /** Prevents a known-scope ratio from being presented as repository-wide. */
+  readonly partial?: true;
 }
 
 export interface GlobalUnderstandingFileNode {
@@ -195,6 +199,7 @@ interface ValidatedTreeSnapshot {
   readonly prunedExcludedDirectoryCount: number;
   readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
   readonly folders: readonly GlobalUnderstandingFolderSnapshot[];
+  readonly repositoryPartial: boolean;
 }
 
 const validateTreeSnapshot = (
@@ -228,7 +233,7 @@ const validateTreeSnapshot = (
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
     openTargetsByPath,
-    folders: snapshot.folders ?? []
+    folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true
   };
 };
 
@@ -256,7 +261,7 @@ const validateTreeSnapshotIncrementally = async (
     if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
   }
   if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
-  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath, folders: snapshot.folders ?? [] };
+  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath, folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true };
 };
 
 const createTreeModel = (
@@ -266,10 +271,11 @@ const createTreeModel = (
   summary: Object.freeze({
     kind: "summary" as const,
     label: "リポジトリ全体" as const,
-    description: `${formatPercent(snapshot.progress.progress)} (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})`,
+    description: snapshot.repositoryPartial ? `partial (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})` : `${formatPercent(snapshot.progress.progress)} (${snapshot.progress.reviewedNonEmptyLineCount}/${snapshot.progress.totalNonEmptyLineCount})`,
     reviewedNonEmptyLineCount: snapshot.progress.reviewedNonEmptyLineCount,
     totalNonEmptyLineCount: snapshot.progress.totalNonEmptyLineCount,
-    progress: snapshot.progress.progress
+    progress: snapshot.progress.progress,
+    ...(snapshot.repositoryPartial ? { partial: true as const } : {})
   }),
   files: Object.freeze(files),
   diagnostics: Object.freeze({
@@ -401,7 +407,7 @@ export const formatGlobalUnderstandingStatusBar = (snapshot: GlobalUnderstanding
   requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
   requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
-  const percent = formatPercent(progress.progress);
+  const percent = snapshot.repositoryPartial === true ? "partial" : formatPercent(progress.progress);
   return {
     text: `$(book) Global: ${percent} (${progress.reviewedNonEmptyLineCount}/${progress.totalNonEmptyLineCount})`,
     tooltip: [

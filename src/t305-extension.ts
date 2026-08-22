@@ -491,6 +491,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     } : {})
   });
 
+  // Activation can precede this extension's document-open listener. Observe the
+  // already-open documents through the same production source and coalesce one
+  // scoped refresh after the observations settle.
+  void Promise.all(vscode.workspace.textDocuments
+    .filter((document) => !document.isClosed && FILESYSTEM_SCHEMES.has(document.uri.scheme))
+    .map(async (document) => globalSource.observeFileOpen(document.uri.fsPath)))
+    .then(() => globalRuntime.refreshWithErrorBoundary());
+
   const prRepository = runtimePort.reviewStateRepository;
   const prHistory = runtimePort.reviewHistoryRecorder;
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({

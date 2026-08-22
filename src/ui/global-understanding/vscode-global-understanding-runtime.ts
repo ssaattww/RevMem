@@ -239,6 +239,11 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
 }
 
 const requireCurrentFolderNode = (value: unknown, current: ReadonlySet<GlobalUnderstandingFolderNode>): GlobalUnderstandingFolderNode => {
+  if (value === undefined) {
+    const candidates = [...current].filter((node) => node.action === "stop" || node.action === "resume");
+    if (candidates.length === 1) return candidates[0]!;
+    throw new RangeError("Select one current Global Understanding folder row before running this command.");
+  }
   if (typeof value !== "object" || value === null || (value as { kind?: unknown }).kind !== "folder") {
     throw new RangeError("Select a current Global Understanding folder row before running this command.");
   }
@@ -359,8 +364,10 @@ export const registerGlobalUnderstandingRuntime = (
         try {
           if (dependencies.source.startFolder === undefined) return;
           const folder = requireCurrentFolderNode(value, currentFolderNodes);
-          await dependencies.source.startFolder(folder.path);
-          await refreshWithErrorBoundary();
+          await runWithActiveOperationFeedback("Global Understanding folderを開始", async () => {
+            await dependencies.source.startFolder!(folder.path);
+            await refreshWithErrorBoundary();
+          });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
         }
@@ -372,8 +379,10 @@ export const registerGlobalUnderstandingRuntime = (
         try {
           if (dependencies.source.stopFolder === undefined) return;
           const folder = requireCurrentFolderNode(value, currentFolderNodes);
-          await dependencies.source.stopFolder(folder.path);
-          await refreshWithErrorBoundary();
+          await runWithActiveOperationFeedback("Global Understanding folderを停止", async () => {
+            await dependencies.source.stopFolder!(folder.path);
+            await refreshWithErrorBoundary();
+          });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
         }
@@ -385,8 +394,10 @@ export const registerGlobalUnderstandingRuntime = (
         try {
           if (dependencies.source.resumeFolder === undefined) return;
           const folder = requireCurrentFolderNode(value, currentFolderNodes);
-          await dependencies.source.resumeFolder(folder.path);
-          await refreshWithErrorBoundary();
+          await runWithActiveOperationFeedback("Global Understanding folderを再開", async () => {
+            await dependencies.source.resumeFolder!(folder.path);
+            await refreshWithErrorBoundary();
+          });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
         }

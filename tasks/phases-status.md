@@ -38,7 +38,7 @@ Lを超える見込みになった場合は再分解する。
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review findings修正中）
-- 次の工程: open 6 findings修正、同reviewer再closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
+- 次の工程: open findings Host R8、同reviewer再closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -186,7 +186,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
 - T609: PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み。
-- T610: 通常closureでNR-001/002/003/009はclosed。NR-004/005/006/007/008/010を一括修正し、同じreviewerが再closureする。
+- T610: open 6 findingsはlocal Green。R7 actual Host initialが300秒timeoutのため、R8でpublic command/real watcher lifecycleの停止phaseを限定する。
 - T608: T609・T610完了後に実施する。
 
 ### 終了チェックポイント

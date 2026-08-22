@@ -21,6 +21,7 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
+import { setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
 
 test("T610 scopes file opens to direct folders, preserves stopped descendants, and isolates repository roots", async () => {
   const saved: string[][] = [];
@@ -201,6 +202,54 @@ test("T610-NR-008 bounds 257 direct entries and prunes a stopped subtree before 
   assert.ok(!folders.some((folder) => folder.startsWith("active/held")), "a stopped subtree is never recursively discovered");
 });
 
+test("T610-R7 never presents a partial repository aggregate as a percentage", async () => {
+  const model = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
+  const partial = {
+    progress: { reviewedNonEmptyLineCount: 1, totalNonEmptyLineCount: 2, progress: 0.5, files: [] },
+    excludedFileCount: 0, prunedExcludedDirectoryCount: 0, repositoryPartial: true,
+    folders: [{ path: "src", state: "active" as const, reviewedNonEmptyLineCount: 1, totalNonEmptyLineCount: 2, partial: true }]
+  };
+  const tree = model.createGlobalUnderstandingTreeModel(partial);
+  assert.match(tree.summary.description, /partial/u);
+  assert.doesNotMatch(tree.summary.description, /50%/u);
+  assert.doesNotMatch(model.formatGlobalUnderstandingStatusBar(partial).text, /50%/u);
+});
+
+test("T610-R7 documents the real watcher and startup-open lifecycle without a callback shortcut", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  assert.match(activation, /for \(const document of vscode\.workspace\.textDocuments\)/u);
+  assert.match(activation, /folderEntryWatcher\.onDidCreate/u);
+  assert.match(activation, /folderEntryWatcher\.onDidDelete/u);
+  assert.match(suite, /workspace\.fs\.writeFile/u);
+  assert.doesNotMatch(suite, /notifyGlobalUnderstandingFolderEntryForTest/u);
+});
+
+test("T610-R7 applies one 128-item enumeration budget across a deep 257+ folder walk", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-wide-budget-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(Array.from({ length: 257 }, async (_, index) => {
+    const folder = path.join(root, "deep", `d-${index}`);
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, "a.ts"), "x\n", "utf8");
+  }));
+  const batches: number[] = [];
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    maxEntriesPerStage: 128, yieldControl: () => undefined, accountWorkBatch: (entry) => { batches.push(entry.count); }
+  });
+  await enumerator.enumerateSubtreeFolders(root, "deep");
+  assert.ok(batches.length >= 3);
+  assert.ok(batches.every((count) => count <= 128));
+});
+
+test("T610-R7 wires the exported T610 documentation contract exactly once", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
+  assert.match(manifest.scripts["test:t610"]!, /t610-public-api-documentation\.test\.js/u);
+  assert.equal((manifest.scripts["test:t610"]!.match(/t610-public-api-documentation\.test\.js/gu) ?? []).length, 1);
+});
+
 test("T610-NR-007 fails closed for corrupt marker text and durable write failure", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-store-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -278,6 +327,30 @@ test("T610-NR-007 sends source and persistence failures through a privacy-safe r
   assert.deepEqual(errors, ["操作を完了できませんでした。詳細は Review Range Output を確認してください。"]);
   assert.equal(errors.join("\n").includes("secret.ts"), false);
   registered.dispose();
+});
+
+test("T610-R7 runs a real folder command through the privacy-safe error boundary", async () => {
+  setActiveOperationFeedback(undefined);
+  const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
+  const errors: string[] = [];
+  const disposable = { dispose(): void {} };
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class { public description: unknown; public tooltip: unknown; public iconPath: unknown; public contextValue: unknown; public command: unknown; public constructor(...args: unknown[]) { void args; } },
+    ThemeIcon: class { public constructor(...args: unknown[]) { void args; } }, TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 }, StatusBarAlignment: { Left: 1 },
+    window: { createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }), createOutputChannel: () => ({ appendLine(): void {}, show(): void {}, dispose(): void {} }), registerTreeDataProvider: () => disposable },
+    commands: { registerCommand: (id: string, callback: (...args: unknown[]) => Promise<void>) => { commands.set(id, callback); return disposable; } }, workspace: { onDidChangeConfiguration: () => disposable }
+  };
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>("../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode);
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source: { recalculate: async () => ({ progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, folders: [{ path: "src", state: "active" as const, reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, partial: false }] }), stopFolder: async () => { throw Object.assign(new Error("C:\\private\\marker.json ENOSPC"), { code: "ENOSPC" }); } },
+    readGlobalLayerEnabled: () => false, writeGlobalLayerEnabled: async () => undefined, refreshDecorations: async () => undefined, openFile: async () => undefined, reportError: async (error) => { errors.push(String(error)); }
+  });
+  await registered.refresh();
+  await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!();
+  assert.deepEqual(errors, ["操作を完了できませんでした。詳細は Review Range Output を確認してください。"]);
+  assert.equal(errors.join("\n").includes("marker.json"), false);
+  registered.dispose(); setActiveOperationFeedback(undefined);
 });
 
 test("T610-NR-005 keeps stopped markers isolated by actual URI authority and rejects traversal before enumeration", async (t) => {
