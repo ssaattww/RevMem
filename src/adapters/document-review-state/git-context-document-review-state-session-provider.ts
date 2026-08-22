@@ -115,6 +115,7 @@ export class GitContextDocumentReviewStateSessionProvider {
   private readonly knownDescriptors = new Map<string, DocumentEditorReviewDescriptor>();
   private readonly observedEncodingHints = new Map<string, string | undefined>();
   private readonly snapshotGenerations = new Map<string, number>();
+  private readonly snapshotRevisions = new Map<string, string>();
   private readonly mappingOptions: Readonly<GitDiffMappingOptions>;
 
   /** Creates a provider that reuses existing persistence and reconciliation contracts. */
@@ -225,6 +226,7 @@ export class GitContextDocumentReviewStateSessionProvider {
     this.monitor.dispose();
     this.knownDescriptors.clear();
     this.observedEncodingHints.clear();
+    this.snapshotRevisions.clear();
   }
 
   /** Test-only diagnostic snapshot of the transient hints observed by this Host. */
@@ -578,8 +580,14 @@ export class GitContextDocumentReviewStateSessionProvider {
 
   private advanceSnapshotGeneration(current: ResolvedGitReviewContext): number {
     const key = `${current.repositoryId}\0${current.contextId}`;
-    const generation = (this.snapshotGenerations.get(key) ?? 0) + 1;
+    const previousRevision = this.snapshotRevisions.get(key);
+    const existingGeneration = this.snapshotGenerations.get(key);
+    if (previousRevision === current.revisionId && existingGeneration !== undefined) {
+      return existingGeneration;
+    }
+    const generation = (existingGeneration ?? 0) + 1;
     this.snapshotGenerations.set(key, generation);
+    this.snapshotRevisions.set(key, current.revisionId);
     return generation;
   }
 

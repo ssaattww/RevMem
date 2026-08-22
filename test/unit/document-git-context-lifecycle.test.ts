@@ -558,6 +558,81 @@ test("document routing recalculates the current Git snapshot when an opened enco
   provider.dispose();
 });
 
+/** The production session provider must invalidate only the stable file whose VS Code decoding changed. */
+test("T609 production Git document session clears a same-revision encoding transition without changing an unrelated BOM file", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  source.texts.set(`${oldRevision}\0src/shifted.txt`, "UTF-8 view\n");
+  source.texts.set(`${oldRevision}\0src/utf8-bom.txt`, "BOM text\n");
+  const originalRead = source.readTextFileAtRevision.bind(source);
+  source.readTextFileAtRevision = async (...args) => {
+    const [,,,,,, encodingHint] = args;
+    if (args[2] === "src/shifted.txt") {
+      source.encodingHints.push([args[2], encodingHint]);
+      return {
+        kind: "found" as const,
+        content: encodingHint === "shift_jis"
+          ? "Shift-JIS view\nwith another line\n"
+          : "UTF-8 view\n"
+      };
+    }
+    return originalRead(...args);
+  };
+  const provider = createProvider(stableHash, repository, inspector, source);
+  const shiftedInitial = await provider.open(
+    descriptor("src/shifted.txt", stableHash.digest("Shift-JIS view\nwith another line\n"), 3, "shift_jis")
+  );
+  await shiftedInitial.committer.commit(markReviewedRanges({
+    contextState: shiftedInitial.contextState,
+    globalState: shiftedInitial.globalState,
+    target: shiftedInitial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const bomInitial = await provider.open(
+    descriptor("src/utf8-bom.txt", stableHash.digest("BOM text\n"), 2, "utf8")
+  );
+  await bomInitial.committer.commit(markReviewedRanges({
+    contextState: bomInitial.contextState,
+    globalState: bomInitial.globalState,
+    target: bomInitial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 1 }],
+    occurredAt
+  }));
+  const before = await provider.loadForDecoration(
+    descriptor("src/shifted.txt", stableHash.digest("Shift-JIS view\nwith another line\n"), 3, "shift_jis")
+  );
+  assert.ok(before);
+  const beforeBomContext = structuredClone(before.contextState.files[bomInitial.target.fileId]);
+  const beforeBomGlobal = structuredClone(before.globalState.files[bomInitial.target.fileId]);
+  source.encodingHints.length = 0;
+
+  const [transitioned] = await Promise.all([
+    provider.loadForDecoration(
+      descriptor("src/shifted.txt", stableHash.digest("UTF-8 view\n"), 2, "utf8")
+    ),
+    provider.loadForDecoration(
+      descriptor("src/utf8-bom.txt", stableHash.digest("BOM text\n"), 2, "utf8")
+    )
+  ]);
+
+  assert.ok(transitioned);
+  assert.deepEqual(transitioned.contextState.files[shiftedInitial.target.fileId]?.modifiedReviewed, []);
+  assert.equal(transitioned.contextState.files[shiftedInitial.target.fileId]?.lineCount, 2);
+  assert.equal(transitioned.contextState.files[shiftedInitial.target.fileId]?.contentHash, stableHash.digest("UTF-8 view\n"));
+  assert.deepEqual(transitioned.globalState.files[shiftedInitial.target.fileId]?.reviewed, []);
+  assert.equal(transitioned.globalState.files[shiftedInitial.target.fileId]?.contentHash, stableHash.digest("UTF-8 view\n"));
+  assert.deepEqual(transitioned.contextState.files[bomInitial.target.fileId], beforeBomContext);
+  assert.deepEqual(transitioned.globalState.files[bomInitial.target.fileId], beforeBomGlobal);
+  assert.deepEqual(source.encodingHints, [
+    ["src/shifted.txt", "utf8"],
+    ["src/shifted.txt", "utf8"]
+  ]);
+  provider.dispose();
+});
+
 test("T609-NR-002 aggregates all reopened document hints across mapping and an encoding change", async () => {
   const stableHash = new NodeSha256StableHash();
   const repository = new MemoryRepository();
