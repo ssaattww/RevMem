@@ -69,6 +69,8 @@ Current Context、Review Contexts、PR取得、Git revision mappingは、active 
 
 Remote SSH、Dev Containers、Codespacesのように、workspace-side Extension Hostが開いたworkspace folder URIから同じauthorityのfilesystem pathを得られる場合は5.5節のremote workspace規則に従って候補化できる。UI側だけで観測したremote URI、Git仮想document、queryまたはfragment付きURIをroot候補へ降格または昇格させてはならない。したがってactive editorがない場合、またはactive editorが非Git documentの場合も、Git管理workspaceが開かれていればrepository操作を継続できる。
 
+Extension activationとactive-editor changeのbackground refreshは非対話である。保存済みCurrent Contextまたは一意な候補だけを復元し、候補が0件または複数なら既存表示・選択・依存projectionを変更せず完了する。複数候補のQuick Pickは、ユーザーが明示したCurrent Context再計算または選択commandだけで表示する。明示選択の取消とpost-pick再検証のstaleは、同じく既存の受理済み状態を変更しない。
+
 ## 4. Git inspection
 
 ### 4.1 Git管理判定
@@ -507,6 +509,8 @@ workspace providerをroot registryでwrapする場合、registryはtyped snapsho
 - Remote SSH、Dev Containers、Codespaces相当authorityをworkspace identityとfile identityへ保持する
 - active editorなし、またはactive editorが非Git documentでも、開かれたGit workspace folderからrepositoryを一意に解決できる
 - active Git document、開かれたGit document、明示選択済みCurrent Context、既知root、workspace folderの順序で候補を決定し、複数候補だけをQuick Pickへ出す
+- activationとactive editor変更のbackground refreshはQuick Pickを表示せず、保存済みCurrent Contextまたは一意候補だけを復元し、0件・複数候補では受理済み状態を保持する
+- 明示Current Context commandでは複数候補をQuick Pickで選択でき、取消・post-pick staleは受理済み状態と依存viewを変更しない
 - Quick Pick取消、stale root、remote/virtual URIのpath変換不能、root境界不一致ではrepositoryを推測選択しない
 - 単一rootとmulti-rootで同じrepositoryが候補になり、同一identityでもrootが曖昧なら操作をfail-closedにする
 - opened Shift-JIS、UTF-8、UTF-8 BOM documentの`getText()`と対応Git blobを同じhintで一致させ、同一repository内の混在を許容する

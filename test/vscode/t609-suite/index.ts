@@ -31,6 +31,7 @@ interface T609ExtensionApi {
     readonly selectedContext: string | undefined;
     readonly dependentRefreshCount: number;
   };
+  getCurrentContextSelectionRequestCountForTest(): number;
   getReviewContextsCancellationSnapshot(): Promise<{
     readonly providerProjection: readonly string[];
     readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
@@ -176,6 +177,11 @@ export async function run(): Promise<void> {
   assert.ok(extension, "The Extension Development Host must load the extension.");
   const api = (await within("activate extension", extension.activate())) as T609ExtensionApi;
   await within("drain startup Current Context", api.drainCurrentContextStartupForTest());
+  assert.equal(
+    api.getCurrentContextSelectionRequestCountForTest(),
+    0,
+    "startup Current Context must not open a multi-root Quick Pick"
+  );
 
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
@@ -226,13 +232,16 @@ export async function run(): Promise<void> {
   await within("committed rename/new/whitespace/EOL mapping", assertMappedGitTransitions(folder, api));
   api.setCurrentContextSelectionForTest("first");
   await within("seed multi-root Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
+  assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 1, "the explicit refresh command must request selection");
   const currentBefore = api.getCurrentContextCancellationSnapshotForTest();
   assert.ok(currentBefore.selectedContext, "a deterministic initial selection must be published through the public command");
   api.setCurrentContextSelectionForTest("cancel");
   await within("multi-root Current Context cancel", vscode.commands.executeCommand("reviewRange.refreshContext"));
+  assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 2, "the public cancel command must reach selection once");
   assert.deepEqual(api.getCurrentContextCancellationSnapshotForTest(), currentBefore, "Current Context cancel must retain selection and dependent state");
   api.setCurrentContextSelectionForTest("stale");
   await within("multi-root Current Context stale", vscode.commands.executeCommand("reviewRange.selectContext"));
+  assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 3, "the public stale selection must reach selection once");
   assert.deepEqual(api.getCurrentContextCancellationSnapshotForTest(), currentBefore, "post-pick stale selection must retain accepted state");
   await within("seed multi-root Review Contexts projection", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
   const before = await within("read accepted multi-root Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());

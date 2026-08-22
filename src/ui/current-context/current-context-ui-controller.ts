@@ -1,5 +1,9 @@
 import { runWithBoundedRetry, type OperationFeedbackContext } from "../../application/operation-feedback/index";
-import type { CurrentContextNonDestructiveOutcome, CurrentContextResolution } from "./current-context-runtime-composition";
+import type {
+  CurrentContextNonDestructiveOutcome,
+  CurrentContextRecomputeOptions,
+  CurrentContextResolution
+} from "./current-context-runtime-composition";
 
 export type CurrentContextKind = "pull-request" | "branch" | "workspace";
 
@@ -44,7 +48,11 @@ export interface CurrentContextUiHost {
 
 export interface CurrentContextUiActions {
   /** Read-only candidate acquisition; callers may cancel a superseded owner. */
-  recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution>;
+  recompute(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    options?: CurrentContextRecomputeOptions
+  ): Promise<CurrentContextResolution>;
   selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution>;
   acceptRecomputed?(snapshot: CurrentContextUiSnapshot | undefined): void;
   acceptExplicit?(snapshot: CurrentContextUiSnapshot): void;
@@ -58,7 +66,7 @@ export interface CurrentContextRefreshResult {
 }
 
 const isNonDestructiveOutcome = (value: CurrentContextResolution): value is CurrentContextNonDestructiveOutcome =>
-  value !== undefined && "kind" in value && (value.kind === "cancelled" || value.kind === "stale");
+  value !== undefined && "kind" in value && (value.kind === "cancelled" || value.kind === "stale" || value.kind === "unresolved");
 
 export const currentContextSelectionKey = (
   snapshot: CurrentContextUiSnapshot
@@ -161,12 +169,16 @@ export class CurrentContextUiController {
     this.host.setCurrentContext({ label: projectContextLabel(snapshot.context), ...(snapshot.context.detail === undefined ? {} : { description: snapshot.context.detail }), tooltip });
     this.host.setStatusBar({ text: `${projectStatusPrefix(snapshot.context)}${percent === undefined ? "" : `: ${percent}`}`, tooltip });
   }
-  public async refresh(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextRefreshResult> {
+  public async refresh(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    options?: CurrentContextRecomputeOptions
+  ): Promise<CurrentContextRefreshResult> {
     if (this.actions === undefined) return { snapshot: undefined, stale: false };
     const generation = ++this.generation;
     if (signal !== undefined && signal.aborted) return { snapshot: undefined, stale: true };
     const result = (await runWithBoundedRetry(
-      () => this.actions!.recompute(signal, feedbackContext),
+      () => this.actions!.recompute(signal, feedbackContext, options),
       { maxAttempts: 3, signal },
     )).value;
     if (signal?.aborted === true) return { snapshot: undefined, stale: true };

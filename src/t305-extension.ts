@@ -98,6 +98,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
   let testCurrentContextSelection: "first" | "cancel" | "stale" | undefined;
+  let testCurrentContextSelectionRequestCount = 0;
   let testCurrentContextStaleAfterPick = false;
   let testCurrentContextDependentRefreshCount = 0;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
@@ -344,6 +345,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     enumerateCandidates: enumerateContexts,
     resolveFallback,
     requestSelection: async (available, signal) => {
+      testCurrentContextSelectionRequestCount += 1;
       if (context.extensionMode === vscode.ExtensionMode.Test) {
         const testSelection = testCurrentContextSelection;
         testCurrentContextSelection = undefined;
@@ -513,7 +515,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: (signal, feedbackContext) => currentContextComposition.recompute(signal, feedbackContext),
+      recompute: (signal, feedbackContext, options) => currentContextComposition.recompute(signal, feedbackContext, options),
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
@@ -705,6 +707,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         selectedContext: selectedContext === undefined ? undefined : JSON.stringify(selectedContext),
         dependentRefreshCount: testCurrentContextDependentRefreshCount,
       }),
+      getCurrentContextSelectionRequestCountForTest: () => testCurrentContextSelectionRequestCount,
       seedSavedPullRequestContext: async (document: vscode.TextDocument, pullRequestNumber: number) => {
         const inspection = await git.inspectRepository(document.uri.fsPath);
         if (inspection.kind !== "repository" || inspection.repository.head === undefined) {

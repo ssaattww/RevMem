@@ -752,6 +752,8 @@ Activity Barへ「Review Range」containerを追加し、次のviewを表示す�
 - GitHub再接続
 - 現在状態の再計算
 
+Extension activationおよびactive editor変更に伴うCurrent Context更新は非対話で実行する。保存済みCurrent Contextまたは一意な候補を復元できる場合だけ表示を更新し、候補0件または複数候補ではQuick Pickを開かず、既存のCurrent Contextと依存viewを維持する。ユーザーが現在状態の再計算またはCurrent Context選択commandを実行した場合だけ、複数候補のQuick Pickを表示する。取消または選択後の再検証でstaleとなった場合も、受理済みの表示・選択・依存viewを変更しない。
+
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
 PR再検出でGitHub障害、候補0件、または候補選択取消となった場合は、repositoryとimmutable HEADごとに明示したbranch/no-PR選択を表示設定として保存する。この選択は同じHEADの保存済みopen PRが1件だけ存在しても自動推測を抑止し、通常editorの確認操作と装飾はbranch contextへ戻す。成功したPR選択は同じrepository/HEADのbranch/no-PR選択を置換する。表示設定はReview State、review history、PR metadata、Global stateを変更しない。

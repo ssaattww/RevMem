@@ -10,10 +10,15 @@ import {
 
 /** A user cancellation or a post-picker identity mismatch must not clear accepted UI state. */
 export interface CurrentContextNonDestructiveOutcome {
-  readonly kind: "cancelled" | "stale";
+  readonly kind: "cancelled" | "stale" | "unresolved";
 }
 
 export type CurrentContextResolution = CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined;
+
+/** Controls whether a recompute was explicitly requested by the user. */
+export interface CurrentContextRecomputeOptions {
+  readonly allowInteraction?: boolean;
+}
 
 const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
@@ -40,7 +45,11 @@ export class CurrentContextRuntimeComposition {
     private readonly port: CurrentContextRuntimeCompositionPort
   ) {}
 
-  public async recompute(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution> {
+  public async recompute(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+    options?: CurrentContextRecomputeOptions
+  ): Promise<CurrentContextResolution> {
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
     if (candidates.length === 0) {
@@ -49,6 +58,7 @@ export class CurrentContextRuntimeComposition {
     const fallback = await this.port.resolveFallback(candidates, signal);
     if (isAborted(signal)) throw new OperationCancelledError();
     if (fallback === undefined && candidates.length > 1) {
+      if (options?.allowInteraction === false) return { kind: "unresolved" };
       const selected = await this.selection.select(
         candidates,
         (available) => this.port.requestSelection(available, signal)
