@@ -48,11 +48,30 @@ export interface WorkspaceFilesystemUri {
   readonly fragment: string;
 }
 
-/** Converts only an unambiguous local or remote workspace URI to an OS path. */
-export const workspaceUriToFilesystemPath = (uri: WorkspaceFilesystemUri): string | undefined => {
+const normalizedPath = (value: string): string => value.replace(/[\\/]+/gu, "/").replace(/\/$/u, "");
+
+const isWithinRemoteWorkspace = (
+  uri: WorkspaceFilesystemUri,
+  workspaceUris: readonly WorkspaceFilesystemUri[]
+): boolean => {
+  const candidate = normalizedPath(uri.fsPath);
+  return workspaceUris.some((workspace) => {
+    if (workspace.scheme !== "vscode-remote" || workspace.authority !== uri.authority) return false;
+    const root = normalizedPath(workspace.fsPath);
+    return candidate === root || candidate.startsWith(`${root}/`);
+  });
+};
+
+/** Converts only an unambiguous local or workspace-contained remote URI to an OS path. */
+export const workspaceUriToFilesystemPath = (
+  uri: WorkspaceFilesystemUri,
+  workspaceUris: readonly WorkspaceFilesystemUri[] = []
+): string | undefined => {
   if (uri.query.length > 0 || uri.fragment.length > 0 || uri.fsPath.length === 0 || uri.fsPath.includes("\0")) return undefined;
   if (uri.scheme === "file") return uri.authority.length === 0 ? uri.fsPath : undefined;
-  return uri.scheme === "vscode-remote" && uri.authority.length > 0 ? uri.fsPath : undefined;
+  return uri.scheme === "vscode-remote" && uri.authority.length > 0 && isWithinRemoteWorkspace(uri, workspaceUris)
+    ? uri.fsPath
+    : undefined;
 };
 
 const nonEmpty = (path: string | undefined): path is string =>

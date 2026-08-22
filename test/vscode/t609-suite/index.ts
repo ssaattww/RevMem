@@ -37,11 +37,34 @@ interface T609ExtensionApi {
     readonly authoritativeContextCounts: readonly { readonly repositoryId: string; readonly count: number }[];
     readonly repositorySelectionRequestCount: number;
   }>;
+  /** Read-only T305 URI boundary observation using an actual VS Code Uri. */
+  getT305WorkspaceUriPathForTest(uri: vscode.Uri): string | undefined;
+  /** Read-only T405 URI boundary observation using an actual VS Code Uri. */
+  getT405WorkspaceUriPathForTest(uri: vscode.Uri): string | undefined;
+  /** Read-only persisted Git state summary for the supplied workspace document. */
+  getGitReviewStateSnapshotForTest(document: vscode.TextDocument): Promise<GitReviewStateSnapshot>;
 }
 
 interface ReviewedIntervalSnapshot {
   readonly startLine: number;
   readonly endLineExclusive: number;
+}
+
+interface GitReviewStateSnapshot {
+  readonly owner: "git";
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly contextRevisionId: string;
+  readonly globalRevisionId: string;
+  readonly contextFiles: readonly ReviewStateFileSnapshot[];
+  readonly globalFiles: readonly ReviewStateFileSnapshot[];
+}
+
+interface ReviewStateFileSnapshot {
+  readonly fileId: string;
+  readonly path: string;
+  readonly revisionId: string;
+  readonly reviewed: readonly ReviewedIntervalSnapshot[];
 }
 
 const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<Value> => {
@@ -64,6 +87,19 @@ const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
 const closeAllEditors = async (): Promise<void> => {
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
+};
+
+const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
+  if (document.isClosed) return;
+  const closed = new Promise<void>((resolve) => {
+    const disposable = vscode.workspace.onDidCloseTextDocument((candidate) => {
+      if (candidate.uri.toString(true) !== document.uri.toString(true)) return;
+      disposable.dispose();
+      resolve();
+    });
+  });
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  await within(`close ${path.basename(document.uri.fsPath)}`, closed);
 };
 
 const assertMultiRootCancellation = async (folder: vscode.WorkspaceFolder): Promise<void> => {
@@ -134,6 +170,72 @@ const assertMixedEncodingFixture = async (
   assert.equal(paths.includes("utf8-bom.txt"), true);
 };
 
+const findStateFile = (
+  files: readonly ReviewStateFileSnapshot[],
+  path: string
+): ReviewStateFileSnapshot => {
+  const found = files.find((file) => file.path === path);
+  assert.ok(found, `persisted state must contain ${path}`);
+  return found;
+};
+
+const assertActualUriBoundaries = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi
+): Promise<void> => {
+  const file = vscode.Uri.file(path.join(folder.uri.fsPath, "utf8-bom.txt"));
+  const query = file.with({ query: "revision=old" });
+  const fragment = file.with({ fragment: "selection" });
+  const untitled = vscode.Uri.parse("untitled:T609-virtual.txt");
+  const remote = vscode.Uri.parse("vscode-remote://ssh-remote%2Bt609/tmp/file.txt");
+  const probes = [api.getT305WorkspaceUriPathForTest, api.getT405WorkspaceUriPathForTest];
+  for (const probe of probes) {
+    assert.equal(probe.call(api, file), file.fsPath, "a plain workspace file Uri must be accepted");
+    assert.equal(probe.call(api, query), undefined, "a query-bearing file Uri must be rejected");
+    assert.equal(probe.call(api, fragment), undefined, "a fragment-bearing file Uri must be rejected");
+    assert.equal(probe.call(api, untitled), undefined, "an untitled Uri must be rejected");
+    assert.equal(probe.call(api, remote), undefined, "a non-workspace remote Uri must be rejected");
+  }
+  const virtual = await vscode.workspace.openTextDocument({ content: "virtual T609\n" });
+  await vscode.window.showTextDocument(virtual, { preview: false });
+  await within("virtual Current Context boundary", vscode.commands.executeCommand("reviewRange.refreshContext"));
+  await within("virtual Review Contexts boundary", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+  await closeDocument(virtual);
+};
+
+const assertLiveEncodingTransition = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi
+): Promise<void> => {
+  const shiftedUri = fixtureUri(folder, "shift-jis.txt");
+  const bomUri = fixtureUri(folder, "utf8-bom.txt");
+  const shifted = await vscode.workspace.openTextDocument(shiftedUri);
+  const bom = await vscode.workspace.openTextDocument(bomUri);
+  const before = await api.getGitReviewStateSnapshotForTest(shifted);
+  assert.equal(before.owner, "git");
+  assert.deepEqual(findStateFile(before.contextFiles, "shift-jis.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.deepEqual(findStateFile(before.globalFiles, "shift-jis.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  const unaffectedContext = findStateFile(before.contextFiles, "utf8-bom.txt");
+  const unaffectedGlobal = findStateFile(before.globalFiles, "utf8-bom.txt");
+  await vscode.workspace.getConfiguration("files", shiftedUri).update("encoding", "utf8", vscode.ConfigurationTarget.WorkspaceFolder);
+  await closeDocument(shifted);
+  const reopened = await vscode.workspace.openTextDocument(shiftedUri);
+  await vscode.window.showTextDocument(reopened, { preview: false });
+  assert.equal(reopened.encoding, "utf8", "the opened document must be re-decoded through VS Code after its encoding changes");
+  await api.refreshVisibleEditorDecorations();
+  await api.drainVisibleEditorDecorations();
+  const after = await api.getGitReviewStateSnapshotForTest(reopened);
+  assert.equal(after.owner, "git");
+  assert.equal(after.contextRevisionId, before.contextRevisionId);
+  assert.equal(after.globalRevisionId, before.globalRevisionId);
+  assert.deepEqual(findStateFile(after.contextFiles, "shift-jis.txt").reviewed, []);
+  assert.deepEqual(findStateFile(after.globalFiles, "shift-jis.txt").reviewed, []);
+  assert.deepEqual(findStateFile(after.contextFiles, "utf8-bom.txt"), unaffectedContext);
+  assert.deepEqual(findStateFile(after.globalFiles, "utf8-bom.txt"), unaffectedGlobal);
+  assert.equal(bom.isClosed, false, "the unrelated opened document must remain observed");
+  await vscode.workspace.getConfiguration("files", shiftedUri).update("encoding", "shift_jis", vscode.ConfigurationTarget.WorkspaceFolder);
+};
+
 const assertMappedGitTransitions = async (
   folder: vscode.WorkspaceFolder,
   api: T609ExtensionApi
@@ -186,7 +288,9 @@ export async function run(): Promise<void> {
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+    await assertActualUriBoundaries(folder, api);
     await assertMixedEncodingFixture(folder, api);
+    await assertLiveEncodingTransition(folder, api);
     return;
   }
 
@@ -214,6 +318,13 @@ export async function run(): Promise<void> {
     );
     await within("refresh reopened UTF-8 BOM decorations", api.refreshVisibleEditorDecorations());
     await within("drain reopened UTF-8 BOM decorations", api.drainVisibleEditorDecorations());
+    const persisted = await api.getGitReviewStateSnapshotForTest(reopened);
+    assert.equal(persisted.owner, "git");
+    assert.equal(persisted.contextRevisionId, persisted.globalRevisionId);
+    assert.deepEqual(findStateFile(persisted.contextFiles, "shift-jis.txt").reviewed, []);
+    assert.deepEqual(findStateFile(persisted.globalFiles, "shift-jis.txt").reviewed, []);
+    assert.deepEqual(findStateFile(persisted.contextFiles, "utf8-bom.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+    assert.deepEqual(findStateFile(persisted.globalFiles, "utf8-bom.txt").reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
     const observedHints = api.getObservedEncodingHintsForTest();
     assert.deepEqual(
       observedHints.map((hint) => hint.documentFsPath),

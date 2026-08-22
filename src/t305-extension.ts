@@ -56,7 +56,10 @@ import {
   type RegisteredT405ReviewContextsRuntime,
 } from "./t405-review-contexts-runtime";
 import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
-import type { SelectedReviewContext } from "./application/review-context/selected-review-context";
+import {
+  GitReviewContextResolver,
+  type SelectedReviewContext
+} from "./application/review-context/index";
 import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
@@ -200,7 +203,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readOpenDocuments
   });
 
-  const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(uri);
+  const workspaceFilesystemPath = (uri: vscode.Uri): string | undefined => workspaceUriToFilesystemPath(
+    uri,
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri)
+  );
   const enumerateLocalContexts = async (): Promise<CurrentContextUiSnapshot[]> => {
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
@@ -679,10 +685,57 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   );
 
   if (context.extensionMode === vscode.ExtensionMode.Test) {
+    const gitReviewStateSnapshotForTest = async (document: vscode.TextDocument) => {
+      const documentPath = workspaceFilesystemPath(document.uri);
+      if (documentPath === undefined) {
+        throw new Error("T609 Git state observation requires a validated workspace URI.");
+      }
+      const inspection = await git.inspectRepository(documentPath);
+      if (inspection.kind !== "repository") {
+        throw new Error("T609 Git state observation requires an opened Git document.");
+      }
+      const current = new GitReviewContextResolver({ stableHash }).resolve({
+        repositoryId: inspection.repository.repositoryId,
+        rootPath: inspection.repository.rootPath,
+        branch: inspection.repository.branch,
+        ...(inspection.repository.head === undefined ? {} : { head: inspection.repository.head })
+      });
+      const commit = await runtimePort.reviewStateRepository.load({
+        kind: "git",
+        repositoryId: current.repositoryId,
+        contextId: current.contextId
+      });
+      if (commit === undefined) {
+        throw new Error("T609 Git state observation requires persisted Review State.");
+      }
+      return {
+        owner: "git" as const,
+        repositoryId: current.repositoryId,
+        contextId: current.contextId,
+        contextRevisionId: commit.contextState.branch?.headRevision ?? "",
+        globalRevisionId: commit.globalState.currentRevisionId,
+        contextFiles: Object.values(commit.contextState.files).map((file) => ({
+          fileId: file.fileId,
+          path: file.currentPath,
+          revisionId: file.revisionId,
+          reviewed: file.modifiedReviewed.map((interval) => ({ ...interval }))
+        })).sort((left, right) => left.path.localeCompare(right.path)),
+        globalFiles: Object.values(commit.globalState.files).map((file) => ({
+          fileId: file.fileId,
+          path: file.currentPath,
+          revisionId: file.revisionId,
+          reviewed: file.reviewed.map((interval) => ({ ...interval }))
+        })).sort((left, right) => left.path.localeCompare(right.path))
+      };
+    };
     return {
       ...baseApi,
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
+      getT305WorkspaceUriPathForTest: (uri: vscode.Uri) => workspaceFilesystemPath(uri),
+      getT405WorkspaceUriPathForTest: (uri: vscode.Uri) =>
+        reviewContextsRuntimeRef.current?.workspaceUriToFilesystemPathForTest?.(uri),
+      getGitReviewStateSnapshotForTest: gitReviewStateSnapshotForTest,
       getGlobalUnderstandingSnapshot: () => globalSource.recalculate(),
       setReviewContextsRepositorySelection: (selection: "cancel" | "stale") => {
         testReviewContextsRepositorySelection = selection;

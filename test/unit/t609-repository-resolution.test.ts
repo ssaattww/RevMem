@@ -81,9 +81,20 @@ test("T609 rejects query, fragment, and mismatched authority before T305 or T405
   assert.equal(workspaceUriToFilesystemPath(uri({ authority: "server" })), undefined);
   assert.equal(workspaceUriToFilesystemPath(uri({ scheme: "untitled" })), undefined);
   assert.equal(
-    workspaceUriToFilesystemPath(uri({ scheme: "vscode-remote", authority: "ssh-remote+host" })),
+    workspaceUriToFilesystemPath(
+      uri({ scheme: "vscode-remote", authority: "ssh-remote+host" }),
+      [uri({ scheme: "vscode-remote", authority: "ssh-remote+host", fsPath: "/workspace" })]
+    ),
     "/workspace/repository/file.txt",
-    "a remote authority is valid only for the explicitly supported vscode-remote scheme"
+    "a remote authority is valid only for the explicitly supported vscode-remote workspace"
+  );
+  assert.equal(
+    workspaceUriToFilesystemPath(
+      uri({ scheme: "vscode-remote", authority: "ssh-remote+host", fsPath: "/outside/file.txt" }),
+      [uri({ scheme: "vscode-remote", authority: "ssh-remote+host", fsPath: "/workspace" })]
+    ),
+    undefined,
+    "a remote Uri outside its workspace must be rejected"
   );
   assert.equal(
     workspaceUriToFilesystemPath(uri({ scheme: "vscode-remote", authority: "" })),

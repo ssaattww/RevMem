@@ -80,7 +80,6 @@ test("T609 runner prepares both Git fixtures before the Host launches and the Ho
 
   assert.doesNotMatch(hostSuite, /node:child_process/u);
   assert.doesNotMatch(hostSuite, /workspace\.fs\.(?:stat|writeFile)/u);
-  assert.doesNotMatch(hostSuite, /getConfiguration\("files"/u);
   assert.doesNotMatch(hostSuite, /git\(/u);
 });
 
@@ -428,4 +427,23 @@ test("T609 restart reobserves only its active UTF-8 BOM hint without Current Con
   );
   assert.doesNotMatch(restartPhase, /reviewRange\.refreshContext|reviewRange\.refreshGlobalUnderstanding/u);
   assert.match(extension, /getObservedEncodingHintsForTest:\s*\(\)\s*=>\s*documentSessionProvider\.observedEncodingHintsSnapshot\(\)/u);
+});
+
+test("T609 Host observes actual VS Code URI safety and persisted encoding mapping without Test mutation seams", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const reviewContexts = await readFile(path.join(projectRoot, "src", "t405-review-contexts-runtime.ts"), "utf8");
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+
+  assert.match(extension, /getT305WorkspaceUriPathForTest/u);
+  assert.match(extension, /getT405WorkspaceUriPathForTest/u);
+  assert.match(extension, /getGitReviewStateSnapshotForTest/u);
+  assert.match(reviewContexts, /workspaceUriToFilesystemPathForTest/u);
+  assert.match(hostSuite, /vscode\.Uri\.file/u);
+  assert.match(hostSuite, /query-bearing file Uri must be rejected/u);
+  assert.match(hostSuite, /fragment-bearing file Uri must be rejected/u);
+  assert.match(hostSuite, /virtual Current Context boundary/u);
+  assert.match(hostSuite, /virtual Review Contexts boundary/u);
+  assert.match(hostSuite, /assertLiveEncodingTransition/u);
+  assert.match(hostSuite, /getGitReviewStateSnapshotForTest/u);
+  assert.doesNotMatch(hostSuite, /seed.*Encoding.*ForTest/u);
 });
