@@ -226,6 +226,28 @@ test("T610-R7 documents the real watcher and startup-open lifecycle without a ca
   assert.doesNotMatch(suite, /notifyGlobalUnderstandingFolderEntryForTest/u);
 });
 
+test("T610-R8 persists ordered Host subphases and drains the real watcher without local operation deadlines", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const runner = await readFile(path.join(root, "test", "vscode", "run-extension-host.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  assert.match(activation, /recordT610HostSubphaseForTest:/u);
+  assert.match(activation, /drainGlobalUnderstandingFolderEntryForTest:/u);
+  assert.match(runner, /t610-host-subphase\.json/u);
+  const phases = [
+    "context-ready", "document-opened", "snapshot-observed", "public-stop-completed",
+    "public-resume-completed", "filesystem-write-dispatched", "watcher-drained",
+    "final-stop-completed", "document-closed"
+  ];
+  let previous = -1;
+  for (const phase of phases) {
+    const current = suite.indexOf(`recordSubphase(api, "${phase}")`);
+    assert.ok(current > previous, `T610 Host records ${phase} after its predecessor`);
+    previous = current;
+  }
+  assert.doesNotMatch(suite, /setTimeout|Promise\.race/u, "T610 has no local wrapper around public operations");
+});
+
 test("T610-R7 applies one 128-item enumeration budget across a deep 257+ folder walk", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-wide-budget-"));
   t.after(() => rm(root, { recursive: true, force: true }));

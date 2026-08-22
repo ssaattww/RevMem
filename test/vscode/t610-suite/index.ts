@@ -5,6 +5,8 @@ import * as vscode from "vscode";
 interface T610ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
   drainGlobalUnderstandingFileOpenForTest(): Promise<void>;
+  drainGlobalUnderstandingFolderEntryForTest(): Promise<void>;
+  recordT610HostSubphaseForTest(subphase: string): Promise<void>;
   getCurrentContextCancellationSnapshotForTest(): {
     readonly selectedContext: string | undefined;
   };
@@ -22,6 +24,10 @@ interface T610ExtensionApi {
     readonly publishedSnapshot: boolean;
   };
 }
+
+const recordSubphase = async (api: T610ExtensionApi, subphase: string): Promise<void> => {
+  await api.recordT610HostSubphaseForTest(subphase);
+};
 
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 
@@ -61,17 +67,20 @@ export async function run(): Promise<void> {
     undefined,
     "the no-active-editor Current Context refresh establishes the Git repository before document open"
   );
+  await recordSubphase(api, "context-ready");
   const workspace = vscode.workspace.workspaceFolders![0]!;
   if (phase === "t610-restart") {
     const restored = await api.getGlobalUnderstandingSnapshot();
     assert.ok(restored, "restart exposes the stopped-only Tree snapshot");
     assert.deepEqual(restored.progress.files, [], "restart never restores active file evidence");
     assert.equal(restored.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await recordSubphase(api, "restart-snapshot-observed");
     return;
   }
   const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0]!.uri, "src", "a.ts"));
   await vscode.window.showTextDocument(document);
   try {
+    await recordSubphase(api, "document-opened");
     await api.drainGlobalUnderstandingFileOpenForTest();
     const lifecycle = api.getGlobalUnderstandingLifecycleObservationForTest();
     assert.notEqual(lifecycle.sourceContext, undefined, "the selected Current Context remains bound to the Global source after open");
@@ -84,18 +93,29 @@ export async function run(): Promise<void> {
     assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
     assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
     assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
+    await recordSubphase(api, "snapshot-observed");
     await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
+    await api.drainGlobalUnderstandingFileOpenForTest();
     assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await recordSubphase(api, "public-stop-completed");
     await vscode.commands.executeCommand("reviewRange.resumeGlobalUnderstandingFolder");
+    await api.drainGlobalUnderstandingFileOpenForTest();
     assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await recordSubphase(api, "public-resume-completed");
     await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(workspace.uri, "src", "watcher-created.ts"), new TextEncoder().encode("export const watcher = true;\n"));
+    await recordSubphase(api, "filesystem-write-dispatched");
+    await api.drainGlobalUnderstandingFolderEntryForTest();
+    await recordSubphase(api, "watcher-drained");
     assert.equal(
       (await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state,
       "active",
       "the registered watcher callback refreshes the resumed folder scope"
     );
     await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    await recordSubphase(api, "final-stop-completed");
   } finally {
     await closeDocument(document);
+    await recordSubphase(api, "document-closed");
   }
 }

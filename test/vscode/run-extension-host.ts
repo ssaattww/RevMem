@@ -265,14 +265,28 @@ async function main(): Promise<void> {
       version: VS_CODE_TEST_VERSION,
       ...(lifecyclePhase === undefined ? {} : { phase: lifecyclePhase })
     })}\n`, "utf8");
-    await runOwnedExtensionHostLaunch({
-      phase,
-      workerPath,
-      configurationPath,
-      timeoutMs: launchTimeout(),
-      diagnosticDirectory: join(projectRoot, "test-output", "vscode-launch-diagnostics"),
-      redactPaths: [temporaryDirectory.path, projectRoot, paths.workspace, paths.userData, paths.extensions]
-    });
+    try {
+      await runOwnedExtensionHostLaunch({
+        phase,
+        workerPath,
+        configurationPath,
+        timeoutMs: launchTimeout(),
+        diagnosticDirectory: join(projectRoot, "test-output", "vscode-launch-diagnostics"),
+        redactPaths: [temporaryDirectory.path, projectRoot, paths.workspace, paths.userData, paths.extensions]
+      });
+    } catch (error) {
+      if (!phase.startsWith("t610-")) throw error;
+      const subphasePath = join(paths.userData, "User", "globalStorage", "taiga.review-range-tracker", "t610-host-subphase.json");
+      let subphase = "unavailable";
+      try {
+        const value = JSON.parse(await readFile(subphasePath, "utf8")) as { readonly subphase?: unknown };
+        if (typeof value.subphase === "string") subphase = value.subphase;
+      } catch {
+        subphase = "unavailable";
+      }
+      if (error instanceof Error) error.message += ` [T610 persisted Host subphase: ${subphase}]`;
+      throw error;
+    }
   };
 
   try {

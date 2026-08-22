@@ -226,6 +226,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testGlobalUnderstandingSourceRefreshOutcome: "not-started" | "snapshot" | "undefined" | "error" = "not-started";
   let testGlobalUnderstandingSourceRefreshError: string | undefined;
   let testGlobalUnderstandingPublishedSnapshot = false;
+  let resolveTestGlobalUnderstandingFolderEntry: (() => void) | undefined;
+  const testGlobalUnderstandingFolderEntry = new Promise<void>((resolve) => {
+    resolveTestGlobalUnderstandingFolderEntry = resolve;
+  });
   const captureTestGlobalUnderstandingContext = (snapshot: CurrentContextUiSnapshot | undefined): void => {
     if (context.extensionMode !== vscode.ExtensionMode.Test) return;
     testGlobalUnderstandingSourceContext = snapshot?.context.selection === undefined
@@ -775,6 +779,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const folderEntryWatcher = vscode.workspace.createFileSystemWatcher("**/*");
   const requestRefreshForFolderEntry = (uri: vscode.Uri): void => {
     if (!FILESYSTEM_SCHEMES.has(uri.scheme)) return;
+    if (context.extensionMode === vscode.ExtensionMode.Test) {
+      resolveTestGlobalUnderstandingFolderEntry?.();
+      resolveTestGlobalUnderstandingFolderEntry = undefined;
+    }
     documentChangeRefresh.request();
   };
   context.subscriptions.push(
@@ -872,6 +880,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       drainGlobalUnderstandingFileOpenForTest: async () => {
         await testGlobalUnderstandingFileOpen;
         await globalRuntime.refreshWithErrorBoundary();
+      },
+      /** Test-mode T610 drain for the registered real filesystem watcher callback. */
+      drainGlobalUnderstandingFolderEntryForTest: async () => {
+        await testGlobalUnderstandingFolderEntry;
+        documentChangeRefresh.cancel();
+        await globalRuntime.refreshWithErrorBoundary();
+      },
+      /** Persists only the last T610 Host subphase outside the workspace watcher scope. */
+      recordT610HostSubphaseForTest: async (subphase: string) => {
+        await vscode.workspace.fs.writeFile(
+          vscode.Uri.joinPath(context.globalStorageUri, "t610-host-subphase.json"),
+          new TextEncoder().encode(`${JSON.stringify({ subphase })}\n`)
+        );
       },
       drainDocumentReviewEdits: () => documentEditRuntime.drain(),
       getT305WorkspaceUriPathForTest: (uri: vscode.Uri) => workspaceFilesystemPath(uri),
