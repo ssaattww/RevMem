@@ -38,7 +38,7 @@ Lを超える見込みになった場合は再分解する。
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T607 大規模処理の段階表示と性能改善（PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
 - 実装中タスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化（technical head `5501cd7`、focused 77/77、actual Host全phase Green）
-- 次の工程: T609 final unit failure集計の再取得と同一normal reviewer delta closure、同一independent reviewerのIFR001〜IFR006 finding限定closure、exact-head CI、PR #82 squash merge
+- 次の工程: T609 final unit 23 failuresのbase比較、同一normal reviewer delta closure、同一independent reviewerのIFR001〜IFR006 finding限定closure、exact-head CI、PR #82 squash merge
 - 後続候補: T610 / Issue #78、その後T608
 
 ## P0 開発基盤
@@ -185,7 +185,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T605: PR #75をsquash mergeし、merge `fb7df6ab79bb23ae16b43b61aa66ab743460be69`、exact-head CI `32376730329` Greenでmainへ統合済み（Issue #74）
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。
-- T609: IFR001〜IFR006はtechnical head `5501cd7`でaddressedしsame normal reviewerでready維持。final full local gateは9/11 pass、T207 Temp cleanup EBUSYはheld。unit output truncate区間をunexploredとしてnormal delta verdictは`incomplete`。unit failure集計再取得、same normal delta closure、same independent closure、exact-head CI、squash mergeが残る。
+- T609: IFR001〜IFR006はtechnical head `5501cd7`でaddressedしsame normal reviewerでready維持。final unit診断は504 tests / 479 pass / 23 fail / 2 skipを完全分類し、T609 focused test名との交差0。変更provider/storeへ到達する20件のbase比較、same normal delta closure、same independent closure、exact-head CI、squash mergeが残る。
 - T610: Issue #78のfolder単位Global UnderstandingをT609完了後に開始する。
 - T608: T609・T610完了後に実施する。
 
