@@ -244,12 +244,12 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("reviewRange.selectContext");
   assert.equal(api.getCurrentContextSelectionRequestCountForTest(), 3, "the public stale selection must reach selection once");
   assert.deepEqual(api.getCurrentContextCancellationSnapshotForTest(), currentBefore, "post-pick stale selection must retain accepted state");
-  await within("seed multi-root Review Contexts projection", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
-  const before = await within("read accepted multi-root Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
+  const before = await api.getReviewContextsCancellationSnapshot();
   assert.ok(before.providerProjection.length > 0, "multi-root cancellation must retain an accepted provider projection");
   api.setReviewContextsRepositorySelection("cancel");
-  await within("multi-root cancellation boundary", vscode.commands.executeCommand("reviewRange.redetectPullRequest"));
-  const afterCancel = await within("read cancel Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  await vscode.commands.executeCommand("reviewRange.redetectPullRequest");
+  const afterCancel = await api.getReviewContextsCancellationSnapshot();
   assert.equal(
     afterCancel.repositorySelectionRequestCount,
     before.repositorySelectionRequestCount + 1,
@@ -258,8 +258,8 @@ export async function run(): Promise<void> {
   assert.deepEqual(afterCancel.providerProjection, before.providerProjection, "cancel must retain the accepted provider projection");
   assert.deepEqual(afterCancel.authoritativeContextCounts, before.authoritativeContextCounts, "cancel must not mutate authoritative Review State");
   api.setReviewContextsRepositorySelection("stale");
-  await within("multi-root stale cancellation boundary", vscode.commands.executeCommand("reviewRange.redetectPullRequest"));
-  const afterStale = await within("read stale Review Contexts snapshot", api.getReviewContextsCancellationSnapshot());
+  await vscode.commands.executeCommand("reviewRange.redetectPullRequest");
+  const afterStale = await api.getReviewContextsCancellationSnapshot();
   assert.equal(
     afterStale.repositorySelectionRequestCount,
     afterCancel.repositorySelectionRequestCount + 1,

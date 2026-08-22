@@ -162,8 +162,7 @@ test("T609 phase ownership keeps mixed encoding in single-root and repository ca
   assert.doesNotMatch(multiRootPhase, /openTextDocument|markAndSynchronizeFixtureReview/u);
   assert.match(multiRootPhase, /reviewRange\.refreshContext/u);
   assert.match(multiRootPhase, /reviewRange\.selectContext/u);
-  assert.match(multiRootPhase, /multi-root cancellation boundary/u);
-  assert.match(multiRootPhase, /multi-root stale cancellation boundary/u);
+  assert.match(multiRootPhase, /executeCommand\("reviewRange\.redetectPullRequest"\)/u);
   assert.match(multiRootPhase, /reviewRange\.redetectPullRequest/u);
   assert.match(multiRootPhase, /getReviewContextsCancellationSnapshot/u);
   assert.match(multiRootPhase, /providerProjection, before\.providerProjection/u);
@@ -251,6 +250,36 @@ test("T609 multi-root Current Context commands retain their public path without 
   assert.doesNotMatch(multiRootPhase, /within\("multi-root Current Context stale"/u);
   assert.match(multiRootPhase, /assert\.equal\(api\.getCurrentContextSelectionRequestCountForTest\(\), 1/u);
   assert.match(multiRootPhase, /assert\.deepEqual\(api\.getCurrentContextCancellationSnapshotForTest\(\), currentBefore/u);
+});
+
+test("T609 multi-root Review Contexts keeps its public commands and snapshots under the owned phase deadline", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const runner = await readFile(path.join(projectRoot, "test/vscode/run-extension-host.ts"), "utf8");
+  const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
+  assert.ok(multiRootStart >= 0);
+  const multiRootPhase = hostSuite.slice(multiRootStart);
+
+  for (const operation of [
+    'await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");',
+    'await api.getReviewContextsCancellationSnapshot();',
+    'await vscode.commands.executeCommand("reviewRange.redetectPullRequest");'
+  ]) {
+    assert.equal(multiRootPhase.includes(operation), true, `${operation} must remain an actual public or test-observation operation`);
+  }
+  for (const localWrapper of [
+    'within("seed multi-root Review Contexts projection"',
+    'within("read accepted multi-root Review Contexts snapshot"',
+    'within("multi-root cancellation boundary"',
+    'within("read cancel Review Contexts snapshot"',
+    'within("multi-root stale cancellation boundary"',
+    'within("read stale Review Contexts snapshot"'
+  ]) {
+    assert.equal(multiRootPhase.includes(localWrapper), false, `${localWrapper} must use the owned T609 prepare phase deadline`);
+  }
+  assert.match(multiRootPhase, /providerProjection, before\.providerProjection/u);
+  assert.match(multiRootPhase, /authoritativeContextCounts, before\.authoritativeContextCounts/u);
+  assert.match(multiRootPhase, /repositorySelectionRequestCount/u);
+  assert.match(runner, /const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;/u);
 });
 
 test("T609 multi-root Current Context selection clears mapped editors before the public commands", async () => {
