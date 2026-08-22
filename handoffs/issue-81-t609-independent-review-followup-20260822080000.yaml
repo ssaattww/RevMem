@@ -9,16 +9,16 @@ task_id: T609
 branch: task/issue-81-repository-encoding
 base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
 target:
-  current_head: f744a2cb3eec5f74775753894c8ecb948a10af77
+  current_head: f320a8810d9dbfaa824d1aa082ed198fec6fc279
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
   commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...5501cd7b613066ac8a6300aabd75d1ff4a407069
 verification:
   capability: local_execution_available
   capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
   technical_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
-  administrative_parent: f744a2cb3eec5f74775753894c8ecb948a10af77
-  commit: { state: commit_pending, review_target_sha: f744a2cb3eec5f74775753894c8ecb948a10af77 }
-  push: { state: push_pending, head_sha: f744a2cb3eec5f74775753894c8ecb948a10af77 }
+  administrative_parent: f320a8810d9dbfaa824d1aa082ed198fec6fc279
+  commit: { state: commit_pending, review_target_sha: f320a8810d9dbfaa824d1aa082ed198fec6fc279 }
+  push: { state: push_pending, head_sha: f320a8810d9dbfaa824d1aa082ed198fec6fc279 }
   ci_wait: { state: ci_wait_pending, required_for: merge_gate }
   final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
 authoritative_requirements:
@@ -76,7 +76,7 @@ review:
   reserved_report_paths: [reports/issue-81-t609-normal-final-local-gate-delta-20260822164201.md]
   report_attestation: { allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [executable], no_later_commits_required: false, validation_status: pending, validation_evidence: [] }
   summary: ["Same normal reviewer kept IFR001-006 ready but returned incomplete because truncated test:unit output prevents complete failure classification."]
-report: { report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-final-unit-failure-classification-20260822164832.md], reviewed_head: f744a2cb3eec5f74775753894c8ecb948a10af77, attestation_head: null, pr_comments: [], summary: ["Final unit diagnostic classified all 23 failures; 20 changed-path failures require one base-commit comparison before review disposition."] }
+report: { report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-base-unit-failure-comparison-20260822165817.md], reviewed_head: f320a8810d9dbfaa824d1aa082ed198fec6fc279, attestation_head: null, pr_comments: [], summary: ["Base comparison found 22 exact-match failures, zero confirmed regressions, and one current-only Windows symlink fixture EPERM for normal-reviewer disposition."] }
 findings: []
 held: ["final full local test:unit Windows/environment failures with truncated aggregate", "final full local test:git T207 Temp cleanup EBUSY", "Markdown lint unsupported", "exact-head pull_request CI pending merge gate"]
 unexplored: []
@@ -89,7 +89,7 @@ next_action:
   type: review
   target_skill: review-enforcer
   mode: verification
-  summary: Run the same in-memory filtered test:unit diagnostic once at the base commit, compare failure identities, then return the evidence delta to the same normal reviewer.
+  summary: Return the exact base/current failure-set comparison to the same normal reviewer for final gate delta closure.
   instructions: ["Do not open new review viewpoints during finding-limited closure.", "Treat cleanup timeout separately from the successful Host semantic matrix."]
   required_attachments_or_references: [reports/issue-81-t609-independent-final-review-20260822060225.md]
   requested_authorized_actions: [edit_code, edit_tests, edit_documentation, write_report]

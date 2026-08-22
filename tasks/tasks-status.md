@@ -9,7 +9,7 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T607 大規模処理の段階表示と性能改善（Issue #79、PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
 - 現在のタスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化
-- 次のタスク: T609 final `test:unit` 23 failuresをbase commitで一度だけ比較してregressionかWindows baselineかを確定し、同一normal reviewer delta closure後にsame independent closure、exact-head CI、PR #82 squash mergeへ進む
+- 次のタスク: T609 final unit base比較deltaを同一normal reviewerが閉じた後、same independent closure、exact-head CI、PR #82 squash mergeへ進む
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
@@ -367,7 +367,7 @@
 | T606 | 完了 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。 |
 | T607 | 完了 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能測定と最小最適化を行う | T301、T504、T606 | PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607、T609、T610 | AC-01〜AC-24とIssue #81・#78の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
-| T609 | final unit baseline比較待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | focused 77/77、T609 Host全phase Green。final unit診断は504 tests / 479 pass / 23 fail / 2 skipを完全分類し、T609 focused test名との交差0。変更provider/storeに到達する20件をbase commitで比較後、same normal→same independent closureへ進む |
+| T609 | normal unit delta closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | focused 77/77、T609 Host全phase Green。current unit 23件中22件はbase exact-match、confirmed regression 0。current-onlyはWindows symlink fixture作成EPERM 1件。同一normal reviewerがこのdeltaを処分後、same independent closureへ進む |
 | T610 | 未着手 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607 | root全体を自動走査せず、開いたfileの所属folderまたは明示選択folderだけを計算する。停止folderはrestart後も強調表示され、file openでは自動再開せず、再開時に再検証する。親folderは直下fileと子folderの合計を部分集計として表示し、兄弟folderへ走査を拡張しない。focused、統合、Extension Host testと通常・独立reviewを通過する |
 
 ## 受け入れ条件トレーサビリティ
