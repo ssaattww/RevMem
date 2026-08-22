@@ -1,11 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { readReviewRangeMappingOptions } from "../../src/application/configuration/review-range-mapping-options";
 import {
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
   type CurrentContextUiSnapshot
 } from "../../src/ui/current-context/index";
+
+test("T609-NR-008 maps only boolean configuration values for Git and live-edit composition", () => {
+  const configuration = {
+    get: <T>(section: string): T | undefined => ({
+      ignoreWhitespaceChanges: true,
+      ignoreEolChanges: "true"
+    }[section] as T | undefined)
+  };
+
+  assert.deepEqual(
+    readReviewRangeMappingOptions(configuration),
+    { ignoreWhitespaceChanges: true, ignoreEolChanges: false }
+  );
+  assert.deepEqual(
+    readReviewRangeMappingOptions({ get: <T>(): T | undefined => undefined }),
+    { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  );
+});
 
 const candidate = (label: string): CurrentContextUiSnapshot => ({
   context: { kind: "branch", label, detail: `/workspace/${label}` },

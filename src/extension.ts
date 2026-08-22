@@ -28,6 +28,7 @@ import {
   DEFAULT_MAX_SNAPSHOT_FILE_SIZE_BYTES,
   resolveConfiguredNonGitSnapshotLimits
 } from "./application/non-git-snapshots/non-git-snapshot-settings";
+import { readReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import {
   createNormalEditorDecorationModelIncrementally,
   type NormalEditorReviewedDecoration
@@ -679,7 +680,10 @@ export function activate(
     repository,
     workspaceProvider: workspaceSessionProvider,
     stableHash,
-    historyRecorder
+    historyRecorder,
+    gitMappingOptions: readReviewRangeMappingOptions(
+      vscode.workspace.getConfiguration("reviewRange")
+    )
   });
   let selectedContext: SelectedReviewContext | undefined;
   let currentPullRequestDiff: Readonly<PullRequestDiffSnapshot> | undefined;

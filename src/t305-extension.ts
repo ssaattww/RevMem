@@ -61,7 +61,7 @@ import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
 } from "./application/workspace-identity/index";
-import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
+import { readReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
 import { TestReviewStateDependentQueue } from "./test-only-review-state-dependent-queue";
 
@@ -610,12 +610,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         rangeLength: change.rangeLength,
         text: change.text
       })),
-      options: resolveReviewRangeMappingOptions({
-        ignoreWhitespaceChanges: vscode.workspace.getConfiguration("reviewRange")
-          .get<unknown>("ignoreWhitespaceChanges"),
-        ignoreEolChanges: vscode.workspace.getConfiguration("reviewRange")
-          .get<unknown>("ignoreEolChanges")
-      }),
+      options: readReviewRangeMappingOptions(vscode.workspace.getConfiguration("reviewRange")),
       selectedContext
     }).then(
       async (result) => {

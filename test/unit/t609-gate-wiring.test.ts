@@ -284,6 +284,20 @@ test("T609 single-root uses public mixed-encoding marks after startup settlement
   assert.match(hostSuite, /markAndSynchronizeFixtureReview\("UTF-8 BOM", utf8Editor, api\)/u);
 });
 
+test("T609 production composition passes the shared validated mapping settings to Git revision mapping", async () => {
+  const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
+  const liveEdit = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const configuration = await readFile(
+    path.join(projectRoot, "src", "application", "configuration", "review-range-mapping-options.ts"),
+    "utf8"
+  );
+
+  assert.match(configuration, /export const readReviewRangeMappingOptions/u);
+  assert.match(configuration, /return resolveReviewRangeMappingOptions\(/u);
+  assert.match(extension, /gitMappingOptions:\s*readReviewRangeMappingOptions\(\s*vscode\.workspace\.getConfiguration\("reviewRange"\)\s*\)/u);
+  assert.match(liveEdit, /options:\s*readReviewRangeMappingOptions\(\s*vscode\.workspace\.getConfiguration\("reviewRange"\)\s*\)/u);
+});
+
 test("T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
