@@ -9,16 +9,16 @@ task_id: T609
 branch: task/issue-81-repository-encoding
 base_ref: 3bba5defe32b7da134817492427e09c70c97beaf
 target:
-  current_head: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7
+  current_head: e1021f7720efc0828aa77e850c4f0eb6bdd27acc
   reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30
   commit_range: 3bba5defe32b7da134817492427e09c70c97beaf...5501cd7b613066ac8a6300aabd75d1ff4a407069
 verification:
   capability: local_execution_available
   capability_evidence: ["npm scripts and local TypeScript/Node test executor are available"]
   technical_head: 5501cd7b613066ac8a6300aabd75d1ff4a407069
-  administrative_parent: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7
-  commit: { state: commit_pending, review_target_sha: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7 }
-  push: { state: push_pending, head_sha: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7 }
+  administrative_parent: e1021f7720efc0828aa77e850c4f0eb6bdd27acc
+  commit: { state: commit_pending, review_target_sha: e1021f7720efc0828aa77e850c4f0eb6bdd27acc }
+  push: { state: push_pending, head_sha: e1021f7720efc0828aa77e850c4f0eb6bdd27acc }
   ci_wait: { state: ci_wait_pending, required_for: merge_gate }
   final_publication: { sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update }
 authoritative_requirements:
@@ -67,29 +67,29 @@ implementation:
   summary: ["All six independent findings are addressed; route only bounded same-reviewer verification and closure, with exact-head CI held until the merge gate."]
 review:
   mode: fix_verification
-  reviewed_head: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7
+  reviewed_head: e1021f7720efc0828aa77e850c4f0eb6bdd27acc
   reviewer: { identity: /root/issue81_normal_review, role: normal_reviewer, continuity: { previous_reviewer_identity: /root/issue81_normal_review, changed: false, reason: null }, independence: { implemented_change: false, implemented_review_fix: false, served_as_normal_reviewer: true, inherited_conversation: true, evidence: ["Same normal reviewer performed bounded IFR001-006 verification without implementation writes."] } }
   verdict: pass_with_held
   required_coverage: ["IFR001-006 required action", "production path", "actual composition fixture", "focused evidence"]
   independent_closure: { initial_independent_reviewed_head: ecd2b0b8e09c614bb351ed958d09d5ee3180bc30, closure_reviewed_heads: [], reviewer_continuity: null, closure_scope: [], completeness_matrix: [] }
-  validation_assessment: ["IFR001-006 remain ready; current unit failures are fully classified as 22 exact base matches plus one Windows symlink fixture EPERM, with zero confirmed T609 regressions and unexplored zero."]
-  reserved_report_paths: [reports/issue-81-t609-normal-unit-baseline-delta-20260822170728.md]
+  validation_assessment: ["IFR001-006 remain closed. The observed T405 CI failure was fixed by stopping the post-terminal provider refresh; exact T406 Red 0/1 to Green 1/1. Same normal reviewer accepted the delta with unexplored zero."]
+  reserved_report_paths: [reports/issue-81-t609-normal-ci-delta-20260822175106.md]
   report_attestation: { allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [executable], no_later_commits_required: false, validation_status: pending, validation_evidence: [] }
-  summary: ["Same normal reviewer kept IFR001-006 ready and closed the final unit/base delta as pass_with_held with unexplored zero."]
-report: { report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-normal-unit-baseline-delta-20260822170728.md], reviewed_head: 8416f3e66c161e275fc24ae64514a7ed7b3d30a7, attestation_head: null, pr_comments: [], summary: ["Base comparison found 22 exact-match failures, zero confirmed regressions, and one current-only Windows symlink fixture EPERM; same normal reviewer classified all as held."] }
+  summary: ["Same normal reviewer accepted CI-delta e1021f7 as pass_with_held; old attestation 4fc4bed is invalid and non-reusable."]
+report: { report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-81-t609-normal-ci-delta-20260822175106.md], reviewed_head: e1021f7720efc0828aa77e850c4f0eb6bdd27acc, attestation_head: null, pr_comments: [], summary: ["Observed T405 duplicate UI error is addressed; exact T406 is Green and IFR001-006 remain closed."] }
 findings: []
-held: ["final full local test:unit base-matched 22 failures", "current-only Windows symlink fixture EPERM", "final full local test:git T207 Temp cleanup EBUSY", "Markdown lint unsupported", "exact-head pull_request CI pending merge gate"]
+held: ["nonchanged selected-PR active-editor ownership failure in local test:t405", "final full local test:unit base-matched 22 failures", "current-only Windows symlink fixture EPERM", "final full local test:git T207 Temp cleanup EBUSY", "Markdown lint unsupported", "new exact-head pull_request CI pending merge gate"]
 unexplored: []
 unknown: []
 not_applicable: []
-remaining_risks: ["Base-matched unit failures, Windows fixture EPERM, and T207 cleanup EBUSY remain held; exact-head pull_request CI remains pending until merge gate; Markdown wording tooling is unsupported."]
+remaining_risks: ["Old attestation 4fc4bed is invalid/non-reusable; same independent reviewer must verify CI-delta before a new report attestation. Existing local/environment failures and Markdown unsupported remain held."]
 source_payloads: []
 extensions: []
 next_action:
   type: review
   target_skill: review-enforcer
   mode: verification
-  summary: Ask the same independent reviewer to close IFR001-IFR006 against the frozen administrative head.
+  summary: Ask the same independent reviewer to verify only the observed T405 CI-delta and issue a new report attestation if accepted.
   instructions: ["Do not open new review viewpoints during finding-limited closure.", "Treat cleanup timeout separately from the successful Host semantic matrix."]
   required_attachments_or_references: [reports/issue-81-t609-independent-final-review-20260822060225.md]
   requested_authorized_actions: [edit_code, edit_tests, edit_documentation, write_report]

@@ -9,12 +9,12 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T607 大規模処理の段階表示と性能改善（Issue #79、PR #80、squash merge `3bba5defe32b7da134817492427e09c70c97beaf`）
 - 現在のタスク: T609 / Issue #81 Git repository解決とmixed encoding耐障害化
-- 次のタスク: T609 same independent closure、exact-head CI、PR #82 squash mergeへ進む
+- 次のタスク: T609 same independent CI-delta closure、新attestation、exact-head CI、PR #82 squash mergeへ進む
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/issue-81-repository-encoding`
-- Pull Request: #82（draft。IFR001〜IFR006はtechnical head `5501cd7`でaddressed。同一normal reviewerは全6件readyを維持し、unit/base比較deltaを`pass_with_held`・unexplored 0で閉じた。次はsame independent closure）
+- Pull Request: #82（ready。IFR001〜IFR006はclosed。旧attestation `4fc4bed` のexact-head CI run `32562360871` はT405でfailedし無効。CI-delta fix `e1021f7`をsame normal reviewerが`pass_with_held`・unexplored 0で確認済み。次はsame independent CI-delta closure）
 - T609 reports: focused `npm run test:t609` 77/77、build/compile/lint/diffcheck Green。actual T609 Host全phase成功。final full local gateは11 command中9 pass。`test:unit` 23件はbase exact-match 22件とWindows symlink fixture `EPERM` 1件に分類されconfirmed regression 0、`test:git` T207 Temp cleanup EBUSY 1件とともにheld。通常VS Code Hostは全phase Green。current handoffは `handoffs/issue-81-t609-independent-review-followup-20260822080000.yaml`、最新normal deltaは `reports/issue-81-t609-normal-unit-baseline-delta-20260822170728.md`。CIはmerge gateまで未待機。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
@@ -367,7 +367,7 @@
 | T606 | 完了 | L | Git、GitHub、storage、容量不足、途中終了のerror policy、再試行、古い状態表示、privacy-safe診断logを実装した | T403、T601〜T605 | PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。 |
 | T607 | 完了 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能測定と最小最適化を行う | T301、T504、T606 | PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607、T609、T610 | AC-01〜AC-24とIssue #81・#78の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
-| T609 | independent closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | focused 77/77、T609 Host全phase Green。同一normal reviewerはIFR001〜006 ready、unit/base delta `pass_with_held`、unexplored 0。same independent closureへ進む |
+| T609 | independent CI-delta closure待ち | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | IFR001〜006 closed。旧attestation `4fc4bed` のCI failureを`e1021f7`で修正し、exact T406 1/1 Green、same normal reviewer `pass_with_held`。same independent CI-delta closureへ進む |
 | T610 | 未着手 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607 | root全体を自動走査せず、開いたfileの所属folderまたは明示選択folderだけを計算する。停止folderはrestart後も強調表示され、file openでは自動再開せず、再開時に再検証する。親folderは直下fileと子folderの合計を部分集計として表示し、兄弟folderへ走査を拡張しない。focused、統合、Extension Host testと通常・独立reviewを通過する |
 
 ## 受け入れ条件トレーサビリティ
