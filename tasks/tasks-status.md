@@ -9,7 +9,7 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 現在のタスク: T610 / Issue #78 folder単位Global Understanding
-- 次のタスク: 同じ通常reviewerでT610-NR-001〜010の限定closureを行う
+- 次のタスク: openのT610-NR-004/005/006/007/008/010を一括修正し、同じ通常reviewerで再closureする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
@@ -24,6 +24,7 @@
 - T610 Host R4: `reports/issue-78-t610-normal-review-followup-r4-host-20260822214714.md`。Context保持、open受理、`observeFileOpen`完了を確認し、source refreshがerrorなし`undefined`となるcontroller前owner/scope-root解決へ限定した。R5でWindows workspace URI identity一致を修正する。
 - T610 Host R5: `reports/issue-78-t610-normal-review-followup-r5-host-20260822220339.md`。Windows workspace root URI解決を修正し、Host initial/restart functional phaseは全成功。fixture cleanupのみ10秒timeoutのため、R6でowned lifecycle cleanupを限定修正する。
 - T610 Host R6: `reports/issue-78-t610-normal-review-followup-r6-cleanup-20260822221743.md`。exact Host一回でinitial/restart/cleanup全phase成功。T610 41/41、build/lint/diff-check Green。同じ通常reviewerのT610-NR-001〜010限定closureへ進む。
+- T610 normal closure R1: `reports/issue-78-t610-normal-review-closure-20260822223637.md`。NR-001/002/003/009はclosed。NR-004/005/006/007/008/010はopenのため、partial UI、real command/menu、startup/watcher、storage diagnostics、global budget、JSDoc contractを修正する。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
