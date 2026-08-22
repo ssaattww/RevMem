@@ -14,6 +14,11 @@ interface T610ExtensionApi {
     readonly progress: { readonly files: readonly { readonly path: string }[] };
     readonly folders?: readonly { readonly path: string; readonly state: string }[];
   } | undefined>;
+  getGlobalUnderstandingPresentationForTest(): {
+    readonly folderHierarchy: readonly { readonly path: string; readonly state: string; readonly description: string; readonly children: readonly unknown[] }[];
+    readonly summaryDescription: string;
+    readonly statusText: string;
+  } | undefined;
   getGlobalUnderstandingLifecycleObservationForTest(): {
     readonly sourceContext: string | undefined;
     readonly acceptedDocumentOpenCount: number;
@@ -93,6 +98,18 @@ export async function run(): Promise<void> {
     assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
     assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
     assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
+    const nested = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(workspace.uri, "src", "child", "b.ts"));
+    await vscode.window.showTextDocument(nested, { preview: false });
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    const presentation = api.getGlobalUnderstandingPresentationForTest();
+    assert.ok(presentation, "the actual TreeDataProvider and Status Bar publish a presentation observation");
+    assert.equal(presentation!.folderHierarchy[0]?.path, "", "the provider exposes the repository root row");
+    const src = presentation!.folderHierarchy[0]?.children[0] as { readonly path?: string; readonly children?: readonly unknown[] } | undefined;
+    assert.equal(src?.path, "src", "the provider nests the direct folder under its root row");
+    assert.equal((src?.children?.[0] as { readonly path?: string } | undefined)?.path, "src/child", "the provider exposes the third-level folder hierarchy");
+    assert.doesNotMatch(presentation!.summaryDescription, /%/u, "a partial repository summary never exposes a percentage");
+    assert.doesNotMatch(presentation!.statusText, /%/u, "a partial repository Status Bar never exposes a percentage");
+    await closeDocument(nested);
     await recordSubphase(api, "snapshot-observed");
     await vscode.commands.executeCommand("reviewRange.stopGlobalUnderstandingFolder");
     await api.drainGlobalUnderstandingFileOpenForTest();

@@ -1,22 +1,33 @@
 /** A persisted, repository-root isolated marker store for stopped folder scopes. */
 export interface FolderUnderstandingStoppedStore {
+  /** Reads explicit durable stop markers for one canonical repository owner. */
   loadStopped(repositoryId: string, canonicalRepositoryRoot: string): Promise<readonly string[]>;
+  /** Replaces explicit durable stop markers for one canonical repository owner. */
   saveStopped(repositoryId: string, canonicalRepositoryRoot: string, paths: readonly string[]): Promise<void>;
   /** Atomically applies explicit-marker additions/removals when the storage adapter supports it. */
   mutateStopped?(repositoryId: string, canonicalRepositoryRoot: string, mutation: Readonly<{ add: readonly string[]; remove: readonly string[] }>): Promise<readonly string[]>;
 }
 
+/** Lifecycle state of one canonical folder scope; stopped is the only restart-durable state. */
 export type FolderUnderstandingScopeState = "inactive" | "running" | "active" | "stopped" | "failed";
 
+/** Direct-or-complete-descendant aggregate for one scope. */
 export interface FolderUnderstandingTotal {
+  /** Reviewed non-empty lines included in this aggregate. */
   readonly reviewed: number;
+  /** Known non-empty-line denominator included in this aggregate. */
   readonly total: number;
+  /** False when this scope or a descendant has incomplete, stopped, or failed evidence. */
   readonly complete: boolean;
 }
 
+/** Immutable, owner-isolated Tree projection row for a canonical folder path. */
 export interface FolderUnderstandingScopeSnapshot {
+  /** Canonical repository-relative folder path; empty is the repository root. */
   readonly path: string;
+  /** Current lifecycle state, never inferred from another repository owner. */
   readonly state: FolderUnderstandingScopeState;
+  /** Aggregate whose complete flag controls partial repository presentation. */
   readonly total: FolderUnderstandingTotal;
 }
 
@@ -191,8 +202,10 @@ export class FolderUnderstandingScopeController {
 
   /** Returns immutable, root-isolated rows for the T610 Tree projection. */
   public snapshots(repositoryId: string, canonicalRepositoryRoot: string): readonly FolderUnderstandingScopeSnapshot[] {
-    return [...this.records(repositoryId, canonicalRepositoryRoot)]
-      .map(([path, record]) => ({ path, state: record.state, total: this.aggregate(repositoryId, canonicalRepositoryRoot, path) }))
+    const records = this.records(repositoryId, canonicalRepositoryRoot);
+    const totals = this.indexedAggregates(records);
+    return [...records]
+      .map(([path, record]) => ({ path, state: record.state, total: totals.get(path)! }))
       .sort((left, right) => left.path.localeCompare(right.path));
   }
 
@@ -200,21 +213,8 @@ export class FolderUnderstandingScopeController {
   public aggregate(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): FolderUnderstandingTotal {
     const folder = normalizeFolder(folderPath);
     const records = this.records(repositoryId, canonicalRepositoryRoot);
-    const self = this.record(records, folder);
-    const directChildren = [...records].filter(([candidate]) => candidate !== folder && parentFolder(candidate) === folder);
-    let reviewed = self.total?.reviewed ?? 0;
-    let total = self.total?.total ?? 0;
-    let complete = self.state === "active" && self.total !== undefined;
-    for (const [childPath] of directChildren) {
-      const child = this.aggregate(repositoryId, canonicalRepositoryRoot, childPath);
-      if (!child.complete) {
-        complete = false;
-        continue;
-      }
-      reviewed += child.reviewed;
-      total += child.total;
-    }
-    return { reviewed, total, complete };
+    this.record(records, folder);
+    return this.indexedAggregates(records).get(folder)!;
   }
 
   private records(repositoryId: string, repositoryRoot: string): Map<string, ScopeRecord> {
@@ -270,5 +270,33 @@ export class FolderUnderstandingScopeController {
 
   private hasStoppedAncestor(records: ReadonlyMap<string, ScopeRecord>, folder: string): boolean {
     return [...records].some(([candidate, record]) => record.state === "stopped" && isDescendantOrSelf(folder, candidate));
+  }
+
+  /** Computes every hierarchy aggregate once, from leaves toward the root. */
+  private indexedAggregates(records: ReadonlyMap<string, ScopeRecord>): Map<string, FolderUnderstandingTotal> {
+    const totals = new Map<string, FolderUnderstandingTotal>();
+    const children = new Map<string, string[]>();
+    for (const folder of records.keys()) {
+      if (folder.length === 0) continue;
+      const parent = parentFolder(folder);
+      const rows = children.get(parent) ?? [];
+      rows.push(folder);
+      children.set(parent, rows);
+    }
+    const ordered = [...records.keys()].sort((left, right) => right.split("/").length - left.split("/").length || right.localeCompare(left));
+    for (const folder of ordered) {
+      const record = records.get(folder)!;
+      let reviewed = record.total?.reviewed ?? 0;
+      let total = record.total?.total ?? 0;
+      let complete = record.state === "active" && record.total !== undefined;
+      for (const candidate of children.get(folder) ?? []) {
+        const candidateTotal = totals.get(candidate)!;
+        if (!candidateTotal.complete) { complete = false; continue; }
+        reviewed += candidateTotal.reviewed;
+        total += candidateTotal.total;
+      }
+      totals.set(folder, { reviewed, total, complete });
+    }
+    return totals;
   }
 }

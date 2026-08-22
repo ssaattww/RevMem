@@ -86,6 +86,11 @@
         { "command": "reviewRange.refreshReviewContextCache", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@2" },
         { "command": "reviewRange.toggleReviewContextLayer", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@3" },
         { "command": "reviewRange.hideReviewContext", "when": "view == reviewRange.reviewContexts", "group": "navigation@4" }
+      ],
+      "editor/context": [
+        { "command": "reviewRange.startGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@1" },
+        { "command": "reviewRange.stopGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@2" },
+        { "command": "reviewRange.resumeGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@3" }
       ]
     },
     "configuration": {

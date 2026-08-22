@@ -1,4 +1,5 @@
 import { NodeFolderUnderstandingStoppedStore } from "./adapters/state-repository/node-folder-understanding-stopped-store";
+import type { StorageRootLockDiagnostic } from "./adapters/state-repository/index";
 import { FolderUnderstandingScopeController } from "./application/global-understanding/index";
 import {
   T505GlobalUnderstandingSource,
@@ -9,6 +10,8 @@ import {
 export interface T305GlobalUnderstandingCompositionDependencies extends T505GlobalUnderstandingSourceDependencies {
   /** Filesystem path of the VS Code global storage URI. */
   readonly globalStoragePath: string;
+  /** Routes storage lease recovery diagnostics to the shared Review Range Output. */
+  readonly notifyStorageLockDiagnostic?: (diagnostic: StorageRootLockDiagnostic) => void | Promise<void>;
 }
 
 /**
@@ -22,6 +25,8 @@ export const createT305GlobalUnderstandingSource = (
 ): T505GlobalUnderstandingSource => new T505GlobalUnderstandingSource({
   ...dependencies,
   folderScopes: new FolderUnderstandingScopeController(
-    new NodeFolderUnderstandingStoppedStore(dependencies.globalStoragePath)
+    new NodeFolderUnderstandingStoppedStore(dependencies.globalStoragePath, {
+      notifyStorageLockDiagnostic: dependencies.notifyStorageLockDiagnostic
+    })
   )
 });

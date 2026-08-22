@@ -49,6 +49,30 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly reportError: (error: unknown) => void | Promise<void>;
   /** Test-mode-only observer supplied by the T305 composition after a snapshot is published. */
   readonly onSnapshotPublishedForTest?: (snapshot: GlobalUnderstandingTreeSnapshot) => void;
+  /** Test-only observation of the production Tree provider's rendered hierarchy and Status Bar text. */
+  readonly onPresentationPublishedForTest?: (presentation: GlobalUnderstandingPresentationForTest) => void;
+}
+
+/** Immutable rendering observation captured only from the actual Tree provider in Extension tests. */
+export interface GlobalUnderstandingPresentationForTest {
+  /** Recursive folder rows as returned by the active TreeDataProvider. */
+  readonly folderHierarchy: readonly GlobalUnderstandingFolderPresentationForTest[];
+  /** Description rendered on the provider's repository summary row. */
+  readonly summaryDescription: string;
+  /** Text rendered by the production Status Bar item. */
+  readonly statusText: string;
+}
+
+/** One actual Tree folder row and its actual provider children. */
+export interface GlobalUnderstandingFolderPresentationForTest {
+  /** Canonical Tree row path. */
+  readonly path: string;
+  /** Lifecycle state rendered for the Tree row. */
+  readonly state: GlobalUnderstandingFolderNode["state"];
+  /** Description rendered for the Tree row. */
+  readonly description: string;
+  /** Actual nested folder rows returned by the provider. */
+  readonly children: readonly GlobalUnderstandingFolderPresentationForTest[];
 }
 
 interface FilesGroupNode {
@@ -238,9 +262,11 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
   clear(): void;
 }
 
-const requireCurrentFolderNode = (value: unknown, current: ReadonlySet<GlobalUnderstandingFolderNode>): GlobalUnderstandingFolderNode => {
+type FolderAction = GlobalUnderstandingFolderNode["action"];
+
+const requireCurrentFolderNode = (value: unknown, expectedAction: FolderAction, current: ReadonlySet<GlobalUnderstandingFolderNode>): GlobalUnderstandingFolderNode => {
   if (value === undefined) {
-    const candidates = [...current].filter((node) => node.action === "stop" || node.action === "resume");
+    const candidates = [...current].filter((node) => node.action === expectedAction);
     if (candidates.length === 1) return candidates[0]!;
     throw new RangeError("Select one current Global Understanding folder row before running this command.");
   }
@@ -249,6 +275,7 @@ const requireCurrentFolderNode = (value: unknown, current: ReadonlySet<GlobalUnd
   }
   const node = value as GlobalUnderstandingFolderNode;
   if (!current.has(node)) throw new RangeError("Selected Global Understanding folder row is stale or belongs to another repository.");
+  if (node.action !== expectedAction) throw new RangeError("Selected Global Understanding folder row does not support this command.");
   return node;
 };
 
@@ -303,6 +330,17 @@ export const registerGlobalUnderstandingRuntime = (
             status.text = statusModel.text;
             status.tooltip = statusModel.tooltip;
             status.show();
+            const presentFolder = (folder: GlobalUnderstandingFolderNode): GlobalUnderstandingFolderPresentationForTest => ({
+              path: folder.path,
+              state: folder.state,
+              description: folder.description,
+              children: tree.getChildren(folder).filter((node): node is GlobalUnderstandingFolderNode => node.kind === "folder").map(presentFolder)
+            });
+            dependencies.onPresentationPublishedForTest?.({
+              folderHierarchy: tree.getChildren().filter((node): node is GlobalUnderstandingFolderNode => node.kind === "folder").map(presentFolder),
+              summaryDescription: stage.summary.description,
+              statusText: status.text
+            });
           }
         });
         if (model === undefined || !isCurrent()) return;
@@ -363,7 +401,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.startFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "start", currentFolderNodes);
           await runWithActiveOperationFeedback("Global Understanding folderを開始", async () => {
             await dependencies.source.startFolder!(folder.path);
             await refreshWithErrorBoundary();
@@ -378,7 +416,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.stopFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "stop", currentFolderNodes);
           await runWithActiveOperationFeedback("Global Understanding folderを停止", async () => {
             await dependencies.source.stopFolder!(folder.path);
             await refreshWithErrorBoundary();
@@ -393,7 +431,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.resumeFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "resume", currentFolderNodes);
           await runWithActiveOperationFeedback("Global Understanding folderを再開", async () => {
             await dependencies.source.resumeFolder!(folder.path);
             await refreshWithErrorBoundary();

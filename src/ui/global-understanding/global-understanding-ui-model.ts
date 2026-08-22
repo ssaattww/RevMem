@@ -41,10 +41,15 @@ export interface GlobalUnderstandingTreeSnapshot {
 
 /** T610 folder scope state used to render action and incomplete aggregation safely. */
 export interface GlobalUnderstandingFolderSnapshot {
+  /** Canonical repository-relative folder identity; empty identifies the root. */
   readonly path: string;
+  /** Lifecycle state supplied by the owner-isolated folder controller. */
   readonly state: "inactive" | "running" | "active" | "stopped" | "failed";
+  /** Known reviewed numerator; it is not a repository-wide claim when partial. */
   readonly reviewedNonEmptyLineCount: number;
+  /** Known denominator; it is not a repository-wide claim when partial. */
   readonly totalNonEmptyLineCount: number;
+  /** Marks incomplete child/state evidence and suppresses repository percentages. */
   readonly partial: boolean;
 }
 
@@ -88,9 +93,13 @@ export interface GlobalUnderstandingTreeModel {
 }
 
 export interface GlobalUnderstandingFolderNode extends GlobalUnderstandingFolderSnapshot {
+  /** Discriminant used by the Tree provider and command stale-target fence. */
   readonly kind: "folder";
+  /** Human-readable folder label derived from the canonical path. */
   readonly label: string;
+  /** Partial/full and line-count description shown by the Tree provider. */
   readonly description: string;
+  /** Only command action valid for this current-generation node. */
   readonly action: "start" | "stop" | "resume";
 }
 

@@ -243,6 +243,22 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     await this.folderScopes?.start(owner.target.repositoryId, scopeRoot, folder, folders);
   }
 
+  /** Returns true only for an entry under the selected canonical owner with an already-active scope. */
+  public isActiveFolderEntry(repositoryPath: string): boolean {
+    const owner = this.resolveOwner(this.currentContext);
+    if (owner === undefined) return false;
+    const scopeRoot = this.scopeRoot(owner);
+    if (scopeRoot === undefined) return false;
+    const relativePath = path.isAbsolute(repositoryPath)
+      ? path.relative(owner.repositoryRoot, repositoryPath).split(path.sep).join("/")
+      : repositoryPath;
+    if (relativePath.length === 0 || relativePath === ".." || relativePath.startsWith("../")) return false;
+    const folder = relativePath.includes("/") ? relativePath.slice(0, relativePath.lastIndexOf("/")) : "";
+    return this.folderScopes?.activeFolders(owner.target.repositoryId, scopeRoot).some((active) =>
+      folder === active || folder.startsWith(`${active}/`) || active.startsWith(`${folder}/`)
+    ) ?? true;
+  }
+
   /** Stops the selected current scope only after its explicit marker is durable. */
   public async stopFolder(folderPath: string): Promise<void> {
     const owner = this.resolveOwner(this.currentContext);
