@@ -465,3 +465,23 @@ test("T609 virtual URI boundary commands use the owned single-root deadline", as
   assert.doesNotMatch(boundaries, /within\("virtual (?:Current Context|Review Contexts) boundary"/u);
   assert.match(runner, /const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;/u);
 });
+
+test("T609 live encoding transition closes only its exact text tab and waits for the Host close event", async () => {
+  const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
+  const closeStart = hostSuite.indexOf("const closeDocument = async");
+  const closeEnd = hostSuite.indexOf("const assertMultiRootCancellation", closeStart);
+  assert.ok(closeStart >= 0 && closeEnd > closeStart, "the targeted close helper must remain isolated from broad editor cleanup");
+  const closeDocument = hostSuite.slice(closeStart, closeEnd);
+
+  assert.match(closeDocument, /vscode\.window\.tabGroups\.all/u);
+  assert.match(closeDocument, /tab\.input instanceof vscode\.TabInputText/u);
+  assert.match(closeDocument, /tab\.input\.uri\.toString\(true\) === document\.uri\.toString\(true\)/u);
+  assert.match(closeDocument, /vscode\.window\.tabGroups\.close\(targetTab\)/u);
+  assert.match(closeDocument, /vscode\.workspace\.onDidCloseTextDocument/u);
+  assert.doesNotMatch(closeDocument, /closeAllEditors|workbench\.action\.closeAllEditors|within\(/u);
+  assert.match(
+    hostSuite,
+    /assert\.equal\(bom\.isClosed, false, "the unrelated opened document must remain observed"\)/u,
+    "the live transition must retain the independent UTF-8 BOM document"
+  );
+});

@@ -91,15 +91,26 @@ const closeAllEditors = async (): Promise<void> => {
 
 const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
   if (document.isClosed) return;
+  const targetTab = vscode.window.tabGroups.all.flatMap((group) => group.tabs).find((tab) => {
+    if (!(tab.input instanceof vscode.TabInputText)) return false;
+    return tab.input.uri.toString(true) === document.uri.toString(true);
+  });
+  assert.ok(targetTab, `the T609 fixture must find an open text tab for ${document.uri.toString(true)}`);
+  let disposable: vscode.Disposable | undefined;
   const closed = new Promise<void>((resolve) => {
-    const disposable = vscode.workspace.onDidCloseTextDocument((candidate) => {
+    disposable = vscode.workspace.onDidCloseTextDocument((candidate) => {
       if (candidate.uri.toString(true) !== document.uri.toString(true)) return;
-      disposable.dispose();
+      disposable?.dispose();
       resolve();
     });
   });
-  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-  await within(`close ${path.basename(document.uri.fsPath)}`, closed);
+  try {
+    await vscode.window.tabGroups.close(targetTab);
+    await closed;
+  } catch (error) {
+    disposable?.dispose();
+    throw error;
+  }
 };
 
 const assertMultiRootCancellation = async (folder: vscode.WorkspaceFolder): Promise<void> => {
