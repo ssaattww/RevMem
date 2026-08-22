@@ -296,6 +296,7 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   const root = path.resolve(__dirname, "../../..");
   const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
   const runner = await readFile(path.join(root, "test", "vscode", "run-extension-host.ts"), "utf8");
+  const ownedLaunch = await readFile(path.join(root, "test", "vscode", "owned-extension-host-launch.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   for (const method of ["startGlobalUnderstandingFolderForTest", "stopGlobalUnderstandingFolderForTest", "resumeGlobalUnderstandingFolderForTest"]) {
     assert.equal((activation.match(new RegExp(`${method}:`, "gu")) ?? []).length, 1, `${method} is exported once from actual activation`);
@@ -308,6 +309,11 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   const contextRefresh = suite.indexOf('await vscode.commands.executeCommand("reviewRange.refreshContext");');
   const documentOpen = suite.indexOf("await vscode.workspace.openTextDocument");
   assert.ok(startupDrain >= 0 && startupDrain < contextRefresh && contextRefresh < documentOpen, "the Host drains and explicitly establishes Current Context before opening its fixture document");
+  assert.match(suite, /const closeDocument = async/u, "the T610 Host owns an explicit document-close lifecycle");
+  assert.match(suite, /onDidCloseTextDocument/u, "the T610 close lifecycle observes and disposes its own close listener");
+  assert.match(suite, /finally \{\s*await closeDocument\(document\);/u, "the T610 fixture closes the document even when a Host assertion fails");
+  assert.match(ownedLaunch, /ownedWorkerPid/u, "owned worker PID diagnostics remain explicit per Host phase");
+  assert.match(ownedLaunch, /ownedExtensionHostPids/u, "observed Extension Host PIDs remain attributable to the owning phase");
   assert.doesNotMatch(suite, /setTimeout/gu, "the T610 Host fixture uses explicit lifecycle drains instead of fixed sleeps");
 });
 

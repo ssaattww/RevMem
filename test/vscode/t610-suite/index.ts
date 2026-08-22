@@ -28,6 +28,29 @@ interface T610ExtensionApi {
 
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 
+/** Closes exactly the document opened by this suite and releases its private close listener. */
+const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
+  const targetTab = vscode.window.tabGroups.all.flatMap((group) => group.tabs).find((tab) => {
+    if (!(tab.input instanceof vscode.TabInputText)) return false;
+    return tab.input.uri.toString(true) === document.uri.toString(true);
+  });
+  assert.ok(targetTab, `the T610 fixture must find an open text tab for ${document.uri.toString(true)}`);
+  let disposable: vscode.Disposable | undefined;
+  const closed = new Promise<void>((resolve) => {
+    disposable = vscode.workspace.onDidCloseTextDocument((candidate) => {
+      if (candidate.uri.toString(true) !== document.uri.toString(true)) return;
+      disposable?.dispose();
+      resolve();
+    });
+  });
+  try {
+    await vscode.window.tabGroups.close(targetTab);
+    await closed;
+  } finally {
+    disposable?.dispose();
+  }
+};
+
 /** Exercises the exported production T305 lifecycle across a real Host restart. */
 export async function run(): Promise<void> {
   assert.ok(phase === "t610-initial" || phase === "t610-restart", `Unexpected T610 phase: ${String(phase)}`);
@@ -51,27 +74,31 @@ export async function run(): Promise<void> {
   }
   const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0]!.uri, "src", "a.ts"));
   await vscode.window.showTextDocument(document);
-  await api.drainGlobalUnderstandingFileOpenForTest();
-  const lifecycle = api.getGlobalUnderstandingLifecycleObservationForTest();
-  assert.notEqual(lifecycle.sourceContext, undefined, "the selected Current Context remains bound to the Global source after open");
-  assert.ok(lifecycle.acceptedDocumentOpenCount > 0, "the registered document-open event is accepted");
-  assert.equal(lifecycle.observedDocumentPath, document.uri.fsPath, "the source observes the opened fixture path");
-  assert.equal(lifecycle.fileOpenOutcome, "completed", "the source completes the accepted file-open observation");
-  assert.equal(lifecycle.sourceRefreshOutcome, "snapshot", `the source refresh publishes a snapshot: ${lifecycle.sourceRefreshError ?? "no source error"}`);
-  assert.equal(lifecycle.publishedSnapshot, true, "the Global runtime publishes the source snapshot");
-  const snapshot = await api.getGlobalUnderstandingSnapshot();
-  assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
-  assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
-  assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
-  await api.stopGlobalUnderstandingFolderForTest("src");
-  assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
-  await api.resumeGlobalUnderstandingFolderForTest("src");
-  assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
-  await api.notifyGlobalUnderstandingFolderEntryForTest(vscode.Uri.joinPath(workspace.uri, "src", "watcher-created.ts"));
-  assert.equal(
-    (await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state,
-    "active",
-    "the registered watcher callback refreshes the resumed folder scope"
-  );
-  await api.stopGlobalUnderstandingFolderForTest("src");
+  try {
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    const lifecycle = api.getGlobalUnderstandingLifecycleObservationForTest();
+    assert.notEqual(lifecycle.sourceContext, undefined, "the selected Current Context remains bound to the Global source after open");
+    assert.ok(lifecycle.acceptedDocumentOpenCount > 0, "the registered document-open event is accepted");
+    assert.equal(lifecycle.observedDocumentPath, document.uri.fsPath, "the source observes the opened fixture path");
+    assert.equal(lifecycle.fileOpenOutcome, "completed", "the source completes the accepted file-open observation");
+    assert.equal(lifecycle.sourceRefreshOutcome, "snapshot", `the source refresh publishes a snapshot: ${lifecycle.sourceRefreshError ?? "no source error"}`);
+    assert.equal(lifecycle.publishedSnapshot, true, "the Global runtime publishes the source snapshot");
+    const snapshot = await api.getGlobalUnderstandingSnapshot();
+    assert.ok(snapshot, "actual activate/open wiring produces a Global snapshot");
+    assert.ok(snapshot!.folders?.some((folder) => folder.path === "src"), "file open starts only its direct folder scope");
+    assert.deepEqual(snapshot!.progress.files.map((file) => file.path), ["src/a.ts"]);
+    await api.stopGlobalUnderstandingFolderForTest("src");
+    assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await api.resumeGlobalUnderstandingFolderForTest("src");
+    assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+    await api.notifyGlobalUnderstandingFolderEntryForTest(vscode.Uri.joinPath(workspace.uri, "src", "watcher-created.ts"));
+    assert.equal(
+      (await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src")?.state,
+      "active",
+      "the registered watcher callback refreshes the resumed folder scope"
+    );
+    await api.stopGlobalUnderstandingFolderForTest("src");
+  } finally {
+    await closeDocument(document);
+  }
 }
