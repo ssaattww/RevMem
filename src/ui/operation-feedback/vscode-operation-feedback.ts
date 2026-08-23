@@ -2,8 +2,10 @@ import * as vscode from "vscode";
 
 import {
   formatOperationLogEntry,
+  formatOperationProgress,
   type OperationFeedbackHost,
-  type OperationLogEntry
+  type OperationLogEntry,
+  type OperationProgress,
 } from "../../application/operation-feedback/index";
 
 export const REVIEW_RANGE_OUTPUT_CHANNEL_NAME = "Review Range";
@@ -24,11 +26,19 @@ implements OperationFeedbackHost, vscode.Disposable {
     this.status.name = "Review Range Activity";
   }
 
-  public showBusy(label: string, activeCount: number): void {
-    this.status.text = `$(sync~spin) Review Range: ${label}`;
-    this.status.tooltip = activeCount === 1
+  public showBusy(
+    label: string,
+    activeCount: number,
+    progress?: OperationProgress,
+  ): void {
+    const progressText = progress === undefined ? undefined : formatOperationProgress(progress);
+    this.status.text = `$(sync~spin) Review Range: ${label}${progressText === undefined ? "" : ` · ${progressText}`}`;
+    const activityText = activeCount === 1
       ? "Review Rangeが処理を実行しています。"
       : `Review Rangeが${activeCount}件の処理を実行しています。`;
+    this.status.tooltip = progressText === undefined
+      ? activityText
+      : `${activityText}\n進捗: ${progressText}`;
     this.status.show();
   }
 
