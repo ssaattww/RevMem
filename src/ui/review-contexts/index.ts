@@ -1,6 +1,5 @@
 /** Public UI API for the Review Contexts View. */
 export {
-  VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
   runReviewContextsPureRead,
@@ -8,3 +7,4 @@ export {
   type ReviewContextsRuntimeDependencies,
   type ReviewContextsRuntimeSource,
 } from "./vscode-review-contexts-runtime";
+export { VscodeCurrentPullRequestSelectionStore } from "./vscode-current-pull-request-selection-store";
