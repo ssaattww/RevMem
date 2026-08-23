@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
   formatOperationFailureForUser,
   hasOperationFeedbackFailure,
+  reportActiveOperationProgress,
   runWithBoundedRetry,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
@@ -182,6 +183,8 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     const controller = new AbortController();
     this.refreshController = controller;
     const generation = ++this.generation;
+    reportActiveOperationProgress({ stage: "repositories", completed: 0 }, feedbackContext);
+    reportActiveOperationProgress({ stage: "pull-request-contexts", completed: 0 }, feedbackContext);
     try {
       // The source owns the retryable acquisition; this method performs one
       // publication only after that read has completed successfully.
@@ -203,6 +206,18 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       }
       if (generation !== this.generation) return;
       if (published !== undefined) loaded = published;
+      const repositoryCount = new Set(loaded.map((item) => item.context.repositoryId)).size;
+      const pullRequestContextCount = loaded.filter((item) => item.context.kind === "pull-request").length;
+      reportActiveOperationProgress({
+        stage: "repositories",
+        completed: repositoryCount,
+        total: repositoryCount,
+      }, feedbackContext);
+      reportActiveOperationProgress({
+        stage: "pull-request-contexts",
+        completed: pullRequestContextCount,
+        total: pullRequestContextCount,
+      }, feedbackContext);
       this.items = [...loaded];
       this.changed.fire();
     } catch (error) {
