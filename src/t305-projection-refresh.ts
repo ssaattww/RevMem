@@ -64,21 +64,27 @@ export const refreshSelectedPullRequestProgress = async <Source>(
 };
 
 /**
- * Refreshes owner-bound projections after Current Context changes. PR Progress
- * is fail-closed and independently reported; it must not prevent decorations,
- * Global Understanding, or Review Contexts from adopting the new owner.
+ * Refreshes owner-bound projections after Current Context changes. Review
+ * Contexts must settle first because it acquires and registers the selected PR
+ * diff runtime consumed by PR Progress. PR Progress remains fail-closed and is
+ * independently reported; failures still cannot block decorations or Global.
  */
 export const refreshCurrentContextDependents = async (
   dependencies: CurrentContextDependentRefreshDependencies
 ): Promise<void> => {
+  let dependentError: unknown;
+  try {
+    await dependencies.refreshReviewContexts();
+  } catch (error) {
+    dependentError = error;
+  }
+
   const progress = settleProjectionRefresh(
     dependencies.refreshPullRequestProgress
   );
-  let dependentError: unknown;
   for (const refresh of [
     dependencies.refreshDecorations,
     dependencies.refreshGlobal,
-    dependencies.refreshReviewContexts,
   ]) {
     try {
       await refresh();
