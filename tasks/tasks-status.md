@@ -33,6 +33,7 @@
 - T610 R12: `reports/issue-78-t610-normal-review-followup-r12-host-20260823011851.md`。Host initial 915.1秒timeout、最初のsuite marker前でsubphase unavailable、cleanup成功。activation内startup Global refresh awaitをR13でqueue/drainへ分離する。
 - T610 R13/R14: startup Global workをnon-blocking queueへ移し、Current Context startup後へ整列した。local focused/staticはGreenだが、one-shot Hostは最初のsuite marker前でtimeoutしたため、追加のHost反復を停止する。
 - 性能検証policy: `test:t607`はdeveloper-localの手動検証専用とし、通常unit suiteとCIから除外する。CIはT607を実行せず、local-only wiringだけを軽量な静的契約で確認する。
+- CI follow-up: HEAD `400957a`のpull_request/push CIはT506 restart phaseで、T610のfile-open lifecycle完了前にGlobal snapshotを読んで失敗した。T506 fixtureを既存Test drainへ同期し、軽量回帰1/1を確認した。Hostと性能suiteは再実行しない。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録

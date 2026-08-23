@@ -673,3 +673,17 @@ test("T610-R14 settles Current Context startup before queuing non-blocking start
     "the Host settles Current Context before draining its dependent startup Global work"
   );
 });
+
+test("T610 preserves T506 restart coverage by draining the registered file-open lifecycle", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const suite = await readFile(path.join(root, "test", "vscode", "t506-suite", "index.ts"), "utf8");
+  const start = suite.indexOf("const assertMappedNormalEditorAfterRestart");
+  const end = suite.indexOf("/** Exercises T506 multiple-context", start);
+  assert.ok(start >= 0 && end > start);
+  const restart = suite.slice(start, end);
+  assert.match(
+    restart,
+    /openNormalReviewEditor\(workspaceFolder\)[\s\S]*?drainGlobalUnderstandingFileOpenForTest\(\)[\s\S]*?assertMappedGlobalUnderstanding\(api\)/u,
+    "T506 waits for T610's registered file-open lifecycle before reading the folder-scoped snapshot",
+  );
+});
