@@ -9,7 +9,7 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 現在のタスク: T610 / Issue #78 folder単位Global Understanding
-- 次のタスク: openのT610-NR-004/005/006/007/008/010を一括修正し、同じ通常reviewerで再closureする
+- 次のタスク: openのT610-NR-004/005/006/007/008/010/011を一括修正し、同じ通常reviewerで再closureする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
@@ -34,6 +34,7 @@
 - T610 R13/R14: startup Global workをnon-blocking queueへ移し、Current Context startup後へ整列した。local focused/staticはGreenだが、one-shot Hostは最初のsuite marker前でtimeoutしたため、追加のHost反復を停止する。
 - 性能検証policy: `test:t607`はdeveloper-localの手動検証専用とし、通常unit suiteとCIから除外する。CIはT607を実行せず、local-only wiringだけを軽量な静的契約で確認する。
 - CI follow-up: HEAD `400957a`のpull_request/push CIはT506 restart phaseで、T610のfile-open lifecycle完了前にGlobal snapshotを読んで失敗した。T506 fixtureを既存Test drainへ同期し、軽量回帰1/1を確認した。Hostと性能suiteは再実行しない。
+- T610 normal closure R3: `reports/issue-78-t610-normal-review-closure-r3-20260823180716.md`。NR004/005/006/007/008/010はblocking継続、重複`editor/context`で既存commandを上書きするHigh NR011を追加。closed NR001/002/003は維持し、NR009とT506 CI deltaはconfirmation-required。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
