@@ -10,6 +10,8 @@ export interface PullRequestGlobalHeadFileRequest {
   readonly contextId: string;
   readonly headRevision: string;
   readonly candidatePaths: ReadonlySet<string>;
+  /** Cancels immutable content reads when every requesting folder generation is superseded. */
+  readonly signal?: AbortSignal;
 }
 
 export type PullRequestGlobalHeadFileProvider = (

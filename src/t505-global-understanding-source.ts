@@ -30,7 +30,8 @@ export interface T505GlobalUnderstandingSourceDependencies {
   readonly readOpenDocuments?: (owner: Readonly<T505GlobalUnderstandingOwner>) => readonly LoadedGlobalUnderstandingFile[];
   readonly readPullRequestHeadFiles?: (
     owner: Readonly<T505GlobalUnderstandingOwner>,
-    candidatePaths: ReadonlySet<string>
+    candidatePaths: ReadonlySet<string>,
+    signal?: AbortSignal
   ) => Promise<readonly PullRequestGlobalHeadFile[]>;
   readonly fileSystemPathSemantics?: FileSystemPathSemantics;
   readonly yieldControl?: () => void | Promise<void>;
@@ -165,13 +166,42 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
     }
     if (scopeWork.length === 0) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
-    const ownerCandidatePaths = new Set(scopeWork.flatMap((scope) => [...scope.candidatePaths]));
-    const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, ownerCandidatePaths, signal);
-    assertCurrent();
-    const evidenceByPath = await this.captureOpenedDocuments(owner, signal);
-    const globalState = persisted?.currentRevisionId === owner.currentRevisionId
-      ? await this.projectGlobalStatePaths(persisted, signal)
-      : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
+    const sharedCapture = await (async (): Promise<Readonly<{
+      pullRequestHeadPaths: ReadonlySet<string>;
+      evidenceByPath: ReadonlyMap<string, LoadedGlobalUnderstandingFile>;
+      globalState: RepositoryGlobalState;
+    }> | undefined> => {
+      while (true) {
+        assertCurrent();
+        const currentScopeWork = scopeWork.filter((scope) => scope.scopeSignal?.aborted !== true);
+        if (currentScopeWork.length === 0) return undefined;
+        const ownerCandidatePaths = new Set(currentScopeWork.flatMap((scope) => [...scope.candidatePaths]));
+        const captureSignals = [signal, ...currentScopeWork.map((scope) => scope.scopeSignal)]
+          .filter((candidate): candidate is AbortSignal => candidate !== undefined);
+        const captureSignal = captureSignals.length === 0 ? undefined : AbortSignal.any(captureSignals);
+        try {
+          const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, ownerCandidatePaths, captureSignal);
+          const captureCandidatePaths = new Set([...ownerCandidatePaths, ...pullRequestHeadPaths]);
+          const evidenceByPath = await this.captureOpenedDocuments(owner, captureCandidatePaths, captureSignal);
+          const globalState = persisted?.currentRevisionId === owner.currentRevisionId
+            ? await this.projectGlobalStatePaths(persisted, captureCandidatePaths, captureSignal)
+            : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
+          if (captureSignal?.aborted === true) throw new DOMException("Folder understanding owner capture was superseded.", "AbortError");
+          return { pullRequestHeadPaths, evidenceByPath, globalState };
+        } catch (error) {
+          assertCurrent();
+          if (error instanceof DOMException && error.name === "AbortError") continue;
+          for (const scope of currentScopeWork) {
+            if (scope.scopeSignal?.aborted !== true) {
+              this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, scope.folder, scope.generation);
+            }
+          }
+          throw error;
+        }
+      }
+    })();
+    if (sharedCapture === undefined) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    const { pullRequestHeadPaths, evidenceByPath, globalState } = sharedCapture;
     assertCurrent();
     for (const { folder, generation, scopeSignal, pathEnumeration, candidatePaths } of scopeWork) {
       const assertScopeCurrent = (): void => {
@@ -411,8 +441,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           contextId: owner.target.contextId,
           headRevision: owner.currentRevisionId,
           candidatePaths,
+          signal,
         })
-      : await this.dependencies.readPullRequestHeadFiles(owner, candidatePaths);
+      : await this.dependencies.readPullRequestHeadFiles(owner, candidatePaths, signal);
     const key = this.requireActiveEvidenceKey(owner);
     const parsed = new Map(this.pullRequestEvidenceByOwner.get(key));
     const retained = new Map(this.retainedOpenedEvidence(owner));
@@ -478,6 +509,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
   private async captureOpenedDocuments(
     owner: T505GlobalUnderstandingOwner,
+    candidatePaths: ReadonlySet<string>,
     signal?: AbortSignal
   ): Promise<ReadonlyMap<string, LoadedGlobalUnderstandingFile>> {
     const retained = new Map(this.retainedOpenedEvidence(owner));
@@ -487,6 +519,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
       if (++pending >= 128) { pending = 0; await this.yieldControl(); }
       const canonicalPath = this.canonicalEvidencePath(snapshot.path);
+      if (!candidatePaths.has(canonicalPath)) continue;
       if (snapshot.revisionId !== owner.currentRevisionId) {
         throw new Error(`Open document revision does not match current owner revision: ${canonicalPath}`);
       }
@@ -498,7 +531,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       retained.set(canonicalPath, await this.copyOpenedEvidence(live, canonicalPath, signal, "retained-open-non-empty-line"));
     }
 
-    const combined = new Map(retained);
+    const combined = new Map([...retained].filter(([repositoryPath]) => candidatePaths.has(repositoryPath)));
     for (const [repositoryPath, snapshot] of current) combined.set(repositoryPath, snapshot);
     if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
     this.openedEvidenceByOwner.set(this.requireActiveEvidenceKey(owner), retained);
@@ -535,6 +568,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
 
   private async projectGlobalStatePaths(
     state: RepositoryGlobalState,
+    candidatePaths: ReadonlySet<string>,
     signal?: AbortSignal
   ): Promise<RepositoryGlobalState> {
     const files: RepositoryGlobalState["files"] = {};
@@ -546,6 +580,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       if (++pending >= 128) { pending = 0; await this.yieldControl(); }
       const file = state.files[fileId]!;
       const currentPath = this.canonicalEvidencePath(file.currentPath);
+      if (!candidatePaths.has(currentPath)) continue;
       const existingFileId = fileIdByPath.get(currentPath);
       if (existingFileId !== undefined && existingFileId !== fileId) {
         throw new Error(`Persisted Global state has conflicting file identities for ${currentPath}`);

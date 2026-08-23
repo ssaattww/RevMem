@@ -26,6 +26,10 @@ interface T610ExtensionApi {
     readonly statusText: string;
   } | undefined;
   getGlobalUnderstandingFolderNodeForTest(folderPath: string): unknown;
+  selectGlobalUnderstandingFolderNodeForTest(folderPath: string): Promise<void>;
+  failNextGlobalUnderstandingDocumentOpenForTest(): void;
+  runInjectedGlobalUnderstandingDocumentOpenForTest(uri: vscode.Uri): Promise<void>;
+  getOperationLogEntriesForTest(): readonly { readonly label: string; readonly event: string; readonly message?: string }[];
   getGlobalUnderstandingUiErrorsForTest(): readonly string[];
   getGlobalUnderstandingLifecycleObservationForTest(): {
     readonly sourceContext: string | undefined;
@@ -173,6 +177,17 @@ export async function run(): Promise<void> {
     await closeDocument(nested);
     await api.drainGlobalUnderstandingFileOpenForTest();
     await api.recordT610HostSubphaseForTest("after-nested-document-close");
+    await api.recordT610HostSubphaseForTest("before-activated-output-failure");
+    api.failNextGlobalUnderstandingDocumentOpenForTest();
+    await api.runInjectedGlobalUnderstandingDocumentOpenForTest(document.uri);
+    assert.equal(api.getGlobalUnderstandingLifecycleObservationForTest().fileOpenOutcome, "error", "the activated document-open listener reports the injected source failure");
+    const failureLog = [...api.getOperationLogEntriesForTest()].reverse().find((entry) => entry.label === "Global Understanding folder open" && entry.event === "failed");
+    assert.ok(failureLog, "the activated shared Output host receives the terminal failure");
+    assert.match(failureLog!.message ?? "", /redacted/iu, "shared Output records only the redacted terminal detail");
+    assert.doesNotMatch(failureLog!.message ?? "", /private|secret\.ts/iu, "shared Output never exposes the injected raw path");
+    assert.ok(api.getGlobalUnderstandingUiErrorsForTest().at(-1)?.includes("Review Range Output"), "the activated UI boundary remains generic");
+    await api.drainGlobalUnderstandingFileOpenForTest();
+    await api.recordT610HostSubphaseForTest("after-activated-output-failure");
     await api.recordT610HostSubphaseForTest("before-tree-node-acquisition-final-stop");
     const finalStopNode = api.getGlobalUnderstandingFolderNodeForTest("src/child");
     assert.ok(finalStopNode, "the leaf stop uses a current provider-owned target and leaves one resume candidate");
@@ -183,6 +198,7 @@ export async function run(): Promise<void> {
     assert.equal((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src/child")?.state, "stopped");
     await api.recordT610HostSubphaseForTest("after-final-public-stop");
     await api.recordT610HostSubphaseForTest("before-final-public-resume");
+    await api.selectGlobalUnderstandingFolderNodeForTest("src/child");
     await vscode.commands.executeCommand("reviewRange.resumeGlobalUnderstandingFolder");
     await api.drainGlobalUnderstandingFileOpenForTest();
     assert.notEqual((await api.getGlobalUnderstandingSnapshot())?.folders?.find((folder) => folder.path === "src/child")?.state, "stopped");

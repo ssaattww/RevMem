@@ -47,7 +47,7 @@ import {
   refreshSelectedPullRequestProgress
 } from "./t305-projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
-import type { OperationFeedbackContext } from "./application/operation-feedback/index";
+import type { OperationFeedbackContext, OperationLogEntry } from "./application/operation-feedback/index";
 import type { T505GlobalUnderstandingOwner } from "./t505-global-understanding-source";
 import { createT305GlobalUnderstandingSource } from "./t305-global-understanding-composition";
 import {
@@ -87,7 +87,12 @@ const UNMARK_FILE_CONFIRMATION = "すべて解除";
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
   // Startup migration can fail before the main runtime composition. Install the
   // shared Output boundary first so its queued terminal lock diagnostic flushes.
-  const startupFeedbackHost = new VscodeOperationFeedbackHost();
+  const testOperationLogEntries: OperationLogEntry[] = [];
+  const startupFeedbackHost = new VscodeOperationFeedbackHost(
+    context.extensionMode === vscode.ExtensionMode.Test
+      ? (entry) => { testOperationLogEntries.push({ ...entry }); }
+      : undefined
+  );
   context.subscriptions.push(startupFeedbackHost);
   const persistenceStartup = composeStartupFeedback(startupFeedbackHost, async (notifyStorageLockDiagnostic) => {
     await runPersistenceStartupMigration({
@@ -233,6 +238,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testGlobalUnderstandingAcceptedDocumentOpenCount = 0;
   let testGlobalUnderstandingObservedDocumentPath: string | undefined;
   let testGlobalUnderstandingFileOpenOutcome: "not-started" | "completed" | "error" = "not-started";
+  let testGlobalUnderstandingDocumentOpenFailure: Error | undefined;
   let testGlobalUnderstandingSourceRefreshOutcome: "not-started" | "snapshot" | "undefined" | "error" = "not-started";
   let testGlobalUnderstandingSourceRefreshError: string | undefined;
   let testGlobalUnderstandingPublishedSnapshot = false;
@@ -260,6 +266,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       for (const resolve of testGlobalUnderstandingFileOpenWaiters.splice(0)) resolve();
     }
     try {
+      if (testGlobalUnderstandingDocumentOpenFailure !== undefined) {
+        const failure = testGlobalUnderstandingDocumentOpenFailure;
+        testGlobalUnderstandingDocumentOpenFailure = undefined;
+        throw failure;
+      }
       await globalSource.observeFileOpen(document.uri.fsPath);
       if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = "completed";
     } catch (error) {
@@ -758,6 +769,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     : undefined;
   let testGlobalUnderstandingFileOpen = Promise.resolve();
   const testGlobalUnderstandingFileOpenWaiters: Array<() => void> = [];
+  const observeRegisteredGlobalUnderstandingDocument = (
+    document: vscode.TextDocument,
+    observeEditSnapshot: boolean
+  ): Promise<void> => {
+    if (!FILESYSTEM_SCHEMES.has(document.uri.scheme)) return Promise.resolve();
+    if (observeEditSnapshot) documentEditRuntime.observe(toEditSnapshot(document));
+    const observedFileOpen = observeGlobalUnderstandingDocumentOpen({
+      observe: () => observeCurrentGlobalUnderstandingDocument(document),
+      requestRefresh: () => documentChangeRefresh.request(),
+      refreshAfterFailure: () => globalRuntime.refreshWithErrorBoundary(),
+      showGenericError: (message) => {
+        if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingUiErrors.push(message);
+        void vscode.window.showErrorMessage(message);
+      }
+    }).then((outcome) => {
+      if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = outcome;
+    });
+    if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpen = observedFileOpen;
+    return observedFileOpen;
+  };
   context.subscriptions.push(
     runtimePort.onDidChangeReviewState(() => {
       if (context.extensionMode === vscode.ExtensionMode.Test) {
@@ -773,33 +804,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       refreshPullRequestProgress();
     }),
     vscode.workspace.onDidOpenTextDocument((document) => {
-      if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
-        documentEditRuntime.observe(toEditSnapshot(document));
-        const observedFileOpen = observeGlobalUnderstandingDocumentOpen({
-          observe: () => observeCurrentGlobalUnderstandingDocument(document),
-          requestRefresh: () => documentChangeRefresh.request(),
-          refreshAfterFailure: () => globalRuntime.refreshWithErrorBoundary(),
-          showGenericError: (message) => vscode.window.showErrorMessage(message)
-        }).then((outcome) => {
-          if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = outcome;
-        });
-        if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpen = observedFileOpen;
-        void observedFileOpen;
-      }
+      void observeRegisteredGlobalUnderstandingDocument(document, true);
     }),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       const document = editor?.document;
-      if (document === undefined || !FILESYSTEM_SCHEMES.has(document.uri.scheme)) return;
-      const observedFileOpen = observeGlobalUnderstandingDocumentOpen({
-        observe: () => observeCurrentGlobalUnderstandingDocument(document),
-        requestRefresh: () => documentChangeRefresh.request(),
-        refreshAfterFailure: () => globalRuntime.refreshWithErrorBoundary(),
-        showGenericError: (message) => vscode.window.showErrorMessage(message)
-      }).then((outcome) => {
-        if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpenOutcome = outcome;
-      });
-      if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingFileOpen = observedFileOpen;
-      void observedFileOpen;
+      if (document !== undefined) void observeRegisteredGlobalUnderstandingDocument(document, false);
     }),
     vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
     vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
@@ -985,6 +994,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       getGlobalUnderstandingPresentationForTest: () => testGlobalUnderstandingPresentation,
       /** Returns a current TreeDataProvider-owned folder node without constructing a fixture target. */
       getGlobalUnderstandingFolderNodeForTest: (folderPath: string) => globalRuntime.getFolderNodeForTest?.(folderPath),
+      /** Selects the actual current TreeView row before a no-argument Palette command. */
+      selectGlobalUnderstandingFolderNodeForTest: (folderPath: string) => globalRuntime.selectFolderNodeForTest?.(folderPath) ?? Promise.reject(new Error("Global Understanding Tree selection is unavailable.")),
+      /** Injects one Test-mode document-open failure through the activated listener and shared Output host. */
+      failNextGlobalUnderstandingDocumentOpenForTest: () => {
+        const failure = new Error("C:\\private\\owner\\secret.ts permission denied") as NodeJS.ErrnoException;
+        failure.code = "EACCES";
+        testGlobalUnderstandingDocumentOpenFailure = failure;
+      },
+      /** Runs the same activated handler registered for document-open events, without waiting for another VS Code event. */
+      runInjectedGlobalUnderstandingDocumentOpenForTest: async (uri: vscode.Uri) => {
+        const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString(true) === uri.toString(true));
+        if (document === undefined) throw new Error("Injected Global Understanding document is not open.");
+        await observeRegisteredGlobalUnderstandingDocument(document, false);
+      },
+      /** Returns immutable shared Output lifecycle entries observed by the activated feedback host. */
+      getOperationLogEntriesForTest: () => testOperationLogEntries.map((entry) => ({ ...entry })),
       /** Test-only observation of UI text emitted by the actual runtime error boundary. */
       getGlobalUnderstandingUiErrorsForTest: () => [...testGlobalUnderstandingUiErrors],
       /** Read-only T610 split observation for actual T305 document-open lifecycle diagnostics. */

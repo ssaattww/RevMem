@@ -92,6 +92,7 @@ export interface GlobalUnderstandingTreeModel {
   readonly folders?: readonly GlobalUnderstandingFolderNode[];
 }
 
+/** Current-generation immutable Tree row accepted by folder action commands. */
 export interface GlobalUnderstandingFolderNode extends GlobalUnderstandingFolderSnapshot {
   /** Discriminant used by the Tree provider and command stale-target fence. */
   readonly kind: "folder";
