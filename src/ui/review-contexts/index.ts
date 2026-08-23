@@ -1,6 +1,7 @@
 /** Public UI API for the Review Contexts View. */
+export { VscodeCurrentPullRequestSelectionStore } from "./vscode-current-pull-request-selection-store";
+export { currentPullRequestSelectionKey } from "./current-pull-request-selection";
 export {
-  VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
   runReviewContextsPureRead,
