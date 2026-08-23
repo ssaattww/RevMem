@@ -340,7 +340,7 @@ test("Issue #84 equivalent PR progress refreshes keep the accepted tree and comp
 });
 
 test("Issue #84 production sources report anonymous repository, PR-context, and PR-file counts", async () => {
-  const reviewContexts = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const reviewContexts = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
   const pullRequestProgress = await readFile("src/t405-pull-request-review-runtime.ts", "utf8");
 
   assert.match(reviewContexts, /reportActiveOperationProgress/u);
