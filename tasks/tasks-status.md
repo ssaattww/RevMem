@@ -9,12 +9,12 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 現在のタスク: T610 / Issue #78 folder単位Global Understanding
-- 次のタスク: openのT610-NR-004/005/006/007/008/010/011を一括修正し、同じ通常reviewerで再closureする
+- 次のタスク: T610の独立final review、attestation用report-only commit、exact-head CI、PR #83 squash merge
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし
 - Gitブランチ: `task/issue-78-folder-understanding`
-- Pull Request: #83（draft。通常review `fail`、T610-NR-001〜010を修正中）
+- Pull Request: #83（draft。通常review `pass_with_held`、T610-NR-001〜011は全件closed、独立final review待ち）
 - T609 completion: PR #82をexact-head CI `32565706538` Green後にsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`でmainへ統合済み。
 - T610 design: `reviewRange.globalUnderstanding.autoStartDescendants`は既定false。file openは所属folder直下だけを開始し、explicit startだけがsubtreeへ拡張する。stopped markerをrepository単位で永続化し、parentはincomplete childがある間partialとする。設計reportは `reports/issue-78-t610-design-20260822185714.md`。
 - T610 implementation: folder scope controller、signal-aware enumeration、stopped marker store、partial aggregate、Tree start/stop/resume、T305 production composition fixture、`test:t610`/CI wiringを実装した。`test:t610` 31/31、build/contracts/lint/architecture正負/diff-check Green。reportsは `reports/issue-78-t610-implementation-20260822190715.md` と `reports/issue-78-t610-implementation-closure-20260822194055.md`。
@@ -35,6 +35,7 @@
 - 性能検証policy: `test:t607`はdeveloper-localの手動検証専用とし、通常unit suiteとCIから除外する。CIはT607を実行せず、local-only wiringだけを軽量な静的契約で確認する。
 - CI follow-up: HEAD `400957a`のpull_request/push CIはT506 restart phaseで、T610のfile-open lifecycle完了前にGlobal snapshotを読んで失敗した。T506 fixtureを既存Test drainへ同期し、軽量回帰1/1を確認した。Hostと性能suiteは再実行しない。
 - T610 normal closure R3: `reports/issue-78-t610-normal-review-closure-r3-20260823180716.md`。NR004/005/006/007/008/010はblocking継続、重複`editor/context`で既存commandを上書きするHigh NR011を追加。closed NR001/002/003は維持し、NR009とT506 CI deltaはconfirmation-required。
+- T610 normal closure R6: `reports/issue-78-t610-normal-review-closure-r6-20260823225128.md`。NR001〜011は全件closed、新規finding・unknown・unexploredは0。current-head focused T610 Hostはinitial/restart/cleanup全成功、exact-head pull_request CI `32643852094`はT506/T610/VS Code Hostを含めGreen。通常review最終verdictは`pass_with_held`で、Markdown lint wiring unsupportedだけを非blocking heldとする。
 - T605 R2 follow-up: `reports/issue-74-t605-normal-review-followup-r2-20260820215110.md`。R001のtyped snapshot-aware commit/receiver保持とR006のconcrete focused compositionを記録
 - T605 independent R2 follow-up: `reports/issue-74-t605-independent-review-followup-r2-20260820223327.md`。IFR001〜003のRed/Greenとlocal validationを記録
 - PR #68 R2実装: `reports/issue-66-pr68-review-followup-r2-20260820081608.md`。`origin/main`（PR #69）統合とPR68-R002/R003のRed/Green/local validationを記録
@@ -387,7 +388,7 @@
 | T607 | 完了 | L | 1万変更行PR、大規模repository集計、多数interval、visible editor装飾の性能測定と最小最適化を行う | T301、T504、T606 | PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。性能workloadは`test:t607`でローカル手動実行し、通常unit/CIのmerge gateには含めない |
 | T608 | 未着手 | L | 受け入れ条件24件の最終suite、手動確認表、利用・設定・データ保存・制限文書、VSIX packaging検証を完成させる | T107、T207、T306、T406、T506、T601〜T607、T609、T610 | AC-01〜AC-24とIssue #81・#78の証跡が揃い、build・全test・lint・package・専用reviewが通り、初期版をPR提出できる |
 | T609 | 完了 | L | Git管理folderが開かれていればactive Git editorがなくても単一・multi-rootのrepositoryを決定できるようにし、VS Codeで選択されたfile encodingをGit revision mappingへ連動させ、Shift-JIS・UTF-8・UTF-8 BOM混在や未解決encodingをfile単位で隔離する | T202、T302、T402、T405、T605、T606 | PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み |
-| T610 | review修正中 | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607、T609 | 通常reviewでT610-NR-001〜010を確定。既存consumer互換、stopped subtree/restart、recursive aggregate、URI identity、automatic recalc、storage/failure、T607 budget、actual activation/Host、API docsを一括修正し同reviewer closureを行う |
+| T610 | 独立review待ち | L | Global Understandingをfolder階層で表示し、file openまたはfolder行の開始操作で対象folderだけを計算する。開始・停止・再開を同一位置のbuttonで切り替え、停止状態をrepository単位で永続化し、活動中folderは変更時に自動差分再計算する | T503〜T505、T607、T609 | 通常reviewのT610-NR-001〜011を全件closedし、focused Hostとexact-head CIがGreen。性能workloadはlocal-only。独立final review、attestation、最終CI、PR #83 mergeを残す |
 
 ## 受け入れ条件トレーサビリティ
 
@@ -409,4 +410,4 @@
 
 ## 次回開始時の選択
 
-T610-NR-001〜010を一括修正し、同じ通常reviewerの限定closureへ進む。その後full local equivalence、独立review、exact-head CI、PR #83 squash mergeを行い、T608へ進む。
+T610の独立final reviewとattestationを完了し、report-only最終HEADのexact-head CI後にPR #83をsquash mergeする。その後T608へ進む。

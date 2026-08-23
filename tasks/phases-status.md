@@ -31,14 +31,14 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
 | P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T609はPR #82のsquash merge `477725632177f5c4fcbca5eb587644fdef06e4df`で完了。T610 / Issue #78はlocal実装を完了しreview中、T608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。T608は未着手 |
 
 ## 現在位置
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review findings修正中）
-- 次の工程: R13 activation startup drain、同reviewer再closure、full local equivalence、独立review、exact-head CI、PR #83 squash merge
+- 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review `pass_with_held`、独立final review待ち）
+- 次の工程: 独立final review、attestation用report-only commit、exact-head CI、PR #83 squash merge
 - 後続候補: T608
 
 ## P0 開発基盤
@@ -186,7 +186,7 @@ fallback、履歴改変、storage障害、並行実行、大規模dataを含む�
 - T606: PR #77をsquash mergeし、merge `2afa1b6a8299b2d25a1ef2c7186508028bbd5fb6`、exact-head CI `32432473407` Green、all reviews closedでmainへ統合済み。
 - T607: PR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`でmainへ統合済み。性能workloadは`test:t607`のローカル手動検証専用とし、通常unit/CIでは実行しない。
 - T609: PR #82をsquash mergeし、merge `477725632177f5c4fcbca5eb587644fdef06e4df`、exact-head CI `32565706538` Greenでmainへ統合済み。
-- T610: normal closure R3でNR004/005/006/007/008/010をblocking継続、manifest重複keyのHigh NR011を追加。7件を一括修正し、性能workloadはlocal-onlyのまま同じreviewerへ再closureする。
+- T610: normal finding NR001〜011を全件closedし、current-head focused Hostのinitial/restart/cleanupとexact-head CI `32643852094`がGreen。性能workloadはlocal-onlyでCIから除外済み。独立final reviewとmergeを残す。
 - T608: T609・T610完了後に実施する。
 
 ### 終了チェックポイント
