@@ -42,8 +42,11 @@ export const RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.resume
 
 /** Owner-scoped application source consumed by the VS Code Global Understanding runtime. */
 export interface GlobalUnderstandingRuntimeSource {
-  /** Recalculates only the current owner and generation. */
-  recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  /** Recalculates the current owner and may publish a cancellable running snapshot before I/O. */
+  recalculate(
+    signal?: AbortSignal,
+    publishProgress?: (snapshot: GlobalUnderstandingTreeSnapshot) => void | Promise<void>
+  ): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
   /** Starts the canonical current-generation folder path. */
   startFolder?(folderPath: string): Promise<void>;
   /** Stops the canonical current-generation folder path. */
