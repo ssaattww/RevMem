@@ -127,3 +127,26 @@ test("T610-NR-006 decoration failure cannot block open-document Global reconcili
   }), decorationError);
   assert.deepEqual(events, ["decorations", "global", "contexts"]);
 });
+
+test("Issue #84 Review Contexts registers the selected PR before PR Progress starts", async () => {
+  let pullRequestRuntimeRegistered = false;
+  let progressObservedRegistration = false;
+
+  await refreshCurrentContextDependents({
+    refreshPullRequestProgress: async () => {
+      progressObservedRegistration = pullRequestRuntimeRegistered;
+    },
+    refreshDecorations: async () => undefined,
+    refreshGlobal: async () => undefined,
+    refreshReviewContexts: async () => {
+      pullRequestRuntimeRegistered = true;
+    },
+    reportPullRequestProgressError: async () => undefined,
+  });
+
+  assert.equal(
+    progressObservedRegistration,
+    true,
+    "PR Progress must not run before Review Contexts has registered the selected PR diff runtime",
+  );
+});
