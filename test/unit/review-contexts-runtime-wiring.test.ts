@@ -107,6 +107,10 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
     "src/t405-pull-request-review-runtime.ts",
     "utf8",
   );
+  const pullRequestRuntimeBase = await readFile(
+    "src/t405-pull-request-review-runtime-base.ts",
+    "utf8",
+  );
   const operationUi = await readFile(
     "src/ui/operation-feedback/vscode-operation-feedback.ts",
     "utf8",
@@ -119,7 +123,7 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
   assert.match(globalRuntime, /new VscodeOperationFeedbackHost/u);
   assert.match(globalRuntime, /setActiveOperationFeedback/u);
   assert.match(globalRuntime, /Global理解率を再計算/u);
-  assert.match(pullRequestRuntime, /PR進捗を計算/u);
+  assert.match(`${pullRequestRuntime}\n${pullRequestRuntimeBase}`, /PR進捗を計算/u);
   assert.match(normalCommands, /ファイル全体を確認済みにする/u);
   assert.match(normalCommands, /runWithActiveOperationFeedback/u);
   assert.match(reviewContextsUi, /Review Contextsを更新/u);
