@@ -4,6 +4,17 @@ export {
   InMemoryGlobalUnderstandingProgressCache
 } from "./global-understanding-background-recalculator";
 
+export {
+  FolderUnderstandingScopeController
+} from "./folder-understanding-scope-controller";
+
+export type {
+  FolderUnderstandingScopeState,
+  FolderUnderstandingScopeSnapshot,
+  FolderUnderstandingStoppedStore,
+  FolderUnderstandingTotal
+} from "./folder-understanding-scope-controller";
+
 export type {
   GlobalUnderstandingBackgroundRecalculatorDependencies,
   GlobalUnderstandingFileLoadOptions,

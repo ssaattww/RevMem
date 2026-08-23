@@ -69,6 +69,7 @@ interface ReviewRangeT506TestApi {
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   refreshVisibleEditorDecorations(): Promise<void>;
   drainDocumentReviewEdits(): Promise<void>;
+  drainGlobalUnderstandingFileOpenForTest(): Promise<void>;
   getGlobalUnderstandingSnapshot(): Promise<{
     readonly progress: {
       readonly files: readonly GlobalUnderstandingFileSnapshot[];
@@ -265,6 +266,10 @@ const assertMappedNormalEditorAfterRestart = async (
   const editor = await within(
     "open mapped normal editor after restart",
     openNormalReviewEditor(workspaceFolder)
+  );
+  await within(
+    "observe mapped normal editor after restart",
+    api.drainGlobalUnderstandingFileOpenForTest()
   );
   await within(
     "refresh current context after restart",

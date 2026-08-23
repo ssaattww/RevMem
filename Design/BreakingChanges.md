@@ -1,5 +1,23 @@
 # Breaking Changes
 
+## 2026-08-22 — Global Understanding is folder-scope controlled
+
+Global Understanding folder lifecycle now uses an owner identity containing the
+repository ID, canonical repository-root URI semantics, and canonical
+repository-relative folder path. Legacy repository-wide consumers that do not
+provide the folder-scope controller retain their existing enumeration behavior.
+Consumers that opt into folder scopes must pass the controller through every
+composition root; automatic file opens then start only the direct containing
+folder, and stopped ancestors never auto-resume descendants.
+
+The persisted stopped-marker record stores only explicit canonical folder
+markers. Earlier marker files that are malformed, foreign-root, or
+non-canonical are rejected fail-closed and are not migrated. Active, running,
+and failed scope results remain session-local and are never restored. This is
+an additive marker-schema compatibility boundary rather than a migration: users
+may need to explicitly stop a folder again after an invalid legacy marker is
+discarded.
+
 ## 2026-08-20 — Non-Git workspace persistence is root-scoped
 
 Non-Git workspace state, history, snapshots, locks, and cleanup now use

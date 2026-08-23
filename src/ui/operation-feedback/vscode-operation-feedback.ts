@@ -19,7 +19,8 @@ implements OperationFeedbackHost, vscode.Disposable {
     101
   );
 
-  public constructor() {
+  /** Creates the shared VS Code surfaces with an optional immutable Test-mode log observer. */
+  public constructor(private readonly onAppendLogForTest?: (entry: OperationLogEntry) => void) {
     this.status.name = "Review Range Activity";
   }
 
@@ -39,6 +40,7 @@ implements OperationFeedbackHost, vscode.Disposable {
 
   public appendLog(entry: OperationLogEntry): void {
     this.output.appendLine(formatOperationLogEntry(entry));
+    this.onAppendLogForTest?.({ ...entry });
   }
 
   public revealLog(): void {

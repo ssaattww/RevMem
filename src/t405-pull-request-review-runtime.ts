@@ -206,7 +206,7 @@ export class PullRequestReviewRuntime<Uri> {
       registerPullRequestGlobalHeadFileProvider(snapshot.contextId, async (request) => {
         const current = this.registrations.get(snapshot.contextId);
         if (current === undefined || current.snapshot.headSha !== request.headRevision) return [];
-        return this.readGlobalHeadFiles(snapshot.contextId, request.candidatePaths);
+        return this.readGlobalHeadFiles(snapshot.contextId, request.candidatePaths, request.signal);
       })
     );
   }
@@ -301,12 +301,17 @@ export class PullRequestReviewRuntime<Uri> {
    * Global opened evidence. Deleted files are read from BASE to complete the PR
    * scan, but are not returned because they do not exist in the Global HEAD.
    * Working-tree path discovery is diagnostic only and never gates immutable PR
-   * snapshot content.
+   * snapshot content. A folder-generation cancellation stops before any later
+   * immutable file read and invalidates an in-flight adapter request.
    */
   public async readGlobalHeadFiles(
     contextId: string,
-    candidatePaths: ReadonlySet<string>
+    candidatePaths: ReadonlySet<string>,
+    signal?: AbortSignal
   ): Promise<readonly PullRequestGlobalHeadFile[]> {
+    const assertNotAborted = (): void => {
+      if (signal?.aborted === true) throw new DOMException("Global PR evidence capture was superseded.", "AbortError");
+    };
     const registration = this.requireRegistration(contextId);
     const { baseSha, headSha } = registration.snapshot;
     const cache = this.fullTextCacheFor(registration);
@@ -315,6 +320,7 @@ export class PullRequestReviewRuntime<Uri> {
     const files: PullRequestGlobalHeadFile[] = [];
     const exclusionPolicy = this.options.getExclusionPolicy();
     for (const file of registration.snapshot.files) {
+      assertNotAborted();
       if (file.status === "binary") continue;
 
       if (file.newPath !== undefined) {
@@ -324,8 +330,11 @@ export class PullRequestReviewRuntime<Uri> {
           cache,
           file.newPath,
           headSha,
-          "modified"
+          "modified",
+          undefined,
+          signal
         );
+        assertNotAborted();
         if (result.kind === "invalid-encoding") continue;
         if (result.kind !== "found") {
           throw new Error(`PR HEAD file is unavailable for Global scan: ${file.newPath} (${result.kind})`);
@@ -346,8 +355,11 @@ export class PullRequestReviewRuntime<Uri> {
         cache,
         deletedPath,
         baseSha,
-        "original"
+        "original",
+        undefined,
+        signal
       );
+      assertNotAborted();
       if (deleted.kind === "invalid-encoding") continue;
       if (deleted.kind !== "found") {
         throw new Error(`PR BASE file is unavailable for full scan: ${deletedPath} (${deleted.kind})`);

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -85,6 +85,22 @@ const advanceT609Fixture = async (root: string): Promise<void> => {
 const prepareT609SecondRoot = async (root: string): Promise<void> => {
   await writeFile(join(root, "second-root.txt"), "T609 second repository fixture\n", "utf8");
   await initializeGitRepository(root);
+};
+const prepareT610Fixture = async (root: string): Promise<void> => {
+  await mkdir(join(root, "src", "child"), { recursive: true });
+  await Promise.all([
+    writeFile(join(root, "src", "a.ts"), "export const a = 1;\n", "utf8"),
+    writeFile(join(root, "src", "child", "b.ts"), "export const b = 2;\n", "utf8")
+  ]);
+  await initializeGitRepository(root);
+};
+
+/** Mutates only in the runner between T610 Host launches; the Host never writes fixture files. */
+const advanceT610Fixture = async (root: string): Promise<void> => {
+  await writeFile(join(root, "src", "watcher-created.ts"), "export const created = 3;\n", "utf8");
+  await rename(join(root, "src", "child", "b.ts"), join(root, "src", "child", "renamed.ts"));
+  await writeFile(join(root, "src", "deleted.ts"), "export const deleted = 4;\n", "utf8");
+  await unlink(join(root, "src", "deleted.ts"));
 };
 
 /** Seeds the initial Git-review ranges using the same repository/session path that the Host subsequently loads. */
@@ -179,6 +195,7 @@ async function main(): Promise<void> {
   const focusedT506 = process.argv.includes("--t506");
   const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
   const focusedT609 = process.argv.includes("--t609");
+  const focusedT610 = process.argv.includes("--t610");
   const focusedLifecycleRestore = process.argv.includes("--lifecycle-through-restore");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
@@ -228,6 +245,13 @@ async function main(): Promise<void> {
     userData: join(temporaryDirectory.path, "t609-user-data"),
     extensions: join(temporaryDirectory.path, "t609-extensions")
   };
+  const t610Paths = {
+    workspace: join(temporaryDirectory.path, "t610-workspace"),
+    additionalWorkspace: join(temporaryDirectory.path, "t610-second-root"),
+    workspaceFile: join(temporaryDirectory.path, "t610.code-workspace"),
+    userData: join(temporaryDirectory.path, "t610-user-data"),
+    extensions: join(temporaryDirectory.path, "t610-extensions")
+  };
   const launch = async (
     phase: string,
     paths: { readonly workspace: string; readonly userData: string; readonly extensions: string },
@@ -243,14 +267,28 @@ async function main(): Promise<void> {
       version: VS_CODE_TEST_VERSION,
       ...(lifecyclePhase === undefined ? {} : { phase: lifecyclePhase })
     })}\n`, "utf8");
-    await runOwnedExtensionHostLaunch({
-      phase,
-      workerPath,
-      configurationPath,
-      timeoutMs: launchTimeout(),
-      diagnosticDirectory: join(projectRoot, "test-output", "vscode-launch-diagnostics"),
-      redactPaths: [temporaryDirectory.path, projectRoot, paths.workspace, paths.userData, paths.extensions]
-    });
+    try {
+      await runOwnedExtensionHostLaunch({
+        phase,
+        workerPath,
+        configurationPath,
+        timeoutMs: launchTimeout(),
+        diagnosticDirectory: join(projectRoot, "test-output", "vscode-launch-diagnostics"),
+        redactPaths: [temporaryDirectory.path, projectRoot, paths.workspace, paths.userData, paths.extensions]
+      });
+    } catch (error) {
+      if (!phase.startsWith("t610-")) throw error;
+      const subphasePath = join(paths.userData, "User", "globalStorage", "taiga.review-range-tracker", "t610-host-subphase.json");
+      let subphase = "unavailable";
+      try {
+        const value = JSON.parse(await readFile(subphasePath, "utf8")) as { readonly subphase?: unknown };
+        if (typeof value.subphase === "string") subphase = value.subphase;
+      } catch {
+        subphase = "unavailable";
+      }
+      if (error instanceof Error) error.message += ` [T610 persisted Host subphase: ${subphase}]`;
+      throw error;
+    }
   };
 
   try {
@@ -263,7 +301,11 @@ async function main(): Promise<void> {
       t609Paths.workspace,
       t609Paths.additionalWorkspace,
       t609Paths.userData,
-      t609Paths.extensions
+      t609Paths.extensions,
+      t610Paths.workspace,
+      t610Paths.additionalWorkspace,
+      t610Paths.userData,
+      t610Paths.extensions
     ].map((path) => mkdir(path)));
     if (focusedT609) {
       await prepareT609Fixture(t609Paths.workspace);
@@ -280,6 +322,18 @@ async function main(): Promise<void> {
           "reviewRange.ignoreEolChanges": true
         }
       })}\n`, "utf8");
+    }
+    if (focusedT610) {
+      await prepareT610Fixture(t610Paths.workspace);
+      await prepareT610Fixture(t610Paths.additionalWorkspace);
+      await writeFile(t610Paths.workspaceFile, `${JSON.stringify({
+        folders: [{ path: t610Paths.workspace }, { path: t610Paths.additionalWorkspace }]
+      })}\n`, "utf8");
+      const t610LaunchPaths = { ...t610Paths, workspace: t610Paths.workspaceFile };
+      await launch("t610-initial", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-initial");
+      await advanceT610Fixture(t610Paths.workspace);
+      await launch("t610-restart", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-restart");
+      return;
     }
 
     if (focusedT506 || focusedT506SavedPullRequest) {

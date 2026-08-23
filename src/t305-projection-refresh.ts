@@ -74,13 +74,23 @@ export const refreshCurrentContextDependents = async (
   const progress = settleProjectionRefresh(
     dependencies.refreshPullRequestProgress
   );
-  await dependencies.refreshDecorations();
-  await dependencies.refreshGlobal();
-  await dependencies.refreshReviewContexts();
+  let dependentError: unknown;
+  for (const refresh of [
+    dependencies.refreshDecorations,
+    dependencies.refreshGlobal,
+    dependencies.refreshReviewContexts,
+  ]) {
+    try {
+      await refresh();
+    } catch (error) {
+      dependentError ??= error;
+    }
+  }
   const outcome = await progress;
   if (outcome.error !== undefined) {
     await dependencies.reportPullRequestProgressError(outcome.error);
   }
+  if (dependentError !== undefined) throw dependentError;
 };
 
 /**

@@ -13,6 +13,8 @@ export type {
   GlobalUnderstandingRefreshHost,
   GlobalUnderstandingRefreshSource,
   GlobalUnderstandingDiagnosticsNode,
+  GlobalUnderstandingFolderNode,
+  GlobalUnderstandingFolderSnapshot,
   GlobalUnderstandingFileNode,
   GlobalUnderstandingStatusBarModel,
   GlobalUnderstandingSummaryNode,
@@ -25,6 +27,9 @@ export {
   GLOBAL_UNDERSTANDING_VIEW_ID,
   REFRESH_GLOBAL_UNDERSTANDING_COMMAND_ID,
   TOGGLE_GLOBAL_LAYER_COMMAND_ID,
+  START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
+  STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
+  RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
   registerGlobalUnderstandingRuntime
 } from "./vscode-global-understanding-runtime";
 

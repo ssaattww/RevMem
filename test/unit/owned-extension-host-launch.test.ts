@@ -55,6 +55,8 @@ test("owned Extension Host launch bounds an intentional process-tree hang and pr
     assert.equal(diagnosticFiles.length, 1);
     const diagnostics = await readFile(join(diagnosticDirectory, diagnosticFiles[0]!), "utf8");
     assert.match(diagnostics, /"status": "timed-out"/u);
+    assert.match(diagnostics, /"ownedWorkerPid": \d+/u);
+    assert.match(diagnostics, /"ownedExtensionHostPids": \[\]/u);
     assert.match(diagnostics, /"termination": "requested"/u);
     assert.doesNotMatch(diagnostics, new RegExp(temporary.path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   } finally {

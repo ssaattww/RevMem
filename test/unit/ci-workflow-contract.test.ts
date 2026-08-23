@@ -277,3 +277,27 @@ test("T606 focused failure-policy coverage is exposed by package and CI", async 
     /- name: T606 failure policy and diagnostics tests[\s\S]*?node tools\/run-ci-command\.mjs test-t606 npm run test:t606\b/u,
   );
 });
+
+test("T607 performance workloads remain local-only and never gate CI", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+  assert.match(
+    requireScript(scripts, "test:t607"),
+    /test-dist\/test\/unit\/t607-performance-incremental-ui\.test\.js/u,
+    "developers retain an explicit local T607 workload command",
+  );
+  assert.doesNotMatch(
+    requireScript(scripts, "test:unit"),
+    /t607-performance-incremental-ui\.test\.js/u,
+    "the default unit gate excludes machine-dependent performance workloads",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /(?:test-t607|npm run test:t607)/u,
+    "CI never executes the local-only T607 performance command",
+  );
+});

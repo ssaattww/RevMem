@@ -25,6 +25,9 @@
     "onView:reviewRange.globalUnderstanding",
     "onCommand:reviewRange.refreshGlobalUnderstanding",
     "onCommand:reviewRange.toggleGlobalLayer",
+    "onCommand:reviewRange.startGlobalUnderstandingFolder",
+    "onCommand:reviewRange.stopGlobalUnderstandingFolder",
+    "onCommand:reviewRange.resumeGlobalUnderstandingFolder",
     "onView:reviewRange.reviewContexts",
     "onCommand:reviewRange.refreshReviewContexts",
     "onCommand:reviewRange.redetectPullRequest",
@@ -47,6 +50,9 @@
       { "command": "reviewRange.openPrProgressItem", "title": "PR Progress項目を開く", "category": "Review Range" },
       { "command": "reviewRange.refreshGlobalUnderstanding", "title": "Global理解率を再計算", "category": "Review Range" },
       { "command": "reviewRange.toggleGlobalLayer", "title": "Global確認済みレイヤーを切り替え", "category": "Review Range" },
+      { "command": "reviewRange.startGlobalUnderstandingFolder", "title": "Global Understanding folderを開始", "category": "Review Range" },
+      { "command": "reviewRange.stopGlobalUnderstandingFolder", "title": "Global Understanding folderを停止", "category": "Review Range" },
+      { "command": "reviewRange.resumeGlobalUnderstandingFolder", "title": "Global Understanding folderを再開", "category": "Review Range" },
       { "command": "reviewRange.refreshReviewContexts", "title": "Review Contextsを更新", "category": "Review Range" },
       { "command": "reviewRange.redetectPullRequest", "title": "PRを再検出", "category": "Review Range" },
       { "command": "reviewRange.reconnectGitHub", "title": "GitHubへ再接続", "category": "Review Range" },
@@ -60,7 +66,10 @@
         { "command": "reviewRange.markSelectionReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@1" },
         { "command": "reviewRange.unmarkSelectionReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@2" },
         { "command": "reviewRange.markFileReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@3" },
-        { "command": "reviewRange.unmarkFileReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@4" }
+        { "command": "reviewRange.unmarkFileReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@4" },
+        { "command": "reviewRange.startGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@5" },
+        { "command": "reviewRange.stopGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@6" },
+        { "command": "reviewRange.resumeGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@7" }
       ],
       "view/title": [
         { "command": "reviewRange.refreshContext", "when": "view == reviewRange.currentContext", "group": "navigation@1" },
@@ -72,6 +81,9 @@
         { "command": "reviewRange.reconnectGitHub", "when": "view == reviewRange.reviewContexts", "group": "navigation@3" }
       ],
       "view/item/context": [
+        { "command": "reviewRange.startGlobalUnderstandingFolder", "when": "view == reviewRange.globalUnderstanding && viewItem == reviewRange.globalUnderstandingFolder.start", "group": "inline" },
+        { "command": "reviewRange.stopGlobalUnderstandingFolder", "when": "view == reviewRange.globalUnderstanding && viewItem == reviewRange.globalUnderstandingFolder.stop", "group": "inline" },
+        { "command": "reviewRange.resumeGlobalUnderstandingFolder", "when": "view == reviewRange.globalUnderstanding && viewItem == reviewRange.globalUnderstandingFolder.resume", "group": "inline" },
         { "command": "reviewRange.openPrProgressItem", "when": "view == reviewRange.prProgress && viewItem == reviewRange.prProgressFile", "group": "inline" },
         { "command": "reviewRange.openReviewContextDiff", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@1" },
         { "command": "reviewRange.refreshReviewContextCache", "when": "view == reviewRange.reviewContexts && viewItem == reviewRange.reviewContextPullRequest", "group": "inline@2" },
@@ -87,6 +99,7 @@
         "reviewRange.ignoreEolChanges": { "type": "boolean", "default": false, "description": "改行コードのみの編集を確認済み範囲の追従で無視します。" },
         "reviewRange.showGutterIcon": { "type": "boolean", "default": true, "description": "確認済み行のガターアイコンを表示します。" },
         "reviewRange.showOverviewRuler": { "type": "boolean", "default": false, "description": "確認済み範囲をOverview Rulerへ表示します。" },
+        "reviewRange.globalUnderstanding.autoStartDescendants": { "type": "boolean", "default": false, "description": "開いたファイルの所属folderより深いGlobal Understanding scopeを自動開始します。停止済みscopeは再開しません。" },
         "reviewRange.exclude": {
           "type": "array",
           "items": { "type": "string" },
@@ -149,6 +162,7 @@
     "test:t609": "npm run compile:test && node --test test-dist/test/unit/t609-repository-resolution.test.js test-dist/test/unit/t609-review-contexts-repository.test.js test-dist/test/unit/t609-revision-mapping-encoding.test.js test-dist/test/unit/t609-normal-review-followup.test.js test-dist/test/unit/t609-review-contexts-cancellation-boundary.test.js test-dist/test/unit/t609-t405-encoding-composition.test.js test-dist/test/unit/t609-test-review-state-dependent-queue.test.js test-dist/test/unit/t609-gate-wiring.test.js test-dist/test/unit/t609-host-rename-decoration-composition.test.js test-dist/test/unit/review-diff-content-provider.test.js test-dist/test/unit/document-git-context-lifecycle.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js",
     "test:t609:extension-host": "npm run build && npm run compile:test && node test-dist/test/vscode/run-extension-host.js --t609",
     "test:t607": "npm run compile:test && node --test test-dist/test/unit/t607-performance-incremental-ui.test.js test-dist/test/unit/pull-request-progress-tree.test.js test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/normal-editor-decoration-controller.test.js test-dist/test/unit/global-understanding-progress.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/t606-r6-production-matrix.test.js test-dist/test/unit/ci-workflow-contract.test.js",
+    "test:t610": "npm run compile:test && node --test test-dist/test/unit/t610-folder-understanding.test.js test-dist/test/unit/t610-public-api-documentation.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/ci-workflow-contract.test.js",
     "test:github": "npm run compile:test && node --test test-dist/test/integration/mock-github.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/integration/t402-pr-diff-boundary.test.js test-dist/test/integration/t402-review-followup.test.js test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t403": "npm run compile:test && node --test test-dist/test/unit/github-pull-request-cache.test.js",
     "test:t404": "npm run compile:test && node --test test-dist/test/unit/github-pr-context-layer-store.test.js test-dist/test/unit/t404-review-followup-r3.test.js test-dist/test/unit/t404-history-integration.test.js",
