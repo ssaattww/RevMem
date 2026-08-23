@@ -157,6 +157,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       element.layerEnabled === undefined ? undefined : `Layer: ${element.layerEnabled ? "ON" : "OFF"}`,
     ].filter((value): value is string => value !== undefined);
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+    item.id = `reviewRange.reviewContext:${element.context.contextId}`;
     item.description = descriptionParts.join(" · ");
     item.tooltip = this.tooltip(element);
     item.contextValue = element.context.kind === "pull-request"
