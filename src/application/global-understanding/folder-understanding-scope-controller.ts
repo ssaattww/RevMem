@@ -63,6 +63,7 @@ const isDescendantOrSelf = (folder: string, ancestor: string): boolean =>
 export class FolderUnderstandingScopeController {
   private readonly byOwner = new Map<string, Map<string, ScopeRecord>>();
   private readonly restored = new Set<string>();
+  private readonly restoring = new Map<string, Promise<void>>();
   private readonly cancellations = new Map<string, AbortController>();
 
   /** Uses the supplied durable marker store; active results and content evidence remain session-local. */
@@ -72,17 +73,30 @@ export class FolderUnderstandingScopeController {
   public async restore(repositoryId: string, canonicalRepositoryRoot: string): Promise<void> {
     const owner = keyOf(repositoryId, canonicalRepositoryRoot);
     if (this.restored.has(owner)) return;
-    const records = this.records(repositoryId, canonicalRepositoryRoot);
-    const markers = await this.store.loadStopped(repositoryId, canonicalRepositoryRoot);
-    for (const marker of markers) {
-      try {
-        const folder = normalizeFolder(marker);
-        if (marker !== folder || records.has(folder)) continue;
-        this.ensureAncestors(records, folder);
-        records.set(folder, { state: "stopped", generation: 0, explicitStop: true });
-      } catch { /* corrupt marker is fail-closed and never reused */ }
+    let pending = this.restoring.get(owner);
+    if (pending === undefined) {
+      pending = (async () => {
+        const records = this.records(repositoryId, canonicalRepositoryRoot);
+        const markers = await this.store.loadStopped(repositoryId, canonicalRepositoryRoot);
+        for (const marker of markers) {
+          try {
+            const folder = normalizeFolder(marker);
+            if (marker !== folder) continue;
+            this.ensureAncestors(records, folder);
+            this.cancellations.get(this.scopeKey(repositoryId, canonicalRepositoryRoot, folder))?.abort();
+            const generation = (records.get(folder)?.generation ?? 0) + 1;
+            records.set(folder, { state: "stopped", generation, explicitStop: true });
+          } catch { /* corrupt marker is fail-closed and never reused */ }
+        }
+        this.restored.add(owner);
+      })();
+      this.restoring.set(owner, pending);
     }
-    this.restored.add(owner);
+    try {
+      await pending;
+    } finally {
+      if (this.restoring.get(owner) === pending) this.restoring.delete(owner);
+    }
   }
 
   /** Starts only the opened file's direct containing folder. */
@@ -132,6 +146,7 @@ export class FolderUnderstandingScopeController {
     const records = this.records(repositoryId, canonicalRepositoryRoot);
     const folder = normalizeFolder(folderPath);
     const record = this.record(records, folder);
+    await this.persist(repositoryId, canonicalRepositoryRoot, { add: [], remove: [folder] });
     for (const [candidate, descendant] of records) {
       if (candidate !== folder && isDescendantOrSelf(candidate, folder) && descendant.state === "stopped" && !descendant.explicitStop) {
         descendant.state = "inactive";
@@ -140,7 +155,6 @@ export class FolderUnderstandingScopeController {
     record.explicitStop = false;
     record.state = "running";
     record.generation += 1;
-    await this.persist(repositoryId, canonicalRepositoryRoot, { add: [], remove: [folder] });
     return record.generation;
   }
 
@@ -255,11 +269,13 @@ export class FolderUnderstandingScopeController {
       }
       return;
     }
-    const stopped = [...this.records(repositoryId, repositoryRoot)]
+    const stopped = new Set([...this.records(repositoryId, repositoryRoot)]
       .filter(([, record]) => record.state === "stopped" && record.explicitStop === true)
       .map(([folder]) => folder)
-      .sort();
-    await this.store.saveStopped(repositoryId, repositoryRoot, stopped);
+    );
+    for (const folder of mutation?.remove ?? []) stopped.delete(folder);
+    for (const folder of mutation?.add ?? []) stopped.add(folder);
+    await this.store.saveStopped(repositoryId, repositoryRoot, [...stopped].sort());
   }
 
   private scopeKey(repositoryId: string, repositoryRoot: string, folder: string): string {

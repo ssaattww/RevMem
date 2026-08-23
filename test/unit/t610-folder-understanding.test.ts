@@ -22,6 +22,7 @@ import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
 import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import type { GlobalUnderstandingTreeSnapshot } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
 import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../../src/t305-global-understanding-lifecycle";
 
@@ -77,6 +78,69 @@ test("T610 aborts only superseded or stopped scope work", async () => {
   assert.equal(one.aborted, true); assert.equal(two.aborted, false);
   await controller.stop("repo", "/repo", "two");
   assert.equal(two.aborted, true);
+});
+
+test("T610-IFR-001 restores durable stops before startup document observation", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-restart-open-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "src", "a.ts"), "source\n", "utf8");
+  for (const autoStartDescendants of [false, true]) {
+    let restoredRoot: string | undefined;
+    const controller = new FolderUnderstandingScopeController({
+      loadStopped: async (_repositoryId, canonicalRoot) => { restoredRoot = canonicalRoot; return ["src"]; },
+      saveStopped: async () => undefined
+    });
+    const source = new T505GlobalUnderstandingSource({
+      storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: root } },
+      exclusionPolicy: new ReviewFileExclusionPolicyService(),
+      folderScopes: controller,
+      readAutoStartDescendants: () => autoStartDescendants,
+      resolveRepositoryRootUri: () => ({ scheme: "file", authority: "", path: root.replace(/\\/gu, "/"), query: "", fragment: "" })
+    });
+    source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "restart", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+    await source.observeFileOpen(path.join(root, "src", "a.ts"));
+    assert.ok(restoredRoot !== undefined);
+    assert.equal(controller.state("repo", restoredRoot, "src"), "stopped");
+    assert.deepEqual(controller.activeFolders("repo", restoredRoot), []);
+  }
+});
+
+test("T610-IFR-002 publishes a running scope before I/O so the same row can stop it", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-running-stop-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "src", "a.ts"), "source\n", "utf8");
+  let openDocumentReads = 0;
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    folderScopes: new FolderUnderstandingScopeController({ loadStopped: async () => [], saveStopped: async () => undefined }),
+    readOpenDocuments: () => { openDocumentReads += 1; return []; }
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "running", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "src", "a.ts"));
+  let runningPublished = false;
+  const final = await source.recalculate(undefined, async (snapshot: GlobalUnderstandingTreeSnapshot) => {
+    const folder = snapshot.folders?.find((candidate) => candidate.path === "src");
+    assert.equal(folder?.state, "running");
+    runningPublished = true;
+    await source.stopFolder("src");
+  });
+  assert.equal(runningPublished, true);
+  assert.equal(openDocumentReads, 0, "stopping the published running row prevents owner content capture");
+  assert.equal(final?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+});
+
+test("T610-IFR-003 keeps resume state stopped when durable marker removal fails", async () => {
+  const controller = new FolderUnderstandingScopeController({
+    loadStopped: async () => ["src"],
+    saveStopped: async () => { throw Object.assign(new Error("marker remove failed"), { code: "EACCES" }); }
+  });
+  await controller.restore("repo", "/repo");
+  await assert.rejects(() => controller.resume("repo", "/repo", "src"), /marker remove failed/u);
+  assert.equal(controller.state("repo", "/repo", "src"), "stopped");
+  assert.deepEqual(controller.activeFolders("repo", "/repo"), []);
 });
 
 test("T610 contributes one focused package/CI gate and mutually exclusive folder actions", async () => {

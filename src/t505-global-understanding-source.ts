@@ -117,7 +117,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   public setContext(snapshot: CurrentContextUiSnapshot | undefined): void { this.currentContext = snapshot; }
 
   /** Recalculates an immutable Tree snapshot for the current folder scopes. */
-  public async recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
+  public async recalculate(
+    signal?: AbortSignal,
+    publishProgress?: (snapshot: GlobalUnderstandingTreeSnapshot) => void | Promise<void>
+  ): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
     };
@@ -158,6 +161,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (scopeSignal?.aborted === true) throw new DOMException("Folder understanding scope was superseded.", "AbortError");
       };
       try {
+        await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+        assertScopeCurrent();
         const enumerator = new NodeRepositoryFilePathEnumerator(this.dependencies.exclusionPolicy, {
           maxEntriesPerStage: 128, yieldControl: this.yieldControl,
           accountWorkBatch: this.dependencies.accountWorkBatch === undefined ? undefined : (entry) => this.dependencies.accountWorkBatch?.(entry)
@@ -305,11 +310,13 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (owner === undefined) return;
     const scopeRoot = this.scopeRoot(owner);
     if (scopeRoot === undefined) return;
+    await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot);
     const relativePath = path.isAbsolute(repositoryPath)
       ? path.relative(owner.repositoryRoot, repositoryPath).split(path.sep).join("/")
       : repositoryPath;
     if (relativePath.length === 0 || relativePath === ".." || relativePath.startsWith("../")) return;
     const folder = relativePath.split("/").slice(0, -1).join("/");
+    if (this.folderScopes?.isStopped(owner.target.repositoryId, scopeRoot, folder) === true) return;
     const autoStartDescendants = this.dependencies.readAutoStartDescendants?.() ?? false;
     if (!autoStartDescendants) {
       this.folderScopes?.openFile(owner.target.repositoryId, scopeRoot, relativePath, false);
@@ -351,7 +358,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   /** Stops the selected current scope only after its explicit marker is durable. */
   public async stopFolder(folderPath: string): Promise<void> {
     const owner = this.resolveOwner(this.currentContext);
-    if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) await this.folderScopes?.stop(owner.target.repositoryId, scopeRoot, folderPath); }
+    if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) { await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot); await this.folderScopes?.stop(owner.target.repositoryId, scopeRoot, folderPath); } }
   }
 
   /** Explicitly starts a canonical current folder subtree, pruning stopped descendants. */
@@ -360,6 +367,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (owner === undefined) return;
     const scopeRoot = this.scopeRoot(owner);
     if (scopeRoot === undefined) return;
+    await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot);
     // Validate before any filesystem composition so a traversal marker cannot
     // cause subtree discovery outside the selected repository root.
     this.folderScopes?.state(owner.target.repositoryId, scopeRoot, folderPath);
@@ -371,7 +379,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   /** Removes the selected explicit stop and lets the next refresh validate a new generation. */
   public async resumeFolder(folderPath: string): Promise<void> {
     const owner = this.resolveOwner(this.currentContext);
-    if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) await this.folderScopes?.resume(owner.target.repositoryId, scopeRoot, folderPath); }
+    if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) { await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot); await this.folderScopes?.resume(owner.target.repositoryId, scopeRoot, folderPath); } }
   }
 
   private emptySnapshot(controller?: FolderUnderstandingScopeController, owner?: T505GlobalUnderstandingOwner, scopeRoot?: string): GlobalUnderstandingTreeSnapshot {

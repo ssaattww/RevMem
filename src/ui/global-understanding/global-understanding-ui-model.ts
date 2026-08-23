@@ -149,7 +149,10 @@ export interface GlobalUnderstandingFileOpenHost {
 }
 
 export interface GlobalUnderstandingRefreshSource {
-  recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  recalculate(
+    signal?: AbortSignal,
+    publishProgress?: (snapshot: GlobalUnderstandingTreeSnapshot) => void | Promise<void>
+  ): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
 }
 
 export interface GlobalUnderstandingRefreshHost {
@@ -528,7 +531,13 @@ export class GlobalUnderstandingRefreshController {
     const currentGeneration = ++this.generation;
     try {
       const snapshot = (await runWithBoundedRetry(
-        () => this.source.recalculate(signal),
+        () => this.source.recalculate(signal, async (progress) => {
+          if (currentGeneration !== this.generation || signal?.aborted === true) return;
+          await this.host.show(
+            progress,
+            () => currentGeneration === this.generation && signal?.aborted !== true
+          );
+        }),
         { maxAttempts: 3, signal },
       )).value;
       if (signal?.aborted === true) return undefined;

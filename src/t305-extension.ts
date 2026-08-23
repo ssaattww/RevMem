@@ -279,13 +279,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     }
   };
   const observedGlobalSource = {
-    recalculate: async (signal?: AbortSignal) => {
+    recalculate: async (
+      signal?: AbortSignal,
+      publishProgress?: (snapshot: import("./ui/global-understanding/global-understanding-ui-model").GlobalUnderstandingTreeSnapshot) => void | Promise<void>
+    ) => {
       if (context.extensionMode === vscode.ExtensionMode.Test) {
         testGlobalUnderstandingSourceRefreshOutcome = "not-started";
         testGlobalUnderstandingSourceRefreshError = undefined;
       }
       try {
-        const snapshot = await globalSource.recalculate(signal);
+        const snapshot = await globalSource.recalculate(signal, publishProgress);
         if (context.extensionMode === vscode.ExtensionMode.Test) {
           testGlobalUnderstandingSourceRefreshOutcome = snapshot === undefined ? "undefined" : "snapshot";
         }
