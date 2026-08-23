@@ -873,7 +873,16 @@ test("T610-R15 publishes Test APIs without waiting for persistence migration whi
     activation.indexOf("vscode.workspace.onDidOpenTextDocument") < activation.indexOf("const startupGlobalUnderstanding ="),
     "the production listener is registered before startup textDocuments are snapshotted"
   );
-  assert.match(activation, /vscode\.window\.onDidChangeActiveTextEditor[\s\S]*?observeGlobalUnderstandingDocumentOpen/u);
+  assert.match(
+    activation,
+    /const observeRegisteredGlobalUnderstandingDocument[\s\S]*?observeGlobalUnderstandingDocumentOpen/u,
+    "the shared registered-document helper owns the production lifecycle operation",
+  );
+  assert.match(
+    activation,
+    /vscode\.window\.onDidChangeActiveTextEditor[\s\S]*?observeRegisteredGlobalUnderstandingDocument/u,
+    "active-editor events route through the same registered-document helper",
+  );
   assert.match(activation, /drainNextGlobalUnderstandingDocumentObservationForTest:/u);
   assert.match(suite, /getGlobalUnderstandingDocumentObservationCountForTest[\s\S]*?showTextDocument[\s\S]*?drainNextGlobalUnderstandingDocumentObservationForTest/u);
   assert.match(activation, /reportError: \(error\) => \{[\s\S]*?void vscode\.window\.showErrorMessage\(message\);/u);
