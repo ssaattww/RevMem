@@ -17,6 +17,7 @@ import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspac
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION } from "../../src/core/contracts/index.js";
+import { currentPullRequestSelectionKey } from "../../src/ui/review-contexts/current-pull-request-selection.js";
 
 const B = "b".repeat(40);
 const REPOSITORY_ID = "github.com/example/project";
@@ -189,4 +190,15 @@ test("selected PR rejects a foreign repository or stale head without creating st
   assert.equal(await provider.loadForDecoration(descriptor, selection({ repositoryRoot: path.resolve("/other") })), undefined);
   assert.deepEqual(repository.saves, []);
   provider.dispose();
+});
+
+test("issue #84 explicit branch choice is scoped by branch even when HEAD is identical", () => {
+  const mainKey = currentPullRequestSelectionKey(REPOSITORY_ID, B, "refs/heads/main");
+  const pullRequestBranchKey = currentPullRequestSelectionKey(REPOSITORY_ID, B, "refs/heads/fix/issue-84");
+
+  assert.notEqual(mainKey, pullRequestBranchKey);
+  assert.equal(
+    pullRequestBranchKey,
+    currentPullRequestSelectionKey(REPOSITORY_ID, B, "refs/heads/fix/issue-84"),
+  );
 });
