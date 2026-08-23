@@ -21,24 +21,31 @@ test("T610-NR-010 exhaustively documents the exported folder-scope API surface",
   const root = path.resolve(__dirname, "../../..");
   const surfaces: ReadonlyArray<Readonly<{
     relativePath: string;
-    includes: (name: string) => boolean;
+    includes: (name: string, statement: ts.Statement) => boolean;
   }>> = [
     { relativePath: "src/application/global-understanding/folder-understanding-scope-controller.ts", includes: () => true },
     { relativePath: "src/t305-global-understanding-startup.ts", includes: () => true },
     { relativePath: "src/t305-global-understanding-lifecycle.ts", includes: () => true },
+    { relativePath: "src/t505-global-understanding-source.ts", includes: () => true },
     { relativePath: "src/ui/global-understanding/vscode-global-understanding-runtime.ts", includes: (name) => name.includes("GlobalUnderstanding") || name.endsWith("_COMMAND_ID") || name === "GLOBAL_UNDERSTANDING_VIEW_ID" },
-    { relativePath: "src/ui/global-understanding/global-understanding-ui-model.ts", includes: (name) => name.startsWith("GlobalUnderstandingFolder") }
+    {
+      relativePath: "src/ui/global-understanding/global-understanding-ui-model.ts",
+      includes: (name, statement) => name.startsWith("GlobalUnderstandingFolder") ||
+        ((ts.isInterfaceDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+          statement.members.some((member) => member.name !== undefined && ts.isIdentifier(member.name) && member.name.text === "folders"))
+    }
   ];
   let exportedContractCount = 0;
+  const missingContracts: string[] = [];
   for (const surface of surfaces) {
     const source = await readFile(path.join(root, surface.relativePath), "utf8");
     const sourceFile = ts.createSourceFile(surface.relativePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     for (const statement of sourceFile.statements) {
       if (!hasExportModifier(statement)) continue;
-      const names = declarationNames(statement).filter(surface.includes);
+      const names = declarationNames(statement).filter((name) => surface.includes(name, statement));
       if (names.length === 0) continue;
       exportedContractCount += names.length;
-      assert.equal(hasContractJSDoc(statement), true, `${surface.relativePath}:${names.join(",")} has declaration-adjacent contract JSDoc`);
+      if (!hasContractJSDoc(statement)) missingContracts.push(`${surface.relativePath}:${names.join(",")}`);
       if (!ts.isInterfaceDeclaration(statement) && !ts.isClassDeclaration(statement)) continue;
       for (const member of statement.members) {
         if (ts.isConstructorDeclaration(member)) continue;
@@ -46,9 +53,10 @@ test("T610-NR-010 exhaustively documents the exported folder-scope API surface",
         if (modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword) === true) continue;
         const memberName = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
         if (memberName === undefined) continue;
-        assert.equal(hasContractJSDoc(member), true, `${surface.relativePath}:${names[0]}.${memberName} has declaration-adjacent contract JSDoc`);
+        if (!hasContractJSDoc(member)) missingContracts.push(`${surface.relativePath}:${names[0]}.${memberName}`);
       }
     }
   }
-  assert.ok(exportedContractCount >= 20, "the traversal covers the complete current T610 export surface rather than a symbol whitelist");
+  assert.ok(exportedContractCount >= 30, "the traversal covers the complete current T610 module surface rather than a small symbol whitelist");
+  assert.deepEqual(missingContracts, [], "every exported declaration and public member has declaration-adjacent contract JSDoc");
 });

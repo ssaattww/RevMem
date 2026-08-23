@@ -16,24 +16,36 @@ import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
 import type { GlobalUnderstandingFileOpenTarget, GlobalUnderstandingTreeSnapshot } from "./ui/global-understanding/global-understanding-ui-model";
 import type { GlobalUnderstandingRuntimeSource } from "./ui/global-understanding/index";
 
+/** Exclusion-policy surface required while discovering folder-scoped evidence. */
 export type T505GlobalUnderstandingExclusionPolicy = Pick<ReviewFileExclusionPolicyService, "evaluate" | "evaluateDirectory" | "getRevision">;
 
+/** Immutable repository owner and revision selected for one recalculation. */
 export interface T505GlobalUnderstandingOwner {
+  /** Filesystem root used only for repository I/O. */
   readonly repositoryRoot: string;
+  /** Canonical repository/context identity used for persisted state. */
   readonly target: ReviewStateRepositoryTarget;
+  /** Revision whose evidence may be published by the current generation. */
   readonly currentRevisionId: string;
 }
 
+/** Composition dependencies for the folder-aware T505 source. */
 export interface T505GlobalUnderstandingSourceDependencies {
+  /** Storage locations for durable Global understanding state. */
   readonly storageUris: ReviewStateStorageUris;
+  /** Policy applied before any file or directory evidence is read. */
   readonly exclusionPolicy: T505GlobalUnderstandingExclusionPolicy;
+  /** Reads already-open working-tree evidence for the selected owner. */
   readonly readOpenDocuments?: (owner: Readonly<T505GlobalUnderstandingOwner>) => readonly LoadedGlobalUnderstandingFile[];
+  /** Reads immutable pull-request HEAD evidence for the supplied candidate paths. */
   readonly readPullRequestHeadFiles?: (
     owner: Readonly<T505GlobalUnderstandingOwner>,
     candidatePaths: ReadonlySet<string>,
     signal?: AbortSignal
   ) => Promise<readonly PullRequestGlobalHeadFile[]>;
+  /** Path comparison rules for the selected workspace platform. */
   readonly fileSystemPathSemantics?: FileSystemPathSemantics;
+  /** Cooperative scheduler hook used between bounded work batches. */
   readonly yieldControl?: () => void | Promise<void>;
   /** Optional deterministic scheduler evidence for large-workload tests. */
   readonly accountWorkBatch?: (entry: Readonly<{ kind: string; count: number }>) => void;
@@ -101,8 +113,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     this.folderScopes = dependencies.folderScopes;
   }
 
+  /** Replaces the selected context used by subsequent recalculations. */
   public setContext(snapshot: CurrentContextUiSnapshot | undefined): void { this.currentContext = snapshot; }
 
+  /** Recalculates an immutable Tree snapshot for the current folder scopes. */
   public async recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Global understanding refresh was superseded.", "AbortError");

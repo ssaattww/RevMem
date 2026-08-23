@@ -27,15 +27,23 @@ export type GlobalUnderstandingFileOpenTarget =
   | GlobalUnderstandingWorkingTreeFileOpenTarget
   | GlobalUnderstandingPullRequestHeadFileOpenTarget;
 
+/** Immutable source snapshot consumed by the Global understanding presentation. */
 export interface GlobalUnderstandingTreeSnapshot {
+  /** Repository progress for the selected owner and revision. */
   readonly progress: RepositoryGlobalUnderstandingProgress;
+  /** Open targets aligned with the progress files when available. */
   readonly fileOpenTargets?: readonly GlobalUnderstandingFileOpenTarget[];
+  /** Count of files with captured content evidence. */
   readonly openedFileCount?: number;
+  /** Count of discovered files whose content has not been captured. */
   readonly unopenedFileCount?: number;
+  /** Count of files excluded by policy. */
   readonly excludedFileCount: number;
+  /** Count of directories pruned before descendant discovery. */
   readonly prunedExcludedDirectoryCount: number;
   /** True when the known folder scopes do not cover a complete repository denominator. */
   readonly repositoryPartial?: boolean;
+  /** Current folder-scope lifecycle and aggregate rows. */
   readonly folders?: readonly GlobalUnderstandingFolderSnapshot[];
 }
 
@@ -85,10 +93,15 @@ export interface GlobalUnderstandingDiagnosticsNode {
   readonly prunedExcludedDirectoryCount: number;
 }
 
+/** Render-ready immutable Tree model derived from one accepted snapshot. */
 export interface GlobalUnderstandingTreeModel {
+  /** Repository summary row. */
   readonly summary: GlobalUnderstandingSummaryNode;
+  /** Sorted file rows for the accepted generation. */
   readonly files: readonly GlobalUnderstandingFileNode[];
+  /** File discovery and exclusion diagnostics row. */
   readonly diagnostics: GlobalUnderstandingDiagnosticsNode;
+  /** Hierarchical folder action rows for the accepted generation. */
   readonly folders?: readonly GlobalUnderstandingFolderNode[];
 }
 
