@@ -124,6 +124,13 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     let unopenedFileCount = 0;
     let excludedFileCount = 0;
     let prunedExcludedDirectoryCount = 0;
+    const scopeWork: Array<{
+      readonly folder: string;
+      readonly generation: number;
+      readonly scopeSignal: AbortSignal | undefined;
+      readonly pathEnumeration: Awaited<ReturnType<NodeRepositoryFilePathEnumerator["enumerate"]>>;
+      readonly candidatePaths: ReadonlySet<string>;
+    }> = [];
     for (const folder of activeFolders) {
       const generation = this.folderScopes?.begin(owner.target.repositoryId, scopeRoot, folder) ?? 0;
       if (generation < 0) continue;
@@ -144,11 +151,41 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           ? await enumerator.enumerate(owner.repositoryRoot, scopeSignal)
           : await enumerator.enumerateDirectFolders(owner.repositoryRoot, [folder], scopeSignal);
         assertScopeCurrent();
+        for (const child of pathEnumeration.directDirectories ?? []) {
+          this.folderScopes?.discoverInactive(owner.target.repositoryId, scopeRoot, child);
+        }
         const candidatePaths = new Set(pathEnumeration.includedPaths.map((value) => this.canonicalEvidencePath(value)));
-        const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, candidatePaths, scopeSignal);
+        scopeWork.push({ folder, generation, scopeSignal, pathEnumeration, candidatePaths });
+      } catch (error) {
+        if (signal?.aborted === true) throw error;
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
+          throw error;
+        }
+      }
+    }
+    if (scopeWork.length === 0) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    const ownerCandidatePaths = new Set(scopeWork.flatMap((scope) => [...scope.candidatePaths]));
+    const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, ownerCandidatePaths, signal);
+    assertCurrent();
+    const evidenceByPath = await this.captureOpenedDocuments(owner, signal);
+    const globalState = persisted?.currentRevisionId === owner.currentRevisionId
+      ? await this.projectGlobalStatePaths(persisted, signal)
+      : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
+    assertCurrent();
+    for (const { folder, generation, scopeSignal, pathEnumeration, candidatePaths } of scopeWork) {
+      const assertScopeCurrent = (): void => {
+        assertCurrent();
+        if (scopeSignal?.aborted === true) throw new DOMException("Folder understanding scope was superseded.", "AbortError");
+      };
+      try {
         assertScopeCurrent();
-        const availablePaths = new Set([...candidatePaths, ...pullRequestHeadPaths]);
-        const evidenceByPath = await this.captureOpenedDocuments(owner, scopeSignal);
+        const belongsDirectlyToFolder = (repositoryPath: string): boolean =>
+          this.folderScopes === undefined ||
+          (repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "") === folder;
+        const availablePaths = new Set(
+          [...candidatePaths, ...pullRequestHeadPaths].filter(belongsDirectlyToFolder)
+        );
         const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
         const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
         for (const [repositoryPath, evidence] of evidenceByPath) {
@@ -157,10 +194,6 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           openedByPath.set(repositoryPath, evidence);
           included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
         }
-        const globalState = persisted?.currentRevisionId === owner.currentRevisionId
-          ? await this.projectGlobalStatePaths(persisted, scopeSignal)
-          : emptyGlobalState(owner.target.repositoryId, owner.currentRevisionId);
-        assertScopeCurrent();
         const source: GlobalUnderstandingFileSource = { load: async (repositoryPath, revisionId) => {
           assertScopeCurrent();
           const evidence = openedByPath.get(repositoryPath);
@@ -176,12 +209,12 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         });
         assertScopeCurrent();
         this.requireActiveEvidenceKey(owner);
-        const direct = result.progress.files.filter((file) => (file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "") === folder);
+        const direct = result.progress.files.filter((file) => belongsDirectlyToFolder(file.path));
         const reviewed = direct.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
         const total = direct.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
-        files.push(...result.progress.files);
-        openTargets.push(...result.progress.files.map((file) => this.createFileOpenTarget(owner, file.path)));
+        files.push(...direct);
+        openTargets.push(...direct.map((file) => this.createFileOpenTarget(owner, file.path)));
         openedFileCount += openedByPath.size;
         unopenedFileCount += Math.max(0, availablePaths.size - openedByPath.size);
         excludedFileCount += pathEnumeration.excluded.length;
@@ -257,6 +290,18 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     return this.folderScopes?.activeFolders(owner.target.repositoryId, scopeRoot).some((active) =>
       folder === active || folder.startsWith(`${active}/`) || active.startsWith(`${folder}/`)
     ) ?? true;
+  }
+
+  /** Resolves an editor resource to its canonical folder only for the selected owner. */
+  public folderPathForEntry(repositoryPath: string): string | undefined {
+    const owner = this.resolveOwner(this.currentContext);
+    if (owner === undefined || this.scopeRoot(owner) === undefined) return undefined;
+    const relativePath = path.isAbsolute(repositoryPath)
+      ? path.relative(owner.repositoryRoot, repositoryPath).split(path.sep).join("/")
+      : repositoryPath;
+    if (relativePath.length === 0 || relativePath === ".." || relativePath.startsWith("../")) return undefined;
+    const canonicalPath = requireCanonicalRepositoryRelativePath(relativePath, this.pathSemantics, "Global Understanding editor resource");
+    return canonicalPath.includes("/") ? canonicalPath.slice(0, canonicalPath.lastIndexOf("/")) : "";
   }
 
   /** Stops the selected current scope only after its explicit marker is durable. */

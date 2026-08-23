@@ -21,7 +21,8 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
-import { OperationFeedback, formatOperationFailureForUser, reportActiveOperationFailure, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
+import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
+import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../../src/t305-global-understanding-lifecycle";
 
 test("T610 scopes file opens to direct folders, preserves stopped descendants, and isolates repository roots", async () => {
   const saved: string[][] = [];
@@ -79,15 +80,18 @@ test("T610 aborts only superseded or stopped scope work", async () => {
 
 test("T610 contributes one focused package/CI gate and mutually exclusive folder actions", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
+  const manifestText = await readFile(path.join(root, "package.json"), "utf8");
+  const manifest = JSON.parse(manifestText) as {
     scripts: Record<string, string>;
-    contributes: { commands: Array<{ command: string }>; configuration: { properties: Record<string, { default?: unknown }> }; menus: { "view/item/context": Array<{ command: string; when?: string }> } };
+    contributes: { commands: Array<{ command: string }>; configuration: { properties: Record<string, { default?: unknown }> }; menus: { "view/item/context": Array<{ command: string; when?: string }>; "editor/context": Array<{ command: string }> } };
   };
   assert.match(manifest.scripts["test:t610"]!, /t610-folder-understanding\.test\.js/u);
   assert.equal(manifest.contributes.configuration.properties["reviewRange.globalUnderstanding.autoStartDescendants"]?.default, false);
   const actions = manifest.contributes.menus["view/item/context"].filter((item) => item.command.includes("GlobalUnderstandingFolder"));
   assert.equal(actions.length, 3);
   assert.equal(new Set(actions.map((item) => item.when)).size, 3, "one row action is selected by the current folder state");
+  assert.equal((manifestText.match(/"editor\/context"\s*:/gu) ?? []).length, 1, "the manifest has one non-overwriting editor/context menu key");
+  assert.equal(manifest.contributes.menus["editor/context"].length, 7, "four review commands and three folder commands remain contributed together");
   const workflow = await readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
   assert.equal((workflow.match(/npm run test:t610\b/gu) ?? []).length, 1);
 });
@@ -124,11 +128,12 @@ test("T610 exported T305 composition scopes actual file opens and setting change
   await source.observeFileOpen(path.join(repositoryRoot, "src", "a.ts"));
   const direct = await source.recalculate();
   assert.deepEqual(direct?.progress.files.map((file) => file.path), ["src/a.ts"]);
-  assert.deepEqual(direct?.folders?.map((folder) => folder.path), ["", "src"], "the actual source projects the discovered ancestor chain");
+  assert.deepEqual(direct?.folders?.map((folder) => folder.path), ["", "src", "src/child", "src/held"], "the actual source projects inactive direct children without reading them");
+  assert.equal(direct?.repositoryPartial, true);
 
   autoStartDescendants = true;
   const afterFalseToTrue = await source.recalculate();
-  assert.deepEqual(afterFalseToTrue?.folders?.map((folder) => folder.path), ["", "src"], "a setting transition does not start existing descendants");
+  assert.deepEqual(afterFalseToTrue?.folders?.map((folder) => folder.path), ["", "src", "src/child", "src/held"], "a setting transition does not start existing descendants");
   await source.stopFolder("src/held");
   await source.observeFileOpen(path.join(repositoryRoot, "src", "child", "b.ts"));
   const descendant = await source.recalculate();
@@ -317,6 +322,74 @@ test("T610-R11 cancels an actual many-entry source scope before post-cancel docu
   assert.ok((snapshot?.folders?.length ?? 0) <= 2, "the cancelled source retains only root and direct-scope descriptors");
 });
 
+test("T610-NR-008 captures owner evidence once and projects each active folder without duplicates", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-owner-index-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  await mkdir(path.join(root, "one", "inactive-child"), { recursive: true });
+  let documentReads = 0;
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => {
+      documentReads += 1;
+      return ["one", "two"].map((folder) => ({
+        path: `${folder}/a.ts`, revisionId: "r15", lineCount: 2,
+        nonEmptyLines: [0], contentHash: folder, cacheKey: folder
+      }));
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r15", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+  const snapshot = await source.recalculate();
+  assert.equal(documentReads, 1, "opened evidence is captured once for the owner generation, not once per scope");
+  assert.deepEqual(snapshot?.progress.files.map((file) => file.path).sort(), ["one/a.ts", "two/a.ts"]);
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "one/inactive-child")?.state, "inactive");
+  assert.equal(snapshot?.repositoryPartial, true, "a discovered inactive child keeps repository summary and status partial");
+});
+
+test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-host-partial-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const root = path.join(fixture, "repository");
+  await mkdir(path.join(root, "src", "child"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(root, "src", "a.ts"), "a\n", "utf8"),
+    writeFile(path.join(root, "src", "child", "b.ts"), "b\n", "utf8")
+  ]);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["src/a.ts", "src/child/b.ts"].map((repositoryPath) => ({
+      path: repositoryPath, revisionId: "r15", lineCount: 2,
+      nonEmptyLines: [0], contentHash: repositoryPath, cacheKey: repositoryPath
+    })),
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r15", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "src", "a.ts"));
+  await source.startFolder("");
+  await source.stopFolder("src");
+  await source.resumeFolder("src");
+  await source.observeFileOpen(path.join(root, "src", "child", "b.ts"));
+  const complete = await source.recalculate();
+  assert.equal(complete?.repositoryPartial, undefined, "the fully enumerated Host hierarchy remains complete");
+
+  await mkdir(path.join(root, "src", "inactive-watcher-child"));
+  const partial = await source.recalculate();
+  assert.equal(partial?.folders?.find((folder) => folder.path === "src/inactive-watcher-child")?.state, "inactive");
+  assert.equal(partial?.repositoryPartial, true, "the newly discovered inactive child makes the repository partial");
+  const model = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
+  assert.doesNotMatch(model.formatGlobalUnderstandingStatusBar(partial!).text, /%/u);
+});
+
 test("T610-R7 wires the exported T610 documentation contract exactly once", async () => {
   const root = path.resolve(__dirname, "../../..");
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
@@ -365,7 +438,7 @@ test("T610-R11 routes actual injected Node marker corruption, ENOSPC, and permis
   }
 });
 
-test("T610-R11 sends an actual exported-source document-open fault to shared redacted Output and generic UI", async (t) => {
+test("T610-R15 routes the actual production document-open lifecycle through shared redacted Output and generic UI", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-raw-open-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const output: string[] = [];
@@ -381,16 +454,29 @@ test("T610-R11 sends an actual exported-source document-open fault to shared red
       yieldControl: () => { throw Object.assign(new Error("C:\\private\\secret.ts EACCES"), { code: "EACCES" }); }
     });
     source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r11", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
-    const error = await assert.rejects(() => source.observeFileOpen(path.join(root, "src", "a.ts")));
-    reportActiveOperationFailure("Global Understanding folder open", error);
-    assert.equal(formatOperationFailureForUser(error), "操作を完了できませんでした。詳細は Review Range Output を確認してください。");
+    const messages: string[] = [];
+    const outcome = await observeGlobalUnderstandingDocumentOpen({
+      observe: () => source.observeFileOpen(path.join(root, "src", "a.ts")),
+      requestRefresh: () => assert.fail("a failed open must not schedule the normal refresh"),
+      refreshAfterFailure: async () => undefined,
+      showGenericError: (message) => { messages.push(message); }
+    });
+    assert.equal(outcome, "error");
+    assert.deepEqual(messages, ["Global Understanding folderを開始できませんでした。詳細は Review Range Output を確認してください。"]);
     assert.ok(output.some((line) => line.includes("details were redacted")), "the shared Output records a redacted terminal");
     assert.equal(output.join("\n").includes("secret.ts"), false);
     const extension = await readFile(path.join(path.resolve(__dirname, "../../.."), "src", "t305-extension.ts"), "utf8");
-    assert.match(extension, /reportActiveOperationFailure\("Global Understanding folder open", error\)/u);
+    assert.match(extension, /observeGlobalUnderstandingDocumentOpen\(\{/u);
   } finally {
     setActiveOperationFeedback(undefined);
   }
+});
+
+test("T610-NR-006 watcher admission is selected-owner, active-scope, and filesystem-only", () => {
+  assert.equal(shouldRefreshGlobalUnderstandingFolderEntry("file", "C:\\repo\\src\\a.ts", () => true), true);
+  assert.equal(shouldRefreshGlobalUnderstandingFolderEntry("vscode-remote", "/repo/src/a.ts", () => true), true);
+  assert.equal(shouldRefreshGlobalUnderstandingFolderEntry("untitled", "/repo/src/a.ts", () => true), false);
+  assert.equal(shouldRefreshGlobalUnderstandingFolderEntry("file", "C:\\foreign\\a.ts", () => false), false);
 });
 
 test("T610-NR-007 serializes independent-window marker mutations without a lost stop", async (t) => {
@@ -452,20 +538,25 @@ test("T610-R10 resolves each public folder command only for its current expected
   const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>("../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode);
   let state: "inactive" | "active" | "stopped" = "inactive";
   const calls: string[] = []; const errors: string[] = [];
+  const editorResource = { authority: "owner", path: "/repo/src/a.ts" };
+  const foreignResource = { authority: "foreign", path: "/repo/src/a.ts" };
   const snapshot = () => ({ progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, folders: [{ path: "src", state, reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, partial: state !== "active" }] });
   const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
     source: { recalculate: async () => snapshot(), startFolder: async () => { calls.push("start"); state = "active"; }, stopFolder: async () => { calls.push("stop"); state = "stopped"; }, resumeFolder: async () => { calls.push("resume"); state = "active"; } },
+    resolveFolderPathForResource: (resource) => resource === editorResource ? "src" : undefined,
     readGlobalLayerEnabled: () => false, writeGlobalLayerEnabled: async () => undefined, refreshDecorations: async () => undefined, openFile: async () => undefined, reportError: async (error) => { errors.push(String(error)); }
   });
   await registered.refresh();
   const startNode = provider!.getChildren().find((node) => node.kind === "folder")!;
-  await commands.get(runtime.START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!();
-  assert.deepEqual(calls, ["start"], "start resolves its sole current inactive row without an argument");
+  await commands.get(runtime.START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(editorResource);
+  assert.deepEqual(calls, ["start"], "an editor resource resolves through its selected owner to the current inactive row");
   await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(startNode);
   assert.deepEqual(calls, ["start"], "a stale or state-mismatched Tree target never reaches another action");
   await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!();
   await commands.get(runtime.RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!();
   assert.deepEqual(calls, ["start", "stop", "resume"], "no-argument stop and resume resolve only their matching current states");
+  await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(foreignResource);
+  assert.deepEqual(calls, ["start", "stop", "resume"], "a foreign editor resource never reaches the selected owner");
   assert.ok(errors.some((error) => error.includes("Review Range Output")), "state mismatch uses the shared feedback boundary");
   registered.dispose(); setActiveOperationFeedback(undefined);
 });
@@ -543,8 +634,10 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
   assert.ok(fixturePreparation >= 0 && fixturePreparation < initialLaunch, "the runner owns Git fixture preparation before the initial Host launch");
   const startupDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");
   const contextRefresh = suite.indexOf('await vscode.commands.executeCommand("reviewRange.refreshContext");');
-  const documentOpen = suite.indexOf("await vscode.workspace.openTextDocument");
-  assert.ok(startupDrain >= 0 && startupDrain < contextRefresh && contextRefresh < documentOpen, "the Host drains and explicitly establishes Current Context before opening its fixture document");
+  const preactivationOpen = suite.indexOf("const preactivationDocument =");
+  const activationCall = suite.indexOf("const api = await extension.activate()");
+  assert.ok(preactivationOpen >= 0 && preactivationOpen < activationCall, "the Host opens an actual document before explicit activation so startup-open composition is exercised");
+  assert.ok(activationCall < contextRefresh && contextRefresh < startupDrain, "the Host public refresh cancels startup selection before its drain");
   assert.match(suite, /const closeDocument = async/u, "the T610 Host owns an explicit document-close lifecycle");
   assert.match(suite, /onDidCloseTextDocument/u, "the T610 close lifecycle observes and disposes its own close listener");
   assert.match(suite, /finally \{\s*await api\.recordT610HostSubphaseForTest\("before-document-close"\);\s*await closeDocument\(document\);/u, "the T610 fixture records then closes the document even when a Host assertion fails");
@@ -672,6 +765,26 @@ test("T610-R14 settles Current Context startup before queuing non-blocking start
     currentContextDrain >= 0 && currentContextDrain < globalStartupDrain && globalStartupDrain < firstMarker,
     "the Host settles Current Context before draining its dependent startup Global work"
   );
+});
+
+test("T610-R15 publishes Test APIs without waiting for persistence migration while production still awaits it", async () => {
+  const root = path.resolve(__dirname, "../../..");
+  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
+  assert.match(activation, /const persistenceStartup = composeStartupFeedback/u);
+  assert.match(activation, /extensionMode === vscode\.ExtensionMode\.Test[\s\S]*?void persistenceStartup\.catch[\s\S]*?else \{\s*await persistenceStartup;/u);
+  const activationCall = suite.indexOf("const api = await extension.activate()");
+  const activationMarker = suite.indexOf('recordT610HostSubphaseForTest("activation-returned")');
+  const currentContextDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");
+  assert.ok(activationCall >= 0 && activationCall < activationMarker && activationMarker < currentContextDrain);
+  assert.ok(
+    activation.indexOf("vscode.workspace.onDidOpenTextDocument") < activation.indexOf("const startupGlobalUnderstanding ="),
+    "the production listener is registered before startup textDocuments are snapshotted"
+  );
+  assert.match(activation, /vscode\.window\.onDidChangeActiveTextEditor[\s\S]*?observeGlobalUnderstandingDocumentOpen/u);
+  assert.match(activation, /drainNextGlobalUnderstandingDocumentObservationForTest:/u);
+  assert.match(suite, /getGlobalUnderstandingDocumentObservationCountForTest[\s\S]*?showTextDocument[\s\S]*?drainNextGlobalUnderstandingDocumentObservationForTest/u);
+  assert.match(activation, /reportError: \(error\) => \{[\s\S]*?void vscode\.window\.showErrorMessage\(message\);/u);
 });
 
 test("T610 preserves T506 restart coverage by draining the registered file-open lifecycle", async () => {

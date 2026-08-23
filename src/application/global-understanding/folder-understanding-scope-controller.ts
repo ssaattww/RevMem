@@ -95,6 +95,11 @@ export class FolderUnderstandingScopeController {
     if (autoStartDescendants) void autoStartDescendants;
   }
 
+  /** Registers a discovered direct child without starting or reading its contents. */
+  public discoverInactive(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string): void {
+    this.record(this.records(repositoryId, canonicalRepositoryRoot), normalizeFolder(folderPath));
+  }
+
   /** Explicit start may include a selected subtree but always skips stopped descendants. */
   public async start(repositoryId: string, canonicalRepositoryRoot: string, folderPath: string, discoveredFolders: readonly string[]): Promise<void> {
     const folder = normalizeFolder(folderPath);

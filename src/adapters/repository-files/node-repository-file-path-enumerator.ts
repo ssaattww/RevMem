@@ -9,6 +9,8 @@ import type {
 
 export interface RepositoryFilePathEnumerationResult {
   readonly includedPaths: readonly string[];
+  /** Nonexcluded direct directory identities; enumeration never reads their contents. */
+  readonly directDirectories?: readonly string[];
   readonly excluded: readonly ExcludedRepositoryFile[];
   readonly excludedDirectories: readonly ExcludedRepositoryDirectory[];
 }
@@ -145,6 +147,7 @@ export class NodeRepositoryFilePathEnumerator {
     throwIfAborted(signal);
     const rules = await this.readRootGitIgnore(repositoryRoot, signal);
     const includedPaths: string[] = [];
+    const directDirectories: string[] = [];
     const excluded: ExcludedRepositoryFile[] = [];
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
     let pending = 0;
@@ -182,12 +185,13 @@ export class NodeRepositoryFilePathEnumerator {
           continue;
         }
         if (entry.isFile()) includedPaths.push(repositoryPath);
+        else if (entry.isDirectory()) directDirectories.push(repositoryPath);
       }
     }
     includedPaths.sort(compareRepositoryPaths);
     excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
     excludedDirectories.sort((left, right) => compareRepositoryPaths(left.path, right.path));
-    return { includedPaths, excluded, excludedDirectories };
+    return { includedPaths, directDirectories: directDirectories.sort(compareRepositoryPaths), excluded, excludedDirectories };
   }
 
   /** Recursively discovers folders only beneath an explicitly selected scope. */

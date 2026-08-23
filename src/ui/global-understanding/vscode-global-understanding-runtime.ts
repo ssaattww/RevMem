@@ -33,15 +33,23 @@ export const START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.startGl
 export const STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.stopGlobalUnderstandingFolder";
 export const RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID = "reviewRange.resumeGlobalUnderstandingFolder";
 
+/** Owner-scoped application source consumed by the VS Code Global Understanding runtime. */
 export interface GlobalUnderstandingRuntimeSource {
+  /** Recalculates only the current owner and generation. */
   recalculate(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined>;
+  /** Starts the canonical current-generation folder path. */
   startFolder?(folderPath: string): Promise<void>;
+  /** Stops the canonical current-generation folder path. */
   stopFolder?(folderPath: string): Promise<void>;
+  /** Resumes the canonical current-generation folder path. */
   resumeFolder?(folderPath: string): Promise<void>;
 }
 
+/** VS Code composition dependencies for the owner-scoped Global Understanding runtime. */
 export interface GlobalUnderstandingRuntimeDependencies {
   readonly source: GlobalUnderstandingRuntimeSource;
+  /** Resolves an editor-context resource to a canonical current-owner folder. */
+  readonly resolveFolderPathForResource?: (resource: unknown) => string | undefined;
   readonly readGlobalLayerEnabled: () => boolean;
   readonly writeGlobalLayerEnabled: (enabled: boolean) => void | PromiseLike<void>;
   readonly refreshDecorations: () => void | Promise<void>;
@@ -266,11 +274,22 @@ export interface RegisteredGlobalUnderstandingRuntime extends vscode.Disposable 
 
 type FolderAction = GlobalUnderstandingFolderNode["action"];
 
-const requireCurrentFolderNode = (value: unknown, expectedAction: FolderAction, current: ReadonlySet<GlobalUnderstandingFolderNode>): GlobalUnderstandingFolderNode => {
+const requireCurrentFolderNode = (
+  value: unknown,
+  expectedAction: FolderAction,
+  current: ReadonlySet<GlobalUnderstandingFolderNode>,
+  resolveFolderPathForResource?: (resource: unknown) => string | undefined
+): GlobalUnderstandingFolderNode => {
   if (value === undefined) {
     const candidates = [...current].filter((node) => node.action === expectedAction);
     if (candidates.length === 1) return candidates[0]!;
     throw new RangeError("Select one current Global Understanding folder row before running this command.");
+  }
+  const resourceFolder = resolveFolderPathForResource?.(value);
+  if (resourceFolder !== undefined) {
+    const candidates = [...current].filter((node) => node.path === resourceFolder && node.action === expectedAction);
+    if (candidates.length === 1) return candidates[0]!;
+    throw new RangeError("The selected editor resource does not have a current Global Understanding folder action.");
   }
   if (typeof value !== "object" || value === null || (value as { kind?: unknown }).kind !== "folder") {
     throw new RangeError("Select a current Global Understanding folder row before running this command.");
@@ -403,7 +422,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.startFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, "start", currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "start", currentFolderNodes, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを開始", async () => {
             await dependencies.source.startFolder!(folder.path);
             await refreshWithErrorBoundary();
@@ -418,7 +437,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.stopFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, "stop", currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "stop", currentFolderNodes, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを停止", async () => {
             await dependencies.source.stopFolder!(folder.path);
             await refreshWithErrorBoundary();
@@ -433,7 +452,7 @@ export const registerGlobalUnderstandingRuntime = (
       async (value: unknown) => {
         try {
           if (dependencies.source.resumeFolder === undefined) return;
-          const folder = requireCurrentFolderNode(value, "resume", currentFolderNodes);
+          const folder = requireCurrentFolderNode(value, "resume", currentFolderNodes, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを再開", async () => {
             await dependencies.source.resumeFolder!(folder.path);
             await refreshWithErrorBoundary();

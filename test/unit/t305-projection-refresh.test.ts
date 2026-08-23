@@ -114,3 +114,16 @@ test("PR68-R004 successful edit-state mutation keeps its success when only PR pr
     "progress:reported",
   ]);
 });
+
+test("T610-NR-006 decoration failure cannot block open-document Global reconciliation", async () => {
+  const events: string[] = [];
+  const decorationError = new Error("decoration failed");
+  await assert.rejects(() => refreshCurrentContextDependents({
+    refreshPullRequestProgress: async () => undefined,
+    refreshDecorations: async () => { events.push("decorations"); throw decorationError; },
+    refreshGlobal: async () => { events.push("global"); },
+    refreshReviewContexts: async () => { events.push("contexts"); },
+    reportPullRequestProgressError: async () => undefined,
+  }), decorationError);
+  assert.deepEqual(events, ["decorations", "global", "contexts"]);
+});
