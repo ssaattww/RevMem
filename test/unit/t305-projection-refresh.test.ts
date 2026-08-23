@@ -78,10 +78,10 @@ test("PR68-R004 PR Progress failure cannot block new-owner decoration Global or 
   });
 
   assert.deepEqual(events, [
+    "contexts:new-owner",
     "progress:start",
     "decorations:new-owner",
     "global:new-owner",
-    "contexts:new-owner",
     "progress:reported",
   ]);
 });
@@ -125,7 +125,7 @@ test("T610-NR-006 decoration failure cannot block open-document Global reconcili
     refreshReviewContexts: async () => { events.push("contexts"); },
     reportPullRequestProgressError: async () => undefined,
   }), decorationError);
-  assert.deepEqual(events, ["decorations", "global", "contexts"]);
+  assert.deepEqual(events, ["contexts", "decorations", "global"]);
 });
 
 test("Issue #84 Review Contexts registers the selected PR before PR Progress starts", async () => {
