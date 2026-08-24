@@ -52,16 +52,24 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       readTextContent: async (...args) => {
         const result = await readTextContent(...args);
         const active = this.activeFileProgress;
-        if (active?.key === key) {
+        const feedbackContext = args[1];
+        if (active?.key === key && feedbackContext !== undefined) {
           const descriptor = args[0];
           const identity = `${descriptor.side}\0${descriptor.revision}\0${descriptor.filePath}`;
           if (!active.seen.has(identity)) {
+            if (active.seen.size === 0) {
+              reportActiveOperationProgress({
+                stage: "pull-request-files",
+                completed: 0,
+                total: active.total,
+              }, feedbackContext);
+            }
             active.seen.add(identity);
             reportActiveOperationProgress({
               stage: "pull-request-files",
               completed: Math.min(active.seen.size, active.total),
               total: active.total,
-            });
+            }, feedbackContext);
           }
         }
         return result;
@@ -109,19 +117,9 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         total: snapshot.files.length,
         seen: new Set<string>(),
       };
-      reportActiveOperationProgress({
-        stage: "pull-request-files",
-        completed: 0,
-        total: snapshot.files.length,
-      });
       try {
         await super.activateProgress(contextId);
         this.acceptedProgressKey = key;
-        reportActiveOperationProgress({
-          stage: "pull-request-files",
-          completed: snapshot.files.length,
-          total: snapshot.files.length,
-        });
       } catch (error) {
         if (preserveAcceptedTree && this.acceptedProgressKey === key) {
           this.suppressTreeClear = false;
