@@ -6,6 +6,7 @@ import "./github-pr-context-layer-store.test";
 import "./issue-66-global-pr-progress.test";
 import "./issue-66-pr68-review-findings.test";
 import "./issue-84-review-context-progress.test";
+import "./issue-84-pr85-review-followup.test";
 import "./repository-global-state-repository.test";
 import "./state-repository-memory.test";
 import "./state-repository.test";
