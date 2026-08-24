@@ -37,7 +37,6 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private inFlight: { readonly key: string; readonly promise: Promise<void> } | undefined;
   private suppressTreeClear = false;
   private activeFileProgress: ActiveFileProgress | undefined;
-  private readonly externalProgressContexts = new Set<OperationFeedbackContext>();
   private readonly clearAcceptedTree: () => void;
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
@@ -57,11 +56,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         const result = await readTextContent(...args);
         const active = this.activeFileProgress;
         const feedbackContext = args[1];
-        if (
-          active?.key === key &&
-          feedbackContext !== undefined &&
-          !this.externalProgressContexts.has(feedbackContext)
-        ) {
+        if (active?.key === key && feedbackContext !== undefined) {
           const descriptor = args[0];
           const identity = `${descriptor.side}\0${descriptor.revision}\0${descriptor.filePath}`;
           if (!active.seen.has(identity)) {
@@ -83,24 +78,6 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         return result;
       },
     });
-  }
-
-  public override async getProgress(
-    contextId: string,
-    feedbackContext?: Parameters<BasePullRequestReviewRuntime<Uri>["getProgress"]>[1],
-    signal?: AbortSignal,
-  ): ReturnType<BasePullRequestReviewRuntime<Uri>["getProgress"]> {
-    const snapshot = this.snapshotForContext(contextId);
-    const total = snapshot?.files.length ?? 0;
-    reportActiveOperationProgress({ stage: "pull-request-files", completed: 0, total }, feedbackContext);
-    if (feedbackContext !== undefined) this.externalProgressContexts.add(feedbackContext);
-    try {
-      const progress = await super.getProgress(contextId, feedbackContext, signal);
-      reportActiveOperationProgress({ stage: "pull-request-files", completed: total, total }, feedbackContext);
-      return progress;
-    } finally {
-      if (feedbackContext !== undefined) this.externalProgressContexts.delete(feedbackContext);
-    }
   }
 
   public override async activateProgress(contextId: string): Promise<void> {
