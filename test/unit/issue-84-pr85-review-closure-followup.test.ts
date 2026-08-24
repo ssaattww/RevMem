@@ -103,6 +103,20 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+const withTimeout = async (promise: Promise<void>, message: string): Promise<void> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), 5_000);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
 test("PR85 closure regressions use production Review Contexts composition for in-flight counts and PR-file ownership", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-pr85-closure-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -118,6 +132,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
     appendLog: (entry) => entries.push(entry),
     revealLog: () => undefined,
   });
+  let releaseSecondLifecycle = deferred();
 
   try {
     await mkdir(repositoryRoot, { recursive: true });
@@ -216,7 +231,6 @@ test("PR85 closure regressions use production Review Contexts composition for in
     let lifecycleRequests = 0;
     let holdSecondLifecycle = false;
     let secondLifecycleStarted = deferred();
-    let releaseSecondLifecycle = deferred();
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       const lifecycle = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
@@ -267,7 +281,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
         recordRevisionMapping: async () => undefined,
       },
     });
-    await initialRefresh;
+    await withTimeout(initialRefresh, "initial Review Contexts refresh did not complete");
     enumerateEnabled = true;
 
     entries.length = 0;
@@ -276,18 +290,19 @@ test("PR85 closure regressions use production Review Contexts composition for in
     secondLifecycleStarted = deferred();
     releaseSecondLifecycle = deferred();
     const blockedRefresh = runtime.refresh();
-    await secondLifecycleStarted.promise;
-    assert.ok(
-      entries.some((entry) =>
-        entry.label === "Review Contextsを更新" &&
-        entry.event === "progress" &&
-        entry.progress?.stage === "pull-request-contexts" &&
-        entry.progress.completed === 1
-      ),
-      "PR85-NR-002: first completed PR context must be visible while the second lifecycle request is still pending",
+    await withTimeout(secondLifecycleStarted.promise, "second PR lifecycle request was not reached");
+    const firstContextWasReported = entries.some((entry) =>
+      entry.label === "Review Contextsを更新" &&
+      entry.event === "progress" &&
+      entry.progress?.stage === "pull-request-contexts" &&
+      entry.progress.completed === 1
     );
     releaseSecondLifecycle.resolve();
-    await blockedRefresh;
+    await withTimeout(blockedRefresh, "blocked Review Contexts refresh did not complete after release");
+    assert.ok(
+      firstContextWasReported,
+      "PR85-NR-002: first completed PR context must be visible while the second lifecycle request is still pending",
+    );
 
     entries.length = 0;
     lifecycleRequests = 0;
@@ -318,6 +333,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
 
     for (const subscription of subscriptions) subscription.dispose();
   } finally {
+    releaseSecondLifecycle.resolve();
     setActiveOperationFeedback(undefined);
     moduleLoader._load = originalModuleLoad;
     globalThis.fetch = originalFetch;
