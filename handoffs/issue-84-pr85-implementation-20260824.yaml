@@ -1,0 +1,320 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: implementation
+  generated_at: "2026-08-24T12:44:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+target:
+  current_head: c30e8dc199ab1c7db7c1a97cf4601eddf90537a6
+  reviewed_head: null
+  commit_range: "4535c2a3836c032cd7efaeaddbb543bedfcdb528..c30e8dc199ab1c7db7c1a97cf4601eddf90537a6"
+
+verification:
+  capability: remote_ci_only
+  capability_evidence:
+    - "Repository execution is available through GitHub Actions; no local repository checkout/test runner is used for authoritative verification."
+    - "CI identity is checked by exact commit SHA through GitHub connector workflow-run queries."
+  technical_head: 1244649bb6c335b6772dcc28e66babfe12764129
+  administrative_parent: 1244649bb6c335b6772dcc28e66babfe12764129
+  commit:
+    state: commit_pending
+    review_target_sha: null
+  push:
+    state: push_pending
+    head_sha: c30e8dc199ab1c7db7c1a97cf4601eddf90537a6
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "PR Progressは切り替えていなくても表示されず、表示されている状態を見たことがない"
+    summary: "Treat PR Progress as an initial bootstrap/order defect, not a branch-switch-only defect."
+  - source: user_instruction
+    reference: "設計書修正して下さい。後再トライ"
+    summary: "Synchronize the durable design and retry implementation verification through the pre-review boundary."
+  - source: issue
+    reference: "Issue #84 Review Contexts操作に失敗しました"
+    summary: "Improve long-running-operation diagnostics without exposing filenames or source content."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector, TDD, diagnostic artifacts, small logical commits, exact-head CI, repository report, PR comment, handoff, and never merge."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev7"
+    summary: "Review Contexts registers immutable PR runtime before PR Progress; equivalent snapshot refreshes do not cancel; count-only diagnostics are privacy-safe; no upper-level wall-clock timeout."
+
+development_policy:
+  method: TDD
+  testing_order: "Regression tests first with exact-head RED, then production implementation, then exact-head Green and design synchronization."
+  governing_source: "RevMem project instructions and uploaded implementation skills"
+validation_plan:
+  commands:
+    - "GitHub Actions CI on each verification HEAD."
+    - "Require Unit plus T304/T405/T406/T606 and downstream integration/Extension Host gates."
+    - "After the final handoff/admin publication, accept only a workflow run whose head_sha equals the final PR HEAD."
+  required_failure_diagnostics:
+    - test result metadata
+    - standard output
+    - standard error
+    - combined logs
+    - source/test/generated context
+    - environment information
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - update_issue
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: src/t305-projection-refresh.ts
+      reason: "Selected PR bootstrap ordering."
+    - path_or_operation: src/t405-pull-request-review-runtime-base.ts
+      reason: "Existing PR runtime base extraction."
+    - path_or_operation: src/t405-pull-request-review-runtime.ts
+      reason: "Equivalent snapshot refresh ownership and PR-file progress."
+    - path_or_operation: src/application/operation-feedback/operation-feedback.ts
+      reason: "Count-only progress contract."
+    - path_or_operation: src/ui/operation-feedback/vscode-operation-feedback.ts
+      reason: "Status Bar progress rendering."
+    - path_or_operation: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      reason: "Stable Tree identity and anonymous repository/context progress."
+    - path_or_operation: test/unit/*issue-84* and T305/Review Contexts wiring tests
+      reason: "TDD regressions."
+    - path_or_operation: doc/design/vscode-review-range-tracker-design.md
+      reason: "User-requested durable design synchronization."
+    - path_or_operation: reports/issue-84-pr85-implementation-20260824.md
+      reason: "Required detailed implementation report."
+    - path_or_operation: handoffs/issue-84-pr85-implementation-20260824.yaml
+      reason: "Required transportable continuation packet."
+    - path_or_operation: "PR #85 body and top-level comment"
+      reason: "Required implementation summary and handoff."
+  forbidden:
+    - path_or_operation: "merge PR #85"
+      reason: "Merge is user-owned."
+    - path_or_operation: "start or submit code review"
+      reason: "User requested stopping immediately before review."
+
+scope:
+  - "Fix initial PR Progress bootstrap so it is calculated only after selected PR diff runtime registration."
+  - "Prevent same immutable snapshot refreshes from cancelling one another."
+  - "Retain accepted PR Progress Tree during same-snapshot recalculation."
+  - "Expose privacy-safe repository/PR-context/PR-file count progress."
+  - "Disambiguate equal Review Contexts labels using contextId."
+  - "Document no upper-level wall-clock timeout and progress lifecycle in rev7 design."
+non_goals:
+  - "Do not expose repository/file/PR identifying data in diagnostics."
+  - "Do not add a total-operation timeout."
+  - "Do not merge."
+  - "Do not perform review."
+
+files:
+  changed:
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: "Validated count-only progress event and Output formatting."
+    - path: src/t305-projection-refresh.ts
+      purpose: "Review Contexts-before-PR Progress ordering."
+    - path: src/t405-pull-request-review-runtime-base.ts
+      purpose: "Base implementation extracted to support refresh wrapper."
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "Equivalent immutable-snapshot refresh serialization/retention and PR-file counts."
+    - path: src/ui/operation-feedback/vscode-operation-feedback.ts
+      purpose: "Activity Status Bar progress rendering."
+    - path: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      purpose: "contextId Tree identity and repository/context counts."
+    - path: test/unit/issue-84-review-context-progress.test.ts
+      purpose: "Issue #84 behavior regressions."
+    - path: test/unit/core-contracts.test.ts
+      purpose: "Default unit execution of Issue #84 regressions."
+    - path: test/unit/review-contexts-runtime-wiring.test.ts
+      purpose: "Production Review Contexts progress wiring."
+    - path: test/unit/t305-projection-refresh.test.ts
+      purpose: "Dependent refresh ordering/cancellation behavior."
+    - path: test/unit/t305-validation-wiring.test.ts
+      purpose: "CI-executed bootstrap ordering regression."
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: "rev7 PR Progress refresh lifecycle, count progress, privacy, timeout and identity contract."
+    - path: reports/issue-84-pr85-implementation-20260824.md
+      purpose: "Detailed implementation and CI evidence."
+    - path: handoffs/issue-84-pr85-implementation-20260824.yaml
+      purpose: "Schema-v3 handoff."
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: "Confirmed diagnostic artifact captures result/stdout/stderr/log/context before implementation."
+    - path: "GitHub Actions artifact 9506307871"
+      purpose: "Investigated unchanged-HEAD T604 child-process lease timing failure."
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Existing diagnostics workflow already satisfies required artifact contract."
+    - path_or_area: merge state
+      reason: "User owns merge."
+    - path_or_area: review state
+      reason: "Stop before review."
+
+commands:
+  - command: "GitHub exact-head CI for 6577785ea24f6aded37389fb2f7e09ea0ff7d15d"
+    purpose: "TDD RED for bootstrap ordering and related Issue #84 regressions."
+    exit_code: unknown
+    result: failed
+    head_sha: 6577785ea24f6aded37389fb2f7e09ea0ff7d15d
+    evidence: "Run 32674164919 failed the intended Issue #84 regression set before production implementation."
+  - command: "GitHub exact-head CI for e0e815ba19ede4869e143ff4ea68d62d97c5e78b"
+    purpose: "Technical implementation Green before design revision."
+    exit_code: 0
+    result: passed
+    head_sha: e0e815ba19ede4869e143ff4ea68d62d97c5e78b
+    evidence: "Run 32675130113 completed successfully."
+  - command: "GitHub exact-head CI for 1244649bb6c335b6772dcc28e66babfe12764129"
+    purpose: "Design-synchronized exact-head verification."
+    exit_code: 0
+    result: passed
+    head_sha: 1244649bb6c335b6772dcc28e66babfe12764129
+    evidence: "Run 32687824636 completed success after rerunning its failed job on unchanged HEAD; all gates through VS Code Extension Host passed."
+
+tests:
+  - name: "Selected PR runtime registration precedes PR Progress"
+    phase: red
+    result: failed
+    head_sha: 6577785ea24f6aded37389fb2f7e09ea0ff7d15d
+    evidence: "Exact-head run 32674164919."
+  - name: "Selected PR runtime registration precedes PR Progress"
+    phase: green
+    result: passed
+    head_sha: e0e815ba19ede4869e143ff4ea68d62d97c5e78b
+    evidence: "Exact-head run 32675130113."
+  - name: "Equivalent immutable PR snapshot refreshes preserve accepted Tree and do not cancel each other"
+    phase: green
+    result: passed
+    head_sha: 1244649bb6c335b6772dcc28e66babfe12764129
+    evidence: "Unit/T304/T606 gates in run 32687824636."
+  - name: "Privacy-safe repository/PR-context/PR-file progress"
+    phase: green
+    result: passed
+    head_sha: 1244649bb6c335b6772dcc28e66babfe12764129
+    evidence: "Unit/T606 gates in run 32687824636."
+  - name: "Same PR display label across repositories has distinct contextId Tree identity"
+    phase: green
+    result: passed
+    head_sha: 1244649bb6c335b6772dcc28e66babfe12764129
+    evidence: "Issue #84 unit regressions in run 32687824636."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32687824636
+  head_sha: 1244649bb6c335b6772dcc28e66babfe12764129
+  conclusion: success
+  artifacts:
+    - id: 9506307871
+      name: ci-failure-diagnostics-32687824636-1
+      purpose: "First-attempt T604 child-process lease timing failure diagnostics; unchanged-HEAD rerun passed."
+
+implementation:
+  outcome: completed
+  final_head: 1244649bb6c335b6772dcc28e66babfe12764129
+  commits:
+    - sha: 6577785ea24f6aded37389fb2f7e09ea0ff7d15d
+      purpose: "Test-first bootstrap ordering regression."
+    - sha: e0e815ba19ede4869e143ff4ea68d62d97c5e78b
+      purpose: "Technical Green implementation head after Issue #84 fixes."
+    - sha: 1244649bb6c335b6772dcc28e66babfe12764129
+      purpose: "Synchronize durable rev7 design with implemented lifecycle."
+    - sha: c30e8dc199ab1c7db7c1a97cf4601eddf90537a6
+      purpose: "Persist detailed implementation report."
+  addressed_findings: []
+  failure_diagnostics:
+    - type: artifact
+      location: "GitHub Actions artifact 9506307871"
+      summary: "Existing T604 OS child-process lease test observed acquired instead of timeout on first attempt; all product-related tests passed and unchanged-HEAD rerun passed T604/T606 and full CI."
+  blocked_items: []
+  summary:
+    - "Root cause was bootstrap ordering: PR Progress could run before Review Contexts registered the selected PR runtime."
+    - "Equivalent same-snapshot refreshes no longer cancel one another or erase an accepted Tree."
+    - "Anonymous count progress improves diagnosability without source/repository/file/PR identifiers."
+    - "Design rev7 now specifies lifecycle, privacy, identity, and timeout policy."
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "Review deliberately not started; user requested stopping at pre-review boundary."
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-84-pr85-implementation-20260824.md
+    - handoffs/issue-84-pr85-implementation-20260824.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed report persisted at c30e8dc199ab1c7db7c1a97cf4601eddf90537a6; concise PR comment and final exact-head CI remain publication steps."
+
+findings: []
+held:
+  - item: "T604 child-process lease timing stability"
+    reason: "First attempt of run 32687824636 failed one pre-existing OS child-process lease timing assertion; unchanged-HEAD rerun passed."
+    owner: repository test/CI stability
+    remaining_risk: "Rare nondeterministic runner timing could recur without an Issue #84 product regression."
+    verdict_impact: "Does not block current technical result because unchanged-head full rerun passed, but evidence is preserved."
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: independent review
+    reason: "Review has not started."
+remaining_risks:
+  - "Final handoff/admin commit creates a new PR HEAD and therefore requires a fresh exact-head CI before review handoff is complete."
+  - "Existing T604 OS child-process lease timing test showed one non-deterministic failure before passing unchanged-head rerun."
