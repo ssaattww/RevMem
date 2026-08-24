@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev6
+# VS Code レビュー範囲トラッカー 設計書 rev7
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -814,6 +814,16 @@ sort切替候補:
 
 rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「行単位レビュー対象外」へ表示する。
 
+#### 16.3.1 PR Progress更新ライフサイクル
+
+Current ContextがPRを選択した場合、PR Progress計算はReview ContextsのPR差分取得・runtime登録が完了した後に開始する。未登録runtimeを「変更なし」や`0/0`として扱ってPR Progressをclearしてはならない。Review Contextsが対象`PullRequestDiffSnapshot`を登録できなかった場合は、そのfailureをoperation boundaryへ返し、存在しないsnapshotから進捗を推測しない。
+
+同一immutable snapshotは`contextId + baseSha + headSha + originalDiffId`で識別する。同じsnapshotに対する重複refreshは同一の進捗計算を共有または直列化し、互いをsupersedeしてcancelしてはならない。直前に同じsnapshotのcomplete Treeを受理済みなら、再計算中はそのTreeを保持し、新しいcomplete resultをatomicにswapする。別snapshotへidentityが変化した場合だけ旧計算をsupersedeでき、旧snapshotのcompletionを新しいTreeへpublishしない。
+
+初回計算では受理済みTreeが存在しないため、未完了状態を`0/0 = 100%`等の確定進捗へ読み替えない。PR Progressの結果が確定するまでは16.7のactivity progressで処理中であることを表示し、完了後にだけfile Treeをcomplete snapshotとしてpublishする。失敗時は17章のfail-closed契約に従い、Outputへ原因を残す。
+
+Current Context更新、Review Contexts更新、PR Progress再計算という上位operationには、処理全体のwall-clock経過時間だけを理由にするtimeoutを設けない。長時間処理はcount-only progressを継続して可視化する。Local Git subprocess、storage lock、GitHub request等の個別I/O境界が既存のbounded timeout・retry・failure contractを持つ場合はその契約を維持するが、上位operationの総経過時間を別のtimeoutとして重ねない。
+
 ### 16.4 Review Contexts View
 
 表示対象:
@@ -833,6 +843,8 @@ rename-onlyは「行以外の変更」、binaryおよびencoding対象外は「�
 - コンテキスト表示から削除
 
 コンテキスト表示から削除しても履歴を消さない。履歴削除は別操作とし、明示的な確認なしに実行しない。closed PRは既定でlayer無効とする。
+
+Review ContextsのVS Code Tree row identityは表示labelではなく`contextId`へ束縛する。同じPR番号・同じ表示labelを持つPRが別repositoryに存在しても異なるTreeItem identityとし、refresh前後で同じcontextは同じidentityを維持する。repository名やpathを表示identityのためにOutputへ露出させない。
 
 ### 16.5 Global Understanding View
 
@@ -872,9 +884,14 @@ Git、GitHub、永続化、revision mapping、PR Progress、Global再計算、Re
 
 ```text
 $(sync~spin) Review Range: PR進捗を計算
+$(sync~spin) Review Range: PR進捗を計算 · pull-request-files 24/87
 ```
 
-operation labelはpath、repository名、PR title等を含まないgenericな文言とする。複数処理が重なった場合は最後に開始したactive operationを表示し、tooltipへactive件数を示す。内側の処理終了後は直前のactive operation表示へ戻し、active処理が0件になった時だけactivity itemを隠す。開始・成功・失敗の各遷移はOutput logと同じoperation lifecycleで管理する。
+operation labelはpath、repository名、PR title等を含まないgenericな文言とする。複数処理が重なった場合は最後に開始したactive operationを表示し、tooltipへactive件数を示す。内側の処理終了後は直前のactive operation表示へ戻し、active処理が0件になった時だけactivity itemを隠す。開始・進捗・成功・失敗の各遷移はOutput logと同じoperation lifecycleで管理する。
+
+長時間operationのcount-only progressはallowlistされた固定stageだけを用いる。初期stageは少なくとも`repositories`、`pull-request-contexts`、`pull-request-files`を持つ。総数が確定している場合は`completed/total`、まだ確定していない場合は`completed`だけを表示できる。`completed = 0`も有効な進捗であり、未開始や非表示と混同しない。値は非負safe integerとし、totalがある場合は`completed <= total`を満たす。
+
+progressはrepository名、repository path、file path、file名、PR番号、PR title、source本文、credential、tokenを含めない。個別対象名を進捗表示へ追加する代わりに、匿名件数とgeneric operation labelだけで処理段階を識別する。同じstage/countの重複eventは抑止できるが、実際にcountが進んだ場合はactivity itemを更新する。
 
 短時間で同期完了するpure calculationだけを独立したactivityとして表示する必要はないが、その計算がI/Oを伴う上位operationの一部である場合は上位operationのstatusを維持する。
 
@@ -925,11 +942,19 @@ folder actionはTree rowの同一action位置をprimary UIとし、Command Palet
 
 ### 16.10 Output log
 
-`Output > Review Range`へ、observableな非同期operationのlifecycleを1行ずつ記録する。各entryはUTC timestamp、genericなoperation label、`START` / `OK` / `ERROR`、完了時のduration、失敗時のerror name/messageを持つ。
+`Output > Review Range`へ、observableな非同期operationのlifecycleを1行ずつ記録する。各entryはUTC timestamp、genericなoperation label、`START` / `PROGRESS` / `OK` / `ERROR`、完了時のduration、失敗時のerror name/messageを持つ。
 
-stack trace、source本文、GitHub token、credential、repository path、PR titleはOutputへ追加しない。error message内の改行は1行へ正規化する。同一のError objectがoperation wrapperとUI error boundaryの双方へ到達した場合は、同じfailureを重複記録しない。
+`PROGRESS` entryは16.7と同じallowlist済みstageと匿名件数だけを持つ。例:
 
-失敗したoperationはOutput channelを表示して診断可能にするが、editor focusを奪わない。PR ProgressやGlobal再計算などがfail-closedで空表示・未確認表示へ戻る場合も、取得attemptまたは処理段階と原因をOutputへ残し、無言で`undefined`へ変換しない。
+```text
+[2026-08-24T03:00:00.000Z] PROGRESS Review Contextsを更新 stage=repositories progress=2/3
+[2026-08-24T03:00:01.000Z] PROGRESS Review Contextsを更新 stage=pull-request-contexts progress=5/8
+[2026-08-24T03:00:02.000Z] PROGRESS PR進捗を計算 stage=pull-request-files progress=24/87
+```
+
+stack trace、source本文、GitHub token、credential、repository path、repository名、file path、file名、PR番号、PR titleはOutputへ追加しない。error message内の改行は1行へ正規化する。同一のError objectがoperation wrapperとUI error boundaryの双方へ到達した場合は、同じfailureを重複記録しない。
+
+失敗したoperationはOutput channelを表示して診断可能にするが、editor focusを奪わない。PR ProgressやGlobal再計算などがfail-closedで空表示・未確認表示へ戻る場合も、取得attemptまたは処理段階と原因をOutputへ残し、無言で`undefined`へ変換しない。長時間operationはwall-clock timeoutを追加する代わりに、処理段階が変化した時または匿名件数が進んだ時に`PROGRESS`を記録する。
 
 ## 17. エラー処理
 
@@ -960,6 +985,7 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 - PR進捗取得失敗: 進捗を表示せず、local Git・GitHub・cache等の取得attemptと最終原因をOutputへ記録
 - Global/Review Contexts等のfail-closed処理: UI上は不確実な結果を採用せず、failureをOutputへ記録してactivity statusを終了する
 - folder scope開始・再開失敗: 当該scopeとancestor aggregateを`failed`または`partial`へ戻し、未complete totalをcompleteとして表示しない。停止・cancel・stale generationはERRORとして扱わず、古い結果をpublishしない
+- Current Context、Review Contexts、PR Progressの上位operationは総経過時間だけではtimeoutさせない。個別I/Oの既存timeout・retry failureだけをfailureとして扱う
 
 ## 18. セキュリティとプライバシー
 
@@ -970,6 +996,7 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 - logへtoken、credential、source本文、stack traceを出さない
 - operation labelはrepository path、repository名、PR titleを含まないgenericな文言にする
 - private repositoryのpathやPR titleを診断logへ出さない
+- operation progressはallowlist済みstageと匿名件数だけを出力し、repository名、file名、PR番号、PR titleを出さない
 - folder scopeの開始は、file open時の所属folder直下file、またはユーザーが明示開始したfolder subtreeだけにcontent readを限定する。設定既定値とrestartはrepository全体の自動読込を発生させない
 - persisted stopped markerはrepository root identityとcanonical relative folder pathだけを保持し、source本文、file一覧、credential、未開始folderのcontent classificationを永続化しない
 
@@ -997,7 +1024,9 @@ stack trace、source本文、GitHub token、credential、repository path、PR ti
 
 PR Progress と Global Understanding の Tree projection は、完全な入力 snapshot を先に検証し、generation ごとに bounded stageで処理する。stage は決定的な item budget で区切り、各境界でschedulerへ制御を戻す。新しいgeneration、cancel、dispose、または失敗が発生した場合、古いstageは以後publishせず、現在のselection/open targetも古いnodeを受理しない。Global Treeの部分stageは同じgenerationの確定済みprefixだけを表示し、PR Progressは全validation/projection後の一回のcurrent-generation swapまで前のcomplete Treeを保持する。
 
-各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。
+PR Progressのsupersession単位はimmutable snapshot identityとする。同一`contextId + baseSha + headSha + originalDiffId`の重複refreshは別generationとして互いをabortさせず、同じ計算の完了を共有または順次再計算する。snapshot identityが変わった場合、explicit clear、disposeの場合だけ旧progress ownerを失効できる。Current Context依存refreshではReview Contextsによるdiff runtime登録をPR Progress計算より先に完了させる。
+
+各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。上位operationのwall-clock timeoutを性能対策として導入せず、bounded work schedulingと匿名count progressで応答性・可観測性を確保する。
 
 folder scopeの開始・再開・変更追従も同じbounded stageを使用する。file openのimplicit startは所属folderのdirect fileだけをwork itemにし、設定で許可したdescendantまたはexplicit subtree startだけがchild folderをenqueueできる。stopped descendantとinactive siblingはwork queueへ追加しない。scopeごとのgeneration、AbortSignal、direct result、child aggregateを分離し、child completionでparentを再集計するときも本文再読込ではなくcurrent child resultを使用する。stop、cancel、newer change、disposeで失効したstageはcache、tree、status、parent totalのいずれにもpublishしない。
 
@@ -1038,6 +1067,10 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - metadata/blob timeout error contract
 - 4 MiBを超えるmetadata/complete diff stdoutのstream取得
 - operation statusの開始・入れ子復元・終了とOutput logの成功・失敗・重複抑止
+- operation progressのallowlist stage、0を含む匿名count、Status Bar反映、`PROGRESS` Output、同一count重複抑止、privacy-safe validation
+- Review ContextsがPR runtimeを登録してからPR Progressを計算する依存順序
+- 同一immutable PR snapshotの重複refreshが互いをcancelせず、受理済みTreeを再計算中に保持すること
+- 同一PR番号・表示labelを持つ別repositoryのReview Contexts rowが`contextId` identityで衝突しないこと
 - fail-closedで握りつぶされる処理もOutputへfailureを残すこと
 - public barrel consumer contract
 - architecture validatorと設計依存行列の一致
@@ -1067,6 +1100,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - diff editor両side
 - dialog、Tree View、Status Bar
 - 非同期operation中のactivity statusと完了時の解除
+- count-only operation progressがStatus Barへ反映され、`Review Range` Output Channelへ`PROGRESS`として記録されること
 - `Review Range` Output Channelへの開始・成功・失敗log
 - 行単位レビュー対象外nodeの理由表示とtext diff非実行
 - restart後の復元
@@ -1084,6 +1118,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - stale lock、複数window競合
 - storage root identity変化または既存symlink/junction/reparseの検出時はfail closedし、current stateを推測・公開しない
 - PR Progress取得失敗が無言で非表示にならずOutputへ診断されること
+- Current Context/Review Contexts/PR Progressが長時間継続しても上位operation総時間だけではtimeoutせず、count progressを維持すること
 - folder scopeのread/enumeration、persisted markerのdecode、child aggregate、configuration refresh、cancelが失敗または競合しても、別scopeへの状態漏出、root-wide fallback scan、stale completionの公開を行わないこと
 
 CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
@@ -1111,8 +1146,12 @@ CI失敗時はtest log、生成物、source、test、設定、環境情報をart
 19. エラー時に不確実な範囲を確認済み表示しない
 20. 恒久設計が本ファイル1つに機能別で整理されている
 21. 4 MiBを超えるPR・revision差分をchild-process buffer超過なしで取得できる
-22. 非同期処理中にactivity statusを表示し、開始・成功・失敗をOutputへ記録できる
+22. 非同期処理中にactivity statusを表示し、開始・進捗・成功・失敗をOutputへ記録できる
 23. fail-closedで結果を非表示・未確認化する場合も原因をOutputから追跡できる
+24. Current ContextでPRを選択した場合、Review Contextsのdiff runtime登録後にPR Progressを計算し、初回からcomplete PR Progressを表示できる
+25. 同一immutable PR snapshotの重複refreshが互いをcancelせず、再計算中は直前のcomplete Treeを保持できる
+26. 長時間のCurrent Context、Review Contexts、PR Progress処理を総経過時間だけでtimeoutせず、repository・PR context・PR fileの匿名件数で進捗を確認できる
+27. 同じPR番号・表示labelを持つ別repositoryのReview Contexts行を独立identityとして表示できる
 
 ## 22. 将来検討
 
