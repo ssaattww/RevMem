@@ -184,6 +184,10 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     this.refreshController = controller;
     const generation = ++this.generation;
     try {
+      if (feedbackContext !== undefined) {
+        reportActiveOperationProgress({ stage: "repositories", completed: 0 }, feedbackContext);
+        reportActiveOperationProgress({ stage: "pull-request-contexts", completed: 0 }, feedbackContext);
+      }
       // The source owns the retryable acquisition; this method performs one
       // publication only after that read has completed successfully.
       let loaded = await runReviewContextsPureRead(
@@ -207,20 +211,16 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       if (feedbackContext !== undefined) {
         const repositoryCount = new Set(loaded.map((item) => item.context.repositoryId)).size;
         const pullRequestContextCount = loaded.filter((item) => item.context.kind === "pull-request").length;
-        if (repositoryCount > 0) {
-          reportActiveOperationProgress({
-            stage: "repositories",
-            completed: repositoryCount,
-            total: repositoryCount,
-          }, feedbackContext);
-        }
-        if (pullRequestContextCount > 0) {
-          reportActiveOperationProgress({
-            stage: "pull-request-contexts",
-            completed: pullRequestContextCount,
-            total: pullRequestContextCount,
-          }, feedbackContext);
-        }
+        reportActiveOperationProgress({
+          stage: "repositories",
+          completed: repositoryCount,
+          total: repositoryCount,
+        }, feedbackContext);
+        reportActiveOperationProgress({
+          stage: "pull-request-contexts",
+          completed: pullRequestContextCount,
+          total: pullRequestContextCount,
+        }, feedbackContext);
       }
       this.items = [...loaded];
       this.changed.fire();
