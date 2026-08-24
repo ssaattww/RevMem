@@ -1,0 +1,388 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: "2026-08-24T20:17:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84-PR85-REVIEW-FOLLOWUP
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+  commit_range: "3b46423aeef7ac62780d09b7ddfb2f838724043d..7c4566526cddfaaa6aa4329f502092a3eb28bd4d"
+
+verification:
+  capability: remote_ci_only
+  capability_evidence:
+    - "Repository mutation is performed through the GitHub connector; no checked-out writable repository is used as the authoritative execution target."
+    - "Formal validation evidence is GitHub Actions pull_request CI tied to exact HEAD SHA."
+  technical_head: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+  administrative_parent: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+  commit:
+    state: commit_pending
+    review_target_sha: null
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: "指摘対応 / レビュー前まで進め"
+    summary: "Address the existing PR #85 findings completely and stop immediately before review; do not merge."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use TDD, preserve diagnostic artifacts, commit/push reviewable changes, persist detailed report and concise PR comment, and verify only CI whose run head matches current PR HEAD."
+  - source: pr
+    reference: "PR #85 normal review findings"
+    summary: "Address PR85-NR-001, PR85-NR-002, and PR85-NR-003 only."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev7 sections 16.3.1, 16.7, 16.10"
+    summary: "Fail closed after Review Context registration failure, expose count-only in-flight progress, and preserve explicit diagnostic ownership."
+
+development_policy:
+  method: TDD
+  testing_order: "Add failing regressions, verify RED on exact-head CI, implement fixes, then verify GREEN and the full configured CI gate."
+  governing_source: "RevMem repository/project instructions"
+validation_plan:
+  commands:
+    - "GitHub Actions CI / Unit tests"
+    - "GitHub Actions CI / T405 Review Contexts follow-up tests"
+    - "GitHub Actions CI / T606 failure policy and diagnostics tests"
+    - "GitHub Actions CI / all configured integration and VS Code Extension Host gates"
+  required_failure_diagnostics:
+    - "test results"
+    - "standard output"
+    - "standard error"
+    - "combined command logs and investigation context"
+
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: "Files directly required to close PR85-NR-001/002/003"
+      reason: "Normal-review follow-up scope"
+    - path_or_operation: "reports/issue-84-pr85-review-followup-20260824201700.md"
+      reason: "Required detailed implementation report"
+    - path_or_operation: "handoffs/issue-84-pr85-review-followup-20260824201700.yaml"
+      reason: "Required transportable handoff"
+    - path_or_operation: "PR #85 metadata/comment"
+      reason: "Required PR update and concise implementation summary"
+  forbidden:
+    - path_or_operation: merge
+      reason: "User performs merge"
+    - path_or_operation: "unrelated implementation/design cleanup"
+      reason: "Outside finding-limited follow-up scope"
+
+scope:
+  - "PR85-NR-001: block PR Progress bootstrap when Review Contexts registration/acquisition fails"
+  - "PR85-NR-002: expose privacy-safe repository/PR-context count progress before and during acquisition completion"
+  - "PR85-NR-003: bind PR-file progress to the explicit PR Progress operation and isolate unrelated reads"
+non_goals:
+  - "Unrelated PR #85 refactoring"
+  - "Design revision"
+  - "Task-status changes"
+  - "Merge"
+
+files:
+  changed:
+    - path: test/unit/issue-84-pr85-review-followup.test.ts
+      purpose: "Finding-specific TDD regressions"
+    - path: test/unit/core-contracts.test.ts
+      purpose: "Default unit-suite wiring"
+    - path: src/t305-projection-refresh.ts
+      purpose: "NR-001 fail-closed ordering"
+    - path: src/ui/review-contexts/vscode-review-contexts-runtime.ts
+      purpose: "NR-002 acquisition-start progress"
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "NR-002 in-flight repository/PR-context counters"
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "NR-003 explicit feedback ownership and read-scope isolation"
+    - path: test/unit/t606-failure-policy-retry-diagnostics.test.ts
+      purpose: "Align existing lifecycle assertion with intentional PROGRESS events"
+    - path: reports/issue-84-pr85-review-followup-20260824201700.md
+      purpose: "Detailed implementation report"
+    - path: handoffs/issue-84-pr85-review-followup-20260824201700.yaml
+      purpose: "Review handoff"
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: "Confirmed required failure diagnostic artifact path already exists"
+    - path: reports/issue-84-pr85-normal-review-20260824.md
+      purpose: "Finding source and required actions"
+    - path: handoffs/issue-84-pr85-normal-review-20260824.yaml
+      purpose: "Reviewed HEAD and normal-review transport evidence"
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "No new task-status transition is required by this finding-limited PR follow-up."
+    - path_or_area: doc/design
+      reason: "Existing accepted rev7 behavior is authoritative; no design change required."
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Failure diagnostic artifact collection already satisfied the required policy."
+
+commands:
+  - command: "Exact-head pull_request CI on 549af56094cd44978325c68afabe531420c0ad45"
+    purpose: "TDD RED confirmation"
+    exit_code: 1
+    result: failed
+    head_sha: 549af56094cd44978325c68afabe531420c0ad45
+    evidence: "CI run 32706411741 failed Unit tests on exactly the three new PR85 finding regressions."
+  - command: "Exact-head pull_request CI on 7c4566526cddfaaa6aa4329f502092a3eb28bd4d"
+    purpose: "Technical implementation verification"
+    exit_code: 0
+    result: passed
+    head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+    evidence: "CI run 32707992739 completed successfully through VS Code Extension Host tests."
+
+tests:
+  - name: PR85-NR-001 regression
+    phase: red
+    result: failed
+    head_sha: 549af56094cd44978325c68afabe531420c0ad45
+    evidence: "refreshPullRequestProgress was called once after registration failure; expected zero."
+  - name: PR85-NR-002 regression
+    phase: red
+    result: failed
+    head_sha: 549af56094cd44978325c68afabe531420c0ad45
+    evidence: "No repository progress was observable while source.load remained pending."
+  - name: PR85-NR-003 regression
+    phase: red
+    result: failed
+    head_sha: 549af56094cd44978325c68afabe531420c0ad45
+    evidence: "Overlapping Global operation incorrectly owned PR-file progress."
+  - name: default Unit tests including PR85 follow-up
+    phase: verification
+    result: passed
+    head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+    evidence: "CI run 32707992739 Unit tests passed."
+  - name: T405 Review Contexts follow-up tests
+    phase: verification
+    result: passed
+    head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+    evidence: "CI run 32707992739 step 16 passed."
+  - name: T606 failure policy and diagnostics tests
+    phase: verification
+    result: passed
+    head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+    evidence: "CI run 32707992739 step 26 passed after aligning the pre-existing event-list assertion with PROGRESS."
+  - name: full configured CI including Extension Host
+    phase: verification
+    result: passed
+    head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+    evidence: "CI run 32707992739 all configured steps passed."
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 32707992739
+  head_sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+  conclusion: success
+  artifacts:
+    - id: 9512424405
+      name: ci-failure-diagnostics-32706411741-1
+      purpose: "TDD RED failure diagnostics with test output/stdout/stderr/log context"
+
+implementation:
+  outcome: completed
+  final_head: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+  commits:
+    - sha: 50a82988e50f96c51de4cc63635caf6822777a95
+      purpose: "Add PR85 finding regressions"
+    - sha: 549af56094cd44978325c68afabe531420c0ad45
+      purpose: "Connect regressions to default unit suite; RED head"
+    - sha: a7d238215094249fe91a0989ac1401592c5e1ef4
+      purpose: "NR-001 production fix"
+    - sha: 0e022668da13e2e2eeaac81b3f2dbe886b25c7aa
+      purpose: "NR-003 explicit PR Progress ownership"
+    - sha: 2872055c697ebd609b95888ad817de235dc0c5f7
+      purpose: "NR-002 acquisition-start progress"
+    - sha: 766ba458b1f5d3b49006e786f0f708e7249e9ec5
+      purpose: "NR-002 in-flight enumeration counters"
+    - sha: d3e6f86849946614baa4ca9ab5d88460717ebcad
+      purpose: "NR-003 isolate external/shared progress reads"
+    - sha: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+      purpose: "Keep T606 lifecycle assertions compatible with intentional PROGRESS events"
+  addressed_findings:
+    - id: PR85-NR-001
+      reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+      disposition: addressed
+      evidence: "Review Contexts failure now prevents selected PR Progress bootstrap; regression passes on technical HEAD."
+    - id: PR85-NR-002
+      reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+      disposition: addressed
+      evidence: "Review Contexts emits zero-count start progress and advances anonymous repository/PR-context counts during actual acquisition; blocked-acquisition regression passes."
+    - id: PR85-NR-003
+      reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+      disposition: addressed
+      evidence: "PR-file progress is explicitly bound to the PR Progress feedback context and unrelated reads cannot advance it; overlap regression passes."
+  failure_diagnostics:
+    - type: artifact
+      location: "GitHub Actions artifact 9512424405"
+      summary: "RED run diagnostic package containing test output and investigation context."
+  blocked_items: []
+  summary:
+    - "All three normal-review findings were addressed within finding-limited scope."
+    - "Technical implementation HEAD passed the full exact-head CI gate."
+    - "Administrative report/handoff commit still requires its own exact-head pull_request CI before review starts."
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: chat-review-worker
+      changed: false
+      reason: null
+    independence:
+      implemented_change: true
+      implemented_review_fix: true
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - "This packet is produced by the implementation follow-up worker and intentionally provides no review verdict."
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "Review has not been started; the next worker should perform finding-limited fix verification."
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-84-pr85-review-followup-20260824201700.md
+    - handoffs/issue-84-pr85-review-followup-20260824201700.yaml
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed implementation evidence is persisted before review."
+
+findings:
+  - id: PR85-NR-001
+    severity: high
+    origin: coverage_miss
+    location: src/t305-projection-refresh.ts
+    description: "Review Contexts registration failure previously did not block PR Progress bootstrap."
+    impact: "Could calculate against missing/stale runtime and recreate misleading progress."
+    evidence: "TDD RED on 549af560... and GREEN full CI on 7c456652...."
+    required_action: "Normal reviewer verifies skip-on-registration-failure behavior and regression."
+  - id: PR85-NR-002
+    severity: high
+    origin: coverage_miss
+    location: src/ui/review-contexts/vscode-review-contexts-runtime.ts and src/t405-review-contexts-runtime.ts
+    description: "Review Contexts repository/context progress previously appeared only after acquisition completed."
+    impact: "Long or stalled acquisition remained diagnostically generic."
+    evidence: "Blocked-acquisition RED on 549af560... and count-progress GREEN on 7c456652...."
+    required_action: "Normal reviewer verifies in-flight privacy-safe count reporting."
+  - id: PR85-NR-003
+    severity: medium
+    origin: coverage_miss
+    location: src/t405-pull-request-review-runtime.ts
+    description: "PR-file progress previously used implicit latest-operation ownership and allowed unrelated reads to advance the counter."
+    impact: "Progress could be logged under Global/other operation labels."
+    evidence: "Overlap RED on 549af560... and explicit ownership GREEN on 7c456652...."
+    required_action: "Normal reviewer verifies explicit PR Progress ownership and isolation."
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: "administrative report/handoff commit SHA"
+    reason: "The packet is content of that future commit and cannot self-reference its resulting SHA."
+not_applicable:
+  - field_or_area: merge
+    reason: "Merge is reserved to the user."
+remaining_risks:
+  - "The administrative report/handoff commit moves PR HEAD after technical verification; review must not start until an exact-head pull_request CI run for that final HEAD succeeds."
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: review_follow_up
+      accepted_scope:
+        - PR85-NR-001
+        - PR85-NR-002
+        - PR85-NR-003
+      technical_head: 7c4566526cddfaaa6aa4329f502092a3eb28bd4d
+      red_head: 549af56094cd44978325c68afabe531420c0ad45
+      red_ci_run: 32706411741
+      green_ci_run: 32707992739
+      outcome: completed
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: "Detailed implementation report persisted at reports/issue-84-pr85-review-followup-20260824201700.md; concise PR comment is to be posted after final administrative exact-head CI."
+
+extensions:
+  - namespace: revmem
+    payload:
+      tdd_red_artifact_id: 9512424405
+      original_normal_review_report: reports/issue-84-pr85-normal-review-20260824.md
+      original_normal_review_handoff: handoffs/issue-84-pr85-normal-review-20260824.yaml
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix verification
+  summary: "Perform finding-limited verification of PR85-NR-001 through PR85-NR-003 after confirming final PR current HEAD and exact-head CI success."
+  instructions:
+    - "Do not broaden review beyond the three supplied findings except for regressions directly introduced by their fixes."
+    - "Use the final PR current HEAD after this administrative commit, not technical HEAD 7c456652... as the current-head identity."
+    - "Accept CI evidence only when workflow run head_sha equals that final PR current HEAD."
+    - "Preserve original finding IDs and severities."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/issue-84-pr85-normal-review-20260824.md
+    - handoffs/issue-84-pr85-normal-review-20260824.yaml
+    - reports/issue-84-pr85-review-followup-20260824201700.md
+    - handoffs/issue-84-pr85-review-followup-20260824201700.yaml
+    - "CI run 32707992739 for technical HEAD 7c4566526cddfaaa6aa4329f502092a3eb28bd4d"
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-84-pr85-review-followup-20260824201700.yaml
+  packet_url: null
+  transport_note: "Persisted on the PR branch as an administrative handoff commit before the next review chat starts."
