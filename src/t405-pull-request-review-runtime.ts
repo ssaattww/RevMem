@@ -59,13 +59,6 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
           const descriptor = args[0];
           const identity = `${descriptor.side}\0${descriptor.revision}\0${descriptor.filePath}`;
           if (!active.seen.has(identity)) {
-            if (active.seen.size === 0) {
-              reportActiveOperationProgress({
-                stage: "pull-request-files",
-                completed: 0,
-                total: active.total,
-              }, feedbackContext);
-            }
             active.seen.add(identity);
             reportActiveOperationProgress({
               stage: "pull-request-files",

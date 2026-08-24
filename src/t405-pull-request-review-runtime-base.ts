@@ -1,5 +1,6 @@
 import {
   OperationCancelledError,
+  reportActiveOperationProgress,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
 } from "./application/operation-feedback/index";
@@ -488,6 +489,12 @@ export class PullRequestReviewRuntime<Uri> {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
         async (feedbackContext) => {
+          const total = registration.snapshot.files.length;
+          reportActiveOperationProgress({
+            stage: "pull-request-files",
+            completed: 0,
+            total,
+          }, feedbackContext);
           const work = this.createProgressWork(cancellation.signal);
           const calculated = await this.calculateProgress(contextId, cancellation.signal, work);
           assertCurrent();
@@ -520,6 +527,11 @@ export class PullRequestReviewRuntime<Uri> {
             isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, registration) && !cancellation.signal.aborted,
           });
           assertCurrent();
+          reportActiveOperationProgress({
+            stage: "pull-request-files",
+            completed: total,
+            total,
+          }, feedbackContext);
         },
         { maxAttempts: 3, signal: cancellation.signal },
       );
