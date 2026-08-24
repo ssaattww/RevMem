@@ -75,6 +75,22 @@ After the production changes, current-head CI reached T606 and failed because on
 
 The T606 regression was updated without weakening its terminal lifecycle contract: it still checks START/OK/ERROR ordering and additionally verifies that progress belongs to the Review Contexts operation. No production behavior was changed to satisfy the old assertion.
 
+## Persistent live PR smoke fixture
+
+A real GitHub pull request was created and intentionally left open for continuing Issue #84 smoke verification:
+
+- PR: #87 `Test: Issue #84 PR Progress live smoke`
+- Branch: `test/issue-84-pr-progress-smoke`
+- Base: `main`
+- HEAD: `bbaa477ada4d9c996763b0eacc55e57358aa1b14`
+- State: open, draft
+- Changed files: 1
+- Fixture: `test-fixtures/issue-84-pr-progress-smoke.txt`
+
+GitHub connector verification confirmed that PR #87 is resolvable as a real PR, exposes exactly one changed file, and the fixture content is readable from its head branch. The PR is intentionally retained rather than closed so it can be reused for future regression checks and HEAD-update smoke tests.
+
+Verification boundary: the GitHub connector cannot observe the local VS Code Extension UI itself. Therefore this report does **not** claim that the PR Progress tree was visually rendered in an actual editor session. What is confirmed here is the real GitHub-side PR/input state plus the full automated extension/test suite. Visual/editor-runtime confirmation remains a separate manual or instrumented Extension Host observation if required.
+
 ## Changed files in this follow-up
 
 - `test/unit/issue-84-pr85-review-followup.test.ts` — three finding-specific RED/Green regressions.
@@ -122,6 +138,8 @@ The successful run skipped failure-artifact collection, as expected.
 
 No known implementation blocker remains for the three supplied findings. This report is an implementation report, not an independent review verdict.
 
-After this report/handoff administrative commit is pushed, the resulting PR current HEAD must again have a matching `pull_request` CI run before review starts; the successful technical-head run above must not be substituted for that final administrative HEAD.
+The persistent real PR #87 provides a stable GitHub-side smoke target, but an actual VS Code UI observation has not been performed by this connector-only worker and is not represented as completed evidence.
+
+After this report administrative update is pushed, the resulting PR current HEAD must again have a matching `pull_request` CI run before review starts; the successful technical-head run above must not be substituted for that final administrative HEAD.
 
 Next action: normal fix-verification review of `PR85-NR-001` through `PR85-NR-003`, using the final PR current HEAD and its exact-head CI evidence.
