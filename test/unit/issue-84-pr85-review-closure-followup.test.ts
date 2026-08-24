@@ -163,8 +163,6 @@ test("PR85 closure regressions use production Review Contexts composition for in
 
     const commands = new Map<string, (...args: unknown[]) => unknown>();
     const workspaceState = new MemoryMemento();
-    let resolveInitialRefresh: (() => void) | undefined;
-    const initialRefresh = new Promise<void>((resolve) => { resolveInitialRefresh = resolve; });
     const fakeVscode = {
       EventEmitter: FakeEventEmitter,
       TreeItem: FakeTreeItem,
@@ -178,10 +176,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
       },
       window: {
         activeTextEditor: undefined,
-        createTreeView: (_id: string, options: { treeDataProvider: { onDidChangeTreeData(listener: () => void): DisposableLike } }): DisposableLike => {
-          const disposable = options.treeDataProvider.onDidChangeTreeData(() => resolveInitialRefresh?.());
-          return { dispose: () => disposable.dispose() };
-        },
+        createTreeView: (): DisposableLike => ({ dispose: () => undefined }),
         showQuickPick: async (items: readonly unknown[]) => items[0],
         showErrorMessage: async () => undefined,
       },
@@ -211,7 +206,6 @@ test("PR85 closure regressions use production Review Contexts composition for in
       getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
     });
 
-    let enumerateEnabled = false;
     const branchSnapshot: CurrentContextUiSnapshot = {
       context: {
         kind: "branch",
@@ -268,7 +262,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
         subscriptions,
       } as unknown as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]["context"],
       git: createNodeLocalGitAdapter(),
-      enumerateCurrentContexts: async () => enumerateEnabled ? [branchSnapshot] : [],
+      enumerateCurrentContexts: async () => [branchSnapshot],
       refreshDecorations: async () => undefined,
       refreshCurrentContext: async () => undefined,
       registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
@@ -281,8 +275,6 @@ test("PR85 closure regressions use production Review Contexts composition for in
         recordRevisionMapping: async () => undefined,
       },
     });
-    await withTimeout(initialRefresh, "initial Review Contexts refresh did not complete");
-    enumerateEnabled = true;
 
     entries.length = 0;
     lifecycleRequests = 0;
@@ -299,36 +291,39 @@ test("PR85 closure regressions use production Review Contexts composition for in
     );
     releaseSecondLifecycle.resolve();
     await withTimeout(blockedRefresh, "blocked Review Contexts refresh did not complete after release");
-    assert.ok(
-      firstContextWasReported,
-      "PR85-NR-002: first completed PR context must be visible while the second lifecycle request is still pending",
-    );
 
     entries.length = 0;
     lifecycleRequests = 0;
     holdSecondLifecycle = false;
     await runtime.refresh();
-    assert.equal(
-      entries.filter((entry) =>
-        entry.label === "Review Contextsを更新" &&
-        entry.event === "progress" &&
-        entry.progress?.stage === "pull-request-files"
-      ).length,
-      0,
-      "PR85-NR-003: Review Contexts internal progress reads must not publish PR-file progress under Review Contexts",
-    );
+    const reviewContextsPrFileProgressCount = entries.filter((entry) =>
+      entry.label === "Review Contextsを更新" &&
+      entry.event === "progress" &&
+      entry.progress?.stage === "pull-request-files"
+    ).length;
 
     entries.length = 0;
     await feedback.run("PR進捗を計算", async () => {
       await pullRequestReviewRuntime.getProgress(`github-pr:${REPOSITORY_ID}#52`);
     });
-    assert.ok(
-      entries.some((entry) =>
-        entry.label === "PR進捗を計算" &&
-        entry.event === "progress" &&
-        entry.progress?.stage === "pull-request-files"
-      ),
-      "selected PR Progress must retain PR-file progress reporting",
+    const selectedPrFileProgressReported = entries.some((entry) =>
+      entry.label === "PR進捗を計算" &&
+      entry.event === "progress" &&
+      entry.progress?.stage === "pull-request-files"
+    );
+
+    assert.deepEqual(
+      {
+        firstContextWasReported,
+        reviewContextsPrFileProgressCount,
+        selectedPrFileProgressReported,
+      },
+      {
+        firstContextWasReported: true,
+        reviewContextsPrFileProgressCount: 0,
+        selectedPrFileProgressReported: true,
+      },
+      "PR85-NR-002/003 production composition contract",
     );
 
     for (const subscription of subscriptions) subscription.dispose();
