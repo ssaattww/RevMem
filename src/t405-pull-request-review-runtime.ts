@@ -1,6 +1,5 @@
 import {
   reportActiveOperationProgress,
-  type OperationFeedbackContext,
 } from "./application/operation-feedback/index";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
