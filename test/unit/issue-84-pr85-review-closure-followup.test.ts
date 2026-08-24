@@ -20,6 +20,8 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
+import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
+import { refreshSelectedPullRequestProgress } from "../../src/t305-projection-refresh.js";
 import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
 import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
@@ -333,5 +335,125 @@ test("PR85 closure regressions use production Review Contexts composition for in
     moduleLoader._load = originalModuleLoad;
     globalThis.fetch = originalFetch;
     await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("PR85-NR-003 selected PR Progress reports file counts through the production Tree path on immutable-cache hits", async () => {
+  const baseSha = "a".repeat(40);
+  const headSha = "b".repeat(40);
+  const contextId = `github-pr:${REPOSITORY_ID}#52`;
+  const fileId = "file-1";
+  const snapshot: PullRequestDiffSnapshot = {
+    contextId,
+    baseSha,
+    headSha,
+    originalDiffId: `${baseSha}..${headSha}`,
+    files: [{
+      fileId,
+      oldPath: "src/example.ts",
+      newPath: "src/example.ts",
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      hunks: [{
+        oldStart: 1,
+        oldCount: 1,
+        newStart: 1,
+        newCount: 1,
+        lines: [
+          { kind: "deletion", oldLine: 1, text: "old" },
+          { kind: "addition", newLine: 1, text: "new" },
+        ],
+      }],
+    }],
+  };
+  const persistedContext = pullRequestState(52, headSha);
+  persistedContext.pullRequest = {
+    ...persistedContext.pullRequest!,
+    baseSha,
+    headSha,
+  };
+  persistedContext.files = {
+    [fileId]: {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      fileId,
+      currentPath: "src/example.ts",
+      previousPaths: [],
+      revisionId: headSha,
+      modifiedReviewed: [],
+      originalReviewedByDiff: {},
+      lineCount: 1,
+      updatedAt: "2026-08-24T12:00:00.000Z",
+    },
+  };
+  const persisted = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: persistedContext,
+    globalState: globalState(headSha),
+  };
+  let readCount = 0;
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: {
+      load: async () => structuredClone(persisted),
+      commit: async () => undefined,
+    },
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => {
+      readCount += 1;
+      return {
+        kind: "found",
+        content: descriptor.revision === baseSha ? "old" : "new",
+      };
+    },
+  });
+
+  const entries: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: (entry) => entries.push(entry),
+    revealLog: () => undefined,
+  });
+  const refreshTree = async (): Promise<void> => {
+    await refreshSelectedPullRequestProgress({
+      contextId,
+      source: runtime.progress,
+      activateProgress: (selectedContextId) => runtime.activateProgress(selectedContextId),
+      clearProgress: () => runtime.clearProgress(),
+      setSource: () => undefined,
+      refreshTree: () => undefined,
+    });
+  };
+
+  setActiveOperationFeedback(feedback);
+  try {
+    await refreshTree();
+    const readsAfterPrime = readCount;
+    assert.ok(readsAfterPrime > 0, "first selected Tree refresh must prime immutable full-text cache");
+
+    entries.length = 0;
+    await refreshTree();
+
+    assert.equal(readCount, readsAfterPrime, "second selected Tree refresh must use immutable cache");
+    const fileProgress = entries.filter((entry) =>
+      entry.event === "progress" && entry.progress?.stage === "pull-request-files"
+    );
+    assert.ok(fileProgress.some((entry) =>
+      entry.label === "PR進捗を計算" && entry.progress?.completed === 0 && entry.progress.total === 1
+    ), "cache-hit selected Tree refresh must report pull-request-files 0/1");
+    assert.ok(fileProgress.some((entry) =>
+      entry.label === "PR進捗を計算" && entry.progress?.completed === 1 && entry.progress.total === 1
+    ), "cache-hit selected Tree refresh must report pull-request-files 1/1");
+    assert.ok(fileProgress.every((entry) => entry.label === "PR進捗を計算"));
+  } finally {
+    setActiveOperationFeedback(undefined);
   }
 });
