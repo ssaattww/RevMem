@@ -47,6 +47,7 @@ import {
   type PullRequestRemoteDataPort,
 } from "./application/github-pr-diff/index";
 import {
+  reportActiveOperationProgress,
   reportActiveStorageLockDiagnostic,
   type OperationFeedbackContext,
 } from "./application/operation-feedback/index";
@@ -361,6 +362,24 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
     const progressByContextId: Record<string, ReviewContextListProgress> = {};
+    const observedRepositories = new Set<string>();
+    const observedPullRequestContexts = new Set<string>();
+    const reportRepository = (repositoryId: string): void => {
+      if (feedbackContext === undefined || observedRepositories.has(repositoryId)) return;
+      observedRepositories.add(repositoryId);
+      reportActiveOperationProgress({
+        stage: "repositories",
+        completed: observedRepositories.size,
+      }, feedbackContext);
+    };
+    const reportPullRequestContext = (contextId: string): void => {
+      if (feedbackContext === undefined || observedPullRequestContexts.has(contextId)) return;
+      observedPullRequestContexts.add(contextId);
+      reportActiveOperationProgress({
+        stage: "pull-request-contexts",
+        completed: observedPullRequestContexts.size,
+      }, feedbackContext);
+    };
     this.roots.clear();
 
     for (const snapshot of await this.enumerateCurrentContexts(signal)) {
@@ -369,11 +388,16 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
         this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
+        reportRepository(owner.repositoryId);
         const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
         assertCurrent();
         const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
         assertCurrent();
-        for (const context of synchronized) { saved.set(context.contextId, context); await checkpoint("collected-saved-context"); }
+        for (const context of synchronized) {
+          saved.set(context.contextId, context);
+          if (context.kind === "pull-request") reportPullRequestContext(context.contextId);
+          await checkpoint("collected-saved-context");
+        }
 
         if (owner.branchRef !== undefined) {
           const branch = synchronized.find((context) =>
