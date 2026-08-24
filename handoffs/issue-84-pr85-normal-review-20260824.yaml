@@ -1,0 +1,166 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: normal_review
+  generated_at: "2026-08-24T17:00:00+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84-PR85-NORMAL-REVIEW
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+target:
+  reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+  base_sha: 4535c2a3836c032cd7efaeaddbb543bedfcdb528
+  commit_range: "4535c2a3836c032cd7efaeaddbb543bedfcdb528..3b46423aeef7ac62780d09b7ddfb2f838724043d"
+  administrative_head_at_generation: 8a6f5840f7eb917f656340fb36862b6d2c2b3f00
+
+verification:
+  capability: remote_ci_only
+  reviewed_head_ci:
+    workflow: CI
+    run_id: 32688708721
+    head_sha: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+    conclusion: success
+    job_id: 97318369865
+    evidence: "Build/typecheck/architecture/lint/unit and all configured T602-T610/integration/VS Code Host gates passed on the exact reviewed HEAD."
+  failure_diagnostics:
+    state: present
+    workflow: .github/workflows/ci.yml
+    evidence: "Failure path collects test-output plus generated/source/test/environment/config context; implementation artifact 9506307871 exercised result/stdout/stderr/combined-log capture."
+  final_publication:
+    state: requires_exact_head_recheck_after_this_handoff_commit
+    rule: "Only a pull_request workflow run whose head_sha equals the resulting PR current HEAD may be reported as current-head CI."
+
+authoritative_requirements:
+  - source: issue
+    reference: "Issue #84 Review Contexts操作に失敗しました"
+    summary: "Make long-running Review Contexts diagnostics concrete without exposing file names or source content."
+  - source: pull_request
+    reference: "PR #85"
+    summary: "Fix initial PR Progress bootstrap, same-snapshot refresh cancellation, stable context identity, anonymous count progress, and avoid upper-level wall-clock timeout."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev7 sections 16.3.1, 16.7, 16.10"
+    summary: "PR Progress starts only after successful runtime registration; failed registration must not infer progress; long operations emit stage/count progress as work advances; progress remains privacy-safe."
+
+review:
+  mode: normal_review
+  phase: initial
+  reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+  reviewer:
+    identity: chat-review-worker
+    github_mutation_identity: ssaattww
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+  verdict: fail
+  required_coverage:
+    - requirement_and_design_conformance
+    - correctness_and_edge_cases
+    - scope_discipline
+    - changed_files_and_direct_dependencies
+    - api_data_config_workflow_compatibility
+    - error_handling_and_fail_closed_behavior
+    - security_privacy_secrets
+    - tests_and_validation
+    - current_head_ci
+    - reports_and_documentation
+    - regression_and_maintainability
+  coverage_summary:
+    requirement_and_design_conformance: "fail: PR85-NR-001, PR85-NR-002"
+    correctness_and_edge_cases: "fail: PR85-NR-001, PR85-NR-003"
+    scope_discipline: pass
+    changed_files_and_direct_dependencies: reviewed
+    api_data_config_workflow_compatibility: pass
+    error_handling_and_fail_closed_behavior: "fail: PR85-NR-001"
+    security_privacy_secrets: pass
+    tests_and_validation: "fail: missing regressions for all three findings"
+    current_head_ci: "pass for reviewed HEAD 3b46423... via run 32688708721"
+    reports_and_documentation: "design explicit; implementation diverges in blocking cases"
+    regression_and_maintainability: "medium risk captured by PR85-NR-003"
+  summary:
+    - "Two High design/requirement violations and one Medium concurrency/diagnostic-ownership defect were found."
+    - "Exact reviewed-head CI is Green but does not cover the failing scenarios."
+    - "No merge was performed."
+
+findings:
+  - id: PR85-NR-001
+    severity: high
+    blocking: true
+    origin: requirement_design_fail_closed
+    location: "src/t305-projection-refresh.ts::refreshCurrentContextDependents"
+    description: "After refreshReviewContexts throws, the function stores the error but still unconditionally launches refreshPullRequestProgress."
+    impact: "PR Progress can calculate against a missing/stale runtime and recreate empty/misleading state or secondary errors after the prerequisite registration failed."
+    evidence:
+      - "rev7 16.3.1 requires failure to return at the operation boundary and forbids progress inference when target snapshot registration fails."
+      - "New tests assert only successful ordering and do not assert skip-on-registration-failure."
+    required_action:
+      - "Do not invoke selected PR Progress when Review Contexts acquisition/registration fails."
+      - "Keep intended decoration/Global failure isolation independently."
+      - "Add a regression asserting refreshPullRequestProgress is not called on Review Contexts failure."
+    status: open
+
+  - id: PR85-NR-002
+    severity: high
+    blocking: true
+    origin: issue84_diagnostics_design
+    location: "src/ui/review-contexts/vscode-review-contexts-runtime.ts::ReviewContextsTreeProvider.refresh"
+    description: "Repository and PR-context counts are emitted only after source.load and publishLoaded have completed, as final completed=total observations."
+    impact: "The expensive Review Contexts acquisition remains generic START-only while it is actually running; a stall/failure still gives no repository/context-stage progress, leaving Issue #84's long-operation diagnosis unresolved."
+    evidence:
+      - "rev7 16.7/16.10 requires count-only progress during long operations and PROGRESS when stage/count advances; completed=0 is valid."
+      - "The Issue #84 regression test only checks stage strings/API existence and does not observe progress before acquisition completion."
+    required_action:
+      - "Emit repository/PR-context progress from actual acquisition/enumeration boundaries as work advances, before source.load returns."
+      - "Use only allowlisted anonymous counts and include zero/unknown-total observations when meaningful."
+      - "Add a blocked-acquisition behavior test that observes progress before completion."
+    status: open
+
+  - id: PR85-NR-003
+    severity: medium
+    blocking: false
+    origin: concurrency_diagnostic_ownership
+    location: "src/t405-pull-request-review-runtime.ts and src/application/operation-feedback/operation-feedback.ts"
+    description: "PR-file progress is reported without an explicit OperationFeedbackContext even though no-context reporting is assigned to the most recently started active operation. The base read callback already supplies the PR feedback context, but the wrapper drops it."
+    impact: "When PR Progress overlaps later Global/other operations, pull-request-files progress may be logged under the wrong label; unrelated reads of the same snapshot can also advance the shared PR-file count."
+    evidence:
+      - "OperationFeedback.reportProgress(context undefined) uses active.at(-1)."
+      - "refreshCurrentContextDependents starts PR Progress before later decoration/Global work, allowing overlapping lifecycles."
+      - "registration.readTextContent wrapper uses args[0] but does not forward args[1] feedbackContext to reportActiveOperationProgress."
+    required_action:
+      - "Bind every PR-file progress event to the PR Progress operation context."
+      - "Prevent unrelated Global reads from advancing the PR Progress counter."
+      - "Add an overlapping-operation regression asserting correct Output label/count ownership."
+    status: open
+
+report:
+  report_type: normal_review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-84-pr85-normal-review-20260824.md
+    - handoffs/issue-84-pr85-normal-review-20260824.yaml
+  reviewed_head: 3b46423aeef7ac62780d09b7ddfb2f838724043d
+  verdict: fail
+
+held: []
+unexplored: []
+unknown: []
+remaining_risks:
+  - "Administrative review-report/handoff commits move PR HEAD after the reviewed implementation HEAD; current-head CI must be rechecked on the resulting final PR HEAD and no different-SHA run may be substituted."
+
+next_action:
+  route: implementation_followup
+  instructions:
+    - "Address PR85-NR-001 through PR85-NR-003 without expanding scope."
+    - "Add behavior regressions before/with fixes consistent with RevMem TDD policy."
+    - "Push focused logical commits."
+    - "Require a pull_request CI run whose head_sha exactly equals the new current PR HEAD."
+    - "Return to the same normal reviewer for finding-limited closure; do not merge."
