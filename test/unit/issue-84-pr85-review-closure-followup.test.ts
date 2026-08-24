@@ -14,6 +14,7 @@ import {
   setActiveOperationFeedback,
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -192,8 +193,8 @@ test("PR85 closure regressions use production Review Contexts composition for in
         parseUri: (value) => value,
         openDiff: async () => undefined,
       },
-      getExclusionPolicy: () => ({ isExcluded: () => false }),
-    } as ConstructorParameters<typeof PullRequestReviewRuntime<string>>[0]);
+      getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    });
 
     let enumerateEnabled = false;
     const branchSnapshot: CurrentContextUiSnapshot = {
@@ -261,8 +262,11 @@ test("PR85 closure regressions use production Review Contexts composition for in
       getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
         pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
       reviewStateRepository: stateRepository,
-      reviewHistoryRecorder: { recordTransaction: async () => undefined },
-    } as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]);
+      reviewHistoryRecorder: {
+        recordContextCreated: async () => undefined,
+        recordRevisionMapping: async () => undefined,
+      },
+    });
     await initialRefresh;
     enumerateEnabled = true;
 
