@@ -1,0 +1,177 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review follow-up
+  generated_at: "2026-08-25T07:48:26+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84-PR85-NR003-FOLLOWUP-R3
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+
+target:
+  current_head: unknown
+  reviewed_head: deff9453fc382abca8e71406ee16232379785672
+  work_start_head: 97b47736f3c93742ac3439064a1d6fb3e2eb0857
+  technical_head: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+  commit_range: "97b47736f3c93742ac3439064a1d6fb3e2eb0857..68eaa552a81b535d54eb61d2f4e19d53977f1936"
+
+verification:
+  capability: remote_ci_only
+  technical_head: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+  technical_ci:
+    workflow: CI
+    run_id: 32785699847
+    head_sha: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+    conclusion: success
+  final_administrative_ci:
+    state: pending_after_report_commit
+    required_head_sha: unknown
+  exact_head_rule: "Use only a pull_request workflow run whose head SHA exactly matches the current PR HEAD; never substitute a run from another SHA."
+
+authoritative_requirements:
+  - source: normal_review
+    reference: PR85-NR-003
+    severity: medium
+    summary: "Selected PR Progress must report cache-independent PR-file counts through the real refreshSelectedPullRequestProgress -> activateProgress Tree path, without giving Review Contexts or Global ownership."
+  - source: repository_instruction
+    reference: RevMem project instructions
+    summary: "Use TDD, preserve diagnostic artifacts, keep commits reviewable, persist detailed report and handoff, update PR and comment, verify exact current-head CI, and do not merge."
+
+development_policy:
+  method: TDD
+  sequence:
+    - add_production_path_regression
+    - verify_exact_head_red
+    - implement_minimal_fix
+    - verify_exact_head_green
+    - publish_report_and_handoff
+    - verify_final_administrative_exact_head_ci
+
+scope:
+  - "PR85-NR-003 only"
+non_goals:
+  - "Reopen or redesign PR85-NR-001"
+  - "Reopen or redesign PR85-NR-002"
+  - "Task-status changes"
+  - "Design changes"
+  - "Unrelated timeout/flaky-test changes"
+  - "Merge"
+
+files:
+  changed:
+    - path: test/unit/issue-84-pr85-review-closure-followup.test.ts
+      purpose: "Production selected Tree/cache-hit NR-003 regression"
+    - path: src/t405-pull-request-review-runtime-base.ts
+      purpose: "Cache-independent start/end PR-file progress in activateProgress-owned feedback context"
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "Retain cache-miss incremental progress without duplicate start event; preserve explicit Review Contexts isolation"
+    - path: reports/issue-84-pr85-normal-review-fix-r3-20260825074826.md
+      purpose: "Detailed implementation report"
+    - path: handoffs/issue-84-pr85-normal-review-fix-r3-20260825074826.yaml
+      purpose: "Transportable review handoff"
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: "Confirmed failure diagnostics already include test output, stdout/stderr/log context and source/test/config evidence"
+    - path: reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md
+      purpose: "Latest normal-review finding source"
+  intentionally_untouched:
+    - path_or_area: tasks/tasks-status.md
+      reason: "Finding-limited PR follow-up does not change task status."
+    - path_or_area: doc/design
+      reason: "No behavior/design change beyond accepted contract."
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Diagnostic artifact workflow already satisfies policy."
+
+commands:
+  - command: "Exact-head pull_request CI on a6d843b37e2cb78b9aa62e340dfb1094b018b51d, rerun same job after unrelated transient Unit failure"
+    purpose: TDD_RED
+    result: failed_as_expected
+    evidence: "Second attempt reached T405 and failed only the new cache-hit selected Tree assertion: cache-hit selected Tree refresh must report pull-request-files 0/1."
+  - command: "Exact-head pull_request CI on 68eaa552a81b535d54eb61d2f4e19d53977f1936"
+    purpose: technical_green
+    result: passed
+    evidence: "CI run 32785699847 passed every configured gate through VS Code Extension Host tests."
+
+tests:
+  - name: "PR85-NR-003 selected PR Progress reports file counts through the production Tree path on immutable-cache hits"
+    phase: red
+    head_sha: a6d843b37e2cb78b9aa62e340dfb1094b018b51d
+    result: failed
+    evidence: "Second same-snapshot Tree refresh used immutable cache and produced no required 0/1 PR-file event before the fix."
+  - name: same_regression
+    phase: green
+    head_sha: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+    result: passed
+    evidence: "T405 step in CI 32785699847 passed, including cache-hit Tree reporting and existing Review Contexts ownership regressions."
+  - name: full_configured_ci
+    phase: verification
+    head_sha: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+    result: passed
+    evidence: "Build, typecheck, architecture, lint, Unit, all focused suites/integrations, Mock GitHub and VS Code Extension Host passed."
+
+ci:
+  required: true
+  technical:
+    workflow: CI
+    run_id: 32785699847
+    head_sha: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+    conclusion: success
+  red:
+    workflow: CI
+    run_id: 32785125487
+    head_sha: a6d843b37e2cb78b9aa62e340dfb1094b018b51d
+    finding_red_attempt: 2
+    conclusion: failure
+    artifact:
+      id: 9541252898
+      name: ci-failure-diagnostics-32785125487-2
+      purpose: "Formal NR-003 TDD RED diagnostics"
+  transient_red_attempt:
+    attempt: 1
+    classification: unrelated_preexisting_flake
+    note: "Stopped in an existing Git timeout Unit test before T405; no unrelated code change was made."
+
+implementation:
+  outcome: completed_technical_fix
+  commits:
+    - sha: a6d843b37e2cb78b9aa62e340dfb1094b018b51d
+      purpose: "Add NR-003 production selected Tree/cache-hit regression; formal RED head"
+    - sha: 68eaa552a81b535d54eb61d2f4e19d53977f1936
+      purpose: "Move cache-independent PR-file start/end reporting into actual activateProgress operation and retain isolated cache-miss increments"
+  finding:
+    id: PR85-NR-003
+    severity: medium
+    disposition: addressed_by_implementation
+    evidence:
+      - "activateProgress now emits 0/total inside its own PR進捗を計算 context before calculation."
+      - "activateProgress emits total/total only after successful/current Tree snapshot replacement."
+      - "Cache-miss wrapped reads can still emit intermediate counts."
+      - "Explicit-context getProgress remains free of PR-file progress, so Review Contexts isolation is preserved."
+      - "Production selected Tree/cache-hit regression passes on technical exact-head CI."
+
+review:
+  mode: not_applicable
+  verdict: not_applicable
+  reviewer_continuity:
+    required: true
+    next_reviewer: "same normal-review worker/chat that produced closure R2"
+  note: "This worker implemented the review fix and does not provide an independent review verdict."
+
+report:
+  type: implementation_report
+  paths:
+    - reports/issue-84-pr85-normal-review-fix-r3-20260825074826.md
+    - handoffs/issue-84-pr85-normal-review-fix-r3-20260825074826.yaml
+  pr_comment: pending_after_final_exact_head_ci
+
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final_administrative_head
+    reason: "The handoff is content of the administrative report commit and cannot self-reference the resulting commit SHA."
+  - field_or_fact: final_administrative_ci_run
+    reason: "Must be resolved only after the report/handoff commit updates PR HEAD."
+
+next_action: "Commit this report/handoff as one administrative change, wait for exact-head pull_request CI on that new PR HEAD, update PR #85 and post concise implementation summary, then return PR85-NR-003 to the same normal reviewer. Do not merge."
