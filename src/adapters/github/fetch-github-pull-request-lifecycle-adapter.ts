@@ -1,5 +1,9 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
+import {
+  reportActiveOperationProgress,
+  type OperationFeedbackContext,
+} from "../../application/operation-feedback/index";
 
 export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
 
@@ -30,6 +34,28 @@ interface PullRequestPayload {
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+const synchronizedPullRequestsByOperation = new WeakMap<OperationFeedbackContext, Set<string>>();
+
+const reportSynchronizedPullRequest = (
+  repository: GitHubRepositoryIdentity,
+  number: number,
+  feedbackContext: OperationFeedbackContext | undefined,
+): void => {
+  if (feedbackContext === undefined) return;
+  let synchronized = synchronizedPullRequestsByOperation.get(feedbackContext);
+  if (synchronized === undefined) {
+    synchronized = new Set<string>();
+    synchronizedPullRequestsByOperation.set(feedbackContext, synchronized);
+  }
+  const identity = `${repository.host}\0${repository.owner}\0${repository.repository}\0${number}`;
+  if (synchronized.has(identity)) return;
+  synchronized.add(identity);
+  reportActiveOperationProgress({
+    stage: "pull-request-contexts",
+    completed: synchronized.size,
+  }, feedbackContext);
+};
 
 const classify = (response: Response): GitHubPullRequestLifecycleUnavailableReason | undefined => {
   if (
@@ -65,7 +91,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
   public async fetchCurrent(
     repository: GitHubRepositoryIdentity,
     number: number,
-    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
   ): Promise<GitHubPullRequestLifecycleResult> {
     if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
@@ -101,6 +127,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
       !isObject(payload.base) || typeof payload.base.sha !== "string" || !OBJECT_ID.test(payload.base.sha) ||
       !isObject(payload.head) || typeof payload.head.sha !== "string" || !OBJECT_ID.test(payload.head.sha)
     ) return { kind: "unavailable", reason: "api" };
+    reportSynchronizedPullRequest(repository, number, feedbackContext);
     return {
       kind: "available",
       metadata: {
