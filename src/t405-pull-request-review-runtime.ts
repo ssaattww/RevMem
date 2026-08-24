@@ -79,6 +79,21 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     });
   }
 
+  public override async getProgress(
+    contextId: string,
+    feedbackContext?: Parameters<BasePullRequestReviewRuntime<Uri>["getProgress"]>[1],
+    signal?: AbortSignal,
+  ): ReturnType<BasePullRequestReviewRuntime<Uri>["getProgress"]> {
+    if (feedbackContext !== undefined) {
+      return super.getProgress(contextId, feedbackContext, signal);
+    }
+    const total = this.snapshotForContext(contextId)?.files.length ?? 0;
+    reportActiveOperationProgress({ stage: "pull-request-files", completed: 0, total });
+    const progress = await super.getProgress(contextId, undefined, signal);
+    reportActiveOperationProgress({ stage: "pull-request-files", completed: total, total });
+    return progress;
+  }
+
   public override async activateProgress(contextId: string): Promise<void> {
     const snapshot = this.snapshotForContext(contextId);
     if (snapshot === undefined) {
