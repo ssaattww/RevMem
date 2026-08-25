@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
   formatOperationFailureForUser,
   hasOperationFeedbackFailure,
+  reportActiveOperationProgress,
   runWithBoundedRetry,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
@@ -157,6 +158,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       element.layerEnabled === undefined ? undefined : `Layer: ${element.layerEnabled ? "ON" : "OFF"}`,
     ].filter((value): value is string => value !== undefined);
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+    item.id = `reviewRange.reviewContext:${element.context.contextId}`;
     item.description = descriptionParts.join(" · ");
     item.tooltip = this.tooltip(element);
     item.contextValue = element.context.kind === "pull-request"
@@ -182,6 +184,10 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     this.refreshController = controller;
     const generation = ++this.generation;
     try {
+      if (feedbackContext !== undefined) {
+        reportActiveOperationProgress({ stage: "repositories", completed: 0 }, feedbackContext);
+        reportActiveOperationProgress({ stage: "pull-request-contexts", completed: 0 }, feedbackContext);
+      }
       // The source owns the retryable acquisition; this method performs one
       // publication only after that read has completed successfully.
       let loaded = await runReviewContextsPureRead(
@@ -201,7 +207,15 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
         return;
       }
       if (generation !== this.generation) return;
-      if (published !== undefined) loaded = published;
+        if (published !== undefined) loaded = published;
+        if (feedbackContext !== undefined) {
+          const repositoryCount = new Set(loaded.map((item) => item.context.repositoryId)).size;
+          reportActiveOperationProgress({
+            stage: "repositories",
+            completed: repositoryCount,
+            total: repositoryCount,
+          }, feedbackContext);
+        }
       this.items = [...loaded];
       this.changed.fire();
     } catch (error) {
@@ -245,6 +259,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 }
 
 export interface RegisteredReviewContextsRuntime {
+  /** Recalculates the projection and propagates terminal acquisition failures to Current Context callers. */
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
   /** Optional Test-only read-only snapshot of the accepted tree projection. */
@@ -349,7 +364,15 @@ export function registerReviewContextsRuntime(
   void refreshWithErrorBoundary();
   return {
     refresh: async () => {
-      await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+      const outcome = await runOperation(
+        "Review Contextsを更新",
+        (feedbackContext) => provider.refresh(feedbackContext),
+        true,
+        false,
+      );
+      if (outcome === "terminal") {
+        throw new Error("Review Contextsの更新に失敗しました。");
+      }
     },
     refreshWithErrorBoundary,
     getProjectionSnapshotForTest: () => provider.getChildren(),

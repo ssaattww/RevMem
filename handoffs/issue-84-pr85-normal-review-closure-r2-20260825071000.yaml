@@ -1,0 +1,327 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix verification / normal-review closure R2
+  generated_at: "2026-08-25T07:10:00+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84-PR85-NORMAL-REVIEW-CLOSURE-R2
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+target:
+  current_head: deff9453fc382abca8e71406ee16232379785672
+  reviewed_head: deff9453fc382abca8e71406ee16232379785672
+  commit_range: "760ec468ff957af10ceb77cf21b251e26e54c800..deff9453fc382abca8e71406ee16232379785672"
+verification:
+  capability: remote_ci_only
+  capability_evidence:
+    - "Repository validation is available through GitHub Actions; review did not use a local repository executor as authoritative evidence."
+    - "Only pull_request CI whose head SHA equals the reviewed/current target is accepted."
+  technical_head: deff9453fc382abca8e71406ee16232379785672
+  administrative_parent: fe67ab16b3d4b92aa8c91f284d04efb0e786b15e
+  commit:
+    state: committed
+    review_target_sha: deff9453fc382abca8e71406ee16232379785672
+  push:
+    state: pushed
+    head_sha: deff9453fc382abca8e71406ee16232379785672
+  ci_wait:
+    state: ci_wait_completed
+    required_for: route_verification
+  final_publication:
+    sequence: not_applicable
+    pr_action: update
+authoritative_requirements:
+  - source: user_instruction
+    reference: "再レビュー"
+    summary: "Perform bounded fix verification in the same normal-review chat."
+  - source: repository_instruction
+    reference: "RevMem project instructions"
+    summary: "Use GitHub connector, exact-current-HEAD CI, detailed report, concise PR comment, handoff, and never merge."
+  - source: report
+    reference: "reports/issue-84-pr85-normal-review-closure-r1-20260824214800.md"
+    summary: "PR85-NR-002 High and PR85-NR-003 Medium remained open after R1."
+  - source: design
+    reference: "doc/design/vscode-review-range-tracker-design.md rev7 sections 16.3.1, 16.7, 16.10"
+    summary: "Long-running count-only progress must advance in-flight and PR-file progress must belong to the PR Progress operation."
+development_policy:
+  method: TDD for implementation fixes
+  testing_order: "Implementation worker supplied RED before fixes; reviewer verifies focused evidence and current-head CI."
+  governing_source: "RevMem repository/project instructions"
+validation_plan:
+  commands:
+    - "Exact-head pull_request CI for reviewed HEAD deff9453fc382abca8e71406ee16232379785672"
+    - "Focused production-composition verification for PR85-NR-002 and PR85-NR-003"
+  required_failure_diagnostics:
+    - test results
+    - standard output
+    - standard error
+    - combined logs and investigation context
+blocked: []
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: "reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md"
+      reason: "Detailed fix-verification report"
+    - path_or_operation: "handoffs/issue-84-pr85-normal-review-closure-r2-20260825071000.yaml"
+      reason: "Lossless continuation packet"
+    - path_or_operation: "PR #85 review/comment"
+      reason: "Concise review result"
+  forbidden:
+    - path_or_operation: implementation files
+      reason: "Reviewer must not implement fixes"
+    - path_or_operation: merge
+      reason: "User owns merge"
+scope:
+  - "Verify PR85-NR-002 High against its production lifecycle path and focused evidence."
+  - "Verify PR85-NR-003 Medium against the actual selected PR Progress Tree production path and sibling cache-hit/recalculation case."
+non_goals:
+  - "Unrelated PR refactoring"
+  - "Independent final review"
+  - "Merge"
+files:
+  changed:
+    - path: reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md
+      purpose: "Detailed review report"
+    - path: handoffs/issue-84-pr85-normal-review-closure-r2-20260825071000.yaml
+      purpose: "Review handoff"
+  inspected:
+    - path: src/adapters/github/fetch-github-pull-request-lifecycle-adapter.ts
+      purpose: "NR-002 per-lifecycle completion reporting"
+    - path: src/t405-review-contexts-runtime.ts
+      purpose: "Review Contexts production acquisition and progress composition"
+    - path: src/t405-pull-request-review-runtime.ts
+      purpose: "NR-003 progress ownership wrapper and selected progress behavior"
+    - path: src/t405-pull-request-review-runtime-base.ts
+      purpose: "Actual activateProgress path, lineReviewability and full-text cache semantics"
+    - path: src/t305-extension.ts
+      purpose: "Actual selected PR Progress Tree composition"
+    - path: test/unit/issue-84-pr85-review-closure-followup.test.ts
+      purpose: "Focused composition regression and fixture-path assessment"
+    - path: reports/issue-84-pr85-normal-review-fix-r2-20260825050722.md
+      purpose: "Implementation evidence and claims"
+    - path: handoffs/issue-84-pr85-normal-review-fix-r2-20260825050722.yaml
+      purpose: "Implementation handoff evidence"
+  intentionally_untouched:
+    - path_or_area: implementation/tests/design/workflow/task tracking
+      reason: "Reviewer does not modify implementation; workflow already contains diagnostic artifact collection."
+commands:
+  - command: "GitHub Actions CI run 32772191903"
+    purpose: "Exact reviewed-current-HEAD validation"
+    exit_code: 0
+    result: passed
+    head_sha: deff9453fc382abca8e71406ee16232379785672
+    evidence: "All configured gates through VS Code Extension Host succeeded."
+tests:
+  - name: "PR85-NR-002 actual production-composition regression"
+    phase: verification
+    result: passed
+    head_sha: deff9453fc382abca8e71406ee16232379785672
+    evidence: "Fixture blocks second real lifecycle fetch and observes pull-request-contexts completed=1 after first completion."
+  - name: "PR85-NR-003 Review Contexts ownership half"
+    phase: verification
+    result: passed
+    head_sha: deff9453fc382abca8e71406ee16232379785672
+    evidence: "Fixture observes no pull-request-files progress under Review Contexts."
+  - name: "PR85-NR-003 selected Tree/cache-hit production path"
+    phase: verification
+    result: failed
+    head_sha: deff9453fc382abca8e71406ee16232379785672
+    evidence: "Focused fixture does not call production refreshSelectedPullRequestProgress -> activateProgress path; current activateProgress emits counts only through readTextContent, which is skipped by full-text cache hits."
+ci:
+  required: true
+  workflow: CI
+  run_id: 32772191903
+  head_sha: deff9453fc382abca8e71406ee16232379785672
+  conclusion: success
+  artifacts: []
+implementation:
+  outcome: not_applicable
+  final_head: deff9453fc382abca8e71406ee16232379785672
+  commits: []
+  addressed_findings:
+    - id: PR85-NR-002
+      reviewed_head: deff9453fc382abca8e71406ee16232379785672
+      disposition: addressed
+      evidence: "Per-lifecycle production composition and current-head CI support closure."
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+    - "Reviewer did not implement changes."
+review:
+  mode: fix verification
+  reviewed_head: deff9453fc382abca8e71406ee16232379785672
+  reviewer:
+    identity: chat-review-worker
+    role: normal reviewer
+    continuity:
+      previous_reviewer_identity: chat-review-worker
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - "Same normal-review chat is intentionally reused for fix verification per chat-review-worker skill."
+  verdict: fail
+  required_coverage:
+    - criterion: requirement_and_design_conformance
+      disposition: checked_finding
+      evidence: "NR-003 production selected Tree/cache-hit diagnostics remain incomplete."
+    - criterion: correctness_and_edge_cases
+      disposition: checked_finding
+      evidence: "activateProgress cache-hit path can skip pull-request-files observations."
+    - criterion: scope_discipline
+      disposition: checked_no_finding
+      evidence: "Fix scope remained finding-limited."
+    - criterion: changed_files_and_dependencies
+      disposition: checked_finding
+      evidence: "Actual t305 selected Tree composition differs from focused fixture."
+    - criterion: api_data_configuration_workflow_compatibility
+      disposition: checked_no_finding
+      evidence: "No incompatible contract change found."
+    - criterion: error_handling_and_failure_diagnostics
+      disposition: checked_no_finding
+      evidence: "Diagnostic workflow exists and RED artifacts were produced."
+    - criterion: security_and_secret_handling
+      disposition: checked_no_finding
+      evidence: "Progress payload remains count-only."
+    - criterion: tests_and_validation_adequacy
+      disposition: checked_finding
+      evidence: "NR-003 selected-side test manually calls getProgress instead of production activateProgress path."
+    - criterion: current_head_ci
+      disposition: checked_no_finding
+      evidence: "Run 32772191903 exactly matches reviewed HEAD and succeeded."
+    - criterion: report_tracking_documentation_accuracy
+      disposition: checked_finding
+      evidence: "Implementation report overstates cache-hit selected-tree coverage."
+    - criterion: regression_and_maintainability
+      disposition: checked_finding
+      evidence: "Cache-independent progress is implemented in getProgress but not actual selected Tree activateProgress."
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix:
+      - finding_id: PR85-NR-002
+        required_action: "Advance pull-request-contexts at each completed PR lifecycle while later PRs may remain pending."
+        production_path: "T405ReviewContextsSource.load -> readSynchronizedRepository -> FetchGitHubPullRequestLifecycleAdapter.fetchCurrent"
+        actual_composition_fixture: "issue-84-pr85-review-closure-followup.test.ts with registerT405ReviewContextsRuntime and blocked second lifecycle fetch"
+        focused_evidence: "RED 32733580907, intermediate 32734105057, current-head Green 32772191903"
+      - finding_id: PR85-NR-003
+        required_action: "Keep PR-file progress owned by selected PR Progress and preserve it on actual Tree/cache-hit recalculation."
+        production_path: "t305-extension refreshPullRequestProgressForSelection -> refreshSelectedPullRequestProgress -> PullRequestReviewRuntime.activateProgress"
+        actual_composition_fixture: "MISMATCH: supplied fixture manually wraps PullRequestReviewRuntime.getProgress instead of invoking selected Tree activateProgress"
+        focused_evidence: "Current code inspection shows activateProgress reports through readTextContent only; readCachedFullText bypasses callback on cache hit."
+  validation_assessment:
+    - item: exact_current_head_ci
+      result: supported
+      evidence: "32772191903 success for deff9453fc382abca8e71406ee16232379785672"
+    - item: PR85-NR-002_closure
+      result: supported
+      evidence: "Actual production fixture and implementation path match."
+    - item: PR85-NR-003_closure
+      result: failed
+      evidence: "Selected-side actual composition fixture is mismatched and code retains cache-hit observation gap."
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "PR85-NR-002 closes."
+    - "PR85-NR-003 remains Medium/open."
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md
+    - handoffs/issue-84-pr85-normal-review-closure-r2-20260825071000.yaml
+  reviewed_head: deff9453fc382abca8e71406ee16232379785672
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed fix-verification result persisted."
+findings:
+  - id: PR85-NR-003
+    severity: medium
+    origin: coverage_miss
+    location: "src/t405-pull-request-review-runtime.ts; src/t305-extension.ts; test/unit/issue-84-pr85-review-closure-followup.test.ts"
+    description: "Selected PR-file progress is fixed on getProgress, but the actual PR Progress Tree uses activateProgress; cache-independent reporting is absent from that production path and the fixture bypasses it."
+    impact: "Same-snapshot/cache-hit selected PR recalculations can lose concrete pull-request-files diagnostics even though Review Contexts ownership leakage is removed."
+    evidence: "t305-extension composes Tree refresh through activateProgress; activateProgress reports via readTextContent wrapper only; readCachedFullText skips registration callback on cache hit; fixture manually calls getProgress."
+    required_action: "Move/duplicate cache-independent PR-file reporting into the actual activateProgress operation context without leaking it to Review Contexts/Global; add a production selected-Tree/cache-hit regression and exact-head CI."
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: actual_visual_status_bar_rendering
+    reason: "GitHub connector cannot observe a running local VS Code UI; code-level production composition is sufficient for the finding."
+not_applicable:
+  - field_or_area: merge
+    reason: "Merge is user-owned."
+remaining_risks:
+  - "PR85-NR-003 remains unresolved on the selected Tree/cache-hit path."
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: current
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: deff9453fc382abca8e71406ee16232379785672
+      verdict: fail
+      finding_dispositions:
+        PR85-NR-002: closed
+        PR85-NR-003: open
+      validation: "Exact-head CI 32772191903 passed; focused NR-003 production-path evidence failed."
+  - source_skill: report-writer
+    output_contract_version: current
+    content_type: text/markdown
+    payload: "Detailed report persisted at reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md"
+extensions:
+  - namespace: revmem.review
+    payload:
+      diagnostic_workflow_present: true
+      merge_performed: false
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review follow-up
+  summary: "Address PR85-NR-003 only, using the actual selected PR Progress Tree/cache-hit path."
+  instructions:
+    - "Add a TDD regression that primes the full-text cache, then invokes the production selected Tree path refreshSelectedPullRequestProgress -> activateProgress."
+    - "Assert pull-request-files remains owned by PR進捗を計算 and concrete progress exists on cache hit."
+    - "Do not reintroduce Review Contexts/Global PR-file progress."
+    - "Obtain exact-current-HEAD pull_request CI and return to the same normal-review chat."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/issue-84-pr85-normal-review-closure-r2-20260825071000.md
+    - handoffs/issue-84-pr85-normal-review-closure-r2-20260825071000.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-84-pr85-normal-review-closure-r2-20260825071000.yaml
+  packet_url: null
+  transport_note: "Use this packet plus the detailed report for the next implementation follow-up; permissions must be re-authorized by the user in the next chat."

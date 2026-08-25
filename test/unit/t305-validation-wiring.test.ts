@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import {
+  refreshCurrentContextDependents,
+} from "../../src/t305-projection-refresh.js";
 import "./global-understanding-ui.test";
 import "./t505-review-findings.test";
 import "./t505-refresh-invalidation.test";
@@ -28,4 +31,27 @@ test("T305 preserves every pre-existing unit suite exactly once while adding its
   );
   assert.equal(suiteNames.includes("current-context-ui.test.js"), true);
   assert.equal(suiteNames.includes("vscode-current-context-runtime.test.js"), true);
+});
+
+test("Issue #84 registers the selected PR runtime before PR Progress refresh", async () => {
+  let pullRequestRuntimeRegistered = false;
+  let progressObservedRegistration = false;
+
+  await refreshCurrentContextDependents({
+    refreshPullRequestProgress: async () => {
+      progressObservedRegistration = pullRequestRuntimeRegistered;
+    },
+    refreshDecorations: async () => undefined,
+    refreshGlobal: async () => undefined,
+    refreshReviewContexts: async () => {
+      pullRequestRuntimeRegistered = true;
+    },
+    reportPullRequestProgressError: async () => undefined,
+  });
+
+  assert.equal(
+    progressObservedRegistration,
+    true,
+    "PR Progress must not run before Review Contexts has registered the selected PR diff runtime",
+  );
 });

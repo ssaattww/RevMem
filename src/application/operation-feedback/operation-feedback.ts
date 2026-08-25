@@ -1,7 +1,20 @@
 import type { PullRequestDiffAcquisitionAttempt } from "../github-pr-diff/contracts";
 
+/** Privacy-safe, count-only stages accepted by the shared operation feedback boundary. */
+export type OperationProgressStage =
+  | "repositories"
+  | "pull-request-contexts"
+  | "pull-request-files";
+
+/** One anonymous numeric progress observation for a long-running operation. */
+export interface OperationProgress {
+  readonly stage: OperationProgressStage;
+  readonly completed: number;
+  readonly total?: number;
+}
+
 /** Lifecycle event written to the Review Range diagnostic output. */
-export type OperationLogEvent = "started" | "succeeded" | "failed";
+export type OperationLogEvent = "started" | "progress" | "succeeded" | "failed";
 
 /** One source-content-free diagnostic entry for an extension operation. */
 export interface OperationLogEntry {
@@ -11,6 +24,8 @@ export interface OperationLogEntry {
   readonly label: string;
   /** Lifecycle stage. */
   readonly event: OperationLogEvent;
+  /** Anonymous numeric progress for a progress event. */
+  readonly progress?: OperationProgress;
   /** Elapsed milliseconds for completed operations. */
   readonly durationMs?: number;
   /** Error class when the operation failed with an Error instance. */
@@ -22,7 +37,7 @@ export interface OperationLogEntry {
 /** Runtime-neutral UI boundary for operation status and diagnostic output. */
 export interface OperationFeedbackHost {
   /** Shows the most recently started active operation and total active count. */
-  showBusy(label: string, activeCount: number): void;
+  showBusy(label: string, activeCount: number, progress?: OperationProgress): void;
   /** Clears the operation activity status when no operation remains active. */
   clearBusy(): void;
   /** Appends one structured lifecycle entry to the diagnostic output. */
@@ -91,12 +106,18 @@ interface ActiveOperation {
   readonly id: number;
   readonly label: string;
   readonly startedAt: number;
+  progress?: OperationProgress;
   /** A handled child failure makes the enclosing lifecycle terminally failed. */
   boundaryFailure?: unknown;
 }
 
 const MAX_OPERATION_LABEL_LENGTH = 96;
 const MAX_DIAGNOSTIC_LINE_LENGTH = 512;
+const SAFE_OPERATION_PROGRESS_STAGES = new Set<OperationProgressStage>([
+  "repositories",
+  "pull-request-contexts",
+  "pull-request-files",
+]);
 
 const requireLabel = (label: string): string => {
   const normalized = label.trim();
@@ -117,6 +138,47 @@ const singleLine = (value: string): string =>
 const boundedSingleLine = (value: string, maximum = MAX_DIAGNOSTIC_LINE_LENGTH): string => {
   const normalized = singleLine(value);
   return normalized.length <= maximum ? normalized : `${normalized.slice(0, Math.max(0, maximum - 1))}…`;
+};
+
+const validateOperationProgressCount = (value: unknown, field: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new RangeError(`${field} must be a non-negative safe integer.`);
+  }
+  return value as number;
+};
+
+const validateOperationProgress = (progress: OperationProgress): OperationProgress => {
+  if (!SAFE_OPERATION_PROGRESS_STAGES.has(progress.stage)) {
+    throw new TypeError("operation progress stage is not allowlisted");
+  }
+  const completed = validateOperationProgressCount(progress.completed, "operation progress completed");
+  const total = progress.total === undefined
+    ? undefined
+    : validateOperationProgressCount(progress.total, "operation progress total");
+  if (total !== undefined && completed > total) {
+    throw new RangeError("operation progress completed exceeds total");
+  }
+  return Object.freeze({
+    stage: progress.stage,
+    completed,
+    ...(total === undefined ? {} : { total }),
+  });
+};
+
+const sameOperationProgress = (
+  left: OperationProgress | undefined,
+  right: OperationProgress,
+): boolean => left?.stage === right.stage &&
+  left.completed === right.completed &&
+  left.total === right.total;
+
+/** Formats one fixed-label anonymous progress value for status and diagnostic surfaces. */
+export const formatOperationProgress = (progress: OperationProgress): string => {
+  const validated = validateOperationProgress(progress);
+  const count = validated.total === undefined
+    ? String(validated.completed)
+    : `${validated.completed}/${validated.total}`;
+  return `${validated.stage} ${count}`;
 };
 
 const SAFE_ERROR_NAMES = new Set([
@@ -359,6 +421,7 @@ const sanitizedFailureMessage = (error: unknown): string => {
   const errorName = error instanceof Error ? safeErrorName(error) : undefined;
   if (errorName === "GitCommandFailedError") return "Git command failed.";
   if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
+  if (errorName === "OperationCancelledError") return "Operation was superseded by a newer refresh.";
 
   const code = safeErrorCode(error);
   const base = code === undefined
@@ -460,6 +523,26 @@ export class OperationFeedback {
     }
   }
 
+  /** Updates one active operation with an anonymous count-only stage. */
+  public reportProgress(progress: OperationProgress, context?: OperationFeedbackContext): void {
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : context === undefined
+        ? this.active.at(-1)
+        : undefined;
+    if (active === undefined || active.boundaryFailure !== undefined) return;
+    const validated = validateOperationProgress(progress);
+    if (sameOperationProgress(active.progress, validated)) return;
+    active.progress = validated;
+    this.host.appendLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: active.label,
+      event: "progress",
+      progress: validated,
+    });
+    this.publishStatus();
+  }
+
   /** Records an error intentionally handled by a fail-closed or UI boundary. */
   public reportFailure(label: string, error: unknown, context?: OperationFeedbackContext): void {
     const identity = errorIdentity(error);
@@ -551,7 +634,7 @@ export class OperationFeedback {
       this.host.clearBusy();
       return;
     }
-    this.host.showBusy(latest.label, this.active.length);
+    this.host.showBusy(latest.label, this.active.length, latest.progress);
   }
 }
 
@@ -559,14 +642,19 @@ export class OperationFeedback {
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const stage = entry.event === "started"
     ? "START"
-    : entry.event === "succeeded"
-      ? "OK"
-      : "ERROR";
+    : entry.event === "progress"
+      ? "PROGRESS"
+      : entry.event === "succeeded"
+        ? "OK"
+        : "ERROR";
+  const progress = entry.event === "progress" && entry.progress !== undefined
+    ? ` stage=${entry.progress.stage} progress=${entry.progress.completed}${entry.progress.total === undefined ? "" : `/${entry.progress.total}`}`
+    : "";
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
   const error = entry.event !== "failed" || entry.message === undefined
     ? ""
     : `: ${entry.errorName === undefined ? "" : `${boundedSingleLine(entry.errorName, 80)}: `}${boundedSingleLine(entry.message, 320)}`;
-  return boundedSingleLine(`[${entry.timestamp}] ${stage} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${duration}${error}`);
+  return boundedSingleLine(`[${entry.timestamp}] ${stage} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${progress}${duration}${error}`);
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
@@ -594,6 +682,14 @@ export const runWithActiveOperationFeedback = <T>(
   if (parentContext !== undefined) return execute(parentContext);
   if (feedback === undefined) return execute(undefined);
   return feedback.run(label, execute);
+};
+
+/** Reports anonymous count-only progress to the current or explicitly owned operation. */
+export const reportActiveOperationProgress = (
+  progress: OperationProgress,
+  context?: OperationFeedbackContext,
+): void => {
+  (context?.owner ?? activeOperationFeedback)?.reportProgress(progress, context);
 };
 
 /** Reports a handled failure to active diagnostics when the UI host is installed. */

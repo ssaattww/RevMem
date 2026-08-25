@@ -350,7 +350,13 @@ test("T606 passes one explicit feedback context through the production Review Co
     await new Promise((resolve) => setImmediate(resolve));
     await commands.get("reviewRange.refreshReviewContexts")!();
     assert.equal(receivedContext, true);
-    assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "succeeded", "started", "failed"]);
+    assert.deepEqual(
+      host.logs.filter((entry) => entry.event !== "progress").map((entry) => entry.event),
+      ["started", "succeeded", "started", "failed"],
+    );
+    const progress = host.logs.filter((entry) => entry.event === "progress");
+    assert.ok(progress.length > 0);
+    assert.equal(progress.every((entry) => entry.label === "Review Contextsを更新"), true);
     assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 1);
   } finally {
     setActiveOperationFeedback(undefined);

@@ -1,5 +1,6 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
+import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
 
 export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
 
@@ -65,7 +66,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
   public async fetchCurrent(
     repository: GitHubRepositoryIdentity,
     number: number,
-    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
   ): Promise<GitHubPullRequestLifecycleResult> {
     if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
@@ -101,6 +102,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
       !isObject(payload.base) || typeof payload.base.sha !== "string" || !OBJECT_ID.test(payload.base.sha) ||
       !isObject(payload.head) || typeof payload.head.sha !== "string" || !OBJECT_ID.test(payload.head.sha)
     ) return { kind: "unavailable", reason: "api" };
+    void feedbackContext;
     return {
       kind: "available",
       metadata: {

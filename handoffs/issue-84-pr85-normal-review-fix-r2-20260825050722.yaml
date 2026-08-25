@@ -1,0 +1,123 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: normal-review-fix-r2
+  generated_at: "2026-08-25T05:07:22+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #84 / PR #85"
+task_id: ISSUE-84-PR85-NORMAL-REVIEW-FIX-R2
+branch: fix/issue-84-pr-progress-diagnostics
+base_ref: main
+
+target:
+  reviewed_head: 760ec468ff957af10ceb77cf21b251e26e54c800
+  technical_head: fe67ab16b3d4b92aa8c91f284d04efb0e786b15e
+  administrative_head: unknown
+  remaining_findings_at_start:
+    - PR85-NR-002
+    - PR85-NR-003
+
+verification:
+  capability: remote_ci_only
+  technical_head: fe67ab16b3d4b92aa8c91f284d04efb0e786b15e
+  technical_ci:
+    workflow: CI
+    run_id: 32771179020
+    head_sha: fe67ab16b3d4b92aa8c91f284d04efb0e786b15e
+    conclusion: success
+  final_administrative_ci:
+    state: pending
+    required: true
+    rule: "Use only a workflow run whose head SHA matches the final PR current HEAD."
+  red_evidence:
+    head_sha: eb69a4723031752ff90c5271a6a73e84087cc9a2
+    run_id: 32733580907
+    artifact_id: 9522364043
+    result: failed
+    observed:
+      first_context_was_reported: false
+      review_contexts_pr_file_progress_count: 1
+      selected_pr_file_progress_reported: true
+  intermediate_evidence:
+    - head_sha: 878cc4920518fc22a9d4721aeccfc49e127faf95
+      run_id: 32734105057
+      artifact_id: 9522549978
+      result: failed
+      meaning: "NR-002 became Green while NR-003 remained reproducible."
+    - head_sha: 8e6b4bd6967995ebd5dfda2b412d43091224e7f0
+      run_id: 32770862016
+      artifact_id: 9536160412
+      result: failed
+      meaning: "Review Contexts PR-file leakage became zero, exposing cache-hit suppression of selected PR progress."
+
+scope:
+  - "PR85-NR-002: report completed PR-context count immediately while later PR synchronization can remain pending."
+  - "PR85-NR-003: keep PR-file progress out of Review Contexts while preserving selected PR Progress reporting."
+non_goals:
+  - "Re-review PR #85"
+  - "Unrelated refactoring"
+  - "Task-status transition"
+  - "Merge"
+
+implementation:
+  outcome: completed
+  findings:
+    - id: PR85-NR-002
+      severity: high
+      disposition: addressed
+      evidence: "Actual production-composition regression observes pull-request-contexts completed=1 while second lifecycle request is held pending."
+    - id: PR85-NR-003
+      severity: medium
+      disposition: addressed
+      evidence: "Actual production-composition regression observes zero Review Contexts pull-request-files events and selected PR progress still reports pull-request-files after cache warming."
+  commits:
+    - sha: 878cc4920518fc22a9d4721aeccfc49e127faf95
+      purpose: "Per-context lifecycle progress for NR-002."
+    - sha: 6f1f7fd9de1c4629495b1b5b9a4c22fe22621f79
+      purpose: "Remove Review Contexts PR-file ownership leakage."
+    - sha: 8e6b4bd6967995ebd5dfda2b412d43091224e7f0
+      purpose: "Lint-only unused import correction."
+    - sha: fe67ab16b3d4b92aa8c91f284d04efb0e786b15e
+      purpose: "Preserve selected PR-file progress independently of cache reads."
+  changed_production_paths:
+    - src/adapters/github/fetch-github-pull-request-lifecycle-adapter.ts
+    - src/t405-review-contexts-runtime.ts
+    - src/t405-pull-request-review-runtime.ts
+  regression_paths:
+    - test/unit/issue-84-pr85-review-closure-followup.test.ts
+    - test/unit/t405-review-followup.test.ts
+
+failure_diagnostics:
+  workflow_present: true
+  workflow_change_required: false
+  observed_artifacts:
+    - 9522364043
+    - 9522549978
+    - 9536080648
+    - 9536160412
+  content_summary: "Failure runs retained test results, stdout/stderr command logs, generated output, source/test context, environment metadata, and CI configuration."
+
+report:
+  report_type: implementation_report
+  path: reports/issue-84-pr85-normal-review-fix-r2-20260825050722.md
+  handoff_path: handoffs/issue-84-pr85-normal-review-fix-r2-20260825050722.yaml
+  pr_comment: pending_until_final_administrative_ci
+
+review:
+  mode: not_applicable
+  verdict: not_applicable
+  summary: "This worker implemented review fixes only. Finding-limited fix verification must be performed separately."
+
+blocked: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final_administrative_head_and_ci
+    reason: "This handoff commit changes PR HEAD; exact-head CI must be observed after publication."
+
+next_action:
+  - "Wait for CI whose head SHA exactly equals the final administrative PR HEAD."
+  - "If all gates pass, post concise implementation summary to PR #85."
+  - "Return PR #85 for finding-limited review of PR85-NR-002 and PR85-NR-003."
+  - "Do not merge."

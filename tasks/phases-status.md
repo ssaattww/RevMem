@@ -37,8 +37,9 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: T610 / Issue #78 folder単位Global Understanding（PR #83、通常review `pass_with_held`、独立final review待ち）
-- 次の工程: 独立final review、attestation用report-only commit、exact-head CI、PR #83 squash merge
+- 実装中タスク: Issue #84 / PR #85 independent-review follow-up。IFR-001〜004はindependent closureでclosed、verdict `pass_with_held`。full local gateはstatic pass/default `npm test`のWindows environment-held 4分類、CIとExtension Hostはheld
+- 次の工程: PR85-IFR-005としてPR #85本文へcandidate evidenceを外部同期し、candidate exact-head CIを取得する。4時間以内のmerge-readyを目安とする
+- 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #85 hotfix完了後に再開する
 - 後続候補: T608
 
 ## P0 開発基盤

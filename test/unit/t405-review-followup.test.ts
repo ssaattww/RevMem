@@ -4,6 +4,7 @@ import test from "node:test";
 
 import "./t405-composition-regression.test.js";
 import "./pr60-review-fixes.test.js";
+import "./issue-84-pr85-review-closure-followup.test.js";
 
 import {
   findCurrentPullRequestContext,
