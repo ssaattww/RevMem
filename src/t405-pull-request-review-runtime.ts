@@ -96,11 +96,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     const key = snapshotKey(snapshot);
     const existing = this.inFlight;
     if (existing?.key === key) {
-      try {
-        await existing.promise;
-      } catch {
-        // The queued request is a fresh attempt after the previous result.
-      }
+      return existing.promise;
     } else if (existing !== undefined) {
       this.acceptedProgressKey = undefined;
       this.suppressTreeClear = false;

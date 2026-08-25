@@ -28,6 +28,7 @@ import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/inde
 const execFileAsync = promisify(execFile);
 const runtimeRequire = createRequire(__filename);
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
+const SECONDARY_REPOSITORY_ID = "github.com/ssaattww/revmem-secondary";
 
 interface DisposableLike { dispose(): void }
 
@@ -119,9 +120,10 @@ const withTimeout = async (promise: Promise<void>, message: string): Promise<voi
   }
 };
 
-test("PR85 closure regressions use production Review Contexts composition for in-flight counts and PR-file ownership", async () => {
+test("PR85-IFR-004 production Review Contexts completion counts stay monotonic across two PRs, retry, and repositories", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-pr85-closure-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
+  const secondaryRepositoryRoot = path.join(temporaryRoot, "secondary-repository");
   const globalStorageRoot = path.join(temporaryRoot, "global-storage");
   const workspaceStorageRoot = path.join(temporaryRoot, "workspace-storage");
   const originalFetch = globalThis.fetch;
@@ -138,6 +140,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
 
   try {
     await mkdir(repositoryRoot, { recursive: true });
+    await mkdir(secondaryRepositoryRoot, { recursive: true });
     await mkdir(globalStorageRoot, { recursive: true });
     await mkdir(workspaceStorageRoot, { recursive: true });
     await runGit(repositoryRoot, ["init", "-b", "main"]);
@@ -146,6 +149,12 @@ test("PR85 closure regressions use production Review Contexts composition for in
     await runGit(repositoryRoot, ["commit", "--allow-empty", "-m", "smoke head"]);
     const head = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
     await runGit(repositoryRoot, ["remote", "add", "origin", "https://github.com/ssaattww/revmem.git"]);
+    await runGit(secondaryRepositoryRoot, ["init", "-b", "main"]);
+    await runGit(secondaryRepositoryRoot, ["config", "user.email", "review-range@example.invalid"]);
+    await runGit(secondaryRepositoryRoot, ["config", "user.name", "Review Range Test"]);
+    await runGit(secondaryRepositoryRoot, ["commit", "--allow-empty", "-m", "secondary smoke head"]);
+    const secondaryHead = await runGit(secondaryRepositoryRoot, ["rev-parse", "HEAD"]);
+    await runGit(secondaryRepositoryRoot, ["remote", "add", "origin", "https://github.com/ssaattww/revmem-secondary.git"]);
 
     const storageUris = {
       globalStorageUri: { fsPath: globalStorageRoot },
@@ -162,6 +171,26 @@ test("PR85 closure regressions use production Review Contexts composition for in
         },
       );
     }
+    const secondaryContext = pullRequestState(54, secondaryHead);
+    const secondaryState = globalState(secondaryHead);
+    await stateRepository.save(
+      { kind: "pull-request", repositoryId: SECONDARY_REPOSITORY_ID, contextId: `github-pr:${SECONDARY_REPOSITORY_ID}#54` },
+      {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: {
+          ...secondaryContext,
+          contextId: `github-pr:${SECONDARY_REPOSITORY_ID}#54`,
+          repositoryId: SECONDARY_REPOSITORY_ID,
+          pullRequest: {
+            ...secondaryContext.pullRequest!,
+            repository: "revmem-secondary",
+            baseSha: secondaryHead,
+            headSha: secondaryHead,
+          },
+        },
+        globalState: { ...secondaryState, repositoryId: SECONDARY_REPOSITORY_ID },
+      },
+    );
 
     const commands = new Map<string, (...args: unknown[]) => unknown>();
     const workspaceState = new MemoryMemento();
@@ -223,13 +252,29 @@ test("PR85 closure regressions use production Review Contexts composition for in
       },
       progress: undefined,
     };
+    const secondaryBranchSnapshot: CurrentContextUiSnapshot = {
+      context: {
+        kind: "branch",
+        label: "main",
+        detail: secondaryRepositoryRoot,
+        headRevision: secondaryHead,
+        selection: {
+          kind: "branch",
+          repositoryId: SECONDARY_REPOSITORY_ID,
+          repositoryRoot: secondaryRepositoryRoot,
+          branchRef: "refs/heads/main",
+        },
+      },
+      progress: undefined,
+    };
 
     let lifecycleRequests = 0;
     let holdSecondLifecycle = false;
+    let failSecondLifecycleOnce = false;
     let secondLifecycleStarted = deferred();
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
-      const lifecycle = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
+      const lifecycle = /^\/repos\/ssaattww\/(?:revmem|revmem-secondary)\/pulls\/(52|53|54)$/u.exec(url.pathname);
       if (lifecycle !== null) {
         lifecycleRequests += 1;
         if (holdSecondLifecycle && lifecycleRequests === 2) {
@@ -237,6 +282,11 @@ test("PR85 closure regressions use production Review Contexts composition for in
           await releaseSecondLifecycle.promise;
         }
         const number = Number(lifecycle[1]);
+        if (failSecondLifecycleOnce && number === 53) {
+          failSecondLifecycleOnce = false;
+          throw new Error("transient lifecycle transport failure");
+        }
+        const pullRequestHead = number === 54 ? secondaryHead : head;
         return jsonResponse({
           number,
           title: `PR ${number}`,
@@ -244,11 +294,11 @@ test("PR85 closure regressions use production Review Contexts composition for in
           state: "open",
           merged_at: null,
           changed_files: 0,
-          base: { sha: head },
-          head: { sha: head },
+          base: { sha: pullRequestHead },
+          head: { sha: pullRequestHead },
         });
       }
-      if (/^\/repos\/ssaattww\/revmem\/pulls\/(52|53)\/files$/u.test(url.pathname)) {
+      if (/^\/repos\/ssaattww\/(?:revmem|revmem-secondary)\/pulls\/(52|53|54)\/files$/u.test(url.pathname)) {
         return jsonResponse([]);
       }
       throw new Error(`Unexpected GitHub request in PR85 closure regression: ${url}`);
@@ -264,7 +314,7 @@ test("PR85 closure regressions use production Review Contexts composition for in
         subscriptions,
       } as unknown as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]["context"],
       git: createNodeLocalGitAdapter(),
-      enumerateCurrentContexts: async () => [branchSnapshot],
+      enumerateCurrentContexts: async () => [branchSnapshot, secondaryBranchSnapshot],
       refreshDecorations: async () => undefined,
       refreshCurrentContext: async () => undefined,
       registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
@@ -297,7 +347,12 @@ test("PR85 closure regressions use production Review Contexts composition for in
     entries.length = 0;
     lifecycleRequests = 0;
     holdSecondLifecycle = false;
+    failSecondLifecycleOnce = true;
     await runtime.refresh();
+    assert.equal(failSecondLifecycleOnce, false, "the second PR lifecycle failure must exercise the public retry path");
+    const completedPullRequestContexts = entries
+      .filter((entry) => entry.event === "progress" && entry.progress?.stage === "pull-request-contexts")
+      .map((entry) => entry.progress!.completed);
     const reviewContextsPrFileProgressCount = entries.filter((entry) =>
       entry.label === "Review Contextsを更新" &&
       entry.event === "progress" &&
@@ -326,6 +381,11 @@ test("PR85 closure regressions use production Review Contexts composition for in
         selectedPrFileProgressReported: true,
       },
       "PR85-NR-002/003 production composition contract",
+    );
+    assert.deepEqual(
+      completedPullRequestContexts,
+      [...completedPullRequestContexts].sort((left, right) => left - right),
+      "PR85-IFR-004 production completion counts must never decrease for two persisted PR contexts",
     );
 
     for (const subscription of subscriptions) subscription.dispose();

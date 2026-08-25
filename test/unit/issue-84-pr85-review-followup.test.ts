@@ -183,6 +183,46 @@ test("PR85-NR-001 skips PR Progress when Review Contexts registration fails", as
   assert.equal(globalCalls, 1, "Global failure isolation remains independent");
 });
 
+test("PR85-IFR-001 propagates a terminal public Review Contexts refresh outcome through Current Context composition", async () => {
+  const runtime = loadWithVscode<typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js")>(
+    "../../src/ui/review-contexts/vscode-review-contexts-runtime.js",
+    {
+      ...vscodeStub,
+      commands: { registerCommand: () => ({ dispose: () => undefined }) },
+      window: { createTreeView: () => ({ dispose: () => undefined }) },
+    },
+  );
+  const expected = new Error("review contexts source failed");
+  let progressCalls = 0;
+  let decorationCalls = 0;
+  let globalCalls = 0;
+  const registered = runtime.registerReviewContextsRuntime(
+    { subscriptions: [] } as unknown as Parameters<typeof runtime.registerReviewContextsRuntime>[0],
+    {
+      source: { load: async () => { throw expected; } },
+      controller: {} as Parameters<typeof runtime.registerReviewContextsRuntime>[1]["controller"],
+      refreshDecorations: async () => undefined,
+      reportError: async () => undefined,
+    },
+  );
+
+  await assert.rejects(
+    refreshCurrentContextDependents({
+      refreshReviewContexts: () => registered.refresh(),
+      refreshPullRequestProgress: async () => { progressCalls += 1; },
+      refreshDecorations: async () => { decorationCalls += 1; },
+      refreshGlobal: async () => { globalCalls += 1; },
+      reportPullRequestProgressError: async () => undefined,
+    }),
+    /Review Contexts/u,
+  );
+
+  assert.equal(progressCalls, 0, "terminal Review Contexts refresh must block PR Progress bootstrap");
+  assert.equal(decorationCalls, 1, "decorations remain independently refreshed");
+  assert.equal(globalCalls, 1, "Global remains independently refreshed");
+  registered.dispose();
+});
+
 test("PR85-NR-002 exposes Review Contexts stage progress before acquisition completes", async () => {
   const runtime = loadWithVscode<typeof import("../../src/ui/review-contexts/vscode-review-contexts-runtime.js")>(
     "../../src/ui/review-contexts/vscode-review-contexts-runtime.js",

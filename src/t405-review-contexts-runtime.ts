@@ -97,6 +97,7 @@ import { currentGlobalForNewPullRequest } from "./t405-new-pull-request-global-c
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
+const observedPullRequestContextsByOperation = new WeakMap<OperationFeedbackContext, Set<string>>();
 
 export interface T405ReviewContextsRuntimeOptions {
   readonly context: vscode.ExtensionContext;
@@ -294,6 +295,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       persisted: readonly ReviewContextState[],
       signal?: AbortSignal,
       feedbackContext?: OperationFeedbackContext,
+      onPullRequestContextSynchronized?: (contextId: string) => void,
     ) => Promise<readonly ReviewContextState[]>,
   private readonly progressFor: (
     context: ReviewContextState,
@@ -363,7 +365,6 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     const saved = new Map<string, ReviewContextState>();
     const progressByContextId: Record<string, ReviewContextListProgress> = {};
     const observedRepositories = new Set<string>();
-    const observedPullRequestContexts = new Set<string>();
     const reportRepository = (repositoryId: string): void => {
       if (feedbackContext === undefined || observedRepositories.has(repositoryId)) return;
       observedRepositories.add(repositoryId);
@@ -373,11 +374,17 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       }, feedbackContext);
     };
     const reportPullRequestContext = (contextId: string): void => {
-      if (feedbackContext === undefined || observedPullRequestContexts.has(contextId)) return;
-      observedPullRequestContexts.add(contextId);
+      if (feedbackContext === undefined) return;
+      let observed = observedPullRequestContextsByOperation.get(feedbackContext);
+      if (observed === undefined) {
+        observed = new Set<string>();
+        observedPullRequestContextsByOperation.set(feedbackContext, observed);
+      }
+      if (observed.has(contextId)) return;
+      observed.add(contextId);
       reportActiveOperationProgress({
         stage: "pull-request-contexts",
-        completed: observedPullRequestContexts.size,
+        completed: observed.size,
       }, feedbackContext);
     };
     this.roots.clear();
@@ -391,7 +398,13 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         reportRepository(owner.repositoryId);
         const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
         assertCurrent();
-        const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
+        const synchronized = await this.readSynchronizedRepository(
+          owner,
+          persisted,
+          signal,
+          feedbackContext,
+          reportPullRequestContext,
+        );
         assertCurrent();
         for (const context of synchronized) {
           saved.set(context.contextId, context);
@@ -942,6 +955,7 @@ export function registerT405ReviewContextsRuntime(
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    onPullRequestContextSynchronized?: (contextId: string) => void,
   ): Promise<readonly ReviewContextState[]> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
@@ -969,6 +983,7 @@ export function registerT405ReviewContextsRuntime(
           reason: latest.reason,
         });
       }
+      onPullRequestContextSynchronized?.(context.contextId);
       projected.push({
         ...context,
         displayName: `PR #${latest.metadata.number}`,

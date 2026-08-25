@@ -272,7 +272,7 @@ test("Issue #84 operation feedback publishes privacy-safe stage counts without a
   assert.doesNotMatch(formatted, /src\/|\.ts|PR #/u, "progress diagnostics must not contain file names, source, or PR titles");
 });
 
-test("Issue #84 equivalent PR progress refreshes keep the accepted tree and complete without cancelling each other", async () => {
+test("PR85-IFR-003 three equivalent PR progress refreshes share one generation without cancelling each other", async () => {
   operationFeedbackModule.setActiveOperationFeedback(undefined);
   const repository = new MemoryPullRequestRepository();
   let blockYields = false;
@@ -326,17 +326,89 @@ test("Issue #84 equivalent PR progress refreshes keep the accepted tree and comp
   assert.ok(persistedFile);
   persistedFile.originalReviewedByDiff[DIFF_ID] = [{ startLine: 0, endLineExclusive: 1 }];
   const secondRefresh = runtime.activateProgress(CONTEXT_ID);
+  const thirdRefresh = runtime.activateProgress(CONTEXT_ID);
   blockYields = false;
   release.resolve();
 
-  const outcomes = await Promise.allSettled([firstRefresh, secondRefresh]);
-  assert.deepEqual(outcomes.map((outcome) => outcome.status), ["fulfilled", "fulfilled"]);
+  const outcomes = await Promise.allSettled([firstRefresh, secondRefresh, thirdRefresh]);
+  assert.deepEqual(outcomes.map((outcome) => outcome.status), ["fulfilled", "fulfilled", "fulfilled"]);
+  assert.equal(runtime.progress.getEffectiveProgress().reviewedLineCount, 1, "shared callers must observe one accepted generation");
+  await runtime.activateProgress(CONTEXT_ID);
   assert.deepEqual(runtime.progress.getEffectiveProgress(), {
     reviewedLineCount: 2,
     totalLineCount: 2,
     progress: 1,
     files: runtime.progress.getEffectiveProgress().files,
   });
+});
+
+test("PR85-IFR-003 starts a fresh equivalent refresh after an exhausted retry fails", async () => {
+  const repository = new MemoryPullRequestRepository();
+  let failReads = true;
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repository",
+    fileSystemPathSemantics: "posix",
+    snapshot: diff,
+    readTextContent: async (descriptor) => {
+      if (failReads) throw new Error("retryable read failure");
+      return { kind: "found", content: descriptor.revision === A ? "old\n" : "new\n" };
+    },
+  });
+
+  await assert.rejects(runtime.activateProgress(CONTEXT_ID), /retryable read failure/u);
+  failReads = false;
+  await runtime.activateProgress(CONTEXT_ID);
+
+  assert.equal(runtime.progress.getEffectiveProgress().totalLineCount, 2);
+});
+
+test("PR85-IFR-002 keeps an accepted Tree and in-flight generation when the same immutable snapshot is re-registered", async () => {
+  const repository = new MemoryPullRequestRepository();
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    progressWork: {
+      maxItems: 1,
+      yieldControl: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    },
+  });
+  const register = (): void => runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repository",
+    fileSystemPathSemantics: "posix",
+    snapshot: diff,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.revision === A ? "old\n" : "new\n",
+    }),
+  });
+  register();
+  const inFlight = runtime.activateProgress(CONTEXT_ID);
+  await entered.promise;
+
+  register();
+  release.resolve();
+  await inFlight;
+
+  assert.equal(
+    runtime.progress.getEffectiveProgress().totalLineCount,
+    2,
+    "same-snapshot registration must not invalidate the accepted PR Progress Tree",
+  );
 });
 
 test("Issue #84 production sources report anonymous repository, PR-context, and PR-file counts", async () => {

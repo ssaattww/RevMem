@@ -265,6 +265,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 }
 
 export interface RegisteredReviewContextsRuntime {
+  /** Recalculates the projection and propagates terminal acquisition failures to Current Context callers. */
   refresh(): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
   /** Optional Test-only read-only snapshot of the accepted tree projection. */
@@ -369,7 +370,15 @@ export function registerReviewContextsRuntime(
   void refreshWithErrorBoundary();
   return {
     refresh: async () => {
-      await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+      const outcome = await runOperation(
+        "Review Contextsを更新",
+        (feedbackContext) => provider.refresh(feedbackContext),
+        true,
+        false,
+      );
+      if (outcome === "terminal") {
+        throw new Error("Review Contextsの更新に失敗しました。");
+      }
     },
     refreshWithErrorBoundary,
     getProjectionSnapshotForTest: () => provider.getChildren(),

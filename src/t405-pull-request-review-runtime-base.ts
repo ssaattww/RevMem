@@ -954,7 +954,9 @@ export class PullRequestReviewRuntime<Uri> {
   ): boolean {
     return this.activeProgressContextId === contextId &&
       this.progressGeneration === generation &&
-      this.registrations.get(contextId) === registration;
+      registration !== undefined &&
+      this.registrations.get(contextId) !== undefined &&
+      sameRegistrationSnapshot(this.registrations.get(contextId)!, registration);
   }
 
   private async lineCount(
