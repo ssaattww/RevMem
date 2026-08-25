@@ -207,21 +207,15 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
         return;
       }
       if (generation !== this.generation) return;
-      if (published !== undefined) loaded = published;
-      if (feedbackContext !== undefined) {
-        const repositoryCount = new Set(loaded.map((item) => item.context.repositoryId)).size;
-        const pullRequestContextCount = loaded.filter((item) => item.context.kind === "pull-request").length;
-        reportActiveOperationProgress({
-          stage: "repositories",
-          completed: repositoryCount,
-          total: repositoryCount,
-        }, feedbackContext);
-        reportActiveOperationProgress({
-          stage: "pull-request-contexts",
-          completed: pullRequestContextCount,
-          total: pullRequestContextCount,
-        }, feedbackContext);
-      }
+        if (published !== undefined) loaded = published;
+        if (feedbackContext !== undefined) {
+          const repositoryCount = new Set(loaded.map((item) => item.context.repositoryId)).size;
+          reportActiveOperationProgress({
+            stage: "repositories",
+            completed: repositoryCount,
+            total: repositoryCount,
+          }, feedbackContext);
+        }
       this.items = [...loaded];
       this.changed.fire();
     } catch (error) {

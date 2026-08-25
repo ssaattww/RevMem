@@ -9,10 +9,10 @@
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 現在のタスク: Issue #84 / PR #85 independent-review findings IFR-001〜004の修正
-- 次のタスク: review-target commit、`sol/high` normal fix verification、同一independent reviewer closure、PR証拠同期を経てmerge-readyにする
+- 次のタスク: R2 review-target commit、同じnormal reviewerのIFR-004再verification、同一independent reviewer closure、PR証拠同期を経てmerge-readyにする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: なし。IFR-001〜004実装・focused Green済みでnormal fix verification待ち
+- ブロッカー: なし。IFR-004 R2のhidden-context production Red→Green済みでnormal re-verification待ち
 - Gitブランチ: `fix/pr85-independent-review-findings`
 - Pull Request: #85（独立review `fail`。reviewed implementation HEAD `472f04e6d97572588245c61465a7103544fe4cb6`）
 
@@ -23,7 +23,7 @@
 | PR85-IFR-001 | 実装完了 | 0.5h（実績約4分） | Review Contexts失敗結果をCurrent Context側へ伝播し、不確実なsnapshotからPR Progressを起動しない | なし | actual production compositionの失敗経路をRed→Green化し、Review Contexts失敗時のPR Progress回数0を確認済み |
 | PR85-IFR-002 | 実装完了 | 0.5h（実績約2分） | 同一immutable snapshotのregistration更新で進行中generationと受理済みTreeを失効させない | IFR-001 | 同値再登録中のselected PR計算がcancelされず、既存Tree `2`を保持するactual composition testがGreen |
 | PR85-IFR-003 | 実装完了 | 0.5h（実績約2分） | 同一keyの3件以上のrefreshを共有promiseまたは厳密直列化し、後発同士のcancelを防ぐ | IFR-002 | 3重refresh全成功と失敗後retryをRed→Green化済み |
-| PR85-IFR-004 | 実装完了 | 0.5h（実績約6分） | PR-context completion counter authorityを一本化し、進捗後退と二重報告を除く | IFR-003 | 2 PR・retry・複数repositoryでcompleted count単調非減少をRed→Green化済み |
+| PR85-IFR-004 | R2実装完了 | 0.5h（R1約6分、R2約2分） | PR-context completion counter authorityをsourceへ一本化し、hidden contextを含む進捗後退と二重報告を除く | IFR-003 | hidden contextを含むactual productionで`0,1,2,3,2`をRed、source最終`3/3`と単調非減少をGreen確認済み。normal再verificationを残す |
 
 - 非目標: PR切替logic、性能CI、timeout導入、無関係なT610/T608変更、PR #87 fixture変更
 - 全体終了条件: focused Red/Green、broader local validation、normal fix verification、同一independent reviewerによるIFR-001〜004/CI-delta限定closure、IFR-005のPR証拠同期を4時間目安で完了する

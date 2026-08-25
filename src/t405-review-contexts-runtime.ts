@@ -460,7 +460,16 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       );
     };
     this.pendingProjection = project;
-    return project();
+    const projected = await project();
+    if (feedbackContext !== undefined) {
+      const completed = observedPullRequestContextsByOperation.get(feedbackContext)?.size ?? 0;
+      reportActiveOperationProgress({
+        stage: "pull-request-contexts",
+        completed,
+        total: completed,
+      }, feedbackContext);
+    }
+    return projected;
   }
 
   /** Commits cache entries only after the final retryable read is accepted. */

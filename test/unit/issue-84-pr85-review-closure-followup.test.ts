@@ -306,6 +306,7 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
 
     setActiveOperationFeedback(feedback);
     const subscriptions: DisposableLike[] = [];
+    await workspaceState.update("reviewRange.hiddenReviewContexts.v1", [`github-pr:${REPOSITORY_ID}#53`]);
     const runtime = runtimeModule.registerT405ReviewContextsRuntime({
       context: {
         globalStorageUri: { fsPath: globalStorageRoot },
@@ -353,6 +354,9 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
     const completedPullRequestContexts = entries
       .filter((entry) => entry.event === "progress" && entry.progress?.stage === "pull-request-contexts")
       .map((entry) => entry.progress!.completed);
+    const finalPullRequestContexts = entries
+      .filter((entry) => entry.event === "progress" && entry.progress?.stage === "pull-request-contexts")
+      .at(-1)?.progress;
     const reviewContextsPrFileProgressCount = entries.filter((entry) =>
       entry.label === "Review Contextsを更新" &&
       entry.event === "progress" &&
@@ -385,7 +389,12 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
     assert.deepEqual(
       completedPullRequestContexts,
       [...completedPullRequestContexts].sort((left, right) => left - right),
-      "PR85-IFR-004 production completion counts must never decrease for two persisted PR contexts",
+      "PR85-IFR-004 production completion counts must never decrease with hidden PR contexts",
+    );
+    assert.deepEqual(
+      finalPullRequestContexts,
+      { stage: "pull-request-contexts", completed: 3, total: 3 },
+      "PR85-IFR-004 final count must use the synchronized identity authority, not visible Tree rows",
     );
 
     for (const subscription of subscriptions) subscription.dispose();
