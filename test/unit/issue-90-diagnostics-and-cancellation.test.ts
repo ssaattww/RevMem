@@ -14,6 +14,10 @@ import {
   type OperationProgress,
 } from "../../src/application/operation-feedback/index.js";
 import {
+  describePullRequestProgressFile,
+  describePullRequestProgressSummary,
+} from "../../src/application/operation-feedback/pr-progress-diagnostics.js";
+import {
   GlobalUnderstandingRefreshCoalescer,
 } from "../../src/ui/global-understanding/issue-90-global-refresh.js";
 
@@ -213,4 +217,37 @@ test("Issue #90 coalescer cancels the pending stale refresh and flushes exactly 
   assert.deepEqual(runs, [detail("document-review-state-applied", "src/first.ts")]);
   assert.equal(callbacks.size, 0);
   coalescer.dispose();
+});
+
+test("Issue #90 PR Progress diagnostics explain a zero denominator per file and in aggregate", () => {
+  assert.deepEqual(describePullRequestProgressFile({
+    path: "src/ignored.ts",
+    status: "modified",
+    additions: 12,
+    deletions: 3,
+    reviewedLineCount: 0,
+    totalLineCount: 0,
+    excluded: true,
+    exclusionReason: { kind: "path-pattern", pattern: "**/ignored.ts" },
+  }), detail("excluded:path-pattern", "src/ignored.ts", "progress-file total=0 additions=12 deletions=3"));
+
+  assert.deepEqual(describePullRequestProgressFile({
+    path: "src/empty.ts",
+    status: "modified",
+    additions: 0,
+    deletions: 0,
+    reviewedLineCount: 0,
+    totalLineCount: 0,
+    excluded: false,
+  }), detail("zero-changed-lines", "src/empty.ts", "progress-file total=0 additions=0 deletions=0"));
+
+  assert.deepEqual(describePullRequestProgressSummary({
+    snapshotFileCount: 2,
+    files: [
+      { path: "src/ignored.ts", excluded: true, totalLineCount: 0 },
+      { path: "src/empty.ts", excluded: false, totalLineCount: 0 },
+    ],
+    reviewedLineCount: 0,
+    totalLineCount: 0,
+  }), detail("zero-denominator", "snapshotFiles=2 included=1 excluded=1 zeroFiles=2 reviewed=0 total=0", "progress-summary"));
 });
