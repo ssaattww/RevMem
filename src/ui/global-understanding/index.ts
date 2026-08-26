@@ -14,7 +14,6 @@ export {
 
 export type {
   GlobalLayerToggleHost,
-  GlobalUnderstandingRefreshCoalescerHost as LegacyGlobalUnderstandingRefreshCoalescerHost,
   GlobalUnderstandingRefreshHost,
   GlobalUnderstandingRefreshSource,
   GlobalUnderstandingDiagnosticsNode,
@@ -52,7 +51,6 @@ export const registerGlobalUnderstandingRuntime = (
   const refresh = runtime.refresh.bind(runtime);
   const refreshWithErrorBoundary = runtime.refreshWithErrorBoundary.bind(runtime);
   return {
-    ...runtime,
     refresh: async () => {
       const detail = takeLatestPendingGlobalUnderstandingDetail();
       cancelPendingGlobalUnderstandingRefreshes();
@@ -67,6 +65,11 @@ export const registerGlobalUnderstandingRuntime = (
       if (detail !== undefined) reportActiveOperationDetail(detail);
       return pendingRefresh;
     },
+    invalidate: runtime.invalidate.bind(runtime),
+    clear: runtime.clear.bind(runtime),
+    ...(runtime.getFolderNodeForTest === undefined ? {} : { getFolderNodeForTest: runtime.getFolderNodeForTest.bind(runtime) }),
+    ...(runtime.selectFolderNodeForTest === undefined ? {} : { selectFolderNodeForTest: runtime.selectFolderNodeForTest.bind(runtime) }),
+    dispose: runtime.dispose.bind(runtime),
   };
 };
 
