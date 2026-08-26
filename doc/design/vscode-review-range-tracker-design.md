@@ -1121,7 +1121,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - Current Context/Review Contexts/PR Progressが長時間継続しても上位operation総時間だけではtimeoutせず、count progressを維持すること
 - folder scopeのread/enumeration、persisted markerのdecode、child aggregate、configuration refresh、cancelが失敗または競合しても、別scopeへの状態漏出、root-wide fallback scan、stale completionの公開を行わないこと
 
-CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
+CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。必須の`pull_request` CIが全gateに成功した場合だけ、同じSHAを名前に含むVSIXと`git archive HEAD`で作成したtracked source ZIPをuser validation artifactとしてuploadする。push runでは重複artifactを作成せず、source ZIPへuntracked file、`node_modules`、credentialを含めない。
 
 ## 21. 受け入れ条件
 

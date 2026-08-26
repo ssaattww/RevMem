@@ -9,6 +9,7 @@ export interface GlobalUnderstandingRefreshCoalescerHost {
 
 const pending = new Set<GlobalUnderstandingRefreshCoalescer>();
 let latestDetail: OperationDiagnosticDetail | undefined;
+const identityFor = (detail: OperationDiagnosticDetail | undefined): string => JSON.stringify(detail ?? {});
 
 /** Coalesces refresh requests and cancels a stale scheduled generation before an immediate refresh. */
 export class GlobalUnderstandingRefreshCoalescer {
@@ -21,6 +22,7 @@ export class GlobalUnderstandingRefreshCoalescer {
   }
   public request(request?: OperationDiagnosticDetail): void {
     if (this.disposed) return;
+    if (this.running?.identity === identityFor(request)) return;
     this.host.invalidate();
     if (request !== undefined) latestDetail = request;
     this.cancel();
@@ -49,7 +51,7 @@ export class GlobalUnderstandingRefreshCoalescer {
   }
 
   private run(request: OperationDiagnosticDetail | undefined): Promise<void> {
-    const identity = JSON.stringify(request ?? {});
+    const identity = identityFor(request);
     if (this.running?.identity === identity) return this.running.promise;
     const promise = Promise.resolve(this.host.run(request));
     const running = { identity, promise };

@@ -139,8 +139,9 @@ test("Issue #90 coalescer shares three running requests with the same effective 
   const gates = [deferred<void>(), deferred<void>()];
   const runs: OperationDiagnosticDetail[] = [];
   const published: string[] = [];
+  let invalidations = 0;
   const coalescer = new GlobalUnderstandingRefreshCoalescer({
-    invalidate: () => undefined,
+    invalidate: () => { invalidations += 1; },
     schedule: () => 1,
     cancel: () => undefined,
     run: async (request) => {
@@ -153,9 +154,13 @@ test("Issue #90 coalescer shares three running requests with the same effective 
   const same = detail("review-state-changed", "context:owner@revision-1");
   const newer = detail("review-state-changed", "context:owner@revision-2");
   const first = coalescer.flush(same);
+  coalescer.request(same);
+  coalescer.request(same);
+  coalescer.request(same);
   const second = coalescer.flush(same);
   const third = coalescer.flush(same);
   assert.deepEqual(runs, [same]);
+  assert.equal(invalidations, 0, "same running input must be shared before invalidation");
   const latest = coalescer.flush(newer);
   assert.deepEqual(runs, [same, newer]);
   gates[0]!.resolve();

@@ -5,9 +5,11 @@ import {
   OperationFeedback,
   formatOperationFailureForUser,
   hasActiveOperationFeedback,
+  queueOperationStartDetails,
   runWithActiveOperationFeedback,
   setActiveOperationFeedback
 } from "../../application/operation-feedback/index";
+import type { OperationDiagnosticDetail } from "../../application/operation-feedback/index";
 import { VscodeOperationFeedbackHost } from "../operation-feedback/index";
 
 import {
@@ -72,6 +74,8 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly openFile: (target: GlobalUnderstandingFileOpenTarget) => void | Promise<void>;
   /** Reports only generic UI wording while shared Output owns details. */
   readonly reportError: (error: unknown) => void | Promise<void>;
+  /** Routes a user-visible Global refresh through the owner composition when available. */
+  readonly requestGlobalRefresh?: (detail: OperationDiagnosticDetail) => Promise<void>;
   /** Test-mode-only observer supplied by the T305 composition after a snapshot is published. */
   readonly onSnapshotPublishedForTest?: (snapshot: GlobalUnderstandingTreeSnapshot) => void;
   /** Test-only observation of the production Tree provider's rendered hierarchy and Status Bar text. */
@@ -438,6 +442,11 @@ export const registerGlobalUnderstandingRuntime = (
       await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };
+  const refreshWithDetail = (detail: OperationDiagnosticDetail): Promise<void> => {
+    if (dependencies.requestGlobalRefresh !== undefined) return dependencies.requestGlobalRefresh(detail);
+    queueOperationStartDetails("Global理解率を再計算", [detail]);
+    return refreshWithErrorBoundary();
+  };
 
   const toggle = new GlobalLayerToggleController({
     readEnabled: dependencies.readGlobalLayerEnabled,
@@ -445,7 +454,7 @@ export const registerGlobalUnderstandingRuntime = (
       await dependencies.writeGlobalLayerEnabled(enabled);
     },
     refreshDecorations: dependencies.refreshDecorations,
-    refreshGlobalUnderstanding: refresh
+    refreshGlobalUnderstanding: () => refreshWithDetail({ reason: "global-layer-toggled", phase: "global-refresh-trigger" })
   });
 
   const registrations: vscode.Disposable[] = [];
@@ -464,7 +473,7 @@ export const registerGlobalUnderstandingRuntime = (
   registrations.push(
     vscode.commands.registerCommand(
       REFRESH_GLOBAL_UNDERSTANDING_COMMAND_ID,
-      refreshWithErrorBoundary
+      () => refreshWithDetail({ reason: "manual-refresh", phase: "global-refresh-trigger" })
     ),
     vscode.commands.registerCommand(
       START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID,
@@ -474,7 +483,7 @@ export const registerGlobalUnderstandingRuntime = (
           const folder = requireCurrentFolderNode(value, "start", currentFolderNodes, selectedFolderNode, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを開始", async () => {
             await dependencies.source.startFolder!(folder.path);
-            await refreshWithErrorBoundary();
+            await refreshWithDetail({ reason: "folder-start", target: folder.path, phase: "global-refresh-trigger" });
           });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
@@ -489,7 +498,7 @@ export const registerGlobalUnderstandingRuntime = (
           const folder = requireCurrentFolderNode(value, "stop", currentFolderNodes, selectedFolderNode, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを停止", async () => {
             await dependencies.source.stopFolder!(folder.path);
-            await refreshWithErrorBoundary();
+            await refreshWithDetail({ reason: "folder-stop", target: folder.path, phase: "global-refresh-trigger" });
           });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
@@ -504,7 +513,7 @@ export const registerGlobalUnderstandingRuntime = (
           const folder = requireCurrentFolderNode(value, "resume", currentFolderNodes, selectedFolderNode, dependencies.resolveFolderPathForResource);
           await runWithActiveOperationFeedback("Global Understanding folderを再開", async () => {
             await dependencies.source.resumeFolder!(folder.path);
-            await refreshWithErrorBoundary();
+            await refreshWithDetail({ reason: "folder-resume", target: folder.path, phase: "global-refresh-trigger" });
           });
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
@@ -544,7 +553,7 @@ export const registerGlobalUnderstandingRuntime = (
         event.affectsConfiguration("reviewRange.globalUnderstanding.autoStartDescendants") ||
         event.affectsConfiguration("reviewRange.showGlobalReviewed")
       ) {
-        void refreshWithErrorBoundary();
+        void refreshWithDetail({ reason: "configuration-changed", phase: "global-refresh-trigger" });
       }
     }),
     status,

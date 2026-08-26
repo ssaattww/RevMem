@@ -301,3 +301,11 @@ test("T607 performance workloads remain local-only and never gate CI", async () 
     "CI never executes the local-only T607 performance command",
   );
 });
+
+test("CI publishes a SHA-named VSIX and tracked source archive only after pull-request success", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /- name: Package user validation artifacts[\s\S]*?if: github\.event_name == 'pull_request' && success\(\)[\s\S]*?npm run package[\s\S]*?git archive --format=zip --output .*HEAD/u);
+  assert.match(workflow, /- name: Upload user validation artifacts[\s\S]*?if: github\.event_name == 'pull_request' && success\(\)[\s\S]*?review-range-user-validation-\$\{\{ github\.sha \}\}/u);
+  assert.doesNotMatch(workflow, /test-t607|npm run test:t607/u, "success artifacts do not add performance work to CI");
+});

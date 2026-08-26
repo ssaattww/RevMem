@@ -32,6 +32,8 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 1. GitHub Releases の最新 Release から、その version に対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回 Release の例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
 2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選んでダウンロードしたファイルを指定します。
 
+pull request の検証では、成功した CI run の `review-range-user-validation-<SHA>` artifact に同じSHAを含むVSIXとtracked source ZIPを用意します。VSIXだけをダウンロードして、上記と同じ手順でインストールしてください。
+
 CLI を使う場合は、次を実行します。
 
 ```powershell

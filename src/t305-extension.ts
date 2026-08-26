@@ -544,6 +544,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingUiErrors.push(message);
       void vscode.window.showErrorMessage(message);
     },
+    requestGlobalRefresh: (detail) => refreshGlobalUnderstanding(detail),
     ...(context.extensionMode === vscode.ExtensionMode.Test ? {
       onSnapshotPublishedForTest: () => { testGlobalUnderstandingPublishedSnapshot = true; },
       onPresentationPublishedForTest: (presentation) => { testGlobalUnderstandingPresentation = presentation; }

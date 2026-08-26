@@ -82,6 +82,20 @@ jobs:
         run: node tools/run-ci-command.mjs test-github npm run test:github
       - name: VS Code Extension Host tests
         run: node tools/run-ci-command.mjs test-vscode xvfb-run -a npm run test:vscode
+      - name: Package user validation artifacts
+        if: github.event_name == 'pull_request' && success()
+        run: |
+          mkdir -p test-output/user-validation
+          npm run package -- --out "test-output/user-validation/review-range-tracker-${GITHUB_SHA}.vsix"
+          git archive --format=zip --output "test-output/user-validation/review-range-tracker-${GITHUB_SHA}-source.zip" HEAD
+      - name: Upload user validation artifacts
+        if: github.event_name == 'pull_request' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-range-user-validation-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: test-output/user-validation/
       - name: Collect failure context
         if: failure()
         run: |
