@@ -8,17 +8,11 @@ Issue #90では、PR Progressが進まない／遅い状況を調査しやすく
 
 `test/unit/issue-90-diagnostics-and-cancellation.test.ts` を先に更新し、PR Progress zero-denominator診断helperが存在しないため `TS2307` で失敗するCI run `32949715317` を確認した。その後production実装を追加した。
 
-追加したcontractは、excluded file、changed line 0のfile、aggregate denominator 0を区別できることである。
-
 ## 実装内容
-
-### 詳細診断モード
 
 `reviewRange.diagnostics.detailed` は既定 `false`。ON時のみoperation ID、同時実行operation、reason、phase、target file/pathを出す。通常モードではfile/pathを出さない。
 
-### Global理解率再計算
-
-150msの予約済みrefreshが存在する状態で即時refreshへ移る場合、その予約をcancelして最新requestだけを実行する。実行中generationは既存AbortSignal / generation validationでstale publishを抑止する。
+Global理解率は150msの予約済みrefreshを新しい即時refresh前にcancelし、running generationは既存AbortSignal / generation validationでstale publishを抑止する。
 
 ### PR Progressが0件になる理由の診断
 
@@ -34,11 +28,9 @@ Issue #90では、PR Progressが進まない／遅い状況を調査しやすく
 - `zero-changed-lines`
 - aggregate `zero-denominator` / `calculated`
 
-file detailには `total`, `additions`, `deletions` を含める。aggregateには `snapshotFiles`, `included`, `excluded`, `zeroFiles`, `reviewed`, `total` を含める。
+file detailには `total`, `additions`, `deletions`、aggregateには `snapshotFiles`, `included`, `excluded`, `zeroFiles`, `reviewed`, `total` を含める。これにより「PR snapshotにfileがない」「全fileが除外された」「fileはあるがchanged lineが0」をOutputから区別できる。content取得へ進んだfileには従来の `read-content` とfile名も出る。
 
-これにより、表示が0件の場合に少なくとも「PR snapshotにfileがない」「全fileが除外された」「fileは存在するがchanged lineが0」をOutput logから区別できる。content取得へ進んだfileについては従来どおり `read-content` とfile名も出る。
-
-分類はPR Progressと同じsnapshot additions/deletionsおよびshared exclusion policyを使うため、診断用の別ルールは持たない。
+分類はPR Progressと同じsnapshot additions/deletionsおよびshared exclusion policyを使用し、診断用の別ルールは持たない。
 
 ## PR Progress遅延の原因調査
 
@@ -46,14 +38,14 @@ PR Progressはrepository全体ではなく選択PR snapshotのfilesのみが対�
 
 ## CI failure artifact
 
-失敗時workflowは `test-output`, `dist`, `test-dist`, `src`, `test`, `tools`, `type-fixtures`, package/tsconfig/eslint/workflow、およびcommand stdout/stderr/resultをartifact保存する。今回もRed確認と後続failure調査に使用した。
+失敗時workflowは `test-output`, `dist`, `test-dist`, `src`, `test`, `tools`, `type-fixtures`, package/tsconfig/eslint/workflow、およびcommand stdout/stderr/resultをartifact保存する。今回もRed確認とfailure調査に使用した。
 
 ## 検証履歴
 
 - `d6e3adac...`: TDD Red。unit compileでdiagnostic module未実装を確認。
-- `99c75f8c...`: production途中。exclusion union narrowing不足をBuildで検出。
+- `99c75f8c...`: exclusion union narrowing不足をBuildで検出。
 - `17d7e463...`: Build/typecheck/architecture/lint Green後、test fixture shapeの型誤りをunit compileで検出。
-- 後続HEADでfixtureを修正し、設計書/reportを更新した。
+- 後続commitでfixture、設計書、reportを修正。
 
 最終Green判定はPR current HEADとworkflow run head SHAが一致するrunだけを使用する。別SHAのrunは代用しない。
 
