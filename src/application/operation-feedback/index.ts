@@ -4,6 +4,7 @@ export * from "./pr-progress-diagnostics";
 export {
   OperationFeedback,
   formatOperationLogEntry,
+  queueOperationStartDetails,
   reportActiveOperationDetail,
   type OperationActivity,
   type OperationDiagnosticDetail,
