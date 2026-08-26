@@ -38,6 +38,7 @@ implements OperationFeedbackHost, vscode.Disposable {
       readonly onDidChangeTextDocument?: typeof vscode.workspace.onDidChangeTextDocument;
       readonly onDidSaveTextDocument?: typeof vscode.workspace.onDidSaveTextDocument;
       readonly onDidCloseTextDocument?: typeof vscode.workspace.onDidCloseTextDocument;
+      readonly getConfiguration?: typeof vscode.workspace.getConfiguration;
     };
     const subscriptions: vscode.Disposable[] = [];
     if (typeof workspace.onDidOpenTextDocument === "function") {
@@ -63,7 +64,11 @@ implements OperationFeedbackHost, vscode.Disposable {
   }
 
   public isDetailedDiagnosticsEnabled(): boolean {
-    return vscode.workspace.getConfiguration("reviewRange.diagnostics").get("detailed", false);
+    const getConfiguration = (vscode.workspace as typeof vscode.workspace & {
+      readonly getConfiguration?: typeof vscode.workspace.getConfiguration;
+    }).getConfiguration;
+    if (typeof getConfiguration !== "function") return false;
+    return getConfiguration.call(vscode.workspace, "reviewRange.diagnostics").get("detailed", false);
   }
 
   public showBusy(
