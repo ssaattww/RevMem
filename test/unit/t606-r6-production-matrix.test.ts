@@ -403,8 +403,9 @@ test("T606 IFR003 PR Progress carries its owner and abort signal to pending cont
     assert.ok(owners.every((owner) => owner === feedback), "the active PR Progress owner reaches content I/O");
     const events = host.logs.map((entry) => entry.event);
     assert.equal(events.filter((event) => event === "started").length, 3);
-    assert.equal(events.filter((event) => event === "succeeded" || event === "failed").length, 3, "each cancellation, failure, and success has exactly one terminal");
-    assert.equal(events.filter((event) => event === "failed").length, 2, "cancel and content failure each end once");
+    assert.equal(events.filter((event) => event === "succeeded" || event === "failed" || event === "cancelled").length, 3, "each cancellation, failure, and success has exactly one terminal");
+    assert.equal(events.filter((event) => event === "cancelled").length, 1, "the pending read ends once with a non-error CANCEL terminal");
+    assert.equal(events.filter((event) => event === "failed").length, 1, "only the content failure ends with an error terminal");
     assert.equal(events.filter((event) => event === "succeeded").length, 1, "only the published content snapshot succeeds");
   } finally {
     setActiveOperationFeedback(undefined);
