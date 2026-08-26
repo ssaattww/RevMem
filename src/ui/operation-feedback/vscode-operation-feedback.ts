@@ -4,6 +4,7 @@ import {
   formatOperationLogEntry,
   formatOperationProgress,
   type OperationActivity,
+  type OperationDiagnosticDetail,
   type OperationFeedbackHost,
   type OperationLogEntry,
   type OperationProgress,
@@ -21,10 +22,30 @@ implements OperationFeedbackHost, vscode.Disposable {
     vscode.StatusBarAlignment.Left,
     101
   );
+  private readonly diagnosticTriggerSubscriptions: vscode.Disposable[];
+  private pendingGlobalDetail: OperationDiagnosticDetail | undefined;
 
   /** Creates the shared VS Code surfaces with an optional immutable Test-mode log observer. */
   public constructor(private readonly onAppendLogForTest?: (entry: OperationLogEntry) => void) {
     this.status.name = "Review Range Activity";
+    const remember = (reason: string, document: vscode.TextDocument): void => {
+      if (!this.isDetailedDiagnosticsEnabled()) return;
+      if (document.uri.scheme !== "file" && document.uri.scheme !== "vscode-remote") return;
+      this.pendingGlobalDetail = { reason, target: document.uri.fsPath, phase: "global-refresh-trigger" };
+    };
+    this.diagnosticTriggerSubscriptions = [
+      vscode.workspace.onDidOpenTextDocument((document) => remember("document-opened", document)),
+      vscode.workspace.onDidChangeTextDocument((event) => remember("document-changed", event.document)),
+      vscode.workspace.onDidSaveTextDocument((document) => remember("document-saved", document)),
+      vscode.workspace.onDidCloseTextDocument((document) => remember("document-closed", document)),
+    ];
+  }
+
+  public takeOperationStartDetail(label: string): OperationDiagnosticDetail | undefined {
+    if (label !== "Global理解率を再計算") return undefined;
+    const detail = this.pendingGlobalDetail;
+    this.pendingGlobalDetail = undefined;
+    return detail;
   }
 
   public isDetailedDiagnosticsEnabled(): boolean {
@@ -69,6 +90,7 @@ implements OperationFeedbackHost, vscode.Disposable {
   }
 
   public dispose(): void {
+    for (const subscription of this.diagnosticTriggerSubscriptions) subscription.dispose();
     this.status.dispose();
     this.output.dispose();
   }
