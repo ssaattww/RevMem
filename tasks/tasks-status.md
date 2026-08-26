@@ -8,25 +8,25 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91のPR91-IFR-001/002はnormal verificationでclosed。full local gate R2はstatic Green/default testの同一Windows fixture failureでheld、同じindependent reviewerの限定closure待ち
-- 次のタスク: frozen candidate HEADでIFR-001/002とfull-gate deltaだけを同じindependent reviewerへ戻す
+- 現在のタスク: Issue #90 / PR #91のPR91-IFR-001/002は同一independent reviewerの限定closureでclosed、verdict `pass_with_held`。tracking-only delta確認とreport attestationを残す
+- 次のタスク: tracking-only commitを同じindependent reviewerが確認後、独立review report-only attestation、PR #91 push・本文同期へ進む。CIは待機しない
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: 同じindependent reviewerのfinding/CI-delta限定closure。full local default testとactual UI判断はheld
+- ブロッカー: なし。full local default test、exact-head CI、artifact生成、actual UI判断はheld
 - Gitブランチ: `fix/pr91-normal-review-findings`
-- Pull Request: #91（normal review `fail`。reviewed implementation HEAD `18623c47d0d9a8037e7c953026d6fac9213750cf`）
+- Pull Request: #91（normal review R4とindependent closureはいずれも`pass_with_held`。public HEADはpush前の`18623c47d0d9a8037e7c953026d6fac9213750cf`）
 
 ## Issue #90 / PR #91 normal-review follow-up
 
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| NR90-001 | fixed / R3 verification pending | 0.5h（runtime evidence約6分） | Global triggerのreason/targetをactual production operationへ渡し、start detailを同一operation IDでOutputへpublishする | なし | manual/config/folder/toggle production routeのruntime単体1/1 Green。実機はCI生成VSIXでユーザー確認する |
-| NR90-002 | fixed / R3 verification pending | 0.5h（runtime evidence約9分） | privacy設定と独立してcancellationを非error terminalにし、Global stale dispositionをfeedback境界まで保持する | NR90-001 | runtime単体でOFF/ON user error 0、旧`CANCEL`、最新`OK`、旧publish 0、最新publish 1を確認 |
+| NR90-001 | closed / normal fix verification R4 | 0.5h（runtime evidence約6分） | Global triggerのreason/targetをactual production operationへ渡し、start detailを同一operation IDでOutputへpublishする | なし | manual/config/folder/toggle production routeのruntime単体1/1 Green。実機はCI生成VSIXでユーザー確認する |
+| NR90-002 | closed / normal fix verification R4 | 0.5h（runtime evidence約9分） | privacy設定と独立してcancellationを非error terminalにし、Global stale dispositionをfeedback境界まで保持する | NR90-001 | runtime単体でOFF/ON user error 0、旧`CANCEL`、最新`OK`、旧publish 0、最新publish 1を確認 |
 | NR90-003 | closed / normal fix verification R4 | 0.5h（R5実績約12分） | effective input identityによるrunning single-flight/coalescingを実装する | NR90-002 | 同一normal reviewerがA→B pending→Aのproduction/runtime/focused matrixをcompleteとして確認 |
-| NR90-004 | fixed / R3 verification pending | 0.5h（runtime evidence約9分） | detail更新時にbusy statusを再publishし、tooltipへreasonを含める | NR90-001 | real `VscodeOperationFeedbackHost`とPR runtimeの単体試験でpending read中のreason/phase/targetとstatus再publishを確認 |
+| NR90-004 | closed / normal fix verification R4 | 0.5h（runtime evidence約9分） | detail更新時にbusy statusを再publishし、tooltipへreasonを含める | NR90-001 | real `VscodeOperationFeedbackHost`とPR runtimeの単体試験でpending read中のreason/phase/targetとstatus再publishを確認 |
 | NR90-005 | closed / normal fix verification | 0.5h（実績30分以内） | PR Progress原因調査reportへ必須5観点、code path、観測証拠、影響範囲、修正候補を補う | NR90-001〜004 | 同一normal reviewerがrequired actionとreport証拠をcompleteとして確認済み |
 | NR90-006 | closed / normal fix verification | 0.5h（実績30分以内） | Issue #90 / PR #91のscope、finding、validation、review stateをtrackingへ同期する | なし | 同一normal reviewerが両tracking fileをcompleteとして確認済み |
-| USR90-001 | fixed / R3 verification pending | 0.5h（実績約6分） | 既存CIゲート成功後にVSIXと追跡済みsource ZIPをartifactとして作成・uploadする | NR90-001〜004 | required `pull_request` success時のみSHA付きVSIXと`git archive HEAD` ZIPを生成するworkflow契約14/14 Green、local VSIX生成成功。performance項目なし |
+| USR90-001 | satisfied / normal fix verification R4 | 0.5h（実績約6分） | 既存CIゲート成功後にVSIXと追跡済みsource ZIPをartifactとして作成・uploadする | NR90-001〜004 | required `pull_request` success時のみSHA付きVSIXと`git archive HEAD` ZIPを生成するworkflow契約14/14 Green、local VSIX生成成功。performance項目なし |
 
 - governing TDD source: Issue #90「開発・検証」。各behaviorはfocused testのRedを観測してからproductionを変更する
 - design disposition: `doc/design/operation-diagnostics-and-refresh-scheduling.md`を既存契約の修正先とし、`Design/BreakingChanges.md`対象の破壊的変更はない
@@ -46,12 +46,12 @@
 
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| PR91-IFR-001 | closed / normal fix verification R2 | 0.5h（production fix約21分、evidence約12分） | diagnostic detailとactual effective-input generation identityを分離し、同一path/targetなしの連続mutationを新generationとして扱う | なし | 同一normal reviewerがrequired action / production / runtime fixture / focused evidenceを全cell completeとして確認 |
-| PR91-IFR-002 | closed / normal fix verification | 0.5h（実績約12分） | runtime routing suiteをrequired `test:unit` / pull-request CI gateへ配線する | IFR-001 | 同一normal reviewerがtest:unit entry、required Unit gate→artifact順、contract evidenceをcompleteとして確認 |
+| PR91-IFR-001 | closed / independent closure `pass_with_held` | 0.5h（production fix約21分、evidence約12分） | diagnostic detailとactual effective-input generation identityを分離し、同一path/targetなしの連続mutationを新generationとして扱う | なし | 同一independent reviewerがrequired action / production / runtime fixture / focused evidenceを全cell completeとして確認 |
+| PR91-IFR-002 | closed / independent closure `pass_with_held` | 0.5h（実績約12分） | runtime routing suiteをrequired `test:unit` / pull-request CI gateへ配線する | IFR-001 | 同一independent reviewerがtest:unit entry、required Unit gate→artifact順、contract evidenceをcompleteとして確認 |
 
 - initial independent reviewed HEAD: `ca21dae869b7877af0a4a15a69844d1dfc248bee`
-- independent verdict: `fail`（High 1、Medium 1）
-- independent report: `reports/issue-90-pr91-independent-final-review-20260826.md`（failed reviewとしてrepository保存し、同pathをbounded closure更新用に予約）
+- independent verdict: initial `fail`（High 1、Medium 1）から同一reviewer限定closureで`pass_with_held`。open findingなし
+- independent report: `reports/issue-90-pr91-independent-final-review-20260826.md`（initial reviewとbounded closureを同一reportへ保持し、report-only attestation待ち）
 - closure条件: required action / production path / user-approved runtime fixture / focused evidenceの全セルcomplete、normal fix verification、同じindependent reviewerのfinding/CI-delta限定closure
 - 非目標: performance CI、Extension Host自動試験、timeout、無関係なT610/T608、merge
 - independent follow-up implementation report: `reports/issue-90-pr91-independent-review-followup-20260826.md`
@@ -62,6 +62,7 @@
 - full gate evidence: `5bb32c6...`の初回full local gateは後続source deltaでinvalidated。新candidateでR2を1回だけ実行する
 - full local gate R2: `reports/issue-90-pr91-full-local-equivalence-gate-r2-20260826.md`。candidate `df299882905b10f125110a8af745f44f804e13e2`でstatic Green、default `npm test`はR1同一のWindows path/signal/owned-host fixture failure。runtime suite/test wiring実行を確認、再実行なし、performanceなし
 - local validation: Issue #90 focused 8/8、T305 61/61、T505 24/24、build、contracts、architecture正負、lint、diff-checkはGreen。Markdown lintはrepository wiring不在でunsupported
+- independent closure: reviewed implementation HEAD `89764551e835420bc88b193baf55de64f58c805a`、technical source/test identity `e34ed6b07dc88e48b5b9aeaeffd9b703ae7083b5`。runtime 6/6とrequired CI wiring contract 1/1 Green、IFR-001/002 closed、verdict `pass_with_held`
 - 全体終了条件: NR90-001〜006のRed/Green、focused/broader local validation、同一normal reviewerのfix verification、full local gate、独立final review、attestation、PR #91 evidence同期。CI待機と性能CI追加はユーザー指示により行わない
 
 ## Issue #84 / PR #85 independent-review follow-up
