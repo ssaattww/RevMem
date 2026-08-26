@@ -8,11 +8,11 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91のNR90-003 A→B pending→A競合はR5 Red→Green済み、同一normal reviewerの限定closure待ち。NR90-001/002/004/005/006はclosed、USR90-001はsatisfied
-- 次のタスク: current review-target HEADを固定し、同一normal reviewerへNR90-003限定R4 fix verificationを戻す
+- 現在のタスク: Issue #90 / PR #91 normal reviewは全NR90 findings closed、USR90-001 satisfiedで`pass_with_held`。full local gateと独立final review待ち
+- 次のタスク: performanceを除くfull local gateをfinal publication candidateで1回実行し、fresh Sol/high independent reviewerへ渡す
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: 同一normal reviewerによるNR90-003限定closure。actual UI判断はCI生成VSIXを用いてユーザーが行う
+- ブロッカー: full local gateと独立final review。actual UI判断はCI生成VSIXを用いてユーザーが行う
 - Gitブランチ: `fix/pr91-normal-review-findings`
 - Pull Request: #91（normal review `fail`。reviewed implementation HEAD `18623c47d0d9a8037e7c953026d6fac9213750cf`）
 
@@ -22,7 +22,7 @@
 | --- | --- | --- | --- | --- | --- |
 | NR90-001 | fixed / R3 verification pending | 0.5h（runtime evidence約6分） | Global triggerのreason/targetをactual production operationへ渡し、start detailを同一operation IDでOutputへpublishする | なし | manual/config/folder/toggle production routeのruntime単体1/1 Green。実機はCI生成VSIXでユーザー確認する |
 | NR90-002 | fixed / R3 verification pending | 0.5h（runtime evidence約9分） | privacy設定と独立してcancellationを非error terminalにし、Global stale dispositionをfeedback境界まで保持する | NR90-001 | runtime単体でOFF/ON user error 0、旧`CANCEL`、最新`OK`、旧publish 0、最新publish 1を確認 |
-| NR90-003 | fixed / R4 verification pending | 0.5h（R5実績約12分） | effective input identityによるrunning single-flight/coalescingを実装する | NR90-002 | A→B pending→Aでabort済みA共有をRed再現し、fresh A publish 1、旧A `CANCEL`、B未起動をGreen確認 |
+| NR90-003 | closed / normal fix verification R4 | 0.5h（R5実績約12分） | effective input identityによるrunning single-flight/coalescingを実装する | NR90-002 | 同一normal reviewerがA→B pending→Aのproduction/runtime/focused matrixをcompleteとして確認 |
 | NR90-004 | fixed / R3 verification pending | 0.5h（runtime evidence約9分） | detail更新時にbusy statusを再publishし、tooltipへreasonを含める | NR90-001 | real `VscodeOperationFeedbackHost`とPR runtimeの単体試験でpending read中のreason/phase/targetとstatus再publishを確認 |
 | NR90-005 | closed / normal fix verification | 0.5h（実績30分以内） | PR Progress原因調査reportへ必須5観点、code path、観測証拠、影響範囲、修正候補を補う | NR90-001〜004 | 同一normal reviewerがrequired actionとreport証拠をcompleteとして確認済み |
 | NR90-006 | closed / normal fix verification | 0.5h（実績30分以内） | Issue #90 / PR #91のscope、finding、validation、review stateをtrackingへ同期する | なし | 同一normal reviewerが両tracking fileをcompleteとして確認済み |
@@ -38,6 +38,8 @@
 - R2/R3/R4 reports: `reports/issue-90-pr91-normal-review-followup-r2-20260826.md`、`reports/issue-90-pr91-user-validation-followup-20260826.md`、`reports/issue-90-pr91-runtime-unit-followup-r4-20260826.md`
 - normal fix verification R3: `reports/issue-90-pr91-normal-fix-verification-r3-20260826.md`（NR90-003のみopen、他finding closed、USR90-001 satisfied、verdict `fail`）
 - R5 implementation report: `reports/issue-90-pr91-normal-review-followup-r5-20260826.md`
+- normal fix verification R4: `reports/issue-90-pr91-normal-fix-verification-r4-20260826.md`（全NR90 findings closed、USR90-001 satisfied、verdict `pass_with_held`）
+- end-of-Issue Skill decision: product/workflow固有の変更であり、新規Skill actionは不要。ユーザー承認のruntime evidenceとmanual VSIX判断はtracking/reportへ固定済み
 - local validation: Issue #90 focused 8/8、T305 61/61、T505 24/24、build、contracts、architecture正負、lint、diff-checkはGreen。Markdown lintはrepository wiring不在でunsupported
 - 全体終了条件: NR90-001〜006のRed/Green、focused/broader local validation、同一normal reviewerのfix verification、full local gate、独立final review、attestation、PR #91 evidence同期。CI待機と性能CI追加はユーザー指示により行わない
 
