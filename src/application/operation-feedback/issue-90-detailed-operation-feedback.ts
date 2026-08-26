@@ -84,7 +84,7 @@ export class OperationFeedback extends BaseOperationFeedback {
       appendLog: (entry) => {
         const detailed = detailedHost.isDetailedDiagnosticsEnabled?.() === true;
         const operationId = detailed ? operationScope.getStore() : undefined;
-        const cancelled = entry.event === "failed" && entry.errorName === "OperationCancelledError";
+        const cancelled = detailed && entry.event === "failed" && entry.errorName === "OperationCancelledError";
         const mapped: OperationLogEntry = {
           ...entry,
           ...(cancelled ? { event: "cancelled" as const } : {}),
