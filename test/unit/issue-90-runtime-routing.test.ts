@@ -284,3 +284,44 @@ test("NR90-003 invalidated A is not shared when pending B is replaced by an imme
   assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 1, "fresh A has OK terminal");
   coalescer.dispose();
 });
+
+test("PR91-IFR-001 separates mutation generations from diagnostic detail identity", async () => {
+  const invalidations: string[] = [];
+  const runs: string[] = [];
+  let active: AbortController | undefined;
+  let started: (() => void) | undefined;
+  const running = new Promise<void>((resolve) => { started = resolve; });
+  const coalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => { invalidations.push("invalidate"); active?.abort(); },
+    schedule: () => 1,
+    cancel: () => undefined,
+    run: async (detail) => {
+      const controller = new AbortController();
+      active = controller;
+      const index = runs.push(detail?.target ?? "targetless");
+      if (index === 1) {
+        started?.();
+        await new Promise<void>((resolve) => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
+      }
+    }
+  });
+  const request = coalescer as unknown as {
+    request(detail: OperationDiagnosticDetail, effectiveInputIdentity: string): void;
+    flush(detail: OperationDiagnosticDetail, effectiveInputIdentity: string): Promise<void>;
+  };
+  const documentChange = { reason: "document-changed", target: "src/same.ts", phase: "global-refresh-trigger" };
+  const old = request.flush(documentChange, "owner:branch@revision-1");
+  await running;
+  request.request(documentChange, "owner:branch@revision-2");
+  assert.equal(invalidations.length, 1, "a same-path edit at a new revision must invalidate the old generation");
+  await old;
+  await request.flush(documentChange, "owner:branch@revision-2");
+  const targetlessMutation = { reason: "review-state-changed", phase: "global-refresh-trigger" };
+  const targetlessOld = request.flush(targetlessMutation, "owner:branch@generation-3");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  request.request(targetlessMutation, "owner:branch@generation-4");
+  assert.equal(invalidations.length, 2, "targetless review-state mutations also receive distinct effective identities");
+  await targetlessOld;
+  assert.deepEqual(runs, ["src/same.ts", "src/same.ts", "targetless"], "each distinct mutation generation runs separately");
+  coalescer.dispose();
+});

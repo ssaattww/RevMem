@@ -9,7 +9,10 @@ export interface GlobalUnderstandingRefreshCoalescerHost {
 
 const pending = new Set<GlobalUnderstandingRefreshCoalescer>();
 let latestDetail: OperationDiagnosticDetail | undefined;
-const identityFor = (detail: OperationDiagnosticDetail | undefined): string => JSON.stringify(detail ?? {});
+const identityFor = (
+  detail: OperationDiagnosticDetail | undefined,
+  effectiveInputIdentity: string | undefined,
+): string => effectiveInputIdentity ?? JSON.stringify(detail ?? {});
 
 /** Coalesces refresh requests and cancels a stale scheduled generation before an immediate refresh. */
 export class GlobalUnderstandingRefreshCoalescer {
@@ -20,9 +23,10 @@ export class GlobalUnderstandingRefreshCoalescer {
     if (!Number.isSafeInteger(delayMs) || delayMs < 0) throw new RangeError("delayMs must be a non-negative safe integer.");
     pending.add(this);
   }
-  public request(request?: OperationDiagnosticDetail): void {
+  /** Queues a refresh; a supplied effective identity, not diagnostic detail, controls running-work sharing. */
+  public request(request?: OperationDiagnosticDetail, effectiveInputIdentity?: string): void {
     if (this.disposed) return;
-    if (this.running?.identity === identityFor(request)) return;
+    if (this.running?.identity === identityFor(request, effectiveInputIdentity)) return;
     this.running = undefined;
     this.host.invalidate();
     if (request !== undefined) latestDetail = request;
@@ -30,14 +34,15 @@ export class GlobalUnderstandingRefreshCoalescer {
     const handle = this.host.schedule(() => {
       if (this.disposed || this.scheduled !== handle) return;
       this.scheduled = undefined;
-      void this.run(request);
+      void this.run(request, effectiveInputIdentity);
     }, this.delayMs);
     this.scheduled = handle;
   }
-  public async flush(request?: OperationDiagnosticDetail): Promise<void> {
+  /** Immediately runs a refresh and shares only an equal effective immutable input. */
+  public async flush(request?: OperationDiagnosticDetail, effectiveInputIdentity?: string): Promise<void> {
     if (this.disposed) return;
     this.cancel();
-    await this.run(request);
+    await this.run(request, effectiveInputIdentity);
   }
   public cancel(): void {
     if (this.scheduled === undefined) return;
@@ -51,8 +56,8 @@ export class GlobalUnderstandingRefreshCoalescer {
     pending.delete(this);
   }
 
-  private run(request: OperationDiagnosticDetail | undefined): Promise<void> {
-    const identity = identityFor(request);
+  private run(request: OperationDiagnosticDetail | undefined, effectiveInputIdentity?: string): Promise<void> {
+    const identity = identityFor(request, effectiveInputIdentity);
     if (this.running?.identity === identity) return this.running.promise;
     const promise = Promise.resolve(this.host.run(request));
     const running = { identity, promise };
