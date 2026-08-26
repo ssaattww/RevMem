@@ -28,11 +28,9 @@ export type {
 } from "./global-understanding-ui-model";
 export type { GlobalUnderstandingRefreshCoalescerHost } from "./issue-90-global-refresh";
 
-import { reportActiveOperationDetail } from "../../application/operation-feedback/index";
 import { registerGlobalUnderstandingRuntime as registerBaseGlobalUnderstandingRuntime } from "./vscode-global-understanding-runtime";
 import {
   cancelPendingGlobalUnderstandingRefreshes,
-  takeLatestPendingGlobalUnderstandingDetail,
 } from "./issue-90-global-refresh";
 
 export {
@@ -52,18 +50,12 @@ export const registerGlobalUnderstandingRuntime = (
   const refreshWithErrorBoundary = runtime.refreshWithErrorBoundary.bind(runtime);
   return {
     refresh: async () => {
-      const detail = takeLatestPendingGlobalUnderstandingDetail();
       cancelPendingGlobalUnderstandingRefreshes();
-      const pendingRefresh = refresh();
-      if (detail !== undefined) reportActiveOperationDetail(detail);
-      return pendingRefresh;
+      return refresh();
     },
     refreshWithErrorBoundary: async () => {
-      const detail = takeLatestPendingGlobalUnderstandingDetail();
       cancelPendingGlobalUnderstandingRefreshes();
-      const pendingRefresh = refreshWithErrorBoundary();
-      if (detail !== undefined) reportActiveOperationDetail(detail);
-      return pendingRefresh;
+      return refreshWithErrorBoundary();
     },
     invalidate: runtime.invalidate.bind(runtime),
     clear: runtime.clear.bind(runtime),

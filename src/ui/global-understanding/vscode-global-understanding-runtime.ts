@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import {
+  OperationCancelledError,
   OperationFeedback,
   formatOperationFailureForUser,
   hasActiveOperationFeedback,
@@ -420,7 +421,10 @@ export const registerGlobalUnderstandingRuntime = (
     retryCancellation = currentCancellation;
     return runWithActiveOperationFeedback(
       "Global理解率を再計算",
-      () => refreshController.refresh(currentCancellation.signal).then(() => undefined),
+      async () => {
+        await refreshController.refresh(currentCancellation.signal);
+        if (currentCancellation.signal.aborted) throw new OperationCancelledError();
+      },
     ).finally(() => {
       if (retryCancellation === currentCancellation) retryCancellation = undefined;
     });
@@ -430,6 +434,7 @@ export const registerGlobalUnderstandingRuntime = (
     try {
       await refresh();
     } catch (error) {
+      if (error instanceof OperationCancelledError || (error instanceof Error && error.name === "AbortError")) return;
       await dependencies.reportError(formatOperationFailureForUser(error));
     }
   };

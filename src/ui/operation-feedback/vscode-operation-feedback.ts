@@ -4,7 +4,6 @@ import {
   formatOperationLogEntry,
   formatOperationProgress,
   type OperationActivity,
-  type OperationDiagnosticDetail,
   type OperationFeedbackHost,
   type OperationLogEntry,
   type OperationProgress,
@@ -22,45 +21,10 @@ implements OperationFeedbackHost, vscode.Disposable {
     vscode.StatusBarAlignment.Left,
     101
   );
-  private readonly diagnosticTriggerSubscriptions: vscode.Disposable[];
-  private pendingGlobalDetail: OperationDiagnosticDetail | undefined;
 
   /** Creates the shared VS Code surfaces with an optional immutable Test-mode log observer. */
   public constructor(private readonly onAppendLogForTest?: (entry: OperationLogEntry) => void) {
     this.status.name = "Review Range Activity";
-    const remember = (reason: string, document: vscode.TextDocument): void => {
-      if (!this.isDetailedDiagnosticsEnabled()) return;
-      if (document.uri.scheme !== "file" && document.uri.scheme !== "vscode-remote") return;
-      this.pendingGlobalDetail = { reason, target: document.uri.fsPath, phase: "global-refresh-trigger" };
-    };
-    const workspace = vscode.workspace as typeof vscode.workspace & {
-      readonly onDidOpenTextDocument?: typeof vscode.workspace.onDidOpenTextDocument;
-      readonly onDidChangeTextDocument?: typeof vscode.workspace.onDidChangeTextDocument;
-      readonly onDidSaveTextDocument?: typeof vscode.workspace.onDidSaveTextDocument;
-      readonly onDidCloseTextDocument?: typeof vscode.workspace.onDidCloseTextDocument;
-      readonly getConfiguration?: typeof vscode.workspace.getConfiguration;
-    };
-    const subscriptions: vscode.Disposable[] = [];
-    if (typeof workspace.onDidOpenTextDocument === "function") {
-      subscriptions.push(workspace.onDidOpenTextDocument((document) => remember("document-opened", document)));
-    }
-    if (typeof workspace.onDidChangeTextDocument === "function") {
-      subscriptions.push(workspace.onDidChangeTextDocument((event) => remember("document-changed", event.document)));
-    }
-    if (typeof workspace.onDidSaveTextDocument === "function") {
-      subscriptions.push(workspace.onDidSaveTextDocument((document) => remember("document-saved", document)));
-    }
-    if (typeof workspace.onDidCloseTextDocument === "function") {
-      subscriptions.push(workspace.onDidCloseTextDocument((document) => remember("document-closed", document)));
-    }
-    this.diagnosticTriggerSubscriptions = subscriptions;
-  }
-
-  public takeOperationStartDetail(label: string): OperationDiagnosticDetail | undefined {
-    if (label !== "Global理解率を再計算") return undefined;
-    const detail = this.pendingGlobalDetail;
-    this.pendingGlobalDetail = undefined;
-    return detail;
   }
 
   public isDetailedDiagnosticsEnabled(): boolean {
@@ -83,7 +47,7 @@ implements OperationFeedbackHost, vscode.Disposable {
       ? "Review Rangeが処理を実行しています。"
       : `Review Rangeが${activeCount}件の処理を実行しています。`;
     const detailLines = this.isDetailedDiagnosticsEnabled() && activities !== undefined
-      ? activities.map((activity) => `#${activity.id} ${activity.label}${activity.detail?.phase === undefined ? "" : ` [${activity.detail.phase}]`}${activity.detail?.target === undefined ? "" : ` — ${activity.detail.target}`}`)
+      ? activities.map((activity) => `#${activity.id} ${activity.label}${activity.detail?.reason === undefined ? "" : ` — ${activity.detail.reason}`}${activity.detail?.phase === undefined ? "" : ` [${activity.detail.phase}]`}${activity.detail?.target === undefined ? "" : ` — ${activity.detail.target}`}`)
       : [];
     this.status.tooltip = [
       activityText,
@@ -109,7 +73,6 @@ implements OperationFeedbackHost, vscode.Disposable {
   }
 
   public dispose(): void {
-    for (const subscription of this.diagnosticTriggerSubscriptions) subscription.dispose();
     this.status.dispose();
     this.output.dispose();
   }

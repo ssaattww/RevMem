@@ -5,7 +5,13 @@ import { NodeSha256StableHash } from "./adapters/crypto/index";
 import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
 import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
-import { composeStartupFeedback, reportActiveOperationFailure, reportActiveStorageLockDiagnostic } from "./application/operation-feedback/index";
+import {
+  composeStartupFeedback,
+  queueOperationStartDetails,
+  reportActiveOperationFailure,
+  reportActiveStorageLockDiagnostic,
+  type OperationDiagnosticDetail,
+} from "./application/operation-feedback/index";
 import { VscodeOperationFeedbackHost } from "./ui/operation-feedback/index";
 import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
 import {
@@ -657,7 +663,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             await Promise.all(vscode.workspace.textDocuments
               .filter((document) => !document.isClosed && FILESYSTEM_SCHEMES.has(document.uri.scheme))
               .map(observeCurrentGlobalUnderstandingDocument));
-            await globalRuntime.refresh();
+            await refreshGlobalUnderstanding({ reason: "current-context-changed", phase: "global-refresh-trigger" });
           },
           refreshReviewContexts: async () => {
             await reviewContextsRuntimeRef.current?.refresh();
@@ -701,8 +707,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     } : {}),
   });
 
-  const refreshGlobalUnderstanding = (): void => {
-    void globalRuntime.refreshWithErrorBoundary();
+  const runGlobalUnderstanding = (detail?: OperationDiagnosticDetail): Promise<void> => {
+    if (detail !== undefined) queueOperationStartDetails("Global理解率を再計算", [detail]);
+    return globalRuntime.refreshWithErrorBoundary();
   };
   const refreshPullRequestProgress = (): void => {
     void refreshPullRequestProgressForSelection().catch(reportPullRequestProgressError);
@@ -711,11 +718,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     invalidate: () => globalRuntime.invalidate(),
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-    run: refreshGlobalUnderstanding
+    run: runGlobalUnderstanding
   });
+  const refreshGlobalUnderstanding = (detail?: OperationDiagnosticDetail): Promise<void> =>
+    documentChangeRefresh.flush(detail);
   const requestRefreshForDocumentChange = (event: vscode.TextDocumentChangeEvent): void => {
     if (!FILESYSTEM_SCHEMES.has(event.document.uri.scheme)) return;
-    documentChangeRefresh.request();
+    documentChangeRefresh.request({ reason: "document-changed", target: event.document.uri.fsPath, phase: "global-refresh-trigger" });
     void documentEditRuntime.apply({
       after: toEditSnapshot(event.document),
       changes: event.contentChanges.map((change) => ({
@@ -742,7 +751,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
           await refreshAfterDocumentEdit({
             refreshPullRequestProgress: refreshPullRequestProgressForSelection,
             refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
-            refreshGlobal: () => globalRuntime.refreshWithErrorBoundary(),
+            refreshGlobal: () => refreshGlobalUnderstanding({ reason: "document-review-state-applied", target: event.document.uri.fsPath, phase: "global-refresh-trigger" }),
             reportPullRequestProgressError
           });
         } catch (error) {
@@ -758,10 +767,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       }
     );
   };
-  const refreshForSavedOrClosedDocument = (document: vscode.TextDocument): void => {
+  const refreshForSavedOrClosedDocument = (document: vscode.TextDocument, reason: "document-saved" | "document-closed"): void => {
     if (!FILESYSTEM_SCHEMES.has(document.uri.scheme)) return;
     documentChangeRefresh.cancel();
-    refreshGlobalUnderstanding();
+    refreshGlobalUnderstanding({ reason, target: document.uri.fsPath, phase: "global-refresh-trigger" });
   };
   const testReviewStateDependentQueue = context.extensionMode === vscode.ExtensionMode.Test
     ? new TestReviewStateDependentQueue({
@@ -780,8 +789,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     if (observeEditSnapshot) documentEditRuntime.observe(toEditSnapshot(document));
     const observedFileOpen = observeGlobalUnderstandingDocumentOpen({
       observe: () => observeCurrentGlobalUnderstandingDocument(document),
-      requestRefresh: () => documentChangeRefresh.request(),
-      refreshAfterFailure: () => globalRuntime.refreshWithErrorBoundary(),
+      requestRefresh: () => documentChangeRefresh.request({ reason: "document-opened", target: document.uri.fsPath, phase: "global-refresh-trigger" }),
+      refreshAfterFailure: () => refreshGlobalUnderstanding({ reason: "document-open-failed", target: document.uri.fsPath, phase: "global-refresh-trigger" }),
       showGenericError: (message) => {
         if (context.extensionMode === vscode.ExtensionMode.Test) testGlobalUnderstandingUiErrors.push(message);
         void vscode.window.showErrorMessage(message);
@@ -798,12 +807,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         testReviewStateDependentQueue?.enqueueAll();
         return;
       }
-      refreshGlobalUnderstanding();
+      refreshGlobalUnderstanding({ reason: "review-state-changed", phase: "global-refresh-trigger" });
       refreshPullRequestProgress();
       void reviewContextsRuntimeRef.current?.refreshWithErrorBoundary();
     }),
     exclusionPolicy.onDidChange(() => {
-      refreshGlobalUnderstanding();
+      refreshGlobalUnderstanding({ reason: "exclude-configuration-changed", phase: "global-refresh-trigger" });
       refreshPullRequestProgress();
     }),
     vscode.workspace.onDidOpenTextDocument((document) => {
@@ -814,12 +823,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       if (document !== undefined) void observeRegisteredGlobalUnderstandingDocument(document, false);
     }),
     vscode.workspace.onDidChangeTextDocument(requestRefreshForDocumentChange),
-    vscode.workspace.onDidSaveTextDocument(refreshForSavedOrClosedDocument),
+    vscode.workspace.onDidSaveTextDocument((document) => refreshForSavedOrClosedDocument(document, "document-saved")),
     vscode.workspace.onDidCloseTextDocument((document) => {
       if (FILESYSTEM_SCHEMES.has(document.uri.scheme)) {
         documentEditRuntime.forget(document.uri.toString(true));
       }
-      refreshForSavedOrClosedDocument(document);
+      refreshForSavedOrClosedDocument(document, "document-closed");
     }),
     documentChangeRefresh,
     { dispose: () => testReviewStateDependentQueue?.dispose() }
@@ -831,7 +840,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     observeStartupGlobalUnderstandingDocuments(
       vscode.workspace.textDocuments,
       observeCurrentGlobalUnderstandingDocument,
-      () => globalRuntime.refreshWithErrorBoundary()
+      () => refreshGlobalUnderstanding({ reason: "startup-documents-observed", phase: "global-refresh-trigger" })
     )
   ).catch((error: unknown) => {
     reportActiveOperationFailure("Global Understanding startup", error);
@@ -851,7 +860,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       testGlobalUnderstandingFolderEntryAcceptedCount += 1;
       for (const resolve of testGlobalUnderstandingFolderEntryWaiters.splice(0)) resolve();
     }
-    documentChangeRefresh.request();
+    documentChangeRefresh.request({ reason: "folder-entry-changed", target: uri.fsPath, phase: "global-refresh-trigger" });
   };
   const folderEntryWatcherRegistrations = [
     folderEntryWatcher,

@@ -13,6 +13,7 @@ let latestDetail: OperationDiagnosticDetail | undefined;
 /** Coalesces refresh requests and cancels a stale scheduled generation before an immediate refresh. */
 export class GlobalUnderstandingRefreshCoalescer {
   private scheduled: unknown | undefined;
+  private running: { readonly identity: string; readonly promise: Promise<void> } | undefined;
   private disposed = false;
   public constructor(private readonly host: GlobalUnderstandingRefreshCoalescerHost, private readonly delayMs = 150) {
     if (!Number.isSafeInteger(delayMs) || delayMs < 0) throw new RangeError("delayMs must be a non-negative safe integer.");
@@ -26,14 +27,14 @@ export class GlobalUnderstandingRefreshCoalescer {
     const handle = this.host.schedule(() => {
       if (this.disposed || this.scheduled !== handle) return;
       this.scheduled = undefined;
-      void this.host.run(request);
+      void this.run(request);
     }, this.delayMs);
     this.scheduled = handle;
   }
   public async flush(request?: OperationDiagnosticDetail): Promise<void> {
     if (this.disposed) return;
     this.cancel();
-    await this.host.run(request);
+    await this.run(request);
   }
   public cancel(): void {
     if (this.scheduled === undefined) return;
@@ -46,8 +47,22 @@ export class GlobalUnderstandingRefreshCoalescer {
     this.cancel();
     pending.delete(this);
   }
+
+  private run(request: OperationDiagnosticDetail | undefined): Promise<void> {
+    const identity = JSON.stringify(request ?? {});
+    if (this.running?.identity === identity) return this.running.promise;
+    const promise = Promise.resolve(this.host.run(request));
+    const running = { identity, promise };
+    this.running = running;
+    void promise.then(
+      () => { if (this.running === running) this.running = undefined; },
+      () => { if (this.running === running) this.running = undefined; },
+    );
+    return promise;
+  }
 }
 
+/** Returns and clears the most recent pending Global refresh diagnostic detail. */
 export const takeLatestPendingGlobalUnderstandingDetail = (): OperationDiagnosticDetail | undefined => {
   const detail = latestDetail;
   latestDetail = undefined;

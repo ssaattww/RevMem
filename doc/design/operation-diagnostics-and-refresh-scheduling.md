@@ -26,7 +26,7 @@ supersededされた処理はcancelledとして記録し、通常の障害diagnos
 
 ### 3.1 Global refresh trigger
 
-詳細診断ON時だけdocument eventから `document-opened` / `document-changed` / `document-saved` / `document-closed` とfilesystem-backed target pathを保持し、次のGlobal理解率再計算operation開始時に1回消費する。test hostでevent/configuration APIがない場合は診断だけを無効化する。
+詳細診断ON時だけGlobal再計算の実際のtriggerをoperation開始detailとして渡す。document eventは `document-opened` / `document-changed` / `document-saved` / `document-closed` とfilesystem-backed target pathを含め、review-state、exclude/configuration、manual command、folder entryは固定reasonと利用可能なtargetを含める。開始detailは同じoperation IDのOutput lifecycleへ `DETAIL` として記録する。test hostでevent/configuration APIがない場合は診断だけを無効化する。
 
 ### 3.2 PR Progress file phase
 
@@ -69,7 +69,7 @@ document change等から発生する短時間の連続refresh要求は150ms debo
 
 ### 4.3 実行中refreshのstale判定
 
-新しいrefresh generationが開始された場合、旧generationはsupersededとみなす。pending timerはcoalescerがcancelし、running generationはAbortSignal / generation validationでstale結果を抑止する。
+新しいeffective input identityのrefresh generationが開始された場合、旧generationはsupersededとみなす。pending timerはcoalescerがcancelし、running generationはAbortSignal / generation validationでstale結果を抑止し、feedback lifecycleには非errorの `CANCEL` terminalを残す。同じeffective input identityのrunning requestはsingle-flightで共有し、3件以上の連続requestでも再起動しない。
 
 ## 5. PR Progressの処理境界
 
@@ -88,8 +88,10 @@ PR Progressの集計対象はrepository全体ではなく、選択されたPR sn
 
 - 詳細診断設定が既定OFF
 - 詳細ON時のみreason / target / operation identityを出す
-- superseded operationをcancelledとして扱う
+- superseded operationを詳細設定にかかわらずcancelledとして扱い、user error notificationを出さない
 - 予約済みGlobal refreshをcancel / flushできる
+- 同一effective inputのrunning Global refreshを共有し、異なるinputだけをsupersedeする
+- detail変更中にもbusy statusを再publishし、tooltipへreason / phase / targetを出す
 - VS Code簡易mockに診断APIがなくてもextension本体が動作する
 - PR Progressのexcluded fileとzero changed-line fileをfile名付きで区別する
 - aggregate denominatorが0の場合に`zero-denominator`と内訳を出す

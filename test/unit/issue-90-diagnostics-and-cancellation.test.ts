@@ -63,7 +63,16 @@ test("Issue #90 active status enumerates every operation and detailed mode corre
     { id: 1, label: "Global理解率を再計算", detail: detail("document-changed", "src/global.ts") },
     { id: 2, label: "PR進捗を計算", detail: detail("selected-pull-request", "github-pr:repo#90") },
   ]);
+  assert.deepEqual(host.logs.slice(0, 4).map((entry) => ({ event: entry.event, operationId: entry.operationId, detail: entry.detail })), [
+    { event: "started", operationId: 1, detail: undefined },
+    { event: "detail", operationId: 1, detail: detail("document-changed", "src/global.ts") },
+    { event: "started", operationId: 2, detail: undefined },
+    { event: "detail", operationId: 2, detail: detail("selected-pull-request", "github-pr:repo#90") },
+  ]);
+  const statusCountBeforePendingReadDetail = host.statuses.length;
   feedback.reportDetail(detail("pull-request-file", "src/progress.ts", "read-content"), progressContext);
+  assert.equal(host.statuses.length, statusCountBeforePendingReadDetail + 1);
+  assert.deepEqual(host.statuses.at(-1)?.activities?.find((activity) => activity.id === progressContext?.id)?.detail, detail("pull-request-file", "src/progress.ts", "read-content"));
   const detailEntry = host.logs.at(-1);
   assert.equal(detailEntry?.event, "detail");
   assert.equal(detailEntry?.operationId, 2);
@@ -88,10 +97,20 @@ test("Issue #90 superseded work has a cancellation terminal and does not reveal 
   const feedback = new OperationFeedback(host, () => 3_000);
   const cancellation = new OperationCancelledError();
   await assert.rejects(feedback.run("Global理解率を再計算", async () => { throw cancellation; }, detail("review-state-changed")), cancellation);
-  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "cancelled"]);
-  assert.equal(host.logs[1]?.operationId, 1);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "detail", "cancelled"]);
+  assert.equal(host.logs[2]?.operationId, 1);
   assert.equal(host.reveals, 0);
-  assert.match(formatOperationLogEntry(host.logs[1]!), /CANCEL op=1 Global理解率を再計算/u);
+  assert.match(formatOperationLogEntry(host.logs[2]!), /CANCEL op=1 Global理解率を再計算/u);
+});
+
+test("Issue #90 cancellation remains a non-error terminal while detailed diagnostics are OFF", async () => {
+  const host = new DiagnosticHost(false);
+  const feedback = new OperationFeedback(host, () => 3_500);
+  const cancellation = new OperationCancelledError();
+  await assert.rejects(feedback.run("Global理解率を再計算", async () => { throw cancellation; }, detail("review-state-changed", "src/private.ts")), cancellation);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "cancelled"]);
+  assert.equal(host.reveals, 0);
+  assert.doesNotMatch(host.logs.map(formatOperationLogEntry).join("\n"), /private\.ts|review-state-changed/u);
 });
 
 test("Issue #90 coalescer cancels the pending stale refresh and flushes exactly one latest reason and file", async () => {
@@ -113,6 +132,36 @@ test("Issue #90 coalescer cancels the pending stale refresh and flushes exactly 
   assert.deepEqual(cancelled, [1, 2]);
   assert.deepEqual(runs, [detail("document-review-state-applied", "src/first.ts")]);
   assert.equal(callbacks.size, 0);
+  coalescer.dispose();
+});
+
+test("Issue #90 coalescer shares three running requests with the same effective input and supersedes different input", async () => {
+  const gates = [deferred<void>(), deferred<void>()];
+  const runs: OperationDiagnosticDetail[] = [];
+  const published: string[] = [];
+  const coalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => undefined,
+    schedule: () => 1,
+    cancel: () => undefined,
+    run: async (request) => {
+      assert.ok(request);
+      const index = runs.push(request) - 1;
+      await gates[index]!.promise;
+      published.push(request.target!);
+    },
+  });
+  const same = detail("review-state-changed", "context:owner@revision-1");
+  const newer = detail("review-state-changed", "context:owner@revision-2");
+  const first = coalescer.flush(same);
+  const second = coalescer.flush(same);
+  const third = coalescer.flush(same);
+  assert.deepEqual(runs, [same]);
+  const latest = coalescer.flush(newer);
+  assert.deepEqual(runs, [same, newer]);
+  gates[0]!.resolve();
+  gates[1]!.resolve();
+  await Promise.all([first, second, third, latest]);
+  assert.deepEqual(published, [same.target, newer.target]);
   coalescer.dispose();
 });
 

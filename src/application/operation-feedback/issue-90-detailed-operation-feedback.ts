@@ -93,7 +93,7 @@ export class OperationFeedback extends BaseOperationFeedback {
       appendLog: (entry) => {
         const detailed = detailedHost.isDetailedDiagnosticsEnabled?.() === true;
         const operationId = detailed ? operationScope.getStore() : undefined;
-        const cancelled = detailed && entry.event === "failed" && entry.errorName === "OperationCancelledError";
+        const cancelled = entry.event === "failed" && entry.errorName === "OperationCancelledError";
         const mapped: OperationLogEntry = {
           ...entry,
           ...(cancelled ? { event: "cancelled" as const } : {}),
@@ -138,6 +138,7 @@ export class OperationFeedback extends BaseOperationFeedback {
     return this.operationScope.run(id, async () => {
       try {
         return await super.run(label, async (context) => {
+          if (detailed && startDetail !== undefined) this.reportDetail(startDetail, context);
           for (const queuedDetail of queued) this.reportDetail(queuedDetail, context);
           return operation(context);
         });
@@ -175,6 +176,20 @@ export class OperationFeedback extends BaseOperationFeedback {
     };
     detailedEntries.add(entry);
     this.detailedHost.appendLog(entry as BaseOperationLogEntry);
+    const latest = this.activities.at(-1);
+    if (latest !== undefined) {
+      this.detailedHost.showBusy(
+        latest.label,
+        this.activities.length,
+        latest.progress,
+        this.activities.map((candidate) => Object.freeze({
+          id: candidate.id,
+          label: candidate.label,
+          ...(candidate.progress === undefined ? {} : { progress: candidate.progress }),
+          ...(candidate.detail === undefined ? {} : { detail: candidate.detail }),
+        })),
+      );
+    }
   }
 }
 
