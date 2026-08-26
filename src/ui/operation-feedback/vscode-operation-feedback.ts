@@ -33,12 +33,26 @@ implements OperationFeedbackHost, vscode.Disposable {
       if (document.uri.scheme !== "file" && document.uri.scheme !== "vscode-remote") return;
       this.pendingGlobalDetail = { reason, target: document.uri.fsPath, phase: "global-refresh-trigger" };
     };
-    this.diagnosticTriggerSubscriptions = [
-      vscode.workspace.onDidOpenTextDocument((document) => remember("document-opened", document)),
-      vscode.workspace.onDidChangeTextDocument((event) => remember("document-changed", event.document)),
-      vscode.workspace.onDidSaveTextDocument((document) => remember("document-saved", document)),
-      vscode.workspace.onDidCloseTextDocument((document) => remember("document-closed", document)),
-    ];
+    const workspace = vscode.workspace as typeof vscode.workspace & {
+      readonly onDidOpenTextDocument?: typeof vscode.workspace.onDidOpenTextDocument;
+      readonly onDidChangeTextDocument?: typeof vscode.workspace.onDidChangeTextDocument;
+      readonly onDidSaveTextDocument?: typeof vscode.workspace.onDidSaveTextDocument;
+      readonly onDidCloseTextDocument?: typeof vscode.workspace.onDidCloseTextDocument;
+    };
+    const subscriptions: vscode.Disposable[] = [];
+    if (typeof workspace.onDidOpenTextDocument === "function") {
+      subscriptions.push(workspace.onDidOpenTextDocument((document) => remember("document-opened", document)));
+    }
+    if (typeof workspace.onDidChangeTextDocument === "function") {
+      subscriptions.push(workspace.onDidChangeTextDocument((event) => remember("document-changed", event.document)));
+    }
+    if (typeof workspace.onDidSaveTextDocument === "function") {
+      subscriptions.push(workspace.onDidSaveTextDocument((document) => remember("document-saved", document)));
+    }
+    if (typeof workspace.onDidCloseTextDocument === "function") {
+      subscriptions.push(workspace.onDidCloseTextDocument((document) => remember("document-closed", document)));
+    }
+    this.diagnosticTriggerSubscriptions = subscriptions;
   }
 
   public takeOperationStartDetail(label: string): OperationDiagnosticDetail | undefined {
