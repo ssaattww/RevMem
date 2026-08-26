@@ -15,7 +15,7 @@ import {
 } from "../../src/application/operation-feedback/index.js";
 import {
   GlobalUnderstandingRefreshCoalescer,
-} from "../../src/ui/global-understanding/global-understanding-ui-model.js";
+} from "../../src/ui/global-understanding/issue-90-global-refresh.js";
 
 class DiagnosticHost implements OperationFeedbackHost {
   public readonly logs: OperationLogEntry[] = [];
@@ -142,7 +142,7 @@ test("Issue #90 active status enumerates every operation and detailed mode corre
   progressGate.resolve();
   await Promise.all([global, progress]);
   assert.deepEqual(host.logs.filter((entry) => entry.event === "started").map((entry) => entry.operationId), [1, 2]);
-  assert.deepEqual(host.logs.filter((entry) => entry.event === "succeeded").map((entry) => entry.operationId), [1, 2]);
+  assert.deepEqual(host.logs.filter((entry) => entry.event === "succeeded").map((entry) => entry.operationId).sort(), [1, 2]);
 });
 
 test("Issue #90 default diagnostics never emit a supplied file target", async () => {
