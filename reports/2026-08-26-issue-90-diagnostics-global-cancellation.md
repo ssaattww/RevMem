@@ -45,7 +45,7 @@ PR Progressはrepository全体ではなく選択PR snapshotのfilesのみが対�
 - `d6e3adac...`: TDD Red。unit compileでdiagnostic module未実装を確認。
 - `99c75f8c...`: exclusion union narrowing不足をBuildで検出。
 - `17d7e463...`: Build/typecheck/architecture/lint Green後、test fixture shapeの型誤りをunit compileで検出。
-- 後続commitでfixture、設計書、reportを修正。
+- `9993b996...`: Build/typecheck/architecture/lint/unit/T304/T403-T406/T502-T506/T602-T606までGreenを確認。後続のreport-only commitでHEADが更新されたため、このrunは最終Green判定には使用しない。
 
 最終Green判定はPR current HEADとworkflow run head SHAが一致するrunだけを使用する。別SHAのrunは代用しない。
 
