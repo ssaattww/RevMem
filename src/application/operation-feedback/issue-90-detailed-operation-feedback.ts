@@ -105,7 +105,7 @@ export class OperationFeedback extends BaseOperationFeedback {
     this.activities = activities;
     this.operationScope = operationScope;
     this.detailedHost = detailedHost;
-    latestDetailedFeedback = this;
+    latestDetailedFeedback = new WeakRef(this);
     this.nowDetailed = now;
   }
 
@@ -162,7 +162,7 @@ export class OperationFeedback extends BaseOperationFeedback {
   }
 }
 
-let latestDetailedFeedback: OperationFeedback | undefined;
+let latestDetailedFeedback: WeakRef<OperationFeedback> | undefined;
 
 export const reportActiveOperationDetail = (
   detail: OperationDiagnosticDetail,
@@ -170,7 +170,7 @@ export const reportActiveOperationDetail = (
 ): void => {
   const owner = context?.owner;
   if (owner instanceof OperationFeedback) owner.reportDetail(detail, context);
-  else latestDetailedFeedback?.reportDetail(detail, context);
+  else latestDetailedFeedback?.deref()?.reportDetail(detail, context);
 };
 
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
