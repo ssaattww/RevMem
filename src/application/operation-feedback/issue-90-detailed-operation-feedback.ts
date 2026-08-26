@@ -55,6 +55,15 @@ const validateDetail = (detail: OperationDiagnosticDetail): OperationDiagnosticD
 };
 
 const detailedEntries = new WeakSet<object>();
+const queuedStartDetails = new Map<string, readonly OperationDiagnosticDetail[]>();
+
+/** Queues opt-in details for the next operation with this label. */
+export const queueOperationStartDetails = (
+  label: string,
+  details: readonly OperationDiagnosticDetail[],
+): void => {
+  queuedStartDetails.set(label, details.map(validateDetail));
+};
 
 /** Adds opt-in operation identities/path details while preserving default Output formatting. */
 export class OperationFeedback extends BaseOperationFeedback {
@@ -117,6 +126,8 @@ export class OperationFeedback extends BaseOperationFeedback {
   ): Promise<T> {
     const detailed = this.detailedHost.isDetailedDiagnosticsEnabled?.() === true;
     const startDetail = detail ?? (detailed ? this.detailedHost.takeOperationStartDetail?.(label) : undefined);
+    const queued = detailed ? queuedStartDetails.get(label) ?? [] : [];
+    queuedStartDetails.delete(label);
     const id = ++this.nextDetailedId;
     const activity: ActivityState = {
       id,
@@ -126,7 +137,10 @@ export class OperationFeedback extends BaseOperationFeedback {
     this.activities.push(activity);
     return this.operationScope.run(id, async () => {
       try {
-        return await super.run(label, operation);
+        return await super.run(label, async (context) => {
+          for (const queuedDetail of queued) this.reportDetail(queuedDetail, context);
+          return operation(context);
+        });
       } finally {
         const index = this.activities.indexOf(activity);
         if (index >= 0) this.activities.splice(index, 1);
