@@ -1,4 +1,5 @@
 import {
+  reportActiveOperationDetail,
   reportActiveOperationProgress,
 } from "./application/operation-feedback/index";
 import {
@@ -52,11 +53,18 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     super.register({
       ...registration,
       readTextContent: async (...args) => {
-        const result = await readTextContent(...args);
         const active = this.activeFileProgress;
         const feedbackContext = args[1];
+        const descriptor = args[0];
         if (active?.key === key && feedbackContext !== undefined) {
-          const descriptor = args[0];
+          reportActiveOperationDetail({
+            reason: "pull-request-file",
+            target: descriptor.filePath,
+            phase: "read-content",
+          }, feedbackContext);
+        }
+        const result = await readTextContent(...args);
+        if (active?.key === key && feedbackContext !== undefined) {
           const identity = `${descriptor.side}\0${descriptor.revision}\0${descriptor.filePath}`;
           if (!active.seen.has(identity)) {
             active.seen.add(identity);
