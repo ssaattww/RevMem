@@ -12,129 +12,87 @@ Review Rangeの長時間処理について、通常利用時のprivacy-safeな�
 
 ### 2.1 詳細診断はopt-in
 
-設定 `reviewRange.diagnostics.detailed` の既定値は `false` とする。
-
-通常モードでは、既存のoperation label、件数、進捗等だけを表示し、repository pathやfile名をdiagnosticへ追加しない。
-
-詳細モードでは、調査目的としてfile/pathを表示してよい。詳細モードで追加する情報は次とする。
-
-- operation ID
-- operation label
-- reason
-- phase
-- target file/path
-- 同時実行中operationの一覧
+設定 `reviewRange.diagnostics.detailed` の既定値は `false` とする。通常モードではrepository pathやfile名をdiagnosticへ追加しない。詳細モードでは調査目的としてoperation ID、label、reason、phase、target file/path、同時実行operation一覧を表示してよい。
 
 ### 2.2 operation identity
 
-同時実行operationを単なるactive countとして扱わず、各operationへ一意なIDを与える。
-
-busy表示はactive countとoperation activityの両方を保持し、詳細モードでは「4件の処理」の4件が何か分かるよう、各operationのID、label、phase、targetをtooltipへ列挙する。
-
-operation終了時は、そのoperation自身のIDに対してterminal logを記録する。別operationが後から開始しても終了logのidentityを取り違えない。
+同時実行operationへ一意なIDを与える。詳細モードでは「4件の処理」の内訳として各operationのID、label、phase、targetをtooltipへ列挙する。operation終了時は開始時と同じIDへterminal logを記録する。
 
 ### 2.3 cancellationはfailureと分離
 
-新しい要求によって旧処理が不要になった場合、それをfailureとして扱わない。
-
-terminal stateは少なくともsuccess / failure / cancelledを区別する。supersededされた処理はcancelledとして記録し、通常の障害diagnosticと混同しない。
+supersededされた処理はcancelledとして記録し、通常の障害diagnosticと混同しない。
 
 ## 3. 詳細診断情報の生成
 
 ### 3.1 Global refresh trigger
 
-VS Code UI adapterは詳細診断ON時だけdocument eventから次のtrigger reasonを保持できる。
-
-- `document-opened`
-- `document-changed`
-- `document-saved`
-- `document-closed`
-
-対象はfilesystem-backed document (`file` / `vscode-remote`) とする。
-
-次のGlobal理解率再計算operation開始時に、保持したreasonとtarget pathをoperation start detailとして消費する。保持値は1回消費したら破棄する。
-
-VS Code APIを限定実装するtest hostでは、event APIやconfiguration APIが存在しない場合がある。その場合は診断機能だけを無効化し、extension本体を失敗させない。
+詳細診断ON時だけdocument eventから `document-opened` / `document-changed` / `document-saved` / `document-closed` とfilesystem-backed target pathを保持し、次のGlobal理解率再計算operation開始時に1回消費する。test hostでevent/configuration APIがない場合は診断だけを無効化する。
 
 ### 3.2 PR Progress file phase
 
-PR Progressの詳細診断では、対象PR snapshotの各fileについて少なくともcontent取得phaseを識別できるようにする。
-
-例:
+PR Progressでは対象PR snapshotの各fileについてcontent取得phaseを識別する。
 
 ```text
 #17 PR Progress [read-content] — src/example.ts
 ```
 
-これにより、PR Progress全体が止まっているのか、特定fileのimmutable BASE/HEAD content取得で待っているのかを区別できる。
+### 3.3 PR Progressが0件になる理由
+
+詳細診断ON時は、PR Progress計算開始時にdenominator形成前の入力をfile単位で記録する。file名を出してよいのは詳細モードだけとする。
+
+最低限、次を出力する。
+
+- `missing-pr-snapshot`: 選択contextにPR snapshotがない
+- `no-pr-files`: snapshot自体のchanged file数が0
+- `pr-snapshot-loaded`: snapshotのfile数
+- `included`: denominatorへ含まれるfile。`additions` / `deletions` / `total`を併記
+- `excluded:binary`: binaryのため除外
+- `excluded:default-glob`: 既定globで除外
+- `excluded:user-glob`: user設定globで除外
+- `zero-changed-lines`: fileは含まれるがadditions + deletionsが0
+- `zero-denominator`: 全file分類後の有効denominatorが0
+- `calculated`: 有効denominatorが1以上
+
+aggregate summaryには `snapshotFiles`, `included`, `excluded`, `zeroFiles`, `reviewed`, `total` を出す。これにより「PR fileを取得できていない」「全fileが除外された」「fileはあるがchanged lineが0」のどこで0件になったかをOutputだけで区別できる。
+
+分類diagnosticは実際のshared exclusion policyとsnapshotのadditions/deletionsを使い、PR Progressのdenominator contractと同じ入力から生成する。計算アルゴリズム自体は変更しない。
 
 ## 4. Global理解率再計算のcoalescing
 
 ### 4.1 予約済みrefresh
 
-document change等から発生する短時間の連続refresh要求はdebounceしてよい。現在の予約待ち時間は150msである。
-
-予約済みrefreshは「実行中」ではなく、まだ開始していないpending workとして扱う。
+document change等から発生する短時間の連続refresh要求は150ms debounceする。予約済みrefreshはまだ開始していないpending workとして扱う。
 
 ### 4.2 即時refreshとの競合
 
-予約済みrefreshが存在する状態で、より新しい状態を反映する即時refreshが必要になった場合は次の順序とする。
-
-1. 予約済みtimerをcancelする。
-2. pending requestを最新reason / targetへ更新する。
-3. 最新requestだけをflushしてrefreshを開始する。
-
-古いtimerを残したまま即時refreshを開始してはならない。そうすると、即時refresh後に古いtimerが発火して同一編集由来の再計算が重複するためである。
+より新しい即時refreshが必要になった場合は、予約済みtimerをcancelし、pending requestを最新reason / targetへ更新し、最新requestだけをflushする。
 
 ### 4.3 実行中refreshのstale判定
 
-実行開始後のGlobal refreshはgeneration / AbortSignal境界に従う。
-
-新しいrefresh generationが開始された場合、旧generationはsupersededとみなす。旧generationは可能な境界で処理を打ち切り、少なくとも最終結果をpublishしてはならない。
-
-予約済みworkのcancelと実行中workのAbortは別の責務である。
-
-- pending timer: coalescerがcancel
-- running generation: AbortSignal / generation validationがstale結果を抑止
+新しいrefresh generationが開始された場合、旧generationはsupersededとみなす。pending timerはcoalescerがcancelし、running generationはAbortSignal / generation validationでstale結果を抑止する。
 
 ## 5. PR Progressの処理境界
 
-PR Progressの集計対象はrepository全体ではなく、選択されたPR snapshotに含まれるfileだけである。
+PR Progressの集計対象はrepository全体ではなく、選択されたPR snapshotに含まれるfileだけである。ただし表示までには、Review Contexts refresh / runtime registration、file一覧確定、immutable BASE/HEAD content取得、reviewability/effective progress計算、tree/status更新がある。
 
-ただし、UI上のPR Progress更新までには次の処理経路が存在する。
-
-1. Review Contexts refresh / selected PR runtime registration
-2. 選択PR file一覧の確定
-3. 各fileのimmutable BASE / HEAD content取得
-4. full text / reviewability evidenceに基づくeffective progress計算
-5. tree / status表示更新
-
-したがって、対象file数が少なくても前段のReview Contexts取得または各fileのrevision content I/Oが遅い場合は、PR Progress表示が遅くなる。
-
-Issue #90ではこの経路を観測可能にするところまでとし、並列化、cache戦略、priority schedulingは変更しない。
+対象file数が少なくても前段のReview Contexts取得またはrevision content I/Oが遅い場合は表示が遅くなる。Issue #90では観測可能にするところまでとし、並列化、cache戦略、priority schedulingは変更しない。
 
 ## 6. 今後の性能改善候補
-
-実機の詳細diagnosticでボトルネックを特定してから、別Issueで次を検討する。
 
 - selected PR file content取得のbounded parallelism
 - immutable BASE/HEAD content cacheの再利用範囲
 - Review Contexts完了待ちとPR Progress開始条件の分離
 - Global理解率再計算とPR Progress間のI/O scheduling / priority
 
-性能改善を行う場合も、revision identity、repository path semantics、failure isolation、stale generation抑止の既存contractを崩してはならない。
-
 ## 7. 検証contract
-
-最低限、次を自動testで固定する。
 
 - 詳細診断設定が既定OFF
 - 詳細ON時のみreason / target / operation identityを出す
-- 同時operation終了順に依存せず正しいIDでterminal logを出す
 - superseded operationをcancelledとして扱う
 - 予約済みGlobal refreshをcancel / flushできる
-- 別Global refresh開始後に古い予約済みrefreshを発火させない
 - VS Code簡易mockに診断APIがなくてもextension本体が動作する
+- PR Progressのexcluded fileとzero changed-line fileをfile名付きで区別する
+- aggregate denominatorが0の場合に`zero-denominator`と内訳を出す
 
 ## 8. 関連文書
 
