@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #90 / PR #91 normal reviewは`pass_with_held`。full local gateはstatic Green/default `npm test`のPR差分外Windows fixture failureでheld、fresh independent final review待ち
-- 次の工程: candidate HEADをfreezeし独立final reviewへ渡す。CIは待たず、success artifactのVSIXをユーザーが実機判断する
+- 実装中タスク: Issue #90 / PR #91 independent final review findings PR91-IFR-001/002のTDD follow-up
+- 次の工程: actual generation identityとruntime suite CI wiringを各0.5hで修正し、normal verification後に同じindependent reviewerへ限定closureを戻す。CIは待たず、success artifactのVSIXをユーザーが実機判断する
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #91 follow-up完了後に再開する
 - 後続候補: T608
 
