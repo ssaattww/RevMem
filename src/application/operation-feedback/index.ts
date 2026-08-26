@@ -3,6 +3,7 @@ export * from "./startup-feedback-composition";
 export {
   OperationFeedback,
   formatOperationLogEntry,
+  reportActiveOperationDetail,
   type OperationActivity,
   type OperationDiagnosticDetail,
   type OperationLogEntry,
