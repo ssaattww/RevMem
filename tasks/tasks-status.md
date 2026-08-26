@@ -8,11 +8,11 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91のPR91-IFR-001 runtime fixture 3セルは補完済み、同一normal reviewerの限定verification待ち。PR91-IFR-002はclosed
-- 次のタスク: current review-target HEADを固定し、同一normal reviewerへIFR-001限定verificationを戻す
+- 現在のタスク: Issue #90 / PR #91のPR91-IFR-001/002はnormal verificationでclosed、verdict `pass_with_held`。source delta後のfull local gate R2待ち
+- 次のタスク: final candidateでperformanceを除くfull local gateを1回実行し、同じindependent reviewerへfinding/CI-delta限定closureを戻す
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: PR91-IFR-001 normal verificationと同じindependent reviewerの限定closure。full local gateのWindows environment/fixture failureとactual UI判断はheld
+- ブロッカー: source delta後のfull local gate R2と同じindependent reviewerの限定closure。actual UI判断はheld
 - Gitブランチ: `fix/pr91-normal-review-findings`
 - Pull Request: #91（normal review `fail`。reviewed implementation HEAD `18623c47d0d9a8037e7c953026d6fac9213750cf`）
 
@@ -46,7 +46,7 @@
 
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| PR91-IFR-001 | fixed / normal verification pending | 0.5h（production fix約21分、evidence約12分） | diagnostic detailとactual effective-input generation identityを分離し、同一path/targetなしの連続mutationを新generationとして扱う | なし | targetless g3→g4、explicit same identity 3 caller、same detail/different identityの3セルをruntime 6/6で補完済み |
+| PR91-IFR-001 | closed / normal fix verification R2 | 0.5h（production fix約21分、evidence約12分） | diagnostic detailとactual effective-input generation identityを分離し、同一path/targetなしの連続mutationを新generationとして扱う | なし | 同一normal reviewerがrequired action / production / runtime fixture / focused evidenceを全cell completeとして確認 |
 | PR91-IFR-002 | closed / normal fix verification | 0.5h（実績約12分） | runtime routing suiteをrequired `test:unit` / pull-request CI gateへ配線する | IFR-001 | 同一normal reviewerがtest:unit entry、required Unit gate→artifact順、contract evidenceをcompleteとして確認 |
 
 - initial independent reviewed HEAD: `ca21dae869b7877af0a4a15a69844d1dfc248bee`
@@ -58,6 +58,8 @@
 - validation: IFR-001 Red→Green、runtime 5/5、Issue90 8/8、IFR-002 contract 1/1、build、contracts、architecture正負、lint、diff-check Green。default full testは既知Windows heldのため再実行なし
 - independent follow-up normal verification: `reports/issue-90-pr91-independent-followup-normal-verification-20260826.md`（IFR-001 fixture partial、IFR-002 closed、verdict `fail`）
 - IFR-001 R7 evidence report: `reports/issue-90-pr91-independent-review-followup-r2-20260826.md`
+- independent follow-up normal verification R2: `reports/issue-90-pr91-independent-followup-normal-verification-r2-20260826.md`（IFR-001/002 closed、verdict `pass_with_held`）
+- full gate evidence: `5bb32c6...`の初回full local gateは後続source deltaでinvalidated。新candidateでR2を1回だけ実行する
 - local validation: Issue #90 focused 8/8、T305 61/61、T505 24/24、build、contracts、architecture正負、lint、diff-checkはGreen。Markdown lintはrepository wiring不在でunsupported
 - 全体終了条件: NR90-001〜006のRed/Green、focused/broader local validation、同一normal reviewerのfix verification、full local gate、独立final review、attestation、PR #91 evidence同期。CI待機と性能CI追加はユーザー指示により行わない
 
