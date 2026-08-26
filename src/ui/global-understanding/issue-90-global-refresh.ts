@@ -23,6 +23,7 @@ export class GlobalUnderstandingRefreshCoalescer {
   public request(request?: OperationDiagnosticDetail): void {
     if (this.disposed) return;
     if (this.running?.identity === identityFor(request)) return;
+    this.running = undefined;
     this.host.invalidate();
     if (request !== undefined) latestDetail = request;
     this.cancel();

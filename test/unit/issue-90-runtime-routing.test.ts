@@ -3,6 +3,7 @@ import Module, { createRequire } from "node:module";
 import test from "node:test";
 
 import {
+  OperationCancelledError,
   OperationFeedback,
   reportActiveOperationDetail,
   runWithActiveOperationFeedback,
@@ -239,4 +240,47 @@ test("NR90-004 real VS Code feedback host republishes tooltip detail while PullR
   await progress;
   assert.ok(output.some((line) => line.includes("pull-request-file") && line.includes("read-content")));
   setActiveOperationFeedback(undefined);
+});
+
+test("NR90-003 invalidated A is not shared when pending B is replaced by an immediate fresh A", async () => {
+  const host = new RuntimeDiagnosticHost(true);
+  const feedback = new OperationFeedback(host);
+  let active: AbortController | undefined;
+  let firstAStarted: (() => void) | undefined;
+  const firstARunning = new Promise<void>((resolve) => { firstAStarted = resolve; });
+  let runs = 0;
+  const published: string[] = [];
+  const a = { reason: "review-state-changed", target: "A", phase: "global-refresh-trigger" };
+  const b = { reason: "review-state-changed", target: "B", phase: "global-refresh-trigger" };
+  const coalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => active?.abort(),
+    schedule: () => 1,
+    cancel: () => undefined,
+    run: async (detail) => {
+      const controller = new AbortController();
+      active = controller;
+      const index = ++runs;
+      await feedback.run("Global理解率を再計算", async () => {
+        if (index === 1) {
+          firstAStarted?.();
+          await new Promise<void>((resolve) => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
+          throw new OperationCancelledError();
+        }
+        if (controller.signal.aborted) throw new Error("stale generation must not publish");
+        published.push(detail?.target ?? "none");
+      });
+    }
+  });
+  const oldA = coalescer.flush(a).catch(() => undefined);
+  await firstARunning;
+  coalescer.request(b);
+  const freshA = coalescer.flush(a);
+  await oldA;
+  await freshA;
+
+  assert.equal(runs, 2, "fresh A starts exactly once instead of sharing invalidated A");
+  assert.deepEqual(published, ["A"], "pending B and stale A never publish");
+  assert.equal(host.logs.filter((entry) => entry.event === "cancelled").length, 1, "invalidated old A has CANCEL terminal");
+  assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 1, "fresh A has OK terminal");
+  coalescer.dispose();
 });
