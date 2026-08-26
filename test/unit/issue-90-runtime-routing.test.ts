@@ -325,3 +325,87 @@ test("PR91-IFR-001 separates mutation generations from diagnostic detail identit
   assert.deepEqual(runs, ["src/same.ts", "src/same.ts", "targetless"], "each distinct mutation generation runs separately");
   coalescer.dispose();
 });
+
+test("PR91-IFR-001 R7 preserves targetless mutations and shares only one explicit immutable identity", async () => {
+  const targetlessHost = new RuntimeDiagnosticHost(true);
+  const targetlessFeedback = new OperationFeedback(targetlessHost);
+  let targetlessActive: AbortController | undefined;
+  let targetlessStarted: (() => void) | undefined;
+  const targetlessRunning = new Promise<void>((resolve) => { targetlessStarted = resolve; });
+  const targetlessPublished: string[] = [];
+  let targetlessRuns = 0;
+  const targetless = { reason: "review-state-changed", phase: "global-refresh-trigger" };
+  const targetlessCoalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => targetlessActive?.abort(), schedule: () => 1, cancel: () => undefined,
+    run: async () => {
+      const controller = new AbortController(); targetlessActive = controller;
+      const index = ++targetlessRuns;
+      await targetlessFeedback.run("Global理解率を再計算", async () => {
+        if (index === 1) {
+          targetlessStarted?.();
+          await new Promise<void>((resolve) => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
+          throw new OperationCancelledError();
+        }
+        targetlessPublished.push("generation-4");
+      });
+    }
+  });
+  const targetlessOld = targetlessCoalescer.flush(targetless, "owner:generation-3").catch(() => undefined);
+  await targetlessRunning;
+  targetlessCoalescer.request(targetless, "owner:generation-4");
+  await targetlessOld;
+  await targetlessCoalescer.flush(targetless, "owner:generation-4");
+  assert.deepEqual(targetlessPublished, ["generation-4"], "targetless stale generation never publishes while latest publishes once");
+  assert.equal(targetlessHost.logs.filter((entry) => entry.event === "cancelled").length, 1);
+  assert.equal(targetlessHost.logs.filter((entry) => entry.event === "succeeded").length, 1);
+  targetlessCoalescer.dispose();
+
+  let sharedRuns = 0; let sharedInvalidations = 0; let releaseShared: (() => void) | undefined;
+  const sharedGate = new Promise<void>((resolve) => { releaseShared = resolve; });
+  const sharedPublished: string[] = [];
+  const sharedCoalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => { sharedInvalidations += 1; }, schedule: () => 1, cancel: () => undefined,
+    run: async () => { sharedRuns += 1; await sharedGate; sharedPublished.push("immutable"); }
+  });
+  const immutable = { reason: "document-changed", target: "src/same.ts", phase: "global-refresh-trigger" };
+  const first = sharedCoalescer.flush(immutable, "owner:branch@revision-9");
+  const second = sharedCoalescer.flush(immutable, "owner:branch@revision-9");
+  const third = sharedCoalescer.flush(immutable, "owner:branch@revision-9");
+  assert.equal(sharedRuns, 1, "three callers share one explicitly immutable running input");
+  assert.equal(sharedInvalidations, 0);
+  releaseShared?.();
+  await Promise.all([first, second, third]);
+  assert.deepEqual(sharedPublished, ["immutable"]);
+  sharedCoalescer.dispose();
+
+  const differentHost = new RuntimeDiagnosticHost(true);
+  const differentFeedback = new OperationFeedback(differentHost);
+  let differentActive: AbortController | undefined; let differentStarted: (() => void) | undefined;
+  const differentRunning = new Promise<void>((resolve) => { differentStarted = resolve; });
+  const differentPublished: string[] = []; let differentRuns = 0;
+  const sameDetail = { reason: "document-changed", target: "src/same.ts", phase: "global-refresh-trigger" };
+  const differentCoalescer = new GlobalUnderstandingRefreshCoalescer({
+    invalidate: () => differentActive?.abort(), schedule: () => 1, cancel: () => undefined,
+    run: async () => {
+      const controller = new AbortController(); differentActive = controller;
+      const index = ++differentRuns;
+      await differentFeedback.run("Global理解率を再計算", async () => {
+        if (index === 1) {
+          differentStarted?.();
+          await new Promise<void>((resolve) => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
+          throw new OperationCancelledError();
+        }
+        differentPublished.push("latest");
+      });
+    }
+  });
+  const differentOld = differentCoalescer.flush(sameDetail, "owner:branch@revision-9").catch(() => undefined);
+  await differentRunning;
+  differentCoalescer.request(sameDetail, "owner:branch@revision-10");
+  await differentOld;
+  await differentCoalescer.flush(sameDetail, "owner:branch@revision-10");
+  assert.deepEqual(differentPublished, ["latest"], "same diagnostic detail with another identity cancels stale work");
+  assert.equal(differentHost.logs.filter((entry) => entry.event === "cancelled").length, 1);
+  assert.equal(differentHost.logs.filter((entry) => entry.event === "succeeded").length, 1);
+  differentCoalescer.dispose();
+});
