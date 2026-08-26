@@ -31,6 +31,7 @@ export type OperationLogEntry = Omit<BaseOperationLogEntry, "event"> & {
 type DetailedOperationFeedbackHost = OperationFeedbackHost & {
   readonly isDetailedDiagnosticsEnabled?: () => boolean;
   readonly showBusy: (label: string, activeCount: number, progress?: OperationProgress, activities?: readonly OperationActivity[]) => void;
+  readonly takeOperationStartDetail?: (label: string) => OperationDiagnosticDetail | undefined;
 };
 
 interface ActivityState {
@@ -115,11 +116,12 @@ export class OperationFeedback extends BaseOperationFeedback {
     detail?: OperationDiagnosticDetail,
   ): Promise<T> {
     const detailed = this.detailedHost.isDetailedDiagnosticsEnabled?.() === true;
+    const startDetail = detail ?? (detailed ? this.detailedHost.takeOperationStartDetail?.(label) : undefined);
     const id = ++this.nextDetailedId;
     const activity: ActivityState = {
       id,
       label,
-      ...(detailed && detail !== undefined ? { detail: validateDetail(detail) } : {}),
+      ...(detailed && startDetail !== undefined ? { detail: validateDetail(startDetail) } : {}),
     };
     this.activities.push(activity);
     return this.operationScope.run(id, async () => {
