@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
   formatOperationLogEntry,
   formatOperationProgress,
+  type OperationActivity,
   type OperationFeedbackHost,
   type OperationLogEntry,
   type OperationProgress,
@@ -26,19 +27,29 @@ implements OperationFeedbackHost, vscode.Disposable {
     this.status.name = "Review Range Activity";
   }
 
+  public isDetailedDiagnosticsEnabled(): boolean {
+    return vscode.workspace.getConfiguration("reviewRange.diagnostics").get("detailed", false);
+  }
+
   public showBusy(
     label: string,
     activeCount: number,
     progress?: OperationProgress,
+    activities?: readonly OperationActivity[],
   ): void {
     const progressText = progress === undefined ? undefined : formatOperationProgress(progress);
     this.status.text = `$(sync~spin) Review Range: ${label}${progressText === undefined ? "" : ` · ${progressText}`}`;
     const activityText = activeCount === 1
       ? "Review Rangeが処理を実行しています。"
       : `Review Rangeが${activeCount}件の処理を実行しています。`;
-    this.status.tooltip = progressText === undefined
-      ? activityText
-      : `${activityText}\n進捗: ${progressText}`;
+    const detailLines = this.isDetailedDiagnosticsEnabled() && activities !== undefined
+      ? activities.map((activity) => `#${activity.id} ${activity.label}${activity.detail?.phase === undefined ? "" : ` [${activity.detail.phase}]`}${activity.detail?.target === undefined ? "" : ` — ${activity.detail.target}`}`)
+      : [];
+    this.status.tooltip = [
+      activityText,
+      ...(progressText === undefined ? [] : [`進捗: ${progressText}`]),
+      ...detailLines
+    ].join("\n");
     this.status.show();
   }
 
