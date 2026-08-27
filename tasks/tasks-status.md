@@ -8,11 +8,11 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91 `CI90-002`。ユーザーT610修正はSol/high normal reviewで指摘なし、verdict `pass_with_held`。同一independent reviewer限定closure待ち
-- 次のタスク: CI90-002 technical/test、local evidence、exact-head CI/artifact deltaを同一independent reviewerへ限定closureとして戻す
+- 現在のタスク: Issue #90 / PR #91 `CI90-002` は同一independent reviewer限定closureでclosed、verdict `pass_with_held`。tracking-only確認と最終attestationを残す
+- 次のタスク: tracking-only deltaを同じindependent reviewerが確認後、report-only attestation、push、PR本文同期へ進む
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: なし。CI90-002 independent closure、再attestation、actual UI判断を残す
+- ブロッカー: なし。最終attestationとユーザーVSIX実機判断を残す
 - Gitブランチ: `fix/pr91-normal-review-findings`
 - Pull Request: #91（public HEAD `1ea25a5b5159f36ad4ae978ce3095d3fa7c5064b`、pull-request CI `33030941296` Green、user-validation artifact生成済み。T610 user fixのreview lifecycleを継続）
 
@@ -70,6 +70,7 @@
 - exact-head T610 follow-up: `CI90-002` closed / normal review `pass_with_held`。`test/unit/t610-folder-understanding.test.ts`が旧initial refreshのtyped `OperationCancelledError`を明示し、production/workflowのnet deltaなし。Terra/high local verificationはT610 72/72、Issue #90 runtime 6/6、diagnostics/cancellation 8/8、build/lint/diff-check Green。Sol/highがtest weakeningなし、running row・stop 1回・latest stopped row・stale cancellation保持を確認。current pull-request CI `33030941296` Green、artifact `review-range-user-validation-aa24445f33713c79356ea9c9ae080648a86e3b10`生成済み。performanceなし
 - CI90-002 local verification report: `reports/issue-90-pr91-t610-user-fix-local-verification-20260827.md`
 - CI90-002 normal review report: `reports/issue-90-pr91-t610-user-fix-normal-review-20260827.md`
+- CI90-002 independent closure: reviewed implementation HEAD `e6221b9cb2dff13763d5404dcdd3cd8458bd1df8`、technical user-fix identity `1ea25a5b5159f36ad4ae978ce3095d3fa7c5064b` / `472a8c14d7ce69f111ee971a5558ab3be639f2c4`。同一reviewerがT610 72/72を再実行し、required action / production path / actual provider composition / focused evidenceをcomplete、open findingなし、verdict `pass_with_held`。heldはユーザーmanual VSIX判断のみ
 - 全体終了条件: NR90-001〜006のRed/Green、focused/broader local validation、同一normal reviewerのfix verification、full local gate、独立final review、attestation、PR #91 evidence同期。CI待機と性能CI追加はユーザー指示により行わない
 
 ## Issue #84 / PR #85 independent-review follow-up
