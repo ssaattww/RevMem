@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #90 / PR #91 `CI90-002`。ユーザーT610 fixはTerra/high local verification Green、current-head CI Green・artifact生成済み。Sol/high normal review待ち
-- 次の工程: Sol/high normal review、同一independent reviewer限定closure、再attestation。performance CIは追加しない
+- 実装中タスク: Issue #90 / PR #91 `CI90-002`。ユーザーT610 fixはSol/high normal reviewで指摘なし、verdict `pass_with_held`。current-head CI Green・artifact生成済み
+- 次の工程: 同一independent reviewer限定closure、再attestation。performance CIは追加しない
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #91 follow-up完了後に再開する
 - 後続候補: T608
 
