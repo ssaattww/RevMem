@@ -65,8 +65,10 @@ authoritativeなTypeScript compile、lint、broader CIはpush後のPR current HE
 
 ## Persistence
 
-- Test fix commit: `340c66b7acb295d4bd058133224aa00786e1b54e`
-- Report commit: this report is added as a separate logical commit after the test fix.
+- Initial test fix attempt: `340c66b7acb295d4bd058133224aa00786e1b54e`。
+- Complete T610 regression suite restoration: `f5eb616dde4aaadef218284e54870c6702017d81`。
+- Exact cancellation expectation applied to the complete test file: `472a8c14d7ce69f111ee971a5558ab3be639f2c4`。
+- Temporary one-shot workflow was removed by the same fix commit and is not part of the resulting tree.
 - Mergeは行わない。
 
 ## Remaining risk
