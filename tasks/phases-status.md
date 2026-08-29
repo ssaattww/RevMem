@@ -29,7 +29,7 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
-| P4 | 完了 | GitHub PR連携 | T401〜T406 | P3 | T401〜T406はmainへ統合済み。T406はPR #71のreview closure後、merge commit `96057f9e`で統合済み |
+| P4 | 保守対応中 | GitHub PR連携 | T401〜T406、USR90-002 | P3 | T401〜T406はmainへ統合済み。PR #91のUSR90-002でprivate repositoryのPR候補検出を修正中 |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。T608は未着手 |
 
@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #90 / PR #91 `CI90-002` は同一independent reviewer限定closureでclosed、verdict `pass_with_held`。current-head CI Green・artifact生成済み
-- 次の工程: tracking-only確認、report-only最終attestation、push。performance CIは追加しない
+- 実装中タスク: Issue #90 / PR #91 `USR90-002` はtechnical commit `1510c81dfac3ef2f571595545a29f8c3631b090f`で実装Green。prior attestationは追加implementationによりinvalidated
+- 次の工程: evidence/trackingを別commitへ分離し、baseline `37cce238...`からUSR90-002だけをSol/highで通常reviewする。performance CIは追加しない
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #91 follow-up完了後に再開する
 - 後続候補: T608
 

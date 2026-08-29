@@ -6,15 +6,15 @@
 
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev6
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
-- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
+- 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（USR90-002保守対応中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91 `CI90-002` は同一independent reviewer限定closureでclosed、verdict `pass_with_held`。tracking-only確認と最終attestationを残す
-- 次のタスク: tracking-only deltaを同じindependent reviewerが確認後、report-only attestation、push、PR本文同期へ進む
+- 現在のタスク: Issue #90 / PR #91 `USR90-002` はtechnical commit `1510c81dfac3ef2f571595545a29f8c3631b090f`で実装Green。baseline `37cce238...`からの限定normal review待ち
+- 次のタスク: evidence/trackingを別commitへ分離後、Sol/highがUSR90-002 technical deltaだけを通常reviewする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: なし。最終attestationとユーザーVSIX実機判断を残す
+- ブロッカー: なし。private実リポジトリで認証API取得可、匿名private 404、匿名public 200とproduction欠落境界を確認済み
 - Gitブランチ: `fix/pr91-normal-review-findings`
-- Pull Request: #91（public HEAD `1ea25a5b5159f36ad4ae978ce3095d3fa7c5064b`、pull-request CI `33030941296` Green、user-validation artifact生成済み。T610 user fixのreview lifecycleを継続）
+- Pull Request: #91（public HEAD `37cce238e6c5ab0e8de575518cdb2bd5c87862b9`、pull-request CI `33065218126` Green。USR90-002の追加実装前identity）
 
 ## Issue #90 / PR #91 normal-review follow-up
 
@@ -27,10 +27,12 @@
 | NR90-005 | closed / normal fix verification | 0.5h（実績30分以内） | PR Progress原因調査reportへ必須5観点、code path、観測証拠、影響範囲、修正候補を補う | NR90-001〜004 | 同一normal reviewerがrequired actionとreport証拠をcompleteとして確認済み |
 | NR90-006 | closed / normal fix verification | 0.5h（実績30分以内） | Issue #90 / PR #91のscope、finding、validation、review stateをtrackingへ同期する | なし | 同一normal reviewerが両tracking fileをcompleteとして確認済み |
 | USR90-001 | satisfied / normal fix verification R4 | 0.5h（実績約6分） | 既存CIゲート成功後にVSIXと追跡済みsource ZIPをartifactとして作成・uploadする | NR90-001〜004 | required `pull_request` success時のみSHA付きVSIXと`git archive HEAD` ZIPを生成するworkflow契約14/14 Green、local VSIX生成成功。performance項目なし |
+| USR90-002 | implementation Green / normal review待ち | 0.5h単位 | private repositoryの明示PR再検出でinteractive VS Code GitHub sessionを取得し、PR候補表示と切替を成立させる | T401、T405、CI90-002 | 専用最小runtime fixture 3/3でprivate authenticated Red→Green、public anonymous回帰、PR #77→#78切替を確認。required `test:unit`配線、build・contracts・architecture正負・lint・diff-check Green。technical commit `1510c81...` |
 
 - governing TDD source: Issue #90「開発・検証」。各behaviorはfocused testのRedを観測してからproductionを変更する
-- design disposition: `doc/design/operation-diagnostics-and-refresh-scheduling.md`を既存契約の修正先とし、`Design/BreakingChanges.md`対象の破壊的変更はない
-- 非目標: PR Progress性能アルゴリズム変更、timeout導入、performance suiteのCI追加、無関係なT610/T608変更、merge
+- design disposition: Issue #90診断契約は`doc/design/operation-diagnostics-and-refresh-scheduling.md`、USR90-002認証境界は`doc/design/vscode-review-range-tracker-design.md`を既存契約の修正先とし、`Design/BreakingChanges.md`対象の破壊的変更はない
+- 非目標: PR Progress性能アルゴリズム変更、timeout導入、performance suiteのCI追加、GitHub CLI credential依存、background login prompt、YsupWF変更、無関係なT610/T608変更、merge
+- USR90-002 implementation report: `reports/issue-90-pr91-private-context-followup-20260829.md`
 - normal review report: `reports/issue-90-pr91-normal-review-20260826.md`
 - implementation follow-up report: `reports/issue-90-pr91-normal-review-followup-20260826.md`
 - normal fix verification report: `reports/issue-90-pr91-normal-fix-verification-20260826.md`（NR90-001〜004 open、NR90-005/006 closed、verdict `fail`）
@@ -69,6 +71,7 @@
 - CI90-001 independent closure: reviewed implementation HEAD `8c3d65120b43c052ba26a518274210b7d3cfad91`、CI follow-up test identity `c6e79a15ec16422f35bcbfa0822fac6139e78a76`。同一reviewerがfocused 13/13 Greenを再確認し、test weakeningなし、production/workflow/performance deltaなし、open findingなし、verdict `pass_with_held`
 - exact-head T610 follow-up: `CI90-002` closed / normal review `pass_with_held`。`test/unit/t610-folder-understanding.test.ts`が旧initial refreshのtyped `OperationCancelledError`を明示し、production/workflowのnet deltaなし。Terra/high local verificationはT610 72/72、Issue #90 runtime 6/6、diagnostics/cancellation 8/8、build/lint/diff-check Green。Sol/highがtest weakeningなし、running row・stop 1回・latest stopped row・stale cancellation保持を確認。current pull-request CI `33030941296` Green、artifact `review-range-user-validation-aa24445f33713c79356ea9c9ae080648a86e3b10`生成済み。performanceなし
 - CI90-002 local verification report: `reports/issue-90-pr91-t610-user-fix-local-verification-20260827.md`
+- post-attestation status: `37cce238e6c5ab0e8de575518cdb2bd5c87862b9`のprior attestationはUSR90-002実装開始によりinvalidated。実装・通常review後、同一independent reviewerのUSR90-002/CI-delta限定closureと新attestationを行う
 - CI90-002 normal review report: `reports/issue-90-pr91-t610-user-fix-normal-review-20260827.md`
 - CI90-002 independent closure: reviewed implementation HEAD `e6221b9cb2dff13763d5404dcdd3cd8458bd1df8`、technical user-fix identity `1ea25a5b5159f36ad4ae978ce3095d3fa7c5064b` / `472a8c14d7ce69f111ee971a5558ab3be639f2c4`。同一reviewerがT610 72/72を再実行し、required action / production path / actual provider composition / focused evidenceをcomplete、open findingなし、verdict `pass_with_held`。heldはユーザーmanual VSIX判断のみ
 - 全体終了条件: NR90-001〜006のRed/Green、focused/broader local validation、同一normal reviewerのfix verification、full local gate、独立final review、attestation、PR #91 evidence同期。CI待機と性能CI追加はユーザー指示により行わない
