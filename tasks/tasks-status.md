@@ -8,13 +8,13 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（USR90-002保守対応中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91 `CI90-003` normal verification。test-only commit `6dc5b31...`だけをSol/highが限定reviewする
-- 次のタスク: normal verification後、同一independent reviewerがCI90-003 deltaだけを限定closureする
+- 現在のタスク: Issue #90 / PR #91 `CI90-003-NR-001` Low。current remote/failed CI/local review identityをtrackingへ同期する
+- 次のタスク: 同じSol/high reviewerのtracking限定verification後、同一independent reviewerがCI90-003 deltaだけを限定closureする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。private実リポジトリで認証API取得可、匿名private 404、匿名public 200とproduction欠落境界を確認済み
 - Gitブランチ: `fix/pr91-normal-review-findings`
-- Pull Request: #91（current remote HEAD `8cadc8431a59358a88902f87d582b373a5b547f6`、pull-request CI `33243908064` Green、artifact `9712292675`。local R2 reviewed HEAD `e996337ad571ba1f4298ac0ea339b722bf65f9db`は未pushでexact-head CI/artifact未取得）
+- Pull Request: #91（current remote HEAD `0a4b041262925743cff48c4e39e03b53a039d917`、pull-request CI `33248295249` failure。local CI90-003 reviewed HEAD `ad42847fc51edb48811f5841bbbebc311f04e9ed`は未pushでexact-head CI/artifact未取得）
 
 ## Issue #90 / PR #91 normal-review follow-up
 
@@ -31,7 +31,8 @@
 | USR90-002-R2A | normal review closed / independent IFR-001 tracking fix中 | 0.5h以内（実績約25分） | user-explicit Current Context選択の候補列挙前にinteractive GitHub session取得とPR検出を1回行う | USR90-002 | runtime Red 3件→focused 25/25 Green。normal reviewerがpublic compositionを含むmatrixをcompleteとして確認済み |
 | USR90-002-R2B | normal review closed / independent IFR-001 tracking fix中 | 0.5h以内（実績30分以内） | tokenありprivate `404/api`時だけaccount preferenceをclearして再選択し、同一operationで1回retryする | USR90-002-R2A | reselect 1・search 2・PR候補成功、取消・retry失敗・anonymous・backgroundのloopなし。normal reviewerがT407 11/11を再実行済み |
 | USR90-002-R2-IFR-001 | Low / normal verification closed・independent closure待ち | 0.5h以内 | remote/CI identity、R2A/B review state、exact-head CI/artifactとHost/manual VSIXのheld scopeを同期する | USR90-002-R2A/B | 同じnormal reviewerが4-file accuracy deltaを限定確認。required action/evidence Complete、新規findingなし、verdict `pass_with_held` |
-| CI90-003 | test-only実装済み / normal verification中 | 0.5h以内（実績約10分） | R405-1構造契約を`redetectPullRequest`内の直接update要求から、shared `detectPullRequest`のupdateとredetect委譲の組合せへ更新する | USR90-002-R2 | CI対象R405-1 Green、T407 11/11、build/lint/diff Green。local `test:t405`は非因果Windows R405-7だけ残り51/52。commit `6dc5b31...`、production/workflow/performance差分なし |
+| CI90-003 | technical review pass / NR-001 tracking fix中 | 0.5h以内（実績約10分） | R405-1構造契約を`redetectPullRequest`内の直接update要求から、shared `detectPullRequest`のupdateとredetect委譲の組合せへ更新する | USR90-002-R2 | Sol/highがbounded extraction・detect→refresh順・test weakeningなしを確認。named R405-1 1/1 Green。CI90-003-NR-001 Lowはidentity trackingのみ |
+| CI90-003-NR-001 | Low / normal verification待ち | 0.5h以内 | current remote HEAD、failed CI、local reviewed HEADとexact-head CI/artifact未取得を同期する | CI90-003 | remote `0a4b041...` / CI `33248295249` failure、local `ad42847...`未pushをtasks/phases/reportで一致させる |
 | USR90-002-R2-NR-001 | High / closed | 0.5h以内 | superseded explicit PR detectionがReview StateまたはPR/branch preferenceを永続化しないようabort/generation fenceを追加する | USR90-002-R2A | 同じSol/high reviewerがCANCEL/OperationCancelledError、failed/reveal 0、old mutation 0、latest candidate 1とT407 11/11を確認しclosed |
 | USR90-002-R2-NR-002A | Medium / closed | 0.5h以内（実績約22分） | T305が実際に使うCurrent Context登録をnarrow production factoryへ抽出し、public commandからT405 refへ到達させる | USR90-002-R2-NR-001 | 同じSol/high reviewerがactivateとtestのfactory一致、public command→real T405 auth/search→Current Context Quick Pickを確認しclosed |
 | USR90-002-R2-NR-002B | Medium / closed | 0.5h以内 | NR-002A fixtureへsame-HEAD/background、wrong-account 404、cancel/supersession matrixを追加する | USR90-002-R2-NR-002A | 同じSol/high reviewerがmatrix全セルComplete、T407 11/11 Greenを再実行しclosed |
