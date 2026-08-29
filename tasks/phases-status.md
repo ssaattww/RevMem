@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #90 / PR #91 `USR90-002` technical findingなし。`USR90-002-NR-001 Low`のredacted実環境evidence追記済みでnormal fix verification待ち
-- 次の工程: 同じSol/high reviewerがevidence deltaだけを確認する。PR #91全体再reviewとperformance CI追加は行わない
+- 実装中タスク: Issue #90 / PR #91 `USR90-002-NR-001 Low` closed、normal verdict `pass_with_held`
+- 次の工程: review report/tracking commit後、同一independent reviewerがUSR90-002/CI deltaだけを限定closureする。PR #91全体再reviewとperformance CI追加は行わない
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #91 follow-up完了後に再開する
 - 後続候補: T608
 
