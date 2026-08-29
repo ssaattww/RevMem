@@ -9,6 +9,7 @@ import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
+import { OperationFeedback, setActiveOperationFeedback, type OperationFeedbackHost, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
 import { CurrentContextCandidateSelection, type CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
@@ -61,6 +62,15 @@ class FakeThemeIcon {
   public constructor(public readonly id: string) {}
 }
 
+class FeedbackHost implements OperationFeedbackHost {
+  public readonly logs: OperationLogEntry[] = [];
+  public reveals = 0;
+  public showBusy(): void {}
+  public clearBusy(): void {}
+  public appendLog(entry: OperationLogEntry): void { this.logs.push(entry); }
+  public revealLog(): void { this.reveals += 1; }
+}
+
 const runGit = async (root: string, argumentsList: readonly string[]): Promise<string> =>
   (await execFileAsync("git", [...argumentsList], { cwd: root })).stdout.trim();
 
@@ -75,13 +85,15 @@ const runScenario = async (options: {
   readonly multiplePullRequests?: boolean;
   readonly selectedPullRequestNumbers?: readonly number[];
   readonly redetectCount?: number;
-  readonly operation?: "background" | "prepare" | "public-context" | "redetect";
+  readonly operation?: "background" | "prepare" | "public-background" | "public-context" | "redetect";
   readonly operationCount?: number;
+  readonly publicCommandCount?: number;
   readonly wrongPreferredSession?: boolean;
   readonly reselectCancelled?: boolean;
   readonly retryFails?: boolean;
   readonly anonymousUnavailable?: boolean;
   readonly abortDuringPicker?: boolean;
+  readonly supersedeDuringPicker?: boolean;
 }): Promise<{
   readonly candidates: readonly CurrentContextUiSnapshot[];
   readonly candidatesByRefresh: readonly (readonly CurrentContextUiSnapshot[])[];
@@ -93,6 +105,9 @@ const runScenario = async (options: {
   readonly preferenceMutationCount: number;
   readonly operationErrorName: string | undefined;
   readonly currentContextQuickPickKinds: readonly string[];
+  readonly mutationCountBeforeOldPickerCompletion: number | undefined;
+  readonly operationLogs: readonly OperationLogEntry[];
+  readonly revealCount: number;
 }> => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t407-private-context-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -104,6 +119,8 @@ const runScenario = async (options: {
   let runtime: ReturnType<typeof import("../../src/t405-review-contexts-runtime.js").registerT405ReviewContextsRuntime> | undefined;
   let currentRuntime: ReturnType<typeof import("../../src/ui/current-context/vscode-current-context-runtime.js").registerCurrentContextRuntime> | undefined;
   const subscriptions: DisposableLike[] = [];
+  const feedbackHost = new FeedbackHost();
+  setActiveOperationFeedback(new OperationFeedback(feedbackHost, () => 1));
 
   try {
     await mkdir(path.dirname(sourcePath), { recursive: true });
@@ -142,6 +159,7 @@ const runScenario = async (options: {
     const quickPickNumbers: number[] = [];
     const currentContextQuickPickKinds: string[] = [];
     let resolvePendingPicker: (() => void) | undefined;
+    let delayedPickerCount = options.abortDuringPicker || options.supersedeDuringPicker ? 1 : 0;
     let signalPickerStarted: (() => void) | undefined;
     const pickerStarted = new Promise<void>((resolve) => { signalPickerStarted = resolve; });
     const selectedPullRequestNumbers = [...(options.selectedPullRequestNumbers ?? [])];
@@ -175,7 +193,8 @@ const runScenario = async (options: {
             return items.find((item) => item.snapshot?.context.kind === "pull-request");
           }
           if (quickPickOptions?.placeHolder !== "現在HEADのPRを選択") return undefined;
-          if (options.abortDuringPicker) {
+          if (delayedPickerCount > 0) {
+            delayedPickerCount -= 1;
             signalPickerStarted?.();
             return new Promise((resolve) => {
               resolvePendingPicker = () => resolve(items[0]);
@@ -349,8 +368,11 @@ const runScenario = async (options: {
         preferenceMutationCount: workspaceState.updateCount,
         operationErrorName,
         currentContextQuickPickKinds,
+        mutationCountBeforeOldPickerCompletion: undefined,
+        operationLogs: feedbackHost.logs,
+        revealCount: feedbackHost.reveals,
       };
-    } else if (options.operation === "public-context") {
+    } else if (options.operation === "public-context" || options.operation === "public-background") {
       const composition = t305Module.createT305CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
         prepareExplicitSelection: (signal) => runtime!.preparePullRequestCandidateForExplicitContextSelection!(signal),
         enumerateCandidates: (signal) => runtime!.augmentCurrentContextCandidates([branch], signal),
@@ -374,7 +396,35 @@ const runScenario = async (options: {
       await currentRuntime.startupRefresh;
       const select = commands.get("reviewRange.selectContext");
       assert.ok(select, "the T305 factory must register the public Current Context command");
-      await select();
+      if (options.operation === "public-context" && options.supersedeDuringPicker) {
+        const oldSelection = select();
+        await pickerStarted;
+        const latestSelection = select();
+        await latestSelection;
+        const mutationCountBeforeOldPickerCompletion = reviewStateMutationCount + workspaceState.updateCount;
+        resolvePendingPicker?.();
+        await oldSelection;
+        candidates = await runtime.augmentCurrentContextCandidates([branch]);
+        assert.deepEqual(errors, []);
+        return {
+          candidates,
+          candidatesByRefresh,
+          quickPickNumbers,
+          sessionRequests,
+          clearSessionPreferenceRequests,
+          searchRequestCount,
+          reviewStateMutationCount,
+          preferenceMutationCount: workspaceState.updateCount,
+          operationErrorName: undefined,
+          currentContextQuickPickKinds,
+          mutationCountBeforeOldPickerCompletion,
+          operationLogs: feedbackHost.logs,
+          revealCount: feedbackHost.reveals,
+        };
+      }
+      if (options.operation === "public-context") {
+        for (let count = 0; count < (options.publicCommandCount ?? 1); count += 1) await select();
+      }
       candidates = await runtime.augmentCurrentContextCandidates([branch]);
     } else {
       const redetect = commands.get("reviewRange.redetectPullRequest");
@@ -393,10 +443,14 @@ const runScenario = async (options: {
       preferenceMutationCount: workspaceState.updateCount,
       operationErrorName: undefined,
       currentContextQuickPickKinds,
+      mutationCountBeforeOldPickerCompletion: undefined,
+      operationLogs: feedbackHost.logs,
+      revealCount: feedbackHost.reveals,
     };
   } finally {
     currentRuntime?.dispose();
     runtime?.dispose();
+    setActiveOperationFeedback(undefined);
     for (const subscription of subscriptions) subscription.dispose();
     globalThis.fetch = originalFetch;
     moduleLoader._load = originalModuleLoad;
@@ -419,6 +473,44 @@ test("T407 public Current Context command uses the T305 factory to prepare a pri
   assert.equal(result.sessionRequests.filter((createIfNone) => createIfNone).length, 1, "the user command prompts once for the private session");
   assert.equal(result.searchRequestCount, 1, "the authenticated T405 search runs before candidate enumeration");
   assert.deepEqual([...result.currentContextQuickPickKinds].sort(), ["branch", "pull-request"], "the same Current Context Quick Pick receives the prepared PR candidate");
+});
+
+test("T407 public Current Context factory path preserves saved, background, and wrong-account private selection contracts", async () => {
+  const saved = await runScenario({ privateApi: true, interactiveSession: true, operation: "public-context", publicCommandCount: 2 });
+  assert.equal(saved.sessionRequests.filter((createIfNone) => createIfNone).length, 1, "a saved immutable-HEAD PR must not reconnect on the second public selection");
+  assert.equal(saved.clearSessionPreferenceRequests, 0);
+  assert.equal(saved.searchRequestCount, 1, "a saved immutable-HEAD PR must not search again");
+  assert.equal(saved.currentContextQuickPickKinds.filter((kind) => kind === "pull-request").length, 2, "both public selections may offer the saved PR candidate");
+
+  const background = await runScenario({ privateApi: true, interactiveSession: false, operation: "public-background" });
+  assert.equal(background.sessionRequests.filter((createIfNone) => createIfNone).length, 0, "background recompute must stay non-interactive");
+  assert.equal(background.clearSessionPreferenceRequests, 0);
+
+  const wrongAccount = await runScenario({ privateApi: true, interactiveSession: true, wrongPreferredSession: true, operation: "public-context", publicCommandCount: 2 });
+  assert.equal(wrongAccount.clearSessionPreferenceRequests, 1, "the public command clears a wrong preferred account once");
+  assert.equal(wrongAccount.searchRequestCount, 2, "the public command retries authenticated 404 once");
+  assert.equal(wrongAccount.candidates.some((candidate) => candidate.context.kind === "pull-request"), true);
+});
+
+test("T407 public Current Context supersession cancels the old picker without old state or preference mutation", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    multiplePullRequests: true,
+    selectedPullRequestNumbers: [77],
+    operation: "public-context",
+    supersedeDuringPicker: true,
+  });
+  const selectionEvents = result.operationLogs.filter((entry) => entry.label === "Current Contextを選択");
+  assert.equal(selectionEvents.filter((entry) => entry.event === "started").length, 2, "the old and latest public commands each start once");
+  const cancellation = selectionEvents.filter((entry) => entry.event === "cancelled");
+  assert.equal(cancellation.length, 1, "the old public operation records one CANCEL terminal");
+  assert.equal(cancellation[0]?.errorName, "OperationCancelledError");
+  assert.equal(selectionEvents.filter((entry) => entry.event === "failed").length, 0, "typed cancellation is not an ERROR terminal");
+  assert.equal(result.revealCount, 0, "typed cancellation does not reveal Output");
+  assert.equal(selectionEvents.filter((entry) => entry.event === "succeeded").length, 1, "the latest public operation records one OK terminal");
+  assert.equal(result.reviewStateMutationCount + result.preferenceMutationCount, result.mutationCountBeforeOldPickerCompletion, "old picker completion cannot add Review State or preference mutation after the latest owner publishes");
+  assert.equal(result.candidates.filter((candidate) => candidate.context.kind === "pull-request").length, 1, "the latest public operation retains one PR candidate owner");
 });
 
 test("T407 explicit Current Context preparation detects a private PR once and leaves background non-interactive", async () => {

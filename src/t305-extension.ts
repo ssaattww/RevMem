@@ -53,7 +53,7 @@ import {
   refreshSelectedPullRequestProgress
 } from "./t305-projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
-import type { OperationFeedbackContext, OperationLogEntry } from "./application/operation-feedback/index";
+import { OperationCancelledError, type OperationFeedbackContext, type OperationLogEntry } from "./application/operation-feedback/index";
 import type { T505GlobalUnderstandingOwner } from "./t505-global-understanding-source";
 import { createT305GlobalUnderstandingSource } from "./t305-global-understanding-composition";
 import {
@@ -102,7 +102,23 @@ export interface T305CurrentContextRuntimeCompositionPorts {
 export const createT305CurrentContextRuntimeComposition = (
   selection: CurrentContextCandidateSelection,
   ports: T305CurrentContextRuntimeCompositionPorts,
-): CurrentContextRuntimeComposition => new CurrentContextRuntimeComposition(selection, ports);
+): CurrentContextRuntimeComposition => {
+  const prepareExplicitSelection = ports.prepareExplicitSelection;
+  return new CurrentContextRuntimeComposition(selection, {
+  ...ports,
+  prepareExplicitSelection: prepareExplicitSelection === undefined
+    ? undefined
+    : async (signal, feedbackContext) => {
+      try {
+        await prepareExplicitSelection(signal, feedbackContext);
+      } catch (error) {
+        if (signal?.aborted === true) throw new OperationCancelledError();
+        throw error;
+      }
+      if (signal?.aborted === true) throw new OperationCancelledError();
+    },
+  });
+};
 
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
   // Startup migration can fail before the main runtime composition. Install the
