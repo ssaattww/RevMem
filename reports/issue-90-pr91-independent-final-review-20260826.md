@@ -29,6 +29,10 @@
 - USR90-002-R2 prior failed reviewed pre-attestation HEAD: `e996337ad571ba1f4298ac0ea339b722bf65f9db`
 - USR90-002-R2 tracking / report accuracy fix commit: `40d753d2ce93733dfcc3ffe4e21227af1bd9a5cb`
 - USR90-002-R2 normal verification / reviewed pre-attestation HEAD: `200f16e683cbdc87c8e43bf77295e5f6d82ca75f`
+- prior report attestation / CI90-003 failed remote HEAD: `0a4b041262925743cff48c4e39e03b53a039d917`
+- CI90-003 technical test commit: `6dc5b31db7f6b76ba378b3decd1fb2cd339ac034`
+- CI90-003 evidence / review / tracking commits: `ad42847fc51edb48811f5841bbbebc311f04e9ed` / `d1db7c0150b3731c3e9126635439e3c37dd4afa8` / `c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`
+- CI90-003 reviewed implementation / pre-attestation HEAD: `c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`
 - base HEAD: `67ac398553f7959a96b77a2c069449afa001d42d`
 - persistence mode: `report_attestation_commit`
 - reserved report path: `reports/issue-90-pr91-independent-final-review-20260826.md`
@@ -42,6 +46,7 @@
 - 対象: `PR91-IFR-001` / `PR91-IFR-002` / `CI90-001` / `CI90-002`の既存closureを保持し、`USR90-002`だけを`37cce238...`から`eb0f870...`のuser-follow-up / CI-delta限定で確認する。technical review範囲は`37cce238...`から`1510c81...`だけで、後続3 commitはevidence / review / tracking accuracyだけを確認する。最終確認は`eb0f870...c0f7825`のtracking-only deltaに限定する
 - 対象: prior attestation `8cadc843...`後のactual artifact failure、`8cadc843...e996337`のR2A/B、normal findings `USR90-002-R2-NR-001` High / `USR90-002-R2-NR-002` Medium、actual composition / focused evidence、reports / tracking accuracy、current-head CI deltaだけを確認する。technical commitは`e2a0296...` / `170fb5e...` / `0e7493d...` / `9a82f7c...`、`894c08a...` / `e996337...`はreports / tracking faithfulnessだけを確認する
 - 対象: 今回は`USR90-002-R2-IFR-001` Lowのrequired actionと同じnormal reviewerによるverification deltaだけを、`e996337...40d753d`の4-file accuracy fixおよび`40d753d...200f16e`のnormal verification / tracking deltaで確認する
+- 対象: 今回は`CI90-003`だけを、failed attestation / remote `0a4b041...`からfrozen reviewed pre-attestation `c46fb8a...`のCI-deltaに限定して確認する。technical scopeは`0a4b041...6dc5b31`のR405-1 test-only差分で、後続はevidence / normal review / tracking accuracyだけを確認する
 - closure制約: 初回review criteriaを増やさず、新しいexhaustive reviewを行わない。同じfinding identityとseverityを維持する
 
 ## 対象外
@@ -68,6 +73,8 @@
 - USR90-002-R2 focused rerun（1回）: `npm run compile:test`後、`node --test test-dist/test/unit/t407-private-pr-context.test.js`。11/11 pass、fail / cancelled / skipped各0、exit 0
 - USR90-002-R2 CI delta: `gh pr view 91 --json headRefOid,statusCheckRollup`でcurrent remote baseline `8cadc843...`とprior CI successを確認し、exact `e996337...` check APIはcommit未存在のHTTP 422。CI待機せず、prior successをcurrent-head successへ転用していない
 - USR90-002-R2 IFR-001 finding-only closure: `git log/diff/show e996337...200f16e`、4-file accuracy fix、同じnormal reviewerのverification report、`gh pr view 91`、run `33243908064`、artifact `9712292675`、exact `200f16e...` commit APIのHTTP 422をread-only照合した。testは再実行していない
+- CI90-003 bounded closure: `git log/diff/show 0a4b041...c46fb8a`、R405-1 technical test、production sourceのshared detection / public redetect slice、3 follow-up report、tracking、`gh run view 33248295249 --json/--log-failed`、`gh pr view 91`、exact `c46fb8a...` commit APIのHTTP 422を確認
+- CI90-003 focused rerun（1回）: `npm run compile:test`後、named R405-1だけを`node --test --test-name-pattern ... test-dist/test/unit/t405-github-lifecycle.test.js`で実行し、1/1 Green。full `test:t405`は実行していない
 - Markdown wording check preparation: repositoryに`tools/lint/`および`lint:md` wiringがないことを確認
 - 禁止されたfull suite、Extension Host、performance、CI waitは実行していない
 
@@ -85,6 +92,7 @@
 - USR90-002-R2 technical delta: `doc/design/vscode-review-range-tracker-design.md`、`src/adapters/github/fetch-github-pull-request-adapter.ts`、`src/adapters/github/vscode-github-authentication-provider.ts`、`src/application/github-pr-context/contracts.ts`、`src/t305-extension.ts`、`src/t405-review-contexts-runtime.ts`、`src/ui/current-context/current-context-runtime-composition.ts`、`test/unit/current-context-ui.test.ts`、`test/unit/t407-private-pr-context.test.ts`
 - USR90-002-R2 report / tracking delta: `reports/issue-90-pr91-private-context-actual-host-followup-20260829.md`、`reports/issue-90-pr91-private-context-actual-host-normal-review-20260829.md`、`reports/issue-90-pr91-private-context-actual-host-normal-fix-verification-20260829.md`、`tasks/tasks-status.md`、`tasks/phases-status.md`
 - USR90-002-R2 IFR-001 accuracy fix / normal verification: `reports/issue-90-pr91-independent-final-review-20260826.md`、`reports/issue-90-pr91-private-context-actual-host-followup-20260829.md`、`tasks/tasks-status.md`、`tasks/phases-status.md`の4-file fix、および`reports/issue-90-pr91-private-context-actual-host-independent-finding-normal-verification-20260829.md`
+- CI90-003 technical / evidence delta: `test/unit/t405-github-lifecycle.test.ts`、`reports/issue-90-pr91-exact-head-t405-contract-followup-20260829.md`、`reports/issue-90-pr91-exact-head-t405-contract-normal-verification-20260829.md`、`reports/issue-90-pr91-exact-head-t405-contract-normal-fix-verification-20260829.md`、`tasks/tasks-status.md`、`tasks/phases-status.md`。production / design / package / workflow / performanceのnet deltaはない
 - identity chain: `ca21dae...`から`e34ed6b...`でIssue #90 production / test closure、`8976455...`で初回bounded closure、`d2288fe...` / `48a719b...`でtracking / attestation、`c6e79a1...`でCI90-001 test同期、`8c3d651...` / `d462fbc...` / `e4f0af1...`でCI90-001 closure / tracking / attestationを行った。CI90-002は`472a8c1...`がcomplete testへの最終technical commit、`1ea25a5...`がtechnical user-fix head、`55af23a...` / `e6221b9...`がlocal verification / normal review / tracking report delta、`fbc47f0...`が最終2 tracking fileだけのdelta、`37cce238...`がprior report attestationである。USR90-002は`1510c81...`がtechnical commit、`170d269...` / `ecc2e2f...` / `eb0f870...`がevidence / normal review / tracking accuracy commit、`c0f7825...`が最終tracking-only pre-attestation commitである
 - このclosureで変更したfileは予約済みの本reportだけである
 
@@ -149,6 +157,13 @@
      - production / fixture / evidence: activateとtestは同じ`createT305CurrentContextRuntimeComposition`を使用し、fixtureは`registerCurrentContextRuntime`とpublic commandを通す。initial prompt/search各1、saved追加prompt/reselect/search 0、background interactive/reselect 0、wrong-account clear 1/search 2、supersession old mutation 0 / CANCEL / latest ownerを確認する。T407はrequired `test:unit`へ既存配線され、本closureで11/11 Green。
      - disposition: source severityを維持し、normal fix verificationどおり**closed**。
 
+  9. `CI90-003` / `CI90-003-NR-001` — **CI delta / Low tracking accuracy / closed**
+     - origin: exact-head pull-request CI run `33248295249`、head `0a4b041262925743cff48c4e39e03b53a039d917`のT405 stepで露出したR405-1 lexical assertion failure。`CI90-003-NR-001` Lowはそのtechnical deltaのnormal reviewで発見されたremote / local identity tracking findingである。
+     - location: `test/unit/t405-github-lifecycle.test.ts:155-167`、production reference `src/t405-review-contexts-runtime.ts:1029-1034,1086-1099,1230-1233`、tracking finding `tasks/tasks-status.md:17`。
+     - description / impact: R2でexisting-PR revision updateがpublic `redetectPullRequest` blockからshared `detectPullRequest`へ移動した後も、旧testはredetect以後のsource全体だけをregex探索していたためCIがfailした。normal review時はtop-level trackingが旧remote successをcurrent identityとして残し、新candidateのCI / artifact absenceを誤認させるLow accuracy findingもあった。
+     - required action: testを削除・全source presenceへ弱めず、shared detectionのbounded sliceで`await contextStateService.update(`を要求し、public redetectのbounded sliceで`await detectPullRequest(...)`が`await options.refreshCurrentContext()`より前であることを要求する。remote failed HEAD / runとlocal candidateの未push状態をtrackingで分離する。
+     - closure / evidence: technical commit `6dc5b31...`は上記2 bounded sliceを固定しproduction変更なし。本reviewerのnamed R405-1 rerunは1/1 Green。同じnormal reviewerはtest weakeningなし・technical findingなしとし、`CI90-003-NR-001` Lowもremote `0a4b041...` / failed run `33248295249` / local frozen chainの同期を確認してclosed、verdict=`pass_with_held`。T407 11/11、build / lint / diff-check Greenは既存evidenceとして一致する。
+
 - finding completeness matrix:
 
   | finding | required action | production | user-approved runtime / CI fixture | focused evidence | disposition |
@@ -161,21 +176,25 @@
   | `USR90-002-R2-NR-001` High | abort / nonpublish fence、old persistent mutation 0 | T405 shared detectionとexplicit non-synchronizing preparation | T305 factory→public Current Context command→real T405 auth/searchのsupersession | T407 11/11、old CANCEL 1 / ERROR 0 / reveal 0 / mutation 0、latest OK / candidate 1 | closed |
   | `USR90-002-R2-NR-002` Medium | public command actual compositionとinitial/saved/background/wrong-account/supersession matrix | activateとtestが同じT305 factoryを使用しT405 preparationへ接続 | `registerCurrentContextRuntime`、public command、auth、REST、Quick Pick、persistence、feedback host | T407 11/11、Current Context 22/22既存証拠、required `test:unit` wiring、static gate Green | closed |
   | `USR90-002-R2-IFR-001` Low | current remote / review state / held scopeをtracking・reportへ同期 | N/A（production changeなし） | N/A（tracking/report accuracy finding）。4文書とlive GitHub metadataを照合 | 4-file fix、同じnormal reviewer report `pass_with_held`、remote `8cadc843...` / CI `33243908064` / artifact `9712292675`、frozen `200f16e...` absent | closed |
+  | `CI90-003` / `CI90-003-NR-001` Low | shared `detectPullRequest`に追従するbounded static contractとremote / local identity同期 | production変更なし。shared detectionはexisting PR updateを行い、public redetectはdetect後にCurrent Contextをrefresh | bounded shared detection sliceがawait update、bounded redetect sliceがdetect→refresh順を固定 | independent named R405-1 1/1、normal technical findingなし、NR-001 closed、T407 11/11・build / lint / diff-check既存Green | closed |
 
-- severity reclassification / errata: なし。既存High / Medium / Lowとfinding identityを変更していない。`CI90-001` / `CI90-002`はsource severityなしのcarried CI delta itemであり、新規severityを付与していない。`USR90-002-R2-NR-001` High / `USR90-002-R2-NR-002` Mediumはsource normal reviewのseverityを維持する。新規bounded finding `USR90-002-R2-IFR-001`はLowである。
+- severity reclassification / errata: なし。既存High / Medium / Lowとfinding identityを変更していない。`CI90-001` / `CI90-002` / `CI90-003`はsource severityなしのcarried CI delta itemであり、新規severityを付与していない。`USR90-002-R2-NR-001` High / `USR90-002-R2-NR-002` Mediumはsource normal reviewのseverityを維持し、`USR90-002-R2-IFR-001` / `CI90-003-NR-001`はsource Lowを維持する。
 
 ## 結果
 
-- 結果: **verdict=`pass_with_held`**。`USR90-002-R2-IFR-001` Lowのrequired actionと同じnormal reviewerのverification deltaはCompleteで、同findingはclosed、open findingはない。frozen current-head CI / artifactとactual VS Code Host / account picker / private target / manual new VSIXはheldである。
-- review mode: 初回はone-shot fresh independent review、その後は同じreviewerによるfinding / CI-delta限定closureとtracking確認だけを行った。今回はpost-attestation `USR90-002-R2` / normal-finding / CI deltaだけで、PR #91全体、`8cadc843...`以前、新規exhaustive passはreviewしていない。
+- 結果: **verdict=`pass_with_held`**。`CI90-003`のrequired action / production reference / bounded test path / focused evidenceはCompleteで、`CI90-003-NR-001` Lowもclosed、open findingはない。frozen current-head CI / artifact、Windows非因果R405-7、actual VS Code Host、full / default / performanceはheldである。
+- review mode: 初回はone-shot fresh independent review、その後は同じreviewerによるfinding / CI-delta限定closureとtracking確認だけを行った。今回はpost-attestation `CI90-003`だけで、PR #91全体、R2 technical code、既存criteria、新規exhaustive passはreviewしていない。
 - bounded range: exact user-follow-up delta=`37cce238e6c5ab0e8de575518cdb2bd5c87862b9..eb0f87011172983e129984a2ba65b471e1ff9592`、technical review=`37cce238e6c5ab0e8de575518cdb2bd5c87862b9..1510c81dfac3ef2f571595545a29f8c3631b090f`、later evidence / review / tracking accuracy=`1510c81dfac3ef2f571595545a29f8c3631b090f..eb0f87011172983e129984a2ba65b471e1ff9592`、final tracking-only delta=`eb0f87011172983e129984a2ba65b471e1ff9592..c0f78255b6f977acf2b586a82b9c459445bc3018`。
 - USR90-002-R2 IFR-001 bounded range: accuracy fix=`e996337ad571ba1f4298ac0ea339b722bf65f9db..40d753d2ce93733dfcc3ffe4e21227af1bd9a5cb`、normal verification / pre-freeze=`40d753d2ce93733dfcc3ffe4e21227af1bd9a5cb..200f16e683cbdc87c8e43bf77295e5f6d82ca75f`。R2 technical code、PR #91全体、既存criteriaは再reviewしていない。
+- CI90-003 bounded range: failed attestation / remote=`0a4b041262925743cff48c4e39e03b53a039d917`、technical test delta=`0a4b041262925743cff48c4e39e03b53a039d917..6dc5b31db7f6b76ba378b3decd1fb2cd339ac034`、evidence / review / tracking=`6dc5b31db7f6b76ba378b3decd1fb2cd339ac034..c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`、frozen reviewed pre-attestation HEAD=`c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`。PR #91全体、R2 technical code、既存criteriaは再reviewしていない。
 - reviewed identity: repository=`ssaattww/RevMem`、branch=`fix/pr91-normal-review-findings`、base=`67ac398553f7959a96b77a2c069449afa001d42d`、initial independent HEAD=`ca21dae869b7877af0a4a15a69844d1dfc248bee`、Issue #90 technical source / test identity=`e34ed6b07dc88e48b5b9aeaeffd9b703ae7083b5`、prior closure implementation HEAD=`89764551e835420bc88b193baf55de64f58c805a`、prior chain=`d2288fe...` / `48a719b...` / `8c3d651...` / `d462fbc...` / `e4f0af1...`、CI90-001 test identity=`c6e79a15ec16422f35bcbfa0822fac6139e78a76`、CI90-002 final technical test commit=`472a8c14d7ce69f111ee971a5558ab3be639f2c4`、technical user-fix head=`1ea25a5b5159f36ad4ae978ce3095d3fa7c5064b`、prior CI90-002 implementation / pre-attestation=`e6221b9...` / `fbc47f0...`、prior attestation baseline=`37cce238e6c5ab0e8de575518cdb2bd5c87862b9`、USR90-002 technical commit=`1510c81dfac3ef2f571595545a29f8c3631b090f`、bounded reviewed implementation HEAD=`eb0f87011172983e129984a2ba65b471e1ff9592`、reviewed pre-attestation HEAD=`c0f78255b6f977acf2b586a82b9c459445bc3018`。
 - execution identity: 前回bounded closureの開始・終了local HEADは`eb0f87011172983e129984a2ba65b471e1ff9592`で、開始status clean、終了working diffは予約reportだけだった。今回tracking-only確認の開始・終了local HEADは`c0f78255b6f977acf2b586a82b9c459445bc3018`で、開始・終了status / working diff pathは予約済みの本reportだけである。
 - USR90-002-R2 bounded identity: exact range=`8cadc8431a59358a88902f87d582b373a5b547f6..e996337ad571ba1f4298ac0ea339b722bf65f9db`、initial technical=`e2a02962116d98263478b67af0540c705ed83312`、normal-finding technical chain=`170fb5e...` / `0e7493d...` / `9a82f7c...`、report / tracking=`894c08a...` / `e996337...`、reviewed pre-attestation HEAD=`e996337ad571ba1f4298ac0ea339b722bf65f9db`。
 - USR90-002-R2 execution identity: 開始local HEADは`e996337ad571ba1f4298ac0ea339b722bf65f9db`でstatus clean。終了local HEADも同一で、working diff pathは予約済みの本reportだけである。
 - USR90-002-R2 IFR-001 closure identity: prior failed reviewed head=`e996337ad571ba1f4298ac0ea339b722bf65f9db`、tracking / report fix=`40d753d2ce93733dfcc3ffe4e21227af1bd9a5cb`、同じnormal reviewerのverification / frozen reviewed pre-attestation HEAD=`200f16e683cbdc87c8e43bf77295e5f6d82ca75f`。
 - USR90-002-R2 IFR-001 closure execution identity: 開始local HEADは`200f16e683cbdc87c8e43bf77295e5f6d82ca75f`でstatus clean。終了local HEADも同一で、working diff pathは予約済みの本reportだけである。test、CI wait、Host、performanceは実行していない。
+- CI90-003 closure identity: failed attestation / remote HEAD=`0a4b041262925743cff48c4e39e03b53a039d917`、technical test commit=`6dc5b31db7f6b76ba378b3decd1fb2cd339ac034`、normal technical review / evidence=`ad42847fc51edb48811f5841bbbebc311f04e9ed`、tracking fix / normal finding verification=`d1db7c0150b3731c3e9126635439e3c37dd4afa8` / `c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`。
+- CI90-003 execution identity: 開始local HEADは`c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`でstatus clean。終了local HEADも同一で、working diff pathは予約済みの本reportだけである。
 - reviewer identity / continuity: `/root/pr91_issue90_independent_final_review`。初回reviewerと同一で、実装、fix、normal verificationには関与していない。初回failから今回closureまでreviewer continuityを維持した。
 - normal verification: R2=`pass_with_held`。同一normal reviewerが不足していた3 fixture cellを確認し、両findingをclosedとした。
 - CI90 normal verification: Sol/high reviewerが`c6e79a1...`を確認し、test weakeningなし、production契約との厳密一致、`CI90-001` closed、verdict=`pass_with_held`とした。
@@ -183,6 +202,8 @@
 - USR90-002 normal review: Sol/high reviewerはtechnical差分にfindingなし。evidence / tracking accuracyの`USR90-002-NR-001 Low`は同じnormal reviewerのbounded verificationでclosedし、verdict=`pass_with_held`。actual VS Code auth UI / sessionはmanualへheldである。
 - USR90-002-R2 normal verification: 同じSol/high normal reviewerは`USR90-002-R2-NR-001` High / `USR90-002-R2-NR-002` Mediumを全matrix cell Completeとしてclosedし、verdict=`pass_with_held`。同じreviewerによるIFR-001限定verificationも4-file accuracy fixのrequired action / focused evidenceをComplete、新規findingなし、verdict=`pass_with_held`とし、report / tracking accuracy cellはCompleteである。
 - USR90-002-R2 validation: independent rerunはcompile:test＋T407 11/11 Green。既存evidenceのCurrent Context 22/22、build / lint / contracts / architecture正負 / diff-check Greenを照合した。full/default、Extension Host、performanceは実行していない。
+- CI90-003 normal verification: 同じSol/high normal reviewerはbounded shared detection update、public redetect detect→refresh順、test weakeningなしを`checked_no_finding`とし、technical findingなし。tracking `CI90-003-NR-001` Lowは同じreviewerの限定fix verificationでclosedし、final verdict=`pass_with_held`。
+- CI90-003 validation: 本reviewerは`compile:test`後にnamed R405-1を1回だけ実行し1/1 Green。T407 11/11、build / lint / diff-check Greenは実装・normal evidenceとして照合した。full `test:t405`、default/full suite、Extension Host、performance、CI waitは実行していない。
 - USR90-002-R2 user-feedback origin: prior attestation `8cadc843...`のartifactではpublic repositoryにPR候補が出た一方、private repositoryの初回Current Contextはbranch-onlyだった。manual `GitHub再接続`後に回復したため、初回user-explicit selectionの連携入口とwrong preferred account回復をR2A/B対象とした。
 - USR90-002 validation: build、contracts、architecture positive / negative、lint、diff-checkはGreen。`test:t405`はbaseline / currentとも51/52で同じ`R405-7 selected PR owns...`だけがfailし、technical deltaと非因果のheldである。focused fixtureのdurable evidenceはprivate Red→Green、public anonymous、private PR #77→#78、旧candidate不在、`test:unit` wiring、3/3。追加focused commandのstdoutは保持できず再実行していないため、既存3/3 evidenceと区別する。
 - full local gate R2: candidate predecessor=`df299882905b10f125110a8af745f44f804e13e2`。build、contracts、architecture正負、lintはGreen。default `npm test`はR1と同じPR差分外のWindows path / signal / owned-host fixture群で1回failし、再実行していない。runtime suiteと新contractはunit sequence内でGreen、performanceは未追加・未実行。これはfull gate未達 / heldであり、passへ変換しない。`8976455...`と`d2288fe...`の後続deltaはreports / tracking onlyである。
@@ -191,6 +212,7 @@
 - CI90-002 CI / artifact: public PR headとrun `33030941296`の`head_sha`はともに`1ea25a5...`。runはcompleted/successで、T610 72/72を含む全required step、Extension Host、package / uploadがGreen。artifact ID `9630355716`は存在し未expired。`1ea25a5..e6221b9`はreports / trackingだけでtechnical treeは同一である。
 - USR90-002 CI delta: public PR headはprior attestation baseline `37cce238...`で、reviewed implementation `eb0f870...`は未push、matching current-head CIは存在しないため`held`。prior baselineのCI successは新HEAD successへ転用していない。CI待機は行っていない。
 - USR90-002-R2 CI delta: public PR headはprior attestation / remote baseline `8cadc8431a59358a88902f87d582b373a5b547f6`で、frozen reviewed pre-attestation `200f16e683cbdc87c8e43bf77295e5f6d82ca75f`は未push、matching exact-head CI / artifactは存在しないため`held`。prior run `33243908064` / artifact `9712292675`はR2 current-head successへ転用していない。
+- CI90-003 CI delta: pull-request run `33248295249`はremote head `0a4b041262925743cff48c4e39e03b53a039d917`、completed/failureで、T405 R405-1旧lexical assertionがfailし、後続Host / package / uploadはskipped、failure diagnosticsはupload済み。frozen `c46fb8a...`は未pushでmatching exact-head CI / artifactなしのためheldとし、failed remote runや旧artifactをsuccessへ転用していない。
 - required coverage dispositions:
   - finding required action / correctness=`checked_no_finding`（初回2 finding closed）
   - production composition / lifecycle=`checked_no_finding`（mutation identity、same-input、supersession、A→B pending→A、stale非publish、latest完了）
@@ -224,14 +246,23 @@
   - USR90-002-R2 current-head CI / artifact=`held`（未push、matching CI / artifact absent、prior success非転用、CI waitなし）
   - USR90-002-R2 actual VS Code Host / manual new VSIX=`held`
   - USR90-002-R2 unexplored=`actual VS Code authentication account picker/private target behavior and current-head packaged VSIX`
+  - CI90-003 trigger / root cause=`checked_no_finding`（run `33248295249`、head `0a4b041...`、R405-1旧lexical assertion failure）
+  - CI90-003 required static contract / test strength=`checked_no_finding`（shared detection bounded sliceのawait updateとpublic redetect bounded sliceのdetect→refresh順を維持し、assertion削除・全source presenceへの弱化なし）
+  - CI90-003 production path=`checked_no_finding`（production deltaなし。source referenceのshared detection updateとpublic redetect順を照合）
+  - CI90-003 focused validation=`checked_no_finding`（independent named R405-1 1/1、normal named 1/1、T407 11/11・build / lint / diff-check既存Green）
+  - CI90-003 normal review / finding=`checked_no_finding`（technical findingなし、`CI90-003-NR-001` Low closed、normal verdict `pass_with_held`）
+  - CI90-003 report / tracking=`checked_no_finding`（remote failed HEAD / run、local technical / frozen identity、candidate CI / artifact absence、R405-7 heldを同期）
+  - CI90-003 current frozen exact-head CI / artifact=`held`（未push、matching evidenceなし、prior failure / artifact非転用、CI waitなし）
+  - CI90-003 Windows R405-7 / Host / full / default=`held`（test-only deltaと非因果、指示により再実行なし）
+  - CI90-003 workflow / performance=`not_applicable`（net deltaなし、performance実行なし）
   - 初回reviewで完了済みかつfinding delta外のcriteria=`not_reopened`
-- persistence: report type=`independent_final_review_report`、mode=`report_attestation_commit`。USR90-002-R2 technical identityは`e2a0296...` / `170fb5e...` / `0e7493d...` / `9a82f7c...`、prior failed reviewed headは`e996337...`、accuracy fixは`40d753d...`、reviewed pre-attestation HEADは`200f16e683cbdc87c8e43bf77295e5f6d82ca75f`である。
+- persistence: report type=`independent_final_review_report`、mode=`report_attestation_commit`。既存identity chainを保持し、CI90-003 failed remoteは`0a4b041...`、technical test commitは`6dc5b31...`、review / tracking chainは`ad42847...` / `d1db7c0...` / `c46fb8a...`、reviewed pre-attestation HEADは`c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`である。technical verdictはこのreviewed HEADに適用され、本reportは直後1回のadministrative attestationを意図する。
 - report attestation head: `commit_pending`（self-referenceを避け、作成後SHAは外部記録する）
-- `report_attestation_allowed=true`。条件は、`200f16e683cbdc87c8e43bf77295e5f6d82ca75f`をfirst parentとする直後のexactly one commitで、変更pathが予約済みの本reportだけ、他working changeなし、後続commitなしであること。exact-head CI / artifactとmanual validationのheldはこのreport attestationと別gateであり、prior remote artifactを転用しない。
+- `report_attestation_allowed=true`。条件は、`c46fb8a5fc587ffdf1e6119f7feb480656f4eef0`をfirst parentとする直後のexactly one commitで、変更pathが予約済みの本reportだけ、他working changeなし、後続commitなしであること。attestation SHAは作成後に外部記録する。exact-head CI / artifactとmanual validationのheldはこのreport attestationと別gateであり、後続commitがあればnormal verificationと同じindependent reviewerのbounded closureなしにcompletionを維持できない。
 
 ## リスク
 
-- held: frozen `200f16e...`のexact-head CI / artifact不在、actual VS Code Extension Host / account picker / private target、ユーザーmanual new VSIX判断。prior `8cadc843...` CI `33243908064` / artifact `9712292675` successはR2 current-head successへ転用していない。
+- held: frozen `c46fb8a...`のexact-head CI / artifact不在、local Windows非因果R405-7、actual VS Code Extension Host / account picker / private target、full / default suite、performance、ユーザーmanual new VSIX判断。failed remote `0a4b041...` run `33248295249`と旧artifactはcandidate successへ転用していない。
 - tooling limitation: Markdown wording lintはrepositoryに`tools/lint/`と`lint:md` wiringがなくfocused / fullとも`unsupported`。このbounded closureのpassへ変換せず、設定変更も行っていない。placeholderと、ordinary proseをbacktick / quoteで隠す回避は確認されなかった。
 - intentionally unexecuted: performance、full local suite、Extension Host単独、CI wait。matching required CI内のExtension Host successとは区別する。
 - unexplored: USR90-002-R2のactual VS Code authentication account picker/private target behaviorと、current-head CI生成VSIXの実機挙動。ユーザーmanual判断に保持する。
