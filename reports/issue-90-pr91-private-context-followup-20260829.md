@@ -64,6 +64,8 @@
   - 複数候補ではproduction `reviewRange.redetectPullRequest`のPR Quick Pickを使う。選択後の再列挙は選択済みPRだけをCurrent ContextのPR候補として投影し、前のPR候補を表示ownerに残さない。
   - `test:unit`は新規suiteを明示列挙する。suite内の静的contractでその配線を保持する。
   - immutable baselineは`37cce238e6c5ab0e8de575518cdb2bd5c87862b9`、USR90-002 technical commitは`1510c81dfac3ef2f571595545a29f8c3631b090f`。normal review targetはこの1 commitだけであり、independent review scopeもUSR90-002およびCI deltaに限定する。PR #91全体の再reviewは対象外である。
+  - `USR90-002-NR-001 Low`のrequired actionはclosed-ready: 実private target identityは`ssaattww/YsupWF`、local branchは`feature/test_private_repo`、observed local HEADは`fde4c667d18a719bc655406bc3a021f773dc7e74`である。初回調査でtargetはprivate判定され、authenticated GitHub CLI/APIはこのrepository/branch/HEADに対応するopen PR metadataを返した。匿名private RESTは`404`、public controlは`200`を観測した。実行済みのsecret-safeなコマンド形式は`gh repo view --json isPrivate --jq .isPrivate`、`gh pr list --head "$(git branch --show-current)" --state open --json number --jq "length"`、およびtoken値を表示しない匿名/private・public control REST status確認である。PR番号、title、body、file名、token値はこのreportに記録しない。
+  - 上記の実環境調査ではYsupWFのファイルを変更していない。実VS Code authentication UI/session状態は未検証のままであり、GitHub CLI/API観測から推論しない。normal review rangeとtechnical commit `1510c81dfac3ef2f571595545a29f8c3631b090f`は不変である。
 
 ## 結果
 
