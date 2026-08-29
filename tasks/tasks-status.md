@@ -8,8 +8,8 @@
 - GitHub Issue: #90（PR #91 normal-review follow-up。T610 / Issue #78はこのfollow-up完了まで一時保留）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（完了）、P4 GitHub PR連携（USR90-002保守対応中）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #90 / PR #91 `USR90-002-R2` normal fix verification。NR-001/002 completeness matrixを同じSol/high reviewerが限定確認する
-- 次のタスク: normal findings closed後、同一independent reviewerがR2/CI deltaだけを限定closureする
+- 現在のタスク: Issue #90 / PR #91 `USR90-002-R2` independent bounded closure準備。normal findingsはclosed、同一independent reviewerがR2/CI deltaだけを確認する
+- 次のタスク: pre-freeze tracking/report commit後、同一independent reviewerの限定closureとreport attestation、push/PR更新へ進む
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。private実リポジトリで認証API取得可、匿名private 404、匿名public 200とproduction欠落境界を確認済み
@@ -30,9 +30,9 @@
 | USR90-002 | independent限定closure `pass_with_held` | 0.5h単位 | private repositoryの明示PR再検出でinteractive VS Code GitHub sessionを取得し、PR候補表示と切替を成立させる | T401、T405、CI90-002 | 専用最小runtime fixture 3/3でprivate authenticated Red→Green、public anonymous回帰、PR #77→#78切替を確認。required `test:unit`配線、build・contracts・architecture正負・lint・diff-check Green。technical commit `1510c81...`、NR-001 Low closed、同一independent reviewerのbounded range `37cce238...eb0f870`で新規findingなし |
 | USR90-002-R2A | 実装済み / review待ち | 0.5h以内（実績約25分） | user-explicit Current Context選択の候補列挙前にinteractive GitHub session取得とPR検出を1回行う | USR90-002 | runtime Red 3件→focused 25/25 Green。初回prompt 1回、同一HEAD再選択とbackgroundの追加prompt 0回、取消時の同一operation prompt 1回を確認 |
 | USR90-002-R2B | 実装済み / review中 | 0.5h以内（実績30分以内） | tokenありprivate `404/api`時だけaccount preferenceをclearして再選択し、同一operationで1回retryする | USR90-002-R2A | runtime Redでreselect 0を観測後、Greenでreselect 1・search 2・PR候補成功。取消、retry失敗、anonymous、backgroundのloopなしを確認。technical commit `e2a0296...` |
-| USR90-002-R2-NR-001 | High / fix verification待ち | 0.5h以内 | superseded explicit PR detectionがReview StateまたはPR/branch preferenceを永続化しないようabort/generation fenceを追加する | USR90-002-R2A | Redで旧operation永続化を観測、GreenでCANCEL/OperationCancelledError、Review State・preference・candidate mutation各0、latest candidate 1。fix commit `170fb5e...`、public fixture `9a82f7c...` |
-| USR90-002-R2-NR-002A | Medium / 実装済み・verification待ち | 0.5h以内（実績約22分） | T305が実際に使うCurrent Context登録をnarrow production factoryへ抽出し、public commandからT405 refへ到達させる | USR90-002-R2-NR-001 | Redでfactory export不在、Greenでpublic command→T305 factory→real T405 auth/search→branch+PR Quick Pick、prompt 1・search 1。commit `0e7493d...` |
-| USR90-002-R2-NR-002B | Medium / fix verification待ち | 0.5h以内 | NR-002A fixtureへsame-HEAD/background、wrong-account 404、cancel/supersession matrixを追加する | USR90-002-R2-NR-002A | T407 11/11。saved追加prompt/reselect/search 0、background interactive 0、wrong-account clear 1/search 2、supersession CANCEL・old mutation 0・latest candidate 1。commit `9a82f7c...` |
+| USR90-002-R2-NR-001 | High / closed | 0.5h以内 | superseded explicit PR detectionがReview StateまたはPR/branch preferenceを永続化しないようabort/generation fenceを追加する | USR90-002-R2A | 同じSol/high reviewerがCANCEL/OperationCancelledError、failed/reveal 0、old mutation 0、latest candidate 1とT407 11/11を確認しclosed |
+| USR90-002-R2-NR-002A | Medium / closed | 0.5h以内（実績約22分） | T305が実際に使うCurrent Context登録をnarrow production factoryへ抽出し、public commandからT405 refへ到達させる | USR90-002-R2-NR-001 | 同じSol/high reviewerがactivateとtestのfactory一致、public command→real T405 auth/search→Current Context Quick Pickを確認しclosed |
+| USR90-002-R2-NR-002B | Medium / closed | 0.5h以内 | NR-002A fixtureへsame-HEAD/background、wrong-account 404、cancel/supersession matrixを追加する | USR90-002-R2-NR-002A | 同じSol/high reviewerがmatrix全セルComplete、T407 11/11 Greenを再実行しclosed |
 
 - governing TDD source: Issue #90「開発・検証」。各behaviorはfocused testのRedを観測してからproductionを変更する
 - design disposition: Issue #90診断契約は`doc/design/operation-diagnostics-and-refresh-scheduling.md`、USR90-002認証境界は`doc/design/vscode-review-range-tracker-design.md`を既存契約の修正先とし、`Design/BreakingChanges.md`対象の破壊的変更はない
@@ -46,6 +46,8 @@
 - USR90-002 exact-head publication: attestation `8cadc8431a59358a88902f87d582b373a5b547f6`、pull-request CI `33243908064` Green、artifact `9712292675`生成済み。しかし2026-08-29のユーザー実機logで`GITHUB_PR_DETECTION_UNAVAILABLE reason=api`後にPR context `0/0`を確認したため、technical acceptanceを再openする
 - USR90-002-R2 report: `reports/issue-90-pr91-private-context-actual-host-followup-20260829.md`
 - USR90-002-R2 normal review report: `reports/issue-90-pr91-private-context-actual-host-normal-review-20260829.md`
+- USR90-002-R2 normal fix verification report: `reports/issue-90-pr91-private-context-actual-host-normal-fix-verification-20260829.md`
+- end-of-Issue Skill-gap decision: task sizing/process instructionは既存`FP-20260826-001`と同一であり、今回のR2では適用済み。新規FP、Skill変更、外部Issueは不要。private PR初回連携は製品固有設計としてdesign/reportに保持する
 - normal review report: `reports/issue-90-pr91-normal-review-20260826.md`
 - implementation follow-up report: `reports/issue-90-pr91-normal-review-followup-20260826.md`
 - normal fix verification report: `reports/issue-90-pr91-normal-fix-verification-20260826.md`（NR90-001〜004 open、NR90-005/006 closed、verdict `fail`）
