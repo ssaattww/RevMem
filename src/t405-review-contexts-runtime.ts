@@ -1030,26 +1030,34 @@ export function registerT405ReviewContextsRuntime(
     local: LocalGitRepository,
     feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
+    synchronizeBeforeSearch = true,
   ): Promise<void> => {
     const isDetectionAborted = (): boolean => signal?.aborted === true;
+    const assertDetectionCurrent = (): void => {
+      if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+    };
     if (local.head === undefined || local.remote === undefined) {
       throw new Error("PR再検出にはHEADとGit remoteが必要です。");
     }
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
     const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
-    await synchronizeRepository({
-      repositoryId: local.repositoryId,
-      repositoryRoot: local.rootPath,
-      headRevision: local.head,
-      snapshot: {
-        context: { kind: "branch", label: "active", headRevision: local.head },
-        progress: undefined,
-      },
-    }, persistedBefore);
+    assertDetectionCurrent();
+    if (synchronizeBeforeSearch) {
+      await synchronizeRepository({
+        repositoryId: local.repositoryId,
+        repositoryRoot: local.rootPath,
+        headRevision: local.head,
+        snapshot: {
+          context: { kind: "branch", label: "active", headRevision: local.head },
+          progress: undefined,
+        },
+      }, persistedBefore);
+      assertDetectionCurrent();
+    }
 
     const token = await auth.getAccessToken(identity.host, signal, true);
-    if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+    assertDetectionCurrent();
     const resolver = new GitHubPullRequestContextResolver({
       chooseCandidate: async (candidates) => {
         const items = candidates.map((candidate) => ({
@@ -1061,7 +1069,7 @@ export function registerT405ReviewContextsRuntime(
       },
     });
     let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, local.head);
-    if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+    assertDetectionCurrent();
     if (
       token !== undefined &&
       search.kind === "unavailable" &&
@@ -1069,17 +1077,20 @@ export function registerT405ReviewContextsRuntime(
       search.httpStatus === 404
     ) {
       const reselectedToken = await auth.getAccessToken(identity.host, signal, true, true);
-      if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+      assertDetectionCurrent();
       if (reselectedToken !== undefined) {
         search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, local.head);
-        if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+        assertDetectionCurrent();
       }
     }
     const resolution = await resolver.resolveSearchResult(search);
+    assertDetectionCurrent();
     if (resolution.kind === "pull-request") {
       const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
       const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+      assertDetectionCurrent();
       if (existing !== undefined) {
+        assertDetectionCurrent();
         await contextStateService.update({
           repositoryId: local.repositoryId,
           identity: pullRequestIdentity(state),
@@ -1110,17 +1121,20 @@ export function registerT405ReviewContextsRuntime(
           }),
           openedEncodingHints(local.rootPath),
         );
+        assertDetectionCurrent();
         await contextStateService.create(
           { contextState: state, globalState: preparedGlobal.nextGlobalState },
           preparedGlobal.expectedGlobalState,
         );
       }
+      assertDetectionCurrent();
       await currentPullRequestSelection.select(
         local.repositoryId,
         local.head,
         state.contextId,
       );
     } else {
+      assertDetectionCurrent();
       await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
       if (search.kind === "unavailable") {
         reportActiveOperationFailure(
@@ -1159,7 +1173,7 @@ export function registerT405ReviewContextsRuntime(
       currentPullRequestSelection.prefersBranch(local.repositoryId, local.head),
     );
     if (current !== undefined) return;
-    await detectPullRequest(local, feedbackContext, signal);
+    await detectPullRequest(local, feedbackContext, signal, false);
   };
 
   const controller = new ReviewContextsController({

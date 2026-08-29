@@ -22,12 +22,14 @@ interface DisposableLike {
 
 class MemoryMemento {
   private readonly values = new Map<string, unknown>();
+  public updateCount = 0;
 
   public get<T>(key: string, defaultValue?: T): T | undefined {
     return this.values.has(key) ? this.values.get(key) as T : defaultValue;
   }
 
   public async update(key: string, value: unknown): Promise<void> {
+    this.updateCount += 1;
     if (value === undefined) this.values.delete(key);
     else this.values.set(key, structuredClone(value));
   }
@@ -79,6 +81,7 @@ const runScenario = async (options: {
   readonly reselectCancelled?: boolean;
   readonly retryFails?: boolean;
   readonly anonymousUnavailable?: boolean;
+  readonly abortDuringPicker?: boolean;
 }): Promise<{
   readonly candidates: readonly CurrentContextUiSnapshot[];
   readonly candidatesByRefresh: readonly (readonly CurrentContextUiSnapshot[])[];
@@ -86,6 +89,9 @@ const runScenario = async (options: {
   readonly sessionRequests: readonly boolean[];
   readonly clearSessionPreferenceRequests: number;
   readonly searchRequestCount: number;
+  readonly reviewStateMutationCount: number;
+  readonly preferenceMutationCount: number;
+  readonly operationErrorName: string | undefined;
 }> => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t407-private-context-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -132,6 +138,9 @@ const runScenario = async (options: {
     let clearSessionPreferenceRequests = 0;
     let searchRequestCount = 0;
     const quickPickNumbers: number[] = [];
+    let resolvePendingPicker: (() => void) | undefined;
+    let signalPickerStarted: (() => void) | undefined;
+    const pickerStarted = new Promise<void>((resolve) => { signalPickerStarted = resolve; });
     const selectedPullRequestNumbers = [...(options.selectedPullRequestNumbers ?? [])];
     const pullRequestNumbers = options.multiplePullRequests ? [77, 78] : [77];
     let sessionCreated = false;
@@ -155,6 +164,12 @@ const runScenario = async (options: {
           quickPickOptions?: { readonly placeHolder?: string },
         ): Promise<{ readonly candidate?: { readonly number: number } } | undefined> => {
           if (quickPickOptions?.placeHolder !== "現在HEADのPRを選択") return undefined;
+          if (options.abortDuringPicker) {
+            signalPickerStarted?.();
+            return new Promise((resolve) => {
+              resolvePendingPicker = () => resolve(items[0]);
+            });
+          }
           const number = selectedPullRequestNumbers.shift();
           if (number === undefined) {
             throw new Error("each private PR redetect must choose through the production Quick Pick");
@@ -243,11 +258,14 @@ const runScenario = async (options: {
 
     let candidates: readonly CurrentContextUiSnapshot[] = [];
     const candidatesByRefresh: Array<readonly CurrentContextUiSnapshot[]> = [];
+    const workspaceState = new MemoryMemento();
+    const stateRepository = new FileSystemReviewStateRepository({ storageUris: { globalStorageUri: { fsPath: storageRoot } } });
+    let reviewStateMutationCount = 0;
     runtime = runtimeModule.registerT405ReviewContextsRuntime({
       context: {
         globalStorageUri: { fsPath: storageRoot },
         storageUri: { fsPath: storageRoot },
-        workspaceState: new MemoryMemento(),
+        workspaceState,
         subscriptions,
       } as never,
       git: createNodeLocalGitAdapter(),
@@ -260,7 +278,19 @@ const runScenario = async (options: {
       registerPullRequestReviewDiff: () => undefined,
       openPullRequestReviewDiff: async () => undefined,
       getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 0, progress: 0 }),
-      reviewStateRepository: new FileSystemReviewStateRepository({ storageUris: { globalStorageUri: { fsPath: storageRoot } } }),
+      reviewStateRepository: {
+        load: (target: Parameters<typeof stateRepository.load>[0]) => stateRepository.load(target),
+        loadGlobal: (target: Parameters<typeof stateRepository.loadGlobal>[0]) => stateRepository.loadGlobal(target),
+        listRepositoryContexts: (repository: Parameters<typeof stateRepository.listRepositoryContexts>[0]) => stateRepository.listRepositoryContexts(repository),
+        commit: async (transaction: Parameters<typeof stateRepository.commit>[0]) => {
+          reviewStateMutationCount += 1;
+          return stateRepository.commit(transaction);
+        },
+        create: async (transaction: Parameters<typeof stateRepository.create>[0]) => {
+          reviewStateMutationCount += 1;
+          return stateRepository.create(transaction);
+        },
+      },
       reviewHistoryRecorder: new ReviewHistoryRecorder({
         sessionId: "t407",
         createEventId: () => "t407-event",
@@ -272,11 +302,36 @@ const runScenario = async (options: {
       candidates = await runtime.augmentCurrentContextCandidates([branch]);
     } else if (options.operation === "prepare") {
       const prepare = (runtime as unknown as {
-        readonly preparePullRequestCandidateForExplicitContextSelection?: () => Promise<void>;
+        readonly preparePullRequestCandidateForExplicitContextSelection?: (signal?: AbortSignal) => Promise<void>;
       }).preparePullRequestCandidateForExplicitContextSelection;
       assert.ok(prepare, "Current Context selection preparation must be registered by the T405 runtime");
-      for (let count = 0; count < (options.operationCount ?? 1); count += 1) await prepare();
+      let operationErrorName: string | undefined;
+      if (options.abortDuringPicker) {
+        const cancellation = new AbortController();
+        const pending = prepare(cancellation.signal);
+        await pickerStarted;
+        cancellation.abort();
+        resolvePendingPicker?.();
+        try {
+          await pending;
+        } catch (error) {
+          operationErrorName = error instanceof DOMException ? error.name : undefined;
+        }
+      } else {
+        for (let count = 0; count < (options.operationCount ?? 1); count += 1) await prepare();
+      }
       candidates = await runtime.augmentCurrentContextCandidates([branch]);
+      return {
+        candidates,
+        candidatesByRefresh,
+        quickPickNumbers,
+        sessionRequests,
+        clearSessionPreferenceRequests,
+        searchRequestCount,
+        reviewStateMutationCount,
+        preferenceMutationCount: workspaceState.updateCount,
+        operationErrorName,
+      };
     } else {
       const redetect = commands.get("reviewRange.redetectPullRequest");
       assert.ok(redetect, `production PR redetect command must be registered; actual=${[...commands.keys()].join(",")}`);
@@ -290,6 +345,9 @@ const runScenario = async (options: {
       sessionRequests,
       clearSessionPreferenceRequests,
       searchRequestCount,
+      reviewStateMutationCount,
+      preferenceMutationCount: workspaceState.updateCount,
+      operationErrorName: undefined,
     };
   } finally {
     runtime?.dispose();
@@ -385,6 +443,20 @@ test("T407 never loops account reselect or search retry after cancellation, retr
     operation: "background",
   });
   assert.equal(background.clearSessionPreferenceRequests, 0);
+});
+
+test("T407 superseded explicit preparation cannot publish stale state or preference after its PR picker completes", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    multiplePullRequests: true,
+    operation: "prepare",
+    abortDuringPicker: true,
+  });
+  assert.equal(result.operationErrorName, "AbortError");
+  assert.equal(result.reviewStateMutationCount, 0);
+  assert.equal(result.preferenceMutationCount, 0);
+  assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), false);
 });
 
 test("T407 private PR redetect switches the Current Context owner through the production Quick Pick", async () => {
