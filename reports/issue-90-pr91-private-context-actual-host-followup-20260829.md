@@ -102,7 +102,7 @@
 | NR-001 High | abort/nonpublish fence | T405 shared detection | public supersession: T305 factory → `registerCurrentContextRuntime` → T405 | T407 final 11/11: CANCEL、old Review State/preference/candidate mutation 0、latest candidate 1 | Complete |
 | NR-002 Medium | public command factory wiring | T305 activate uses the same factory | public T407 matrix: initial private, saved immutable HEAD, background, wrong account, supersession | required `test:unit` existing T407 wiring; T407 11/11、Current Context 22/22、build/lint/contracts/architecture/diff check Green | Complete |
 
-Held outside this finding matrix: actual Extension Host/manual VSIX validation only.
+Held outside this finding matrix: local R2 reviewed HEAD `e996337ad571ba1f4298ac0ea339b722bf65f9db`のexact-head CI/artifact（未push）、actual Extension Host/account picker/private target、manual new VSIX validation。current remote `8cadc8431a59358a88902f87d582b373a5b547f6`のCI `33243908064`とartifact `9712292675`はユーザー実機failure前の証拠であり、R2 acceptanceへ転用しない。
 
 ## リスク
 
