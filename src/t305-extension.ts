@@ -457,6 +457,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
 
   const currentContextComposition = new CurrentContextRuntimeComposition(selection, {
+    prepareExplicitSelection: async (signal, feedbackContext) => {
+      await reviewContextsRuntimeRef.current?.preparePullRequestCandidateForExplicitContextSelection?.(
+        signal,
+        feedbackContext,
+      );
+    },
     enumerateCandidates: enumerateContexts,
     resolveFallback,
     requestSelection: async (available, signal) => {

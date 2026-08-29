@@ -154,6 +154,10 @@ interface T405ReviewStateRepository {
 
 export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
+  preparePullRequestCandidateForExplicitContextSelection?(
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+  ): Promise<void>;
   augmentCurrentContextCandidates(
     localCandidates: readonly CurrentContextUiSnapshot[],
     signal?: AbortSignal,
@@ -1022,6 +1026,142 @@ export function registerT405ReviewContextsRuntime(
   );
   sourceRef.current = source;
 
+  const detectPullRequest = async (
+    local: LocalGitRepository,
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const isDetectionAborted = (): boolean => signal?.aborted === true;
+    if (local.head === undefined || local.remote === undefined) {
+      throw new Error("PR再検出にはHEADとGit remoteが必要です。");
+    }
+    const identity = parseGitHubRemote(local.remote.rawUrl);
+    if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
+    const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
+    await synchronizeRepository({
+      repositoryId: local.repositoryId,
+      repositoryRoot: local.rootPath,
+      headRevision: local.head,
+      snapshot: {
+        context: { kind: "branch", label: "active", headRevision: local.head },
+        progress: undefined,
+      },
+    }, persistedBefore);
+
+    const token = await auth.getAccessToken(identity.host, signal, true);
+    if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+    const resolver = new GitHubPullRequestContextResolver({
+      chooseCandidate: async (candidates) => {
+        const items = candidates.map((candidate) => ({
+          label: `PR #${candidate.number}: ${candidate.title}`,
+          description: candidate.url,
+          candidate,
+        }));
+        return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
+      },
+    });
+    let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, local.head);
+    if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+    if (
+      token !== undefined &&
+      search.kind === "unavailable" &&
+      search.reason === "api" &&
+      search.httpStatus === 404
+    ) {
+      const reselectedToken = await auth.getAccessToken(identity.host, signal, true, true);
+      if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+      if (reselectedToken !== undefined) {
+        search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, local.head);
+        if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
+      }
+    }
+    const resolution = await resolver.resolveSearchResult(search);
+    if (resolution.kind === "pull-request") {
+      const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
+      const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+      if (existing !== undefined) {
+        await contextStateService.update({
+          repositoryId: local.repositoryId,
+          identity: pullRequestIdentity(state),
+          pullRequest: state.pullRequest!,
+          displayName: state.displayName,
+        });
+      } else {
+        const current = gitContextResolver.resolve({
+          repositoryId: local.repositoryId,
+          rootPath: local.rootPath,
+          branch: local.branch,
+          head: local.head,
+        });
+        const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
+        const preparedGlobal = await currentGlobalForNewPullRequest(
+          repository,
+          current,
+          gitContextRevisionMapper,
+          resolveReviewRangeMappingOptions({
+            ignoreWhitespaceChanges: reviewRangeConfiguration.get(
+              "ignoreWhitespaceChanges",
+              false,
+            ),
+            ignoreEolChanges: reviewRangeConfiguration.get(
+              "ignoreEolChanges",
+              false,
+            ),
+          }),
+          openedEncodingHints(local.rootPath),
+        );
+        await contextStateService.create(
+          { contextState: state, globalState: preparedGlobal.nextGlobalState },
+          preparedGlobal.expectedGlobalState,
+        );
+      }
+      await currentPullRequestSelection.select(
+        local.repositoryId,
+        local.head,
+        state.contextId,
+      );
+    } else {
+      await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
+      if (search.kind === "unavailable") {
+        reportActiveOperationFailure(
+          "PRを再検出",
+          new OperationDiagnosticError({
+            code: "GITHUB_PR_DETECTION_UNAVAILABLE",
+            reason: search.reason,
+          }),
+          feedbackContext,
+        );
+      }
+    }
+  };
+
+  const preparePullRequestCandidateForExplicitContextSelection = async (
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+  ): Promise<void> => {
+    if (signal?.aborted === true) throw new DOMException("Current Context selection was superseded.", "AbortError");
+    let local: LocalGitRepository;
+    try {
+      local = await inspectActiveRepository();
+    } catch (error) {
+      if (error instanceof ReviewContextsRepositorySelectionCancelled) return;
+      throw error;
+    }
+    if (local.head === undefined || local.remote === undefined) return;
+    const identity = parseGitHubRemote(local.remote.rawUrl);
+    if (identity === undefined) return;
+    const persisted = await repository.listRepositoryContexts(local.repositoryId);
+    const current = findCurrentPullRequestContext(
+      persisted,
+      local.repositoryId,
+      local.head,
+      currentPullRequestSelection.read(local.repositoryId, local.head),
+      currentPullRequestSelection.prefersBranch(local.repositoryId, local.head),
+    );
+    if (current !== undefined) return;
+    await detectPullRequest(local, feedbackContext, signal);
+  };
+
   const controller = new ReviewContextsController({
     visibility,
     setPullRequestLayerEnabled: async (context, enabled, _feedbackContext) => {
@@ -1075,92 +1215,7 @@ export function registerT405ReviewContextsRuntime(
     },
     redetectPullRequest: async (feedbackContext) => {
       const local = await inspectActiveRepository();
-      if (local.head === undefined || local.remote === undefined) {
-        throw new Error("PR再検出にはHEADとGit remoteが必要です。");
-      }
-      const identity = parseGitHubRemote(local.remote.rawUrl);
-      if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
-      const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
-      await synchronizeRepository({
-        repositoryId: local.repositoryId,
-        repositoryRoot: local.rootPath,
-        headRevision: local.head,
-        snapshot: {
-          context: { kind: "branch", label: "active", headRevision: local.head },
-          progress: undefined,
-        },
-      }, persistedBefore);
-
-      const token = await auth.getAccessToken(identity.host, undefined, true);
-      const resolver = new GitHubPullRequestContextResolver({
-        chooseCandidate: async (candidates) => {
-          const items = candidates.map((candidate) => ({
-            label: `PR #${candidate.number}: ${candidate.title}`,
-            description: candidate.url,
-            candidate,
-          }));
-          return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
-        },
-      });
-      const search = await createPullRequestSearch(identity, token).findOpenByHead(identity, local.head);
-      const resolution = await resolver.resolveSearchResult(search);
-      if (resolution.kind === "pull-request") {
-        const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
-        const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
-        if (existing !== undefined) {
-          await contextStateService.update({
-            repositoryId: local.repositoryId,
-            identity: pullRequestIdentity(state),
-            pullRequest: state.pullRequest!,
-            displayName: state.displayName,
-          });
-        } else {
-          const current = gitContextResolver.resolve({
-            repositoryId: local.repositoryId,
-            rootPath: local.rootPath,
-            branch: local.branch,
-            head: local.head,
-          });
-          const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
-          const preparedGlobal = await currentGlobalForNewPullRequest(
-            repository,
-            current,
-            gitContextRevisionMapper,
-            resolveReviewRangeMappingOptions({
-              ignoreWhitespaceChanges: reviewRangeConfiguration.get(
-                "ignoreWhitespaceChanges",
-                false,
-              ),
-              ignoreEolChanges: reviewRangeConfiguration.get(
-                "ignoreEolChanges",
-                false,
-              ),
-            }),
-            openedEncodingHints(local.rootPath),
-          );
-          await contextStateService.create(
-            { contextState: state, globalState: preparedGlobal.nextGlobalState },
-            preparedGlobal.expectedGlobalState
-          );
-        }
-        await currentPullRequestSelection.select(
-          local.repositoryId,
-          local.head,
-          state.contextId,
-        );
-      } else {
-        await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
-        if (search.kind === "unavailable") {
-          reportActiveOperationFailure(
-            "PRを再検出",
-            new OperationDiagnosticError({
-              code: "GITHUB_PR_DETECTION_UNAVAILABLE",
-              reason: search.reason,
-            }),
-            feedbackContext,
-          );
-        }
-      }
+      await detectPullRequest(local, feedbackContext);
       await options.refreshCurrentContext();
     },
     reconnectGitHub: async () => {
@@ -1186,6 +1241,7 @@ export function registerT405ReviewContextsRuntime(
 
   return {
     ...registered,
+    preparePullRequestCandidateForExplicitContextSelection,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
       source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
     getCancellationSnapshotForTest: async () => ({

@@ -73,11 +73,19 @@ const runScenario = async (options: {
   readonly multiplePullRequests?: boolean;
   readonly selectedPullRequestNumbers?: readonly number[];
   readonly redetectCount?: number;
+  readonly operation?: "background" | "prepare" | "redetect";
+  readonly operationCount?: number;
+  readonly wrongPreferredSession?: boolean;
+  readonly reselectCancelled?: boolean;
+  readonly retryFails?: boolean;
+  readonly anonymousUnavailable?: boolean;
 }): Promise<{
   readonly candidates: readonly CurrentContextUiSnapshot[];
   readonly candidatesByRefresh: readonly (readonly CurrentContextUiSnapshot[])[];
   readonly quickPickNumbers: readonly number[];
   readonly sessionRequests: readonly boolean[];
+  readonly clearSessionPreferenceRequests: number;
+  readonly searchRequestCount: number;
 }> => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t407-private-context-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -121,10 +129,13 @@ const runScenario = async (options: {
     const commands = new Map<string, () => Promise<void>>();
     const errors: string[] = [];
     const sessionRequests: boolean[] = [];
+    let clearSessionPreferenceRequests = 0;
+    let searchRequestCount = 0;
     const quickPickNumbers: number[] = [];
     const selectedPullRequestNumbers = [...(options.selectedPullRequestNumbers ?? [])];
     const pullRequestNumbers = options.multiplePullRequests ? [77, 78] : [77];
     let sessionCreated = false;
+    let sessionPreferenceCleared = false;
     const fakeVscode = {
       EventEmitter: FakeEventEmitter,
       TreeItem: FakeTreeItem,
@@ -164,8 +175,21 @@ const runScenario = async (options: {
         workspaceFolders: [{ uri: { scheme: "file", authority: "", fsPath: repositoryRoot, query: "", fragment: "" } }],
       },
       authentication: {
-        getSession: async (_providerId: string, _scopes: readonly string[], sessionOptions: { readonly createIfNone: boolean }) => {
+        getSession: async (
+          _providerId: string,
+          _scopes: readonly string[],
+          sessionOptions: { readonly createIfNone: boolean; readonly clearSessionPreference?: boolean },
+        ) => {
           sessionRequests.push(sessionOptions.createIfNone);
+          if (sessionOptions.clearSessionPreference === true) {
+            clearSessionPreferenceRequests += 1;
+            if (options.reselectCancelled) return undefined;
+            sessionPreferenceCleared = true;
+            sessionCreated = true;
+          }
+          if (options.wrongPreferredSession && !sessionPreferenceCleared) {
+            return { accessToken: "wrong-session-token" };
+          }
           if (sessionOptions.createIfNone && options.interactiveSession) sessionCreated = true;
           return sessionCreated ? { accessToken: "test-session-token" } : undefined;
         },
@@ -175,7 +199,10 @@ const runScenario = async (options: {
       const url = new URL(String(input));
       const authorization = new Headers(init?.headers).get("authorization");
       if (url.pathname === "/repos/example/private-context/pulls" && url.searchParams.get("state") === "open") {
+        searchRequestCount += 1;
+        if (options.anonymousUnavailable && authorization === null) return new Response(null, { status: 404 });
         if (options.privateApi && authorization !== "Bearer test-session-token") return new Response(null, { status: 404 });
+        if (options.retryFails && authorization === "Bearer test-session-token") return new Response(null, { status: 404 });
         if (!options.privateApi) assert.equal(authorization, null, "public PR search must remain anonymous without a session");
         return jsonResponse(pullRequestNumbers.map((number) => ({
           number,
@@ -241,11 +268,29 @@ const runScenario = async (options: {
       }),
     } as never);
 
-    const redetect = commands.get("reviewRange.redetectPullRequest");
-    assert.ok(redetect, `production PR redetect command must be registered; actual=${[...commands.keys()].join(",")}`);
-    for (let count = 0; count < (options.redetectCount ?? 1); count += 1) await redetect();
+    if (options.operation === "background") {
+      candidates = await runtime.augmentCurrentContextCandidates([branch]);
+    } else if (options.operation === "prepare") {
+      const prepare = (runtime as unknown as {
+        readonly preparePullRequestCandidateForExplicitContextSelection?: () => Promise<void>;
+      }).preparePullRequestCandidateForExplicitContextSelection;
+      assert.ok(prepare, "Current Context selection preparation must be registered by the T405 runtime");
+      for (let count = 0; count < (options.operationCount ?? 1); count += 1) await prepare();
+      candidates = await runtime.augmentCurrentContextCandidates([branch]);
+    } else {
+      const redetect = commands.get("reviewRange.redetectPullRequest");
+      assert.ok(redetect, `production PR redetect command must be registered; actual=${[...commands.keys()].join(",")}`);
+      for (let count = 0; count < (options.redetectCount ?? 1); count += 1) await redetect();
+    }
     assert.deepEqual(errors, []);
-    return { candidates, candidatesByRefresh, quickPickNumbers, sessionRequests };
+    return {
+      candidates,
+      candidatesByRefresh,
+      quickPickNumbers,
+      sessionRequests,
+      clearSessionPreferenceRequests,
+      searchRequestCount,
+    };
   } finally {
     runtime?.dispose();
     for (const subscription of subscriptions) subscription.dispose();
@@ -263,6 +308,83 @@ test("T407 explicit PR redetect registers private authenticated and public anony
 
   const publicResult = await runScenario({ privateApi: false, interactiveSession: false });
   assert.equal(publicResult.candidates.some((candidate) => candidate.context.kind === "pull-request"), true);
+});
+
+test("T407 explicit Current Context preparation detects a private PR once and leaves background non-interactive", async () => {
+  const privateResult = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    operation: "prepare",
+    operationCount: 2,
+  });
+  assert.equal(privateResult.candidates.some((candidate) => candidate.context.kind === "pull-request"), true);
+  assert.equal(
+    privateResult.sessionRequests.filter((createIfNone) => createIfNone).length,
+    1,
+    "a saved PR at the same HEAD must prevent a second connection prompt",
+  );
+
+  const backgroundResult = await runScenario({ privateApi: true, interactiveSession: false, operation: "background" });
+  assert.equal(backgroundResult.candidates.some((candidate) => candidate.context.kind === "pull-request"), false);
+  assert.equal(backgroundResult.sessionRequests.filter((createIfNone) => createIfNone).length, 0);
+});
+
+test("T407 cancelled explicit Current Context preparation does not reprompt in the same operation", async () => {
+  const result = await runScenario({ privateApi: true, interactiveSession: false, operation: "prepare" });
+  assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), false);
+  assert.equal(result.sessionRequests.filter((createIfNone) => createIfNone).length, 1);
+  assert.equal(result.clearSessionPreferenceRequests, 0);
+});
+
+test("T407 reselects a wrong preferred session once after authenticated private 404 and retries the PR search", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    wrongPreferredSession: true,
+    operation: "prepare",
+    operationCount: 2,
+  });
+  assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), true);
+  assert.equal(result.clearSessionPreferenceRequests, 1, "only the first authenticated 404 may clear the account preference");
+  assert.equal(result.searchRequestCount, 2, "the reselected account must retry the same PR search once");
+});
+
+test("T407 never loops account reselect or search retry after cancellation, retry failure, anonymous 404, or background refresh", async () => {
+  const reselectCancelled = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    wrongPreferredSession: true,
+    reselectCancelled: true,
+    operation: "prepare",
+  });
+  assert.equal(reselectCancelled.clearSessionPreferenceRequests, 1);
+  assert.equal(reselectCancelled.searchRequestCount, 1);
+
+  const retryFailure = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    wrongPreferredSession: true,
+    retryFails: true,
+    operation: "prepare",
+  });
+  assert.equal(retryFailure.clearSessionPreferenceRequests, 1);
+  assert.equal(retryFailure.searchRequestCount, 2);
+
+  const anonymous = await runScenario({
+    privateApi: false,
+    interactiveSession: false,
+    anonymousUnavailable: true,
+    operation: "prepare",
+  });
+  assert.equal(anonymous.clearSessionPreferenceRequests, 0);
+
+  const background = await runScenario({
+    privateApi: true,
+    interactiveSession: false,
+    wrongPreferredSession: true,
+    operation: "background",
+  });
+  assert.equal(background.clearSessionPreferenceRequests, 0);
 });
 
 test("T407 private PR redetect switches the Current Context owner through the production Quick Pick", async () => {

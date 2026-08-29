@@ -6,7 +6,7 @@ export interface VsCodeAuthenticationLike {
   getSession(
     providerId: string,
     scopes: readonly string[],
-    options: { readonly createIfNone: boolean }
+    options: { readonly createIfNone: boolean; readonly clearSessionPreference?: boolean }
   ): Thenable<vscode.AuthenticationSession | undefined>;
 }
 
@@ -36,6 +36,7 @@ export class VsCodeGitHubAuthenticationProvider {
     authority: string,
     signal?: AbortSignal,
     interactive = false,
+    clearSessionPreference = false,
   ): Promise<string | undefined> {
     if (signal?.aborted) throw new DOMException("GitHub authentication was superseded.", "AbortError");
     const canonicalAuthority = canonicalGitHubAuthority(authority);
@@ -52,7 +53,10 @@ export class VsCodeGitHubAuthenticationProvider {
       const session = await this.authentication.getSession(
         authenticationProviderId(canonicalAuthority),
         this.scopes,
-        { createIfNone: interactive }
+        {
+          createIfNone: interactive,
+          ...(interactive && clearSessionPreference ? { clearSessionPreference: true } : {}),
+        }
       );
       if (signal?.aborted) throw new DOMException("GitHub authentication was superseded.", "AbortError");
       return session?.accessToken;
