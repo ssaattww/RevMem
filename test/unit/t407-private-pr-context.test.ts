@@ -10,7 +10,7 @@ import test from "node:test";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
-import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
+import { CurrentContextCandidateSelection, type CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
 const execFileAsync = promisify(execFile);
 const runtimeRequire = createRequire(__filename);
@@ -75,7 +75,7 @@ const runScenario = async (options: {
   readonly multiplePullRequests?: boolean;
   readonly selectedPullRequestNumbers?: readonly number[];
   readonly redetectCount?: number;
-  readonly operation?: "background" | "prepare" | "redetect";
+  readonly operation?: "background" | "prepare" | "public-context" | "redetect";
   readonly operationCount?: number;
   readonly wrongPreferredSession?: boolean;
   readonly reselectCancelled?: boolean;
@@ -92,6 +92,7 @@ const runScenario = async (options: {
   readonly reviewStateMutationCount: number;
   readonly preferenceMutationCount: number;
   readonly operationErrorName: string | undefined;
+  readonly currentContextQuickPickKinds: readonly string[];
 }> => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t407-private-context-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
@@ -101,6 +102,7 @@ const runScenario = async (options: {
   const moduleLoader = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
   const originalModuleLoad = moduleLoader._load;
   let runtime: ReturnType<typeof import("../../src/t405-review-contexts-runtime.js").registerT405ReviewContextsRuntime> | undefined;
+  let currentRuntime: ReturnType<typeof import("../../src/ui/current-context/vscode-current-context-runtime.js").registerCurrentContextRuntime> | undefined;
   const subscriptions: DisposableLike[] = [];
 
   try {
@@ -138,6 +140,7 @@ const runScenario = async (options: {
     let clearSessionPreferenceRequests = 0;
     let searchRequestCount = 0;
     const quickPickNumbers: number[] = [];
+    const currentContextQuickPickKinds: string[] = [];
     let resolvePendingPicker: (() => void) | undefined;
     let signalPickerStarted: (() => void) | undefined;
     const pickerStarted = new Promise<void>((resolve) => { signalPickerStarted = resolve; });
@@ -150,6 +153,7 @@ const runScenario = async (options: {
       TreeItem: FakeTreeItem,
       ThemeIcon: FakeThemeIcon,
       TreeItemCollapsibleState: { None: 0 },
+      StatusBarAlignment: { Left: 1 },
       commands: {
         registerCommand: (id: string, handler: () => Promise<void>): DisposableLike => {
           commands.set(id, handler);
@@ -159,10 +163,17 @@ const runScenario = async (options: {
       window: {
         activeTextEditor: undefined,
         createTreeView: (): DisposableLike => ({ dispose: () => undefined }),
+        createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+        registerTreeDataProvider: (): DisposableLike => ({ dispose: () => undefined }),
+        onDidChangeActiveTextEditor: (): DisposableLike => ({ dispose: () => undefined }),
         showQuickPick: async (
-          items: readonly { readonly candidate?: { readonly number: number } }[],
+          items: readonly { readonly candidate?: { readonly number: number }; readonly snapshot?: CurrentContextUiSnapshot }[],
           quickPickOptions?: { readonly placeHolder?: string },
-        ): Promise<{ readonly candidate?: { readonly number: number } } | undefined> => {
+        ): Promise<{ readonly candidate?: { readonly number: number }; readonly snapshot?: CurrentContextUiSnapshot } | undefined> => {
+          if (quickPickOptions?.placeHolder === "レビューコンテキストを選択") {
+            currentContextQuickPickKinds.push(...items.flatMap((item) => item.snapshot === undefined ? [] : [item.snapshot.context.kind]));
+            return items.find((item) => item.snapshot?.context.kind === "pull-request");
+          }
           if (quickPickOptions?.placeHolder !== "現在HEADのPRを選択") return undefined;
           if (options.abortDuringPicker) {
             signalPickerStarted?.();
@@ -248,12 +259,18 @@ const runScenario = async (options: {
       ? fakeVscode
       : Reflect.apply(originalModuleLoad, Module, [request, parent, isMain]) as unknown;
     const runtimeModulePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+    const currentContextModulePath = runtimeRequire.resolve("../../src/ui/current-context/vscode-current-context-runtime.js");
+    const t305ModulePath = runtimeRequire.resolve("../../src/t305-extension.js");
     const reviewContextsModulePath = runtimeRequire.resolve("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
     const reviewContextsIndexPath = runtimeRequire.resolve("../../src/ui/review-contexts/index.js");
     delete runtimeRequire.cache[runtimeModulePath];
     delete runtimeRequire.cache[reviewContextsModulePath];
     delete runtimeRequire.cache[reviewContextsIndexPath];
+    delete runtimeRequire.cache[currentContextModulePath];
+    delete runtimeRequire.cache[t305ModulePath];
     const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+    const currentContextModule = runtimeRequire(currentContextModulePath) as typeof import("../../src/ui/current-context/vscode-current-context-runtime.js");
+    const t305Module = runtimeRequire(t305ModulePath) as typeof import("../../src/t305-extension.js");
     moduleLoader._load = originalModuleLoad;
 
     let candidates: readonly CurrentContextUiSnapshot[] = [];
@@ -331,7 +348,34 @@ const runScenario = async (options: {
         reviewStateMutationCount,
         preferenceMutationCount: workspaceState.updateCount,
         operationErrorName,
+        currentContextQuickPickKinds,
       };
+    } else if (options.operation === "public-context") {
+      const composition = t305Module.createT305CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+        prepareExplicitSelection: (signal) => runtime!.preparePullRequestCandidateForExplicitContextSelection!(signal),
+        enumerateCandidates: (signal) => runtime!.augmentCurrentContextCandidates([branch], signal),
+        resolveFallback: async (available) => available[0],
+        requestSelection: (available) => fakeVscode.window.showQuickPick(
+          available.map((snapshot) => ({ snapshot })),
+          { placeHolder: "レビューコンテキストを選択" },
+        ).then((selected) => selected?.snapshot),
+      });
+      currentRuntime = currentContextModule.registerCurrentContextRuntime(
+        { subscriptions } as never,
+        {
+          recompute: (signal) => composition.recompute(signal),
+          selectContext: (signal) => composition.selectContext(signal),
+          acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+          acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot),
+        },
+        { refreshDependents: async () => undefined },
+        async (error) => { errors.push(String(error)); },
+      );
+      await currentRuntime.startupRefresh;
+      const select = commands.get("reviewRange.selectContext");
+      assert.ok(select, "the T305 factory must register the public Current Context command");
+      await select();
+      candidates = await runtime.augmentCurrentContextCandidates([branch]);
     } else {
       const redetect = commands.get("reviewRange.redetectPullRequest");
       assert.ok(redetect, `production PR redetect command must be registered; actual=${[...commands.keys()].join(",")}`);
@@ -348,8 +392,10 @@ const runScenario = async (options: {
       reviewStateMutationCount,
       preferenceMutationCount: workspaceState.updateCount,
       operationErrorName: undefined,
+      currentContextQuickPickKinds,
     };
   } finally {
+    currentRuntime?.dispose();
     runtime?.dispose();
     for (const subscription of subscriptions) subscription.dispose();
     globalThis.fetch = originalFetch;
@@ -366,6 +412,13 @@ test("T407 explicit PR redetect registers private authenticated and public anony
 
   const publicResult = await runScenario({ privateApi: false, interactiveSession: false });
   assert.equal(publicResult.candidates.some((candidate) => candidate.context.kind === "pull-request"), true);
+});
+
+test("T407 public Current Context command uses the T305 factory to prepare a private PR candidate before its Quick Pick", async () => {
+  const result = await runScenario({ privateApi: true, interactiveSession: true, operation: "public-context" });
+  assert.equal(result.sessionRequests.filter((createIfNone) => createIfNone).length, 1, "the user command prompts once for the private session");
+  assert.equal(result.searchRequestCount, 1, "the authenticated T405 search runs before candidate enumeration");
+  assert.deepEqual([...result.currentContextQuickPickKinds].sort(), ["branch", "pull-request"], "the same Current Context Quick Pick receives the prepared PR candidate");
 });
 
 test("T407 explicit Current Context preparation detects a private PR once and leaves background non-interactive", async () => {

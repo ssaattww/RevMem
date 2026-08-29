@@ -90,6 +90,20 @@ const toResourceUri = (uri: vscode.Uri) => ({
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
 
+/** Ports owned by the T305 activation composition for the public Current Context command. */
+export interface T305CurrentContextRuntimeCompositionPorts {
+  readonly prepareExplicitSelection?: (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext) => Promise<void>;
+  readonly enumerateCandidates: (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext) => Promise<readonly CurrentContextUiSnapshot[]>;
+  readonly resolveFallback: (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal) => Promise<CurrentContextUiSnapshot | undefined>;
+  readonly requestSelection: (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal) => Promise<CurrentContextUiSnapshot | undefined>;
+}
+
+/** Creates the production Current Context composition used by T305 command registration. */
+export const createT305CurrentContextRuntimeComposition = (
+  selection: CurrentContextCandidateSelection,
+  ports: T305CurrentContextRuntimeCompositionPorts,
+): CurrentContextRuntimeComposition => new CurrentContextRuntimeComposition(selection, ports);
+
 export async function activate(context: vscode.ExtensionContext): Promise<unknown> {
   // Startup migration can fail before the main runtime composition. Install the
   // shared Output boundary first so its queued terminal lock diagnostic flushes.
@@ -456,7 +470,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return fallback;
   };
 
-  const currentContextComposition = new CurrentContextRuntimeComposition(selection, {
+  const currentContextComposition = createT305CurrentContextRuntimeComposition(selection, {
     prepareExplicitSelection: async (signal, feedbackContext) => {
       await reviewContextsRuntimeRef.current?.preparePullRequestCandidateForExplicitContextSelection?.(
         signal,
