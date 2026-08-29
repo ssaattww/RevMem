@@ -154,7 +154,17 @@ test("R405-1 lifecycle adapter acquires an exact immutable revision comparison f
 
 test("R405-1 T405 revision update maps B to C, permits layer operation, and survives restart", async () => {
   const runtimeSource = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
-  assert.match(runtimeSource, /redetectPullRequest:[\s\S]*contextStateService\.update/u);
+  const detectStart = runtimeSource.indexOf("const detectPullRequest = async");
+  const preparationStart = runtimeSource.indexOf("const preparePullRequestCandidateForExplicitContextSelection", detectStart);
+  assert.ok(detectStart >= 0 && preparationStart > detectStart, "shared PR detection must precede the explicit Current Context preparation entry");
+  const sharedDetection = runtimeSource.slice(detectStart, preparationStart);
+  assert.match(sharedDetection, /await contextStateService\.update\(/u, "shared PR detection updates an existing PR revision mapping");
+
+  const redetectStart = runtimeSource.indexOf("redetectPullRequest: async");
+  const reconnectStart = runtimeSource.indexOf("reconnectGitHub: async", redetectStart);
+  assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must remain registered before reconnect");
+  const redetect = runtimeSource.slice(redetectStart, reconnectStart);
+  assert.match(redetect, /await detectPullRequest\(local, feedbackContext\);[\s\S]*await options\.refreshCurrentContext\(\);/u, "public redetection invokes shared detection before refreshing Current Context");
 
   const repository = new MemoryPullRequestRepository();
   const diff = [
