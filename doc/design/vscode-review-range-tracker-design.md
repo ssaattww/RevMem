@@ -684,6 +684,16 @@ PR差分取得の優先順:
 
 認証tokenは永続化しない。未認証でもpublic repository APIを試す。rate limit、network、API障害時はlocal Gitまたはcacheへfallbackし、最後に成功した更新日時を表示する。
 
+### 14.1 GitHub認証とPR再検出
+
+GitHub credentialの取得元はVS Code authentication APIのGitHub sessionだけとし、GitHub CLI、Git設定、環境変数、別processのcredentialを検索・転送してはならない。tokenは認証sessionから取得したrequest内だけで使用し、永続化、診断、表示へ出さない。
+
+Extension activation、active editor変更、Current Context再計算、Review Contexts更新、PR metadata/diff/content取得を含むbackground refreshはnon-interactiveとする。既存sessionを取得できる場合だけ使用し、session作成または再承認のpromptを表示してはならない。
+
+ユーザーが明示的に実行する`PR再検出`は、それ自体でGitHub sessionの作成または`repo` scopeの再承認を許可するinteractiveな認証境界とする。private PRの検出は`GitHub再接続`を先行操作として要求せず、この1操作で完結できなければならない。既存の`GitHub再接続`は後方互換の明示credential更新操作として維持する。session取得不能または取消時もpublic repositoryにはanonymous REST APIを試し、PR候補を確定できなければ既存のbranch fallbackへ進む。background refreshは認証promptを表示してはならない。
+
+`PR再検出`で候補を確定できなかった場合のbranch/no-PR選択の保存、既存local Git/cache fallback、およびpublic repositoryのanonymous取得は維持する。認証失敗をPR候補として推測せず、GitHub CLI credentialへfallbackしない。
+
 closed PRもcontextとして保存できるが、既定ではeditor layerを無効とする。ユーザーが明示的に有効化した場合だけ表示する。
 
 ## 15. 永続化と履歴

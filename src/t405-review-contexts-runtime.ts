@@ -1091,7 +1091,7 @@ export function registerT405ReviewContextsRuntime(
         },
       }, persistedBefore);
 
-      const token = await auth.getAccessToken(identity.host);
+      const token = await auth.getAccessToken(identity.host, undefined, true);
       const resolver = new GitHubPullRequestContextResolver({
         chooseCandidate: async (candidates) => {
           const items = candidates.map((candidate) => ({
