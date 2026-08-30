@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -9,6 +10,8 @@ import {
 import type { TextSelection } from "../../src/core/intervals/index";
 import {
   DiffEditorReviewCommandService,
+  deriveOriginalToModifiedLineMappings,
+  projectOriginalIntervalsToModified,
   type DiffEditorReviewStateSession
 } from "../../src/application/review-commands/index";
 
@@ -59,6 +62,10 @@ const session = (): DiffEditorReviewStateSession => ({
   diffId: "base-revision..head-revision",
   originalLineCount: 5,
   originalDeletionIntervals: [interval(1, 3), interval(4, 5)],
+  originalToModifiedLineMappings: [
+    { originalStartLine: 0, modifiedStartLine: 0, lineCount: 1 },
+    { originalStartLine: 3, modifiedStartLine: 4, lineCount: 1 }
+  ],
   committer: { commit: async () => undefined }
 });
 
@@ -67,8 +74,119 @@ const selection = (line: number): TextSelection => ({
   active: { line, character: 0 }
 });
 
-test("original-side selection updates only the immutable diff deletion state", async () => {
+test("editor context menu exposes all four review operations only for normal or PR Progress diff editors", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    contributes?: { menus?: { "editor/context"?: Array<{ command?: string; when?: string }> } };
+  };
+  const items = manifest.contributes?.menus?.["editor/context"] ?? [];
+  assert.equal(items.length, 7, "the existing editor/context contribution count is preserved");
+  for (const command of [
+    "reviewRange.markSelectionReviewed",
+    "reviewRange.unmarkSelectionReviewed",
+    "reviewRange.markFileReviewed",
+    "reviewRange.unmarkFileReviewed"
+  ]) {
+    const item = items.find((candidate) => candidate.command === command);
+    assert.ok(item, `${command} remains contributed exactly once`);
+    assert.match(item.when ?? "", /!isInDiffEditor/u);
+    assert.match(item.when ?? "", /reviewRange\.prProgressDiffReviewActions/u);
+  }
+});
+
+test("derives original-to-modified mappings only from unchanged gaps and context lines", () => {
+  const mappings = deriveOriginalToModifiedLineMappings({
+    originalLineCount: 10,
+    modifiedLineCount: 11,
+    hunks: [
+      {
+        oldStart: 3,
+        oldCount: 1,
+        newStart: 3,
+        newCount: 1,
+        lines: [
+          { kind: "deletion", oldLine: 3, text: "before" },
+          { kind: "addition", newLine: 3, text: "after" }
+        ]
+      },
+      {
+        oldStart: 6,
+        oldCount: 3,
+        newStart: 6,
+        newCount: 4,
+        lines: [
+          { kind: "context", oldLine: 6, newLine: 6, text: "same-six" },
+          { kind: "deletion", oldLine: 7, text: "removed-seven" },
+          { kind: "addition", newLine: 7, text: "added-seven" },
+          { kind: "addition", newLine: 8, text: "added-eight" },
+          { kind: "context", oldLine: 8, newLine: 9, text: "same-eight" }
+        ]
+      }
+    ]
+  });
+
+  assert.deepEqual(mappings, [
+    { originalStartLine: 0, modifiedStartLine: 0, lineCount: 2 },
+    { originalStartLine: 3, modifiedStartLine: 3, lineCount: 3 },
+    { originalStartLine: 7, modifiedStartLine: 8, lineCount: 3 }
+  ]);
+  assert.deepEqual(
+    projectOriginalIntervalsToModified([interval(1, 9)], mappings),
+    [interval(1, 2), interval(3, 6), interval(8, 10)]
+  );
+});
+
+test("zero-count hunk anchors map only real lines before and after insertions or deletions", () => {
+  assert.deepEqual(deriveOriginalToModifiedLineMappings({
+    originalLineCount: 4,
+    modifiedLineCount: 5,
+    hunks: [{
+      oldStart: 2,
+      oldCount: 0,
+      newStart: 3,
+      newCount: 1,
+      lines: [{ kind: "addition", newLine: 3, text: "inserted" }]
+    }]
+  }), [
+    { originalStartLine: 0, modifiedStartLine: 0, lineCount: 2 },
+    { originalStartLine: 2, modifiedStartLine: 3, lineCount: 2 }
+  ]);
+
+  assert.deepEqual(deriveOriginalToModifiedLineMappings({
+    originalLineCount: 4,
+    modifiedLineCount: 3,
+    hunks: [{
+      oldStart: 3,
+      oldCount: 1,
+      newStart: 2,
+      newCount: 0,
+      lines: [{ kind: "deletion", oldLine: 3, text: "deleted" }]
+    }]
+  }), [
+    { originalStartLine: 0, modifiedStartLine: 0, lineCount: 2 },
+    { originalStartLine: 3, modifiedStartLine: 2, lineCount: 1 }
+  ]);
+});
+
+test("rejects ambiguous original-to-modified gaps instead of guessing", () => {
+  assert.throws(() => deriveOriginalToModifiedLineMappings({
+    originalLineCount: 4,
+    modifiedLineCount: 4,
+    hunks: [{
+      oldStart: 3,
+      oldCount: 1,
+      newStart: 4,
+      newCount: 1,
+      lines: [
+        { kind: "deletion", oldLine: 3, text: "before" },
+        { kind: "addition", newLine: 4, text: "after" }
+      ]
+    }]
+  }), /gap|mapping|coordinate/i);
+});
+
+test("original-side mixed selection atomically updates mapped modified/Global and original-only ranges", async () => {
   const committed: unknown[] = [];
+  const history: unknown[] = [];
   const state = session();
   const service = new DiffEditorReviewCommandService<FakeEditor>({
     getSide: (editor) => editor.side,
@@ -76,16 +194,93 @@ test("original-side selection updates only the immutable diff deletion state", a
     getSelections: (editor) => editor.selections,
     openSession: async () => ({ ...state, committer: { commit: async (transaction) => { committed.push(transaction); } } }),
     confirmWholeFileOperation: async () => true,
-    requestHistory: async () => undefined,
+    requestHistory: async (transaction) => { history.push(transaction); },
     now: () => new Date("2026-08-01T15:00:00.000Z")
   });
 
-  assert.equal(await service.markSelectionReviewed({ side: "original", lineCount: 5, selections: [selection(2)] }), "applied");
-  const transaction = committed[0] as { side: string; diffId: string; next: { contextState: ReviewContextState; globalState: RepositoryGlobalState } };
+  assert.equal(await service.markSelectionReviewed({
+    side: "original",
+    lineCount: 5,
+    selections: [selection(0), selection(1), selection(2), selection(3), selection(4)]
+  }), "applied");
+  assert.equal(committed.length, 1, "one user selection must cross the persistence boundary once");
+  assert.equal(history.length, 1, "history receives the same composite transaction once");
+  const transaction = committed[0] as {
+    operation: string;
+    side: string;
+    diffId: string;
+    next: { contextState: ReviewContextState; globalState: RepositoryGlobalState };
+  };
+  assert.equal(transaction.operation, "mark-original-selection-reviewed");
   assert.equal(transaction.side, "original");
   assert.equal(transaction.diffId, state.diffId);
-  assert.deepEqual(transaction.next.contextState.files["file-1"]!.originalReviewedByDiff, { [state.diffId]: [interval(2, 3)] });
-  assert.deepEqual(transaction.next.globalState, state.globalState);
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.modifiedReviewed, [
+    interval(0, 1),
+    interval(4, 5)
+  ]);
+  assert.deepEqual(transaction.next.globalState.files["file-1"]!.reviewed, [
+    interval(0, 1),
+    interval(4, 5)
+  ]);
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.originalReviewedByDiff, {
+    [state.diffId]: [interval(1, 3), interval(4, 5)]
+  });
+});
+
+test("original-side mixed selection unmarks both projected and original-only ranges in one transaction", async () => {
+  const base = session();
+  const state: DiffEditorReviewStateSession = {
+    ...base,
+    contextState: {
+      ...base.contextState,
+      files: {
+        ...base.contextState.files,
+        "file-1": {
+          ...base.contextState.files["file-1"]!,
+          modifiedReviewed: [interval(0, 1), interval(4, 5)],
+          originalReviewedByDiff: { [base.diffId]: [interval(1, 3), interval(4, 5)] }
+        }
+      }
+    },
+    globalState: {
+      ...base.globalState,
+      files: {
+        "file-1": {
+          fileId: "file-1",
+          currentPath: "src/example.ts",
+          revisionId: "head-revision",
+          reviewed: [interval(0, 1), interval(4, 5)],
+          updatedAt: "2026-08-01T14:00:00.000Z"
+        }
+      }
+    }
+  };
+  const committed: unknown[] = [];
+  const service = new DiffEditorReviewCommandService<FakeEditor>({
+    getSide: (editor) => editor.side,
+    getLineCount: (editor) => editor.lineCount,
+    getSelections: (editor) => editor.selections,
+    openSession: async () => ({ ...state, committer: { commit: async (transaction) => { committed.push(transaction); } } }),
+    confirmWholeFileOperation: async () => true,
+    requestHistory: async () => undefined
+  });
+
+  assert.equal(await service.unmarkSelectionReviewed({
+    side: "original",
+    lineCount: 5,
+    selections: [selection(0), selection(1), selection(2), selection(3), selection(4)]
+  }), "applied");
+  assert.equal(committed.length, 1);
+  const transaction = committed[0] as {
+    operation: string;
+    next: { contextState: ReviewContextState; globalState: RepositoryGlobalState };
+  };
+  assert.equal(transaction.operation, "unmark-original-selection-reviewed");
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.modifiedReviewed, []);
+  assert.deepEqual(transaction.next.globalState.files["file-1"]!.reviewed, []);
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.originalReviewedByDiff, {
+    [base.diffId]: []
+  });
 });
 
 test("whole-file mark covers all modified lines and original-only deletion lines regardless of focused side", async () => {
