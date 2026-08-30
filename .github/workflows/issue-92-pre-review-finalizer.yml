@@ -1,0 +1,264 @@
+name: Issue 92 pre-review finalizer
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-pre-review-finalizer.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: issue-92-pre-review-finalizer
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout current PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify expected implementation shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/application/review-commands/original-selection-review-plan.ts
+          test -f test/unit/issue-92-pr-progress-selection-review.test.ts
+          test -f reports/2026-08-30-issue-92-pr-progress-selection-review.md
+          grep -q 'VS Code レビュー範囲トラッカー 設計書 rev8' doc/design/vscode-review-range-tracker-design.md
+          grep -q 'createOriginalSelectionReviewPlan' src/application/review-commands/diff-editor-review-command-service.ts
+          grep -q 'commitTransactionSequence' src/application/review-commands/diff-editor-review-command-service.ts
+          grep -q 'createOriginalToModifiedLineMappings' src/t405-pull-request-review-runtime-base.ts
+          node <<'NODE'
+          const manifest = require('./package.json');
+          const items = manifest.contributes.menus['editor/context'];
+          if (items.length !== 7) throw new Error(`editor/context must contain exactly 7 items, got ${items.length}`);
+          const commands = [
+            'reviewRange.markSelectionReviewed',
+            'reviewRange.unmarkSelectionReviewed',
+            'reviewRange.markFileReviewed',
+            'reviewRange.unmarkFileReviewed'
+          ];
+          for (const command of commands) {
+            const matches = items.filter(item => item.command === command);
+            if (matches.length !== 1) throw new Error(`${command} must have exactly one menu contribution`);
+            const when = matches[0].when ?? '';
+            if (!when.includes('isInDiffEditor') || !when.includes('reviewRange.prProgressDiffReviewActions')) {
+              throw new Error(`${command} is not available in the scoped PR Progress diff context`);
+            }
+          }
+          NODE
+
+      - name: Run pre-review test, lint, and build verification
+        shell: bash
+        run: |
+          set +e
+          npm test > issue-92-final-test.stdout.log 2> issue-92-final-test.stderr.log
+          test_status=$?
+          npm run lint > issue-92-final-lint.stdout.log 2> issue-92-final-lint.stderr.log
+          lint_status=$?
+          npm run build > issue-92-final-build.stdout.log 2> issue-92-final-build.stderr.log
+          build_status=$?
+          set -e
+          cat issue-92-final-test.stdout.log issue-92-final-test.stderr.log > issue-92-final-test.combined.log
+          cat issue-92-final-lint.stdout.log issue-92-final-lint.stderr.log > issue-92-final-lint.combined.log
+          cat issue-92-final-build.stdout.log issue-92-final-build.stderr.log > issue-92-final-build.combined.log
+          jq -n \
+            --argjson test "$test_status" \
+            --argjson lint "$lint_status" \
+            --argjson build "$build_status" \
+            '{testExitCode:$test,lintExitCode:$lint,buildExitCode:$build}' \
+            > issue-92-final-verification.json
+          if [ "$test_status" -ne 0 ] || [ "$lint_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            printf 'pre-review verification failed: test=%s lint=%s build=%s\n' \
+              "$test_status" "$lint_status" "$build_status" > failure-reason.txt
+            exit 1
+          fi
+
+      - name: Remove temporary workers and push final implementation HEAD
+        id: final_head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "RevMem Issue 92 Finalizer"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          rm -f .github/issue-92-worker.py
+          rm -f .github/workflows/issue-92-worker.yml
+          rm -f .github/workflows/issue-92-pre-review-finalizer.yml
+          rm -f __connector_probe_do_not_keep__ __schema_probe_do_not_create__
+          git add -A
+          git commit -m "chore: finalize Issue #92 pre-review state"
+          git push origin HEAD:issue-92-pr-progress-context-menu
+          final_sha="$(git rev-parse HEAD)"
+          printf '%s\n' "$final_sha" > final-head-sha.txt
+          echo "sha=$final_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact-current-HEAD pull request CI
+        id: exact_ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.final_head.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          for attempt in $(seq 1 180); do
+            pr_json="$(curl -fsS "${auth[@]}" "$api/pulls/94")"
+            current_head="$(jq -r '.head.sha' <<<"$pr_json")"
+            if [ "$current_head" != "$FINAL_SHA" ]; then
+              printf 'PR HEAD moved while waiting for CI: expected=%s actual=%s\n' "$FINAL_SHA" "$current_head" > failure-reason.txt
+              exit 1
+            fi
+
+            runs_json="$(curl -fsS "${auth[@]}" "$api/actions/runs?head_sha=${FINAL_SHA}&event=pull_request&per_page=100")"
+            jq --arg sha "$FINAL_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .path == ".github/workflows/ci.yml")] | sort_by(.created_at)' \
+              <<<"$runs_json" > exact-head-ci-candidates.json
+            count="$(jq 'length' exact-head-ci-candidates.json)"
+            if [ "$count" -eq 0 ]; then
+              sleep 10
+              continue
+            fi
+
+            run="$(jq 'last' exact-head-ci-candidates.json)"
+            status="$(jq -r '.status' <<<"$run")"
+            if [ "$status" != "completed" ]; then
+              sleep 10
+              continue
+            fi
+
+            printf '%s\n' "$run" | jq '.' > exact-head-ci-run.json
+            conclusion="$(jq -r '.conclusion' <<<"$run")"
+            if [ "$conclusion" != "success" ]; then
+              run_id="$(jq -r '.id' <<<"$run")"
+              run_url="$(jq -r '.html_url' <<<"$run")"
+              printf 'exact-HEAD CI failed: sha=%s run=%s conclusion=%s url=%s\n' \
+                "$FINAL_SHA" "$run_id" "$conclusion" "$run_url" > failure-reason.txt
+              exit 1
+            fi
+
+            run_id="$(jq -r '.id' <<<"$run")"
+            run_url="$(jq -r '.html_url' <<<"$run")"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+            echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$FINAL_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          done
+
+          printf 'no completed .github/workflows/ci.yml pull_request run matched current HEAD %s within timeout\n' "$FINAL_SHA" > failure-reason.txt
+          exit 1
+
+      - name: Confirm PR remains draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.final_head.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_json="$(curl -fsS \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/94")"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$FINAL_SHA"
+          test "$(jq -r '.draft' <<<"$pr_json")" = "true"
+
+      - name: Post concise pre-review report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.final_head.outputs.sha }}
+          CI_RUN_ID: ${{ steps.exact_ci.outputs.run_id }}
+          CI_RUN_URL: ${{ steps.exact_ci.outputs.run_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOF
+          <!-- issue-92-pre-review-finalizer -->
+          ## Issue #92 選択範囲対応 — レビュー前報告
+
+          - modified側の選択範囲は、現在のHEAD側行を確認済み／解除します。
+          - original側の選択範囲は、immutable diffの対応関係から、現存するcontext行をmodified側へ写像し、original側だけの削除行を\`originalReviewedByDiff[baseSha..headSha]\`へ反映します。置換前行を追加行へ推測で対応付けません。
+          - modified、Global、originalの状態変更は、1回のatomic repository commitとして永続化します。
+          - PR Progress由来の正確なdiff tabだけで、選択範囲とファイル全体の4操作を表示します。\`editor/context\`は既存7項目のままです。
+          - 設計書をrev8へ更新しました。
+          - TDDでテスト先行のRedを確認後、\`npm test\`、\`npm run lint\`、\`npm run build\`のGreenを確認しました。診断ログはworkflow artifactへ保存しています。
+          - PR current HEAD: \`${FINAL_SHA}\`
+          - CI: run \`${CI_RUN_ID}\` の\`head_sha\`が上記current HEADと一致し、\`.github/workflows/ci.yml\`はsuccessです。別SHAのrunは使用していません。
+          - 詳細report: \`reports/2026-08-30-issue-92-pr-progress-selection-review.md\`
+
+          独立レビューは未実施です。PRはdraftのままで、mergeは実施していません。
+          EOF
+          )"
+          jq -n --arg body "$body" '{body:$body}' > pr-comment.json
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/94/comments" \
+            --data-binary @pr-comment.json \
+            > posted-pr-comment.json
+
+      - name: Post failure report
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          reason="$(cat failure-reason.txt 2>/dev/null || printf 'finalizer failed before a detailed reason was recorded')"
+          head="$(cat final-head-sha.txt 2>/dev/null || printf 'not-created')"
+          body="<!-- issue-92-pre-review-finalizer-failure -->
+          Issue #92のレビュー前最終化に失敗しました。
+
+          - final HEAD: \`${head}\`
+          - reason: \`${reason}\`
+          - この失敗では別SHAのCI runを代用していません。
+          - 独立レビューは開始していません。"
+          jq -n --arg body "$body" '{body:$body}' > pr-failure-comment.json
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/94/comments" \
+            --data-binary @pr-failure-comment.json \
+            > posted-pr-failure-comment.json || true
+
+      - name: Upload pre-review diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-92-pre-review-finalizer-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            issue-92-final-*.log
+            issue-92-final-verification.json
+            final-head-sha.txt
+            exact-head-ci-candidates.json
+            exact-head-ci-run.json
+            failure-reason.txt
+            posted-pr-comment.json
+            posted-pr-failure-comment.json
