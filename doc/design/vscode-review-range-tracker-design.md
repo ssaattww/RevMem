@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev8
+# VS Code レビュー範囲トラッカー 設計書 rev9
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -98,6 +98,48 @@ interface LineInterval {
 
 特定コンテキストに閉じず、リポジトリ全体で現在も有効と判断できる確認済み状態。内容変更時は変更部分だけ無効化する。
 
+### 4.5 immutable revisionごとの確認状態snapshot
+
+現在revisionだけを上書き保存すると、`A -> B -> C -> A`のように過去のexact revisionへ戻った際、`C -> A`の差分だけから再計算され、Aで過去に確認済みだった事実を失う。このため、ContextとGlobalは現在状態に加えて、実際にcurrent stateとして確定・永続化したimmutable revisionごとの確認状態snapshotを保持する。
+
+```ts
+interface ReviewContextRevisionSnapshot {
+  schemaVersion: SchemaVersion;
+  revisionId: string;
+  files: Record<string, FileReviewState>;
+  updatedAt: string;
+}
+
+interface RepositoryGlobalRevisionSnapshot {
+  schemaVersion: SchemaVersion;
+  revisionId: string;
+  files: Record<string, GlobalFileReviewState>;
+  updatedAt: string;
+}
+
+interface ReviewContextState {
+  // 現在revisionのfilesは既存どおりauthoritative current state
+  revisionSnapshots?: Record<string, ReviewContextRevisionSnapshot>;
+}
+
+interface RepositoryGlobalState {
+  // owner-wide Globalのexact revision snapshot
+  revisionSnapshots?: Record<string, RepositoryGlobalRevisionSnapshot>;
+}
+```
+
+map key、snapshotの`revisionId`、各fileの`revisionId`は同じexact immutable revisionでなければならない。snapshotはsource本文を保持せず、stable file ID、canonical path、line count、content hashがある場合はそのhash、正規化済み確認範囲、およびContext fileが持つ`originalReviewedByDiff`を保持する。現在revisionの`files`は表示・操作の唯一のcurrent stateであり、`revisionSnapshots`を直接表示入力として使用しない。
+
+revision snapshotの`files`は、そのrevisionで永続化済みだったContextまたはGlobalのfile-state mapの完全copyであり、repository tree全体のfile一覧ではない。snapshot自体が存在してfile entryがない場合、そのfileについて復元可能な確認済み状態がないことを表し、未確認として扱う。snapshot自体がない場合だけ、現在revisionからimmutable diff mappingを行う。
+
+exact target revisionのsnapshotが存在する場合は、そのsnapshotの`files`をcurrent stateとして復元し、現在revisionからtargetへ逆方向のdiff mappingを行わない。snapshotは過去に同じimmutable revisionで成功したstate transactionまたはrevision遷移から作られた確定状態であるため、別revisionのstateとmergeしない。map key、nested revision、schema、file ID/path、line count、content hash、interval、timestampの内部整合が不正なら、別snapshotまたはdiff mappingへfallbackせず遷移全体を拒否する。
+
+Context snapshotはcontextごとに分離する。Global snapshotはrepository owner全体で共有し、同じrevisionに対する後続の成功した確認・解除操作で置き換える。Context snapshotからGlobalを推測せず、Global snapshotからPR進捗を推測しない。ContextとGlobalの一方だけにtarget snapshotがある場合は、存在する側を復元し、存在しない側だけをimmutable diffでmappingするが、最終publicationは同じatomic transactionとする。
+
+PR Contextのrevision keyはHEAD SHAとする。`originalReviewedByDiff`は`${baseSha}..${headSha}`ごとの比較固有状態であり、そのHEADのContext revision snapshotへ含める。同じHEADのままBASEだけが変化した場合は、同じHEAD snapshot内で既存comparison keyを保持し、新しいcomparison keyを未確認から開始する。HEADが変化しても旧HEAD snapshotを削除せず、旧HEADまたは同じcomparison pairへ戻った場合は、そのHEAD snapshot内のexact keyを再利用する。PR進捗とoriginal側装飾はcurrent comparison keyだけを読む。
+
+このfield追加はoptionalな後方互換拡張とし、既存schema versionは変更しない。fieldがない既存stateはrevision snapshotなしとして読み込み、次の成功した確認操作またはrevision遷移で現在revisionをatomicにcaptureする。自動retentionによってsnapshotを破棄するとobservableな復元結果が変わるため、初期版ではcontextまたはGlobal state自体を削除するまで保持する。
+
 ## 5. 確認操作
 
 ### 5.1 選択範囲を確認済みにする
@@ -134,6 +176,8 @@ PRのbase SHAまたはhead SHAが更新された後、旧revision pairを表示�
 ### 5.5 永続化との整合
 
 確認操作は永続化成功後だけ成功表示する。contextとGlobalは1つのatomic transactionとして更新し、片側だけ成功した状態を許容しない。staleなexpected snapshotは拒否する。
+
+確認・解除・ファイル全体操作がcurrent file stateを変更した場合は、同じtransaction内でContextとGlobalのcurrent revision snapshotも結果に同期する。original側だけを変更する操作でも、Context snapshot内の`originalReviewedByDiff`を同じtransactionで更新する。current stateだけ、またはrevision snapshotだけが更新された状態を許容しない。
 
 ## 6. コンテキストと識別子
 
@@ -394,7 +438,22 @@ Git executableが起動できない場合だけ`GitExecutableNotFoundError`と�
 git diff --unified=0 --find-renames R_old R_new -- <path>
 ```
 
-branch比較ではmerge-baseを使用する。hunk前後の未変更部分を維持し、変更部分だけ未確認へ戻す。
+branch比較ではmerge-baseを使用する。target revisionの確定済みsnapshotが存在しない場合だけ、hunk前後の未変更部分を維持し、変更部分を未確認へ戻す。
+
+revision遷移は次の順序で1つのatomic planとして実行する。
+
+1. source Context/Globalのdescriptor、current files、revision、および必要なimmutable evidenceを検証する。
+2. source revisionのcurrent Context/Global stateを、それぞれsource revision snapshotへcaptureする。既存snapshotがあっても、現在の成功済みstateで置き換える。
+3. target revision snapshotの有無をContextとGlobalで独立に判定する。
+4. target snapshotが存在するownerでは、そのsnapshotの内部identityを検証し、snapshotの`files`をtarget current stateへ復元する。source current stateとのdiff mappingやrange mergeは行わない。
+5. target snapshotが存在しないownerでは、source current stateをsource/target間のcomplete immutable diffでmappingし、変更部分を未確認にする。rename、delete、add、copy、line count、content hashを含むtarget stateはこのevidenceからだけ決定する。
+6. 復元またはmappingしたtarget current stateをtarget revision snapshotへcaptureし、Context/Globalを1回のCASでcommitする。
+
+ContextとGlobalのsnapshot有無は独立に判定できるが、最終publicationは常に同一transactionとする。target snapshotのmap key、revision、schema、file key/payload ID、path、line count、content hash、interval、timestampが不正な場合は、別revisionのsnapshotやsourceからのmappingへsilent fallbackせずrevision遷移を拒否する。target snapshotがない場合にcomplete immutable diff evidenceを取得できなければ、確認済み範囲を推測せず遷移を拒否する。
+
+この規則により、Aを全確認済みにした後で`A -> B -> C`と進み、Cを全確認済みにしてexact Aへ戻った場合は、`C -> A`の変更箇所を未確認化するのではなく、保存済みA snapshotを復元してAを再び全確認済みとして表示する。まだsnapshotを持たないDへ進む場合だけ、現在revisionからDへmappingしてDの変更箇所を未確認にする。
+
+PRではContextのrevision keyをHEAD SHAとする。original側だけに存在する削除行は`${baseSha}..${headSha}` keyでContext snapshotに保持する。HEADが同じままBASEだけが変わった場合、modified側状態は同じHEAD snapshotから維持し、新しいcomparison keyの削除行は未確認から開始する。同じHEAD snapshot内の過去comparison keyは削除しない。HEADが変わった場合も旧HEAD snapshotを保持し、exact HEADへ戻ったときにそのsnapshotを復元する。
 
 #### 10.2.1 Repository rootごとの観測順序
 
@@ -750,6 +809,8 @@ create/CASがstaleならcontextとGlobalのいずれも公開せず、`stale`を
 
 全保存modelに`schemaVersion`を持たせる。起動時に段階移行し、移行前backupを作成する。破損dataは隔離し、不確実な範囲を確認済みにしない。
 
+`revisionSnapshots`はoptionalな同一schema内拡張であり、fieldがない既存documentを有効な「履歴snapshotなし」として受理する。fieldがある場合は、revision map key、snapshot revision、nested file revision、file ID/path、line count、content hash、interval正規化、timestampをcurrent stateと同じ厳格さで検証する。構造不正はdocument corruptionとして隔離し、未知fieldや不一致snapshotを別revisionへ転用しない。
+
 ### 15.4 履歴
 
 履歴はJSON Linesのappend-only eventとし、初期版では閲覧UIを提供しない。1 eventは1行のUTF-8 JSON objectとしてcanonicalにserializeし、改行を含む値や整形済みJSONを許容しない。event schemaの初期versionは既存の`schemaVersion`と同じversionであり、readerは未知version、未知field type、欠落required field、file/context discriminatorとの矛盾、非有限number、範囲外または未正規化intervalを推測・補完せずrejectする。
@@ -762,7 +823,7 @@ file event typeはユーザー操作の`marked-reviewed`、`unmarked-reviewed`�
 
 保存先はstateと同じ`ReviewStateStorageRoute`で解決する。Git/PR/external fileは`globalStorageUri/repositories/<repository-id-hash>/history/events-YYYY-MM.jsonl`（external fileは`external-files` subtree）、Gitなしworkspaceはcanonical ownerごとの`storageUri/workspaces/<workspace-id-hash>/history/events-YYYY-MM.jsonl`であり、異なるworkspace ownerはhistoryを共有しない。月はeventの`occurredAt`をUTCで評価する。appendは同一storage ownerごとに直列化し、同じroot lock内で既存完全行を保持した末尾へcanonical eventと1つのLFを加える。read/validationで既存JSONLの破損行を検出した場合、active file全体をquarantineへ保持してactive pathから除去する。次のvalid eventだけが新しいactive monthly fileの1行目となり、旧fileのvalid recordはsalvage・replay・mergeしない。未知future schemaはquarantine/resetせず互換性errorとしてrejectする。appendは一時fileへの全内容書込み、flush、replaceを用いるため、成功時にだけeventを可視化し、失敗時は直前のhistory fileを保持する。
 
-現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Global snapshotを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。履歴は原則無期限保持し、`historyRetentionDays=0`は無期限を意味する。cacheとsnapshotのimmutable generationは、active pointerが参照するgenerationを保護した上でbounded cleanupの対象にできる。cleanupはroot内だけを対象にし、symbolic link、junction、reparse pointを経由して書込みまたは削除しない。閲覧UI・exportは将来の履歴管理機能の責務とする。
+現在状態は履歴から毎回再構築せず、state repositoryが管理するcontext/Globalのcurrent stateを唯一の現在状態とする。履歴はaudit evidenceであり、起動時のstate load、decoration、command、mappingの入力にreplayしない。過去のexact revision復元には履歴eventのreplayではなく、同じstate document内の検証済み`revisionSnapshots`を使用する。revision復元を伴う遷移も、既存のrevision changeとfile before/after eventをappendし、snapshot自体を別event sourceとして再生しない。履歴は原則無期限保持し、`historyRetentionDays=0`は無期限を意味する。cacheとnon-Git content snapshotのimmutable generationは、active pointerが参照するgenerationを保護した上でbounded cleanupの対象にできる。review-stateの`revisionSnapshots`は自動cleanup対象に含めない。cleanupはroot内だけを対象にし、symbolic link、junction、reparse pointを経由して書込みまたは削除しない。閲覧UI・exportは将来の履歴管理機能の責務とする。
 
 ## 16. UIと設定
 
@@ -1104,6 +1165,11 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - 設計仕様が単一の機能別文書に統合され、task identifierを含まないこと
 - 新contextのmapping中に別contextがGlobalを更新した場合、create/CASが`stale`となり、最新Globalから再計画して確認済み範囲を失わないこと
 - pollがGit snapshotをmapping中にforeground `open`がより新しいsnapshotを観測した場合、古いpoll completionを破棄し、保存済みrevisionを巻き戻さないこと
+- `A -> B -> C`で各未知targetの変更部分だけを未確認化し、C確認後にexact Aへ戻るとAのrevision snapshotを復元すること
+- target revision snapshotが存在しない場合だけdiff mappingし、snapshotが存在してfile entryがない場合は未確認として復元すること
+- ContextとGlobalのsource capture、target restoreまたはmapping、target snapshot更新を1回のCASで公開すること
+- revision snapshotのkey/revision/file identity/path/line count/content hash不一致をsilent fallbackせず拒否すること
+- PRのBASEだけが変わった場合にHEAD snapshotを維持し、過去の`originalReviewedByDiff` comparison keyを削除しないこと
 
 ### 20.2 Integration
 
@@ -1177,6 +1243,7 @@ CI失敗時はtest log、生成物、source、test、設定、環境情報をart
 25. 同一immutable PR snapshotの重複refreshが互いをcancelせず、再計算中は直前のcomplete Treeを保持できる
 26. 長時間のCurrent Context、Review Contexts、PR Progress処理を総経過時間だけでtimeoutせず、repository・PR context・PR fileの匿名件数で進捗を確認できる
 27. 同じPR番号・表示labelを持つ別repositoryのReview Contexts行を独立identityとして表示できる
+28. 一度確定したimmutable revisionへ戻った場合、そのrevisionのContextとGlobal確認状態を復元し、未知revisionだけをdiff mappingできる
 
 ## 22. 将来検討
 
