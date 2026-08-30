@@ -1,0 +1,44 @@
+name: Issue 92 revision snapshot design
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-revision-snapshot-design.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "RevMem Issue 92 Design Worker"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Integrate immutable revision snapshot design
+        run: |
+          python .github/issue-92-revision-snapshot-worker.py
+          grep -q 'VS Code レビュー範囲トラッカー 設計書 rev9' doc/design/vscode-review-range-tracker-design.md
+          grep -q 'C -> A: exact A snapshot' doc/design/vscode-review-range-tracker-design.md
+          grep -q 'immutable-revision-review-snapshots.md' doc/design/diff-editor-selection-projection.md
+          grep -q 'Immutable revision review snapshots' Design/BreakingChanges.md
+          git diff --check
+
+      - name: Commit design integration
+        run: |
+          git add doc/design/vscode-review-range-tracker-design.md \
+            doc/design/diff-editor-selection-projection.md \
+            Design/BreakingChanges.md
+          git commit -m "docs: integrate exact revision snapshot restoration"
+          git push origin HEAD:issue-92-pr-progress-context-menu
