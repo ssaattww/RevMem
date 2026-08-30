@@ -1,0 +1,85 @@
+name: Issue 92 Option B resume
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-option-b-resume.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Prepare diagnostics
+        run: mkdir -p test-output/issue-92-option-b-resume
+      - name: Install dependencies
+        run: node tools/run-ci-command.mjs issue92-option-b-npm-ci npm ci
+      - name: Configure commit identity
+        run: |
+          git config user.name "RevMem Issue 92 Option B Worker"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Apply and verify Option B
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import runpy
+          ns = runpy.run_path('.github/issue-92-final-fixes.py')
+          ns['ensure_option_b']()
+          PY
+          npm run compile:test > test-output/issue-92-option-b-resume/focused.stdout.log 2> test-output/issue-92-option-b-resume/focused.stderr.log
+          node --test \
+            test-dist/test/unit/original-diff-selection-projection.test.js \
+            test-dist/test/unit/issue-92-pr-progress-selection-review.test.js \
+            test-dist/test/unit/diff-editor-review-command-service.test.js \
+            test-dist/test/unit/review-state-service.test.js \
+            test-dist/test/unit/review-history-original-side.test.js \
+            test-dist/test/unit/t405-pull-request-review-runtime.test.js \
+            >> test-output/issue-92-option-b-resume/focused.stdout.log \
+            2>> test-output/issue-92-option-b-resume/focused.stderr.log
+          cat test-output/issue-92-option-b-resume/focused.stdout.log test-output/issue-92-option-b-resume/focused.stderr.log > test-output/issue-92-option-b-resume/focused.log
+          node tools/run-ci-command.mjs issue92-option-b-lint npm run lint
+          node tools/run-ci-command.mjs issue92-option-b-build npm run build
+          git diff --check
+          git add package.json src/application/repository-global-state src/application/review-commands src/application/review-history src/core/review-state src/t305-extension.ts src/t405-pull-request-review-runtime-base.ts test/unit/issue-92-pr-progress-selection-review.test.ts test/unit/original-diff-selection-projection.test.ts
+          if git diff --cached --quiet; then
+            echo "Option B source was already complete." >&2
+          else
+            git commit -m "feat: implement mapped PR diff selection review"
+            git push origin HEAD:issue-92-pr-progress-context-menu
+          fi
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p test-output/issue-92-option-b-resume/meta
+          git rev-parse HEAD > test-output/issue-92-option-b-resume/meta/head.txt
+          git status --short > test-output/issue-92-option-b-resume/meta/git-status.txt
+          git log --oneline -30 > test-output/issue-92-option-b-resume/meta/git-log.txt
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-92-option-b-resume-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            test-output/
+            src/
+            test/
+            package.json
+            package-lock.json
+            tsconfig.json
+            tsconfig.test.json
