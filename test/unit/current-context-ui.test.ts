@@ -307,6 +307,37 @@ test("T609 background recompute never opens a multi-root Quick Pick while an exp
   assert.equal(quickPickCalls, 1);
 });
 
+test("explicit Current Context selection prepares PR candidates before its Quick Pick without changing background refresh", async () => {
+  const branch = branchSnapshot("private branch", "refs/heads/private");
+  let candidates: readonly CurrentContextUiSnapshot[] = [branch];
+  let connectionPrompts = 0;
+  let quickPickCandidates: readonly CurrentContextUiSnapshot[] = [];
+  const port = {
+    enumerateCandidates: async () => candidates,
+    resolveFallback: async (available: readonly CurrentContextUiSnapshot[]) => available[0],
+    requestSelection: async (available: readonly CurrentContextUiSnapshot[]) => {
+      quickPickCandidates = available;
+      return available[0];
+    },
+    prepareExplicitSelection: async () => {
+      connectionPrompts += 1;
+      candidates = [pullRequestSnapshot];
+    },
+  };
+  const composition = new CurrentContextRuntimeComposition(
+    new CurrentContextCandidateSelection(),
+    port as never,
+  );
+
+  await composition.recompute(undefined, undefined, { allowInteraction: false });
+  assert.equal(connectionPrompts, 0, "background recompute must not request GitHub connection");
+
+  const selected = await composition.selectContext();
+  assert.equal(connectionPrompts, 1, "explicit selection must prepare GitHub PR candidates once");
+  assert.deepEqual(quickPickCandidates, [pullRequestSnapshot], "the same Quick Pick must receive the detected PR candidate");
+  assert.equal(selected, pullRequestSnapshot);
+});
+
 test("a stale candidate resolution cannot clear a newer explicit selection", async () => {
   const selection = new CurrentContextCandidateSelection();
   const selected = branchSnapshot("selected", "refs/heads/selected");

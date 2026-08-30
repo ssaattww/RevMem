@@ -94,7 +94,8 @@ test("T606 R5 invokes the registered Current Context command through its product
     await refresh;
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(errors.length, 0, "a superseded command records a typed terminal without clearing the current UI");
-    assert.equal(host.logs.filter((entry) => entry.event === "failed").length, 1);
+    assert.equal(host.logs.filter((entry) => entry.event === "cancelled").length, 1, "a superseded command records exactly one non-error CANCEL terminal");
+    assert.equal(host.logs.filter((entry) => entry.event === "failed").length, 0, "a typed cancellation never becomes an error terminal");
     assert.equal(host.logs.filter((entry) => entry.event === "succeeded").length, 1);
     assert.deepEqual(accepted, [snapshot], "only the current command may publish its snapshot");
   } finally {

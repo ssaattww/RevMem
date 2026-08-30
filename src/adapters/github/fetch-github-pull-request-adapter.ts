@@ -163,7 +163,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       }
       if (response.status === 401 || response.status === 403) return { kind: "unavailable", reason: "authentication" };
       if (!response.ok) {
-        return { kind: "unavailable", reason: "api" };
+        return { kind: "unavailable", reason: "api", httpStatus: response.status };
       }
 
       let payload: unknown;

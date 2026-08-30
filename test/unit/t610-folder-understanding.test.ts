@@ -23,7 +23,7 @@ import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreErr
 import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
 import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
 import type { GlobalUnderstandingTreeSnapshot } from "../../src/ui/global-understanding/global-understanding-ui-model";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
+import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
 import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../../src/t305-global-understanding-lifecycle";
 
 test("T610 scopes file opens to direct folders, preserves stopped descendants, and isolates repository roots", async () => {
@@ -184,7 +184,11 @@ test("T610-IFR-002 exposes the running row through the actual provider before pu
   const running = provider!.getChildren().find((node) => node.kind === "folder")!;
   assert.equal(running.state, "running");
   await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(running);
-  await initialRefresh;
+  await assert.rejects(
+    initialRefresh,
+    (error: unknown) => error instanceof OperationCancelledError,
+    "the stopped running generation terminates as typed cancellation",
+  );
   assert.equal(stopCalls, 1);
   assert.equal(provider!.getChildren().find((node) => node.kind === "folder")?.state, "stopped");
   registered.dispose(); setActiveOperationFeedback(undefined);

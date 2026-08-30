@@ -301,3 +301,29 @@ test("T607 performance workloads remain local-only and never gate CI", async () 
     "CI never executes the local-only T607 performance command",
   );
 });
+
+test("CI publishes a SHA-named VSIX and tracked source archive only after pull-request success", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /- name: Package user validation artifacts[\s\S]*?if: github\.event_name == 'pull_request' && success\(\)[\s\S]*?npm run package[\s\S]*?git archive --format=zip --output .*HEAD/u);
+  assert.match(workflow, /- name: Upload user validation artifacts[\s\S]*?if: github\.event_name == 'pull_request' && success\(\)[\s\S]*?review-range-user-validation-\$\{\{ github\.sha \}\}/u);
+  assert.doesNotMatch(workflow, /test-t607|npm run test:t607/u, "success artifacts do not add performance work to CI");
+});
+
+test("required unit gate runs the Issue #90 runtime routing suite before success artifacts", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  assert.match(
+    requireScript(manifest.scripts ?? {}, "test:unit"),
+    /test-dist\/test\/unit\/issue-90-runtime-routing\.test\.js/u,
+    "the required unit suite must execute the runtime routing regression",
+  );
+  assert.match(
+    workflow,
+    /- name: Unit tests[\s\S]*?npm run test:unit[\s\S]*?- name: Package user validation artifacts/u,
+    "the required unit gate must precede success artifact packaging",
+  );
+});

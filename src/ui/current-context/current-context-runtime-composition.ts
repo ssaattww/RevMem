@@ -24,6 +24,8 @@ const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted 
 
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
 export interface CurrentContextRuntimeCompositionPort {
+  /** Prepares interactive PR candidates only for the user-explicit selection command. */
+  prepareExplicitSelection?(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<void>;
   enumerateCandidates(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly CurrentContextUiSnapshot[]>;
   resolveFallback(
     candidates: readonly CurrentContextUiSnapshot[],
@@ -70,6 +72,8 @@ export class CurrentContextRuntimeComposition {
   }
 
   public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution> {
+    await this.port.prepareExplicitSelection?.(signal, feedbackContext);
+    if (isAborted(signal)) throw new OperationCancelledError();
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
     const selected = await this.selection.select(

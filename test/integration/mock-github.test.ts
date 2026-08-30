@@ -292,7 +292,9 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
       const resolver = new GitHubPullRequestContextResolver({ chooseCandidate: async () => undefined });
       assert.deepEqual(await adapter.findOpenByHead(
         { host: "github.com", owner: "example", repository: "review-range" }, head
-      ), { kind: "unavailable", reason: scenario.expectedReason });
+      ), scenario.status === 404
+        ? { kind: "unavailable", reason: scenario.expectedReason, httpStatus: 404 }
+        : { kind: "unavailable", reason: scenario.expectedReason });
       assert.deepEqual(await resolver.resolveSearchResult({
         kind: "unavailable",
         reason: scenario.expectedReason
@@ -393,7 +395,9 @@ test("GitHub adapter classifies malformed elements, JSON, shapes, network errors
       { host: "github.test", owner: "example", repository: "review-range" },
       head
     );
-    assert.deepEqual(result, { kind: "unavailable", reason: scenario.name === "network" ? "network" : "api" }, scenario.name);
+    assert.deepEqual(result, scenario.name === "http"
+      ? { kind: "unavailable", reason: "api", httpStatus: 500 }
+      : { kind: "unavailable", reason: scenario.name === "network" ? "network" : "api" }, scenario.name);
     assert.deepEqual(await resolver.resolveSearchResult(result), { kind: "branch", reason: "unavailable" }, scenario.name);
   }
 });

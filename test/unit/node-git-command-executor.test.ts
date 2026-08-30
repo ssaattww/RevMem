@@ -30,6 +30,22 @@ class FakeOperationFeedbackHost implements OperationFeedbackHost {
   }
 }
 
+class SigtermIgnoringGitChild extends EventEmitter {
+  public readonly stdout = new PassThrough();
+  public readonly stderr = new PassThrough();
+  public readonly killSignals: string[] = [];
+
+  public kill(signal?: NodeJS.Signals | number): boolean {
+    this.killSignals.push(String(signal));
+    if (signal === "SIGKILL") {
+      queueMicrotask(() => this.emit("close", null, "SIGKILL"));
+    }
+    return true;
+  }
+
+  public unref(): void {}
+}
+
 class NeverClosingGitChild extends EventEmitter {
   public readonly stdout = new PassThrough();
   public readonly stderr = new PassThrough();
@@ -87,26 +103,24 @@ test("metadata command timeout preserves invocation and diagnostics as GitComman
 });
 
 test("metadata timeout escalates to SIGKILL when the process ignores SIGTERM", async () => {
+  const child = new SigtermIgnoringGitChild();
   const executor = new NodeGitCommandExecutor({
-    executable: process.execPath,
-    timeoutMs: 30,
-    terminationGraceMs: 30
+    timeoutMs: 10,
+    terminationGraceMs: 10,
+    processFactory: () => child
   });
 
   await assert.rejects(
-    executor.execute({
-      argumentsList: [
-        "-e",
-        "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"
-      ]
-    }),
+    executor.execute({ argumentsList: ["status"] }),
     (error: unknown) => {
       assert.ok(error instanceof GitCommandFailedError);
       assert.equal(error.result.exitCode, -1);
       assert.match(error.result.stderr, /sent SIGKILL/u);
+      assert.match(error.result.stderr, /terminated by SIGKILL/u);
       return true;
     }
   );
+  assert.deepEqual(child.killSignals, ["SIGTERM", "SIGKILL"]);
 });
 
 test("metadata timeout force-fails when signals cannot be sent and close never arrives", async () => {

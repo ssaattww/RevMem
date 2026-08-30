@@ -684,6 +684,18 @@ PR差分取得の優先順:
 
 認証tokenは永続化しない。未認証でもpublic repository APIを試す。rate limit、network、API障害時はlocal Gitまたはcacheへfallbackし、最後に成功した更新日時を表示する。
 
+### 14.1 GitHub認証とPR再検出
+
+GitHub credentialの取得元はVS Code authentication APIのGitHub sessionだけとし、GitHub CLI、Git設定、環境変数、別processのcredentialを検索・転送してはならない。tokenは認証sessionから取得したrequest内だけで使用し、永続化、診断、表示へ出さない。
+
+Extension activation、active editor変更、Current Context再計算、Review Contexts更新、PR metadata/diff/content取得を含むbackground refreshはnon-interactiveとする。既存sessionを取得できる場合だけ使用し、session作成または再承認のpromptを表示してはならない。
+
+ユーザーが明示的に実行する`PR再検出`は、それ自体でGitHub sessionの作成または`repo` scopeの再承認を許可するinteractiveな認証境界とする。ユーザーが明示的に実行するCurrent Context選択も、候補列挙前に同じinteractive session取得とPR検出を1回だけ準備する。保存済みPRが同じimmutable HEADにある場合は再promptせず、session取得の取消または検出失敗でも同一operation内で再promptしない。private PRの検出は`GitHub再接続`を先行操作として要求せず、この1操作で完結できなければならない。既存の`GitHub再接続`は後方互換の明示credential更新操作として維持する。session取得不能または取消時もpublic repositoryにはanonymous REST APIを試し、PR候補を確定できなければ既存のbranch fallbackへ進む。background refreshは認証promptを表示してはならない。
+
+最初の明示PR検出でtokenありかつ安全に分類したHTTP `404` / API unavailableになった場合だけ、既存account preferenceをclearしてaccount再選択を1回許可し、同じPR searchを新sessionで1回だけretryする。最初のsession取得または再選択の取消、retry失敗、`404`以外、tokenなしのanonymous取得ではretry loopを作らずbranch fallbackへ進む。background refreshとpublic anonymous REST取得はaccount再選択を要求しない。
+
+`PR再検出`で候補を確定できなかった場合のbranch/no-PR選択の保存、既存local Git/cache fallback、およびpublic repositoryのanonymous取得は維持する。認証失敗をPR候補として推測せず、GitHub CLI credentialへfallbackしない。
+
 closed PRもcontextとして保存できるが、既定ではeditor layerを無効とする。ユーザーが明示的に有効化した場合だけ表示する。
 
 ## 15. 永続化と履歴
@@ -768,7 +780,7 @@ Activity Barへ「Review Range」containerを追加し、次のviewを表示す�
 - GitHub再接続
 - 現在状態の再計算
 
-Extension activationおよびactive editor変更に伴うCurrent Context更新は非対話で実行する。保存済みCurrent Contextまたは一意な候補を復元できる場合だけ表示を更新し、候補0件または複数候補ではQuick Pickを開かず、既存のCurrent Contextと依存viewを維持する。ユーザーが現在状態の再計算またはCurrent Context選択commandを実行した場合だけ、複数候補のQuick Pickを表示する。取消または選択後の再検証でstaleとなった場合も、受理済みの表示・選択・依存viewを変更しない。
+Extension activationおよびactive editor変更に伴うCurrent Context更新は非対話で実行する。保存済みCurrent Contextまたは一意な候補を復元できる場合だけ表示を更新し、候補0件または複数候補ではQuick Pickを開かず、既存のCurrent Contextと依存viewを維持する。ユーザーがCurrent Context選択commandを実行した場合は、Quick Pickの前に同じHEADの保存済みPRを確認し、必要時だけGitHub連携とPR検出を1回準備して得た候補を表示する。ユーザーが現在状態の再計算またはCurrent Context選択commandを実行した場合だけ、複数候補のQuick Pickを表示する。取消または選択後の再検証でstaleとなった場合も、受理済みの表示・選択・依存viewを変更しない。
 
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
@@ -1121,7 +1133,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - Current Context/Review Contexts/PR Progressが長時間継続しても上位operation総時間だけではtimeoutせず、count progressを維持すること
 - folder scopeのread/enumeration、persisted markerのdecode、child aggregate、configuration refresh、cancelが失敗または競合しても、別scopeへの状態漏出、root-wide fallback scan、stale completionの公開を行わないこと
 
-CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。
+CI失敗時はtest log、生成物、source、test、設定、環境情報をartifactへ保存する。必須の`pull_request` CIが全gateに成功した場合だけ、同じSHAを名前に含むVSIXと`git archive HEAD`で作成したtracked source ZIPをuser validation artifactとしてuploadする。push runでは重複artifactを作成せず、source ZIPへuntracked file、`node_modules`、credentialを含めない。
 
 ## 21. 受け入れ条件
 

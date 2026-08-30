@@ -33,6 +33,8 @@ export type GitHubPullRequestSearchResult =
   | {
       readonly kind: "unavailable";
       readonly reason: "rate-limit" | "network" | "api" | "authentication";
+      /** Safe HTTP status evidence when the API returned a non-success response. */
+      readonly httpStatus?: number;
     };
 
 /** GitHub API boundary used by the resolver workflow. */
