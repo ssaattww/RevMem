@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
@@ -15,6 +16,7 @@ import {
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
+const C = "c".repeat(40);
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 const FILE_ID = "file-1";
@@ -412,4 +414,190 @@ test("PR69-R001 Global PR open uses the exact immutable HEAD document and reject
     () => candidate.createHeadFileDocumentUri!(CONTEXT_ID, "src/added-only.ts", B),
     /stale|head|revision/i
   );
+});
+
+test("PR Progress original-side selection projects unchanged lines and retains original-only lines atomically", async () => {
+  const projectionSnapshot: PullRequestDiffSnapshot = {
+    contextId: CONTEXT_ID,
+    baseSha: A,
+    headSha: B,
+    originalDiffId: `${A}..${B}`,
+    files: [{
+      fileId: FILE_ID,
+      oldPath: "src/example.ts",
+      newPath: "src/example.ts",
+      status: "modified",
+      additions: 3,
+      deletions: 2,
+      hunks: [
+        {
+          oldStart: 3,
+          oldCount: 1,
+          newStart: 3,
+          newCount: 1,
+          lines: [
+            { kind: "deletion", oldLine: 3, text: "old-three" },
+            { kind: "addition", newLine: 3, text: "new-three" }
+          ]
+        },
+        {
+          oldStart: 6,
+          oldCount: 3,
+          newStart: 6,
+          newCount: 4,
+          lines: [
+            { kind: "context", oldLine: 6, newLine: 6, text: "same-six" },
+            { kind: "deletion", oldLine: 7, text: "old-seven" },
+            { kind: "addition", newLine: 7, text: "new-seven" },
+            { kind: "addition", newLine: 8, text: "new-eight" },
+            { kind: "context", oldLine: 8, newLine: 9, text: "same-eight" }
+          ]
+        }
+      ]
+    }]
+  };
+  const repository = new MemoryRepository();
+  repository.current.contextState = {
+    ...repository.current.contextState,
+    files: {
+      [FILE_ID]: {
+        ...repository.current.contextState.files[FILE_ID]!,
+        lineCount: 11
+      }
+    }
+  };
+  const commits: unknown[] = [];
+  const originalCommit = repository.commit.bind(repository);
+  repository.commit = async (transaction) => {
+    commits.push(transaction);
+    await originalCommit(transaction);
+  };
+  const opened: Array<{ original: string; modified: string; title: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified, title) => {
+        opened.push({ original, modified, title });
+      }
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot: projectionSnapshot,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: Array.from(
+        { length: descriptor.side === "original" ? 10 : 11 },
+        (_, index) => `${descriptor.side}-${String(index + 1)}`
+      ).join("\n")
+    })
+  });
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID, "src/example.ts");
+  const diff = opened[0]!;
+
+  interface Editor {
+    readonly uri: string;
+    readonly side: "original" | "modified";
+  }
+  const selectedLines = [1, 2, 5, 6, 7];
+  const commands = runtime.createCommandService<Editor>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 10,
+    getSelections: () => selectedLines.map((line) => ({
+      anchor: { line, character: 0 },
+      active: { line, character: 0 }
+    })),
+    confirmWholeFileOperation: async () => true
+  });
+
+  assert.equal(await commands.markSelectionReviewed({
+    uri: diff.original,
+    side: "original"
+  }), "applied");
+
+  assert.equal(commits.length, 1, "mixed original selection is committed atomically");
+  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, [
+    { startLine: 1, endLineExclusive: 2 },
+    { startLine: 5, endLineExclusive: 6 },
+    { startLine: 8, endLineExclusive: 9 }
+  ]);
+  assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, [
+    { startLine: 1, endLineExclusive: 2 },
+    { startLine: 5, endLineExclusive: 6 },
+    { startLine: 8, endLineExclusive: 9 }
+  ]);
+  assert.deepEqual(
+    repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [
+      { startLine: 2, endLineExclusive: 3 },
+      { startLine: 6, endLineExclusive: 7 }
+    ] }
+  );
+});
+
+test("PR Progress command rejects an old diff URI pair after BASE or HEAD changes", async () => {
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified) => { opened.push({ original, modified }); }
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  const registration = {
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix" as const,
+    snapshot,
+    readTextContent: async () => ({ kind: "found" as const, content: "text" })
+  };
+  runtime.register(registration);
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID, "src/example.ts");
+  const oldPair = opened[0]!;
+
+  assert.doesNotThrow(() => runtime.validateDiffDocumentPair(oldPair.original, oldPair.modified));
+
+  runtime.register({
+    ...registration,
+    snapshot: {
+      ...snapshot,
+      baseSha: C,
+      originalDiffId: `${C}..${B}`
+    }
+  });
+  assert.throws(
+    () => runtime.validateDiffDocumentPair(oldPair.original, oldPair.modified),
+    /stale|base|revision|snapshot/i
+  );
+
+  runtime.register({
+    ...registration,
+    snapshot: {
+      ...snapshot,
+      headSha: C,
+      originalDiffId: `${A}..${C}`
+    }
+  });
+  assert.throws(
+    () => runtime.validateDiffDocumentPair(oldPair.original, oldPair.modified),
+    /stale|head|revision|snapshot/i
+  );
+});
+
+
+test("production command routing validates the active immutable diff URI pair before mutation", async () => {
+  const source = await readFile("src/t305-extension.ts", "utf8");
+
+  assert.match(source, /TabInputTextDiff/u);
+  assert.match(source, /validateDiffDocumentPair/u);
+  assert.match(source, /tab\.input\.original/u);
+  assert.match(source, /tab\.input\.modified/u);
 });
