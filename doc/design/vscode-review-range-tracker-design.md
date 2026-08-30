@@ -1,4 +1,4 @@
-# VS Code レビュー範囲トラッカー 設計書 rev7
+# VS Code レビュー範囲トラッカー 設計書 rev8
 
 - 文書種別: 基本設計・機能設計
 - 対象: Visual Studio Code Workspace Extension
@@ -103,6 +103,19 @@ interface LineInterval {
 ### 5.1 選択範囲を確認済みにする
 
 選択開始・終了が行途中でも含まれる行全体を対象にする。空選択はカーソル行1行を対象にする。複数選択は行範囲へ変換後、重複・隣接を結合する。
+
+### 5.1.1 diff editorのoriginal側から選択した場合
+
+PRのdiff editorでoriginal側を選択して確認済みまたは未確認へ変更した場合は、選択範囲をimmutable diffの対応関係に従って次の2種類へ分割する。
+
+- modified側にも同一内容として存在するcontext行は、対応するmodified側行へ写像して`modifiedReviewed`およびGlobal確認済み状態を更新する。
+- original側にしか存在しない削除行は、現在の`${baseSha}..${headSha}`をkeyとする`originalReviewedByDiff`を更新する。置換前の行も削除行として扱い、置換後の追加行へ推測で対応付けない。
+
+行番号が同じという理由だけで対応付けてはならない。対応関係は、PR Progressが保持する検証済みのimmutable diff hunkにあるold/new座標と、hunk間の不変なcontext区間から決定する。対応が不明、矛盾、またはstaleな場合は状態を更新しない。
+
+1回の選択操作でmodified側とoriginal側の両方が対象になる場合でも、Context、Global、および`originalReviewedByDiff`は1回のatomic state transactionとしてcommitする。どれか一部だけを更新した状態を許容しない。履歴イベントはstate commit成功後に、modified側、original側の順で記録する。
+
+PRのbase SHAまたはhead SHAが更新された後、旧revision pairを表示したままのdiff tabからは確認操作を受理しない。現在登録されているcontext ID、file ID、base SHA、head SHA、各sideのrevision、および`originalDiffId`が一致する場合だけ操作できる。
 
 ### 5.2 選択範囲を解除する
 
