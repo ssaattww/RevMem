@@ -1,0 +1,37 @@
+name: Issue 92 resume dispatcher
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-resume-dispatch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "RevMem Issue 92 Dispatcher"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Retrigger final implementation workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '\n# resume-trigger: 2026-08-31\n' >> .github/workflows/issue-92-final-implementation.yml
+          rm .github/workflows/issue-92-resume-dispatch.yml
+          git add .github/workflows/issue-92-final-implementation.yml .github/workflows/issue-92-resume-dispatch.yml
+          git commit -m "chore: resume Issue #92 final implementation"
+          git push origin HEAD:issue-92-pr-progress-context-menu
