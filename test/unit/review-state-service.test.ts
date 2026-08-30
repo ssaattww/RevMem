@@ -11,8 +11,10 @@ import {
 import {
   commitReviewStateTransaction,
   markFileReviewed,
+  markOriginalSelectionReviewed,
   markReviewedRanges,
   unmarkFileReviewed,
+  unmarkOriginalSelectionReviewed,
   unmarkReviewedRanges,
   type DeepReadonly,
   type ReviewStateFileTarget,
@@ -181,6 +183,81 @@ test("unmarkReviewedRanges removes only requested lines and preserves split frag
     context: [interval(0, 4), interval(7, 12), interval(16, 20)],
     global: [interval(1, 4), interval(7, 10), interval(12, 14), interval(16, 18)]
   });
+});
+
+test("original selection prepares one atomic Context, Global, and original-side transaction", () => {
+  const context = freezeState(contextState([interval(2, 5)]));
+  const global = freezeState(globalState([interval(4, 7)]));
+
+  const transaction = markOriginalSelectionReviewed({
+    contextState: context,
+    globalState: global,
+    target: target(),
+    side: "original",
+    diffId: "base-revision..revision-2",
+    originalLineCount: 18,
+    modifiedIntervals: [interval(0, 2), interval(9, 11)],
+    originalIntervals: [interval(5, 7), interval(12, 13)],
+    occurredAt
+  });
+
+  assert.equal(transaction.operation, "mark-original-selection-reviewed");
+  assert.equal(transaction.side, "original");
+  assert.equal(transaction.diffId, "base-revision..revision-2");
+  assert.deepEqual(transaction.expected, { contextState: context, globalState: global });
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.modifiedReviewed, [
+    interval(0, 5),
+    interval(9, 11)
+  ]);
+  assert.deepEqual(transaction.next.globalState.files["file-1"]!.reviewed, [
+    interval(0, 2),
+    interval(4, 7),
+    interval(9, 11)
+  ]);
+  assert.deepEqual(
+    transaction.next.contextState.files["file-1"]!.originalReviewedByDiff["base-revision..revision-2"],
+    [interval(5, 7), interval(12, 13)]
+  );
+});
+
+test("original selection unmark splits projected and original-only ranges atomically", () => {
+  const diffId = "base-revision..revision-2";
+  const context = freezeState(contextState([interval(0, 12)], {
+    files: {
+      "file-1": fileState([interval(0, 12)], {
+        originalReviewedByDiff: { [diffId]: [interval(2, 10)] }
+      })
+    }
+  }));
+  const global = freezeState(globalState([interval(0, 12)]));
+
+  const transaction = unmarkOriginalSelectionReviewed({
+    contextState: context,
+    globalState: global,
+    target: target(),
+    side: "original",
+    diffId,
+    originalLineCount: 18,
+    modifiedIntervals: [interval(3, 5), interval(8, 9)],
+    originalIntervals: [interval(4, 6)],
+    occurredAt
+  });
+
+  assert.equal(transaction.operation, "unmark-original-selection-reviewed");
+  assert.deepEqual(transaction.next.contextState.files["file-1"]!.modifiedReviewed, [
+    interval(0, 3),
+    interval(5, 8),
+    interval(9, 12)
+  ]);
+  assert.deepEqual(transaction.next.globalState.files["file-1"]!.reviewed, [
+    interval(0, 3),
+    interval(5, 8),
+    interval(9, 12)
+  ]);
+  assert.deepEqual(
+    transaction.next.contextState.files["file-1"]!.originalReviewedByDiff[diffId],
+    [interval(2, 4), interval(6, 10)]
+  );
 });
 
 test("markFileReviewed marks every existing line and handles an empty file", () => {
