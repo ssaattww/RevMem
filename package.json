@@ -67,6 +67,8 @@
         { "command": "reviewRange.unmarkSelectionReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@2" },
         { "command": "reviewRange.markFileReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@3" },
         { "command": "reviewRange.unmarkFileReviewed", "when": "editorTextFocus && !isInDiffEditor", "group": "reviewRange@4" },
+        { "command": "reviewRange.markFileReviewed", "when": "editorTextFocus && isInDiffEditor && reviewRange.prProgressDiffReviewActions", "group": "reviewRange@3" },
+        { "command": "reviewRange.unmarkFileReviewed", "when": "editorTextFocus && isInDiffEditor && reviewRange.prProgressDiffReviewActions", "group": "reviewRange@4" },
         { "command": "reviewRange.startGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@5" },
         { "command": "reviewRange.stopGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@6" },
         { "command": "reviewRange.resumeGlobalUnderstandingFolder", "when": "resourceScheme == file || resourceScheme == vscode-remote", "group": "reviewRange@7" }
