@@ -1,0 +1,245 @@
+name: Issue 92 revision snapshot implementation
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-revision-snapshot-implementation.yml
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: issue-92-revision-snapshot-implementation
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout current PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+
+      - name: Wait for rev9 design integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            git fetch origin issue-92-pr-progress-context-menu
+            git reset --hard origin/issue-92-pr-progress-context-menu
+            if grep -q 'VS Code レビュー範囲トラッカー 設計書 rev9' doc/design/vscode-review-range-tracker-design.md \
+              && grep -q 'C -> A: exact A snapshot' doc/design/vscode-review-range-tracker-design.md; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'rev9 design integration did not complete' >&2
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: node tools/run-ci-command.mjs issue92-npm-ci npm ci
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "RevMem Issue 92 Snapshot Worker"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Complete existing Option B implementation
+        id: option_b
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f src/application/review-commands/original-selection-review-plan.ts ]; then
+            test -f .github/issue-92-worker.py
+            python .github/issue-92-worker.py implementation .
+          fi
+          npm run compile:test > issue-92-option-b.stdout.log 2> issue-92-option-b.stderr.log
+          cat issue-92-option-b.stdout.log issue-92-option-b.stderr.log > issue-92-option-b.combined.log
+          node --test \
+            test-dist/test/unit/original-diff-selection-projection.test.js \
+            test-dist/test/unit/issue-92-pr-progress-selection-review.test.js \
+            >> issue-92-option-b.stdout.log 2>> issue-92-option-b.stderr.log
+          cat issue-92-option-b.stdout.log issue-92-option-b.stderr.log > issue-92-option-b.combined.log
+          if ! git diff --quiet; then
+            git add package.json src test
+            git commit -m "feat: review mapped PR diff selections atomically"
+            git push origin HEAD:issue-92-pr-progress-context-menu
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit revision snapshot tests first
+        id: red_commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/issue-92-revision-snapshot-implementation.py tests
+          git add package.json test/unit/immutable-revision-review-snapshot.test.ts
+          git commit -m "test: specify exact revision review restoration"
+          git push origin HEAD:issue-92-pr-progress-context-menu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm Red and capture diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm run compile:test > issue-92-revision-red.stdout.log 2> issue-92-revision-red.stderr.log
+          status=$?
+          set -e
+          cat issue-92-revision-red.stdout.log issue-92-revision-red.stderr.log > issue-92-revision-red.combined.log
+          jq -n \
+            --arg phase red \
+            --arg command 'npm run compile:test' \
+            --arg head '${{ steps.red_commit.outputs.sha }}' \
+            --argjson exitCode "$status" \
+            '{phase:$phase,command:$command,headSha:$head,exitCode:$exitCode}' \
+            > issue-92-revision-red.result.json
+          if [ "$status" -eq 0 ]; then
+            echo 'revision snapshot test-only commit unexpectedly passed' >&2
+            exit 1
+          fi
+
+      - name: Implement exact revision snapshots
+        id: implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/issue-92-revision-snapshot-implementation.py implementation
+
+          set +e
+          npm run compile:test > issue-92-revision-focused.stdout.log 2> issue-92-revision-focused.stderr.log
+          compile_status=$?
+          if [ "$compile_status" -eq 0 ]; then
+            node --test test-dist/test/unit/immutable-revision-review-snapshot.test.js \
+              >> issue-92-revision-focused.stdout.log 2>> issue-92-revision-focused.stderr.log
+            focused_status=$?
+          else
+            focused_status=99
+          fi
+          set -e
+          cat issue-92-revision-focused.stdout.log issue-92-revision-focused.stderr.log > issue-92-revision-focused.combined.log
+          if [ "$compile_status" -ne 0 ] || [ "$focused_status" -ne 0 ]; then
+            jq -n --argjson compile "$compile_status" --argjson focused "$focused_status" \
+              '{compileExitCode:$compile,focusedExitCode:$focused}' > issue-92-revision-focused.result.json
+            exit 1
+          fi
+          jq -n '{compileExitCode:0,focusedExitCode:0}' > issue-92-revision-focused.result.json
+
+          npm test > issue-92-revision-test.stdout.log 2> issue-92-revision-test.stderr.log
+          cat issue-92-revision-test.stdout.log issue-92-revision-test.stderr.log > issue-92-revision-test.combined.log
+          npm run lint > issue-92-revision-lint.stdout.log 2> issue-92-revision-lint.stderr.log
+          cat issue-92-revision-lint.stdout.log issue-92-revision-lint.stderr.log > issue-92-revision-lint.combined.log
+          npm run build > issue-92-revision-build.stdout.log 2> issue-92-revision-build.stderr.log
+          cat issue-92-revision-build.stdout.log issue-92-revision-build.stderr.log > issue-92-revision-build.combined.log
+          git diff --check
+
+          git add src test package.json
+          git commit -m "feat: restore exact immutable revision review state"
+          git push origin HEAD:issue-92-pr-progress-context-menu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          jq -n \
+            --arg phase green \
+            --arg head "$(git rev-parse HEAD)" \
+            '{phase:$phase,headSha:$head,commands:["npm run compile:test","focused immutable revision snapshot test","npm test","npm run lint","npm run build","git diff --check"],exitCode:0}' \
+            > issue-92-revision-green.result.json
+
+      - name: Clean temporary workers and publish worker result
+        id: final
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          jq -n \
+            --arg designRevision rev9 \
+            --arg optionB '${{ steps.option_b.outputs.sha }}' \
+            --arg red '${{ steps.red_commit.outputs.sha }}' \
+            --arg implementation '${{ steps.implementation.outputs.sha }}' \
+            '{status:"green",designRevision:$designRevision,optionBCommit:$optionB,redCommit:$red,implementationCommit:$implementation,reviewStarted:false}' \
+            > reports/issue-92-revision-snapshot-worker-result.json
+
+          rm -f .github/issue-92-worker.py
+          rm -f .github/issue-92-revision-snapshot-worker.py
+          rm -f .github/issue-92-revision-snapshot-implementation.py
+          rm -f .github/workflows/issue-92-worker.yml
+          rm -f .github/workflows/issue-92-pre-review-finalizer.yml
+          rm -f .github/workflows/issue-92-revision-snapshot-design.yml
+          rm -f .github/workflows/issue-92-revision-snapshot-implementation.yml
+          rm -f __connector_probe_do_not_keep__ __schema_probe_do_not_create__
+
+          git add -A
+          git commit -m "chore: finalize Issue #92 revision snapshot implementation"
+          git push origin HEAD:issue-92-pr-progress-context-menu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Post worker success note
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="<!-- issue-92-revision-snapshot-worker -->
+          Immutable revision snapshotの設計・TDD・実装を完了しました。
+
+          - design: rev9
+          - Red commit: \`${{ steps.red_commit.outputs.sha }}\`
+          - implementation commit: \`${{ steps.implementation.outputs.sha }}\`
+          - worker final HEAD: \`${{ steps.final.outputs.sha }}\`
+          - local worker verification: focused test / npm test / lint / build / diff-check Green
+          - 独立レビューは未実施です。
+
+          workerのbot pushでは新しいpull_request CIを代用せず、次のconnector-authored report commit後にcurrent HEAD一致のCIを確認します。"
+          jq -n --arg body "$body" '{body:$body}' > issue-92-worker-comment.json
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/94/comments" \
+            --data-binary @issue-92-worker-comment.json \
+            > issue-92-worker-comment-response.json
+
+      - name: Post worker failure note
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="<!-- issue-92-revision-snapshot-worker-failure -->
+          Immutable revision snapshot workerが失敗しました。失敗時点の標準出力・標準エラー・結果JSONをworkflow artifactへ保存しました。独立レビューは開始していません。"
+          jq -n --arg body "$body" '{body:$body}' > issue-92-worker-failure-comment.json
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/94/comments" \
+            --data-binary @issue-92-worker-failure-comment.json \
+            > issue-92-worker-failure-comment-response.json || true
+
+      - name: Upload TDD and implementation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-92-revision-snapshot-worker-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            issue-92-option-b.*.log
+            issue-92-revision-*.log
+            issue-92-revision-*.json
+            issue-92-worker-*.json
+            reports/issue-92-revision-snapshot-worker-result.json
