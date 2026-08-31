@@ -10,6 +10,8 @@ import {
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
+  type RepositoryGlobalRevisionSnapshot,
+  type ReviewContextRevisionSnapshot,
   type ReviewContextState
 } from "../../src/core/contracts/index";
 
@@ -199,6 +201,42 @@ test("revision mapping ignores binary diff sections and maps text state", async 
   });
   assert.deepEqual(exact.contextState.files[fileId]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
   assert.deepEqual(exact.globalState.files[fileId]?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+
+  const contextTargetSnapshots: Record<string, ReviewContextRevisionSnapshot> = {
+    [newRevision]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, revisionId: newRevision, files: { [fileId]: restoredContextFile }, updatedAt: occurredAt }
+  };
+  const globalTargetSnapshots: Record<string, RepositoryGlobalRevisionSnapshot> = {
+    [newRevision]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, revisionId: newRevision, files: { [fileId]: restoredGlobalFile }, updatedAt: occurredAt }
+  };
+  for (const scenario of [
+    {
+      name: "Context hit and Global miss",
+      contextSnapshots: contextTargetSnapshots,
+      globalSnapshots: {} as Record<string, RepositoryGlobalRevisionSnapshot>,
+      contextReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+      globalReviewed: [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]
+    },
+    {
+      name: "Context miss and Global hit",
+      contextSnapshots: {} as Record<string, ReviewContextRevisionSnapshot>,
+      globalSnapshots: globalTargetSnapshots,
+      contextReviewed: [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }],
+      globalReviewed: [{ startLine: 0, endLineExclusive: 3 }]
+    }
+  ] as const) {
+    const mixed = await mapper.map({
+      current,
+      contextState: { ...contextState, revisionSnapshots: scenario.contextSnapshots },
+      globalState: { ...globalState, revisionSnapshots: scenario.globalSnapshots },
+      fileSystemPathSemantics: "posix",
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+    });
+    assert.equal(mixed.mappingDisposition, "mixed", scenario.name);
+    assert.deepEqual(mixed.contextState.files[fileId]?.modifiedReviewed, scenario.contextReviewed, scenario.name);
+    assert.deepEqual(mixed.globalState.files[fileId]?.reviewed, scenario.globalReviewed, scenario.name);
+    assert.deepEqual(mixed.contextState.revisionSnapshots?.[newRevision]?.files, mixed.contextState.files, scenario.name);
+    assert.deepEqual(mixed.globalState.revisionSnapshots?.[newRevision]?.files, mixed.globalState.files, scenario.name);
+  }
 });
 
 class ExistingBinaryRevisionSource implements GitRevisionMappingSource {

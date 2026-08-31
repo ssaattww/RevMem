@@ -79,7 +79,7 @@ const evidence: ImmutableRevisionSnapshotEvidence = {
     file: { fileId: "file", currentPath: "src/example.ts", lineCount: 3, contentHash: "content-a" }
   },
   globalFiles: {
-    file: { fileId: "file", currentPath: "src/example.ts", contentHash: "content-a" }
+    file: { fileId: "file", currentPath: "src/example.ts", lineCount: 3, contentHash: "content-a" }
   }
 };
 
@@ -107,6 +107,47 @@ test("restores Context and Global snapshot hits independently after exact eviden
   assert.equal(result.global.kind, "miss");
   if (result.context.kind === "hit") {
     assert.deepEqual(result.context.files.file?.originalReviewedByDiff[PAIR], [{ startLine: 1, endLineExclusive: 2 }]);
+  }
+});
+
+/** Global-only immutable snapshots require authoritative line bounds before their reviewed state is adopted. */
+test("rejects Global-only snapshot ranges without valid immutable line-count evidence", () => {
+  const context = { ...contextState(), files: {} };
+  const global = globalState();
+  global.files["global-only"] = {
+    fileId: "global-only",
+    currentPath: "src/global-only.ts",
+    revisionId: A,
+    reviewed: [{ startLine: 0, endLineExclusive: 99 }],
+    contentHash: "global-only-content",
+    updatedAt: timestamp
+  };
+  delete global.files.file;
+  const captured = captureImmutableRevisionSnapshots({
+    contextState: context,
+    globalState: global,
+    revisionId: A,
+    updatedAt: timestamp
+  });
+  const globalOnlyEvidence = (lineCount: unknown): ImmutableRevisionSnapshotEvidence => ({
+    revisionId: A,
+    contextFiles: {},
+    globalFiles: {
+      "global-only": {
+        fileId: "global-only",
+        currentPath: "src/global-only.ts",
+        lineCount,
+        contentHash: "global-only-content"
+      } as unknown as ImmutableRevisionSnapshotEvidence["globalFiles"][string]
+    }
+  });
+
+  for (const lineCount of [3, undefined, -1]) {
+    assert.throws(() => restoreImmutableRevisionSnapshots({
+      contextState: { ...captured.contextState, revisionSnapshots: {} },
+      globalState: captured.globalState,
+      evidence: globalOnlyEvidence(lineCount)
+    }));
   }
 });
 

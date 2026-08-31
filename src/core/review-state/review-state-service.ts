@@ -12,12 +12,20 @@ export type DeepReadonly<T> = T extends readonly (infer Item)[]
   ? readonly DeepReadonly<Item>[]
   : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> } : T;
 
-/** Supported atomic review-state mutation operations. */
-export type ReviewStateOperation =
+/** Atomic mutation operations that never carry an original-side comparison identity. */
+export type ModifiedReviewStateOperation =
   | "mark-ranges-reviewed" | "unmark-ranges-reviewed"
-  | "mark-file-reviewed" | "unmark-file-reviewed"
+  | "mark-file-reviewed" | "unmark-file-reviewed";
+
+/** Atomic mutation operations that require an original-side comparison identity. */
+export type OriginalReviewStateOperation =
   | "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed"
   | "mark-original-selection-reviewed" | "unmark-original-selection-reviewed";
+
+/** Supported atomic review-state mutation operations. */
+export type ReviewStateOperation =
+  | ModifiedReviewStateOperation
+  | OriginalReviewStateOperation;
 
 /** Immutable current-side file identity used to validate a state mutation. */
 export interface ReviewStateFileTarget {
@@ -93,7 +101,7 @@ interface ReviewStateTransactionBase {
 /** Atomic transaction for modified-side or whole-file state, which has no original diff identity. */
 export interface ModifiedReviewStateTransaction extends ReviewStateTransactionBase {
   /** Operation that changes modified or whole-file state. */
-  readonly operation: Exclude<ReviewStateOperation, "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed">;
+  readonly operation: ModifiedReviewStateOperation;
   /** Optional explicit modified-side marker. */
   readonly side?: "modified";
   /** Forbidden because modified and whole-file operations are not keyed by a single original diff. */
@@ -102,11 +110,7 @@ export interface ModifiedReviewStateTransaction extends ReviewStateTransactionBa
 /** Atomic transaction for one immutable original-side diff identity. */
 export interface OriginalReviewStateTransaction extends ReviewStateTransactionBase {
   /** Operation that changes original-side ranges, optionally with mapped current ranges. */
-  readonly operation:
-    | "mark-original-ranges-reviewed"
-    | "unmark-original-ranges-reviewed"
-    | "mark-original-selection-reviewed"
-    | "unmark-original-selection-reviewed";
+  readonly operation: OriginalReviewStateOperation;
   /** Discriminates the original-side transaction. */
   readonly side: "original";
   /** Canonical non-empty comparison identity required for the affected original ranges. */

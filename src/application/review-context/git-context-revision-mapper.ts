@@ -283,9 +283,10 @@ export class GitContextRevisionMapper {
           input.fileSystemPathSemantics,
         )
       : undefined;
+    let restored: ReturnType<typeof restoreImmutableRevisionSnapshots> | undefined;
     if (targetEvidence !== undefined) {
       try {
-        const restored = restoreImmutableRevisionSnapshots({
+        restored = restoreImmutableRevisionSnapshots({
           contextState: source.contextState,
           globalState: source.globalState,
           evidence: targetEvidence,
@@ -311,6 +312,7 @@ export class GitContextRevisionMapper {
             }),
             unresolvedFileIds: [],
             unresolvedReasonsByFileId: {},
+            mappingDisposition: "restored",
           };
         }
       } catch {
@@ -346,31 +348,37 @@ export class GitContextRevisionMapper {
       new Set(input.encodingChangedPaths ?? [])
     );
 
-    const unresolvedFileIds = oldObjectAvailable
+    const unresolvedFileIds = restored?.context.kind === "hit"
+      ? []
+      : oldObjectAvailable
       ? contextMapping.unresolvedFileIds
       : Object.keys(source.contextState.files).sort();
+    const mappingDisposition = restored?.context.kind === "hit" || restored?.global.kind === "hit"
+      ? "mixed"
+      : "mapped";
     return {
       ...captureImmutableRevisionSnapshots({
-      contextState: {
-        ...clone(source.contextState),
-        displayName: input.current.contextState.displayName,
-        branch: clone(input.current.contextState.branch),
-        files: contextMapping.files,
+        contextState: {
+          ...clone(source.contextState),
+          displayName: input.current.contextState.displayName,
+          branch: clone(input.current.contextState.branch),
+          files: restored?.context.kind === "hit" ? restored.context.files : contextMapping.files,
+          updatedAt: occurredAt
+        },
+        globalState: {
+          ...clone(source.globalState),
+          currentRevisionId: newRevision,
+          files: restored?.global.kind === "hit" ? restored.global.files : globalFiles,
+          updatedAt: occurredAt
+        },
+        revisionId: newRevision,
         updatedAt: occurredAt
-      },
-      globalState: {
-        ...clone(source.globalState),
-        currentRevisionId: newRevision,
-        files: globalFiles,
-        updatedAt: occurredAt
-      },
-      revisionId: newRevision,
-      updatedAt: occurredAt,
       }),
       unresolvedFileIds,
       unresolvedReasonsByFileId: oldObjectAvailable
-        ? contextMapping.unresolvedReasonsByFileId ?? {}
-        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
+        ? restored?.context.kind === "hit" ? {} : contextMapping.unresolvedReasonsByFileId ?? {}
+        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const])),
+      mappingDisposition
     };
   }
 
@@ -385,7 +393,7 @@ export class GitContextRevisionMapper {
     const global = globalState.revisionSnapshots?.[revisionId];
     if (context === undefined && global === undefined) return undefined;
     const contents = new Map<string, string>();
-    const evidenceFor = async (file: { readonly currentPath: string; readonly fileId: string; readonly contentHash?: string; readonly lineCount?: number }) => {
+    const evidenceFor = async (file: { readonly currentPath: string; readonly fileId: string; readonly contentHash?: string }) => {
       let content = contents.get(file.currentPath);
       if (content === undefined) {
         const read = await this.options.source.readTextFileAtRevision(
@@ -401,7 +409,7 @@ export class GitContextRevisionMapper {
       return {
         fileId: file.fileId,
         currentPath: file.currentPath,
-        ...(file.lineCount === undefined ? {} : { lineCount: lineCountOf(content) }),
+        lineCount: lineCountOf(content),
         ...(file.contentHash === undefined ? {} : { contentHash: this.digest(content) }),
       };
     };

@@ -19,8 +19,8 @@ export interface ImmutableRevisionSnapshotFileEvidence {
   readonly fileId: string;
   /** Exact canonical path or URI that must match the snapshot payload. */
   readonly currentPath: string;
-  /** Expected modified-side line count when Context state is restored. */
-  readonly lineCount?: number;
+  /** Authoritative target line count required before either Context or Global ranges are restored. */
+  readonly lineCount: number;
   /** Exact content hash when immutable content evidence provides one. */
   readonly contentHash?: string;
 }
@@ -194,11 +194,21 @@ const requireEvidence = (
   for (const fileId of keys) {
     const file = files[fileId]!;
     const expected = evidence[fileId]!;
+    if (!Number.isSafeInteger(expected.lineCount) || expected.lineCount < 0) {
+      throw new Error(`${name}.${fileId} immutable evidence lineCount must be a non-negative safe integer.`);
+    }
     if (file.fileId !== expected.fileId || file.currentPath !== expected.currentPath ||
       file.contentHash !== expected.contentHash ||
       (context && (file as FileReviewState).lineCount !== expected.lineCount)) {
       throw new Error(`${name}.${fileId} does not match immutable evidence.`);
     }
+    requireIntervals(
+      context
+        ? (file as FileReviewState).modifiedReviewed
+        : (file as GlobalFileReviewState).reviewed,
+      `${name}.${fileId} reviewed ranges`,
+      expected.lineCount
+    );
   }
 };
 

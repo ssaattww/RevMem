@@ -38,7 +38,7 @@ Lを超える見込みになった場合は再分解する。
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
 - 実装中タスク: Issue #92 / PR #94 `PR94-CI-004`。projectionとimmutable revision snapshotのTDD実装を完了し、non-performance local gateとexact-head required CIへ進む
-- 次の工程: review-target commitとnormal review、full local gate、push、required pull_request CI成功後にSol/high独立レビューを実施する
+- 次の工程: normal finding fix verification、full local gate、push、required pull_request CI成功まで進め、独立レビュー開始前に停止する
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestation
 - 後続候補: T608
 

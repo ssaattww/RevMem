@@ -115,6 +115,17 @@ const snapshotEvidence = (
   const context = contextState.revisionSnapshots?.[revisionId];
   const global = globalState.revisionSnapshots?.[revisionId];
   if (context === undefined && global === undefined) return undefined;
+  const globalFiles: Record<string, ImmutableRevisionSnapshotEvidence["globalFiles"][string]> = {};
+  for (const [fileId, file] of Object.entries(global?.files ?? {})) {
+    const authoritative = immutable.newFiles[file.currentPath];
+    if (authoritative === undefined) return undefined;
+    globalFiles[fileId] = {
+      fileId: authoritative.fileId,
+      currentPath: file.currentPath,
+      lineCount: authoritative.lineCount,
+      contentHash: authoritative.contentHash ?? file.contentHash
+    };
+  }
   return {
     revisionId,
     contextFiles: Object.fromEntries(Object.entries(context?.files ?? {}).map(([fileId, file]) => [fileId, {
@@ -123,11 +134,7 @@ const snapshotEvidence = (
       lineCount: immutable.newFiles[file.currentPath]?.lineCount ?? file.lineCount,
       contentHash: immutable.newFiles[file.currentPath]?.contentHash ?? file.contentHash
     }])),
-    globalFiles: Object.fromEntries(Object.entries(global?.files ?? {}).map(([fileId, file]) => [fileId, {
-      fileId: immutable.newFiles[file.currentPath]?.fileId ?? file.fileId,
-      currentPath: file.currentPath,
-      contentHash: immutable.newFiles[file.currentPath]?.contentHash ?? file.contentHash
-    }]))
+    globalFiles
   };
 };
 

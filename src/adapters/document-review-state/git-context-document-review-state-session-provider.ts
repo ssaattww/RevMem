@@ -500,7 +500,11 @@ export class GitContextDocumentReviewStateSessionProvider {
         await this.options.historyRecorder?.recordRevisionMapping(
           { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
           { contextState: clone(next.contextState), globalState: clone(next.globalState) },
-          mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
+          mapped.mappingDisposition === "restored"
+            ? "exact-revision-snapshot-restored"
+            : mapped.mappingDisposition === "mixed"
+              ? "exact-revision-snapshot-mixed"
+              : mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
           mapped.unresolvedFileIds,
           mapped.unresolvedReasonsByFileId ?? {}
         );
@@ -592,6 +596,8 @@ export class GitContextDocumentReviewStateSessionProvider {
     encodingChanged = false
   ): Promise<{
     readonly commit: ReviewStateCommit;
+    /** Immutable snapshot disposition forwarded to the single post-CAS history record. */
+    readonly mappingDisposition?: "mapped" | "restored" | "mixed";
     readonly unresolvedFileIds: readonly string[];
     readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
   }> {
@@ -619,6 +625,9 @@ export class GitContextDocumentReviewStateSessionProvider {
         contextState: clone(mapped.contextState),
         globalState: clone(mapped.globalState)
       },
+      ...(mapped.mappingDisposition === undefined
+        ? {}
+        : { mappingDisposition: mapped.mappingDisposition }),
       unresolvedFileIds: [...mapped.unresolvedFileIds],
       unresolvedReasonsByFileId: { ...(mapped.unresolvedReasonsByFileId ?? {}) }
     };
