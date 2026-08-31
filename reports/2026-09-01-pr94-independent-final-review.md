@@ -87,3 +87,51 @@ verification capability=`local_execution_available`。execution stateはtechnica
 held itemsは、既知のIssue #13/owned-host fixtureによりWindows default full local suiteが完走しないこと、Issue #106が所有するmulti-context/shared-Global all-or-nothing redesign、reviewed `afa7ccf...`そのものに一致するremote CIがないこと、Markdown wording lintがrepo-local設定不在で`unsupported`なことである。Linux required CIは実行可能code head `fb49566...`でUnit/Hostを含めGreenだが、finding修正後はupdated exact headのrequired CI/artifactが必要になる。これらheldは今回のHigh/Medium/Low findingsを弱めない。
 
 unexplored in-scope area=`none`。remaining risksは、hashなしsnapshotが既に永続化され得る場合のmigration/recovery方針、same-HEAD snapshotへ過去pairを戻す際の既存消去データ復元不能、fail-closed設計決定後のdiagnostic互換性である。reportは行政的attestationではなくfail evidenceであり、mergeを許可しない。
+
+## Finding/CI-delta限定closure
+
+### Closure対象とreviewer continuity
+
+同じindependent reviewer `/root/pr94_independent_final_review` が、initial independent reviewed HEAD `afa7ccfdccca43f6c83dc58f6e64e35b02e1a1f3`で確定した`PR94-IFR-001`〜`004`とCI deltaだけを限定closureした。新しい全体review、criteria追加、severity reclassification、erratumは行っていない。closure reviewed implementation HEAD=`18917eb9617cf13893ec540e742852c292eaf14a`、reviewed chain=`afa7ccfdccca43f6c83dc58f6e64e35b02e1a1f3..18917eb9617cf13893ec540e742852c292eaf14a`、base identityは引き続き`origin/main` / `017e5aeebadbd8b676f72af6791ca455b926c55d`である。
+
+closure開始時HEADは`18917eb9617cf13893ec540e742852c292eaf14a`、branch=`codex/pr94-ci-review`、statusはcleanだった。指定4 Skill、既存initial report、`reports/2026-09-01-pr94-independent-findings-normal-verification-r2.md`を再読した後、normal verdictを前提にせず、finding修正のproduction/test/design/tracking deltaと直接依存だけを独自照合した。nested agent、development-orchestrator、implementation、commit、push、merge、追加CI待機は行っていない。
+
+### Finding dispositions
+
+open findingはない。finding identityとseverityを維持したまま、4件を次のとおりclosedとする。
+
+- **PR94-IFR-001 — High — closed — `src/t405-pull-request-review-runtime-base.ts:742-765`、`src/application/github-pr-context/immutable-pull-request-revision-mapper.ts:287-313`**: runtime targetはauthoritative modified contentからSHA-256 `contentHash`を渡し、既存Context/Global hash mismatchはtransaction validationでcommit前に拒否する。PR mapperはsource Global `revisionSnapshots`をmapping resultへ保持してからtarget snapshotを追加するため、実`PullRequestReviewRuntime` command、同一repository、`GitHubPullRequestContextStateService`、immutable mapperを接続したA→B→A fixtureでContext/Globalのrange、hash、historical A snapshot、target B snapshot、`restored` disposition、history順が保たれる。mismatch、no-op、cancel、commit failureはstate/snapshot/historyをpublishしない。
+- **PR94-IFR-002 — High — closed — `src/application/github-pr-context/immutable-pull-request-revision-mapper.ts:184-227`**: full hit、mixed hit/miss、full missの全経路で`originalReviewedByDiff`を消去せず保持する。actual PR storeのsame-HEAD/base A→C→A fixtureは旧A pairを保持し、C pairを作らず、2 CASと2 history dispositionでAへ戻る。現在表示は`src/core/pr-progress/pr-diff-progress.ts:314,486`がcurrent `originalDiffId`のexact keyだけを参照するため、過去pairはcurrent projectionへ混入しない。
+- **PR94-IFR-003 — Medium — closed — `doc/design/immutable-revision-review-snapshots.md:41-45,112-123`、`src/application/review-context/git-context-revision-mapper.ts:278-303,395-446`**: designは「target snapshotが単にabsentのときだけmapping、presentだが検証不能ならtransition全体をreject」に統一された。productionは`absent`、`available`、`unavailable`を区別し、`unavailable`を`mapContextFiles`、`mapGlobalFiles`、CAS、historyより前にthrowする。actual local-Git provider fixtureはpresent target snapshotのinvalid hashと`invalid-encoding` readを拒否し、commit count、repository state、historyを不変にする。availableのexact/mixed restoreとabsentのnormal mappingもfocused evidence内でGreenである。
+- **PR94-IFR-004 — Low — closed — `tasks/tasks-status.md:7,31-36`、`tasks/phases-status.md:7,40-41`**: design根拠はrev9へ同期され、`PR94-NR-003/004`はnormal fix verification R2のidentityとともに完了、`PR94-IFR-001`〜`004`は元severityを保持してnormal matrix Completeおよび本closure待ちの工程へ同期された。
+
+fix deltaに由来する新しいcredential処理、secret/content/path/hash/token logging、public API、configuration、workflow変更はない。IFR-001のhistorical Global snapshot map保持は既知sequential shared-Global compatibility pathを変更せず、multi-context/shared-Global atomic redesignをIssue #106へ分離した境界も維持する。performance CI追加もない。
+
+### Closure completeness matrix
+
+normal matrixの各cellを独自に照合し、全cellをCompleteと判定した。
+
+| Finding | Required action | Production path | Actual composition fixture | Focused evidence | Disposition |
+| --- | --- | --- | --- | --- | --- |
+| PR94-IFR-001 High | contentHash保持、Context/Global mismatch fail closed、historical snapshot保持、A→B→A exact restore、no-publish | Complete | Complete — actual runtime command、store/service/mapper、両layer range/hash、history順 | Complete — compile PASS、55/55 PASS | Closed |
+| PR94-IFR-002 High | exact/mixed/missでhistoric pair保持、新pair未確認、current pair projection、A→C→A CAS/history | Complete | Complete — actual PR context store、2 CAS/2 history | Complete — mapper/store/progress回帰を55/55で確認 | Closed |
+| PR94-IFR-003 Medium | design一致、absent fallback、available restore、unavailable reject、no CAS/history/state | Complete | Complete — actual local-Git invalid hash/unreadable snapshot、mixed/miss sibling | Complete — compile PASS、local lifecycle/snapshot回帰を55/55で確認 | Closed |
+| PR94-IFR-004 Low | rev9、NR003/004 closure、finding/tracking整合 | Complete | not applicable | Complete — authoritative design/report/tracking inspection | Closed |
+
+closure focused validationは各commandを1回だけ実行した。
+
+- `npm run compile:test` — PASS。
+- `node --test test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/immutable-revision-review-snapshot.test.js test-dist/test/unit/github-pr-context-layer-store.test.js test-dist/test/unit/t404-review-followup-r3.test.js test-dist/test/unit/document-git-context-lifecycle.test.js` — 55 passed / 0 failed。
+- `git diff --check afa7ccfdccca43f6c83dc58f6e64e35b02e1a1f3..18917eb9617cf13893ec540e742852c292eaf14a` — PASS。
+
+full/default suite、performance、`test:t607`、Host、VSIX生成は指示どおり実行していない。Markdown wording checkはrepo-local `tools/lint/`、`lint:md`、設定付きfocused commandがないため`unsupported`であり、成功へ読み替えていない。
+
+### CI deltaとclosure verdict
+
+required pull_request run `33446703713`は確認時点でevent=`pull_request`、headSha=`18917eb9617cf13893ec540e742852c292eaf14a`、workflow=`CI`、status=`in_progress`、conclusion未確定だった。Unit、T405、T506を含む確認済みstepはGreenだが、T609以降、Host、artifactは未完了であるためexact-head CI成功として扱わない。追加waitは行っていない。またreport attestation commitを作成した場合、その新しいterminal headに一致するrequired CIとartifactが別途必要である。
+
+closure verdict=`pass_with_held`。technical verdictはclosure reviewed implementation HEAD `18917eb9617cf13893ec540e742852c292eaf14a`だけに付く。open findings=`none`、in-scope unexplored=`none`。initial `fail` verdictと4 findingの発見履歴は上記initial reviewにそのまま保持し、このsectionが同一reviewerによる限定closure dispositionを追加する。
+
+remaining heldは、run `33446703713`のterminal required CI/artifact、将来のreport-attestation headに一致するterminal required CI/artifact、既知Issue #13/owned-hostによるWindows default/full fixture、Markdown wording lint `unsupported`、Issue #106所有のmulti-context/shared-Global atomic redesignである。held項目は4 findingのclosure evidenceとして代用していない。
+
+closure終了時にHEADが`18917eb9617cf13893ec540e742852c292eaf14a`のまま、working tree deltaが予約済み`reports/2026-09-01-pr94-independent-final-review.md`だけであることを確認する。`report_attestation_allowed=true`となる条件は、`18917eb9617cf13893ec540e742852c292eaf14a`の直後にexactly one report-only commitを作り、そのfirst parentが同SHAで、このreserved report以外に差分がなく、後続commitがないことである。attestation SHAはreportへ自己参照せず外部に記録し、commit後のexact-head required CI/artifactがGreenになるまでmergeを許可しない。
