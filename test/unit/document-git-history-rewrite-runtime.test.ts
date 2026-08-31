@@ -269,13 +269,14 @@ test("production Git provider publishes snapshots and restores reviewed ranges a
   const { stableHash, inspector, source, provider } = setup();
 
   const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
-  await initial.committer.commit(markReviewedRanges({
+  const marked = markReviewedRanges({
     contextState: initial.contextState,
     globalState: initial.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW
-  }));
+  });
+  await initial.committer.commit(marked);
 
   source.oldObjectExists = false;
   inspector.head = NEW_SHA;
@@ -305,21 +306,22 @@ test("a delayed stale open cannot republish reviewed ranges after a newer unrevi
   );
   const { stableHash, inspector, source, provider } = setup(tracker);
   const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
-  await initial.committer.commit(markReviewedRanges({
+  const marked = markReviewedRanges({
     contextState: initial.contextState,
     globalState: initial.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW
-  }));
+  });
+  await initial.committer.commit(marked);
 
   const gate = tracker.armNextSave();
   const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
   await gate.started;
 
   const newerCommit = initial.committer.commit(unmarkReviewedRanges({
-    contextState: initial.contextState,
-    globalState: initial.globalState,
+    contextState: marked.next.contextState,
+    globalState: marked.next.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW
@@ -345,21 +347,22 @@ test("a delayed stale open cannot republish reviewed ranges after a newer unrevi
 test("a stale open delayed before enqueue cannot overwrite a newer unreview commit", async () => {
   const { stableHash, inspector, source, provider } = setup();
   const initial = await provider.open(descriptor(stableHash.digest(CONTENT)));
-  await initial.committer.commit(markReviewedRanges({
+  const marked = markReviewedRanges({
     contextState: initial.contextState,
     globalState: initial.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW
-  }));
+  });
+  await initial.committer.commit(marked);
 
   const gate = source.armNextRead();
   const staleOpen = provider.open(descriptor(stableHash.digest(CONTENT)));
   await gate.started;
 
   await initial.committer.commit(unmarkReviewedRanges({
-    contextState: initial.contextState,
-    globalState: initial.globalState,
+    contextState: marked.next.contextState,
+    globalState: marked.next.globalState,
     target: initial.target,
     intervals: [{ startLine: 0, endLineExclusive: 3 }],
     occurredAt: NOW

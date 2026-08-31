@@ -275,7 +275,7 @@ test("Git revision mapper clears a shared file when direct Context and recovered
   const { source, snapshotTracker, current, mapper } = setup();
   source.oldObjectExists = true;
   source.missingObjectIds.add(MISSING_GLOBAL_SHA);
-  source.texts.set(`${NEW_SHA}\0src/context.ts`, "context");
+  source.texts.set(`${NEW_SHA}\0src/context.ts`, "context\nbeta\ngamma");
   source.texts.set(`${NEW_SHA}\0src/recovered.ts`, "global\nbeta\ngamma");
   const global = globalState("src/global.ts");
   const globalFile = global.files["file-1"];
