@@ -165,6 +165,9 @@ export function createImmutablePullRequestRevisionMapper(
     });
     const immutable = await loadEvidence(Object.freeze({ ...evidence }));
     requireMatchingEvidence(evidence, immutable, source.contextState.files, source.globalState.files);
+    const baseOnlyTransition =
+      evidence.sourceHeadSha === evidence.targetHeadSha &&
+      evidence.sourceBaseSha !== evidence.targetBaseSha;
     const targetEvidence = snapshotEvidence(source.contextState, source.globalState, evidence.targetHeadSha, immutable);
     const restored = targetEvidence === undefined
       ? undefined
@@ -179,7 +182,9 @@ export function createImmutablePullRequestRevisionMapper(
           contextState: {
             ...source.contextState,
             pullRequest: { ...nextPullRequest },
-            files: restored.context.files,
+            files: baseOnlyTransition
+              ? invalidateOriginalReviewedByDiff(restored.context.files)
+              : restored.context.files,
             updatedAt: source.contextState.updatedAt
           },
           globalState: {
@@ -198,9 +203,6 @@ export function createImmutablePullRequestRevisionMapper(
       ? "mixed"
       : "mapped";
     const updatedAt = immutable.updatedAt ?? new Date().toISOString();
-    const baseOnlyTransition =
-      evidence.sourceHeadSha === evidence.targetHeadSha &&
-      evidence.sourceBaseSha !== evidence.targetBaseSha;
     if (baseOnlyTransition) {
       return {
         ...captureImmutableRevisionSnapshots({
