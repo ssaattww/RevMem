@@ -809,6 +809,13 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(recovered52?.globalState.currentRevisionId, recoveredHeadSha);
     assert.equal(recovered52?.contextState.files[FILE_ID]?.revisionId, recoveredHeadSha);
     assert.equal(recovered52?.globalState.files[FILE_ID]?.revisionId, recoveredHeadSha);
+    const recovered53 = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId53,
+    });
+    assert.equal(recovered53?.contextState.pullRequest?.headSha, recoveredHeadSha);
+    assert.equal(recovered53?.globalState.currentRevisionId, recoveredHeadSha);
     assert.throws(
       () => pullRequestReviewRuntime.createHeadFileDocumentUri(contextId52, FILE_ID, targetHeadSha),
       /stale/u,
