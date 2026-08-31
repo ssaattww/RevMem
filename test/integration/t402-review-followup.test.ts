@@ -115,6 +115,9 @@ test("T402-R002 rejects the GitHub changed status instead of treating a type cha
     apiBaseUrl: "https://api.github.test",
     fetch: async input => {
       const url = new URL(input.toString());
+      if (url.pathname.endsWith(`/compare/${BASE_SHA}...${HEAD_SHA}`)) {
+        return new Response(JSON.stringify({ merge_base_commit: { sha: BASE_SHA } }), { status: 200 });
+      }
       if (!url.pathname.endsWith("/files")) {
         return new Response(JSON.stringify(metadataPayload), { status: 200 });
       }
@@ -140,6 +143,9 @@ test("T402-R002 classifies patchless binary content and reaches the shared binar
       const url = new URL(input.toString());
       if (url.pathname.endsWith("/contents/assets/image.bin")) {
         return new Response(Uint8Array.from([0, 1, 2, 3]), { status: 200 });
+      }
+      if (url.pathname.endsWith(`/compare/${BASE_SHA}...${HEAD_SHA}`)) {
+        return new Response(JSON.stringify({ merge_base_commit: { sha: BASE_SHA } }), { status: 200 });
       }
       if (url.pathname.endsWith("/files")) {
         return new Response(JSON.stringify([{
@@ -395,6 +401,9 @@ test("T402-R004 rejects page jumps and per-page changes in GitHub pagination lin
       apiBaseUrl: "https://api.github.test",
       fetch: async input => {
         const url = new URL(input.toString());
+        if (url.pathname.endsWith(`/compare/${BASE_SHA}...${HEAD_SHA}`)) {
+          return new Response(JSON.stringify({ merge_base_commit: { sha: BASE_SHA } }), { status: 200 });
+        }
         if (!url.pathname.endsWith("/files")) {
           return new Response(JSON.stringify(metadataPayload), { status: 200 });
         }
@@ -420,6 +429,9 @@ test("T402-R004 rejects an empty-page next chain before it can issue unbounded r
     apiBaseUrl: "https://api.github.test",
     fetch: async input => {
       const url = new URL(input.toString());
+      if (url.pathname.endsWith(`/compare/${BASE_SHA}...${HEAD_SHA}`)) {
+        return new Response(JSON.stringify({ merge_base_commit: { sha: BASE_SHA } }), { status: 200 });
+      }
       if (!url.pathname.endsWith("/files")) {
         return new Response(JSON.stringify(metadataPayload), { status: 200 });
       }
