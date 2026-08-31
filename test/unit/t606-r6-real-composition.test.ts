@@ -104,6 +104,9 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
     globalThis.fetch = async (input) => {
       const url = String(input);
       fetches.push(url);
+      if (url.includes(`/compare/${baseSha}...${headSha}`)) {
+        return new Response(JSON.stringify({ merge_base_commit: { sha: baseSha } }), { status: 200 });
+      }
       if (url.includes("/pulls/76/files")) {
         if (phase === "transient" && transientAttempts++ < 2) throw new Error("fixture network interruption");
         if (phase === "permanent") return new Response("unauthorized", { status: 401 });
