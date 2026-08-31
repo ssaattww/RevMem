@@ -284,7 +284,8 @@ export function createImmutablePullRequestRevisionMapper(
       };
     }
 
-    const globalState = mapRepositoryGlobalStateThroughGitDiff({
+    const globalState = {
+      ...mapRepositoryGlobalStateThroughGitDiff({
       globalState: source.globalState,
       diff: immutable.diff,
       newRevisionId: evidence.targetHeadSha,
@@ -292,7 +293,11 @@ export function createImmutablePullRequestRevisionMapper(
       options,
       oldTexts: immutable.oldTexts,
       newFiles: immutable.newFiles,
-    });
+      }),
+      // Mapping returns a new current Global state. Historical snapshots belong
+      // to the immutable source and are retained until target capture adds B.
+      revisionSnapshots: source.globalState.revisionSnapshots,
+    };
 
     const next = {
       contextState: {

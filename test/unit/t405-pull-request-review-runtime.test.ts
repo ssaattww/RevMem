@@ -12,6 +12,11 @@ import {
 import { restoreImmutableRevisionSnapshots } from "../../src/core/review-state/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
 import {
+  createImmutablePullRequestRevisionMapper,
+  GitHubPullRequestContextStateService,
+  type GitHubPullRequestContextRepositoryPort,
+} from "../../src/application/github-pr-context/index.js";
+import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
 } from "../../src/t405-pull-request-review-runtime.js";
@@ -100,7 +105,7 @@ const snapshot: PullRequestDiffSnapshot = {
   }],
 };
 
-class MemoryRepository implements PullRequestReviewRuntimeRepository {
+class MemoryRepository implements PullRequestReviewRuntimeRepository, GitHubPullRequestContextRepositoryPort {
   public current = {
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
     contextState: contextState(),
@@ -111,6 +116,14 @@ class MemoryRepository implements PullRequestReviewRuntimeRepository {
     return structuredClone(this.current);
   }
 
+  public async create(transaction: Parameters<GitHubPullRequestContextRepositoryPort["create"]>[0]): Promise<void> {
+    this.current = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: structuredClone(transaction.next.contextState),
+      globalState: structuredClone(transaction.next.globalState),
+    };
+  }
+
   public async commit(transaction: Parameters<PullRequestReviewRuntimeRepository["commit"]>[0]): Promise<void> {
     this.current = {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -119,6 +132,130 @@ class MemoryRepository implements PullRequestReviewRuntimeRepository {
     };
   }
 }
+
+test("PR runtime command snapshot survives immutable PR A-to-B-to-A store restoration with hashes", async () => {
+  const repository = new MemoryRepository();
+  const initialPullRequest = {
+    ...repository.current.contextState.pullRequest!,
+    baseSha: C,
+    headSha: A,
+  };
+  repository.current = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...repository.current.contextState,
+      pullRequest: initialPullRequest,
+      files: {
+        [FILE_ID]: {
+          ...repository.current.contextState.files[FILE_ID]!,
+          revisionId: A,
+          contentHash: contentHash("alpha"),
+          modifiedReviewed: [],
+          originalReviewedByDiff: {},
+        },
+      },
+    },
+    globalState: {
+      ...repository.current.globalState,
+      currentRevisionId: A,
+      files: {
+        [FILE_ID]: {
+          ...repository.current.globalState.files[FILE_ID]!,
+          revisionId: A,
+          contentHash: contentHash("alpha"),
+          reviewed: [],
+        },
+      },
+    },
+  };
+  const commandHistory: string[] = [];
+  const storeHistory: string[] = [];
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => { commandHistory.push("runtime-command"); },
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified) => { opened.push({ original, modified }); },
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const atA: PullRequestDiffSnapshot = {
+    ...snapshot,
+    baseSha: C,
+    headSha: A,
+    originalDiffId: `${C}..${A}`,
+  };
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot: atA,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.revision === A ? "alpha" : "base",
+    }),
+  });
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const commands = runtime.createCommandService<{ readonly uri: string; readonly side: "modified" }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => [{ anchor: { line: 0, character: 0 }, active: { line: 0, character: 0 } }],
+    confirmWholeFileOperation: async () => true,
+  });
+  assert.equal(await commands.markSelectionReviewed({ uri: opened[0]!.modified, side: "modified" }), "applied");
+  assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.deepEqual(repository.current.contextState.revisionSnapshots?.[A]?.files[FILE_ID]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.equal(repository.current.contextState.revisionSnapshots?.[A]?.files[FILE_ID]?.contentHash, contentHash("alpha"));
+  assert.equal(repository.current.globalState.revisionSnapshots?.[A]?.files[FILE_ID]?.contentHash, contentHash("alpha"));
+
+  const immutableMapper = createImmutablePullRequestRevisionMapper(async (evidence) => {
+    const targetIsB = evidence.targetHeadSha === B;
+    return {
+      sourceBaseSha: evidence.sourceBaseSha,
+      sourceHeadSha: evidence.sourceHeadSha,
+      targetBaseSha: evidence.targetBaseSha,
+      targetHeadSha: evidence.targetHeadSha,
+      diff: ["diff --git a/src/example.ts b/src/example.ts", "--- a/src/example.ts", "+++ b/src/example.ts", "@@ -1 +1 @@", targetIsB ? "-alpha" : "-beta", targetIsB ? "+beta" : "+alpha", ""].join("\n"),
+      oldTexts: { "src/example.ts": targetIsB ? "alpha" : "beta" },
+      newFiles: {
+        "src/example.ts": {
+          fileId: FILE_ID,
+          newText: targetIsB ? "beta" : "alpha",
+          lineCount: 1,
+          contentHash: contentHash(targetIsB ? "beta" : "alpha"),
+        },
+      },
+    };
+  });
+  const store = new GitHubPullRequestContextStateService(repository, immutableMapper, {
+    recordContextCreated: async () => undefined,
+    recordRevisionMapping: async (_previous, _next, reason) => { storeHistory.push(reason ?? ""); },
+  });
+  const identity = { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 52 };
+  const advanced = await store.update({
+    repositoryId: REPOSITORY_ID,
+    identity,
+    pullRequest: { ...initialPullRequest, headSha: B },
+  });
+  assert.deepEqual(advanced.contextState.revisionSnapshots?.[A]?.files[FILE_ID]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.deepEqual(advanced.globalState.revisionSnapshots?.[A]?.files[FILE_ID]?.reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  const restored = await store.update({
+    repositoryId: REPOSITORY_ID,
+    identity,
+    pullRequest: initialPullRequest,
+  });
+
+  assert.equal(restored.mappingDisposition, "restored");
+  assert.deepEqual(restored.contextState.files[FILE_ID]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.deepEqual(restored.globalState.files[FILE_ID]?.reviewed, [{ startLine: 0, endLineExclusive: 1 }]);
+  assert.equal(restored.contextState.files[FILE_ID]?.contentHash, contentHash("alpha"));
+  assert.equal(restored.globalState.files[FILE_ID]?.contentHash, contentHash("alpha"));
+  assert.deepEqual(commandHistory, ["runtime-command"]);
+  assert.deepEqual(storeHistory, ["git-revision-mapped", "exact-revision-snapshot-restored"]);
+});
 
 test("R405-3 saved/closed PR opens through the canonical T302 review-range-diff identity", async () => {
   const opened: Array<{ original: string; modified: string; title: string }> = [];
