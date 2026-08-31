@@ -4,7 +4,7 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev6
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev9
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #92 / PR #94 `PR94-IFR-001`。PR94-CI-005とexact-head required CI run 33438752543は完了し、Sol/high fresh reviewerの独立final reviewへ進む
-- 次の工程: 独立review pass後、report attestation commit、push、exact-head required CI、squash mergeを完了する
+- 実装中タスク: Issue #92 / PR #94 independent findings `PR94-IFR-001`〜`004`。High 2件、Medium 1件を0.5h単位で修正し、Low tracking同期を完了する
+- 次の工程: Sol/high通常fix verification、同じ独立reviewerのfinding/CI-delta限定closure、report attestation、push、exact-head required CI、squash merge
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestation
 - 後続候補: T608
 
