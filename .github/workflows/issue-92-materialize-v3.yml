@@ -1,0 +1,166 @@
+name: Issue 92 materialize v3
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-materialize-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-92-materialize-v3
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Pin branch and prepare diagnostics
+        run: |
+          git fetch origin issue-92-pr-progress-context-menu
+          git reset --hard origin/issue-92-pr-progress-context-menu
+          git rev-parse HEAD | tee /tmp/issue-92-materialize-parent
+          mkdir -p test-output/issue-92-materialize
+          cp /tmp/issue-92-materialize-parent test-output/issue-92-materialize/parent-head.txt
+      - name: Materialize implementation
+        run: |
+          if test -f .github/issue-92-final-fixes.py; then
+            node tools/run-ci-command.mjs issue-92-materialize python .github/issue-92-final-fixes.py
+          fi
+          test -f src/application/review-commands/original-selection-review-plan.ts
+          test -f src/core/review-state/revision-snapshot-service.ts
+          test -f test/unit/immutable-revision-review-snapshot.test.ts
+          ! grep -q '^/mnt/data/' src/application/review-commands/original-selection-review-plan.ts
+      - name: Run validation and record every result
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          RESULT_FILE=test-output/issue-92-materialize/validation-results.tsv
+          : > "$RESULT_FILE"
+          OVERALL=0
+          run_check() {
+            local name="$1"
+            shift
+            node tools/run-ci-command.mjs "issue-92-${name}" "$@"
+            local code=$?
+            if test "$code" -eq 0; then
+              printf '%s\tPASS\n' "$name" >> "$RESULT_FILE"
+            else
+              printf '%s\tFAIL(%s)\n' "$name" "$code" >> "$RESULT_FILE"
+              OVERALL=1
+            fi
+            return 0
+          }
+          run_check npm-ci npm ci
+          if grep -q '^npm-ci\tPASS$' "$RESULT_FILE"; then
+            run_check build npm run build
+            run_check typecheck-contracts npm run typecheck:contracts
+            run_check architecture npm run validate:architecture
+            run_check architecture-negative npm run validate:architecture:negative
+            run_check lint npm run lint
+            run_check test npm test
+          fi
+          git diff --check
+          DIFF_CODE=$?
+          if test "$DIFF_CODE" -eq 0; then
+            printf 'diff-check\tPASS\n' >> "$RESULT_FILE"
+          else
+            printf 'diff-check\tFAIL(%s)\n' "$DIFF_CODE" >> "$RESULT_FILE"
+            OVERALL=1
+          fi
+          printf 'overall=%s\n' "$OVERALL" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Remove all one-shot automation and probes
+        run: |
+          rm -rf .github/issue-92-*
+          rm -rf .github/workflows/issue-92-*.yml
+          rm -f .github/connector-*.tmp
+          rm -f __DO_NOT_KEEP_APPLY_PATCH_PROBE__
+          rm -f __connector_probe_do_not_keep__
+          rm -f reports/__connector_file_input_test__.md
+          rm -f reports/2026-08-31-issue-92-ci-repair.md
+      - name: Write materialization report
+        run: |
+          PARENT_HEAD="$(cat /tmp/issue-92-materialize-parent)"
+          RESULTS="$(cat test-output/issue-92-materialize/validation-results.tsv)"
+          cat > reports/2026-08-31-issue-92-final-repair.md <<EOF
+          # Issue #92 / PR #94 final repair report
+
+          - Branch: `issue-92-pr-progress-context-menu`
+          - Materialization parent HEAD: `${PARENT_HEAD}`
+          - Merge: not performed
+          - Independent review: not performed
+
+          ## Repaired behavior
+
+          - PR Progressから開いたexact diff tabだけに、選択範囲・ファイル全体の確認済み／解除操作を公開する。
+          - Original側のcontext行はimmutable diff座標でModified側へ投影し、削除行・置換前行はcurrent `baseSha..headSha`の比較固有状態へ保持する。
+          - Modified Context、Global、Original pairの更新を1回のatomic repository transactionとしてcommitする。
+          - Context／Globalはfull immutable revisionごとのsnapshotを保持し、`A -> B -> C -> A`ではexact A snapshotを復元する。
+          - snapshot hit／missはlayerごとに判定し、同じCAS transactionで公開する。
+          - stale diff tab、PR Progress以外のdiff、同一URIを持つ別tabからの操作は拒否する。
+
+          ## TDD evidence
+
+          修復前のPR current HEADに紐づくCIで、未実装契約およびローカルパス文字列だけが保存されたTypeScriptによるRedを確認した。恒久CIとone-shot workflowはいずれも、command result、stdout、stderr、combined logをartifactへ保存する。
+
+          ## Materialization validation
+
+          \`\`\`text
+          ${RESULTS}
+          \`\`\`
+
+          この検証は実装をmaterializeした作業ツリーで実行した。PR最終判定は、このreportを含む最終commitのSHAとrunの`head_sha`が完全一致するpull_request CIだけを使用する。別SHAのrunは代用しない。一致runがなければCI未実施として扱う。
+
+          ## Cleanup
+
+          Issue #92専用のone-shot workflow、Python worker、分割payload、connector probe、およびローカルパスのみを含む誤作成reportを削除した。恒久CIの診断artifact workflowは維持した。
+          EOF
+          test -z "$(find .github -maxdepth 3 \( -name 'issue-92-*' -o -name 'connector-*.tmp' \) -print)"
+          if grep -R -n -E '^/mnt/data/issue92|^/mnt/data/issue-92' src test reports doc package.json 2>/dev/null; then
+            echo 'local path leak remains' >&2
+            exit 1
+          fi
+          git diff --check
+      - name: Ensure branch did not move
+        run: |
+          git fetch origin issue-92-pr-progress-context-menu
+          test "$(git rev-parse origin/issue-92-pr-progress-context-menu)" = "$(cat /tmp/issue-92-materialize-parent)"
+      - name: Commit materialized implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: materialize Issue 92 implementation"
+          git rev-parse HEAD | tee test-output/issue-92-materialize/final-head.txt
+          git push origin HEAD:issue-92-pr-progress-context-menu
+      - name: Fail workflow when materialized validation failed
+        if: steps.validate.outputs.overall != '0'
+        run: exit 1
+      - name: Upload materialization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-92-materialize-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            test-output/
+            package.json
+            src/
+            test/
+            doc/design/
+            reports/
