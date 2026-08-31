@@ -157,6 +157,48 @@ test("revision mapping ignores binary diff sections and maps text state", async 
       { startLine: 2, endLineExclusive: 3 }
     ]
   );
+
+  const restoredContextFile = {
+    ...contextState.files[fileId]!,
+    revisionId: newRevision,
+    modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+    contentHash: stableHash.digest("alpha\nBETA\ngamma")
+  };
+  const restoredGlobalFile = {
+    ...globalState.files[fileId]!,
+    revisionId: newRevision,
+    reviewed: [{ startLine: 0, endLineExclusive: 3 }],
+    contentHash: stableHash.digest("alpha\nBETA\ngamma")
+  };
+  const exact = await mapper.map({
+    current,
+    contextState: {
+      ...contextState,
+      revisionSnapshots: {
+        [newRevision]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          revisionId: newRevision,
+          files: { [fileId]: restoredContextFile },
+          updatedAt: occurredAt
+        }
+      }
+    },
+    globalState: {
+      ...globalState,
+      revisionSnapshots: {
+        [newRevision]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          revisionId: newRevision,
+          files: { [fileId]: restoredGlobalFile },
+          updatedAt: occurredAt
+        }
+      }
+    },
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  });
+  assert.deepEqual(exact.contextState.files[fileId]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+  assert.deepEqual(exact.globalState.files[fileId]?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
 });
 
 class ExistingBinaryRevisionSource implements GitRevisionMappingSource {

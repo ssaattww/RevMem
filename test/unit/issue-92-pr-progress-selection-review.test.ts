@@ -6,6 +6,20 @@ import {
   createOriginalSelectionReviewPlan,
   createOriginalToModifiedLineMappings
 } from "../../src/application/review-commands/index";
+import { ReviewHistoryRecorder } from "../../src/application/review-history/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type FileReviewHistoryEvent,
+  type RepositoryGlobalState,
+  type ReviewContextState,
+  type ReviewHistoryEvent
+} from "../../src/core/contracts/index";
+import {
+  commitReviewStateTransaction,
+  markOriginalSelectionReviewed,
+  unmarkOriginalSelectionReviewed,
+  type ReviewStateTransaction
+} from "../../src/core/review-state/index";
 import { PR_PROGRESS_DIFF_REVIEW_CONTEXT_KEY } from "../../src/ui/pr-progress/pr-progress-diff-review-context";
 
 test("original-side selection maps surviving context lines and keeps deleted lines on the comparison pair", () => {
@@ -120,13 +134,102 @@ test("PR Progress diff menu exposes selection and whole-file actions without add
   }
 });
 
-test("selection command service composes one atomic commit for mapped modified and original ranges", async () => {
-  const service = await readFile("src/application/review-commands/diff-editor-review-command-service.ts", "utf8");
-  const runtime = await readFile("src/t405-pull-request-review-runtime-base.ts", "utf8");
+test("original selection uses one typed composite commit and records modified before original history", async () => {
+  const baseSha = "1111111111111111111111111111111111111111";
+  const headSha = "2222222222222222222222222222222222222222";
+  const diffId = `${baseSha}..${headSha}`;
+  const contextState: ReviewContextState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextId: "github-pr:github.com/ssaattww/RevMem#92",
+    kind: "pull-request",
+    repositoryId: "github.com/ssaattww/RevMem",
+    displayName: "PR #92",
+    pullRequest: {
+      host: "github.com",
+      owner: "ssaattww",
+      repository: "RevMem",
+      number: 92,
+      state: "open",
+      baseSha,
+      headSha
+    },
+    files: {
+      file: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: "file",
+        currentPath: "src/example.ts",
+        previousPaths: [],
+        revisionId: headSha,
+        modifiedReviewed: [],
+        originalReviewedByDiff: {},
+        lineCount: 3,
+        updatedAt: "2026-08-30T00:00:00.000Z"
+      }
+    },
+    createdAt: "2026-08-30T00:00:00.000Z",
+    updatedAt: "2026-08-30T00:00:00.000Z"
+  };
+  const globalState: RepositoryGlobalState = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    repositoryId: "github.com/ssaattww/RevMem",
+    currentRevisionId: headSha,
+    files: {},
+    updatedAt: "2026-08-30T00:00:00.000Z"
+  };
+  const input = {
+    contextState,
+    globalState,
+    target: {
+      fileId: "file",
+      currentPath: "src/example.ts",
+      revisionId: headSha,
+      lineCount: 3
+    },
+    side: "original" as const,
+    diffId,
+    originalLineCount: 3,
+    modifiedIntervals: [{ startLine: 0, endLineExclusive: 1 }],
+    originalIntervals: [{ startLine: 1, endLineExclusive: 2 }],
+    occurredAt: "2026-08-30T01:00:00.000Z"
+  };
+  const committed: ReviewStateTransaction[] = [];
+  const events: ReviewHistoryEvent[] = [];
+  let eventNumber = 0;
+  const recorder = new ReviewHistoryRecorder({
+    sessionId: "issue-92",
+    createEventId: () => `event-${String(++eventNumber)}`,
+    appender: { append: async (_target, event) => { events.push(event); } }
+  });
 
-  assert.match(service, /createOriginalSelectionReviewPlan/);
-  assert.match(service, /commitTransactionSequence/);
-  assert.match(service, /originalToModifiedLineMappings/);
-  assert.match(runtime, /createOriginalToModifiedLineMappings/);
-  assert.match(runtime, /originalToModifiedLineMappings:/);
+  const marked = markOriginalSelectionReviewed(input);
+  assert.equal(marked.operation, "mark-original-selection-reviewed");
+  assert.deepEqual(marked.expected, { contextState, globalState });
+  assert.deepEqual(marked.next.contextState.files.file?.modifiedReviewed, input.modifiedIntervals);
+  assert.deepEqual(marked.next.globalState.files.file?.reviewed, input.modifiedIntervals);
+  assert.deepEqual(marked.next.contextState.files.file?.originalReviewedByDiff[diffId], input.originalIntervals);
+
+  await commitReviewStateTransaction(marked, {
+    commit: async (transaction) => { committed.push(transaction); }
+  });
+  assert.equal(committed.length, 1, "mapped and original ranges persist through one composite commit");
+  assert.equal(committed[0], marked);
+  await recorder.recordTransaction(marked, "user-selection");
+  assert.equal(events.length, 2);
+  assert.equal((events[0] as FileReviewHistoryEvent).diffSide, "modified");
+  assert.equal((events[1] as FileReviewHistoryEvent).diffSide, "original");
+
+  const unmarked = unmarkOriginalSelectionReviewed({
+    ...input,
+    contextState: marked.next.contextState,
+    globalState: marked.next.globalState
+  });
+  assert.equal(unmarked.operation, "unmark-original-selection-reviewed");
+  await commitReviewStateTransaction(unmarked, {
+    commit: async (transaction) => { committed.push(transaction); }
+  });
+  assert.equal(committed.length, 2, "unmark remains one composite commit");
+  await recorder.recordTransaction(unmarked, "user-selection");
+  assert.equal(events.length, 4);
+  assert.equal((events[2] as FileReviewHistoryEvent).diffSide, "modified");
+  assert.equal((events[3] as FileReviewHistoryEvent).diffSide, "original");
 });

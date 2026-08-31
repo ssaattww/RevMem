@@ -149,7 +149,7 @@ test("mixed original-side selection commits mapped current lines and original de
 
   assert.equal(await service.markSelectionReviewed("editor"), "applied");
   assert.equal(committed.length, 1);
-  assert.equal(history.length, 2);
+  assert.equal(history.length, 1, "one composite transaction is recorded after its single commit");
 
   const transaction = committed[0] as {
     next: {

@@ -3,12 +3,15 @@ export {
   commitReviewStateTransaction,
   markFileReviewed,
   markOriginalReviewedRanges,
+  markOriginalSelectionReviewed,
   markReviewedRanges,
   unmarkFileReviewed,
   unmarkOriginalReviewedRanges,
+  unmarkOriginalSelectionReviewed,
   unmarkReviewedRanges,
   type DeepReadonly,
   type OriginalReviewRangeMutationInput,
+  type OriginalSelectionReviewRangeMutationInput,
   type OriginalReviewStateTransaction,
   type ModifiedReviewStateTransaction,
   type ReviewRangeMutationInput,
@@ -20,3 +23,19 @@ export {
   type ReviewStateTransactionExpectation,
   type ReviewStateTransactionNext
 } from "./review-state-service";
+
+/** Immutable revision snapshot capture, validation, and independent restore contracts. */
+export {
+  captureImmutableRevisionSnapshots,
+  restoreImmutableRevisionSnapshots,
+  validateContextRevisionSnapshots,
+  validateGlobalRevisionSnapshots,
+  validateImmutableRevisionSnapshots,
+  type CaptureImmutableRevisionSnapshotsInput,
+  type ImmutableRevisionSnapshotEvidence,
+  type ImmutableRevisionSnapshotFileEvidence,
+  type ImmutableRevisionSnapshotLayerResult,
+  type ImmutableRevisionSnapshotRestoreResult,
+  type RestoreImmutableRevisionSnapshotsInput,
+  type ValidateImmutableRevisionSnapshotsInput
+} from "./revision-snapshot-service";

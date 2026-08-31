@@ -139,6 +139,37 @@ test("revision変更はContextとGlobalを同一headへmapする", async () => {
   assert.equal(result.globalState.files.file?.revisionId, SHA_C);
 });
 
+test("mixed snapshot mapping commits once and records a distinct history disposition", async () => {
+  const repository = new InMemoryRepository();
+  repository.current = { contextState: context(), globalState: globalState() };
+  const reasons: string[] = [];
+  const sut = new GitHubPullRequestContextStateService(
+    repository,
+    async ({ current, nextPullRequest }) => ({
+      contextState: {
+        ...current.contextState,
+        pullRequest: nextPullRequest,
+        files: { file: { ...current.contextState.files.file!, revisionId: nextPullRequest.headSha } },
+      },
+      globalState: {
+        ...current.globalState,
+        currentRevisionId: nextPullRequest.headSha,
+        files: { file: { ...current.globalState.files.file!, revisionId: nextPullRequest.headSha } },
+      },
+      mappingDisposition: "mixed",
+    }),
+    {
+      recordContextCreated: async () => undefined,
+      recordRevisionMapping: async (_previous, _next, reason) => { reasons.push(reason ?? ""); },
+    }
+  );
+
+  await sut.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ headSha: SHA_C }) });
+
+  assert.equal(repository.commits, 1);
+  assert.deepEqual(reasons, ["exact-revision-snapshot-mixed"]);
+});
+
 test("旧revision Globalを返すmapperはfail closedにする", async () => {
   const repository = new InMemoryRepository();
   repository.current = { contextState: context(), globalState: globalState() };

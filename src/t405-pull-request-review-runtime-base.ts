@@ -6,6 +6,7 @@ import {
 } from "./application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
+  ReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
 } from "./application/diff-document/index";
 import {
@@ -19,9 +20,17 @@ import {
 import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
 import {
   DiffEditorReviewCommandService,
+  deriveOriginalToModifiedLineMappings,
   type DiffEditorReviewCommandDependencies,
 } from "./application/review-commands/index";
-import type { ReviewStateTransaction } from "./core/review-state/index";
+import {
+  captureImmutableRevisionSnapshots,
+  type ReviewStateTransaction,
+} from "./core/review-state/index";
+import type {
+  RepositoryGlobalState,
+  ReviewContextState,
+} from "./core/contracts/index";
 import type {
   ReviewStateCommit,
   ReviewStateRepositoryTarget,
@@ -97,6 +106,14 @@ interface CalculatedPullRequestProgress {
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const materializeContextState = (
+  state: ReviewStateTransactionLike["next"]["contextState"],
+): ReviewContextState => JSON.parse(JSON.stringify(state));
+
+const materializeGlobalState = (
+  state: ReviewStateTransactionLike["next"]["globalState"],
+): RepositoryGlobalState => JSON.parse(JSON.stringify(state));
 
 const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewStateRepositoryTarget => ({
   kind: "pull-request",
@@ -433,6 +450,82 @@ export class PullRequestReviewRuntime<Uri> {
     return descriptor.side;
   }
 
+  /**
+   * Validates that both virtual documents are the current canonical immutable
+   * original/modified pair for exactly one registered PR file.
+   *
+   * @returns The identity-bound descriptors and file identity only when both
+   * URIs have the registered context, path semantics, revisions, sources, and
+   * pair provenance. Stale, mixed, reversed, or non-PR URIs throw without
+   * permitting a state mutation.
+   */
+  public validateDiffDocumentPair(originalUri: string, modifiedUri: string): Readonly<{
+    readonly repositoryId: string;
+    readonly contextId: string;
+    readonly fileId: string;
+    readonly original: ReviewDiffDocumentDescriptor;
+    readonly modified: ReviewDiffDocumentDescriptor;
+  }> {
+    const original = this.codec.decode(originalUri);
+    const modified = this.codec.decode(modifiedUri);
+    if (original.side !== "original" || modified.side !== "modified") {
+      throw new Error("PR diff document pair must keep original and modified sides in canonical order.");
+    }
+    if (original.contextId !== modified.contextId) {
+      throw new Error("PR diff document pair must belong to one review context.");
+    }
+    const registration = this.requireRegistration(original.contextId);
+    const { snapshot } = registration;
+    if (
+      original.fileSystemPathSemantics !== registration.fileSystemPathSemantics ||
+      modified.fileSystemPathSemantics !== registration.fileSystemPathSemantics
+    ) {
+      throw new Error("PR diff document pair path semantics do not match the registered repository.");
+    }
+    if (snapshot.originalDiffId !== `${snapshot.baseSha}..${snapshot.headSha}`) {
+      throw new Error("PR diff snapshot comparison identity is invalid.");
+    }
+    if (original.revision !== snapshot.baseSha) {
+      throw new RangeError("PR diff original document is stale for the current BASE revision.");
+    }
+    if (modified.revision !== snapshot.headSha) {
+      throw new RangeError("PR diff modified document is stale for the current HEAD revision.");
+    }
+
+    const matchingFiles = snapshot.files.filter((file) => {
+      const logicalPath = file.newPath ?? file.oldPath ?? file.fileId;
+      const expectedOriginal = this.codec.encode({
+        contextId: snapshot.contextId,
+        filePath: file.oldPath ?? logicalPath,
+        fileSystemPathSemantics: registration.fileSystemPathSemantics,
+        side: "original",
+        revisionSource: file.oldPath === undefined ? "empty" : "git-commit",
+        revision: snapshot.baseSha,
+      });
+      const expectedModified = this.codec.encode({
+        contextId: snapshot.contextId,
+        filePath: file.newPath ?? logicalPath,
+        fileSystemPathSemantics: registration.fileSystemPathSemantics,
+        side: "modified",
+        revisionSource: file.newPath === undefined ? "empty" : "git-commit",
+        revision: snapshot.headSha,
+      });
+      return expectedOriginal === originalUri && expectedModified === modifiedUri;
+    });
+    const file = matchingFiles[0];
+    if (matchingFiles.length !== 1 || file === undefined || file.status === "binary") {
+      throw new Error("PR diff document pair does not identify one current reviewable immutable file.");
+    }
+
+    return Object.freeze({
+      repositoryId: registration.repositoryId,
+      contextId: snapshot.contextId,
+      fileId: file.fileId,
+      original: Object.freeze({ ...original }),
+      modified: Object.freeze({ ...modified }),
+    });
+  }
+
   public async openReviewDiff(
     contextId: string,
     fileId: string,
@@ -584,11 +677,28 @@ export class PullRequestReviewRuntime<Uri> {
     if (diffFile.fileId !== descriptorFile.fileId) {
       throw new Error("PR diff document and requested file identity do not match");
     }
+    const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
+    const expectedUri = this.codec.encode({
+      contextId: registration.snapshot.contextId,
+      filePath: descriptor.side === "original"
+        ? diffFile.oldPath ?? logicalPath
+        : diffFile.newPath ?? logicalPath,
+      fileSystemPathSemantics: registration.fileSystemPathSemantics,
+      side: descriptor.side,
+      revisionSource: descriptor.side === "original"
+        ? diffFile.oldPath === undefined ? "empty" : "git-commit"
+        : diffFile.newPath === undefined ? "empty" : "git-commit",
+      revision: descriptor.side === "original"
+        ? registration.snapshot.baseSha
+        : registration.snapshot.headSha,
+    });
+    if (uri !== expectedUri) {
+      throw new RangeError("PR diff document is stale for the current immutable comparison.");
+    }
     const persisted = await this.options.repository.load(targetFor(registration));
     if (persisted === undefined) throw new Error("Persisted pull-request review context is unavailable");
     this.requireMatchingContext(registration, persisted);
     this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
-    const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
     const resolvedFileId = this.persistedFileIdForPath(
       registration,
       persisted,
@@ -619,6 +729,11 @@ export class PullRequestReviewRuntime<Uri> {
           registration.snapshot.baseSha,
           "original"
         );
+    const originalToModifiedLineMappings = deriveOriginalToModifiedLineMappings({
+      originalLineCount,
+      modifiedLineCount,
+      hunks: diffFile.hunks,
+    });
     return {
       contextState: persisted.contextState,
       globalState: persisted.globalState,
@@ -635,10 +750,28 @@ export class PullRequestReviewRuntime<Uri> {
           ? [{ startLine: line.oldLine - 1, endLineExclusive: line.oldLine }]
           : []
       )),
+      originalToModifiedLineMappings,
       committer: {
-        commit: (transaction: Readonly<ReviewStateTransactionLike>) => this.options.repository.commit(transaction),
+        commit: (transaction: Readonly<ReviewStateTransactionLike>) =>
+          this.commitCurrentRevisionSnapshot(registration, transaction),
       },
     };
+  }
+
+  private async commitCurrentRevisionSnapshot(
+    registration: PullRequestReviewRuntimeRegistration,
+    transaction: Readonly<ReviewStateTransactionLike>
+  ): Promise<void> {
+    if (this.registrations.get(registration.snapshot.contextId) !== registration) {
+      throw new RangeError("PR review mutation is stale for the current immutable registration.");
+    }
+    const captured = captureImmutableRevisionSnapshots({
+      contextState: materializeContextState(transaction.next.contextState),
+      globalState: materializeGlobalState(transaction.next.globalState),
+      revisionId: registration.snapshot.headSha,
+      updatedAt: transaction.next.contextState.updatedAt,
+    });
+    await this.options.repository.commit({ ...transaction, next: captured });
   }
 
   private async calculateProgress(

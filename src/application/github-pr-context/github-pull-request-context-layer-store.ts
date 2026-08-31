@@ -20,9 +20,14 @@ export interface PullRequestReviewContextVisibility extends PullRequestReviewCon
   readonly decorationEnabled?: boolean;
 }
 
+/** Describes whether a revision transition mapped, restored, or mixed snapshot layers. */
+export type PullRequestRevisionMappingDisposition = "mapped" | "restored" | "mixed";
+
 export interface PullRequestReviewStateCommit {
   readonly contextState: ReviewContextState;
   readonly globalState: RepositoryGlobalState;
+  /** Non-persisted mapping outcome used only for the post-commit history reason. */
+  readonly mappingDisposition?: PullRequestRevisionMappingDisposition;
 }
 
 export interface GitHubPullRequestContextRepositoryPort {
@@ -123,15 +128,25 @@ export class GitHubPullRequestContextStateService {
     const nextPullRequest = preserveVisibilityOverride(currentPullRequest, input.pullRequest);
     const revisionChanged = currentPullRequest.baseSha !== nextPullRequest.baseSha || currentPullRequest.headSha !== nextPullRequest.headSha;
     let next: PullRequestReviewStateCommit;
+    let mappingDisposition: PullRequestRevisionMappingDisposition = "mapped";
     if (revisionChanged) {
       const evidence = Object.freeze<PullRequestRevisionMappingEvidence>({ repositoryId: canonicalRepositoryId, contextId, sourceBaseSha: currentPullRequest.baseSha, sourceHeadSha: currentPullRequest.headSha, targetBaseSha: nextPullRequest.baseSha, targetHeadSha: nextPullRequest.headSha });
       next = await this.mapRevision({ current: cloneCommit(current), nextPullRequest: cloneValue(nextPullRequest), evidence });
       requireMappedCommit(next, current, nextPullRequest, evidence);
+      mappingDisposition = next.mappingDisposition ?? "mapped";
     } else {
       next = { contextState: { ...cloneValue(current.contextState), displayName: input.displayName ?? current.contextState.displayName, pullRequest: cloneValue(nextPullRequest), updatedAt: new Date().toISOString() }, globalState: cloneValue(current.globalState) };
     }
     await this.repository.commit({ repositoryId: canonicalRepositoryId, contextId, expected: cloneCommit(current), next: cloneCommit(next) });
-    if (revisionChanged) await this.historyRecorder?.recordRevisionMapping(cloneCommit(current), cloneCommit(next));
+    if (revisionChanged) await this.historyRecorder?.recordRevisionMapping(
+      cloneCommit(current),
+      cloneCommit(next),
+      mappingDisposition === "restored"
+        ? "exact-revision-snapshot-restored"
+        : mappingDisposition === "mixed"
+          ? "exact-revision-snapshot-mixed"
+          : "git-revision-mapped"
+    );
     return cloneCommit(next);
   }
 }

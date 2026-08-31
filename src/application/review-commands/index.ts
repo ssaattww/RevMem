@@ -13,3 +13,4 @@ export {
   type NormalEditorReviewStateSession,
   type ReviewWholeFileOperation
 } from "./normal-editor-review-command-service";
+export * from "./original-selection-review-plan";

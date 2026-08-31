@@ -360,6 +360,19 @@ test("Git provider records an unresolved mapping event after a conservative miss
     intervals: [{ startLine: 0, endLineExclusive: 1 }],
     occurredAt
   }));
+  const persistedInitial = await repository.load({
+    kind: "git",
+    repositoryId,
+    contextId: initial.contextState.contextId
+  });
+  assert.deepEqual(
+    persistedInitial?.contextState.revisionSnapshots?.[oldRevision]?.files,
+    persistedInitial?.contextState.files
+  );
+  assert.deepEqual(
+    persistedInitial?.globalState.revisionSnapshots?.[oldRevision]?.files,
+    persistedInitial?.globalState.files
+  );
   inspector.head = newRevision;
   source.objectsExist = false;
 

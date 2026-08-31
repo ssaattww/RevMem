@@ -16,7 +16,8 @@ export type DeepReadonly<T> = T extends readonly (infer Item)[]
 export type ReviewStateOperation =
   | "mark-ranges-reviewed" | "unmark-ranges-reviewed"
   | "mark-file-reviewed" | "unmark-file-reviewed"
-  | "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed";
+  | "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed"
+  | "mark-original-selection-reviewed" | "unmark-original-selection-reviewed";
 
 /** Immutable current-side file identity used to validate a state mutation. */
 export interface ReviewStateFileTarget {
@@ -58,6 +59,19 @@ export interface OriginalReviewRangeMutationInput extends ReviewStateMutationInp
   /** Original-side deletion intervals to mark or unmark. */
   readonly intervals: readonly DeepReadonly<LineInterval>[];
 }
+/** Input for one original-side selection that can affect mapped current and original-only ranges. */
+export interface OriginalSelectionReviewRangeMutationInput extends ReviewStateMutationInput {
+  /** Discriminates this as an original-side operation. */
+  readonly side: "original";
+  /** Canonical non-empty `${baseSha}..${headSha}` identity for the original ranges. */
+  readonly diffId: string;
+  /** Immutable original-side line-count bound. */
+  readonly originalLineCount: number;
+  /** Original intervals already proven to map to current modified lines. */
+  readonly modifiedIntervals: readonly DeepReadonly<LineInterval>[];
+  /** Original-only deletion or replacement intervals. */
+  readonly originalIntervals: readonly DeepReadonly<LineInterval>[];
+}
 /** Expected snapshot used by the atomic compare-and-swap boundary. */
 export interface ReviewStateTransactionExpectation {
   readonly contextState: DeepReadonly<ReviewContextState>;
@@ -87,8 +101,12 @@ export interface ModifiedReviewStateTransaction extends ReviewStateTransactionBa
 }
 /** Atomic transaction for one immutable original-side diff identity. */
 export interface OriginalReviewStateTransaction extends ReviewStateTransactionBase {
-  /** Operation that changes only original-side ranges. */
-  readonly operation: "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed";
+  /** Operation that changes original-side ranges, optionally with mapped current ranges. */
+  readonly operation:
+    | "mark-original-ranges-reviewed"
+    | "unmark-original-ranges-reviewed"
+    | "mark-original-selection-reviewed"
+    | "unmark-original-selection-reviewed";
   /** Discriminates the original-side transaction. */
   readonly side: "original";
   /** Canonical non-empty comparison identity required for the affected original ranges. */
@@ -242,6 +260,18 @@ function validateOriginalInput(input: OriginalReviewRangeMutationInput): LineInt
   assertLineCount(input.originalLineCount);
   return normalizeWithinFile(input.intervals, input.originalLineCount, "intervals");
 }
+function validateOriginalSelectionInput(input: OriginalSelectionReviewRangeMutationInput): {
+  readonly modifiedIntervals: LineInterval[];
+  readonly originalIntervals: LineInterval[];
+} {
+  validateMappedCurrentInput(input);
+  assertNonEmptyString(input.diffId, "diffId");
+  assertLineCount(input.originalLineCount);
+  return {
+    modifiedIntervals: normalizeWithinFile(input.modifiedIntervals, input.target.lineCount, "modifiedIntervals"),
+    originalIntervals: normalizeWithinFile(input.originalIntervals, input.originalLineCount, "originalIntervals")
+  };
+}
 function createOriginalTransaction(operation: OriginalReviewStateTransaction["operation"], input: OriginalReviewRangeMutationInput, reviewed: readonly LineInterval[]): OriginalReviewStateTransaction {
   const expectedContextState = cloneValue(input.contextState);
   const expectedGlobalState = cloneValue(input.globalState);
@@ -275,6 +305,90 @@ export function unmarkOriginalReviewedRanges(input: OriginalReviewRangeMutationI
   const removals = validateOriginalInput(input);
   const current = normalizeWithinFile(input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [], input.originalLineCount, "originalReviewedByDiff");
   return createOriginalTransaction("unmark-original-ranges-reviewed", input, subtractLineIntervals(current, removals));
+}
+function createOriginalSelectionTransaction(
+  operation: "mark-original-selection-reviewed" | "unmark-original-selection-reviewed",
+  input: OriginalSelectionReviewRangeMutationInput,
+  modifiedReviewed: readonly LineInterval[],
+  globalReviewed: readonly LineInterval[],
+  originalReviewed: readonly LineInterval[]
+): OriginalReviewStateTransaction {
+  const expectedContextState = cloneValue(input.contextState);
+  const expectedGlobalState = cloneValue(input.globalState);
+  const originalReviewedByDiff = normalizeOriginalReviewedByDiff(
+    input.contextState.files[input.target.fileId]?.originalReviewedByDiff
+  );
+  originalReviewedByDiff[input.diffId] = normalizeWithinFile(
+    originalReviewed,
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+  const nextInput: ReviewStateMutationInput = {
+    ...input,
+    contextState: cloneValue(input.contextState),
+    globalState: cloneValue(input.globalState),
+    target: cloneValue(input.target)
+  };
+  const contextFile = createContextFileState(nextInput, modifiedReviewed, originalReviewedByDiff);
+  const globalFile = createGlobalFileState(nextInput, globalReviewed);
+  return {
+    operation,
+    repositoryId: nextInput.contextState.repositoryId,
+    contextId: nextInput.contextState.contextId,
+    fileId: nextInput.target.fileId,
+    side: "original",
+    diffId: input.diffId,
+    expected: { contextState: expectedContextState, globalState: expectedGlobalState },
+    next: {
+      contextState: {
+        ...nextInput.contextState,
+        files: { ...nextInput.contextState.files, [nextInput.target.fileId]: contextFile },
+        updatedAt: nextInput.occurredAt
+      },
+      globalState: {
+        ...nextInput.globalState,
+        currentRevisionId: nextInput.target.revisionId,
+        files: { ...nextInput.globalState.files, [nextInput.target.fileId]: globalFile },
+        updatedAt: nextInput.occurredAt
+      }
+    }
+  };
+}
+/** Marks mapped current ranges and original-only ranges in one atomic transaction. */
+export function markOriginalSelectionReviewed(input: OriginalSelectionReviewRangeMutationInput): OriginalReviewStateTransaction {
+  const intervals = validateOriginalSelectionInput(input);
+  const currentModified = currentContextRanges(input);
+  const currentGlobal = currentGlobalRanges(input);
+  const currentOriginal = normalizeWithinFile(
+    input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [],
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+  return createOriginalSelectionTransaction(
+    "mark-original-selection-reviewed",
+    input,
+    [...currentModified, ...intervals.modifiedIntervals],
+    [...currentGlobal, ...intervals.modifiedIntervals],
+    [...currentOriginal, ...intervals.originalIntervals]
+  );
+}
+/** Removes mapped current ranges and original-only ranges in one atomic transaction. */
+export function unmarkOriginalSelectionReviewed(input: OriginalSelectionReviewRangeMutationInput): OriginalReviewStateTransaction {
+  const intervals = validateOriginalSelectionInput(input);
+  const currentModified = currentContextRanges(input);
+  const currentGlobal = currentGlobalRanges(input);
+  const currentOriginal = normalizeWithinFile(
+    input.contextState.files[input.target.fileId]?.originalReviewedByDiff[input.diffId] ?? [],
+    input.originalLineCount,
+    "originalReviewedByDiff"
+  );
+  return createOriginalSelectionTransaction(
+    "unmark-original-selection-reviewed",
+    input,
+    subtractLineIntervals(currentModified, intervals.modifiedIntervals),
+    subtractLineIntervals(currentGlobal, intervals.modifiedIntervals),
+    subtractLineIntervals(currentOriginal, intervals.originalIntervals)
+  );
 }
 /** Commits a complete atomic transaction through the caller-provided persistence boundary. */
 export async function commitReviewStateTransaction(transaction: Readonly<ReviewStateTransaction>, committer: ReviewStateTransactionCommitter): Promise<void> {

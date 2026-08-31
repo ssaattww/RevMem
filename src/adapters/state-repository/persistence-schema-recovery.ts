@@ -2,7 +2,15 @@ import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 
-import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState
+} from "../../core/contracts/index";
+import {
+  validateContextRevisionSnapshots,
+  validateGlobalRevisionSnapshots
+} from "../../core/review-state/index";
 import { NodeAtomicTextFileStore } from "./atomic-text-file-store";
 import type {
   AtomicTextFileStore,
@@ -482,6 +490,7 @@ const validateContextDocument = (
   }
   requireIsoTimestamp(value.createdAt, "contextState.createdAt");
   requireIsoTimestamp(value.updatedAt, "contextState.updatedAt");
+  validateContextRevisionSnapshots(value as unknown as ReviewContextState);
 };
 
 const validateGlobalDocument = (
@@ -519,6 +528,7 @@ const validateGlobalDocument = (
     requireIsoTimestamp(file.updatedAt, `globalState.files.${fileId}.updatedAt`);
   }
   requireIsoTimestamp(value.updatedAt, "globalState.updatedAt");
+  validateGlobalRevisionSnapshots(value as unknown as RepositoryGlobalState);
 };
 
 const validateWorkspaceDocument = (

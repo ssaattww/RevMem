@@ -183,12 +183,23 @@ test("R405-3 Review Contexts canonical original/modified commands persist mark a
   });
   const original = { uri: diff.original, side: "original" as const };
   const modified = { uri: diff.modified, side: "modified" as const };
+  const assertCurrentHeadSnapshots = () => {
+    assert.deepEqual(
+      repository.current.contextState.revisionSnapshots?.[B]?.files,
+      repository.current.contextState.files,
+    );
+    assert.deepEqual(
+      repository.current.globalState.revisionSnapshots?.[B]?.files,
+      repository.current.globalState.files,
+    );
+  };
 
   assert.equal(await commands.markSelectionReviewed(original), "applied");
   assert.deepEqual(
     repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff,
     { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
   );
+  assertCurrentHeadSnapshots();
 
   assert.equal(await commands.markSelectionReviewed(modified), "applied");
   assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, [
@@ -197,15 +208,65 @@ test("R405-3 Review Contexts canonical original/modified commands persist mark a
   assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, [
     { startLine: 0, endLineExclusive: 1 },
   ]);
+  assertCurrentHeadSnapshots();
 
   assert.equal(await commands.unmarkSelectionReviewed(original), "applied");
   assert.deepEqual(
     repository.current.contextState.files[FILE_ID]?.originalReviewedByDiff,
     { [`${A}..${B}`]: [] },
   );
+  assertCurrentHeadSnapshots();
   assert.equal(await commands.unmarkSelectionReviewed(modified), "applied");
   assert.deepEqual(repository.current.contextState.files[FILE_ID]?.modifiedReviewed, []);
   assert.deepEqual(repository.current.globalState.files[FILE_ID]?.reviewed, []);
+  assertCurrentHeadSnapshots();
+
+  assert.equal(await commands.markFileReviewed(modified), "applied");
+  assertCurrentHeadSnapshots();
+  assert.equal(await commands.unmarkFileReviewed(modified), "applied");
+  assertCurrentHeadSnapshots();
+});
+
+test("PR mutation no-op, cancellation, and failed commit publish neither snapshots nor history", async () => {
+  const repository = new MemoryRepository();
+  let historyCalls = 0;
+  let selections: readonly { readonly anchor: { readonly line: number; readonly character: number }; readonly active: { readonly line: number; readonly character: number } }[] = [];
+  const confirmed = false;
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => { historyCalls += 1; },
+    diffHost: { parseUri: (value) => value, openDiff: async (original, modified) => { opened.push({ original, modified }); } },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => ({ kind: "found", content: descriptor.revision === A ? "old" : "new" }),
+  });
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const commands = runtime.createCommandService<{ readonly uri: string; readonly side: "modified" }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => selections,
+    confirmWholeFileOperation: async () => confirmed,
+  });
+  const modified = { uri: opened[0]!.modified, side: "modified" as const };
+
+  assert.equal(await commands.markSelectionReviewed(modified), "no-op");
+  assert.equal(await commands.markFileReviewed(modified), "cancelled");
+  assert.equal(repository.current.contextState.revisionSnapshots, undefined);
+  assert.equal(repository.current.globalState.revisionSnapshots, undefined);
+
+  selections = [{ anchor: { line: 0, character: 0 }, active: { line: 0, character: 0 } }];
+  repository.commit = async () => { throw new Error("CAS rejected"); };
+  await assert.rejects(() => commands.markSelectionReviewed(modified), /CAS rejected/u);
+  assert.equal(repository.current.contextState.revisionSnapshots, undefined);
+  assert.equal(repository.current.globalState.revisionSnapshots, undefined);
+  assert.equal(historyCalls, 0);
 });
 
 test("R405-5 PR runtime exposes T304 progress for Review Contexts", async () => {

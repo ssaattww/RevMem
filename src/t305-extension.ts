@@ -664,11 +664,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       return result === UNMARK_FILE_CONFIRMATION;
     },
   });
+  const invokeValidatedPullRequestCommand = async (
+    operation: "markSelectionReviewed" | "unmarkSelectionReviewed" | "markFileReviewed" | "unmarkFileReviewed",
+    editor: vscode.TextEditor
+  ): Promise<unknown> => {
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (!(tab?.input instanceof vscode.TabInputTextDiff)) {
+      throw new Error("PR review command requires the active immutable diff tab.");
+    }
+    const original = tab.input.original.toString(true);
+    const modified = tab.input.modified.toString(true);
+    pullRequestReviewRuntime.validateDiffDocumentPair(original, modified);
+    const editorUri = editor.document.uri.toString(true);
+    if (editorUri !== original && editorUri !== modified) {
+      throw new Error("Active editor does not belong to the validated immutable PR diff tab.");
+    }
+    return pullRequestCommandService[operation](editor);
+  };
   context.subscriptions.push(runtimePort.registerReviewDiffRuntime({
     ownsDocumentUri: (uri) => pullRequestReviewRuntime.ownsDiffDocumentUri(uri),
     provideTextDocumentContent: (uri) =>
       pullRequestReviewRuntime.documentContentProvider.provideTextDocumentContent(uri),
-    invokeCommand: (operation, editor) => pullRequestCommandService[operation](editor),
+    invokeCommand: (operation, editor) => invokeValidatedPullRequestCommand(operation, editor),
   }));
 
   const currentContextRuntime = registerCurrentContextRuntime(

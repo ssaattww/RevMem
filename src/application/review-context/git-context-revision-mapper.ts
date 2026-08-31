@@ -2,8 +2,14 @@ import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type FileReviewState,
   type GlobalFileReviewState,
+  type RepositoryGlobalState,
   type ReviewContextState
 } from "../../core/contracts/index";
+import {
+  captureImmutableRevisionSnapshots,
+  restoreImmutableRevisionSnapshots,
+  type ImmutableRevisionSnapshotEvidence,
+} from "../../core/review-state/index";
 import {
   applyGitFileStateTransitions,
   mapReviewedIntervalsAcrossDiff,
@@ -253,11 +259,70 @@ export class GitContextRevisionMapper {
     const newRevision = input.current.revisionId;
     const oldContextRevision = contextRevision(input.contextState);
     const oldGlobalRevision = input.globalState.currentRevisionId;
+    const source = oldContextRevision === oldGlobalRevision
+      ? captureImmutableRevisionSnapshots({
+          contextState: input.contextState,
+          globalState: input.globalState,
+          revisionId: oldContextRevision,
+          updatedAt: input.contextState.updatedAt,
+        })
+      : {
+          contextState: clone(input.contextState),
+          globalState: clone(input.globalState),
+        };
+    const hasStoredTargetSnapshot = oldContextRevision !== newRevision && (
+      input.contextState.revisionSnapshots?.[newRevision] !== undefined ||
+      input.globalState.revisionSnapshots?.[newRevision] !== undefined
+    );
+    const targetEvidence = hasStoredTargetSnapshot
+      ? await this.targetSnapshotEvidence(
+          source.contextState,
+          source.globalState,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+        )
+      : undefined;
+    if (targetEvidence !== undefined) {
+      try {
+        const restored = restoreImmutableRevisionSnapshots({
+          contextState: source.contextState,
+          globalState: source.globalState,
+          evidence: targetEvidence,
+        });
+        if (restored.context.kind === "hit" && restored.global.kind === "hit") {
+          return {
+            ...captureImmutableRevisionSnapshots({
+              contextState: {
+                ...source.contextState,
+                displayName: input.current.contextState.displayName,
+                branch: clone(input.current.contextState.branch),
+                files: restored.context.files,
+                updatedAt: occurredAt,
+              },
+              globalState: {
+                ...source.globalState,
+                currentRevisionId: newRevision,
+                files: restored.global.files,
+                updatedAt: occurredAt,
+              },
+              revisionId: newRevision,
+              updatedAt: occurredAt,
+            }),
+            unresolvedFileIds: [],
+            unresolvedReasonsByFileId: {},
+          };
+        }
+      } catch {
+        // Invalid immutable target evidence cannot be adopted as reviewed state;
+        // the existing conservative mapper remains the fail-closed fallback.
+      }
+    }
     const oldObjectAvailable = FULL_OBJECT_ID_PATTERN.test(oldContextRevision) &&
       await this.options.source.objectExists(input.current.repositoryRoot, oldContextRevision);
 
     const contextMapping = await this.mapContextFiles(
-      input.contextState.files,
+      source.contextState.files,
       input.current.repositoryId,
       oldContextRevision,
       newRevision,
@@ -269,7 +334,7 @@ export class GitContextRevisionMapper {
       new Set(input.encodingChangedPaths ?? [])
     );
     const globalFiles = await this.mapGlobalFiles(
-      input.globalState.files,
+      source.globalState.files,
       input.current.repositoryId,
       oldGlobalRevision,
       newRevision,
@@ -283,25 +348,79 @@ export class GitContextRevisionMapper {
 
     const unresolvedFileIds = oldObjectAvailable
       ? contextMapping.unresolvedFileIds
-      : Object.keys(input.contextState.files).sort();
+      : Object.keys(source.contextState.files).sort();
     return {
+      ...captureImmutableRevisionSnapshots({
       contextState: {
-        ...clone(input.contextState),
+        ...clone(source.contextState),
         displayName: input.current.contextState.displayName,
         branch: clone(input.current.contextState.branch),
         files: contextMapping.files,
         updatedAt: occurredAt
       },
       globalState: {
-        ...clone(input.globalState),
+        ...clone(source.globalState),
         currentRevisionId: newRevision,
         files: globalFiles,
         updatedAt: occurredAt
       },
+      revisionId: newRevision,
+      updatedAt: occurredAt,
+      }),
       unresolvedFileIds,
       unresolvedReasonsByFileId: oldObjectAvailable
         ? contextMapping.unresolvedReasonsByFileId ?? {}
         : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
+    };
+  }
+
+  private async targetSnapshotEvidence(
+    contextState: ReviewContextState,
+    globalState: RepositoryGlobalState,
+    revisionId: string,
+    repositoryRoot: string,
+    semantics: FileSystemPathSemantics,
+  ): Promise<ImmutableRevisionSnapshotEvidence | undefined> {
+    const context = contextState.revisionSnapshots?.[revisionId];
+    const global = globalState.revisionSnapshots?.[revisionId];
+    if (context === undefined && global === undefined) return undefined;
+    const contents = new Map<string, string>();
+    const evidenceFor = async (file: { readonly currentPath: string; readonly fileId: string; readonly contentHash?: string; readonly lineCount?: number }) => {
+      let content = contents.get(file.currentPath);
+      if (content === undefined) {
+        const read = await this.options.source.readTextFileAtRevision(
+          repositoryRoot,
+          revisionId,
+          file.currentPath,
+          semantics,
+        );
+        if (read.kind !== "found") return undefined;
+        content = read.content;
+        contents.set(file.currentPath, content);
+      }
+      return {
+        fileId: file.fileId,
+        currentPath: file.currentPath,
+        ...(file.lineCount === undefined ? {} : { lineCount: lineCountOf(content) }),
+        ...(file.contentHash === undefined ? {} : { contentHash: this.digest(content) }),
+      };
+    };
+    const contextFiles: Record<string, ImmutableRevisionSnapshotEvidence["contextFiles"][string]> = {};
+    for (const [fileId, file] of Object.entries(context?.files ?? {})) {
+      const evidence = await evidenceFor(file);
+      if (evidence === undefined) return undefined;
+      contextFiles[fileId] = evidence;
+    }
+    const globalFiles: Record<string, ImmutableRevisionSnapshotEvidence["globalFiles"][string]> = {};
+    for (const [fileId, file] of Object.entries(global?.files ?? {})) {
+      const evidence = await evidenceFor(file);
+      if (evidence === undefined) return undefined;
+      globalFiles[fileId] = evidence;
+    }
+    return {
+      revisionId,
+      contextFiles,
+      globalFiles,
     };
   }
 
