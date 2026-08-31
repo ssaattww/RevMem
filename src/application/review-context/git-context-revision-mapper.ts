@@ -28,6 +28,11 @@ import type {
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
+type TargetSnapshotEvidenceResult =
+  | { readonly kind: "absent" }
+  | { readonly kind: "available"; readonly evidence: ImmutableRevisionSnapshotEvidence }
+  | { readonly kind: "unavailable" };
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const lineCountOf = (content: string): number =>
@@ -274,7 +279,7 @@ export class GitContextRevisionMapper {
       input.contextState.revisionSnapshots?.[newRevision] !== undefined ||
       input.globalState.revisionSnapshots?.[newRevision] !== undefined
     );
-    const targetEvidence = hasStoredTargetSnapshot
+    const targetSnapshotEvidence = hasStoredTargetSnapshot
       ? await this.targetSnapshotEvidence(
           source.contextState,
           source.globalState,
@@ -282,6 +287,12 @@ export class GitContextRevisionMapper {
           input.current.repositoryRoot,
           input.fileSystemPathSemantics,
         )
+      : { kind: "absent" } as const;
+    if (targetSnapshotEvidence.kind === "unavailable") {
+      throw new Error("Immutable target snapshot evidence is unavailable.");
+    }
+    const targetEvidence = targetSnapshotEvidence.kind === "available"
+      ? targetSnapshotEvidence.evidence
       : undefined;
     let restored: ReturnType<typeof restoreImmutableRevisionSnapshots> | undefined;
     if (targetEvidence !== undefined) {
@@ -387,10 +398,10 @@ export class GitContextRevisionMapper {
     revisionId: string,
     repositoryRoot: string,
     semantics: FileSystemPathSemantics,
-  ): Promise<ImmutableRevisionSnapshotEvidence | undefined> {
+  ): Promise<TargetSnapshotEvidenceResult> {
     const context = contextState.revisionSnapshots?.[revisionId];
     const global = globalState.revisionSnapshots?.[revisionId];
-    if (context === undefined && global === undefined) return undefined;
+    if (context === undefined && global === undefined) return { kind: "absent" };
     const contents = new Map<string, string>();
     const evidenceFor = async (file: { readonly currentPath: string; readonly fileId: string; readonly contentHash?: string }) => {
       let content = contents.get(file.currentPath);
@@ -415,19 +426,22 @@ export class GitContextRevisionMapper {
     const contextFiles: Record<string, ImmutableRevisionSnapshotEvidence["contextFiles"][string]> = {};
     for (const [fileId, file] of Object.entries(context?.files ?? {})) {
       const evidence = await evidenceFor(file);
-      if (evidence === undefined) return undefined;
+      if (evidence === undefined) return { kind: "unavailable" };
       contextFiles[fileId] = evidence;
     }
     const globalFiles: Record<string, ImmutableRevisionSnapshotEvidence["globalFiles"][string]> = {};
     for (const [fileId, file] of Object.entries(global?.files ?? {})) {
       const evidence = await evidenceFor(file);
-      if (evidence === undefined) return undefined;
+      if (evidence === undefined) return { kind: "unavailable" };
       globalFiles[fileId] = evidence;
     }
     return {
-      revisionId,
-      contextFiles,
-      globalFiles,
+      kind: "available",
+      evidence: {
+        revisionId,
+        contextFiles,
+        globalFiles,
+      },
     };
   }
 
