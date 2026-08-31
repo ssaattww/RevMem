@@ -285,39 +285,34 @@ export class GitContextRevisionMapper {
       : undefined;
     let restored: ReturnType<typeof restoreImmutableRevisionSnapshots> | undefined;
     if (targetEvidence !== undefined) {
-      try {
-        restored = restoreImmutableRevisionSnapshots({
-          contextState: source.contextState,
-          globalState: source.globalState,
-          evidence: targetEvidence,
-        });
-        if (restored.context.kind === "hit" && restored.global.kind === "hit") {
-          return {
-            ...captureImmutableRevisionSnapshots({
-              contextState: {
-                ...source.contextState,
-                displayName: input.current.contextState.displayName,
-                branch: clone(input.current.contextState.branch),
-                files: restored.context.files,
-                updatedAt: occurredAt,
-              },
-              globalState: {
-                ...source.globalState,
-                currentRevisionId: newRevision,
-                files: restored.global.files,
-                updatedAt: occurredAt,
-              },
-              revisionId: newRevision,
+      restored = restoreImmutableRevisionSnapshots({
+        contextState: source.contextState,
+        globalState: source.globalState,
+        evidence: targetEvidence,
+      });
+      if (restored.context.kind === "hit" && restored.global.kind === "hit") {
+        return {
+          ...captureImmutableRevisionSnapshots({
+            contextState: {
+              ...source.contextState,
+              displayName: input.current.contextState.displayName,
+              branch: clone(input.current.contextState.branch),
+              files: restored.context.files,
               updatedAt: occurredAt,
-            }),
-            unresolvedFileIds: [],
-            unresolvedReasonsByFileId: {},
-            mappingDisposition: "restored",
-          };
-        }
-      } catch {
-        // Invalid immutable target evidence cannot be adopted as reviewed state;
-        // the existing conservative mapper remains the fail-closed fallback.
+            },
+            globalState: {
+              ...source.globalState,
+              currentRevisionId: newRevision,
+              files: restored.global.files,
+              updatedAt: occurredAt,
+            },
+            revisionId: newRevision,
+            updatedAt: occurredAt,
+          }),
+          unresolvedFileIds: [],
+          unresolvedReasonsByFileId: {},
+          mappingDisposition: "restored",
+        };
       }
     }
     const oldObjectAvailable = FULL_OBJECT_ID_PATTERN.test(oldContextRevision) &&

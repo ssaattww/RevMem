@@ -40,7 +40,9 @@ Append-only review historyをsnapshot復元の入力としてreplayしない。�
 
 ### 2.4 Fail closed
 
-snapshotのschema、revision、file identity、path、line count、content hash、interval boundsのいずれかを検証できない場合、そのsnapshotを部分的に採用しない。不確実な範囲を確認済みにせず、通常のrevision mappingが安全に実行できる場合はmappingへ進み、mappingも成立しなければ未確認またはunresolvedとして扱う。
+snapshotが存在し、そのschema、revision、file identity、path、line count、content hash、interval boundsのいずれかを検証できない場合、そのsnapshotを部分的に採用せず、通常のrevision mappingや別snapshotへsilent fallbackせず遷移全体を拒否する。CAS、history、current state、target snapshotは公開しない。
+
+snapshotが単に存在しない場合だけ、通常のrevision mappingへ進む。mappingも成立しなければ未確認またはunresolvedとして扱う。
 
 ## 3. データモデル
 
@@ -110,6 +112,8 @@ revision mappingまたはexact snapshot復元を開始する前に、sourceの�
 ### 4.3 未知revisionへの遷移
 
 遷移先のContextまたはGlobal snapshotが存在しない場合、そのlayerは現在状態からtarget revisionへmappingする。
+
+存在するtarget snapshotが不正またはtarget immutable evidenceと不一致の場合はsnapshot missとして扱わず、Context/Global遷移全体を拒否する。
 
 - Context snapshotが存在しGlobal snapshotがない場合、Contextはexact snapshotを復元し、Globalだけmappingする。
 - Global snapshotが存在しContext snapshotがない場合、Globalはexact snapshotを復元し、Contextだけmappingする。

@@ -487,6 +487,72 @@ test("Git provider restores each mixed target snapshot layer in one CAS", async 
   }
 });
 
+/** A present target snapshot with mismatched immutable evidence rejects before any local-Git state publication. */
+test("Git provider rejects an invalid present target snapshot without fallback CAS or history", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt
+  }));
+  const target = { kind: "git" as const, repositoryId, contextId: initial.contextState.contextId };
+  const persisted = await repository.load(target);
+  assert.ok(persisted);
+  const withTargetSnapshot = withOneTargetSnapshotLayer(
+    persisted,
+    initial.target.fileId,
+    "context",
+    stableHash,
+  );
+  const corrupted = {
+    ...withTargetSnapshot,
+    contextState: {
+      ...withTargetSnapshot.contextState,
+      revisionSnapshots: {
+        ...withTargetSnapshot.contextState.revisionSnapshots,
+        [newRevision]: {
+          ...withTargetSnapshot.contextState.revisionSnapshots![newRevision]!,
+          files: {
+            [initial.target.fileId]: {
+              ...withTargetSnapshot.contextState.revisionSnapshots![newRevision]!.files[initial.target.fileId]!,
+              contentHash: "mismatched-immutable-content",
+            },
+          },
+        },
+      },
+    },
+  };
+  await repository.save(target, corrupted);
+  const before = await repository.load(target);
+  const commitCallsBefore = repository.commitCalls;
+  events.length = 0;
+  inspector.head = newRevision;
+
+  await assert.rejects(
+    () => provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))),
+    /snapshot|immutable evidence|content hash/i,
+  );
+  assert.equal(repository.commitCalls, commitCallsBefore);
+  assert.deepEqual(await repository.load(target), before);
+  assert.deepEqual(events, []);
+  provider.dispose();
+});
+
 /** A stale CAS rejects a local-Git revision transition before state or history becomes observable. */
 test("Git provider does not publish mixed snapshot state or history after a CAS conflict", async () => {
   const stableHash = new NodeSha256StableHash();
