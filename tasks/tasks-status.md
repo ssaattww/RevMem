@@ -8,8 +8,8 @@
 - GitHub Issue: #92（PR #94のCI修復と独立レビュー）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #92保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #92 / PR #94 `PR94-IFR-002` High。same-HEAD/base-onlyで過去original pairを保持する
-- 次のタスク: `PR94-IFR-003` Mediumを修正し、Sol/high通常fix verification後に同じ独立reviewerの限定closureへ進む
+- 現在のタスク: Issue #92 / PR #94 `PR94-IFR-003` Medium。invalid snapshotのfail-closed契約をdesign・production・fixtureで統一する
+- 次のタスク: Sol/high通常fix verification後に同じ独立reviewerのfinding/CI-delta限定closureへ進む
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。PR #94 HEAD `fb495665e209d48e586db05bf7948c3eb1c9f5ec`のrequired CI `33438752543`は全required test、Extension Host、artifact生成を含めGreen
@@ -31,8 +31,8 @@
 | PR94-NR-003 | 完了 | 0.5h以内 | ReviewStateTransactionのmodified/original operation discriminated unionを型安全にする | PR94-CI-002 | normal fix verification R2でclosed。negative contract、compile、focused Green |
 | PR94-NR-004 | 完了 | 0.5h以内 | Issue #92 context-menu testをrequired test:unitへ配線しCI contractで固定する | PR94-CI-001 | normal fix verification R2でclosed。required test:unit wiring、CI contract Green |
 | PR94-IFR-001 | fix実装済み / normal verification待ち / High | 0.5h以内 | PR command targetへauthoritative contentHashを保持し、Context/Global一致をfail closedで検証してsnapshotへwrite-throughする | PR94-CI-005 | runtime/snapshot 17/17、T405 58/58、build/lint/diff Green |
-| PR94-IFR-002 | 修正中 / High | 0.5h以内 | same-HEAD/base-onlyで過去original pairを保持し、新pairを未確認から開始する | PR94-IFR-001 | base A→B→A actual composition、current pair表示、過去pair復元、focused Green |
-| PR94-IFR-003 | 修正待ち / Medium | 0.5h以内 | invalid snapshotのauthoritative fail-closed契約を両design・production・actual local-Git fixtureで統一する | PR94-IFR-002 | target mismatchでtransition reject、CAS/history非公開、両design整合、focused Green |
+| PR94-IFR-002 | fix実装済み / normal verification待ち / High | 0.5h以内 | same-HEAD/base-onlyで過去original pairを保持し、新pairを未確認から開始する | PR94-IFR-001 | snapshot/store 15/15、T404 20/20、T405 58/58、build/lint/diff Green |
+| PR94-IFR-003 | 修正中 / Medium | 0.5h以内 | invalid snapshotのauthoritative fail-closed契約を両design・production・actual local-Git fixtureで統一する | PR94-IFR-002 | target mismatchでtransition reject、CAS/history非公開、両design整合、focused Green |
 | PR94-IFR-004 | 完了 / Low | 0.5h以内 | NR003/004 closureとdesign rev9をtrackingへ同期する | 独立review `afa7ccf...` | tasks/phasesのrev9、NR003/004 closedを同期 |
 
 ## Issue #90 / PR #91 normal-review follow-up

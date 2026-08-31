@@ -172,8 +172,8 @@ test("mixed snapshot mapping commits once and records a distinct history disposi
   assert.deepEqual(reasons, ["exact-revision-snapshot-mixed"]);
 });
 
-/** A base-only full snapshot restore must not retain original ranges tied to the old comparison base. */
-test("base-only full snapshot restore clears old-base original ranges before restored history", async () => {
+/** Base-only transitions retain prior comparison pairs while the current pair remains independently unreviewed. */
+test("base-only A-to-C-to-A restore retains A pair and leaves C pair unreviewed", async () => {
   const repository = new InMemoryRepository();
   const sourceContext = context({
     files: {
@@ -212,17 +212,33 @@ test("base-only full snapshot restore clears old-base original ranges before res
     },
   );
 
-  const result = await sut.update({
+  const advanced = await sut.update({
     repositoryId: REPOSITORY_ID,
     identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 },
     pullRequest: pullRequest({ baseSha: SHA_C }),
   });
 
-  assert.deepEqual(result.contextState.files.file?.modifiedReviewed, [{ startLine: 1, endLineExclusive: 3 }]);
-  assert.deepEqual(result.contextState.files.file?.originalReviewedByDiff, {});
-  assert.deepEqual(result.globalState.files, {});
-  assert.equal(repository.commits, 1);
-  assert.deepEqual(reasons, ["exact-revision-snapshot-restored"]);
+  assert.deepEqual(advanced.contextState.files.file?.modifiedReviewed, [{ startLine: 1, endLineExclusive: 3 }]);
+  assert.deepEqual(
+    advanced.contextState.files.file?.originalReviewedByDiff[`${SHA_A}..${SHA_B}`],
+    [{ startLine: 4, endLineExclusive: 5 }],
+  );
+  assert.equal(advanced.contextState.files.file?.originalReviewedByDiff[`${SHA_C}..${SHA_B}`], undefined);
+  assert.deepEqual(advanced.globalState.files, {});
+
+  const restored = await sut.update({
+    repositoryId: REPOSITORY_ID,
+    identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 },
+    pullRequest: pullRequest({ baseSha: SHA_A }),
+  });
+
+  assert.deepEqual(
+    restored.contextState.files.file?.originalReviewedByDiff[`${SHA_A}..${SHA_B}`],
+    [{ startLine: 4, endLineExclusive: 5 }],
+  );
+  assert.equal(restored.contextState.files.file?.originalReviewedByDiff[`${SHA_C}..${SHA_B}`], undefined);
+  assert.equal(repository.commits, 2);
+  assert.deepEqual(reasons, ["exact-revision-snapshot-restored", "exact-revision-snapshot-restored"]);
 });
 
 test("旧revision Globalを返すmapperはfail closedにする", async () => {

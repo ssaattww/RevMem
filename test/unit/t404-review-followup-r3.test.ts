@@ -41,13 +41,14 @@ test("T202/T401 and T404 share one hosted repository canonicalizer", () => { con
 
 test("immutable diff/content mapper invalidates changed reviewed lines instead of only advancing revision", async () => { const mapper = createImmutablePullRequestRevisionMapper(async (evidence) => ({ sourceBaseSha: evidence.sourceBaseSha, sourceHeadSha: evidence.sourceHeadSha, targetBaseSha: evidence.targetBaseSha, targetHeadSha: evidence.targetHeadSha, diff: ["diff --git a/src/example.ts b/src/example.ts", "--- a/src/example.ts", "+++ b/src/example.ts", "@@ -2 +2 @@", "-old", "+changed", ""].join("\n"), oldTexts: { "src/example.ts": "one\nold\nthree" }, newFiles: { "src/example.ts": { fileId: "file", lineCount: 3, newText: "one\nchanged\nthree" } } })); const mapped = await mapper({ current: { contextState: context(), globalState: globalState() }, nextPullRequest: pr({ headSha: C }), evidence: Object.freeze({ repositoryId: REPOSITORY_ID, contextId: createGitHubPullRequestContextIdFromRepositoryId(REPOSITORY_ID, 48), sourceBaseSha: A, sourceHeadSha: B, targetBaseSha: A, targetHeadSha: C }) }); assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]); assert.deepEqual(mapped.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]); assert.equal(mapped.contextState.files.file?.revisionId, C); assert.equal(mapped.globalState.files.file?.revisionId, C); });
 
-test("base-only PR transitions retain modified ranges and invalidate base-dependent original ranges", async () => {
+test("base-only PR transitions retain prior original pairs while the new current pair is unreviewed", async () => {
   const mapper = createImmutablePullRequestRevisionMapper(async (evidence) => ({ sourceBaseSha: evidence.sourceBaseSha, sourceHeadSha: evidence.sourceHeadSha, targetBaseSha: evidence.targetBaseSha, targetHeadSha: evidence.targetHeadSha, diff: "", oldTexts: {}, newFiles: {}, updatedAt: "2026-08-08T00:00:00.000Z" }));
   const current = context(48, { files: { file: { ...context().files.file!, originalReviewedByDiff: { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 2 }] } } } });
   const mapped = await mapper({ current: { contextState: current, globalState: globalState() }, nextPullRequest: pr({ baseSha: C }), evidence: Object.freeze({ repositoryId: REPOSITORY_ID, contextId: current.contextId, sourceBaseSha: A, sourceHeadSha: B, targetBaseSha: C, targetHeadSha: B }) });
   assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
   assert.deepEqual(mapped.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
-  assert.deepEqual(mapped.contextState.files.file?.originalReviewedByDiff, {});
+  assert.deepEqual(mapped.contextState.files.file?.originalReviewedByDiff[`${A}..${B}`], [{ startLine: 0, endLineExclusive: 2 }]);
+  assert.equal(mapped.contextState.files.file?.originalReviewedByDiff[`${C}..${B}`], undefined);
   assert.equal(mapped.contextState.pullRequest?.baseSha, C);
 });
 

@@ -222,9 +222,10 @@ test("exact PR Context and Global hits validate once but restore saved A instead
   assert.equal(loaderCalls, 1);
   assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
   assert.deepEqual(mapped.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+  assert.deepEqual(mapped.contextState.files.file?.originalReviewedByDiff[PAIR], [{ startLine: 1, endLineExclusive: 2 }]);
 });
 
-test("maps only the missed immutable layer after one authoritative evidence load", async () => {
+test("exact/mixed/miss immutable mapping retains historic original pairs after one authoritative evidence load", async () => {
   const atRevision = (revisionId: string, reviewed: readonly { startLine: number; endLineExclusive: number }[]) => {
     const context = contextState();
     const global = globalState();
@@ -244,7 +245,8 @@ test("maps only the missed immutable layer after one authoritative evidence load
         globalState: { ...c.globalState, revisionSnapshots: { ...c.globalState.revisionSnapshots } }
       },
       contextReviewed: [{ startLine: 0, endLineExclusive: 3 }],
-      globalReviewed: []
+      globalReviewed: [],
+      mappingDisposition: "mixed",
     },
     {
       name: "Context miss and Global hit",
@@ -253,7 +255,18 @@ test("maps only the missed immutable layer after one authoritative evidence load
         globalState: { ...c.globalState, revisionSnapshots: { ...a.globalState.revisionSnapshots, ...c.globalState.revisionSnapshots } }
       },
       contextReviewed: [],
-      globalReviewed: [{ startLine: 0, endLineExclusive: 3 }]
+      globalReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+      mappingDisposition: "mixed",
+    },
+    {
+      name: "Context and Global miss",
+      current: {
+        contextState: { ...c.contextState, revisionSnapshots: { ...c.contextState.revisionSnapshots } },
+        globalState: { ...c.globalState, revisionSnapshots: { ...c.globalState.revisionSnapshots } },
+      },
+      contextReviewed: [],
+      globalReviewed: [],
+      mappingDisposition: "mapped",
     }
   ] as const;
 
@@ -285,9 +298,10 @@ test("maps only the missed immutable layer after one authoritative evidence load
     });
 
     assert.equal(loaderCalls, 1, scenario.name);
-    assert.equal(mapped.mappingDisposition, "mixed", scenario.name);
+    assert.equal(mapped.mappingDisposition, scenario.mappingDisposition, scenario.name);
     assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, scenario.contextReviewed, scenario.name);
     assert.deepEqual(mapped.globalState.files.file?.reviewed, scenario.globalReviewed, scenario.name);
+    assert.deepEqual(mapped.contextState.files.file?.originalReviewedByDiff[PAIR], [{ startLine: 1, endLineExclusive: 2 }], scenario.name);
     assert.ok(mapped.contextState.revisionSnapshots?.[A], scenario.name);
     assert.ok(mapped.globalState.revisionSnapshots?.[A], scenario.name);
   }
