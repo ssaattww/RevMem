@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -8,6 +9,7 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
+import { restoreImmutableRevisionSnapshots } from "../../src/core/review-state/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
 import {
   PullRequestReviewRuntime,
@@ -20,6 +22,7 @@ const C = "c".repeat(40);
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 const FILE_ID = "file-1";
+const contentHash = (content: string): string => createHash("sha256").update(content, "utf8").digest("hex");
 
 const contextState = (): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -46,6 +49,7 @@ const contextState = (): ReviewContextState => ({
       revisionId: B,
       modifiedReviewed: [],
       originalReviewedByDiff: {},
+      contentHash: contentHash("new"),
       lineCount: 1,
       updatedAt: "2026-08-16T00:00:00.000Z",
     },
@@ -58,7 +62,16 @@ const globalState = (): RepositoryGlobalState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   repositoryId: REPOSITORY_ID,
   currentRevisionId: B,
-  files: {},
+  files: {
+    [FILE_ID]: {
+      fileId: FILE_ID,
+      currentPath: "src/example.ts",
+      revisionId: B,
+      reviewed: [],
+      contentHash: contentHash("new"),
+      updatedAt: "2026-08-16T00:00:00.000Z",
+    },
+  },
   updatedAt: "2026-08-16T00:00:00.000Z",
 });
 
@@ -192,6 +205,8 @@ test("R405-3 Review Contexts canonical original/modified commands persist mark a
       repository.current.globalState.revisionSnapshots?.[B]?.files,
       repository.current.globalState.files,
     );
+    assert.equal(repository.current.contextState.files[FILE_ID]?.contentHash, contentHash("new"));
+    assert.equal(repository.current.globalState.files[FILE_ID]?.contentHash, contentHash("new"));
   };
 
   assert.equal(await commands.markSelectionReviewed(original), "applied");
@@ -225,6 +240,81 @@ test("R405-3 Review Contexts canonical original/modified commands persist mark a
   assertCurrentHeadSnapshots();
   assert.equal(await commands.unmarkFileReviewed(modified), "applied");
   assertCurrentHeadSnapshots();
+
+  const restored = restoreImmutableRevisionSnapshots({
+    contextState: repository.current.contextState,
+    globalState: repository.current.globalState,
+    evidence: {
+      revisionId: B,
+      contextFiles: {
+        [FILE_ID]: {
+          fileId: FILE_ID,
+          currentPath: "src/example.ts",
+          lineCount: 1,
+          contentHash: contentHash("new"),
+        },
+      },
+      globalFiles: {
+        [FILE_ID]: {
+          fileId: FILE_ID,
+          currentPath: "src/example.ts",
+          lineCount: 1,
+          contentHash: contentHash("new"),
+        },
+      },
+    },
+  });
+  assert.equal(restored.context.kind, "hit");
+  assert.equal(restored.global.kind, "hit");
+});
+
+test("PR runtime command fails closed before commit when persisted hashes do not match authoritative HEAD content", async () => {
+  const repository = new MemoryRepository();
+  repository.current.contextState.files[FILE_ID] = {
+    ...repository.current.contextState.files[FILE_ID]!,
+    contentHash: "stale-context-hash",
+  };
+  repository.current.globalState.files[FILE_ID] = {
+    ...repository.current.globalState.files[FILE_ID]!,
+    contentHash: "stale-global-hash",
+  };
+  let historyCalls = 0;
+  const opened: Array<{ original: string; modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => { historyCalls += 1; },
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified) => { opened.push({ original, modified }); },
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.revision === A ? "old" : "new",
+    }),
+  });
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const commands = runtime.createCommandService<{ readonly uri: string; readonly side: "modified" }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => [{ anchor: { line: 0, character: 0 }, active: { line: 0, character: 0 } }],
+    confirmWholeFileOperation: async () => true,
+  });
+
+  await assert.rejects(
+    () => commands.markSelectionReviewed({ uri: opened[0]!.modified, side: "modified" }),
+    /content hash/i,
+  );
+  assert.equal(repository.current.contextState.revisionSnapshots, undefined);
+  assert.equal(repository.current.globalState.revisionSnapshots, undefined);
+  assert.equal(historyCalls, 0);
 });
 
 test("PR mutation no-op, cancellation, and failed commit publish neither snapshots nor history", async () => {
@@ -518,14 +608,28 @@ test("PR Progress original-side selection projects unchanged lines and retains o
     }]
   };
   const repository = new MemoryRepository();
+  const projectionModifiedText = Array.from(
+    { length: 11 },
+    (_, index) => `modified-${String(index + 1)}`
+  ).join("\n");
   repository.current.contextState = {
     ...repository.current.contextState,
     files: {
       [FILE_ID]: {
         ...repository.current.contextState.files[FILE_ID]!,
-        lineCount: 11
+        lineCount: 11,
+        contentHash: contentHash(projectionModifiedText),
       }
     }
+  };
+  repository.current.globalState = {
+    ...repository.current.globalState,
+    files: {
+      [FILE_ID]: {
+        ...repository.current.globalState.files[FILE_ID]!,
+        contentHash: contentHash(projectionModifiedText),
+      },
+    },
   };
   const commits: unknown[] = [];
   const originalCommit = repository.commit.bind(repository);
@@ -552,10 +656,9 @@ test("PR Progress original-side selection projects unchanged lines and retains o
     snapshot: projectionSnapshot,
     readTextContent: async (descriptor) => ({
       kind: "found",
-      content: Array.from(
-        { length: descriptor.side === "original" ? 10 : 11 },
-        (_, index) => `${descriptor.side}-${String(index + 1)}`
-      ).join("\n")
+      content: descriptor.side === "original"
+        ? Array.from({ length: 10 }, (_, index) => `original-${String(index + 1)}`).join("\n")
+        : projectionModifiedText
     })
   });
   await runtime.openReviewDiff(CONTEXT_ID, FILE_ID, "src/example.ts");

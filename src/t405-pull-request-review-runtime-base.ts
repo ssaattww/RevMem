@@ -18,6 +18,8 @@ import {
   type PullRequestGlobalHeadFile,
 } from "./application/global-understanding/pull-request-global-head-file-registry";
 import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
+import { createHash } from "node:crypto";
+
 import {
   DiffEditorReviewCommandService,
   deriveOriginalToModifiedLineMappings,
@@ -709,18 +711,21 @@ export class PullRequestReviewRuntime<Uri> {
     const targetPath = persistedFile?.currentPath ??
       persistedGlobalFile?.currentPath ??
       logicalPath;
-    const modifiedLineCount = diffFile.newPath === undefined
+    const modifiedContent = diffFile.newPath === undefined
+      ? undefined
+      : await this.revisionTextContentProvider.provideTextDocumentContent(
+          this.codec.encode({
+            contextId: registration.snapshot.contextId,
+            filePath: diffFile.newPath,
+            fileSystemPathSemantics: registration.fileSystemPathSemantics,
+            side: "modified",
+            revisionSource: "git-commit",
+            revision: registration.snapshot.headSha,
+          })
+        );
+    const modifiedLineCount = modifiedContent === undefined
       ? 0
-      : persistedFile?.revisionId === registration.snapshot.headSha &&
-          this.canonicalRepositoryPath(registration, persistedFile.currentPath) ===
-            this.canonicalRepositoryPath(registration, diffFile.newPath)
-        ? persistedFile.lineCount
-        : await this.lineCount(
-            registration.snapshot.contextId,
-            diffFile.newPath,
-            registration.snapshot.headSha,
-            "modified"
-          );
+      : modifiedContent.split(/\r\n|\r|\n/u).length;
     const originalLineCount = diffFile.oldPath === undefined
       ? 0
       : await this.lineCount(
@@ -742,6 +747,9 @@ export class PullRequestReviewRuntime<Uri> {
         currentPath: targetPath,
         revisionId: registration.snapshot.headSha,
         lineCount: modifiedLineCount,
+        ...(modifiedContent === undefined
+          ? {}
+          : { contentHash: createHash("sha256").update(modifiedContent, "utf8").digest("hex") }),
       },
       diffId: registration.snapshot.originalDiffId,
       originalLineCount,
