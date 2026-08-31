@@ -10,6 +10,8 @@ import {
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
+  type RepositoryGlobalRevisionSnapshot,
+  type ReviewContextRevisionSnapshot,
   type ReviewContextState
 } from "../../src/core/contracts/index";
 
@@ -20,11 +22,18 @@ const occurredAt = "2026-08-01T06:15:00.000Z";
 const stableHash = new NodeSha256StableHash();
 
 class BinaryAwareRevisionSource implements GitRevisionMappingSource {
+  public diffCalls = 0;
+  public rejectSecondDiff = false;
+
   public async objectExists(): Promise<boolean> {
     return true;
   }
 
   public async diffRevisions(): Promise<string> {
+    this.diffCalls += 1;
+    if (this.rejectSecondDiff && this.diffCalls > 1) {
+      throw new Error("The hit layer must not invoke diff mapping.");
+    }
     return [
       "diff --git a/src/example.ts b/src/example.ts",
       "index 1111111..2222222 100644",
@@ -124,8 +133,9 @@ test("revision mapping ignores binary diff sections and maps text state", async 
     },
     updatedAt: occurredAt
   };
+  const source = new BinaryAwareRevisionSource();
   const mapper = new GitContextRevisionMapper({
-    source: new BinaryAwareRevisionSource(),
+    source,
     stableHash,
     now: () => new Date(occurredAt)
   });
@@ -157,6 +167,87 @@ test("revision mapping ignores binary diff sections and maps text state", async 
       { startLine: 2, endLineExclusive: 3 }
     ]
   );
+
+  const restoredContextFile = {
+    ...contextState.files[fileId]!,
+    revisionId: newRevision,
+    modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+    contentHash: stableHash.digest("alpha\nBETA\ngamma")
+  };
+  const restoredGlobalFile = {
+    ...globalState.files[fileId]!,
+    revisionId: newRevision,
+    reviewed: [{ startLine: 0, endLineExclusive: 3 }],
+    contentHash: stableHash.digest("alpha\nBETA\ngamma")
+  };
+  const exact = await mapper.map({
+    current,
+    contextState: {
+      ...contextState,
+      revisionSnapshots: {
+        [newRevision]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          revisionId: newRevision,
+          files: { [fileId]: restoredContextFile },
+          updatedAt: occurredAt
+        }
+      }
+    },
+    globalState: {
+      ...globalState,
+      revisionSnapshots: {
+        [newRevision]: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          revisionId: newRevision,
+          files: { [fileId]: restoredGlobalFile },
+          updatedAt: occurredAt
+        }
+      }
+    },
+    fileSystemPathSemantics: "posix",
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+  });
+  assert.deepEqual(exact.contextState.files[fileId]?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+  assert.deepEqual(exact.globalState.files[fileId]?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+
+  const contextTargetSnapshots: Record<string, ReviewContextRevisionSnapshot> = {
+    [newRevision]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, revisionId: newRevision, files: { [fileId]: restoredContextFile }, updatedAt: occurredAt }
+  };
+  const globalTargetSnapshots: Record<string, RepositoryGlobalRevisionSnapshot> = {
+    [newRevision]: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, revisionId: newRevision, files: { [fileId]: restoredGlobalFile }, updatedAt: occurredAt }
+  };
+  for (const scenario of [
+    {
+      name: "Context hit and Global miss",
+      contextSnapshots: contextTargetSnapshots,
+      globalSnapshots: {} as Record<string, RepositoryGlobalRevisionSnapshot>,
+      contextReviewed: [{ startLine: 0, endLineExclusive: 3 }],
+      globalReviewed: [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]
+    },
+    {
+      name: "Context miss and Global hit",
+      contextSnapshots: {} as Record<string, ReviewContextRevisionSnapshot>,
+      globalSnapshots: globalTargetSnapshots,
+      contextReviewed: [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }],
+      globalReviewed: [{ startLine: 0, endLineExclusive: 3 }]
+    }
+  ] as const) {
+    source.diffCalls = 0;
+    source.rejectSecondDiff = true;
+    const mixed = await mapper.map({
+      current,
+      contextState: { ...contextState, revisionSnapshots: scenario.contextSnapshots },
+      globalState: { ...globalState, revisionSnapshots: scenario.globalSnapshots },
+      fileSystemPathSemantics: "posix",
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
+    });
+    assert.equal(source.diffCalls, 1, scenario.name);
+    assert.equal(mixed.mappingDisposition, "mixed", scenario.name);
+    assert.deepEqual(mixed.contextState.files[fileId]?.modifiedReviewed, scenario.contextReviewed, scenario.name);
+    assert.deepEqual(mixed.globalState.files[fileId]?.reviewed, scenario.globalReviewed, scenario.name);
+    assert.deepEqual(mixed.contextState.revisionSnapshots?.[newRevision]?.files, mixed.contextState.files, scenario.name);
+    assert.deepEqual(mixed.globalState.revisionSnapshots?.[newRevision]?.files, mixed.globalState.files, scenario.name);
+  }
 });
 
 class ExistingBinaryRevisionSource implements GitRevisionMappingSource {

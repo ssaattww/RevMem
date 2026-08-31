@@ -122,6 +122,29 @@ export class PullRequestRevisionEvidenceLoader {
       throw new Error(`Destination content is unavailable for ${file.newPath}`);
     }
 
+    // A target snapshot can retain a Global-only file which is unchanged by
+    // this transition and therefore absent from the diff. Its exact restore
+    // still requires independent immutable target evidence.
+    for (const file of Object.values(
+      current.globalState.revisionSnapshots?.[evidence.targetHeadSha]?.files ?? {}
+    )) {
+      if (newFiles[file.currentPath] !== undefined) continue;
+      const targetText = await this.dependencies.readText(
+        evidence.targetHeadSha,
+        file.currentPath
+      );
+      if (targetText.kind !== "found") {
+        throw new Error(`Target snapshot text is unavailable for ${file.currentPath}`);
+      }
+      newFiles[file.currentPath] = {
+        fileId: trackedByPath.get(file.currentPath) ??
+          this.dependencies.createFileId(evidence.repositoryId, file.currentPath),
+        lineCount: lineCount(targetText.content),
+        contentHash: this.dependencies.hashText(targetText.content),
+        newText: targetText.content,
+      };
+    }
+
     return {
       ...evidence,
       diff,

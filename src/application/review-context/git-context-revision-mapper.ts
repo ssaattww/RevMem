@@ -2,8 +2,14 @@ import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type FileReviewState,
   type GlobalFileReviewState,
+  type RepositoryGlobalState,
   type ReviewContextState
 } from "../../core/contracts/index";
+import {
+  captureImmutableRevisionSnapshots,
+  restoreImmutableRevisionSnapshots,
+  type ImmutableRevisionSnapshotEvidence,
+} from "../../core/review-state/index";
 import {
   applyGitFileStateTransitions,
   mapReviewedIntervalsAcrossDiff,
@@ -21,6 +27,11 @@ import type {
 
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+
+type TargetSnapshotEvidenceResult =
+  | { readonly kind: "absent" }
+  | { readonly kind: "available"; readonly evidence: ImmutableRevisionSnapshotEvidence }
+  | { readonly kind: "unavailable" };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -253,55 +264,184 @@ export class GitContextRevisionMapper {
     const newRevision = input.current.revisionId;
     const oldContextRevision = contextRevision(input.contextState);
     const oldGlobalRevision = input.globalState.currentRevisionId;
+    const source = oldContextRevision === oldGlobalRevision
+      ? captureImmutableRevisionSnapshots({
+          contextState: input.contextState,
+          globalState: input.globalState,
+          revisionId: oldContextRevision,
+          updatedAt: input.contextState.updatedAt,
+        })
+      : {
+          contextState: clone(input.contextState),
+          globalState: clone(input.globalState),
+        };
+    const hasStoredTargetSnapshot = oldContextRevision !== newRevision && (
+      input.contextState.revisionSnapshots?.[newRevision] !== undefined ||
+      input.globalState.revisionSnapshots?.[newRevision] !== undefined
+    );
+    const targetSnapshotEvidence = hasStoredTargetSnapshot
+      ? await this.targetSnapshotEvidence(
+          source.contextState,
+          source.globalState,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+        )
+      : { kind: "absent" } as const;
+    if (targetSnapshotEvidence.kind === "unavailable") {
+      throw new Error("Immutable target snapshot evidence is unavailable.");
+    }
+    const targetEvidence = targetSnapshotEvidence.kind === "available"
+      ? targetSnapshotEvidence.evidence
+      : undefined;
+    let restored: ReturnType<typeof restoreImmutableRevisionSnapshots> | undefined;
+    if (targetEvidence !== undefined) {
+      restored = restoreImmutableRevisionSnapshots({
+        contextState: source.contextState,
+        globalState: source.globalState,
+        evidence: targetEvidence,
+      });
+      if (restored.context.kind === "hit" && restored.global.kind === "hit") {
+        return {
+          ...captureImmutableRevisionSnapshots({
+            contextState: {
+              ...source.contextState,
+              displayName: input.current.contextState.displayName,
+              branch: clone(input.current.contextState.branch),
+              files: restored.context.files,
+              updatedAt: occurredAt,
+            },
+            globalState: {
+              ...source.globalState,
+              currentRevisionId: newRevision,
+              files: restored.global.files,
+              updatedAt: occurredAt,
+            },
+            revisionId: newRevision,
+            updatedAt: occurredAt,
+          }),
+          unresolvedFileIds: [],
+          unresolvedReasonsByFileId: {},
+          mappingDisposition: "restored",
+        };
+      }
+    }
     const oldObjectAvailable = FULL_OBJECT_ID_PATTERN.test(oldContextRevision) &&
       await this.options.source.objectExists(input.current.repositoryRoot, oldContextRevision);
 
-    const contextMapping = await this.mapContextFiles(
-      input.contextState.files,
-      input.current.repositoryId,
-      oldContextRevision,
-      newRevision,
-      input.current.repositoryRoot,
-      input.fileSystemPathSemantics,
-      input.options,
-      occurredAt,
-      input.encodingHintsByPath,
-      new Set(input.encodingChangedPaths ?? [])
-    );
-    const globalFiles = await this.mapGlobalFiles(
-      input.globalState.files,
-      input.current.repositoryId,
-      oldGlobalRevision,
-      newRevision,
-      input.current.repositoryRoot,
-      input.fileSystemPathSemantics,
-      input.options,
-      occurredAt,
-      input.encodingHintsByPath,
-      new Set(input.encodingChangedPaths ?? [])
-    );
+    const contextMapping = restored?.context.kind === "hit"
+      ? undefined
+      : await this.mapContextFiles(
+          source.contextState.files,
+          input.current.repositoryId,
+          oldContextRevision,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+          input.options,
+          occurredAt,
+          input.encodingHintsByPath,
+          new Set(input.encodingChangedPaths ?? [])
+        );
+    const globalFiles = restored?.global.kind === "hit"
+      ? undefined
+      : await this.mapGlobalFiles(
+          source.globalState.files,
+          input.current.repositoryId,
+          oldGlobalRevision,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+          input.options,
+          occurredAt,
+          input.encodingHintsByPath,
+          new Set(input.encodingChangedPaths ?? [])
+        );
 
-    const unresolvedFileIds = oldObjectAvailable
-      ? contextMapping.unresolvedFileIds
-      : Object.keys(input.contextState.files).sort();
+    const unresolvedFileIds = restored?.context.kind === "hit"
+      ? []
+      : oldObjectAvailable
+      ? contextMapping?.unresolvedFileIds ?? []
+      : Object.keys(source.contextState.files).sort();
+    const mappingDisposition = restored?.context.kind === "hit" || restored?.global.kind === "hit"
+      ? "mixed"
+      : "mapped";
     return {
-      contextState: {
-        ...clone(input.contextState),
-        displayName: input.current.contextState.displayName,
-        branch: clone(input.current.contextState.branch),
-        files: contextMapping.files,
+      ...captureImmutableRevisionSnapshots({
+        contextState: {
+          ...clone(source.contextState),
+          displayName: input.current.contextState.displayName,
+          branch: clone(input.current.contextState.branch),
+          files: restored?.context.kind === "hit" ? restored.context.files : contextMapping?.files ?? {},
+          updatedAt: occurredAt
+        },
+        globalState: {
+          ...clone(source.globalState),
+          currentRevisionId: newRevision,
+          files: restored?.global.kind === "hit" ? restored.global.files : globalFiles ?? {},
+          updatedAt: occurredAt
+        },
+        revisionId: newRevision,
         updatedAt: occurredAt
-      },
-      globalState: {
-        ...clone(input.globalState),
-        currentRevisionId: newRevision,
-        files: globalFiles,
-        updatedAt: occurredAt
-      },
+      }),
       unresolvedFileIds,
       unresolvedReasonsByFileId: oldObjectAvailable
-        ? contextMapping.unresolvedReasonsByFileId ?? {}
-        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const]))
+        ? restored?.context.kind === "hit" ? {} : contextMapping?.unresolvedReasonsByFileId ?? {}
+        : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const])),
+      mappingDisposition
+    };
+  }
+
+  private async targetSnapshotEvidence(
+    contextState: ReviewContextState,
+    globalState: RepositoryGlobalState,
+    revisionId: string,
+    repositoryRoot: string,
+    semantics: FileSystemPathSemantics,
+  ): Promise<TargetSnapshotEvidenceResult> {
+    const context = contextState.revisionSnapshots?.[revisionId];
+    const global = globalState.revisionSnapshots?.[revisionId];
+    if (context === undefined && global === undefined) return { kind: "absent" };
+    const contents = new Map<string, string>();
+    const evidenceFor = async (file: { readonly currentPath: string; readonly fileId: string; readonly contentHash?: string }) => {
+      let content = contents.get(file.currentPath);
+      if (content === undefined) {
+        const read = await this.options.source.readTextFileAtRevision(
+          repositoryRoot,
+          revisionId,
+          file.currentPath,
+          semantics,
+        );
+        if (read.kind !== "found") return undefined;
+        content = read.content;
+        contents.set(file.currentPath, content);
+      }
+      return {
+        fileId: file.fileId,
+        currentPath: file.currentPath,
+        lineCount: lineCountOf(content),
+        ...(file.contentHash === undefined ? {} : { contentHash: this.digest(content) }),
+      };
+    };
+    const contextFiles: Record<string, ImmutableRevisionSnapshotEvidence["contextFiles"][string]> = {};
+    for (const [fileId, file] of Object.entries(context?.files ?? {})) {
+      const evidence = await evidenceFor(file);
+      if (evidence === undefined) return { kind: "unavailable" };
+      contextFiles[fileId] = evidence;
+    }
+    const globalFiles: Record<string, ImmutableRevisionSnapshotEvidence["globalFiles"][string]> = {};
+    for (const [fileId, file] of Object.entries(global?.files ?? {})) {
+      const evidence = await evidenceFor(file);
+      if (evidence === undefined) return { kind: "unavailable" };
+      globalFiles[fileId] = evidence;
+    }
+    return {
+      kind: "available",
+      evidence: {
+        revisionId,
+        contextFiles,
+        globalFiles,
+      },
     };
   }
 

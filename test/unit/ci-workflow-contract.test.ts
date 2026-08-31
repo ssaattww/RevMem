@@ -327,3 +327,21 @@ test("required unit gate runs the Issue #90 runtime routing suite before success
     "the required unit gate must precede success artifact packaging",
   );
 });
+
+test("required unit gate reaches the Issue #92 PR Progress context-menu contract before success artifacts", async () => {
+  const [manifestText, workflow] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestText) as PackageManifest;
+  assert.match(
+    requireScript(manifest.scripts ?? {}, "test:unit"),
+    /test-dist\/test\/unit\/issue-92-pr-progress-context-menu\.test\.js/u,
+    "the required unit suite must execute the Issue #92 context-menu regression",
+  );
+  assert.match(
+    workflow,
+    /- name: Unit tests[\s\S]*?npm run test:unit[\s\S]*?- name: Package user validation artifacts/u,
+    "the required unit gate must precede success artifact packaging",
+  );
+});

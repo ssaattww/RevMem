@@ -22,7 +22,15 @@ import {
 } from "../../application/review-context/index";
 import { sameResourceUri, type SelectedReviewContext } from "../../application/review-context/index";
 import { ReviewHistoryRecorder } from "../../application/review-history/index";
-import { REVIEW_RANGE_SCHEMA_VERSION } from "../../core/contracts/index";
+import {
+  REVIEW_RANGE_SCHEMA_VERSION,
+  type RepositoryGlobalState,
+  type ReviewContextState,
+} from "../../core/contracts/index";
+import {
+  captureImmutableRevisionSnapshots,
+  type ReviewStateTransaction,
+} from "../../core/review-state/index";
 import type { GitDiffMappingOptions } from "../../core/git-diff/index";
 import {
   DocumentReviewStateSessionProvider as ReconciledDocumentReviewStateSessionProvider
@@ -61,6 +69,20 @@ interface OwnerGlobalCreator {
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const materializeContextState = (
+  state: ReviewStateTransaction["next"]["contextState"],
+): ReviewContextState => JSON.parse(JSON.stringify(state));
+
+const materializeGlobalState = (
+  state: ReviewStateTransaction["next"]["globalState"],
+): RepositoryGlobalState => JSON.parse(JSON.stringify(state));
+
+const withoutRevisionSnapshots = (state: unknown): unknown => {
+  const current = JSON.parse(JSON.stringify(state));
+  delete current.revisionSnapshots;
+  return current;
+};
 
 const toSnapshot = (
   repository: LocalGitRepository
@@ -184,6 +206,10 @@ export class GitContextDocumentReviewStateSessionProvider {
       if (!await this.prepareSnapshot(descriptor, true, snapshot, current, generation)) {
         return this.open(descriptor, selection);
       }
+      return this.withCurrentGitRevisionSnapshot(
+        await this.createDelegate(inspection).open(descriptor),
+        current,
+      );
     }
     return this.createDelegate(inspection).open(descriptor);
   }
@@ -254,6 +280,59 @@ export class GitContextDocumentReviewStateSessionProvider {
       ...this.options,
       gitInspector: cachedInspector
     });
+  }
+
+  private withCurrentGitRevisionSnapshot(
+    session: DocumentNormalEditorReviewStateSession,
+    current: ResolvedGitReviewContext,
+  ): DocumentNormalEditorReviewStateSession {
+    if (
+      session.owner !== "git" ||
+      session.contextState.contextId !== current.contextId ||
+      session.contextState.repositoryId !== current.repositoryId
+    ) {
+      throw new Error("Git session does not match the current immutable review context.");
+    }
+    let committed = {
+      contextState: materializeContextState(session.contextState),
+      globalState: materializeGlobalState(session.globalState),
+    };
+    return {
+      ...session,
+      committer: {
+        commit: async (transaction: Readonly<ReviewStateTransaction>) => {
+          if (
+            JSON.stringify(withoutRevisionSnapshots(transaction.expected.contextState)) !==
+              JSON.stringify(withoutRevisionSnapshots(committed.contextState)) ||
+            JSON.stringify(withoutRevisionSnapshots(transaction.expected.globalState)) !==
+              JSON.stringify(withoutRevisionSnapshots(committed.globalState))
+          ) {
+            throw new StaleReviewStateError({
+              kind: "git",
+              repositoryId: current.repositoryId,
+              contextId: current.contextId,
+            });
+          }
+          if (
+            transaction.contextId !== current.contextId ||
+            transaction.repositoryId !== current.repositoryId ||
+            transaction.next.contextState.kind !== "branch" ||
+            transaction.next.contextState.branch?.headRevision !== current.revisionId ||
+            transaction.next.globalState.currentRevisionId !== current.revisionId
+          ) {
+            throw new RangeError("Git review mutation is stale for the current immutable revision.");
+          }
+          const captured = captureImmutableRevisionSnapshots({
+            contextState: materializeContextState(transaction.next.contextState),
+            globalState: materializeGlobalState(transaction.next.globalState),
+            revisionId: current.revisionId,
+            updatedAt: transaction.next.contextState.updatedAt,
+          });
+          await session.committer.commit({ ...transaction, expected: committed, next: captured });
+          committed = captured;
+        },
+      },
+    };
   }
 
   private workspaceSelectionMatches(
@@ -421,7 +500,11 @@ export class GitContextDocumentReviewStateSessionProvider {
         await this.options.historyRecorder?.recordRevisionMapping(
           { contextState: clone(commit.contextState), globalState: clone(commit.globalState) },
           { contextState: clone(next.contextState), globalState: clone(next.globalState) },
-          mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
+          mapped.mappingDisposition === "restored"
+            ? "exact-revision-snapshot-restored"
+            : mapped.mappingDisposition === "mixed"
+              ? "exact-revision-snapshot-mixed"
+              : mapped.unresolvedFileIds.length === 0 ? "git-revision-mapped" : "mapping-unresolved",
           mapped.unresolvedFileIds,
           mapped.unresolvedReasonsByFileId ?? {}
         );
@@ -513,6 +596,8 @@ export class GitContextDocumentReviewStateSessionProvider {
     encodingChanged = false
   ): Promise<{
     readonly commit: ReviewStateCommit;
+    /** Immutable snapshot disposition forwarded to the single post-CAS history record. */
+    readonly mappingDisposition?: "mapped" | "restored" | "mixed";
     readonly unresolvedFileIds: readonly string[];
     readonly unresolvedReasonsByFileId: Readonly<Record<string, "immutable-text-unavailable" | "mapping-unresolved">>;
   }> {
@@ -540,6 +625,9 @@ export class GitContextDocumentReviewStateSessionProvider {
         contextState: clone(mapped.contextState),
         globalState: clone(mapped.globalState)
       },
+      ...(mapped.mappingDisposition === undefined
+        ? {}
+        : { mappingDisposition: mapped.mappingDisposition }),
       unresolvedFileIds: [...mapped.unresolvedFileIds],
       unresolvedReasonsByFileId: { ...(mapped.unresolvedReasonsByFileId ?? {}) }
     };

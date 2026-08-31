@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   canonicalizeGitHubPullRequestIdentity,
+  createImmutablePullRequestRevisionMapper,
   createGitHubPullRequestContextId,
   createGitHubPullRequestContextIdFromRepositoryId,
   GitHubPullRequestContextStateService,
@@ -13,6 +14,7 @@ import {
   type GitHubPullRequestContextRepositoryPort,
   type PullRequestReviewStateCommit,
 } from "../../src/application/github-pr-context/index.js";
+import { captureImmutableRevisionSnapshots } from "../../src/core/review-state/index.js";
 import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -137,6 +139,106 @@ test("revision変更はContextとGlobalを同一headへmapする", async () => {
   assert.equal(result.contextState.files.file?.revisionId, SHA_C);
   assert.equal(result.globalState.currentRevisionId, SHA_C);
   assert.equal(result.globalState.files.file?.revisionId, SHA_C);
+});
+
+test("mixed snapshot mapping commits once and records a distinct history disposition", async () => {
+  const repository = new InMemoryRepository();
+  repository.current = { contextState: context(), globalState: globalState() };
+  const reasons: string[] = [];
+  const sut = new GitHubPullRequestContextStateService(
+    repository,
+    async ({ current, nextPullRequest }) => ({
+      contextState: {
+        ...current.contextState,
+        pullRequest: nextPullRequest,
+        files: { file: { ...current.contextState.files.file!, revisionId: nextPullRequest.headSha } },
+      },
+      globalState: {
+        ...current.globalState,
+        currentRevisionId: nextPullRequest.headSha,
+        files: { file: { ...current.globalState.files.file!, revisionId: nextPullRequest.headSha } },
+      },
+      mappingDisposition: "mixed",
+    }),
+    {
+      recordContextCreated: async () => undefined,
+      recordRevisionMapping: async (_previous, _next, reason) => { reasons.push(reason ?? ""); },
+    }
+  );
+
+  await sut.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pullRequest({ headSha: SHA_C }) });
+
+  assert.equal(repository.commits, 1);
+  assert.deepEqual(reasons, ["exact-revision-snapshot-mixed"]);
+});
+
+/** Base-only transitions retain prior comparison pairs while the current pair remains independently unreviewed. */
+test("base-only A-to-C-to-A restore retains A pair and leaves C pair unreviewed", async () => {
+  const repository = new InMemoryRepository();
+  const sourceContext = context({
+    files: {
+      file: {
+        ...context().files.file!,
+        originalReviewedByDiff: {
+          [`${SHA_A}..${SHA_B}`]: [{ startLine: 4, endLineExclusive: 5 }],
+        },
+      },
+    },
+  });
+  const sourceGlobal = { ...globalState(), files: {} };
+  const captured = captureImmutableRevisionSnapshots({
+    contextState: sourceContext,
+    globalState: sourceGlobal,
+    revisionId: SHA_B,
+    updatedAt: sourceContext.updatedAt,
+  });
+  repository.current = { contextState: captured.contextState, globalState: captured.globalState };
+  const reasons: string[] = [];
+  const sut = new GitHubPullRequestContextStateService(
+    repository,
+    createImmutablePullRequestRevisionMapper(async (evidence) => ({
+      sourceBaseSha: evidence.sourceBaseSha,
+      sourceHeadSha: evidence.sourceHeadSha,
+      targetBaseSha: evidence.targetBaseSha,
+      targetHeadSha: evidence.targetHeadSha,
+      diff: "",
+      oldTexts: {},
+      newFiles: {},
+      updatedAt: "2026-08-06T10:10:00.000Z",
+    })),
+    {
+      recordContextCreated: async () => undefined,
+      recordRevisionMapping: async (_previous, _next, reason) => { reasons.push(reason ?? ""); },
+    },
+  );
+
+  const advanced = await sut.update({
+    repositoryId: REPOSITORY_ID,
+    identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 },
+    pullRequest: pullRequest({ baseSha: SHA_C }),
+  });
+
+  assert.deepEqual(advanced.contextState.files.file?.modifiedReviewed, [{ startLine: 1, endLineExclusive: 3 }]);
+  assert.deepEqual(
+    advanced.contextState.files.file?.originalReviewedByDiff[`${SHA_A}..${SHA_B}`],
+    [{ startLine: 4, endLineExclusive: 5 }],
+  );
+  assert.equal(advanced.contextState.files.file?.originalReviewedByDiff[`${SHA_C}..${SHA_B}`], undefined);
+  assert.deepEqual(advanced.globalState.files, {});
+
+  const restored = await sut.update({
+    repositoryId: REPOSITORY_ID,
+    identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 },
+    pullRequest: pullRequest({ baseSha: SHA_A }),
+  });
+
+  assert.deepEqual(
+    restored.contextState.files.file?.originalReviewedByDiff[`${SHA_A}..${SHA_B}`],
+    [{ startLine: 4, endLineExclusive: 5 }],
+  );
+  assert.equal(restored.contextState.files.file?.originalReviewedByDiff[`${SHA_C}..${SHA_B}`], undefined);
+  assert.equal(repository.commits, 2);
+  assert.deepEqual(reasons, ["exact-revision-snapshot-restored", "exact-revision-snapshot-restored"]);
 });
 
 test("旧revision Globalを返すmapperはfail closedにする", async () => {

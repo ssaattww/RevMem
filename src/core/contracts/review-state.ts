@@ -89,6 +89,18 @@ export interface FileReviewState {
   updatedAt: string;
 }
 
+/** Complete non-recursive Context review state retained for one immutable Git revision. */
+export interface ReviewContextRevisionSnapshot {
+  /** Persisted-document version used by migration readers. */
+  schemaVersion: SchemaVersion;
+  /** Lowercase full SHA-1 or SHA-256 commit object ID. */
+  revisionId: string;
+  /** Context file state keyed by stable file ID at this exact revision. */
+  files: Record<string, FileReviewState>;
+  /** ISO 8601 timestamp of the successful snapshot capture. */
+  updatedAt: string;
+}
+
 /**
  * The unit that isolates review state for a pull request, branch, workspace, or external file.
  */
@@ -203,6 +215,8 @@ export interface ReviewContextState {
   externalFile?: ExternalFileReviewContext;
   /** File state keyed by stable file ID. */
   files: Record<string, FileReviewState>;
+  /** Optional exact immutable revision snapshots; legacy documents omit this field. */
+  revisionSnapshots?: Record<string, ReviewContextRevisionSnapshot>;
   /** ISO 8601 timestamp at which the context was first persisted. */
   createdAt: string;
   /** ISO 8601 timestamp of the last context update. */
@@ -233,6 +247,18 @@ export interface GlobalFileReviewState {
   updatedAt: string;
 }
 
+/** Complete non-recursive Global review state retained for one immutable Git revision. */
+export interface RepositoryGlobalRevisionSnapshot {
+  /** Persisted-document version used by migration readers. */
+  schemaVersion: SchemaVersion;
+  /** Lowercase full SHA-1 or SHA-256 commit object ID. */
+  revisionId: string;
+  /** Global file state keyed by stable file ID at this exact revision. */
+  files: Record<string, GlobalFileReviewState>;
+  /** ISO 8601 timestamp of the successful snapshot capture. */
+  updatedAt: string;
+}
+
 /**
  * Persisted owner-wide Global layer; it contains only currently valid ranges.
  */
@@ -245,6 +271,8 @@ export interface RepositoryGlobalState {
   currentRevisionId: string;
   /** Global file state keyed by stable file ID. */
   files: Record<string, GlobalFileReviewState>;
+  /** Optional exact immutable revision snapshots; legacy documents omit this field. */
+  revisionSnapshots?: Record<string, RepositoryGlobalRevisionSnapshot>;
   /** ISO 8601 timestamp of the last Global-layer update. */
   updatedAt: string;
 }

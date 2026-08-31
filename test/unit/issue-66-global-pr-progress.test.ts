@@ -36,7 +36,7 @@ const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#66`;
 const LEGACY_FILE_ID = "repository-file:legacy-normal-editor-id";
 const RAW_WINDOWS_PATH = "Src/Example.ts";
 const CANONICAL_WINDOWS_PATH = "src/example.ts";
-const CONTENT = "new\n";
+const CONTENT = "new";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -249,7 +249,7 @@ test("Issue #66 PR progress resolves a normal-editor persisted file identity by 
     snapshot: windowsDiff,
     readTextContent: async (descriptor) => ({
       kind: "found",
-      content: descriptor.revision === A ? "old\n" : CONTENT,
+      content: descriptor.revision === A ? "old" : CONTENT,
     }),
   });
 

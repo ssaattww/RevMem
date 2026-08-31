@@ -7,6 +7,11 @@ import {
   type GitNewFileStateInput,
 } from "../../core/git-diff/index";
 import type { FileReviewState, GlobalFileReviewState } from "../../core/contracts/index";
+import {
+  captureImmutableRevisionSnapshots,
+  restoreImmutableRevisionSnapshots,
+  type ImmutableRevisionSnapshotEvidence
+} from "../../core/review-state/index";
 import type {
   PullRequestRevisionMapper,
   PullRequestRevisionMappingEvidence,
@@ -92,18 +97,6 @@ const advanceRetainedContextFiles = (
   ])
 );
 
-const invalidateBaseDependentOriginalRanges = (
-  files: Readonly<Record<string, Readonly<FileReviewState>>>,
-  updatedAt: string
-): Record<string, FileReviewState> => Object.fromEntries(
-  Object.entries(files).map(([fileId, file]) => [fileId, {
-    ...file,
-    modifiedReviewed: file.modifiedReviewed.map((interval) => ({ ...interval })),
-    originalReviewedByDiff: {},
-    updatedAt,
-  }])
-);
-
 const cloneGlobalState = (
   files: Readonly<Record<string, Readonly<GlobalFileReviewState>>>
 ): Record<string, GlobalFileReviewState> => Object.fromEntries(
@@ -113,40 +106,130 @@ const cloneGlobalState = (
   }])
 );
 
+const snapshotEvidence = (
+  contextState: import("../../core/contracts/index").ReviewContextState,
+  globalState: import("../../core/contracts/index").RepositoryGlobalState,
+  revisionId: string,
+  immutable: Readonly<ImmutablePullRequestRevisionEvidence>
+): ImmutableRevisionSnapshotEvidence | undefined => {
+  const context = contextState.revisionSnapshots?.[revisionId];
+  const global = globalState.revisionSnapshots?.[revisionId];
+  if (context === undefined && global === undefined) return undefined;
+  const globalFiles: Record<string, ImmutableRevisionSnapshotEvidence["globalFiles"][string]> = {};
+  for (const [fileId, file] of Object.entries(global?.files ?? {})) {
+    const authoritative = immutable.newFiles[file.currentPath];
+    if (authoritative === undefined) return undefined;
+    globalFiles[fileId] = {
+      fileId: authoritative.fileId,
+      currentPath: file.currentPath,
+      lineCount: authoritative.lineCount,
+      contentHash: authoritative.contentHash ?? file.contentHash
+    };
+  }
+  return {
+    revisionId,
+    contextFiles: Object.fromEntries(Object.entries(context?.files ?? {}).map(([fileId, file]) => [fileId, {
+      fileId: immutable.newFiles[file.currentPath]?.fileId ?? file.fileId,
+      currentPath: file.currentPath,
+      lineCount: immutable.newFiles[file.currentPath]?.lineCount ?? file.lineCount,
+      contentHash: immutable.newFiles[file.currentPath]?.contentHash ?? file.contentHash
+    }])),
+    globalFiles
+  };
+};
+
 export function createImmutablePullRequestRevisionMapper(
   loadEvidence: ImmutablePullRequestRevisionEvidenceLoader,
   options: GitFileStateTransitionInput["options"] = DEFAULT_MAPPING_OPTIONS
 ): PullRequestRevisionMapper {
   return async ({ current, nextPullRequest, evidence }) => {
+    // Repository Global state is shared across persisted PR contexts. While
+    // Issue #106 owns a multi-context CAS, a sequential lifecycle refresh can
+    // advance that owner-wide Global state before a sibling PR Context is
+    // mapped. Keep the pre-snapshot mapper behavior for this one known shape;
+    // corrupt snapshots and every other capture failure remain fail-closed.
+    const snapshotCompatibleSource = current.globalState.currentRevisionId === evidence.sourceHeadSha;
+    const sequentialSharedGlobalCompatibility =
+      !snapshotCompatibleSource && current.globalState.currentRevisionId === evidence.targetHeadSha;
+    const source = snapshotCompatibleSource
+      ? captureImmutableRevisionSnapshots({
+        contextState: current.contextState,
+        globalState: current.globalState,
+        revisionId: evidence.sourceHeadSha,
+        updatedAt: current.contextState.updatedAt
+      })
+      : sequentialSharedGlobalCompatibility
+        ? current
+        : captureImmutableRevisionSnapshots({
+          contextState: current.contextState,
+          globalState: current.globalState,
+          revisionId: evidence.sourceHeadSha,
+          updatedAt: current.contextState.updatedAt
+        });
     const immutable = await loadEvidence(Object.freeze({ ...evidence }));
-    requireMatchingEvidence(
-      evidence,
-      immutable,
-      current.contextState.files,
-      current.globalState.files
-    );
-    const updatedAt = immutable.updatedAt ?? new Date().toISOString();
+    requireMatchingEvidence(evidence, immutable, source.contextState.files, source.globalState.files);
     const baseOnlyTransition =
       evidence.sourceHeadSha === evidence.targetHeadSha &&
       evidence.sourceBaseSha !== evidence.targetBaseSha;
-    if (baseOnlyTransition) {
+    const targetEvidence = snapshotCompatibleSource
+      ? snapshotEvidence(source.contextState, source.globalState, evidence.targetHeadSha, immutable)
+      : undefined;
+    const restored = targetEvidence === undefined
+      ? undefined
+      : restoreImmutableRevisionSnapshots({
+        contextState: source.contextState,
+        globalState: source.globalState,
+        evidence: targetEvidence
+      });
+    if (restored?.context.kind === "hit" && restored.global.kind === "hit") {
       return {
-        contextState: {
-          ...current.contextState,
-          pullRequest: { ...nextPullRequest },
-          files: invalidateBaseDependentOriginalRanges(current.contextState.files, updatedAt),
-          updatedAt,
-        },
-        globalState: {
-          ...current.globalState,
-          files: cloneGlobalState(current.globalState.files),
-        },
+        ...captureImmutableRevisionSnapshots({
+          contextState: {
+            ...source.contextState,
+            pullRequest: { ...nextPullRequest },
+            files: restored.context.files,
+            updatedAt: source.contextState.updatedAt
+          },
+          globalState: {
+            ...source.globalState,
+            currentRevisionId: evidence.targetHeadSha,
+            files: restored.global.files,
+            updatedAt: source.globalState.updatedAt
+          },
+          revisionId: evidence.targetHeadSha,
+          updatedAt: source.contextState.updatedAt
+        }),
+        mappingDisposition: "restored"
       };
+    }
+    const mappingDisposition = restored?.context.kind === "hit" || restored?.global.kind === "hit"
+      ? "mixed"
+      : "mapped";
+    const updatedAt = immutable.updatedAt ?? new Date().toISOString();
+    if (baseOnlyTransition) {
+      const next = {
+        contextState: {
+          ...source.contextState,
+          pullRequest: { ...nextPullRequest },
+          files: restored?.context.kind === "hit"
+            ? restored.context.files
+            : advanceRetainedContextFiles(source.contextState.files, evidence.targetHeadSha),
+          updatedAt,
+          },
+          globalState: {
+          ...source.globalState,
+          currentRevisionId: evidence.targetHeadSha,
+          files: restored?.global.kind === "hit" ? restored.global.files : cloneGlobalState(source.globalState.files),
+          },
+      };
+      return snapshotCompatibleSource
+        ? { ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }), mappingDisposition }
+        : { ...next, mappingDisposition };
     }
     const parsed = parseZeroContextGitDiff(immutable.diff);
 
     const contextTransition = applyGitFileStateTransitions({
-      files: current.contextState.files,
+      files: source.contextState.files,
       diff: immutable.diff,
       newRevisionId: evidence.targetHeadSha,
       updatedAt,
@@ -160,7 +243,7 @@ export function createImmutablePullRequestRevisionMapper(
 
     const contextFiles = advanceRetainedContextFiles(contextTransition.files, evidence.targetHeadSha);
     const originalByPath = new Map(
-      Object.values(current.contextState.files).map((file) => [file.currentPath, file])
+      Object.values(source.contextState.files).map((file) => [file.currentPath, file])
     );
     for (const diffFile of parsed.files) {
       if (
@@ -201,24 +284,32 @@ export function createImmutablePullRequestRevisionMapper(
       };
     }
 
-    const globalState = mapRepositoryGlobalStateThroughGitDiff({
-      globalState: current.globalState,
+    const globalState = {
+      ...mapRepositoryGlobalStateThroughGitDiff({
+      globalState: source.globalState,
       diff: immutable.diff,
       newRevisionId: evidence.targetHeadSha,
       updatedAt,
       options,
       oldTexts: immutable.oldTexts,
       newFiles: immutable.newFiles,
-    });
+      }),
+      // Mapping returns a new current Global state. Historical snapshots belong
+      // to the immutable source and are retained until target capture adds B.
+      revisionSnapshots: source.globalState.revisionSnapshots,
+    };
 
-    return {
+    const next = {
       contextState: {
-        ...current.contextState,
+        ...source.contextState,
         pullRequest: { ...nextPullRequest },
-        files: contextFiles,
+        files: restored?.context.kind === "hit" ? restored.context.files : contextFiles,
         updatedAt,
       },
-      globalState,
+      globalState: restored?.global.kind === "hit" ? { ...globalState, files: restored.global.files } : globalState,
     };
+    return snapshotCompatibleSource
+      ? { ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }), mappingDisposition }
+      : { ...next, mappingDisposition };
   };
 }

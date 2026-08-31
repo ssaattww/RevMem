@@ -16,8 +16,10 @@ export type {
   PullRequestFileChangeStatus,
   PullRequestReviewContext,
   ReconciledReviewContextState,
+  RepositoryGlobalRevisionSnapshot,
   RepositoryGlobalState,
   ReviewContextKind,
+  ReviewContextRevisionSnapshot,
   ReviewContextState,
   ReviewDiffSide,
   WorkspaceReviewContext

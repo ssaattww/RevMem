@@ -3,10 +3,10 @@ import { normalizeLineIntervals, selectionsToLineIntervals } from "../../core/in
 import {
   commitReviewStateTransaction,
   markFileReviewed,
-  markOriginalReviewedRanges,
+  markOriginalSelectionReviewed,
   markReviewedRanges,
   unmarkFileReviewed,
-  unmarkOriginalReviewedRanges,
+  unmarkOriginalSelectionReviewed,
   unmarkReviewedRanges,
   type ReviewStateFileTarget,
   type ReviewStateMutationInput,
@@ -17,6 +17,10 @@ import type {
   RepositoryGlobalState,
   ReviewContextState
 } from "../../core/contracts/index";
+import {
+  createOriginalSelectionReviewPlan,
+  type OriginalToModifiedLineMapping
+} from "./original-selection-review-plan";
 
 /** User-confirmed operation that changes all reviewable ranges in a diff file. */
 export type DiffReviewWholeFileOperation = "mark-file-reviewed" | "unmark-file-reviewed";
@@ -37,6 +41,8 @@ export interface DiffEditorReviewStateSession {
   readonly originalLineCount: number;
   /** Original-side intervals representing deletions in the current diff. */
   readonly originalDeletionIntervals: readonly { readonly startLine: number; readonly endLineExclusive: number }[];
+  /** Immutable surviving-line mappings; an absent value must be treated as unprojectable. */
+  readonly originalToModifiedLineMappings?: readonly OriginalToModifiedLineMapping[];
   /** Atomic persistence boundary for the generated transaction. */
   readonly committer: ReviewStateTransactionCommitter;
 }
@@ -81,17 +87,6 @@ const canonicalDiffIdFor = (contextState: DiffEditorReviewStateSession["contextS
   if (contextState.pullRequest === undefined) throw new Error("Pull-request diff review session must include pull-request identity.");
   return `${contextState.pullRequest.baseSha}..${contextState.pullRequest.headSha}`;
 };
-
-const intersectRanges = (
-  selections: readonly { readonly startLine: number; readonly endLineExclusive: number }[],
-  allowed: readonly { readonly startLine: number; readonly endLineExclusive: number }[]
-) => normalizeLineIntervals(selections.flatMap((selection) =>
-  allowed.flatMap((candidate) => {
-    const startLine = Math.max(selection.startLine, candidate.startLine);
-    const endLineExclusive = Math.min(selection.endLineExclusive, candidate.endLineExclusive);
-    return startLine < endLineExclusive ? [{ startLine, endLineExclusive }] : [];
-  })
-));
 
 const markDiffFileReviewed = (
   input: ReviewStateMutationInput,
@@ -180,22 +175,36 @@ export class DiffEditorReviewCommandService<Editor> {
     const intervals = selectionsToLineIntervals(this.dependencies.getSelections(editor), lineCount);
     if (intervals.length === 0) return "no-op";
     const session = await this.openMatchingSession(editor, side, lineCount);
-    const effectiveIntervals = side === "original" ? intersectRanges(intervals, session.originalDeletionIntervals) : intervals;
-    if (effectiveIntervals.length === 0) return "no-op";
     const common = {
       contextState: session.contextState,
       globalState: session.globalState,
       target: session.target,
       occurredAt: this.now().toISOString()
     };
-    const diffId = canonicalDiffIdFor(session.contextState, session.diffId);
-    const transaction = side === "original"
-      ? operation === "mark"
-        ? markOriginalReviewedRanges({ ...common, side, diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
-        : unmarkOriginalReviewedRanges({ ...common, side, diffId, originalLineCount: session.originalLineCount, intervals: effectiveIntervals })
-      : operation === "mark"
-        ? markReviewedRanges({ ...common, intervals: effectiveIntervals })
-        : unmarkReviewedRanges({ ...common, intervals: effectiveIntervals });
+    if (side === "modified") {
+      const transaction = operation === "mark"
+        ? markReviewedRanges({ ...common, intervals })
+        : unmarkReviewedRanges({ ...common, intervals });
+      return this.commitWhenChanged(transaction, session.committer);
+    }
+    if (session.originalToModifiedLineMappings === undefined) return "no-op";
+    const plan = createOriginalSelectionReviewPlan({
+      selections: intervals,
+      originalDeletionIntervals: session.originalDeletionIntervals,
+      originalToModifiedLineMappings: session.originalToModifiedLineMappings
+    });
+    if (plan.modifiedIntervals.length === 0 && plan.originalDeletionIntervals.length === 0) return "no-op";
+    const originalInput = {
+      ...common,
+      side,
+      diffId: canonicalDiffIdFor(session.contextState, session.diffId),
+      originalLineCount: session.originalLineCount,
+      modifiedIntervals: plan.modifiedIntervals,
+      originalIntervals: plan.originalDeletionIntervals
+    } as const;
+    const transaction = operation === "mark"
+      ? markOriginalSelectionReviewed(originalInput)
+      : unmarkOriginalSelectionReviewed(originalInput);
     return this.commitWhenChanged(transaction, session.committer);
   }
   private async applyWholeFileOperation(editor: Editor, operation: DiffReviewWholeFileOperation): Promise<DiffEditorReviewCommandResult> {

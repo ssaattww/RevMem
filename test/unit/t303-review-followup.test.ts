@@ -21,7 +21,12 @@ const session = (): DiffEditorReviewStateSession => ({
   contextState: contextState(), globalState: globalState(),
   target: { fileId: "file-1", currentPath: "src/example.ts", revisionId: "head-revision", lineCount: 6 },
   diffId: "base-revision..head-revision:src/example.ts", originalLineCount: 5,
-  originalDeletionIntervals: [interval(1, 3), interval(4, 5)], committer: { commit: async () => undefined }
+  originalDeletionIntervals: [interval(1, 3), interval(4, 5)],
+  originalToModifiedLineMappings: [
+    { original: interval(0, 1), modifiedStartLine: 0 },
+    { original: interval(3, 4), modifiedStartLine: 3 },
+  ],
+  committer: { commit: async () => undefined }
 });
 const serviceFor = (state: DiffEditorReviewStateSession, committed: unknown[], history: unknown[] = []) => new DiffEditorReviewCommandService<FakeEditor>({
   getSide: (editor) => editor.side, getLineCount: (editor) => editor.lineCount, getSelections: (editor) => editor.selections,
@@ -30,12 +35,16 @@ const serviceFor = (state: DiffEditorReviewStateSession, committed: unknown[], h
   now: () => new Date("2026-08-01T15:00:00.000Z")
 });
 
-test("T303-R1-P1 original selection is restricted to deletion intervals", async () => {
+test("T303-R1-P1 original selection maps surviving lines and restricts original state to deletions", async () => {
   const committed: unknown[] = []; const history: unknown[] = []; const service = serviceFor(session(), committed, history);
-  assert.equal(await service.markSelectionReviewed({ side: "original", lineCount: 5, selections: [selection(0)] }), "no-op");
-  assert.equal(committed.length, 0); assert.equal(history.length, 0);
+  assert.equal(await service.markSelectionReviewed({ side: "original", lineCount: 5, selections: [selection(0)] }), "applied");
+  const contextLine = committed[0] as { next: { contextState: ReviewContextState } };
+  assert.deepEqual(contextLine.next.contextState.files["file-1"]!.modifiedReviewed, [interval(0, 1)]);
+  assert.deepEqual(contextLine.next.contextState.files["file-1"]!.originalReviewedByDiff, {
+    "base-revision..head-revision:src/example.ts": [],
+  });
   assert.equal(await service.markSelectionReviewed({ side: "original", lineCount: 5, selections: [{ anchor: { line: 0, character: 0 }, active: { line: 4, character: 1 } }] }), "applied");
-  const transaction = committed[0] as { next: { contextState: ReviewContextState } };
+  const transaction = committed[1] as { next: { contextState: ReviewContextState } };
   assert.deepEqual(transaction.next.contextState.files["file-1"]!.originalReviewedByDiff, { "base-revision..head-revision:src/example.ts": [interval(1, 3), interval(4, 5)] });
 });
 
@@ -82,7 +91,8 @@ test("T303-IFR-P2/P4 derives the canonical PR diff ID and makes an original dele
     target: { ...base.target, revisionId: "head", lineCount: 0 },
     diffId: "non-canonical",
     originalLineCount: 2,
-    originalDeletionIntervals: [interval(0, 2)]
+    originalDeletionIntervals: [interval(0, 2)],
+    originalToModifiedLineMappings: [],
   };
   const committed: unknown[] = [];
   const service = new DiffEditorReviewCommandService<FakeEditor>({

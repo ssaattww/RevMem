@@ -190,6 +190,25 @@ const modifiedTransaction = {
   expected: { contextState, globalState: repositoryGlobalState },
   next: { contextState, globalState: repositoryGlobalState }
 } satisfies ModifiedReviewStateTransaction;
+const originalSelectionTransaction = {
+  operation: "mark-original-selection-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  side: "original",
+  diffId: "base..head",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+} satisfies OriginalReviewStateTransaction;
+// @ts-expect-error Original-selection transactions must retain original-side identity.
+const invalidOriginalSelectionAsModified: ReviewStateTransaction = {
+  operation: "mark-original-selection-reviewed",
+  repositoryId: "repository-1",
+  contextId: "context-1",
+  fileId: "file-1",
+  expected: { contextState, globalState: repositoryGlobalState },
+  next: { contextState, globalState: repositoryGlobalState }
+};
 // @ts-expect-error Original-side transactions must include their canonical diff identity.
 const invalidOriginalTransaction: ReviewStateTransaction = {
   operation: "mark-original-ranges-reviewed",
@@ -275,11 +294,13 @@ void [
   fileHistoryEvent.nextRanges[0]?.startLine,
   originalFileHistoryEvent.diffId,
   originalTransaction.diffId,
+  originalSelectionTransaction.diffId,
   modifiedTransaction.operation,
   invalidOriginalFileHistoryEvent,
   invalidModifiedFileHistoryEvent,
   invalidOriginalTransaction,
   invalidModifiedTransaction,
+  invalidOriginalSelectionAsModified,
   contextHistoryEvent.reason,
   configuration.decorations.changed.enabled,
   DEFAULT_REVIEW_RANGE_CONFIGURATION.historyRetentionDays,

@@ -4,7 +4,7 @@
 
 ## 計画の前提
 
-- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev6
+- 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev9
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
 - 実装方法: 挙動実装では失敗するテストを先に追加し、実装後に単体、統合、またはExtension Hostテストで終了条件を証明する
@@ -28,7 +28,7 @@ Lを超える見込みになった場合は再分解する。
 | P0 | 完了 | 開発基盤 | T001〜T003 | なし | build、unit、Git fixture、mock GitHub、Extension Host、architecture gate、失敗診断artifactがCIで動作する |
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
-| P3 | 完了 | diff editorとPR進捗 | T300〜T306 | P2 | T300〜T306をmainへ統合済み。T306は通常review findings closed、全範囲独立review `pass_with_held`、exact-head CI成功済み |
+| P3 | 保守対応中 | diff editorとPR進捗 | T300〜T306、Issue #92 | P2 | T300〜T306はmainへ統合済み。PR #94でPR Progress exact diffの選択確認、original-side projection、immutable revision snapshotを修復中 |
 | P4 | 保守対応中 | GitHub PR連携 | T401〜T406、USR90-002 | P3 | T401〜T406はmainへ統合済み。PR #91のUSR90-002でprivate repositoryのPR候補検出を修正中 |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。T608は未着手 |
@@ -37,9 +37,9 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #90 / PR #91 `CI90-003` independent CI-delta closure準備。normal findingはclosed / `pass_with_held`
-- 次の工程: pre-freeze report/tracking commit後、同一independent reviewerがCI90-003 deltaだけを限定closureする。PR #91全体再reviewとperformance CI追加は行わない
-- 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestationはPR #91 follow-up完了後に再開する
+- 実装中タスク: Issue #92 / PR #94 independent findings `PR94-IFR-001`〜`004`はSol/high通常fix verification R2で全件closed・全matrix Complete
+- 次の工程: 同じ独立reviewerのfinding/CI-delta限定closure、report attestation、push、exact-head required CI、squash merge
+- 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestation
 - 後続候補: T608
 
 ## P0 開発基盤

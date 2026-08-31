@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 
 import {
+  PrProgressDiffReviewContextController
+} from "./pr-progress-diff-review-context";
+import {
   type PullRequestProgressTreeCategoryNode,
   type PullRequestProgressTreeFileNode,
   type PullRequestProgressTreeNode,
@@ -90,6 +93,14 @@ export const registerVscodePullRequestProgressTree = (
     select: (node) => (selectedSource ?? defaultSource).select(node)
   };
   const tree = new VscodePullRequestProgressTreeDataProvider(source);
+  const reviewContext = new PrProgressDiffReviewContextController<vscode.Tab>({
+    getActiveTab: () => vscode.window.tabGroups.activeTabGroup.activeTab,
+    isDiffTab: (tab) => tab.input instanceof vscode.TabInputTextDiff,
+    setContext: (key, value) => vscode.commands.executeCommand("setContext", key, value)
+  });
+  const refreshReviewContext = (): void => {
+    void reviewContext.refresh().catch(reportError);
+  };
   const runtime: ActivePullRequestProgressTreeRuntime = {
     setSource: (next) => {
       selectedSource = next;
@@ -107,15 +118,28 @@ export const registerVscodePullRequestProgressTree = (
     async (node: PullRequestProgressTreeFileNode | undefined) => {
       if (node === undefined || node.kind !== "file") return;
       try {
-        await source.select(node);
+        const result = await source.select(node);
+        if (result.kind === "opened-diff") await reviewContext.recordActiveDiff();
       } catch (error) {
         await reportError(error);
       }
     }
   );
+  const activeEditorChanged = vscode.window.onDidChangeActiveTextEditor(refreshReviewContext);
+  refreshReviewContext();
   const runtimeRegistration = new vscode.Disposable(() => {
     if (activeRuntime === runtime) activeRuntime = undefined;
   });
-  context.subscriptions.push(tree, view, open, runtimeRegistration);
+  const reviewContextRegistration = new vscode.Disposable(() => {
+    void reviewContext.clear().catch(reportError);
+  });
+  context.subscriptions.push(
+    tree,
+    view,
+    open,
+    activeEditorChanged,
+    runtimeRegistration,
+    reviewContextRegistration
+  );
   return tree;
 };

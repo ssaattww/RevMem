@@ -30,7 +30,10 @@ extends ReviewStateMutationInput {
   /** Operation applied to the current context and owner-wide Global state together. */
   readonly operation: Exclude<
     ReviewStateOperation,
-    "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed"
+    | "mark-original-ranges-reviewed"
+    | "unmark-original-ranges-reviewed"
+    | "mark-original-selection-reviewed"
+    | "unmark-original-selection-reviewed"
   >;
   /** Atomic full-snapshot compare-and-replace boundary. */
   readonly committer: ReviewStateTransactionCommitter;

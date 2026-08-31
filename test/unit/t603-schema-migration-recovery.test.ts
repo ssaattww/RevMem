@@ -225,6 +225,57 @@ test("T603 quarantines corrupt state and exposes no reviewed ranges from uncerta
   }
 });
 
+/** Persisted malformed nested Global snapshots are quarantined before they can become restore candidates. */
+test("T603 quarantines a corrupt nested Global revision snapshot", async () => {
+  const temporary = await createTemporaryStorage();
+  try {
+    const route = resolveReviewStateStorageRoute(temporary.storageUris, workspaceTarget);
+    const revisionId = "a".repeat(40);
+    const current = createLegacyWorkspaceCommit();
+    const corruptCommit = {
+      ...current,
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: {
+        ...current.contextState,
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        files: {
+          "file-1": { ...current.contextState.files["file-1"]!, schemaVersion: REVIEW_RANGE_SCHEMA_VERSION }
+        }
+      },
+      globalState: {
+        ...current.globalState,
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        revisionSnapshots: {
+          [revisionId]: {
+            schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+            revisionId,
+            files: {
+              "file-1": {
+                ...current.globalState.files["file-1"]!,
+                revisionId,
+                reviewed: [{ startLine: 3, endLineExclusive: 2 }]
+              }
+            },
+            updatedAt: timestamp
+          }
+        }
+      }
+    };
+    const raw = `${JSON.stringify(corruptCommit, null, 2)}\n`;
+    await mkdir(path.dirname(route.statePointerPath), { recursive: true });
+    await writeFile(route.statePointerPath, raw, "utf8");
+
+    const repository = new FileSystemReviewStateRepository({ storageUris: temporary.storageUris });
+    assert.equal(await repository.load(workspaceTarget), undefined);
+    await assert.rejects(() => readFile(route.statePointerPath, "utf8"), /ENOENT/u);
+    const quarantines = await findQuarantineSidecars(route.statePointerPath);
+    assert.equal(quarantines.length, 1);
+    assert.equal(await readFile(quarantines[0]!, "utf8"), raw);
+  } finally {
+    await rm(temporary.root, { recursive: true, force: true });
+  }
+});
+
 test("T603 restarts corrupt JSONL without salvaging uncertain history", async () => {
   const temporary = await createTemporaryStorage();
   try {

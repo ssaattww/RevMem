@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createImmutablePullRequestRevisionMapper,
+  type PullRequestReviewContextVisibility,
+} from "../../src/application/github-pr-context/index.js";
+import {
   PullRequestRevisionEvidenceLoader,
 } from "../../src/application/review-contexts/index.js";
 import {
@@ -140,4 +144,76 @@ test("base-only PR transition does not invent a head diff", async () => {
   assert.deepEqual(evidence.oldTexts, {});
   assert.deepEqual(evidence.newFiles, {});
   assert.equal(diffCalls, 0);
+});
+
+/** An unchanged Global-only target snapshot still needs target-content evidence for an exact restore. */
+test("PR evidence loader supplies unchanged Global-only target evidence to the immutable mapper", async () => {
+  const diff = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    "--- a/src/example.ts",
+    "+++ b/src/example.ts",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "",
+  ].join("\n");
+  const currentContext = contextState();
+  const currentGlobal = globalState();
+  currentGlobal.files["global-only"] = {
+    fileId: "global-only",
+    currentPath: "src/global-only.ts",
+    revisionId: B,
+    reviewed: [],
+    contentHash: "hash:global-target",
+    updatedAt: "2026-08-16T00:00:00.000Z",
+  };
+  currentGlobal.revisionSnapshots = {
+    [C]: {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      revisionId: C,
+      files: {
+        "global-only": {
+          ...currentGlobal.files["global-only"]!,
+          revisionId: C,
+          reviewed: [{ startLine: 0, endLineExclusive: 3 }],
+        },
+      },
+      updatedAt: "2026-08-16T00:00:00.000Z",
+    },
+  };
+  const reads: string[] = [];
+  const loader = new PullRequestRevisionEvidenceLoader({
+    loadCurrent: async () => ({ contextState: currentContext, globalState: currentGlobal }),
+    loadDiff: async () => diff,
+    readText: async (revision, path) => {
+      reads.push(`${revision}:${path}`);
+      if (path === "src/global-only.ts" && revision === C) {
+        return { kind: "found" as const, content: "one\ntwo\nthree" };
+      }
+      return { kind: "found" as const, content: revision === B ? "old" : "new" };
+    },
+    createFileId: (_repositoryId, path) => `new:${path}`,
+    hashText: (text) => text === "one\ntwo\nthree" ? "hash:global-target" : `hash:${text}`,
+  });
+  const mapper = createImmutablePullRequestRevisionMapper((request) => loader.load(request));
+  const nextPullRequest: PullRequestReviewContextVisibility = {
+    ...currentContext.pullRequest!,
+    headSha: C,
+  };
+
+  const mapped = await mapper({
+    current: { contextState: currentContext, globalState: currentGlobal },
+    nextPullRequest,
+    evidence: transition,
+  });
+
+  assert.deepEqual(reads, [
+    `${B}:src/example.ts`,
+    `${C}:src/example.ts`,
+    `${C}:src/global-only.ts`,
+  ]);
+  assert.deepEqual(mapped.globalState.files["global-only"]?.reviewed, [
+    { startLine: 0, endLineExclusive: 3 },
+  ]);
+  assert.equal(mapped.mappingDisposition, "mixed");
 });

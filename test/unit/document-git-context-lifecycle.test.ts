@@ -17,6 +17,7 @@ import { ReviewHistoryRecorder } from "../../src/application/review-history/inde
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
+  StaleReviewStateError,
   type ReviewStateCommit,
   type ReviewStateCreateTransactionLike,
   type ReviewStateRepositoryTarget,
@@ -43,6 +44,8 @@ const keyOf = (target: ReviewStateRepositoryTarget): string =>
 
 class MemoryRepository implements DocumentReviewStateRepository {
   public readonly commits = new Map<string, ReviewStateCommit>();
+  public commitCalls = 0;
+  public rejectCommits = false;
 
   public async load(
     target: ReviewStateRepositoryTarget
@@ -109,6 +112,14 @@ class MemoryRepository implements DocumentReviewStateRepository {
   public async commit(
     transaction: Readonly<ReviewStateTransactionLike>
   ): Promise<void> {
+    this.commitCalls += 1;
+    if (this.rejectCommits) {
+      throw new StaleReviewStateError({
+        kind: "git",
+        repositoryId: transaction.repositoryId,
+        contextId: transaction.contextId
+      });
+    }
     const targetEntry = [...this.commits.entries()].find(([, commit]) =>
       commit.contextState.repositoryId === transaction.repositoryId &&
       commit.contextState.contextId === transaction.contextId
@@ -165,6 +176,8 @@ class MutableGitInspector implements DocumentGitInspector {
 
 class RevisionSource implements GitRevisionMappingSource {
   public objectsExist = true;
+  public diffCalls = 0;
+  public rejectSecondDiff = false;
   public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
   public readonly invalidTextPaths = new Set<string>();
   public diff = [
@@ -195,6 +208,10 @@ class RevisionSource implements GitRevisionMappingSource {
     void _repositoryRoot;
     void _leftRevision;
     void _rightRevision;
+    this.diffCalls += 1;
+    if (this.rejectSecondDiff && this.diffCalls > 1) {
+      throw new Error("The hit layer must not invoke diff mapping.");
+    }
     return this.diff;
   }
 
@@ -340,6 +357,301 @@ const createProvider = (
   });
 };
 
+const withOneTargetSnapshotLayer = (
+  commit: ReviewStateCommit,
+  fileId: string,
+  layer: "context" | "global",
+  stableHash: NodeSha256StableHash
+): ReviewStateCommit => {
+  const targetHash = stableHash.digest("alpha\nBETA\ngamma");
+  const contextTargetFile = {
+    ...commit.contextState.files[fileId]!,
+    revisionId: newRevision,
+    contentHash: targetHash,
+    modifiedReviewed: [{ startLine: 0, endLineExclusive: 3 }]
+  };
+  const globalTargetFile = {
+    ...commit.globalState.files[fileId]!,
+    revisionId: newRevision,
+    contentHash: targetHash,
+    reviewed: [{ startLine: 0, endLineExclusive: 3 }]
+  };
+  return {
+    schemaVersion: commit.schemaVersion,
+    contextState: layer === "context"
+      ? {
+          ...commit.contextState,
+          revisionSnapshots: {
+            ...commit.contextState.revisionSnapshots,
+            [newRevision]: {
+              schemaVersion: commit.contextState.schemaVersion,
+              revisionId: newRevision,
+              files: { [fileId]: contextTargetFile },
+              updatedAt: occurredAt
+            }
+          }
+        }
+      : clone<ReviewStateCommit["contextState"]>(commit.contextState),
+    globalState: layer === "global"
+      ? {
+          ...commit.globalState,
+          revisionSnapshots: {
+            ...commit.globalState.revisionSnapshots,
+            [newRevision]: {
+              schemaVersion: commit.globalState.schemaVersion,
+              revisionId: newRevision,
+              files: { [fileId]: globalTargetFile },
+              updatedAt: occurredAt
+            }
+          }
+        }
+      : clone<ReviewStateCommit["globalState"]>(commit.globalState)
+  };
+};
+
+/** Mixed immutable snapshot layers compose into one local-Git CAS and publish an explicit history disposition. */
+test("Git provider restores each mixed target snapshot layer in one CAS", async () => {
+  for (const scenario of [
+    {
+      layer: "context" as const,
+      expectedContext: [{ startLine: 0, endLineExclusive: 3 }],
+      expectedGlobal: [
+        { startLine: 0, endLineExclusive: 1 },
+        { startLine: 2, endLineExclusive: 3 }
+      ]
+    },
+    {
+      layer: "global" as const,
+      expectedContext: [
+        { startLine: 0, endLineExclusive: 1 },
+        { startLine: 2, endLineExclusive: 3 }
+      ],
+      expectedGlobal: [{ startLine: 0, endLineExclusive: 3 }]
+    }
+  ] as const) {
+    const stableHash = new NodeSha256StableHash();
+    const repository = new MemoryRepository();
+    const inspector = new MutableGitInspector();
+    const source = new RevisionSource();
+    const events: Array<{ readonly type: string; readonly reason: string }> = [];
+    const provider = createProvider(stableHash, repository, inspector, source, undefined,
+      new ReviewHistoryRecorder({
+        sessionId: "session",
+        createEventId: () => `event-${events.length}`,
+        appender: { append: async (_target, event) => { events.push(event); } }
+      }));
+    const initial = await provider.open(
+      descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+    );
+    await initial.committer.commit(markReviewedRanges({
+      contextState: initial.contextState,
+      globalState: initial.globalState,
+      target: initial.target,
+      intervals: [{ startLine: 0, endLineExclusive: 3 }],
+      occurredAt
+    }));
+    const persisted = await repository.load({
+      kind: "git", repositoryId, contextId: initial.contextState.contextId
+    });
+    assert.ok(persisted);
+    await repository.save(
+      { kind: "git", repositoryId, contextId: initial.contextState.contextId },
+      withOneTargetSnapshotLayer(persisted, initial.target.fileId, scenario.layer, stableHash)
+    );
+    const commitCallsBeforeTransition = repository.commitCalls;
+    events.length = 0;
+    source.diffCalls = 0;
+    source.rejectSecondDiff = true;
+    inspector.head = newRevision;
+
+    const opened = await provider.open(
+      descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))
+    );
+
+    assert.deepEqual(opened.contextState.files[opened.target.fileId]?.modifiedReviewed, scenario.expectedContext);
+    assert.deepEqual(opened.globalState.files[opened.target.fileId]?.reviewed, scenario.expectedGlobal);
+    assert.equal(repository.commitCalls, commitCallsBeforeTransition + 1, scenario.layer);
+    assert.equal(source.diffCalls, 1, scenario.layer);
+    assert.ok(events.some((event) =>
+      event.type === "context-revision-changed" && event.reason === "exact-revision-snapshot-mixed"
+    ));
+    assert.deepEqual(
+      opened.contextState.revisionSnapshots?.[newRevision]?.files,
+      opened.contextState.files
+    );
+    assert.deepEqual(
+      opened.globalState.revisionSnapshots?.[newRevision]?.files,
+      opened.globalState.files
+    );
+    provider.dispose();
+  }
+});
+
+/** A present target snapshot with mismatched immutable evidence rejects before any local-Git state publication. */
+test("Git provider rejects an invalid present target snapshot without fallback CAS or history", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt
+  }));
+  const target = { kind: "git" as const, repositoryId, contextId: initial.contextState.contextId };
+  const persisted = await repository.load(target);
+  assert.ok(persisted);
+  const withTargetSnapshot = withOneTargetSnapshotLayer(
+    persisted,
+    initial.target.fileId,
+    "context",
+    stableHash,
+  );
+  const corrupted = {
+    ...withTargetSnapshot,
+    contextState: {
+      ...withTargetSnapshot.contextState,
+      revisionSnapshots: {
+        ...withTargetSnapshot.contextState.revisionSnapshots,
+        [newRevision]: {
+          ...withTargetSnapshot.contextState.revisionSnapshots![newRevision]!,
+          files: {
+            [initial.target.fileId]: {
+              ...withTargetSnapshot.contextState.revisionSnapshots![newRevision]!.files[initial.target.fileId]!,
+              contentHash: "mismatched-immutable-content",
+            },
+          },
+        },
+      },
+    },
+  };
+  await repository.save(target, corrupted);
+  const before = await repository.load(target);
+  const commitCallsBefore = repository.commitCalls;
+  events.length = 0;
+  inspector.head = newRevision;
+
+  await assert.rejects(
+    () => provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))),
+    /snapshot|immutable evidence|content hash/i,
+  );
+  assert.equal(repository.commitCalls, commitCallsBefore);
+  assert.deepEqual(await repository.load(target), before);
+  assert.deepEqual(events, []);
+  provider.dispose();
+});
+
+/** A present snapshot whose authoritative target text cannot be read must not fall back to mapping. */
+test("Git provider rejects an unreadable present target snapshot without fallback CAS or history", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt
+  }));
+  const target = { kind: "git" as const, repositoryId, contextId: initial.contextState.contextId };
+  const persisted = await repository.load(target);
+  assert.ok(persisted);
+  await repository.save(
+    target,
+    withOneTargetSnapshotLayer(persisted, initial.target.fileId, "context", stableHash)
+  );
+  const before = await repository.load(target);
+  const commitCallsBefore = repository.commitCalls;
+  events.length = 0;
+  source.invalidTextPaths.add("src/example.ts");
+  inspector.head = newRevision;
+
+  await assert.rejects(
+    () => provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))),
+    /snapshot|immutable evidence|unavailable/i,
+  );
+  assert.equal(repository.commitCalls, commitCallsBefore);
+  assert.deepEqual(await repository.load(target), before);
+  assert.deepEqual(events, []);
+  provider.dispose();
+});
+
+/** A stale CAS rejects a local-Git revision transition before state or history becomes observable. */
+test("Git provider does not publish mixed snapshot state or history after a CAS conflict", async () => {
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const inspector = new MutableGitInspector();
+  const source = new RevisionSource();
+  const events: Array<{ readonly type: string; readonly reason: string }> = [];
+  const provider = createProvider(stableHash, repository, inspector, source, undefined,
+    new ReviewHistoryRecorder({
+      sessionId: "session",
+      createEventId: () => `event-${events.length}`,
+      appender: { append: async (_target, event) => { events.push(event); } }
+    }));
+  const initial = await provider.open(
+    descriptor("src/example.ts", stableHash.digest("alpha\nbeta\ngamma"))
+  );
+  await initial.committer.commit(markReviewedRanges({
+    contextState: initial.contextState,
+    globalState: initial.globalState,
+    target: initial.target,
+    intervals: [{ startLine: 0, endLineExclusive: 3 }],
+    occurredAt
+  }));
+  const persisted = await repository.load({
+    kind: "git", repositoryId, contextId: initial.contextState.contextId
+  });
+  assert.ok(persisted);
+  await repository.save(
+    { kind: "git", repositoryId, contextId: initial.contextState.contextId },
+    withOneTargetSnapshotLayer(persisted, initial.target.fileId, "context", stableHash)
+  );
+  const beforeConflict = await repository.load({
+    kind: "git", repositoryId, contextId: initial.contextState.contextId
+  });
+  const commitCallsBeforeConflict = repository.commitCalls;
+  events.length = 0;
+  repository.rejectCommits = true;
+  inspector.head = newRevision;
+
+  await assert.rejects(
+    provider.open(descriptor("src/example.ts", stableHash.digest("alpha\nBETA\ngamma"))),
+    (error: unknown) => error instanceof StaleReviewStateError
+  );
+
+  assert.equal(repository.commitCalls, commitCallsBeforeConflict + 3);
+  assert.deepEqual(
+    await repository.load({ kind: "git", repositoryId, contextId: initial.contextState.contextId }),
+    beforeConflict
+  );
+  assert.deepEqual(events, []);
+  provider.dispose();
+});
+
 test("Git provider records an unresolved mapping event after a conservative missing-object clear", async () => {
   const stableHash = new NodeSha256StableHash();
   const repository = new MemoryRepository();
@@ -360,6 +672,19 @@ test("Git provider records an unresolved mapping event after a conservative miss
     intervals: [{ startLine: 0, endLineExclusive: 1 }],
     occurredAt
   }));
+  const persistedInitial = await repository.load({
+    kind: "git",
+    repositoryId,
+    contextId: initial.contextState.contextId
+  });
+  assert.deepEqual(
+    persistedInitial?.contextState.revisionSnapshots?.[oldRevision]?.files,
+    persistedInitial?.contextState.files
+  );
+  assert.deepEqual(
+    persistedInitial?.globalState.revisionSnapshots?.[oldRevision]?.files,
+    persistedInitial?.globalState.files
+  );
   inspector.head = newRevision;
   source.objectsExist = false;
 

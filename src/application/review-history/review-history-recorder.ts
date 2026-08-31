@@ -43,8 +43,10 @@ const typeForOperation = (operation: ReviewStateTransaction["operation"]): FileR
   switch (operation) {
     case "mark-ranges-reviewed":
     case "mark-original-ranges-reviewed": return "marked-reviewed";
+    case "mark-original-selection-reviewed": return "marked-reviewed";
     case "unmark-ranges-reviewed":
     case "unmark-original-ranges-reviewed": return "unmarked-reviewed";
+    case "unmark-original-selection-reviewed": return "unmarked-reviewed";
     case "mark-file-reviewed": return "marked-file-reviewed";
     case "unmark-file-reviewed": return "unmarked-file-reviewed";
   }
@@ -103,7 +105,30 @@ export class ReviewHistoryRecorder {
         });
       } else events.push({ ...common, diffSide });
     };
-    if (transaction.side === "original") {
+    const isOriginalSelection =
+      transaction.operation === "mark-original-selection-reviewed" ||
+      transaction.operation === "unmark-original-selection-reviewed";
+    if (isOriginalSelection) {
+      if (
+        JSON.stringify(previousFile?.modifiedReviewed ?? []) !== JSON.stringify(nextFile.modifiedReviewed) ||
+        JSON.stringify(previousGlobalFile?.reviewed ?? []) !== JSON.stringify(nextGlobalFile?.reviewed ?? [])
+      ) {
+        appendFileEvent(
+          "modified",
+          previousFile?.modifiedReviewed ?? [],
+          nextFile.modifiedReviewed,
+          undefined,
+          previousGlobalFile?.reviewed ?? [],
+          nextGlobalFile?.reviewed ?? []
+        );
+      }
+      if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
+      const previousOriginal = previousFile?.originalReviewedByDiff[transaction.diffId] ?? [];
+      const nextOriginal = nextFile.originalReviewedByDiff[transaction.diffId] ?? [];
+      if (JSON.stringify(previousOriginal) !== JSON.stringify(nextOriginal)) {
+        appendFileEvent("original", previousOriginal, nextOriginal, transaction.diffId);
+      }
+    } else if (transaction.side === "original") {
       if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
       appendFileEvent(
         "original",

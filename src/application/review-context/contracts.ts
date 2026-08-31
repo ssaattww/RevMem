@@ -117,12 +117,16 @@ export interface GitContextRevisionMappingInput {
   readonly encodingChangedPaths?: readonly string[];
 }
 
-/** Complete next snapshots after revision mapping. */
+/** Describes whether a local Git revision transition mapped, restored, or mixed snapshot layers. */
+export type GitContextRevisionMappingDisposition = "mapped" | "restored" | "mixed";
+
 export interface GitContextRevisionMappingResult {
   /** Context state advanced to the current resolved revision. */
   readonly contextState: ReviewContextState;
   /** Global state advanced to the current resolved revision. */
   readonly globalState: RepositoryGlobalState;
+  /** Layer-level immutable snapshot outcome used by the post-CAS history reason when supported by the mapper. */
+  readonly mappingDisposition?: GitContextRevisionMappingDisposition;
   /** File identities whose prior review evidence was conservatively invalidated without a proven mapping. */
   readonly unresolvedFileIds: readonly string[];
   /** Optional generic, privacy-safe diagnostics for identities whose immutable text could not be mapped. */

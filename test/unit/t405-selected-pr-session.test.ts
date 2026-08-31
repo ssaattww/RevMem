@@ -21,7 +21,7 @@ import { REVIEW_RANGE_SCHEMA_VERSION } from "../../src/core/contracts/index.js";
 const B = "b".repeat(40);
 const REPOSITORY_ID = "github.com/example/project";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
-const ROOT = path.resolve("/repo");
+const ROOT = "/repo";
 const FILE_ID = "file-pr";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -145,7 +145,7 @@ test("R405-7 selected PR owns normal-editor command and decoration sessions with
   });
   const descriptor = {
     documentUri: { scheme: "file", authority: "", path: "/repo/src/example.ts" },
-    documentFsPath: path.resolve("/repo/src/example.ts"),
+    documentFsPath: "/repo/src/example.ts",
     fileSystemPathSemantics: "posix" as const,
     lineCount: 1,
     contentHash: "hash-current",
@@ -179,7 +179,7 @@ test("selected PR rejects a foreign repository or stale head without creating st
   });
   const descriptor = {
     documentUri: { scheme: "file", authority: "", path: "/repo/src/example.ts" },
-    documentFsPath: path.resolve("/repo/src/example.ts"),
+    documentFsPath: "/repo/src/example.ts",
     fileSystemPathSemantics: "posix" as const,
     lineCount: 1,
     contentHash: "hash-current",
