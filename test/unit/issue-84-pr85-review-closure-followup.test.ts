@@ -298,6 +298,13 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
           head: { sha: pullRequestHead },
         });
       }
+      const comparison = /^\/repos\/ssaattww\/(revmem|revmem-secondary)\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)$/u.exec(url.pathname);
+      if (comparison !== null) {
+        const expectedHead = comparison[1] === "revmem-secondary" ? secondaryHead : head;
+        assert.equal(comparison[2], expectedHead);
+        assert.equal(comparison[3], expectedHead);
+        return jsonResponse({ merge_base_commit: { sha: expectedHead } });
+      }
       if (/^\/repos\/ssaattww\/(?:revmem|revmem-secondary)\/pulls\/(52|53|54)\/files$/u.test(url.pathname)) {
         return jsonResponse([]);
       }
