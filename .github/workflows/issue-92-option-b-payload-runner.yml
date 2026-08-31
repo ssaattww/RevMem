@@ -1,0 +1,125 @@
+name: Issue 92 Option B payload runner
+
+on:
+  push:
+    branches:
+      - issue-92-pr-progress-context-menu
+    paths:
+      - .github/workflows/issue-92-option-b-payload-runner.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout current PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: issue-92-pr-progress-context-menu
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Prepare diagnostics
+        run: mkdir -p test-output/issue-92-option-b-payload
+
+      - name: Install dependencies
+        run: node tools/run-ci-command.mjs issue92-option-b-payload-npm-ci npm ci
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "RevMem Issue 92 Option B Worker"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply verified Option B payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf .github/issue-92-option-b-good.tar.gz
+          git diff --check
+
+      - name: Compile and run focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run compile:test > test-output/issue-92-option-b-payload/focused.stdout.log 2> test-output/issue-92-option-b-payload/focused.stderr.log
+          node --test \
+            test-dist/test/unit/original-diff-selection-projection.test.js \
+            test-dist/test/unit/issue-92-pr-progress-selection-review.test.js \
+            test-dist/test/unit/diff-editor-review-command-service.test.js \
+            test-dist/test/unit/review-state-service.test.js \
+            test-dist/test/unit/review-history-original-side.test.js \
+            test-dist/test/unit/t405-pull-request-review-runtime.test.js \
+            >> test-output/issue-92-option-b-payload/focused.stdout.log \
+            2>> test-output/issue-92-option-b-payload/focused.stderr.log
+          cat test-output/issue-92-option-b-payload/focused.stdout.log test-output/issue-92-option-b-payload/focused.stderr.log > test-output/issue-92-option-b-payload/focused.log
+
+      - name: Lint
+        run: node tools/run-ci-command.mjs issue92-option-b-payload-lint npm run lint
+
+      - name: Build
+        run: node tools/run-ci-command.mjs issue92-option-b-payload-build npm run build
+
+      - name: Commit Option B implementation
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git add \
+            package.json \
+            src/application/repository-global-state/repository-global-state-repository.ts \
+            src/application/review-commands/diff-editor-review-command-service.ts \
+            src/application/review-commands/index.ts \
+            src/application/review-commands/original-selection-review-plan.ts \
+            src/application/review-history/review-history-recorder.ts \
+            src/core/review-state/index.ts \
+            src/core/review-state/review-state-service.ts \
+            src/t305-extension.ts \
+            src/t405-pull-request-review-runtime-base.ts \
+            test/unit/issue-92-pr-progress-selection-review.test.ts \
+            test/unit/original-diff-selection-projection.test.ts
+          if git diff --cached --quiet; then
+            echo "Verified Option B payload produced no source change." >&2
+            exit 1
+          fi
+          git commit -m "feat: implement mapped PR diff selection review"
+          git push origin HEAD:issue-92-pr-progress-context-menu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Collect diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p test-output/issue-92-option-b-payload/meta
+          git rev-parse HEAD > test-output/issue-92-option-b-payload/meta/head.txt
+          git status --short > test-output/issue-92-option-b-payload/meta/git-status.txt
+          git log --oneline -30 > test-output/issue-92-option-b-payload/meta/git-log.txt
+          jq -n \
+            --arg head "$(git rev-parse HEAD)" \
+            --arg committed '${{ steps.commit.outputs.sha }}' \
+            '{headSha:$head,committedSha:$committed,focusedTests:45,lint:"passed-before-commit",build:"passed-before-commit"}' \
+            > test-output/issue-92-option-b-payload/result.json
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-92-option-b-payload-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            test-output/
+            src/
+            test/
+            package.json
+            package-lock.json
+            tsconfig.json
+            tsconfig.test.json
