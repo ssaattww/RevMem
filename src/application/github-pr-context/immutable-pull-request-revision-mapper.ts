@@ -106,6 +106,20 @@ const cloneGlobalState = (
   }])
 );
 
+/** Retains modified review state while discarding ranges tied to a previous PR base revision. */
+const invalidateOriginalReviewedByDiff = (
+  files: Readonly<Record<string, Readonly<FileReviewState>>>
+): Record<string, FileReviewState> => Object.fromEntries(
+  Object.entries(files).map(([fileId, file]) => [
+    fileId,
+    {
+      ...file,
+      modifiedReviewed: file.modifiedReviewed.map((interval) => ({ ...interval })),
+      originalReviewedByDiff: {},
+    },
+  ])
+);
+
 const snapshotEvidence = (
   contextState: import("../../core/contracts/index").ReviewContextState,
   globalState: import("../../core/contracts/index").RepositoryGlobalState,
@@ -193,9 +207,11 @@ export function createImmutablePullRequestRevisionMapper(
           contextState: {
           ...source.contextState,
           pullRequest: { ...nextPullRequest },
-          files: restored?.context.kind === "hit"
-            ? restored.context.files
-            : advanceRetainedContextFiles(source.contextState.files, evidence.targetHeadSha),
+          files: invalidateOriginalReviewedByDiff(
+            restored?.context.kind === "hit"
+              ? restored.context.files
+              : advanceRetainedContextFiles(source.contextState.files, evidence.targetHeadSha)
+          ),
           updatedAt,
           },
           globalState: {

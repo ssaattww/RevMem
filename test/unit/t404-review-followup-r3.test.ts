@@ -43,7 +43,7 @@ test("immutable diff/content mapper invalidates changed reviewed lines instead o
 
 test("base-only PR transitions retain modified ranges and invalidate base-dependent original ranges", async () => {
   const mapper = createImmutablePullRequestRevisionMapper(async (evidence) => ({ sourceBaseSha: evidence.sourceBaseSha, sourceHeadSha: evidence.sourceHeadSha, targetBaseSha: evidence.targetBaseSha, targetHeadSha: evidence.targetHeadSha, diff: "", oldTexts: {}, newFiles: {}, updatedAt: "2026-08-08T00:00:00.000Z" }));
-  const current = context(48, { files: { file: { ...context().files.file!, originalReviewedByDiff: { [`${A}..${B}:src/example.ts`]: [{ startLine: 0, endLineExclusive: 2 }] } } } });
+  const current = context(48, { files: { file: { ...context().files.file!, originalReviewedByDiff: { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 2 }] } } } });
   const mapped = await mapper({ current: { contextState: current, globalState: globalState() }, nextPullRequest: pr({ baseSha: C }), evidence: Object.freeze({ repositoryId: REPOSITORY_ID, contextId: current.contextId, sourceBaseSha: A, sourceHeadSha: B, targetBaseSha: C, targetHeadSha: B }) });
   assert.deepEqual(mapped.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
   assert.deepEqual(mapped.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 3 }]);
