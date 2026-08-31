@@ -127,6 +127,44 @@ test("R405-2 lifecycle adapter reports closed and merged PR state by stable PR i
   if (mergedResult.kind === "available") assert.equal(mergedResult.metadata.state, "merged");
 });
 
+test("Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip", async () => {
+  const requestedPaths: string[] = [];
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async (input) => {
+      const url = new URL(input.toString());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52") {
+        return jsonResponse({
+          number: 52,
+          title: "Saved PR",
+          html_url: "https://github.com/ssaattww/revmem/pull/52",
+          state: "open",
+          merged_at: null,
+          base: { sha: C },
+          head: { sha: B },
+        });
+      }
+      if (url.pathname === `/repos/ssaattww/revmem/compare/${C}...${B}`) {
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    },
+  });
+
+  const result = await adapter.fetchCurrent(identity, 52);
+
+  assert.equal(result.kind, "available");
+  if (result.kind === "available") {
+    assert.equal(result.metadata.baseSha, A);
+    assert.equal(result.metadata.headSha, B);
+  }
+  assert.deepEqual(requestedPaths, [
+    "/repos/ssaattww/revmem/pulls/52",
+    `/repos/ssaattww/revmem/compare/${C}...${B}`,
+  ]);
+});
+
 test("R405-1 lifecycle adapter acquires an exact immutable revision comparison for T404 mapping", async () => {
   const diff = [
     "diff --git a/src/example.ts b/src/example.ts",
