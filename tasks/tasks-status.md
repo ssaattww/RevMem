@@ -8,8 +8,8 @@
 - GitHub Issue: #92（PR #94のCI修復と独立レビュー）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #92保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #92 / PR #94 independent findings 4件のSol/high通常fix verification R2を実施する
-- 次のタスク: 全matrix Complete後、同じ独立reviewerのfinding/CI-delta限定closureへ進む
+- 現在のタスク: Issue #92 / PR #94 independent findings 4件はSol/high通常fix verification R2でclosed。同じ独立reviewerのfinding/CI-delta限定closureへ進む
+- 次のタスク: closure pass後、report attestation、push、exact-head required CI、squash merge
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。PR #94 HEAD `fb495665e209d48e586db05bf7948c3eb1c9f5ec`のrequired CI `33438752543`は全required test、Extension Host、artifact生成を含めGreen
@@ -30,9 +30,9 @@
 | PR94-NR-002 | 完了 | 0.5h以内 | PR evidence loaderがunchanged Global-only fileを含むcandidate全pathのauthoritative target証拠を供給し、bounds検証を維持する | PR94-CI-003 | R2 fix verificationでHigh closed。actual loader→mapper compositionとfail-closedを確認 |
 | PR94-NR-003 | 完了 | 0.5h以内 | ReviewStateTransactionのmodified/original operation discriminated unionを型安全にする | PR94-CI-002 | normal fix verification R2でclosed。negative contract、compile、focused Green |
 | PR94-NR-004 | 完了 | 0.5h以内 | Issue #92 context-menu testをrequired test:unitへ配線しCI contractで固定する | PR94-CI-001 | normal fix verification R2でclosed。required test:unit wiring、CI contract Green |
-| PR94-IFR-001 | R2 fix実装済み / normal verification待ち / High | 0.5h以内 | PR command targetへauthoritative contentHashを保持し、Context/Global一致をfail closedで検証してsnapshotへwrite-throughする | PR94-CI-005 | actual runtime A command→A→B→A composition 18/18、historical Global snapshot保持、build/lint/diff Green |
+| PR94-IFR-001 | closed / High | 0.5h以内 | PR command targetへauthoritative contentHashを保持し、Context/Global一致をfail closedで検証してsnapshotへwrite-throughする | PR94-CI-005 | normal fix verification R2で全matrix Complete、compile、focused 55/55 Green |
 | PR94-IFR-002 | closed / High | 0.5h以内 | same-HEAD/base-onlyで過去original pairを保持し、新pairを未確認から開始する | PR94-IFR-001 | normal fix verificationで全matrix Complete |
-| PR94-IFR-003 | R2 fix実装済み / normal verification待ち / Medium | 0.5h以内 | invalid snapshotのauthoritative fail-closed契約を両design・production・actual local-Git fixtureで統一する | PR94-IFR-002 | present unavailable/invalid-encoding reject、absentのみmapping。local lifecycle/snapshot/binary 33/33、build/lint/diff Green |
+| PR94-IFR-003 | closed / Medium | 0.5h以内 | invalid snapshotのauthoritative fail-closed契約を両design・production・actual local-Git fixtureで統一する | PR94-IFR-002 | normal fix verification R2で全matrix Complete、compile、focused 55/55 Green |
 | PR94-IFR-004 | closed / Low | 0.5h以内 | NR003/004 closureとdesign rev9をtrackingへ同期する | 独立review `afa7ccf...` | normal fix verificationで全matrix Complete |
 
 ## Issue #90 / PR #91 normal-review follow-up
