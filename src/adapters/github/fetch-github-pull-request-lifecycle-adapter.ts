@@ -1,6 +1,7 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
 import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
+import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
 
 export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
 
@@ -102,6 +103,22 @@ export class FetchGitHubPullRequestLifecycleAdapter {
       !isObject(payload.base) || typeof payload.base.sha !== "string" || !OBJECT_ID.test(payload.base.sha) ||
       !isObject(payload.head) || typeof payload.head.sha !== "string" || !OBJECT_ID.test(payload.head.sha)
     ) return { kind: "unavailable", reason: "api" };
+    let baseSha = payload.base.sha;
+    if (payload.state === "open") {
+      const mergeBase = await fetchGitHubPullRequestMergeBase(
+        {
+          apiBaseUrl: this.apiBaseUrl,
+          ...(this.token === undefined ? {} : { token: this.token }),
+          fetch: this.fetchImplementation,
+        },
+        repository,
+        payload.base.sha,
+        payload.head.sha,
+        signal,
+      );
+      if (mergeBase.kind === "unavailable") return mergeBase;
+      baseSha = mergeBase.mergeBaseSha;
+    }
     void feedbackContext;
     return {
       kind: "available",
@@ -110,7 +127,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
         title: payload.title,
         url: payload.html_url,
         state: payload.merged_at === null || payload.merged_at === undefined ? payload.state : "merged",
-        baseSha: payload.base.sha,
+        baseSha,
         headSha: payload.head.sha,
       },
     };
