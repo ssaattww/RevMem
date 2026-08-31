@@ -8,13 +8,13 @@
 - GitHub Issue: #92（PR #94のCI修復と独立レビュー）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #92保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #92 / PR #94 `PR94-CI-004`。PR94-CI-005はSol/high通常レビューでclosed。local static gate Green、default testは既知Windows Unit 2件でheld。push後のexact-head required CIを進める
-- 次のタスク: exact-head CI成功時点で停止する。`PR94-IFR-001`の独立レビューはユーザーの再開指示後に実施する
+- 現在のタスク: Issue #92 / PR #94 `PR94-IFR-001`。exact-head required CI run 33438752543はGreen。Sol/high fresh reviewerの独立final reviewを実施する
+- 次のタスク: 独立review pass後、report attestation commit、push、exact-head required CIを確認し、PR #94をsquash mergeする
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
-- ブロッカー: PR #94 HEAD `1171bb9132ddd72c263715bd5beb605137a69da2`はplaceholder sourceと不完全manifestでrequired CI `33376611286`がbuild failure。恒久実装は未実体化
+- ブロッカー: なし。PR #94 HEAD `fb495665e209d48e586db05bf7948c3eb1c9f5ec`のrequired CI `33438752543`は全required test、Extension Host、artifact生成を含めGreen
 - Gitブランチ: `codex/pr94-ci-review`（remote PR branch `issue-92-pr-progress-context-menu`へpushする）
-- Pull Request: #94（Draft、base `main`、current remote HEAD `1171bb9132ddd72c263715bd5beb605137a69da2`）
+- Pull Request: #94（Draft、base `main`、current remote HEAD `fb495665e209d48e586db05bf7948c3eb1c9f5ec`、mergeable CLEAN）
 
 ## Issue #92 / PR #94 CI repair and independent review
 
@@ -23,14 +23,14 @@
 | PR94-CI-001 | 完了 | 0.5h以内 | temporary worker・payload・probe・workflow・path-only reportを除去し、整形済みmanifest、4 command predicate、Issue #92 focused test wiringを復元する | なし | temporary 51 pathを除去、manifest 191行、4 predicate・3 test registration、diff-check Green。CI workflow/performance非配線を維持 |
 | PR94-CI-002 | 完了 | 0.5h単位 | original-side selection plan、projection、command-service/runtimeのatomic transaction結線をTDDで実体化する | PR94-CI-001 | compile Green、projection/T405/T305 focused 14/14、typed composite transaction、stale/non-PR/別tab拒否、lint/diff-check Green |
 | PR94-CI-003 | 完了 | 0.5h単位 | Context・Global・Originalのfull immutable revision snapshot、layer別hit/miss、`A -> B -> C -> A`復元をTDDで実体化する | PR94-CI-002 | core snapshot、PR full/mixed restore、PR/local Git write-throughを実装。直近focused 28/28、snapshot/store 13/13、T405/snapshot 15/15 Green |
-| PR94-CI-004 | 実施中 | 0.5h単位 | non-performance full local gate、修復commit・push、exact-head required pull_request CIの失敗を順次修正する | PR94-CI-001〜003 | build、contracts、architecture正負、lint、default test、diff-checkとrequired CIがGreen。VSIX/source ZIP artifactを確認 |
+| PR94-CI-004 | 完了 | 0.5h単位 | non-performance full local gate、修復commit・push、exact-head required pull_request CIの失敗を順次修正する | PR94-CI-001〜003 | run 33438752543 Green。artifact 9775656596にVSIX/source ZIP、performance CI追加なし |
 | PR94-CI-005 | 完了 | 0.5h以内 | Issue #106のatomic redesignを実装せず、PR94 immutable snapshotを整合したsingle-context境界へ限定して既存multi-PR同期を回帰させない | PR94-CI-004、Issue #106 | Sol/high通常レビューでfindingなし。T405 57/57、snapshot 18/18 Green。required CIはPR94-CI-004で確認 |
 | ISSUE-106 | 後続Issue登録済み | 0.5h単位で再分解 | 複数PR Contextとowner-wide Global revisionのsemantics、multi-context CAS、partial state/history防止を設計・実装する | PR94-CI-005後 | GitHub Issue #106の完了条件を満たす。PR #94には含めない |
 | PR94-NR-001 | 完了 | 0.5h以内 | local Git Context/Global mixed snapshot hit/missをlayer別restore/mapし、single CAS/historyを維持する | PR94-CI-003 | R2 fix verificationでHigh closed。compile:test、関連focused 34/34 Green |
 | PR94-NR-002 | 完了 | 0.5h以内 | PR evidence loaderがunchanged Global-only fileを含むcandidate全pathのauthoritative target証拠を供給し、bounds検証を維持する | PR94-CI-003 | R2 fix verificationでHigh closed。actual loader→mapper compositionとfail-closedを確認 |
 | PR94-NR-003 | fix実装済み / verification待ち | 0.5h以内 | ReviewStateTransactionのmodified/original operation discriminated unionを型安全にする | PR94-CI-002 | negative contract Red TS2578→contracts/compile Green、runtime変更なし |
 | PR94-NR-004 | fix実装済み / verification待ち | 0.5h以内 | Issue #92 context-menu testをrequired test:unitへ配線しCI contractで固定する | PR94-CI-001 | context-menu/CI contract 21/21、全78 test:unit entry解決、workflow/performance変更なし |
-| PR94-IFR-001 | ユーザー指示により開始前停止予定 | 0.5h単位 | CI成功HEADをSol/highのfresh reviewerが独立レビューする | PR94-CI-004 | exact-head CI成功後は開始せず停止し、ユーザー再開指示を待つ |
+| PR94-IFR-001 | 実施中 | 0.5h単位 | CI成功HEADをSol/highのfresh reviewerが独立レビューする | PR94-CI-004 | 一度限りの全体独立reviewでopen findingなし。pass後はreport attestation条件を満たしてmergeへ進む |
 
 ## Issue #90 / PR #91 normal-review follow-up
 
