@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  FetchGitHubPullRequestDiffAdapter,
   FetchGitHubPullRequestLifecycleAdapter,
 } from "../../src/adapters/github/index.js";
 import {
@@ -162,6 +163,62 @@ test("Issue #107 lifecycle metadata uses the PR branch point instead of the curr
   assert.deepEqual(requestedPaths, [
     "/repos/ssaattww/revmem/pulls/52",
     `/repos/ssaattww/revmem/compare/${C}...${B}`,
+  ]);
+});
+
+test("Issue #107 remote PR diff keeps the branch point when the base branch advances", async () => {
+  const requestedPaths: string[] = [];
+  const adapter = new FetchGitHubPullRequestDiffAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async (input) => {
+      const url = new URL(input.toString());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52") {
+        return jsonResponse({
+          number: 52,
+          title: "Saved PR",
+          html_url: "https://github.com/ssaattww/revmem/pull/52",
+          state: "open",
+          merged_at: null,
+          changed_files: 1,
+          base: { sha: C },
+          head: { sha: B },
+        });
+      }
+      if (url.pathname === `/repos/ssaattww/revmem/compare/${C}...${B}`) {
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52/files") {
+        return jsonResponse([{
+          filename: "src/example.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          patch: "@@ -1 +1 @@\n-old\n+new",
+        }]);
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    },
+  });
+
+  const result = await adapter.fetch({
+    contextId: CONTEXT_ID,
+    repository: identity,
+    number: 52,
+    baseSha: A,
+    headSha: B,
+  });
+
+  assert.equal(result.kind, "available");
+  if (result.kind === "available") {
+    assert.equal(result.metadata.baseSha, A);
+    assert.equal(result.metadata.headSha, B);
+    assert.equal(result.files.length, 1);
+  }
+  assert.deepEqual(requestedPaths, [
+    "/repos/ssaattww/revmem/pulls/52",
+    `/repos/ssaattww/revmem/compare/${C}...${B}`,
+    "/repos/ssaattww/revmem/pulls/52/files",
   ]);
 });
 
