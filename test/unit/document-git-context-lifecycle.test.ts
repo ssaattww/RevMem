@@ -176,6 +176,8 @@ class MutableGitInspector implements DocumentGitInspector {
 
 class RevisionSource implements GitRevisionMappingSource {
   public objectsExist = true;
+  public diffCalls = 0;
+  public rejectSecondDiff = false;
   public readonly encodingHints: Array<readonly [string, string | undefined]> = [];
   public readonly invalidTextPaths = new Set<string>();
   public diff = [
@@ -206,6 +208,10 @@ class RevisionSource implements GitRevisionMappingSource {
     void _repositoryRoot;
     void _leftRevision;
     void _rightRevision;
+    this.diffCalls += 1;
+    if (this.rejectSecondDiff && this.diffCalls > 1) {
+      throw new Error("The hit layer must not invoke diff mapping.");
+    }
     return this.diff;
   }
 
@@ -454,6 +460,8 @@ test("Git provider restores each mixed target snapshot layer in one CAS", async 
     );
     const commitCallsBeforeTransition = repository.commitCalls;
     events.length = 0;
+    source.diffCalls = 0;
+    source.rejectSecondDiff = true;
     inspector.head = newRevision;
 
     const opened = await provider.open(
@@ -463,6 +471,7 @@ test("Git provider restores each mixed target snapshot layer in one CAS", async 
     assert.deepEqual(opened.contextState.files[opened.target.fileId]?.modifiedReviewed, scenario.expectedContext);
     assert.deepEqual(opened.globalState.files[opened.target.fileId]?.reviewed, scenario.expectedGlobal);
     assert.equal(repository.commitCalls, commitCallsBeforeTransition + 1, scenario.layer);
+    assert.equal(source.diffCalls, 1, scenario.layer);
     assert.ok(events.some((event) =>
       event.type === "context-revision-changed" && event.reason === "exact-revision-snapshot-mixed"
     ));

@@ -22,11 +22,18 @@ const occurredAt = "2026-08-01T06:15:00.000Z";
 const stableHash = new NodeSha256StableHash();
 
 class BinaryAwareRevisionSource implements GitRevisionMappingSource {
+  public diffCalls = 0;
+  public rejectSecondDiff = false;
+
   public async objectExists(): Promise<boolean> {
     return true;
   }
 
   public async diffRevisions(): Promise<string> {
+    this.diffCalls += 1;
+    if (this.rejectSecondDiff && this.diffCalls > 1) {
+      throw new Error("The hit layer must not invoke diff mapping.");
+    }
     return [
       "diff --git a/src/example.ts b/src/example.ts",
       "index 1111111..2222222 100644",
@@ -126,8 +133,9 @@ test("revision mapping ignores binary diff sections and maps text state", async 
     },
     updatedAt: occurredAt
   };
+  const source = new BinaryAwareRevisionSource();
   const mapper = new GitContextRevisionMapper({
-    source: new BinaryAwareRevisionSource(),
+    source,
     stableHash,
     now: () => new Date(occurredAt)
   });
@@ -224,6 +232,8 @@ test("revision mapping ignores binary diff sections and maps text state", async 
       globalReviewed: [{ startLine: 0, endLineExclusive: 3 }]
     }
   ] as const) {
+    source.diffCalls = 0;
+    source.rejectSecondDiff = true;
     const mixed = await mapper.map({
       current,
       contextState: { ...contextState, revisionSnapshots: scenario.contextSnapshots },
@@ -231,6 +241,7 @@ test("revision mapping ignores binary diff sections and maps text state", async 
       fileSystemPathSemantics: "posix",
       options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false }
     });
+    assert.equal(source.diffCalls, 1, scenario.name);
     assert.equal(mixed.mappingDisposition, "mixed", scenario.name);
     assert.deepEqual(mixed.contextState.files[fileId]?.modifiedReviewed, scenario.contextReviewed, scenario.name);
     assert.deepEqual(mixed.globalState.files[fileId]?.reviewed, scenario.globalReviewed, scenario.name);

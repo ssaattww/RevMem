@@ -323,35 +323,39 @@ export class GitContextRevisionMapper {
     const oldObjectAvailable = FULL_OBJECT_ID_PATTERN.test(oldContextRevision) &&
       await this.options.source.objectExists(input.current.repositoryRoot, oldContextRevision);
 
-    const contextMapping = await this.mapContextFiles(
-      source.contextState.files,
-      input.current.repositoryId,
-      oldContextRevision,
-      newRevision,
-      input.current.repositoryRoot,
-      input.fileSystemPathSemantics,
-      input.options,
-      occurredAt,
-      input.encodingHintsByPath,
-      new Set(input.encodingChangedPaths ?? [])
-    );
-    const globalFiles = await this.mapGlobalFiles(
-      source.globalState.files,
-      input.current.repositoryId,
-      oldGlobalRevision,
-      newRevision,
-      input.current.repositoryRoot,
-      input.fileSystemPathSemantics,
-      input.options,
-      occurredAt,
-      input.encodingHintsByPath,
-      new Set(input.encodingChangedPaths ?? [])
-    );
+    const contextMapping = restored?.context.kind === "hit"
+      ? undefined
+      : await this.mapContextFiles(
+          source.contextState.files,
+          input.current.repositoryId,
+          oldContextRevision,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+          input.options,
+          occurredAt,
+          input.encodingHintsByPath,
+          new Set(input.encodingChangedPaths ?? [])
+        );
+    const globalFiles = restored?.global.kind === "hit"
+      ? undefined
+      : await this.mapGlobalFiles(
+          source.globalState.files,
+          input.current.repositoryId,
+          oldGlobalRevision,
+          newRevision,
+          input.current.repositoryRoot,
+          input.fileSystemPathSemantics,
+          input.options,
+          occurredAt,
+          input.encodingHintsByPath,
+          new Set(input.encodingChangedPaths ?? [])
+        );
 
     const unresolvedFileIds = restored?.context.kind === "hit"
       ? []
       : oldObjectAvailable
-      ? contextMapping.unresolvedFileIds
+      ? contextMapping?.unresolvedFileIds ?? []
       : Object.keys(source.contextState.files).sort();
     const mappingDisposition = restored?.context.kind === "hit" || restored?.global.kind === "hit"
       ? "mixed"
@@ -362,13 +366,13 @@ export class GitContextRevisionMapper {
           ...clone(source.contextState),
           displayName: input.current.contextState.displayName,
           branch: clone(input.current.contextState.branch),
-          files: restored?.context.kind === "hit" ? restored.context.files : contextMapping.files,
+          files: restored?.context.kind === "hit" ? restored.context.files : contextMapping?.files ?? {},
           updatedAt: occurredAt
         },
         globalState: {
           ...clone(source.globalState),
           currentRevisionId: newRevision,
-          files: restored?.global.kind === "hit" ? restored.global.files : globalFiles,
+          files: restored?.global.kind === "hit" ? restored.global.files : globalFiles ?? {},
           updatedAt: occurredAt
         },
         revisionId: newRevision,
@@ -376,7 +380,7 @@ export class GitContextRevisionMapper {
       }),
       unresolvedFileIds,
       unresolvedReasonsByFileId: oldObjectAvailable
-        ? restored?.context.kind === "hit" ? {} : contextMapping.unresolvedReasonsByFileId ?? {}
+        ? restored?.context.kind === "hit" ? {} : contextMapping?.unresolvedReasonsByFileId ?? {}
         : Object.fromEntries(unresolvedFileIds.map((fileId) => [fileId, "mapping-unresolved" as const])),
       mappingDisposition
     };
