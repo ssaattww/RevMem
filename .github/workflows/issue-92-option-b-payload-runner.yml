@@ -42,7 +42,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar -xzf .github/issue-92-option-b-good.tar.gz
+          cat .github/issue-92-option-b-parts/* > /tmp/issue92-option-b.b64
+          echo "48deaff6dcf2f47db62c89a6a0fd7523caba092de23b6d42ac6b04f7badf28ba  /tmp/issue92-option-b.b64" | sha256sum -c -
+          base64 --decode /tmp/issue92-option-b.b64 > /tmp/issue92-option-b.tar.gz
+          echo "ec16c5d7856d0c1064ae72586152aaec3ae57770c3ecaf54d17bcb71fc99c00b  /tmp/issue92-option-b.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/issue92-option-b.tar.gz
           git diff --check
 
       - name: Compile and run focused tests
