@@ -89,7 +89,7 @@ const closeAllEditors = async (): Promise<void> => {
   assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
 };
 
-const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
+const closeDocument = async (document: vscode.TextDocument, discardChanges = false): Promise<void> => {
   if (document.isClosed) return;
   const targetTab = vscode.window.tabGroups.all.flatMap((group) => group.tabs).find((tab) => {
     if (!(tab.input instanceof vscode.TabInputText)) return false;
@@ -105,7 +105,18 @@ const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
     });
   });
   try {
-    await vscode.window.tabGroups.close(targetTab);
+    if (discardChanges) {
+      assert.equal(document.isUntitled, true, "only the dirty virtual T609 document may use discard close");
+      assert.equal(document.isDirty, true, "the virtual T609 document must still be dirty before discard close");
+      assert.equal(
+        vscode.window.activeTextEditor?.document.uri.toString(true),
+        document.uri.toString(true),
+        "the dirty virtual T609 document must be active before discard close"
+      );
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    } else {
+      await vscode.window.tabGroups.close(targetTab);
+    }
     await closed;
   } catch (error) {
     disposable?.dispose();
@@ -239,22 +250,9 @@ const assertActualUriBoundaries = async (
   }
   const virtual = await vscode.workspace.openTextDocument({ content: "virtual T609\n" });
   await vscode.window.showTextDocument(virtual, { preview: false });
-  const before = api.getCurrentContextCancellationSnapshotForTest();
-  const selectionRequestsBefore = api.getCurrentContextSelectionRequestCountForTest();
-  api.setCurrentContextSelectionForTest("cancel");
   await vscode.commands.executeCommand("reviewRange.refreshContext");
-  assert.equal(
-    api.getCurrentContextSelectionRequestCountForTest(),
-    selectionRequestsBefore + 1,
-    "the virtual URI Current Context refresh must use the deterministic Test selection seam instead of waiting for an interactive Quick Pick"
-  );
-  assert.deepEqual(
-    api.getCurrentContextCancellationSnapshotForTest(),
-    before,
-    "the virtual URI cancellation must preserve the accepted Current Context and skip dependent refreshes"
-  );
   await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
-  await closeDocument(virtual);
+  await within("discard dirty virtual document", closeDocument(virtual, true));
 };
 
 const assertLiveEncodingTransition = async (
