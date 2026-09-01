@@ -12,7 +12,9 @@ export {
   DebouncedReviewStateRepository
 } from "./debounced-review-state-repository";
 export {
-  FileSystemReviewStateRepository,
+  FileSystemReviewStateRepository
+} from "./owner-atomic-review-state-repository";
+export {
   StaleReviewStateError
 } from "./validated-file-system-review-state-repository";
 export { resolveReviewStateStorageRoute } from "./storage-router";
@@ -24,6 +26,10 @@ export type {
   ReviewStatePersistenceDelegate,
   ReviewStateSaveScheduler
 } from "./debounced-review-state-repository";
+export type {
+  ReviewStateRepositorySnapshot,
+  ReviewStateRepositoryTransactionLike
+} from "./owner-atomic-review-state-repository";
 export type {
   AtomicTextFileStore,
   JsonlReviewHistoryStoreOptions,
@@ -40,8 +46,6 @@ export type {
   ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateRepositoryTargetKind,
-  ReviewStateRepositorySnapshot,
-  ReviewStateRepositoryTransactionLike,
   ReviewStateStorageRoute,
   ReviewStateStorageUris,
   ReviewStateTransactionLike,
