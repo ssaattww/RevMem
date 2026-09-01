@@ -266,7 +266,7 @@ test("Issue #107 private refresh keeps read-only PR progress available across le
         contextState: structuredClone(repository.current.contextState),
         globalState: structuredClone(repository.current.globalState),
       }),
-      commit: async (transaction) => repository.commit(transaction),
+      commit: async () => { throw new Error("read-only PR progress must not commit persisted state"); },
     },
     requestHistory: async () => undefined,
     diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
