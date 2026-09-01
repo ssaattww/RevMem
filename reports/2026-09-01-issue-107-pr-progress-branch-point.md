@@ -180,13 +180,23 @@ base SHAだけ異なる場合はpersisted commitを保存せず、メモリ上�
 
 同SHA run `33555206678` ではT405 62/62となり、追加したlegacy persisted base回帰もGreenになった。その後T406で新しいCompareリクエストを知らない既存mock 2件だけが失敗し、artifact `9819070360` を保存した。
 
-### 7.5 T406 fixture修正
+### 7.5 T406 fixture修正とfull Green
 
 commit `494afd0da4aab98ee270cc8d2b2696080be87249` (`test: align PR search fixtures with branch-point lookup (#107)`) で、pagination fixtureとpublic PR fixtureへCompare API応答を追加した。
 
-public PR fixtureではPR一覧とCompareの双方がunauthenticatedであることも確認する。
+public PR fixtureではPR一覧とCompareの双方がunauthenticatedであることも確認する。production codeの追加変更はない。
 
-production codeの追加変更はない。
+同SHA run `33555338296` は全必須gate `success`。user validation artifactは `9819382259`、digestは `sha256:c0c8862e2025fd5c563f11be7a4087544169ff98f0e131e6609101565a43a2bb` で、run head SHAも `494afd0d...` と一致した。
+
+### 7.6 progress coreへの互換処理一本化
+
+commit `f1c62c35a09d11f2d7409ef86b24a49c04937b14` (`refactor: keep base-normalization compatibility in progress core (#107)`) で、wrapper側に重複していた `AsyncLocalStorage` ベースのprogress base投影を削除した。
+
+base-normalization互換は `src/t405-pull-request-review-runtime-base.ts` の `calculateProgress()` / `projectPersistedProgressCommit()` に一本化され、`getProgress()` と `activateProgress()` は通常どおりcore実装を呼ぶ構造に戻した。
+
+これは仕様変更ではなく、read-only compatibility boundaryをprogress coreの1箇所へ集約するrefactorである。mutation/openSessionのstrict checkは引き続き変更していない。
+
+同SHA run `33556361647` は全必須gate `success`。user validation artifactは `9819753122`、digestは `sha256:1b2f05b764b0ffbd4683dccf7c2b499cf72d8a704e790a65e4f804074c5d576c` で、run head SHAも `f1c62c35...` と一致した。
 
 ## 8. 最終変更範囲
 
@@ -202,6 +212,8 @@ production codeの追加変更はない。
   - PR検索candidateをresolver/persistenceへ渡す前にmerge baseへ正規化。
 - `src/t405-pull-request-review-runtime-base.ts`
   - read-only PR Progress計算で、同一HEADのlegacy persisted baseだけをephemeral投影して互換化。
+- `src/t405-pull-request-review-runtime.ts`
+  - wrapper側の重複compatibility layerを除去し、progress coreの実装へ一本化。
 
 ### regression / fixture
 
@@ -222,9 +234,9 @@ storage schema、Global Understanding計算式、通常editorのreview semantics
 
 ## 9. Technical Green
 
-report更新直前のtechnical HEADは `494afd0da4aab98ee270cc8d2b2696080be87249` である。
+report最終更新直前のtechnical HEADは `f1c62c35a09d11f2d7409ef86b24a49c04937b14` である。
 
-このSHAと完全一致するpull_request workflow run `33555338296` は `success`。
+このSHAと完全一致するpull_request workflow run `33556361647` は `success`。
 
 成功した必須gateは次のとおり。
 
@@ -246,9 +258,9 @@ report更新直前のtechnical HEADは `494afd0da4aab98ee270cc8d2b2696080be87249
 
 user validation artifact:
 
-- ID: `9819382259`
-- digest: `sha256:c0c8862e2025fd5c563f11be7a4087544169ff98f0e131e6609101565a43a2bb`
-- workflow run head SHA: `494afd0da4aab98ee270cc8d2b2696080be87249`
+- ID: `9819753122`
+- digest: `sha256:1b2f05b764b0ffbd4683dccf7c2b499cf72d8a704e790a65e4f804074c5d576c`
+- workflow run head SHA: `f1c62c35a09d11f2d7409ef86b24a49c04937b14`
 
 別SHAに紐づくworkflow runはGreen判定へ代用していない。
 
@@ -269,7 +281,7 @@ user validation artifact:
 
 変更はPR #109 `Fix PR Progress comparison base for #107` に集約した。
 
-本report自身を保存するcommit SHAは本文から自己参照できないため、本reportではreport保存直前のtechnical HEAD `494afd0d...` とmatching CI `33555338296` を固定記録する。
+本report自身を保存するcommit SHAは本文から自己参照できないため、本reportではreport保存直前のtechnical HEAD `f1c62c35...` とmatching CI `33556361647` を固定記録する。
 
 report保存後のcurrent PR HEAD、およびそのHEADと完全一致する最終CI run / conclusionは、repository内容を変更しないPR本文・PRコメントへattestationとして記録する。
 
