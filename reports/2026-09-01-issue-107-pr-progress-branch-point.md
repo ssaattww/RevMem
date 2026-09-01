@@ -124,11 +124,11 @@ commit `eba2bfdce6261c7877e87c50ddb975fb29e6f10d` (`test: make T404 history asse
 
 同commitと完全一致するrun `33498499210` は `success` となり、月境界で失敗していたUnit/T404を含め全必須gateが成功した。
 
-### 7.3 report最終化後のPR HEAD Green
+### 7.3 report保存直前のfull Green
 
-report最終化commit `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致するpull_request workflow run `33499326588` を最終CI証拠とした。
+report最終内容を確定する直前のHEAD `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致するpull_request workflow run `33499326588` は `success` となった。
 
-workflow runの `head_sha` はPR #109のcurrent HEAD `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致し、run conclusionは `success` である。次の全必須gateが成功した。
+workflow runの `head_sha` は `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致し、次の全必須gateが成功した。
 
 - Build
 - Contract typecheck
@@ -146,9 +146,9 @@ workflow runの `head_sha` はPR #109のcurrent HEAD `8d613af7e539c2aaa67a2d0b29
 - VS Code Extension Host tests
 - user validation package / artifact upload
 
-成功runのuser validation artifactはID `9797271895`。artifactのworkflow metadataも `head_sha=8d613af7e539c2aaa67a2d0b29e28b538baf8990` を保持している。
+成功runのuser validation artifactはID `9797271895`。
 
-別SHAに紐づくworkflow runは最終Green判定に代用していない。
+別SHAに紐づくworkflow runは各Green判定に代用していない。
 
 ## 8. 境界条件・残存リスク
 
@@ -159,10 +159,12 @@ workflow runの `head_sha` はPR #109のcurrent HEAD `8d613af7e539c2aaa67a2d0b29
 - T404の月境界修正はproduction behaviorを変更せず、historyテストの読み取り対象だけを実際の月次保存仕様に合わせた。
 - mergeは実施していない。
 
-## 9. PRと完了状態
+## 9. PRと完了attestation
 
 変更はPR #109 `Fix PR Progress comparison base for #107` に集約した。
 
-Issue #107実装、compare API追加に伴うfixture修正、2026年9月1日のCIで顕在化したT404月境界テスト修正、詳細reportまでrepositoryへ保存済みである。
+Issue #107実装、compare API追加に伴うfixture修正、2026年9月1日のCIで顕在化したT404月境界テスト修正、および詳細reportをrepositoryへ保存した。
 
-最終PR HEADと完全一致するCIはrun `33499326588` / `success`。mergeは利用者が行うため実施しない。
+reportファイルを保存するcommit自身のSHAをreport本文から自己参照することはできないため、このreportでは保存直前のfull Green証拠までを固定記録する。report保存後のcurrent PR HEADと、そのHEADと完全一致する最終pull_request CI run ID / conclusionは、repository内容を変更しないPRコメントにattestationとして記録する。
+
+mergeは利用者が行うため実施しない。
