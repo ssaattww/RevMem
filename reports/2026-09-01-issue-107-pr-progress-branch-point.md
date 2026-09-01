@@ -122,7 +122,13 @@ failure diagnostic artifact `9796579178` とjob logを確認すると、テス�
 
 commit `eba2bfdce6261c7877e87c50ddb975fb29e6f10d` (`test: make T404 history assertion month-safe`) で、固定月ファイル参照を廃止し、history directoryにある `events-YYYY-MM.jsonl` をファイル名順に横断してevent順序を検証するようにした。
 
-同commitと完全一致するrun `33498499210` は `success` となり、月境界で失敗していたUnit/T404を含め、次の全必須gateが成功した。
+同commitと完全一致するrun `33498499210` は `success` となり、月境界で失敗していたUnit/T404を含め全必須gateが成功した。
+
+### 7.3 report最終化後のPR HEAD Green
+
+report最終化commit `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致するpull_request workflow run `33499326588` を最終CI証拠とした。
+
+workflow runの `head_sha` はPR #109のcurrent HEAD `8d613af7e539c2aaa67a2d0b29e28b538baf8990` と完全一致し、run conclusionは `success` である。次の全必須gateが成功した。
 
 - Build
 - Contract typecheck
@@ -140,7 +146,9 @@ commit `eba2bfdce6261c7877e87c50ddb975fb29e6f10d` (`test: make T404 history asse
 - VS Code Extension Host tests
 - user validation package / artifact upload
 
-別SHAに紐づくworkflow runは各HEADのGreen判定に代用していない。
+成功runのuser validation artifactはID `9797271895`。artifactのworkflow metadataも `head_sha=8d613af7e539c2aaa67a2d0b29e28b538baf8990` を保持している。
+
+別SHAに紐づくworkflow runは最終Green判定に代用していない。
 
 ## 8. 境界条件・残存リスク
 
@@ -151,10 +159,10 @@ commit `eba2bfdce6261c7877e87c50ddb975fb29e6f10d` (`test: make T404 history asse
 - T404の月境界修正はproduction behaviorを変更せず、historyテストの読み取り対象だけを実際の月次保存仕様に合わせた。
 - mergeは実施していない。
 
-## 9. PRと完了手順
+## 9. PRと完了状態
 
 変更はPR #109 `Fix PR Progress comparison base for #107` に集約した。
 
-このreportはIssue #107実装、compare API追加に伴うfixture修正、および2026年9月1日のCIで顕在化したT404月境界テスト修正まで記録している。このreport更新commitによりPR HEADが進むため、最終PR HEADと完全一致するpull_request CIを別途確認し、そのrun ID・結論・最終HEADをPRコメントへ記録する。
+Issue #107実装、compare API追加に伴うfixture修正、2026年9月1日のCIで顕在化したT404月境界テスト修正、詳細reportまでrepositoryへ保存済みである。
 
-mergeは利用者が行うため実施しない。
+最終PR HEADと完全一致するCIはrun `33499326588` / `success`。mergeは利用者が行うため実施しない。
