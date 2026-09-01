@@ -6,7 +6,7 @@ Issue #107「pr progressが、mainの最新と、ローカルの最新との比�
 
 Issueの要求は、PR Progressの比較元を現在のbase branch先端ではなく、PRブランチの切り出し元（merge base / branch point）に固定し、その地点とPRの最新HEADを比較することである。
 
-対象PRは #109 `Fix PR Progress comparison base for #107`、baseは `main`、実装・テスト完了時のtechnical HEADは `78cfabfe36e81fb2842651bde4270788274e5f58` である。
+対象PRは #109 `Fix PR Progress comparison base for #107`、baseは `main` である。
 
 ## 2. 失敗診断artifact workflowの確認
 
@@ -101,14 +101,28 @@ commit `052ef657...` のrun `33449402643` では既存T407 mock 7件がcompare�
 - `test/unit/t606-r6-real-composition.test.ts`
 - `test/integration/t402-review-followup.test.ts`
   - 新しいcompare API呼び出しを既存GitHub mock fixtureへ追加。
+- `test/unit/t404-review-followup-r3.test.ts`
+  - CI実行月がfixture作成月をまたいだ場合も、月次history JSONL全体からrestart前後の履歴順序を検証するよう修正。
 
 UI、PR Progress計算式、Global Understanding計算、storage schemaは変更していない。
 
 ## 7. 検証結果
 
-technical HEAD `78cfabfe36e81fb2842651bde4270788274e5f58` と完全一致するpull_request workflow run `33451471828` を最終technical CI証拠として使用した。
+### 7.1 Issue #107実装のtechnical Green
 
-結果は `success` で、次の必須gateがすべて成功した。
+technical HEAD `78cfabfe36e81fb2842651bde4270788274e5f58` と完全一致するpull_request workflow run `33451471828` は `success` となり、Issue #107の直接回帰を含むT405/T406、Mock GitHub integrationを含む全必須gateが成功した。
+
+成功runのuser validation artifactはID `9780096282`。artifact名にはpull_request eventのmerge ref側 `GITHUB_SHA` が含まれるが、CI一致判定にはworkflow runの `head_sha` を使用した。
+
+### 7.2 report追加後に検出した月境界テスト不具合
+
+最初のreport commit `7aaee6c91d3426f92141b53ab497496e4ddef183` と完全一致するrun `33498129932` ではUnit testsが687/688となり、既存テスト `Node PR context service records create and revision history across restart` が失敗した。
+
+failure diagnostic artifact `9796579178` とjob logを確認すると、テストはhistoryを固定で `events-2026-08.jsonl` からしか読んでいなかった。fixtureの `context-created` は2026年8月時刻で記録される一方、revision historyは実行時刻で記録されるため、2026年9月1日UTCのCIではrevision eventが `events-2026-09.jsonl` へ分割された。actualが `['context-created']` のみになったのはこのためであり、Issue #107 production変更やreport追加の副作用ではなかった。
+
+commit `eba2bfdce6261c7877e87c50ddb975fb29e6f10d` (`test: make T404 history assertion month-safe`) で、固定月ファイル参照を廃止し、history directoryにある `events-YYYY-MM.jsonl` をファイル名順に横断してevent順序を検証するようにした。
+
+同commitと完全一致するrun `33498499210` は `success` となり、月境界で失敗していたUnit/T404を含め、次の全必須gateが成功した。
 
 - Build
 - Contract typecheck
@@ -126,11 +140,7 @@ technical HEAD `78cfabfe36e81fb2842651bde4270788274e5f58` と完全一致するp
 - VS Code Extension Host tests
 - user validation package / artifact upload
 
-Issue #107の直接回帰を含むT405/T406も成功し、前runで失敗したMock GitHub integrationも成功した。
-
-run `33451471828` のworkflow `head_sha` は `78cfabfe36e81fb2842651bde4270788274e5f58` であり、別SHAのrunは最終technical Green判定に代用していない。
-
-成功runのuser validation artifactはID `9780096282`。artifact名にはpull_request eventのmerge ref側 `GITHUB_SHA` が含まれるが、CI一致判定にはworkflow runの `head_sha` を使用した。
+別SHAに紐づくworkflow runは各HEADのGreen判定に代用していない。
 
 ## 8. 境界条件・残存リスク
 
@@ -138,12 +148,13 @@ run `33451471828` のworkflow `head_sha` は `78cfabfe36e81fb2842651bde427078827
 - Compare APIが返すmerge baseをPR branch pointのauthoritative valueとして扱う。
 - closed/merged PRの既存metadata取得経路は変更していない。
 - PR Progress以外のGlobal Understanding等の比較基準は今回の対象外であり変更していない。
+- T404の月境界修正はproduction behaviorを変更せず、historyテストの読み取り対象だけを実際の月次保存仕様に合わせた。
 - mergeは実施していない。
 
 ## 9. PRと完了手順
 
 変更はPR #109 `Fix PR Progress comparison base for #107` に集約した。
 
-このreportはtechnical HEAD `78cfabfe36e81fb2842651bde4270788274e5f58` の実装・検証結果を記録している。report追加commitによりPR HEADが進むため、最終PR HEADと完全一致するpull_request CIを別途確認し、そのrun ID・結論・最終HEADをPRコメントへ記録する。
+このreportはIssue #107実装、compare API追加に伴うfixture修正、および2026年9月1日のCIで顕在化したT404月境界テスト修正まで記録している。このreport更新commitによりPR HEADが進むため、最終PR HEADと完全一致するpull_request CIを別途確認し、そのrun ID・結論・最終HEADをPRコメントへ記録する。
 
 mergeは利用者が行うため実施しない。
