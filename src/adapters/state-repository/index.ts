@@ -10,7 +10,7 @@ export {
 } from "./storage-root-lock";
 export {
   DebouncedReviewStateRepository
-} from "./debounced-review-state-repository";
+} from "./owner-aware-debounced-review-state-repository";
 export {
   FileSystemReviewStateRepository
 } from "./owner-atomic-review-state-repository";

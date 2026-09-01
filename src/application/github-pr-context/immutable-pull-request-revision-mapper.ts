@@ -143,37 +143,23 @@ export function createImmutablePullRequestRevisionMapper(
   options: GitFileStateTransitionInput["options"] = DEFAULT_MAPPING_OPTIONS
 ): PullRequestRevisionMapper {
   return async ({ current, nextPullRequest, evidence }) => {
-    // Repository Global state is shared across persisted PR contexts. While
-    // Issue #106 owns a multi-context CAS, a sequential lifecycle refresh can
-    // advance that owner-wide Global state before a sibling PR Context is
-    // mapped. Keep the pre-snapshot mapper behavior for this one known shape;
-    // corrupt snapshots and every other capture failure remain fail-closed.
-    const snapshotCompatibleSource = current.globalState.currentRevisionId === evidence.sourceHeadSha;
-    const sequentialSharedGlobalCompatibility =
-      !snapshotCompatibleSource && current.globalState.currentRevisionId === evidence.targetHeadSha;
-    const source = snapshotCompatibleSource
-      ? captureImmutableRevisionSnapshots({
-        contextState: current.contextState,
-        globalState: current.globalState,
-        revisionId: evidence.sourceHeadSha,
-        updatedAt: current.contextState.updatedAt
-      })
-      : sequentialSharedGlobalCompatibility
-        ? current
-        : captureImmutableRevisionSnapshots({
-          contextState: current.contextState,
-          globalState: current.globalState,
-          revisionId: evidence.sourceHeadSha,
-          updatedAt: current.contextState.updatedAt
-        });
+    const source = captureImmutableRevisionSnapshots({
+      contextState: current.contextState,
+      globalState: current.globalState,
+      revisionId: evidence.sourceHeadSha,
+      updatedAt: current.contextState.updatedAt
+    });
     const immutable = await loadEvidence(Object.freeze({ ...evidence }));
     requireMatchingEvidence(evidence, immutable, source.contextState.files, source.globalState.files);
     const baseOnlyTransition =
       evidence.sourceHeadSha === evidence.targetHeadSha &&
       evidence.sourceBaseSha !== evidence.targetBaseSha;
-    const targetEvidence = snapshotCompatibleSource
-      ? snapshotEvidence(source.contextState, source.globalState, evidence.targetHeadSha, immutable)
-      : undefined;
+    const targetEvidence = snapshotEvidence(
+      source.contextState,
+      source.globalState,
+      evidence.targetHeadSha,
+      immutable
+    );
     const restored = targetEvidence === undefined
       ? undefined
       : restoreImmutableRevisionSnapshots({
@@ -222,9 +208,10 @@ export function createImmutablePullRequestRevisionMapper(
           files: restored?.global.kind === "hit" ? restored.global.files : cloneGlobalState(source.globalState.files),
           },
       };
-      return snapshotCompatibleSource
-        ? { ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }), mappingDisposition }
-        : { ...next, mappingDisposition };
+      return {
+        ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }),
+        mappingDisposition
+      };
     }
     const parsed = parseZeroContextGitDiff(immutable.diff);
 
@@ -308,8 +295,9 @@ export function createImmutablePullRequestRevisionMapper(
       },
       globalState: restored?.global.kind === "hit" ? { ...globalState, files: restored.global.files } : globalState,
     };
-    return snapshotCompatibleSource
-      ? { ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }), mappingDisposition }
-      : { ...next, mappingDisposition };
+    return {
+      ...captureImmutableRevisionSnapshots({ ...next, revisionId: evidence.targetHeadSha, updatedAt }),
+      mappingDisposition
+    };
   };
 }

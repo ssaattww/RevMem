@@ -23,7 +23,9 @@ import {
   type StorageRootLockDiagnostic,
   type ReviewStateCommit,
   type ReviewStateCreateTransactionLike,
+  type ReviewStateRepositorySnapshot,
   type ReviewStateRepositoryTarget,
+  type ReviewStateRepositoryTransactionLike,
   type ReviewStateTransactionLike,
   type ReviewStateStorageUris,
 } from "./adapters/state-repository/index";
@@ -83,6 +85,7 @@ import {
   type ReviewContextsRuntimeSource,
 } from "./ui/review-contexts/index";
 import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
+import { synchronizePullRequestOwner } from "./t405-owner-pull-request-synchronization";
 import { workspaceUriToFilesystemPath } from "./t609-repository-resolution";
 import {
   currentContextCandidateKey,
@@ -148,11 +151,13 @@ interface T405ReviewStateRepository {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;
   loadGlobal(target: ReviewStateRepositoryTarget): Promise<RepositoryGlobalState | undefined>;
   listRepositoryContexts(repositoryId: string): Promise<ReviewContextState[]>;
+  loadRepositorySnapshot?(repositoryId: string): Promise<ReviewStateRepositorySnapshot | undefined>;
+  commitRepository?(transaction: Readonly<ReviewStateRepositoryTransactionLike>): Promise<void>;
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
   create(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
 
-export interface RegisteredT405ReviewContextsRuntime
+export interface RegisderedT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
   preparePullRequestCandidateForExplicitContextSelection?(
     signal?: AbortSignal,
@@ -680,7 +685,7 @@ export function registerT405ReviewContextsRuntime(
   /** Collects only current, local opened-document hints for this repository. */
   const openedEncodingHints = (repositoryRoot: string): Readonly<Record<string, string>> => {
     const hints: Record<string, string> = {};
-    const pathApi = PATH_SEMANTICS === "windows" ? path.win32 : path.posix;
+  const pathApi = PATH_SEMANTICS === "windows" ? path.win32 : path.posix;
     for (const document of vscode.workspace.textDocuments) {
       const documentPath = workspaceFilesystemPath(document.uri);
       if (document.isClosed || document.encoding.length === 0 || documentPath === undefined) continue;
@@ -731,7 +736,7 @@ export function registerT405ReviewContextsRuntime(
     if (known !== undefined) return known;
     const active = await inspectActiveRepository();
     if (active.repositoryId !== repositoryId) {
-      throw new Error("対象PRのローカルGitリポジトリを解決できません。");
+      throw new Error("対豈PRのローカルGitリポジトリを解決できません。");
     }
     return active.rootPath;
   };
@@ -848,7 +853,7 @@ export function registerT405ReviewContextsRuntime(
     const identity = repositoryIdentity(context);
     const token = await auth.getAccessToken(identity.host, signal);
     assertCurrent();
-    const local: LocalPullRequestDiffPort = forceRemote
+    local: LocalPullRequestDiffPort = forceRemote
       ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
       : new LocalGitPullRequestDiffAdapter(gitExecutor, root);
     const remote = createPullRequestRemote(identity, token);
@@ -933,29 +938,97 @@ export function registerT405ReviewContextsRuntime(
 
   const synchronizeRepository = async (
     owner: LocalRepositoryOwner,
-    persisted: readonly ReviewContextState[]
+    persisted: readonly ReviewContextState[],
+    signal?: AbortSignal,
   ): Promise<void> => {
-    for (const context of persisted) {
-      if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
-      const identity = repositoryIdentity(context);
-      const token = await auth.getAccessToken(identity.host);
-      const lifecycle = createPullRequestLifecycle(identity, token);
-      const latest = await lifecycle.fetchCurrent(identity, context.pullRequest.number);
-      if (latest.kind !== "available") continue;
-      await contextStateService.update({
-        repositoryId: context.repositoryId,
-        identity: pullRequestIdentity(context),
-        displayName: `PR #${latest.metadata.number}`,
-        pullRequest: {
-          ...context.pullRequest,
-          state: latest.metadata.state,
-          title: latest.metadata.title,
-          baseSha: latest.metadata.baseSha,
-          headSha: latest.metadata.headSha,
-        },
-      });
+    if (repository.loadRepositorySnapshot === undefined || repository.commitRepository === undefined) {
+      // Compatibility for injected legacy repositories: metadata-only lifecycle refresh is safe,
+      // but a revision transition requires the repository-owner CAS contract. Production uses
+      // DebouncedReviewStateRepository backed by the owner-atomic filesystem repository.
+      for (const context of persisted) {
+        if (signal?.aborted === true) {
+          throw new DOMException("PR synchronization was superseded.", "AbortError");
+        }
+        if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
+        const identity = repositoryIdentity(context);
+        const token = await auth.getAccessToken(identity.host, signal);
+        const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
+          identity,
+          context.pullRequest.number,
+          undefined,
+          signal,
+        );
+        if (latest.kind !== "available") continue;
+        if (
+          context.pullRequest.baseSha !== latest.metadata.baseSha ||
+          context.pullRequest.headSha !== latest.metadata.headSha
+        ) {
+          throw new Error("Pull-request revision synchronization requires repository-owner atomic commit support.");
+        }
+        await contextStateService.update({
+          repositoryId: context.repositoryId,
+          identity: pullRequestIdentity(context),
+          displayName: `PR #${latest.metadata.number}`,
+          pullRequest: {
+            ...context.pullRequest,
+            state: latest.metadata.state,
+            title: latest.metadata.title,
+            baseSha: latest.metadata.baseSha,
+            headSha: latest.metadata.headSha,
+          },
+        });
+      }
+      return;
     }
-    void owner;
+
+    await synchronizePullRequestOwner(
+      { repositoryId: owner.repositoryId, headRevision: owner.headRevision },
+      {
+        repository: {
+          loadRepositorySnapshot: (repositoryId) => {
+            const loadRepositorySnapshot = repository.loadRepositorySnapshot;
+            if (loadRepositorySnapshot === undefined) {
+              throw new Error("Review-state repository does not support repository-owner snapshot loading.");
+            }
+            return loadRepositorySnapshot.call(repository, repositoryId);
+          },
+          commitRepository: (transaction) => {
+            const commitRepository = repository.commitRepository;
+            if (commitRepository === undefined) {
+              throw new Error("Review-state repository does not support repository-owner atomic commits.");
+            }
+            return commitRepository.call(repository, transaction);
+          },
+        },
+        resolveUpdate: async (context, operationSignal) => {
+          if (context.kind !== "pull-request" || context.pullRequest === undefined) return undefined;
+          const identity = repositoryIdentity(context);
+          const token = await auth.getAccessToken(identity.host, operationSignal);
+          const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
+            identity,
+            context.pullRequest.number,
+            undefined,
+            operationSignal,
+          );
+          if (latest.kind !== "available") return undefined;
+          return {
+            repositoryId: context.repositoryId,
+            identity: pullRequestIdentity(context),
+            displayName: `PR #${latest.metadata.number}`,
+            pullRequest: {
+              ...context.pullRequest,
+              state: latest.metadata.state,
+              title: latest.metadata.title,
+              baseSha: latest.metadata.baseSha,
+              headSha: latest.metadata.headSha,
+            },
+          };
+        },
+        prepareUpdate: (input, current) => contextStateService.prepareUpdate(input, current),
+        recordPreparedUpdateHistory: (prepared) => contextStateService.recordPreparedUpdateHistory(prepared),
+      },
+      signal,
+    );
   };
 
   /**
@@ -1037,7 +1110,7 @@ export function registerT405ReviewContextsRuntime(
       if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
     };
     if (local.head === undefined || local.remote === undefined) {
-      throw new Error("PR再検出にはHEADとGit remoteが必要です。");
+      throw new Error("PR再検出にはHEADとGit remoteが必頁です。");
     }
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
@@ -1052,7 +1125,7 @@ export function registerT405ReviewContextsRuntime(
           context: { kind: "branch", label: "active", headRevision: local.head },
           progress: undefined,
         },
-      }, persistedBefore);
+      }, persistedBefore, signal);
       assertDetectionCurrent();
     }
 
@@ -1087,14 +1160,42 @@ export function registerT405ReviewContextsRuntime(
     assertDetectionCurrent();
     if (resolution.kind === "pull-request") {
       const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
-      const existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+      let existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
       assertDetectionCurrent();
       if (existing !== undefined) {
-        assertDetectionCurrent();
+        const persistedPullRequest = existing.contextState.pullRequest;
+        const detectedPullRequest = state.pullRequest!;
+        if (
+          persistedPullRequest === undefined ||
+          persistedPullRequest.baseSha !== detectedPullRequest.baseSha ||
+          persistedPullRequest.headSha !== detectedPullRequest.headSha
+        ) {
+          await synchronizeRepository({
+            repositoryId: local.repositoryId,
+            repositoryRoot: local.rootPath,
+            headRevision: local.head,
+            snapshot: {
+              context: { kind: "branch", label: "active", headRevision: local.head },
+              progress: undefined,
+            },
+          }, persistedBefore, signal);
+          assertDetectionCurrent();
+          existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+          assertDetectionCurrent();
+        }
+        const synchronizedPullRequest = existing?.contextState.pullRequest;
+        if (
+          existing === undefined ||
+          synchronizedPullRequest === undefined ||
+          synchronizedPullRequest.baseSha !== detectedPullRequest.baseSha ||
+          synchronizedPullRequest.headSha !== detectedPullRequest.headSha
+        ) {
+          throw new Error("Selected pull-request revision was not published by repository-owner synchronization.");
+        }
         await contextStateService.update({
           repositoryId: local.repositoryId,
           identity: pullRequestIdentity(state),
-          pullRequest: state.pullRequest!,
+          pullRequest: detectedPullRequest,
           displayName: state.displayName,
         });
       } else {
@@ -1139,10 +1240,7 @@ export function registerT405ReviewContextsRuntime(
       if (search.kind === "unavailable") {
         reportActiveOperationFailure(
           "PRを再検出",
-          new OperationDiagnosticError({
-            code: "GITHUB_PR_DETECTION_UNAVAILABLE",
-            reason: search.reason,
-          }),
+          new OperationDiagnosticError({code: "GITHUB_PR_DETECTION_UNAVAILABLE", reason: search.reason}),
           feedbackContext,
         );
       }
@@ -1165,7 +1263,7 @@ export function registerT405ReviewContextsRuntime(
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) return;
     const persisted = await repository.listRepositoryContexts(local.repositoryId);
-    const current = findCurrentPullRequestContext(
+  const current = findCurrentPullRequestContext(
       persisted,
       local.repositoryId,
       local.head,
@@ -1190,14 +1288,14 @@ export function registerT405ReviewContextsRuntime(
     },
     refreshPullRequestCache: async (context, feedbackContext) => {
       const { result } = await acquire(context, true, undefined, feedbackContext);
-      if (result.kind !== "acquired") {
+    if (result.kind !== "acquired") {
         throw new Error(`PR cacheを更新できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }
       if (result.cache.origin === "offline") {
         throw new Error(`PR cacheを更新できませんでした: offline cache (${result.cache.freshness}) を表示しています。`);
       }
       if (result.cache.freshness !== "fresh") {
-        throw new Error("PR cacheを更新できませんでした: live取得結果をcacheへ保存できませんでした。");
+        throw new Error("PR cacheを更新できませんでした: live取得結果をcacheほ保存できませんでした。");
       }
     },
     openPullRequestDiff: async (context, feedbackContext) => {
@@ -1212,7 +1310,7 @@ export function registerT405ReviewContextsRuntime(
           description: file.status,
           file,
         }));
-      if (choices.length === 0) {
+    if (choices.length === 0) {
         throw new Error("このPRにはテキストとして開ける変更ファイルがありません。");
       }
       const selected = choices.length === 1
