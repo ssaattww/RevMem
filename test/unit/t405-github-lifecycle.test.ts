@@ -260,7 +260,14 @@ test("Issue #107 private refresh keeps read-only PR progress available across le
     }],
   };
   const runtime = new PullRequestReviewRuntime<string>({
-    repository,
+    repository: {
+      load: async () => ({
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: structuredClone(repository.current.contextState),
+        globalState: structuredClone(repository.current.globalState),
+      }),
+      commit: async (transaction) => repository.commit(transaction),
+    },
     requestHistory: async () => undefined,
     diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
