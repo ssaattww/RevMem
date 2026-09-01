@@ -40,6 +40,8 @@ export type {
   ReviewStateCreateTransactionLike,
   ReviewStateRepositoryTarget,
   ReviewStateRepositoryTargetKind,
+  ReviewStateRepositorySnapshot,
+  ReviewStateRepositoryTransactionLike,
   ReviewStateStorageRoute,
   ReviewStateStorageUris,
   ReviewStateTransactionLike,

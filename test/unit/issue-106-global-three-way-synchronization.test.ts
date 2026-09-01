@@ -243,6 +243,56 @@ test("ISSUE-106 stale owner CAS publishes none of the planned Context or Global 
   }
 });
 
+
+test("ISSUE-106 owner transaction failure before manifest publication leaves the previous owner generation visible", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "revmem-issue106-failure-"));
+  let failManifest = false;
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: { globalStorageUri: { fsPath: root } },
+      beforeAtomicPublication: (filePath) => {
+        if (failManifest && path.basename(filePath) === "manifest.json") {
+          throw new Error("forced owner manifest publication failure");
+        }
+      },
+    });
+    await repository.save(target(52), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(52),
+      globalState: globalState(),
+    });
+    await repository.save(target(53), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(53),
+      globalState: globalState(),
+    });
+    const expected = await repository.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.ok(expected);
+    failManifest = true;
+    await assert.rejects(() => repository.commitRepository({
+      repositoryId: REPOSITORY_ID,
+      expected,
+      next: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        repositoryId: REPOSITORY_ID,
+        contextStates: expected.contextStates.map((state) => advanceContext(state, SHA_C)),
+        globalState: advanceGlobal(expected.globalState, SHA_C),
+      },
+    }), /forced owner manifest publication failure/);
+    failManifest = false;
+
+    const restarted = new FileSystemReviewStateRepository({
+      storageUris: { globalStorageUri: { fsPath: root } },
+    });
+    const visible = await restarted.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.ok(visible);
+    assert.deepEqual(visible.contextStates.map((state) => state.pullRequest?.headSha), [SHA_B, SHA_B]);
+    assert.equal(visible.globalState.currentRevisionId, SHA_B);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("ISSUE-106 pull-request mapping can prepare from one owner snapshot without state or history publication", async () => {
   const repository = new MemoryPullRequestRepository({
     contextState: contextState(52),
@@ -252,10 +302,15 @@ test("ISSUE-106 pull-request mapping can prepare from one owner snapshot without
   const service = new GitHubPullRequestContextStateService(
     repository,
     async ({ current, nextPullRequest }) => ({
-      contextState: advanceContext({
-        ...current.contextState,
+      contextState: {
+        ...structuredClone(current.contextState),
         pullRequest: nextPullRequest,
-      }, nextPullRequest.headSha),
+        files: Object.fromEntries(Object.entries(current.contextState.files).map(([fileId, file]) => [fileId, {
+          ...file,
+          revisionId: nextPullRequest.headSha,
+        }])),
+        updatedAt: "2026-09-01T00:01:00.000Z",
+      },
       globalState: advanceGlobal(current.globalState, nextPullRequest.headSha),
       mappingDisposition: "mapped",
     }),
