@@ -145,11 +145,18 @@ test("GitHub adapter searches open pull requests for the exact HEAD and normaliz
 
 test("GitHub adapter follows pagination until an exact HEAD candidate is found", async () => {
   const head = "0123456789abcdef0123456789abcdef01234567";
+  const currentBase = "89abcdef0123456789abcdef0123456789abcdef";
   const requestedPages: number[] = [];
   const adapter = new FetchGitHubPullRequestAdapter({
     apiBaseUrl: "https://api.github.test",
     fetch: async input => {
       const url = new URL(input.toString());
+      if (url.pathname === `/repos/example/review-range/compare/${currentBase}...${head}`) {
+        return new Response(JSON.stringify({ merge_base_commit: { sha: currentBase } }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
       const page = Number(url.searchParams.get("page") ?? "1");
       requestedPages.push(page);
       if (page === 1) {
@@ -158,7 +165,7 @@ test("GitHub adapter follows pagination until an exact HEAD candidate is found",
           title: `PR ${index + 1}`,
           html_url: `https://github.test/example/review-range/pull/${index + 1}`,
           head: { sha: `not-${head}-${index}` },
-          base: { ref: "main", sha: "89abcdef0123456789abcdef0123456789abcdef" }
+          base: { ref: "main", sha: currentBase }
         }));
         return new Response(JSON.stringify(firstPage), {
           status: 200,
@@ -174,7 +181,7 @@ test("GitHub adapter follows pagination until an exact HEAD candidate is found",
           title: "Target PR",
           html_url: "https://github.test/example/review-range/pull/101",
           head: { sha: head },
-          base: { ref: "main", sha: "89abcdef0123456789abcdef0123456789abcdef" }
+          base: { ref: "main", sha: currentBase }
         }
       ]), { status: 200, headers: { "content-type": "application/json" } });
     }
@@ -190,7 +197,7 @@ test("GitHub adapter follows pagination until an exact HEAD candidate is found",
     kind: "found",
     candidates: [{
       baseRef: "main",
-      baseSha: "89abcdef0123456789abcdef0123456789abcdef",
+      baseSha: currentBase,
       headSha: head,
       number: 101,
       title: "Target PR",
@@ -254,6 +261,7 @@ test("GitHub adapter attempts a public API request without authentication", asyn
 
 test("T406 resolves a public PR unauthenticated and falls back to branch for GitHub failures", async () => {
   const head = "0123456789abcdef0123456789abcdef01234567";
+  const currentBase = "89abcdef0123456789abcdef0123456789abcdef";
   const publicServer = await createMockGitHubServer([
     {
       body: [{
@@ -261,10 +269,16 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
         title: "Public PR",
         html_url: "https://github.com/example/review-range/pull/70",
         head: { sha: head },
-        base: { ref: "main", sha: "89abcdef0123456789abcdef0123456789abcdef" }
+        base: { ref: "main", sha: currentBase }
       }],
       method: "GET",
       pathname: "/repos/example/review-range/pulls",
+      status: 200
+    },
+    {
+      body: { merge_base_commit: { sha: currentBase } },
+      method: "GET",
+      pathname: `/repos/example/review-range/compare/${currentBase}...${head}`,
       status: 200
     }
   ]);
@@ -283,6 +297,7 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
     assert.equal(resolution.kind, "pull-request");
     assert.equal(resolution.kind === "pull-request" ? resolution.pullRequest.number : undefined, 70);
     assert.equal(publicServer.requests[0]?.headers.authorization, undefined);
+    assert.equal(publicServer.requests[1]?.headers.authorization, undefined);
   } finally {
     await publicServer.close();
   }
