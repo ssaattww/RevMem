@@ -85,8 +85,10 @@ test("GitHub remote parser reuses the T202 canonical remote identity for HTTPS, 
   assert.equal(parseGitHubRemote("/srv/git/review-range.git"), undefined);
 });
 
-test("GitHub adapter searches open pull requests for the exact HEAD with an optional token", async () => {
+test("GitHub adapter searches open pull requests for the exact HEAD and normalizes the branch point with the same token", async () => {
   const head = "0123456789abcdef0123456789abcdef01234567";
+  const currentBase = "89abcdef0123456789abcdef0123456789abcdef";
+  const branchPoint = "fedcba9876543210fedcba9876543210fedcba98";
   const server = await createMockGitHubServer([
     {
       body: [
@@ -95,11 +97,17 @@ test("GitHub adapter searches open pull requests for the exact HEAD with an opti
           title: "T401",
           html_url: "https://github.com/example/review-range/pull/17",
           head: { sha: head },
-          base: { ref: "main", sha: "89abcdef0123456789abcdef0123456789abcdef" }
+          base: { ref: "main", sha: currentBase }
         }
       ],
       method: "GET",
       pathname: "/repos/example/review-range/pulls",
+      status: 200
+    },
+    {
+      body: { merge_base_commit: { sha: branchPoint } },
+      method: "GET",
+      pathname: `/repos/example/review-range/compare/${currentBase}...${head}`,
       status: 200
     }
   ]);
@@ -118,14 +126,18 @@ test("GitHub adapter searches open pull requests for the exact HEAD with an opti
     assert.deepEqual(result.candidates, [
       {
         baseRef: "main",
-        baseSha: "89abcdef0123456789abcdef0123456789abcdef",
+        baseSha: branchPoint,
         headSha: head,
         number: 17,
         title: "T401",
         url: "https://github.com/example/review-range/pull/17"
       }
     ]);
-    assert.equal(server.requests[0]?.headers.authorization, "Bearer test-token");
+    assert.deepEqual(
+      server.requests.map((request) => request.headers.authorization),
+      ["Bearer test-token", "Bearer test-token"],
+      "private PR list and merge-base requests must use the same authenticated session",
+    );
   } finally {
     await server.close();
   }
