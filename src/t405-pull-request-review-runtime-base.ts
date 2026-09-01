@@ -794,13 +794,13 @@ export class PullRequestReviewRuntime<Uri> {
     if (persisted === undefined) {
       throw new Error("Persisted pull-request review context is unavailable");
     }
-    this.requireMatchingContext(registration, persisted);
-    this.assertPersistedFileMappingsAreOneToOne(registration, persisted);
+    const progressPersisted = this.projectPersistedProgressCommit(registration, persisted);
+    this.assertPersistedFileMappingsAreOneToOne(registration, progressPersisted);
     const calculationInput = {
       diff: registration.snapshot,
       reviewContext: signal === undefined
-        ? this.projectContextFileIdentities(registration, persisted)
-        : await this.projectContextFileIdentitiesCooperatively(registration, persisted, signal, work ?? this.createProgressWork(signal)),
+        ? this.projectContextFileIdentities(registration, progressPersisted)
+        : await this.projectContextFileIdentitiesCooperatively(registration, progressPersisted, signal, work ?? this.createProgressWork(signal)),
       exclusionPolicy: this.options.getExclusionPolicy(),
     };
     const progress = signal === undefined
@@ -1124,6 +1124,33 @@ export class PullRequestReviewRuntime<Uri> {
     if (registration === undefined) throw new Error("Pull-request review runtime context is not registered");
     this.assertRegistrationHasOneToOneLogicalPaths(registration);
     return registration;
+  }
+
+  private projectPersistedProgressCommit(
+    registration: PullRequestReviewRuntimeRegistration,
+    commit: ReviewStateCommit
+  ): ReviewStateCommit {
+    const pullRequest = commit.contextState.pullRequest;
+    if (
+      commit.contextState.kind !== "pull-request" ||
+      commit.contextState.contextId !== registration.snapshot.contextId ||
+      commit.contextState.repositoryId !== registration.repositoryId ||
+      pullRequest === undefined ||
+      pullRequest.headSha !== registration.snapshot.headSha
+    ) {
+      throw new Error("Persisted pull-request context does not match the registered diff revision");
+    }
+    if (pullRequest.baseSha === registration.snapshot.baseSha) return commit;
+    return {
+      ...commit,
+      contextState: {
+        ...commit.contextState,
+        pullRequest: {
+          ...pullRequest,
+          baseSha: registration.snapshot.baseSha,
+        },
+      },
+    };
   }
 
   private requireMatchingContext(
