@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -76,7 +76,13 @@ test("Node PR context service records create and revision history across restart
   assert.equal((await restarted.load(REPOSITORY_ID, { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }))?.contextState.pullRequest?.headSha, C);
   await restarted.update({ repositoryId: REPOSITORY_ID, identity: { host: "github.com", owner: "ssaattww", repository: "revmem", pullRequestNumber: 48 }, pullRequest: pr({ headSha: D }) });
   const route = resolveReviewStateStorageRoute(storageUris, { kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: createGitHubPullRequestContextIdFromRepositoryId(REPOSITORY_ID, 48) });
-  const events = (await readFile(path.join(route.historyDirectory, "events-2026-08.jsonl"), "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line) as { type: string });
+  const historyFiles = (await readdir(route.historyDirectory))
+    .filter((name) => /^events-\d{4}-\d{2}\.jsonl$/u.test(name))
+    .sort();
+  const events = (await Promise.all(historyFiles.map((name) => readFile(path.join(route.historyDirectory, name), "utf8"))))
+    .flatMap((content) => content.trimEnd().split("\n"))
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as { type: string });
   assert.deepEqual(events.map((event) => event.type), ["context-created", "context-revision-changed", "remapped-by-diff", "context-revision-changed", "remapped-by-diff"]);
 });
 
