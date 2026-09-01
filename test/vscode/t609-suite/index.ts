@@ -239,7 +239,20 @@ const assertActualUriBoundaries = async (
   }
   const virtual = await vscode.workspace.openTextDocument({ content: "virtual T609\n" });
   await vscode.window.showTextDocument(virtual, { preview: false });
+  const before = api.getCurrentContextCancellationSnapshotForTest();
+  const selectionRequestsBefore = api.getCurrentContextSelectionRequestCountForTest();
+  api.setCurrentContextSelectionForTest("cancel");
   await vscode.commands.executeCommand("reviewRange.refreshContext");
+  assert.equal(
+    api.getCurrentContextSelectionRequestCountForTest(),
+    selectionRequestsBefore + 1,
+    "the virtual URI Current Context refresh must use the deterministic Test selection seam instead of waiting for an interactive Quick Pick"
+  );
+  assert.deepEqual(
+    api.getCurrentContextCancellationSnapshotForTest(),
+    before,
+    "the virtual URI cancellation must preserve the accepted Current Context and skip dependent refreshes"
+  );
   await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
   await closeDocument(virtual);
 };
