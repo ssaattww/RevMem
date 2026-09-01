@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
   describePullRequestProgressFile,
   describePullRequestProgressSummary,
@@ -28,12 +27,6 @@ interface ActiveFileProgress {
   readonly seen: Set<string>;
 }
 
-interface ProgressBaseProjection {
-  readonly contextId: string;
-  readonly baseSha: string;
-  readonly headSha: string;
-}
-
 /** Coordinates refreshes around the canonical PR review runtime. */
 export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<Uri> {
   private acceptedProgressKey: string | undefined;
@@ -42,41 +35,9 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private activeFileProgress: ActiveFileProgress | undefined;
   private readonly clearAcceptedTree: () => void;
   private readonly getExclusionPolicy: PullRequestReviewRuntimeOptions<Uri>["getExclusionPolicy"];
-  private readonly progressBaseProjection: AsyncLocalStorage<ProgressBaseProjection>;
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
-    const progressBaseProjection = new AsyncLocalStorage<ProgressBaseProjection>();
-    const repository = options.repository;
-    super({
-      ...options,
-      repository: {
-        load: async (target) => {
-          const commit = await repository.load(target);
-          const projection = progressBaseProjection.getStore();
-          const pullRequest = commit?.contextState.pullRequest;
-          if (
-            commit === undefined ||
-            projection === undefined ||
-            target.contextId !== projection.contextId ||
-            commit.contextState.kind !== "pull-request" ||
-            commit.contextState.contextId !== projection.contextId ||
-            commit.contextState.repositoryId !== target.repositoryId ||
-            pullRequest === undefined ||
-            pullRequest.headSha !== projection.headSha ||
-            pullRequest.baseSha === projection.baseSha
-          ) return commit;
-          return {
-            ...commit,
-            contextState: {
-              ...commit.contextState,
-              pullRequest: { ...pullRequest, baseSha: projection.baseSha },
-            },
-          };
-        },
-        commit: (transaction) => repository.commit(transaction),
-      },
-    });
-    this.progressBaseProjection = progressBaseProjection;
+    super(options);
     this.getExclusionPolicy = options.getExclusionPolicy;
     this.clearAcceptedTree = this.progress.clear.bind(this.progress);
     this.progress.clear = (): void => {
@@ -122,18 +83,10 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     feedbackContext?: Parameters<BasePullRequestReviewRuntime<Uri>["getProgress"]>[1],
     signal?: AbortSignal,
   ): ReturnType<BasePullRequestReviewRuntime<Uri>["getProgress"]> {
-    if (feedbackContext !== undefined) {
-      return this.withProgressBaseProjection(
-        contextId,
-        () => super.getProgress(contextId, feedbackContext, signal),
-      );
-    }
+    if (feedbackContext !== undefined) return super.getProgress(contextId, feedbackContext, signal);
     const total = this.snapshotForContext(contextId)?.files.length ?? 0;
     reportActiveOperationProgress({ stage: "pull-request-files", completed: 0, total });
-    const progress = await this.withProgressBaseProjection(
-      contextId,
-      () => super.getProgress(contextId, undefined, signal),
-    );
+    const progress = await super.getProgress(contextId, undefined, signal);
     reportActiveOperationProgress({ stage: "pull-request-files", completed: total, total });
     return progress;
   }
@@ -189,10 +142,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       this.suppressTreeClear = preserveAcceptedTree;
       this.activeFileProgress = { key, total: snapshot.files.length, seen: new Set<string>() };
       try {
-        await this.withProgressBaseProjection(
-          contextId,
-          () => super.activateProgress(contextId),
-        );
+        await super.activateProgress(contextId);
         this.acceptedProgressKey = key;
       } catch (error) {
         if (preserveAcceptedTree && this.acceptedProgressKey === key) {
@@ -213,19 +163,6 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         this.activeFileProgress = undefined;
       }
     }
-  }
-
-  private withProgressBaseProjection<Value>(
-    contextId: string,
-    run: () => Promise<Value>,
-  ): Promise<Value> {
-    const snapshot = this.snapshotForContext(contextId);
-    if (snapshot === undefined) return run();
-    return this.progressBaseProjection.run({
-      contextId,
-      baseSha: snapshot.baseSha,
-      headSha: snapshot.headSha,
-    }, run);
   }
 
   public override clearProgress(): void {
