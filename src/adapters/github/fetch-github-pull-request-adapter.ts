@@ -4,6 +4,7 @@ import type {
   GitHubPullRequestSearchResult,
   GitHubRepositoryIdentity
 } from "../../application/github-pr-context/index";
+import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
 
 interface GitHubPullRequestResponse {
   readonly number?: unknown;
@@ -198,7 +199,28 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       url = next.url;
     }
 
-    candidates.sort((left, right) => left.number - right.number);
-    return { kind: "found", candidates };
+    const normalizedCandidates: GitHubPullRequestCandidate[] = [];
+    for (const candidate of candidates) {
+      const mergeBase = await fetchGitHubPullRequestMergeBase(
+        {
+          apiBaseUrl: this.apiBaseUrl,
+          ...(this.token === undefined ? {} : { token: this.token }),
+          fetch: this.fetchImplementation,
+        },
+        repository,
+        candidate.baseSha,
+        candidate.headSha,
+      );
+      if (mergeBase.kind === "unavailable") {
+        return { kind: "unavailable", reason: mergeBase.reason };
+      }
+      normalizedCandidates.push({
+        ...candidate,
+        baseSha: mergeBase.mergeBaseSha,
+      });
+    }
+
+    normalizedCandidates.sort((left, right) => left.number - right.number);
+    return { kind: "found", candidates: normalizedCandidates };
   }
 }
