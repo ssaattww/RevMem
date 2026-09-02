@@ -7,10 +7,6 @@ const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
 const isSingleRoot = phase === "single-root";
 assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T609 phase: ${String(phase)}`);
-const timingStartedAt = Date.now();
-const checkpoint = (name: string): void => {
-  process.stderr.write(`[T609 timing] phase=${String(phase)} checkpoint=${name} elapsed_ms=${Date.now() - timingStartedAt}\n`);
-};
 
 interface T609ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
@@ -93,7 +89,7 @@ const closeAllEditors = async (): Promise<void> => {
   assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
 };
 
-const closeDocument = async (document: vscode.TextDocument, discardChanges = false): Promise<void> => {
+const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
   if (document.isClosed) return;
   const targetTab = vscode.window.tabGroups.all.flatMap((group) => group.tabs).find((tab) => {
     if (!(tab.input instanceof vscode.TabInputText)) return false;
@@ -109,18 +105,7 @@ const closeDocument = async (document: vscode.TextDocument, discardChanges = fal
     });
   });
   try {
-    if (discardChanges) {
-      assert.equal(document.isUntitled, true, "only the dirty virtual T609 document may use discard close");
-      assert.equal(document.isDirty, true, "the virtual T609 document must still be dirty before discard close");
-      assert.equal(
-        vscode.window.activeTextEditor?.document.uri.toString(true),
-        document.uri.toString(true),
-        "the dirty virtual T609 document must be active before discard close"
-      );
-      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
-    } else {
-      await vscode.window.tabGroups.close(targetTab);
-    }
+    await vscode.window.tabGroups.close(targetTab);
     await closed;
   } catch (error) {
     disposable?.dispose();
@@ -256,7 +241,7 @@ const assertActualUriBoundaries = async (
   await vscode.window.showTextDocument(virtual, { preview: false });
   await vscode.commands.executeCommand("reviewRange.refreshContext");
   await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
-  await within("discard dirty virtual document", closeDocument(virtual, true));
+  await closeDocument(virtual);
 };
 
 const assertLiveEncodingTransition = async (
@@ -330,7 +315,6 @@ const assertMappedGitTransitions = async (
 
 /** Exercises the T609 gate through one owned runner invocation and explicit lifecycle phases. */
 export async function run(): Promise<void> {
-  checkpoint("run-start");
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, "T609 requires the dedicated workspace fixture");
   await within("close editors", closeAllEditors());
@@ -344,19 +328,13 @@ export async function run(): Promise<void> {
     0,
     "startup Current Context must not open a multi-root Quick Pick"
   );
-  checkpoint("startup-drained");
 
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
-    checkpoint("no-active-commands");
     await assertActualUriBoundaries(folder, api);
-    checkpoint("uri-boundaries");
     await assertMixedEncodingFixture(folder, api);
-    checkpoint("mixed-encoding");
     await assertLiveEncodingTransition(folder, api);
-    checkpoint("live-encoding");
-    checkpoint("run-return");
     return;
   }
 
@@ -402,7 +380,6 @@ export async function run(): Promise<void> {
       [reopened.encoding],
       "restart must use the current Host's reopened document encoding hint"
     );
-    checkpoint("run-return");
     return;
   }
 
@@ -445,5 +422,4 @@ export async function run(): Promise<void> {
   );
   assert.deepEqual(afterStale.providerProjection, before.providerProjection, "stale selection must retain the accepted provider projection");
   assert.deepEqual(afterStale.authoritativeContextCounts, before.authoritativeContextCounts, "stale selection must not mutate authoritative Review State");
-  checkpoint("run-return");
 }

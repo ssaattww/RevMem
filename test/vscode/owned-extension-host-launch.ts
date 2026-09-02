@@ -134,22 +134,8 @@ export const runOwnedExtensionHostLaunch = async (
 
   let stdout = "";
   let stderr = "";
-  const logT609Timing = (text: string): void => {
-    if (input.phase !== "t609-single-root") return;
-    for (const line of text.split(/\r?\n/u)) {
-      if (line.includes("[T609 timing]")) console.log(redact(line, input.redactPaths));
-    }
-  };
-  child.stdout?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString("utf8");
-    stdout += text;
-    logT609Timing(text);
-  });
-  child.stderr?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString("utf8");
-    stderr += text;
-    logT609Timing(text);
-  });
+  child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+  child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
   const closed = closeOf(child);
   const message = new Promise<WorkerMessage>((resolveMessage) => {
     child.on("message", (value: unknown) => {

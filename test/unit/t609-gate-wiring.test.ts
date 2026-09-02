@@ -503,19 +503,16 @@ test("T609 virtual URI boundary commands use the owned single-root deadline", as
   assert.match(runner, /const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;/u);
 });
 
-test("T609 live encoding transition closes only its exact text tab and waits for the Host close event", async () => {
+test("T609 live encoding transition re-decodes the open document without waiting for model disposal", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
-  const closeStart = hostSuite.indexOf("const closeDocument = async");
-  const closeEnd = hostSuite.indexOf("const assertMultiRootCancellation", closeStart);
-  assert.ok(closeStart >= 0 && closeEnd > closeStart, "the targeted close helper must remain isolated from broad editor cleanup");
-  const closeDocument = hostSuite.slice(closeStart, closeEnd);
+  const transitionStart = hostSuite.indexOf("const assertLiveEncodingTransition = async");
+  const transitionEnd = hostSuite.indexOf("const assertMappedGitTransitions", transitionStart);
+  assert.ok(transitionStart >= 0 && transitionEnd > transitionStart);
+  const transition = hostSuite.slice(transitionStart, transitionEnd);
 
-  assert.match(closeDocument, /vscode\.window\.tabGroups\.all/u);
-  assert.match(closeDocument, /tab\.input instanceof vscode\.TabInputText/u);
-  assert.match(closeDocument, /tab\.input\.uri\.toString\(true\) === document\.uri\.toString\(true\)/u);
-  assert.match(closeDocument, /vscode\.window\.tabGroups\.close\(targetTab\)/u);
-  assert.match(closeDocument, /vscode\.workspace\.onDidCloseTextDocument/u);
-  assert.doesNotMatch(closeDocument, /closeAllEditors|workbench\.action\.closeAllEditors|within\(/u);
+  assert.match(transition, /vscode\.workspace\.openTextDocument\(shiftedUri, \{ encoding: "utf8" \}\)/u);
+  assert.match(transition, /assert\.equal\(reopened\.encoding, "utf8"/u);
+  assert.doesNotMatch(transition, /closeDocument\(shifted\)|onDidCloseTextDocument|tabGroups\.close/u);
   assert.match(
     hostSuite,
     /assert\.equal\(bom\.isClosed, false, "the unrelated opened document must remain observed"\)/u,
