@@ -259,10 +259,13 @@ const assertLiveEncodingTransition = async (
   const unaffectedContext = findStateFile(before.contextFiles, "utf8-bom.txt");
   const unaffectedGlobal = findStateFile(before.globalFiles, "utf8-bom.txt");
   await vscode.workspace.getConfiguration("files", shiftedUri).update("encoding", "utf8", vscode.ConfigurationTarget.WorkspaceFolder);
-  await closeDocument(shifted);
-  const reopened = await vscode.workspace.openTextDocument(shiftedUri);
+  const reopened = await within(
+    "re-decode Shift-JIS document as UTF-8",
+    vscode.workspace.openTextDocument(shiftedUri, { encoding: "utf8" })
+  );
   await vscode.window.showTextDocument(reopened, { preview: false });
   assert.equal(reopened.encoding, "utf8", "the opened document must be re-decoded through VS Code after its encoding changes");
+  await api.drainDocumentReviewEdits();
   await api.refreshVisibleEditorDecorations();
   await api.drainVisibleEditorDecorations();
   const after = await api.getGitReviewStateSnapshotForTest(reopened);
