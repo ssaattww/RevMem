@@ -224,6 +224,11 @@ export const runOwnedExtensionHostLaunch = async (
     termination,
     diagnosticPath: diagnosticDisplayPath(diagnosticPath)
   };
+  if (input.phase === "t609-single-root") {
+    for (const line of `${stdout}\n${stderr}`.split(/\r?\n/u)) {
+      if (line.includes("[T609 timing]")) console.log(redact(line, input.redactPaths));
+    }
+  }
   console.log(JSON.stringify({ extensionHostLaunch: result }));
   if (status !== "succeeded") {
     throw new Error(`Extension Host launch ${input.phase} ${status}; diagnostic: ${result.diagnosticPath}`);
