@@ -157,7 +157,7 @@ interface T405ReviewStateRepository {
   create(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
 
-export interface RegisderedT405ReviewContextsRuntime
+export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
   preparePullRequestCandidateForExplicitContextSelection?(
     signal?: AbortSignal,
@@ -296,8 +296,10 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     /** Performs state mutation only for explicit synchronization commands. */
     private readonly synchronizeRepository: (
       owner: LocalRepositoryOwner,
-      persisted: readonly ReviewContextState[]
-    ) => Promise<void>,
+      persisted: readonly ReviewContextState[],
+      signal?: AbortSignal,
+      feedbackContext?: OperationFeedbackContext,
+    ) => Promise<boolean>,
     /** Acquires a current projection without mutating persisted Review State. */
     private readonly readSynchronizedRepository: (
       owner: LocalRepositoryOwner,
@@ -853,7 +855,7 @@ export function registerT405ReviewContextsRuntime(
     const identity = repositoryIdentity(context);
     const token = await auth.getAccessToken(identity.host, signal);
     assertCurrent();
-    local: LocalPullRequestDiffPort = forceRemote
+    const local: LocalPullRequestDiffPort = forceRemote
       ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
       : new LocalGitPullRequestDiffAdapter(gitExecutor, root);
     const remote = createPullRequestRemote(identity, token);
@@ -940,32 +942,38 @@ export function registerT405ReviewContextsRuntime(
     owner: LocalRepositoryOwner,
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
-  ): Promise<void> => {
+    feedbackContext?: OperationFeedbackContext,
+  ): Promise<boolean> => {
+    const assertCurrent = (): void => {
+      if (signal?.aborted === true) {
+        throw new DOMException("PR synchronization was superseded.", "AbortError");
+      }
+    };
     if (repository.loadRepositorySnapshot === undefined || repository.commitRepository === undefined) {
-      // Compatibility for injected legacy repositories: metadata-only lifecycle refresh is safe,
-      // but a revision transition requires the repository-owner CAS contract. Production uses
-      // DebouncedReviewStateRepository backed by the owner-atomic filesystem repository.
+      // Compatibility for injected legacy repositories. Resolve every lifecycle
+      // read first so an unavailable sibling cannot leave a partial metadata update.
+      const updates: Array<Parameters<typeof contextStateService.update>[0]> = [];
       for (const context of persisted) {
-        if (signal?.aborted === true) {
-          throw new DOMException("PR synchronization was superseded.", "AbortError");
-        }
+        assertCurrent();
         if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
         const identity = repositoryIdentity(context);
         const token = await auth.getAccessToken(identity.host, signal);
+        assertCurrent();
         const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
           identity,
           context.pullRequest.number,
-          undefined,
+          feedbackContext,
           signal,
         );
-        if (latest.kind !== "available") continue;
+        assertCurrent();
+        if (latest.kind !== "available") return false;
         if (
           context.pullRequest.baseSha !== latest.metadata.baseSha ||
           context.pullRequest.headSha !== latest.metadata.headSha
         ) {
           throw new Error("Pull-request revision synchronization requires repository-owner atomic commit support.");
         }
-        await contextStateService.update({
+        updates.push({
           repositoryId: context.repositoryId,
           identity: pullRequestIdentity(context),
           displayName: `PR #${latest.metadata.number}`,
@@ -978,10 +986,14 @@ export function registerT405ReviewContextsRuntime(
           },
         });
       }
-      return;
+      for (const update of updates) {
+        assertCurrent();
+        await contextStateService.update(update);
+      }
+      return true;
     }
 
-    await synchronizePullRequestOwner(
+    const result = await synchronizePullRequestOwner(
       { repositoryId: owner.repositoryId, headRevision: owner.headRevision },
       {
         repository: {
@@ -1007,7 +1019,7 @@ export function registerT405ReviewContextsRuntime(
           const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
             identity,
             context.pullRequest.number,
-            undefined,
+            feedbackContext,
             operationSignal,
           );
           if (latest.kind !== "available") return undefined;
@@ -1029,6 +1041,7 @@ export function registerT405ReviewContextsRuntime(
       },
       signal,
     );
+    return result.unavailableContextIds.length === 0;
   };
 
   /**
@@ -1110,14 +1123,15 @@ export function registerT405ReviewContextsRuntime(
       if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
     };
     if (local.head === undefined || local.remote === undefined) {
-      throw new Error("PR再検出にはHEADとGit remoteが必頁です。");
+      throw new Error("PR再検出にはHEADとGit remoteが必要です。");
     }
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
     const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
     assertDetectionCurrent();
+    let synchronizationCompleted = true;
     if (synchronizeBeforeSearch) {
-      await synchronizeRepository({
+      synchronizationCompleted = await synchronizeRepository({
         repositoryId: local.repositoryId,
         repositoryRoot: local.rootPath,
         headRevision: local.head,
@@ -1125,7 +1139,7 @@ export function registerT405ReviewContextsRuntime(
           context: { kind: "branch", label: "active", headRevision: local.head },
           progress: undefined,
         },
-      }, persistedBefore, signal);
+      }, persistedBefore, signal, feedbackContext);
       assertDetectionCurrent();
     }
 
@@ -1163,14 +1177,15 @@ export function registerT405ReviewContextsRuntime(
       let existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
       assertDetectionCurrent();
       if (existing !== undefined) {
-        const persistedPullRequest = existing.contextState.pullRequest;
         const detectedPullRequest = state.pullRequest!;
+        const persistedPullRequest = existing.contextState.pullRequest;
         if (
+          !synchronizationCompleted ||
           persistedPullRequest === undefined ||
           persistedPullRequest.baseSha !== detectedPullRequest.baseSha ||
           persistedPullRequest.headSha !== detectedPullRequest.headSha
         ) {
-          await synchronizeRepository({
+          synchronizationCompleted = await synchronizeRepository({
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
             headRevision: local.head,
@@ -1178,7 +1193,7 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: local.head },
               progress: undefined,
             },
-          }, persistedBefore, signal);
+          }, persistedBefore, signal, feedbackContext);
           assertDetectionCurrent();
           existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
           assertDetectionCurrent();
@@ -1192,13 +1207,8 @@ export function registerT405ReviewContextsRuntime(
         ) {
           throw new Error("Selected pull-request revision was not published by repository-owner synchronization.");
         }
-        await contextStateService.update({
-          repositoryId: local.repositoryId,
-          identity: pullRequestIdentity(state),
-          pullRequest: detectedPullRequest,
-          displayName: state.displayName,
-        });
       } else {
+
         const current = gitContextResolver.resolve({
           repositoryId: local.repositoryId,
           rootPath: local.rootPath,
