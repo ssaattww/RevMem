@@ -158,7 +158,21 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   const preparationStart = runtimeSource.indexOf("const preparePullRequestCandidateForExplicitContextSelection", detectStart);
   assert.ok(detectStart >= 0 && preparationStart > detectStart, "shared PR detection must precede the explicit Current Context preparation entry");
   const sharedDetection = runtimeSource.slice(detectStart, preparationStart);
-  assert.match(sharedDetection, /await contextStateService\.update\(/u, "shared PR detection updates an existing PR revision mapping");
+  assert.match(
+    sharedDetection,
+    /await synchronizeRepository\(/u,
+    "shared PR detection delegates persisted PR updates to the repository-owner boundary",
+  );
+  assert.doesNotMatch(
+    sharedDetection,
+    /await contextStateService\.update\(/u,
+    "shared PR detection must not publish an existing PR Context after owner synchronization",
+  );
+  const ownerSynchronizationSource = await readFile("src/t405-owner-pull-request-synchronization.ts", "utf8");
+  assert.match(ownerSynchronizationSource, /loadRepositorySnapshot/u);
+  assert.match(ownerSynchronizationSource, /prepareUpdate/u);
+  assert.match(ownerSynchronizationSource, /commitRepository/u);
+  assert.match(ownerSynchronizationSource, /recordPreparedUpdateHistory/u);
 
   const redetectStart = runtimeSource.indexOf("redetectPullRequest: async");
   const reconnectStart = runtimeSource.indexOf("reconnectGitHub: async", redetectStart);

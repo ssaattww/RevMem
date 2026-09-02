@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
   StaleReviewStateError,
   type ReviewStateRepositoryTarget,
@@ -26,6 +27,7 @@ const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const SHA_C = "c".repeat(40);
+const SHA_D = "d".repeat(40);
 const TIMESTAMP = "2026-09-01T00:00:00.000Z";
 const FILE_ID = "src/example.ts";
 
@@ -182,6 +184,116 @@ test("ISSUE-106 owner transaction publishes every PR Context and one Global revi
   }
 });
 
+test("ISSUE-106 different PR heads coexist while Global identifies the current repository-owner revision", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "revmem-issue106-different-heads-"));
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: { globalStorageUri: { fsPath: root } },
+    });
+    await repository.save(target(52), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(52),
+      globalState: globalState(),
+    });
+    await repository.save(target(53), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(53, SHA_A, SHA_D),
+      globalState: globalState(),
+    });
+    const expected = await repository.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.ok(expected);
+
+    await repository.commitRepository({
+      repositoryId: REPOSITORY_ID,
+      expected,
+      next: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        repositoryId: REPOSITORY_ID,
+        contextStates: expected.contextStates.map((state) =>
+          state.contextId === contextId(52)
+            ? advanceContext(state, SHA_C)
+            : {
+                ...structuredClone(state),
+                pullRequest: { ...state.pullRequest!, state: "closed" },
+                updatedAt: "2026-09-01T00:01:00.000Z",
+              }
+        ),
+        globalState: advanceGlobal(expected.globalState, SHA_C),
+      },
+    });
+
+    const reloaded52 = await repository.load(target(52));
+    const reloaded53 = await repository.load(target(53));
+    assert.equal(reloaded52?.contextState.pullRequest?.headSha, SHA_C);
+    assert.equal(reloaded53?.contextState.pullRequest?.headSha, SHA_D);
+    assert.equal(reloaded53?.contextState.pullRequest?.state, "closed");
+    assert.equal(reloaded52?.globalState.currentRevisionId, SHA_C);
+    assert.equal(reloaded53?.globalState.currentRevisionId, SHA_C);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ISSUE-106 owner transaction rejects mixed current Context or Global revisions before publication", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "revmem-issue106-mixed-current-"));
+  try {
+    const repository = new FileSystemReviewStateRepository({
+      storageUris: { globalStorageUri: { fsPath: root } },
+    });
+    await repository.save(target(52), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(52),
+      globalState: globalState(),
+    });
+    await repository.save(target(53), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(53),
+      globalState: globalState(),
+    });
+    const expected = await repository.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.ok(expected);
+    const advancedContexts = expected.contextStates.map((state) => advanceContext(state, SHA_C));
+    const advancedOwnerGlobal = advanceGlobal(expected.globalState, SHA_C);
+
+    const invalidContext = structuredClone(advancedContexts);
+    invalidContext[0]!.files[FILE_ID]!.revisionId = SHA_B;
+    await assert.rejects(
+      () => repository.commitRepository({
+        repositoryId: REPOSITORY_ID,
+        expected,
+        next: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          repositoryId: REPOSITORY_ID,
+          contextStates: invalidContext,
+          globalState: advancedOwnerGlobal,
+        },
+      }),
+      /Context file identity or revision/u,
+    );
+
+    const invalidGlobal = structuredClone(advancedOwnerGlobal);
+    invalidGlobal.files[FILE_ID]!.revisionId = SHA_B;
+    await assert.rejects(
+      () => repository.commitRepository({
+        repositoryId: REPOSITORY_ID,
+        expected,
+        next: {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          repositoryId: REPOSITORY_ID,
+          contextStates: advancedContexts,
+          globalState: invalidGlobal,
+        },
+      }),
+      /Global file identity or revision/u,
+    );
+
+    const visible = await repository.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.deepEqual(visible, expected);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("ISSUE-106 stale owner CAS publishes none of the planned Context or Global snapshots", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-issue106-stale-"));
   try {
@@ -289,6 +401,56 @@ test("ISSUE-106 owner transaction failure before manifest publication leaves the
     assert.deepEqual(visible.contextStates.map((state) => state.pullRequest?.headSha), [SHA_B, SHA_B]);
     assert.equal(visible.globalState.currentRevisionId, SHA_B);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ISSUE-106 debounced production owner flushes pending saves before one repository CAS", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "revmem-issue106-debounced-"));
+  const delegate = new FileSystemReviewStateRepository({
+    storageUris: { globalStorageUri: { fsPath: root } },
+  });
+  const repository = new DebouncedReviewStateRepository({
+    delegate,
+    debounceMilliseconds: 60_000,
+    scheduler: {
+      schedule: () => Symbol("pending-owner-save"),
+      cancel: () => undefined,
+    },
+  });
+  try {
+    const pending52 = repository.save(target(52), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(52),
+      globalState: globalState(),
+    });
+    const pending53 = repository.save(target(53), {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: contextState(53),
+      globalState: globalState(),
+    });
+
+    const expected = await repository.loadRepositorySnapshot(REPOSITORY_ID);
+    await Promise.all([pending52, pending53]);
+    assert.ok(expected);
+    assert.deepEqual(expected.contextStates.map((state) => state.contextId), [contextId(52), contextId(53)]);
+
+    await repository.commitRepository({
+      repositoryId: REPOSITORY_ID,
+      expected,
+      next: {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        repositoryId: REPOSITORY_ID,
+        contextStates: expected.contextStates.map((state) => advanceContext(state, SHA_C)),
+        globalState: advanceGlobal(expected.globalState, SHA_C),
+      },
+    });
+
+    const durable = await delegate.loadRepositorySnapshot(REPOSITORY_ID);
+    assert.deepEqual(durable?.contextStates.map((state) => state.pullRequest?.headSha), [SHA_C, SHA_C]);
+    assert.equal(durable?.globalState.currentRevisionId, SHA_C);
+  } finally {
+    await repository.dispose().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 });

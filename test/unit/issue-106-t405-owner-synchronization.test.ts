@@ -204,6 +204,7 @@ test("Issue #106 same-target PR contexts publish through one owner CAS and only 
     assert.equal(result.committed, true);
     assert.deepEqual(result.mappedContextIds, [contextId(52), contextId(53)]);
     assert.deepEqual(result.skippedRevisionContextIds, []);
+    assert.deepEqual(result.unavailableContextIds, []);
     assert.equal(harness.ownerCommits(), 1);
     assert.deepEqual(historyCountAtCommit, [0]);
     assert.deepEqual(harness.histories, [contextId(52), contextId(53)]);
@@ -226,7 +227,19 @@ test("Issue #106 different remote HEAD stays dormant until that HEAD becomes the
       { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
       {
         repository: harness.repository,
-        resolveUpdate: async (context) => updateInput(context, context.pullRequest?.number === 52 ? SHA_C : SHA_D),
+        resolveUpdate: async (context) => {
+          const input = updateInput(context, context.pullRequest?.number === 52 ? SHA_C : SHA_D);
+          return context.pullRequest?.number === 53
+            ? {
+                ...input,
+                pullRequest: {
+                  ...input.pullRequest,
+                  state: "closed",
+                  title: "PR 53 closed at another HEAD",
+                },
+              }
+            : input;
+        },
         prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
         recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
       },
@@ -235,12 +248,94 @@ test("Issue #106 different remote HEAD stays dormant until that HEAD becomes the
     assert.equal(result.committed, true);
     assert.deepEqual(result.mappedContextIds, [contextId(52)]);
     assert.deepEqual(result.skippedRevisionContextIds, [contextId(53)]);
+    assert.deepEqual(result.unavailableContextIds, []);
     const state52 = await harness.repository.load(target(52));
     const state53 = await harness.repository.load(target(53));
     assert.equal(state52?.contextState.pullRequest?.headSha, SHA_C);
     assert.equal(state53?.contextState.pullRequest?.headSha, SHA_B);
+    assert.equal(state53?.contextState.pullRequest?.state, "closed");
+    assert.equal(state53?.contextState.pullRequest?.title, "PR 53 closed at another HEAD");
     assert.equal(state52?.globalState.currentRevisionId, SHA_C);
     assert.equal(state53?.globalState.currentRevisionId, SHA_C);
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("Issue #106 one unavailable lifecycle read aborts the whole owner synchronization", async () => {
+  const harness = await createHarness();
+  try {
+    const result = await synchronizePullRequestOwner(
+      { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+      {
+        repository: harness.repository,
+        resolveUpdate: async (context) =>
+          context.pullRequest?.number === 53 ? undefined : updateInput(context, SHA_C),
+        prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
+        recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+      },
+    );
+
+    assert.equal(result.committed, false);
+    assert.deepEqual(result.mappedContextIds, []);
+    assert.deepEqual(result.skippedRevisionContextIds, []);
+    assert.deepEqual(result.unavailableContextIds, [contextId(53)]);
+    assert.equal(harness.ownerCommits(), 0);
+    assert.deepEqual(harness.histories, []);
+    const state52 = await harness.repository.load(target(52));
+    const state53 = await harness.repository.load(target(53));
+    assert.equal(state52?.contextState.pullRequest?.headSha, SHA_B);
+    assert.equal(state53?.contextState.pullRequest?.headSha, SHA_B);
+    assert.equal(state52?.globalState.currentRevisionId, SHA_B);
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("Issue #106 conflicting prepared Global snapshots fail before owner state or history publication", async () => {
+  const harness = await createHarness();
+  try {
+    await assert.rejects(
+      () => synchronizePullRequestOwner(
+        { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+        {
+          repository: harness.repository,
+          resolveUpdate: async (context) => updateInput(context, SHA_C),
+          prepareUpdate: async (input, current) => {
+            const prepared = await harness.service.prepareUpdate(input, current);
+            if (current.contextState.pullRequest?.number !== 53) return prepared;
+            return {
+              ...prepared,
+              next: {
+                ...prepared.next,
+                globalState: {
+                  ...prepared.next.globalState,
+                  files: {
+                    ...prepared.next.globalState.files,
+                    [FILE_ID]: {
+                      ...prepared.next.globalState.files[FILE_ID]!,
+                      reviewed: [],
+                    },
+                  },
+                },
+              },
+            };
+          },
+          recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+        },
+      ),
+      /conflicting owner-wide Global snapshots/u,
+    );
+
+    assert.equal(harness.ownerCommits(), 0);
+    assert.deepEqual(harness.histories, []);
+    const state52 = await harness.repository.load(target(52));
+    const state53 = await harness.repository.load(target(53));
+    assert.equal(state52?.contextState.pullRequest?.headSha, SHA_B);
+    assert.equal(state53?.contextState.pullRequest?.headSha, SHA_B);
+    assert.equal(state52?.globalState.currentRevisionId, SHA_B);
   } finally {
     await harness.repository.dispose();
     await rm(harness.root, { recursive: true, force: true });
@@ -285,4 +380,15 @@ test("Issue #106 T405 production runtime delegates explicit PR synchronization t
   );
   assert.match(runtimeSource, /synchronizePullRequestOwner/u);
   assert.match(runtimeSource, /commitRepository/u);
+  const detectStart = runtimeSource.indexOf("const detectPullRequest = async");
+  const preparationStart = runtimeSource.indexOf(
+    "const preparePullRequestCandidateForExplicitContextSelection",
+    detectStart,
+  );
+  assert.ok(detectStart >= 0 && preparationStart > detectStart);
+  assert.doesNotMatch(
+    runtimeSource.slice(detectStart, preparationStart),
+    /await contextStateService\.update\(/u,
+    "existing PR detection must not publish a second single-context commit after owner synchronization",
+  );
 });
