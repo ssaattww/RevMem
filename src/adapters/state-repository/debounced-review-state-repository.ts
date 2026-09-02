@@ -241,6 +241,22 @@ export class DebouncedReviewStateRepository {
     return this.trackOperation(operation);
   }
 
+  /**
+   * Flushes pending writes, then serializes one repository-owner operation with
+   * every normal load/save/commit/create accepted for the same repository.
+   */
+  protected runRepositoryOwnerOperation<T>(
+    repositoryId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    this.assertNotDisposed();
+    const ownerOperation = (async (): Promise<T> => {
+      await this.flush();
+      return this.enqueue(`repository\u0000${repositoryId}`, operation);
+    })();
+    return this.trackOperation(ownerOperation);
+  }
+
   /** Flushes every pending background snapshot and waits for currently queued delegate I/O. */
   public async flush(): Promise<void> {
     const failures: unknown[] = [];

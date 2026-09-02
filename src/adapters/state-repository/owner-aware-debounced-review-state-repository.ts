@@ -28,24 +28,26 @@ export class DebouncedReviewStateRepository extends BaseDebouncedReviewStateRepo
   public async loadRepositorySnapshot(
     repositoryId: string,
   ): Promise<ReviewStateRepositorySnapshot | undefined> {
-    await this.flush();
-    const delegate = this.ownerOptions.delegate as RepositoryOwnerPersistenceDelegate;
-    const loadRepositorySnapshot = delegate.loadRepositorySnapshot;
-    if (loadRepositorySnapshot === undefined) {
-      throw new Error("Review-state persistence delegate does not support repository-owner snapshot loading.");
-    }
-    return loadRepositorySnapshot.call(delegate, repositoryId);
+    return this.runRepositoryOwnerOperation(repositoryId, () => {
+      const delegate = this.ownerOptions.delegate as RepositoryOwnerPersistenceDelegate;
+      const loadRepositorySnapshot = delegate.loadRepositorySnapshot;
+      if (loadRepositorySnapshot === undefined) {
+        throw new Error("Review-state persistence delegate does not support repository-owner snapshot loading.");
+      }
+      return loadRepositorySnapshot.call(delegate, repositoryId);
+    });
   }
 
   public async commitRepository(
     transaction: Readonly<ReviewStateRepositoryTransactionLike>,
   ): Promise<void> {
-    await this.flush();
-    const delegate = this.ownerOptions.delegate as RepositoryOwnerPersistenceDelegate;
-    const commitRepository = delegate.commitRepository;
-    if (commitRepository === undefined) {
-      throw new Error("Review-state persistence delegate does not support repository-owner atomic commits.");
-    }
-    await commitRepository.call(delegate, transaction);
+    await this.runRepositoryOwnerOperation(transaction.repositoryId, () => {
+      const delegate = this.ownerOptions.delegate as RepositoryOwnerPersistenceDelegate;
+      const commitRepository = delegate.commitRepository;
+      if (commitRepository === undefined) {
+        throw new Error("Review-state persistence delegate does not support repository-owner atomic commits.");
+      }
+      return commitRepository.call(delegate, transaction);
+    });
   }
 }

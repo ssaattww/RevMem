@@ -8,6 +8,10 @@ import {
   type ReviewContextState,
   type SchemaVersion,
 } from "../../core/contracts/index";
+import {
+  validateContextRevisionSnapshots,
+  validateGlobalRevisionSnapshots,
+} from "../../core/review-state/index";
 import { NodeAtomicTextFileStore } from "./atomic-text-file-store";
 import type {
   FileSystemReviewStateRepositoryOptions,
@@ -79,6 +83,46 @@ const resolveReferencedFile = (
   return resolved;
 };
 
+const validateCurrentContextFiles = (context: Readonly<ReviewContextState>): void => {
+  const contextId = requireString(context.contextId, "Repository owner Context contextId");
+  const revisionId = context.kind === "branch"
+    ? requireString(context.branch?.headRevision, `Repository owner Context ${contextId} branch revision`)
+    : requireString(context.pullRequest?.headSha, `Repository owner Context ${contextId} pull-request revision`);
+  if (!isRecord(context.files)) {
+    throw new TypeError(`Repository owner Context ${contextId} files must be an object`);
+  }
+  for (const [fileId, file] of Object.entries(context.files)) {
+    if (
+      !isRecord(file) ||
+      requireString(file.fileId, `Repository owner Context ${contextId} fileId`) !== fileId ||
+      requireString(file.revisionId, `Repository owner Context ${contextId} file revision`) !== revisionId
+    ) {
+      throw new Error("Repository owner Context file identity or revision is invalid");
+    }
+  }
+  validateContextRevisionSnapshots(context);
+};
+
+const validateCurrentGlobalFiles = (globalState: Readonly<RepositoryGlobalState>): void => {
+  const revisionId = requireString(
+    globalState.currentRevisionId,
+    "Repository owner Global currentRevisionId",
+  );
+  if (!isRecord(globalState.files)) {
+    throw new TypeError("Repository owner Global files must be an object");
+  }
+  for (const [fileId, file] of Object.entries(globalState.files)) {
+    if (
+      !isRecord(file) ||
+      requireString(file.fileId, "Repository owner Global fileId") !== fileId ||
+      requireString(file.revisionId, "Repository owner Global file revision") !== revisionId
+    ) {
+      throw new Error("Repository owner Global file identity or revision is invalid");
+    }
+  }
+  validateGlobalRevisionSnapshots(globalState);
+};
+
 const validateSnapshot = (
   value: Readonly<ReviewStateRepositorySnapshot>,
   repositoryId: string,
@@ -92,6 +136,7 @@ const validateSnapshot = (
   if (value.globalState.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION) {
     throw new Error("Repository owner Global state uses an unsupported schema version");
   }
+  validateCurrentGlobalFiles(value.globalState);
   const contexts = value.contextStates.map((context) => {
     if (context.schemaVersion !== REVIEW_RANGE_SCHEMA_VERSION) {
       throw new Error("Repository owner Context uses an unsupported schema version");
@@ -102,6 +147,7 @@ const validateSnapshot = (
     if (context.kind !== "branch" && context.kind !== "pull-request") {
       throw new Error(`Repository owner transaction cannot publish ${context.kind} Context`);
     }
+    validateCurrentContextFiles(context);
     validateOwnerReconciliation(context);
     return clone(context);
   }).sort((left, right) => left.contextId.localeCompare(right.contextId));
