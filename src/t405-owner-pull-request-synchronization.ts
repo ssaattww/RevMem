@@ -40,6 +40,7 @@ export interface PullRequestOwnerSynchronizationResult {
   readonly committed: boolean;
   readonly mappedContextIds: readonly string[];
   readonly skippedRevisionContextIds: readonly string[];
+  readonly unavailableContextIds: readonly string[];
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -72,10 +73,37 @@ const semanticUpdateRequired = (
   context.displayName !== (input.displayName ?? context.displayName) ||
   !isDeepStrictEqual(context.pullRequest, input.pullRequest);
 
+const metadataOnlyInput = (
+  context: Readonly<ReviewContextState>,
+  input: Readonly<UpdatePullRequestContextInput>,
+): UpdatePullRequestContextInput => {
+  if (context.pullRequest === undefined) {
+    throw new Error("Deferred pull-request synchronization requires persisted pull-request metadata.");
+  }
+  return {
+    ...clone(input),
+    pullRequest: {
+      ...clone(input.pullRequest),
+      baseSha: context.pullRequest.baseSha,
+      headSha: context.pullRequest.headSha,
+    },
+  };
+};
+
+const emptyResult = (
+  unavailableContextIds: readonly string[] = [],
+): PullRequestOwnerSynchronizationResult => ({
+  committed: false,
+  mappedContextIds: [],
+  skippedRevisionContextIds: [],
+  unavailableContextIds: [...unavailableContextIds].sort(),
+});
+
 /**
- * Plans every eligible pull-request lifecycle update against one immutable
- * repository-owner generation, then publishes all Contexts and the single
- * Global snapshot through one manifest-level CAS.
+ * Plans every pull-request lifecycle update against one immutable owner
+ * generation, then publishes all Contexts and one Global snapshot through a
+ * single manifest-level CAS. No state or history is written until every
+ * lifecycle read and every mapping plan has succeeded.
  */
 export const synchronizePullRequestOwner = async (
   target: Readonly<PullRequestOwnerSynchronizationTarget>,
@@ -85,17 +113,33 @@ export const synchronizePullRequestOwner = async (
   assertCurrent(signal);
   const expected = await dependencies.repository.loadRepositorySnapshot(target.repositoryId);
   assertCurrent(signal);
-  if (expected === undefined) {
-    return { committed: false, mappedContextIds: [], skippedRevisionContextIds: [] };
-  }
+  if (expected === undefined) return emptyResult();
   if (expected.repositoryId !== target.repositoryId) {
     throw new Error("Repository-owner synchronization loaded a foreign owner snapshot.");
+  }
+
+  const resolvedUpdates = new Map<string, UpdatePullRequestContextInput>();
+  const unavailableContextIds: string[] = [];
+  for (const context of expected.contextStates) {
+    assertCurrent(signal);
+    if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
+    const input = await dependencies.resolveUpdate(context, signal);
+    assertCurrent(signal);
+    if (input === undefined) {
+      unavailableContextIds.push(context.contextId);
+      continue;
+    }
+    resolvedUpdates.set(context.contextId, clone(input));
+  }
+  if (unavailableContextIds.length > 0) {
+    return emptyResult(unavailableContextIds);
   }
 
   const nextContexts = new Map(
     expected.contextStates.map((context) => [context.contextId, clone(context)]),
   );
   const preparedUpdates: PreparedPullRequestContextUpdate[] = [];
+  const revisionUpdates: PreparedPullRequestContextUpdate[] = [];
   const mappedContextIds: string[] = [];
   const skippedRevisionContextIds: string[] = [];
   let mappedGlobal: ReviewStateRepositorySnapshot["globalState"] | undefined;
@@ -103,23 +147,23 @@ export const synchronizePullRequestOwner = async (
   for (const context of expected.contextStates) {
     assertCurrent(signal);
     if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
-    const input = await dependencies.resolveUpdate(context, signal);
-    assertCurrent(signal);
-    if (input === undefined || !semanticUpdateRequired(context, input)) continue;
+    const resolved = resolvedUpdates.get(context.contextId);
+    if (resolved === undefined) {
+      throw new Error("Repository-owner synchronization lost acquired pull-request lifecycle metadata.");
+    }
 
     const revisionChanged =
-      context.pullRequest.baseSha !== input.pullRequest.baseSha ||
-      context.pullRequest.headSha !== input.pullRequest.headSha;
-    if (
-      revisionChanged &&
+      context.pullRequest.baseSha !== resolved.pullRequest.baseSha ||
+      context.pullRequest.headSha !== resolved.pullRequest.headSha;
+    const revisionEligible =
+      !revisionChanged ||
       (
-        input.pullRequest.headSha !== target.headRevision ||
-        context.pullRequest.headSha !== expected.globalState.currentRevisionId
-      )
-    ) {
-      skippedRevisionContextIds.push(context.contextId);
-      continue;
-    }
+        resolved.pullRequest.headSha === target.headRevision &&
+        context.pullRequest.headSha === expected.globalState.currentRevisionId
+      );
+    const input = revisionEligible ? resolved : metadataOnlyInput(context, resolved);
+    if (!revisionEligible) skippedRevisionContextIds.push(context.contextId);
+    if (!semanticUpdateRequired(context, input)) continue;
 
     const current: PullRequestReviewStateCommit = {
       contextState: clone(context),
@@ -136,7 +180,7 @@ export const synchronizePullRequestOwner = async (
       throw new Error("Prepared pull-request update does not match the repository-owner source generation.");
     }
 
-    if (revisionChanged) {
+    if (revisionEligible && revisionChanged) {
       if (!prepared.revisionChanged) {
         throw new Error("Prepared pull-request update lost a required revision transition.");
       }
@@ -152,30 +196,34 @@ export const synchronizePullRequestOwner = async (
         throw new Error("Pull-request updates produced conflicting owner-wide Global snapshots.");
       }
       mappedContextIds.push(context.contextId);
-    } else {
-      if (prepared.revisionChanged || !isDeepStrictEqual(prepared.next.globalState, expected.globalState)) {
-        throw new Error("Metadata-only pull-request synchronization cannot mutate owner-wide Global state.");
-      }
+      revisionUpdates.push(prepared);
+    } else if (
+      prepared.revisionChanged ||
+      !isDeepStrictEqual(prepared.next.globalState, expected.globalState)
+    ) {
+      throw new Error("Metadata-only pull-request synchronization cannot mutate owner-wide Global state.");
     }
 
     nextContexts.set(context.contextId, clone(prepared.next.contextState));
     preparedUpdates.push(prepared);
   }
 
-  if (preparedUpdates.length === 0) {
-    return {
-      committed: false,
-      mappedContextIds,
-      skippedRevisionContextIds,
-    };
-  }
-
+  const nextGlobal = clone(mappedGlobal ?? expected.globalState);
   const next: ReviewStateRepositorySnapshot = {
     schemaVersion: expected.schemaVersion,
     repositoryId: expected.repositoryId,
     contextStates: [...nextContexts.values()].sort((left, right) => left.contextId.localeCompare(right.contextId)),
-    globalState: clone(mappedGlobal ?? expected.globalState),
+    globalState: nextGlobal,
   };
+  if (preparedUpdates.length === 0 || isDeepStrictEqual(expected, next)) {
+    return {
+      committed: false,
+      mappedContextIds: [...mappedContextIds].sort(),
+      skippedRevisionContextIds: [...skippedRevisionContextIds].sort(),
+      unavailableContextIds: [],
+    };
+  }
+
   assertCurrent(signal);
   await dependencies.repository.commitRepository({
     repositoryId: target.repositoryId,
@@ -183,13 +231,26 @@ export const synchronizePullRequestOwner = async (
     next,
   });
 
-  for (const prepared of preparedUpdates.sort((left, right) => left.contextId.localeCompare(right.contextId))) {
-    await dependencies.recordPreparedUpdateHistory(prepared);
+  // Cancellation after publication does not turn a committed owner generation
+  // into a partial success. Complete the post-commit audit sequence instead.
+  for (const prepared of revisionUpdates.sort((left, right) => left.contextId.localeCompare(right.contextId))) {
+    await dependencies.recordPreparedUpdateHistory({
+      ...prepared,
+      expected: {
+        ...prepared.expected,
+        globalState: clone(expected.globalState),
+      },
+      next: {
+        ...prepared.next,
+        globalState: clone(nextGlobal),
+      },
+    });
   }
 
   return {
     committed: true,
-    mappedContextIds,
-    skippedRevisionContextIds,
+    mappedContextIds: [...mappedContextIds].sort(),
+    skippedRevisionContextIds: [...skippedRevisionContextIds].sort(),
+    unavailableContextIds: [],
   };
 };
