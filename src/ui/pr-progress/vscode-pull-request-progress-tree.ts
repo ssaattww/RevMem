@@ -21,28 +21,14 @@ export interface PullRequestProgressTreeSource {
   select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
 }
 
-interface ActivePullRequestProgressTreeRuntime {
-  readonly setSource: (source: PullRequestProgressTreeSource | undefined) => void;
-  readonly refresh: () => void;
-}
-
-let activeRuntime: ActivePullRequestProgressTreeRuntime | undefined;
-
-/** Switches the contributed tree from its default local base/head source to an active GitHub PR source. */
-export const setPullRequestProgressSource = (
-  source: PullRequestProgressTreeSource | undefined
-): void => activeRuntime?.setSource(source);
-
-/** Notifies VS Code after the active runtime has replaced its immutable progress snapshot. */
-export const refreshPullRequestProgressTree = (): void => activeRuntime?.refresh();
-
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
-implements vscode.TreeDataProvider<PullRequestProgressTreeNode> {
+implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProgressTreeSource {
   private readonly changed = new vscode.EventEmitter<PullRequestProgressTreeNode | undefined>();
+  private selectedSource: PullRequestProgressTreeSource | undefined;
   public readonly onDidChangeTreeData = this.changed.event;
 
-  public constructor(private readonly source: PullRequestProgressTreeSource) {}
+  public constructor(private readonly defaultSource: PullRequestProgressTreeSource) {}
 
   public getTreeItem(node: PullRequestProgressTreeNode): vscode.TreeItem {
     if (node.kind === "category") return this.categoryTreeItem(node);
@@ -61,16 +47,39 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode> {
   }
 
   public getChildren(node?: PullRequestProgressTreeNode): PullRequestProgressTreeNode[] {
-    return [...this.source.getChildren(node)];
+    return [...this.activeSource().getChildren(node)];
   }
 
-  /** Informs VS Code that the shared provider has replaced its identity-bound snapshot. */
-  public refresh(): void {
+  public select(
+    node: PullRequestProgressTreeFileNode
+  ): Promise<PullRequestProgressTreeSelectionResult> {
+    return this.activeSource().select(node);
+  }
+
+  /** Switches this activated Extension Host to its active GitHub PR source. */
+  public setPullRequestProgressSource(
+    source: PullRequestProgressTreeSource | undefined
+  ): void {
+    this.selectedSource = source;
+    this.refreshPullRequestProgressTree();
+  }
+
+  /** Notifies VS Code after this activated runtime replaced its immutable snapshot. */
+  public refreshPullRequestProgressTree(): void {
     this.changed.fire(undefined);
+  }
+
+  /** Backward-compatible local refresh alias used by the base runtime tests. */
+  public refresh(): void {
+    this.refreshPullRequestProgressTree();
   }
 
   public dispose(): void {
     this.changed.dispose();
+  }
+
+  private activeSource(): PullRequestProgressTreeSource {
+    return this.selectedSource ?? this.defaultSource;
   }
 
   private categoryTreeItem(node: PullRequestProgressTreeCategoryNode): vscode.TreeItem {
@@ -87,12 +96,8 @@ export const registerVscodePullRequestProgressTree = (
   defaultSource: PullRequestProgressTreeSource,
   reportError: (error: unknown) => void | Promise<void>
 ): VscodePullRequestProgressTreeDataProvider => {
-  let selectedSource: PullRequestProgressTreeSource | undefined;
-  const source: PullRequestProgressTreeSource = {
-    getChildren: (node) => (selectedSource ?? defaultSource).getChildren(node),
-    select: (node) => (selectedSource ?? defaultSource).select(node)
-  };
-  const tree = new VscodePullRequestProgressTreeDataProvider(source);
+  const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource);
+  const source: PullRequestProgressTreeSource = tree;
   const reviewContext = new PrProgressDiffReviewContextController<vscode.Tab>({
     getActiveTab: () => vscode.window.tabGroups.activeTabGroup.activeTab,
     isDiffTab: (tab) => tab.input instanceof vscode.TabInputTextDiff,
@@ -101,14 +106,6 @@ export const registerVscodePullRequestProgressTree = (
   const refreshReviewContext = (): void => {
     void reviewContext.refresh().catch(reportError);
   };
-  const runtime: ActivePullRequestProgressTreeRuntime = {
-    setSource: (next) => {
-      selectedSource = next;
-      tree.refresh();
-    },
-    refresh: () => tree.refresh()
-  };
-  activeRuntime = runtime;
   const view = vscode.window.createTreeView(PULL_REQUEST_PROGRESS_VIEW_ID, {
     treeDataProvider: tree,
     showCollapseAll: true
@@ -127,9 +124,6 @@ export const registerVscodePullRequestProgressTree = (
   );
   const activeEditorChanged = vscode.window.onDidChangeActiveTextEditor(refreshReviewContext);
   refreshReviewContext();
-  const runtimeRegistration = new vscode.Disposable(() => {
-    if (activeRuntime === runtime) activeRuntime = undefined;
-  });
   const reviewContextRegistration = new vscode.Disposable(() => {
     void reviewContext.clear().catch(reportError);
   });
@@ -138,7 +132,6 @@ export const registerVscodePullRequestProgressTree = (
     view,
     open,
     activeEditorChanged,
-    runtimeRegistration,
     reviewContextRegistration
   );
   return tree;
