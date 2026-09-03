@@ -162,7 +162,7 @@ test("review diff URI decoding rejects non-canonical or malformed inputs determi
     valid.replace("/posix/", "/unknown/"),
     valid.replace("/original/", "/unknown/"),
     valid.replace("/git-commit/", "/moving-ref/"),
-    valid.replace(/\/[A-Za-z0-9_-]+$/u, "/***")
+    valid.replace(/\/[^/]+$/u, "/***")
   ];
 
   for (const uri of invalidUris) {
