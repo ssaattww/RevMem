@@ -296,11 +296,13 @@ test("Issue #66 production composition switches the contributed PR Progress view
   );
   const composition = await readFile("src/t305-extension.ts", "utf8");
 
-  assert.match(treeRuntime, /export const setPullRequestProgressSource/u);
-  assert.match(treeRuntime, /export const refreshPullRequestProgressTree/u);
+  assert.doesNotMatch(treeRuntime, /export const setPullRequestProgressSource/u);
+  assert.doesNotMatch(treeRuntime, /export const refreshPullRequestProgressTree/u);
+  assert.match(treeRuntime, /public setPullRequestProgressSource/u);
+  assert.match(treeRuntime, /public refreshPullRequestProgressTree/u);
   assert.match(composition, /refreshSelectedPullRequestProgress/u);
   assert.match(composition, /source:\s*pullRequestReviewRuntime\.progress/u);
-  assert.match(composition, /setSource:\s*\(source\) => setPullRequestProgressSource\(source\)/u);
+  assert.match(composition, /setSource:\s*\(source\) => runtimePort\.setPullRequestProgressSource\(source\)/u);
   assert.match(composition, /pullRequestReviewRuntime\.activateProgress/u);
-  assert.match(composition, /refreshPullRequestProgressTree/u);
+  assert.match(composition, /runtimePort\.refreshPullRequestProgressTree/u);
 });
