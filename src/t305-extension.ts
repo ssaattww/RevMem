@@ -44,10 +44,6 @@ import {
   registerGlobalUnderstandingRuntime
 } from "./ui/global-understanding/index";
 import {
-  refreshPullRequestProgressTree,
-  setPullRequestProgressSource
-} from "./ui/pr-progress/vscode-pull-request-progress-tree";
-import {
   refreshAfterDocumentEdit,
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
@@ -621,8 +617,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       activateProgress: (selectedContextId) =>
         pullRequestReviewRuntime.activateProgress(selectedContextId),
       clearProgress: () => pullRequestReviewRuntime.clearProgress(),
-      setSource: (source) => setPullRequestProgressSource(source),
-      refreshTree: () => refreshPullRequestProgressTree()
+      setSource: (source) => runtimePort.setPullRequestProgressSource(source),
+      refreshTree: () => runtimePort.refreshPullRequestProgressTree()
     });
   };
   const reportPullRequestProgressError = async (error: unknown): Promise<void> => {
