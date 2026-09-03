@@ -274,7 +274,7 @@ export class ReviewDiffUriCodec {
 
     if (
       parsed.protocol !== `${REVIEW_DIFF_SCHEME}:` ||
-      parsed.hostname !== REVIE]}DIFF_AUTHORITY ||
+      parsed.hostname !== REVIEW_DIFF_AUTHORITY ||
       parsed.username.length > 0 ||
       parsed.password.length > 0 ||
       parsed.port.length > 0 ||
@@ -289,7 +289,7 @@ export class ReviewDiffUriCodec {
     if (
       (!isLegacy && segments.length !== 9) ||
       segments[0] !== "" ||
-      segments[1] !== REVIE]}DIFF_VERSION
+      segments[1] !== REVIEW_DIFF_VERSION
     ) {
       throw uriError("Review diff URI path version or segment count is invalid");
     }
@@ -370,7 +370,7 @@ export class ReviewDiffUriCodec {
     descriptor: ReviewDiffDocumentDescriptor
   ): string {
     return [
-      `${REVIE]}DIFF_SCHEME}://${REVIE]}DIFF_AUTHORITY}`,
+      `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}`,
       REVIEW_DIFF_VERSION,
       encodeField(descriptor.contextId),
       descriptor.fileSystemPathSemantics,
