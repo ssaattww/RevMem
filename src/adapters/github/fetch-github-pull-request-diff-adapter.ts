@@ -12,6 +12,7 @@ import type {
   PullRequestRemoteTextReadResult
 } from "../../application/github-pr-diff/index";
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
+import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
 
 interface GitHubPullRequestPayload {
   readonly number?: unknown;
@@ -226,6 +227,28 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
       return { kind: "unavailable", reason: "diff-too-large" };
     }
 
+    let exactMetadata = metadata;
+    if (metadata.state === "open") {
+      const mergeBase = await fetchGitHubPullRequestMergeBase(
+        {
+          apiBaseUrl: this.apiBaseUrl,
+          ...(this.token === undefined ? {} : { token: this.token }),
+          fetch: this.fetchImplementation,
+        },
+        request.repository,
+        metadata.baseSha,
+        metadata.headSha,
+        signal,
+      );
+      if (mergeBase.kind === "unavailable") return mergeBase;
+      exactMetadata = { ...metadata, baseSha: mergeBase.mergeBaseSha };
+    }
+    if (
+      exactMetadata.number !== request.number ||
+      exactMetadata.baseSha !== request.baseSha ||
+      exactMetadata.headSha !== request.headSha
+    ) return { kind: "unavailable", reason: "identity-mismatch" };
+
     const collection = new URL(`${root}/files`);
     collection.searchParams.set("per_page", String(PULL_REQUEST_FILES_PER_PAGE));
     collection.searchParams.set("page", "1");
@@ -277,7 +300,7 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
     if (files.length !== changedFiles) {
       return { kind: "unavailable", reason: "api" };
     }
-    return { kind: "available", metadata, files };
+    return { kind: "available", metadata: exactMetadata, files };
   }
 
   public async readFile(

@@ -257,6 +257,9 @@ const runScenario = async (options: {
           base: { ref: "main", sha: baseSha },
         })));
       }
+      if (url.pathname === `/repos/example/private-context/compare/${baseSha}...${headSha}`) {
+        return jsonResponse({ merge_base_commit: { sha: baseSha } });
+      }
       const pullRequestMatch = /^\/repos\/example\/private-context\/pulls\/(\d+)$/.exec(url.pathname);
       if (pullRequestMatch !== null) {
         const number = Number(pullRequestMatch[1]);

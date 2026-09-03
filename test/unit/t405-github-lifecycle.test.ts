@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  FetchGitHubPullRequestDiffAdapter,
   FetchGitHubPullRequestLifecycleAdapter,
 } from "../../src/adapters/github/index.js";
 import {
@@ -13,6 +14,9 @@ import {
   type PullRequestReviewStateCommit,
 } from "../../src/application/github-pr-context/index.js";
 import { projectReviewContexts } from "../../src/application/review-contexts/index.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
+import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
+import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -125,6 +129,163 @@ test("R405-2 lifecycle adapter reports closed and merged PR state by stable PR i
   const mergedResult = await adapter.fetchCurrent(identity, 52);
   assert.equal(mergedResult.kind, "available");
   if (mergedResult.kind === "available") assert.equal(mergedResult.metadata.state, "merged");
+});
+
+test("Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip", async () => {
+  const requestedPaths: string[] = [];
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async (input) => {
+      const url = new URL(input.toString());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52") {
+        return jsonResponse({
+          number: 52,
+          title: "Saved PR",
+          html_url: "https://github.com/ssaattww/revmem/pull/52",
+          state: "open",
+          merged_at: null,
+          base: { sha: C },
+          head: { sha: B },
+        });
+      }
+      if (url.pathname === `/repos/ssaattww/revmem/compare/${C}...${B}`) {
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    },
+  });
+
+  const result = await adapter.fetchCurrent(identity, 52);
+
+  assert.equal(result.kind, "available");
+  if (result.kind === "available") {
+    assert.equal(result.metadata.baseSha, A);
+    assert.equal(result.metadata.headSha, B);
+  }
+  assert.deepEqual(requestedPaths, [
+    "/repos/ssaattww/revmem/pulls/52",
+    `/repos/ssaattww/revmem/compare/${C}...${B}`,
+  ]);
+});
+
+test("Issue #107 remote PR diff keeps the branch point when the base branch advances", async () => {
+  const requestedPaths: string[] = [];
+  const adapter = new FetchGitHubPullRequestDiffAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async (input) => {
+      const url = new URL(input.toString());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52") {
+        return jsonResponse({
+          number: 52,
+          title: "Saved PR",
+          html_url: "https://github.com/ssaattww/revmem/pull/52",
+          state: "open",
+          merged_at: null,
+          changed_files: 1,
+          base: { sha: C },
+          head: { sha: B },
+        });
+      }
+      if (url.pathname === `/repos/ssaattww/revmem/compare/${C}...${B}`) {
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      if (url.pathname === "/repos/ssaattww/revmem/pulls/52/files") {
+        return jsonResponse([{
+          filename: "src/example.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          patch: "@@ -1 +1 @@\n-old\n+new",
+        }]);
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    },
+  });
+
+  const result = await adapter.fetch({
+    contextId: CONTEXT_ID,
+    repository: identity,
+    number: 52,
+    baseSha: A,
+    headSha: B,
+  });
+
+  assert.equal(result.kind, "available");
+  if (result.kind === "available") {
+    assert.equal(result.metadata.baseSha, A);
+    assert.equal(result.metadata.headSha, B);
+    assert.equal(result.files.length, 1);
+  }
+  assert.deepEqual(requestedPaths, [
+    "/repos/ssaattww/revmem/pulls/52",
+    `/repos/ssaattww/revmem/compare/${C}...${B}`,
+    "/repos/ssaattww/revmem/pulls/52/files",
+  ]);
+});
+
+test("Issue #107 private refresh keeps read-only PR progress available across legacy persisted base metadata", async () => {
+  const legacy = persistedContext();
+  legacy.pullRequest = { ...legacy.pullRequest!, baseSha: C };
+  legacy.files[FILE_ID] = {
+    ...legacy.files[FILE_ID]!,
+    originalReviewedByDiff: {
+      [`${C}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }],
+    },
+  };
+  const repository = new MemoryPullRequestRepository(legacy, persistedGlobal());
+  const normalizedSnapshot: PullRequestDiffSnapshot = {
+    contextId: CONTEXT_ID,
+    baseSha: A,
+    headSha: B,
+    originalDiffId: `${A}..${B}`,
+    files: [{
+      fileId: FILE_ID,
+      oldPath: "src/example.ts",
+      newPath: "src/example.ts",
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      hunks: [{
+        oldStart: 1,
+        oldCount: 1,
+        newStart: 1,
+        newCount: 1,
+        lines: [
+          { kind: "deletion", oldLine: 1, text: "old" },
+          { kind: "addition", newLine: 1, text: "new" },
+        ],
+      }],
+    }],
+  };
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: {
+      load: async () => ({
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: structuredClone(repository.current.contextState),
+        globalState: structuredClone(repository.current.globalState),
+      }),
+      commit: async () => { throw new Error("read-only PR progress must not commit persisted state"); },
+    },
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot: normalizedSnapshot,
+    readTextContent: async () => ({ kind: "found", content: "new" }),
+  });
+
+  assert.deepEqual(await runtime.getProgress(CONTEXT_ID), {
+    reviewedLineCount: 1,
+    totalLineCount: 2,
+    progress: 0.5,
+  });
+  assert.equal(repository.current.contextState.pullRequest?.baseSha, C, "background refresh must not mutate persisted PR metadata");
 });
 
 test("R405-1 lifecycle adapter acquires an exact immutable revision comparison for T404 mapping", async () => {

@@ -399,6 +399,9 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           base: { ref: "main", sha: remoteBaseSha },
         })));
       }
+      if (url.pathname === `/repos/ssaattww/revmem/compare/${remoteBaseSha}...${remoteHeadSha}`) {
+        return jsonResponse({ merge_base_commit: { sha: remoteBaseSha } });
+      }
       if (url.pathname === "/repos/ssaattww/revmem/pulls/52/files") {
         if (refreshTransport === "offline") throw new Error("offline for cache fallback");
         return jsonResponse([{
