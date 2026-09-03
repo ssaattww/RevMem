@@ -58,6 +58,7 @@ import {
 } from "./ui/pr-progress/index";
 import {
   registerVscodePullRequestProgressTree,
+  type PullRequestProgressTreeSource,
   type VscodePullRequestProgressTreeDataProvider
 } from "./ui/pr-progress/vscode-pull-request-progress-tree";
 import {
@@ -158,6 +159,10 @@ export interface ReviewRangeRuntimePort {
   setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
   refreshVisibleEditorDecorations(): Promise<void>;
+  /** Switches this Extension Host's PR Progress source without module-global ownership. */
+  setPullRequestProgressSource(source: PullRequestProgressTreeSource | undefined): void;
+  /** Refreshes only this Extension Host's PR Progress tree. */
+  refreshPullRequestProgressTree(): void;
   /** Subscribes UI projections that must be recalculated after review-state commands. */
   onDidChangeReviewState(listener: () => void): vscode.Disposable;
   /** Registers another canonical review-diff owner without registering a second URI scheme provider. */
@@ -865,6 +870,10 @@ export function activate(
     },
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),
+    setPullRequestProgressSource: (source) =>
+      localBaseHeadTreeReference.current?.setPullRequestProgressSource(source),
+    refreshPullRequestProgressTree: () =>
+      localBaseHeadTreeReference.current?.refreshPullRequestProgressTree(),
     onDidChangeReviewState: (listener) =>
       reviewStateChanged.event(listener),
     registerReviewDiffRuntime: (runtime) => {
