@@ -130,7 +130,7 @@ test("review diff URI round-trips context, file, semantics, side, source, and re
 
   assert.match(
     originalUri,
-    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/posix\/original\/git-commit\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/u
+    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/posix\/original\/git-commit\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/space%20name\.ts$/u
   );
   assert.deepEqual(codec.decode(originalUri), originalDescriptor);
   assert.deepEqual(codec.decode(modifiedUri), modifiedDescriptor);
