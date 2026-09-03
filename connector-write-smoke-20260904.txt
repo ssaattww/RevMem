@@ -1,0 +1,2 @@
+GitHub connector write smoke test.
+Stage: initial PR commit.
