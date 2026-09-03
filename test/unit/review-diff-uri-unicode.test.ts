@@ -36,3 +36,11 @@ test("review diff URI encoding rejects unpaired UTF-16 surrogates", () => {
     );
   }
 });
+
+test("review diff URI keeps the source basename as the final path segment for VS Code language detection", () => {
+  const uri = new URL(new ReviewDiffUriCodec().encode(descriptor));
+  const encodedBasename = uri.pathname.split("/").at(-1);
+
+  assert.ok(encodedBasename);
+  assert.equal(decodeURIComponent(encodedBasename), "emoji-🚀.ts");
+});

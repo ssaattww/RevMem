@@ -109,3 +109,64 @@ test("VS Code PR Progress selection records provenance only after a diff was act
   assert.match(source, /recordActiveDiff\(\)/);
   assert.match(source, /onDidChangeActiveTextEditor/);
 });
+
+test("PR Progress contributes a right-click command that opens the current working-tree file", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    activationEvents?: string[];
+    contributes?: {
+      commands?: Array<{ command?: string; title?: string; category?: string }>;
+      menus?: { "view/item/context"?: Array<{ command?: string; when?: string; group?: string }> };
+    };
+  };
+  const commandId = "reviewRange.openPrProgressWorkingTreeFile";
+
+  assert.ok(manifest.activationEvents?.includes(`onCommand:${commandId}`));
+  assert.deepEqual(
+    manifest.contributes?.commands?.find((command) => command.command === commandId),
+    {
+      command: commandId,
+      title: "実際のファイルを開く",
+      category: "Review Range"
+    }
+  );
+  const menuItem = manifest.contributes?.menus?.["view/item/context"]?.find(
+    (item) => item.command === commandId
+  );
+  assert.ok(menuItem);
+  assert.match(menuItem.when ?? "", /view == reviewRange\.prProgress/);
+  assert.match(menuItem.when ?? "", /viewItem == reviewRange\.prProgressFile/);
+  assert.ok(!(menuItem.group ?? "").startsWith("inline"));
+
+  const source = await readFile("src/ui/pr-progress/vscode-pull-request-progress-tree.ts", "utf8");
+  assert.match(source, /OPEN_PULL_REQUEST_PROGRESS_WORKING_TREE_FILE_COMMAND_ID/);
+  assert.match(source, /source\.openWorkingTreeFile\(node\)/);
+});
+
+test("PR Progress source and refresh ownership is scoped to each activated runtime", async () => {
+  const treeSource = await readFile("src/ui/pr-progress/vscode-pull-request-progress-tree.ts", "utf8");
+  const baseSource = await readFile("src/extension.ts", "utf8");
+  const activationSource = await readFile("src/t305-extension.ts", "utf8");
+
+  assert.doesNotMatch(treeSource, /\blet activeRuntime\b/);
+  assert.doesNotMatch(treeSource, /activeRuntime\?\./);
+  assert.match(baseSource, /setPullRequestProgressSource\(/);
+  assert.match(baseSource, /refreshPullRequestProgressTree\(/);
+  assert.match(activationSource, /runtimePort\.setPullRequestProgressSource\(/);
+  assert.match(activationSource, /runtimePort\.refreshPullRequestProgressTree\(/);
+});
+
+test("an applied PR diff review refreshes reviewed decorations and the owning progress tree before returning", async () => {
+  const baseSource = await readFile("src/extension.ts", "utf8");
+  const activationSource = await readFile("src/t305-extension.ts", "utf8");
+
+  assert.match(baseSource, /loadReviewedDecorations\(uri: string\)/);
+  assert.match(
+    baseSource,
+    /result === "applied"[\s\S]{0,500}await decorationController\.refreshVisibleEditors\(\)/
+  );
+  assert.match(
+    activationSource,
+    /const result = await pullRequestCommandService\[operation\]\(editor\)[\s\S]{0,600}result === "applied"[\s\S]{0,600}await pullRequestReviewRuntime\.refreshActiveProgress\(\)/
+  );
+  assert.match(activationSource, /runtimePort\.refreshPullRequestProgressTree\(\)/);
+});
