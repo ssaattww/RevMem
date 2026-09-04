@@ -8,10 +8,14 @@ import {
   reportActiveOperationDetail,
   reportActiveOperationProgress,
 } from "./application/operation-feedback/index";
+import type { DiffEditorReviewCommandResult } from "./application/review-commands/diff-editor-review-command-service";
 import { normalizeLineIntervals } from "./core/intervals/index";
+import { PullRequestReviewProjectionNotifier } from "./t405-pr-review-projection-notifier";
+import { synchronizeAppliedPullRequestReview } from "./t405-pr-review-projection-sync";
 import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
+  type PullRequestReviewCommandDependencies,
   type PullRequestReviewRuntimeOptions,
   type PullRequestReviewRuntimeRegistration,
 } from "./t405-pull-request-review-runtime-base";
@@ -67,6 +71,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private readonly openWorkingTreeFileHost: WorkingTreeRuntimeOptions<Uri>["openWorkingTreeFile"];
   private readonly openFileHost: PullRequestReviewRuntimeOptions<Uri>["openFile"];
   private readonly parseUri: PullRequestReviewRuntimeOptions<Uri>["diffHost"]["parseUri"];
+  private readonly projectionNotifier = new PullRequestReviewProjectionNotifier();
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
     super(options);
@@ -120,6 +125,32 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       );
       await this.openFileHost(this.parseUri(pathToFileURL(filePath).toString()));
     };
+  }
+
+  public onDidChangeReviewProjection(listener: () => void | Promise<void>) {
+    return this.projectionNotifier.subscribe(listener);
+  }
+
+  public override createCommandService<Editor>(
+    dependencies: PullRequestReviewCommandDependencies<Editor>
+  ) {
+    const service = super.createCommandService(dependencies);
+    const synchronize = async (
+      operation: () => Promise<DiffEditorReviewCommandResult>
+    ): Promise<DiffEditorReviewCommandResult> => synchronizeAppliedPullRequestReview(
+      await operation(),
+      () => this.refreshActiveProgress(),
+      () => this.projectionNotifier.notify()
+    );
+    const markSelectionReviewed = service.markSelectionReviewed.bind(service);
+    const unmarkSelectionReviewed = service.unmarkSelectionReviewed.bind(service);
+    const markFileReviewed = service.markFileReviewed.bind(service);
+    const unmarkFileReviewed = service.unmarkFileReviewed.bind(service);
+    service.markSelectionReviewed = (editor) => synchronize(() => markSelectionReviewed(editor));
+    service.unmarkSelectionReviewed = (editor) => synchronize(() => unmarkSelectionReviewed(editor));
+    service.markFileReviewed = (editor) => synchronize(() => markFileReviewed(editor));
+    service.unmarkFileReviewed = (editor) => synchronize(() => unmarkFileReviewed(editor));
+    return service;
   }
 
   /** Loads reviewed decorations for one current immutable PR diff document. */
