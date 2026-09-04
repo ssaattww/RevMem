@@ -46,6 +46,14 @@ type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
   readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
 };
 
+interface ReviewProjectionProgressSource {
+  onDidChangeReviewProjection(
+    listener: () => void | Promise<void>
+  ): { dispose(): void };
+  ownsReviewDiffDocumentUri(uri: string): boolean;
+  loadReviewedDecorations(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
+}
+
 const reviewContextLabel = (
   contextState: Awaited<ReturnType<BasePullRequestReviewRuntime<unknown>["openSession"]>>["contextState"]
 ): string => {
@@ -83,6 +91,13 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     this.progress.clear = (): void => {
       if (!this.suppressTreeClear) this.clearAcceptedTree();
     };
+    const projectionSource = this.progress as typeof this.progress & ReviewProjectionProgressSource;
+    projectionSource.onDidChangeReviewProjection = (listener) =>
+      this.onDidChangeReviewProjection(listener);
+    projectionSource.ownsReviewDiffDocumentUri = (uri) =>
+      this.ownsDiffDocumentUri(uri);
+    projectionSource.loadReviewedDecorations = (uri) =>
+      this.loadReviewedDecorations(uri);
     this.progress.openWorkingTreeFile = async (node): Promise<void> => {
       const target = node.openTarget;
       const registration = this.workingTreeRegistrations.get(target.contextId);
