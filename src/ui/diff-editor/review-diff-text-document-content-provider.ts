@@ -15,10 +15,10 @@ export class ReviewDiffTextDocumentContentProvider
     private readonly revisionTextContentProvider: RevisionTextContentProvider
   ) {}
 
-  /** Preserves the canonical URI string and delegates exact content restoration. */
+  /** Preserves the canonical encoded URI string and delegates exact content restoration. */
   public provideTextDocumentContent(uri: Uri): Promise<string> {
     return this.revisionTextContentProvider.provideTextDocumentContent(
-      uri.toString(true)
+      uri.toString()
     );
   }
 }
