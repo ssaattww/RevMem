@@ -12,6 +12,7 @@ import type { DiffEditorReviewCommandResult } from "./application/review-command
 import { normalizeLineIntervals } from "./core/intervals/index";
 import { PullRequestReviewProjectionNotifier } from "./t405-pr-review-projection-notifier";
 import { synchronizeAppliedPullRequestReview } from "./t405-pr-review-projection-sync";
+import type { PullRequestProgressTreeFileNode } from "./ui/pr-progress/index";
 import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
@@ -52,6 +53,7 @@ interface ReviewProjectionProgressSource {
   ): { dispose(): void };
   ownsReviewDiffDocumentUri(uri: string): boolean;
   loadReviewedDecorations(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
+  workingTreeFileTarget(node: PullRequestProgressTreeFileNode): WorkingTreeOpenTarget;
 }
 
 const reviewContextLabel = (
@@ -98,34 +100,10 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       this.ownsDiffDocumentUri(uri);
     projectionSource.loadReviewedDecorations = (uri) =>
       this.loadReviewedDecorations(uri);
+    projectionSource.workingTreeFileTarget = (node) =>
+      this.resolveWorkingTreeOpenTarget(node);
     this.progress.openWorkingTreeFile = async (node): Promise<void> => {
-      const target = node.openTarget;
-      const registration = this.workingTreeRegistrations.get(target.contextId);
-      if (registration === undefined) {
-        throw new RangeError("PR Progress working-tree target is not registered.");
-      }
-      const { snapshot } = registration;
-      const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
-      if (
-        target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
-        target.baseSha !== snapshot.baseSha ||
-        target.headSha !== snapshot.headSha ||
-        target.originalDiffId !== snapshot.originalDiffId ||
-        file === undefined ||
-        file.oldPath !== target.file.oldPath ||
-        file.newPath !== target.file.newPath ||
-        file.status !== target.file.status
-      ) {
-        throw new RangeError("PR Progress working-tree target is stale for the registered snapshot.");
-      }
-      if (file.status === "deleted" || file.newPath === undefined) {
-        throw new RangeError("Deleted PR Progress file does not exist in the working tree.");
-      }
-      const openTarget = {
-        repositoryRoot: registration.repositoryRoot,
-        repositoryPath: file.newPath,
-        fileSystemPathSemantics: registration.fileSystemPathSemantics,
-      } satisfies WorkingTreeOpenTarget;
+      const openTarget = this.resolveWorkingTreeOpenTarget(node);
       if (this.openWorkingTreeFileHost !== undefined) {
         await this.openWorkingTreeFileHost(openTarget);
         return;
@@ -335,5 +313,37 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     this.activeFileProgress = undefined;
     this.suppressTreeClear = false;
     super.clearProgress();
+  }
+
+  private resolveWorkingTreeOpenTarget(
+    node: PullRequestProgressTreeFileNode
+  ): WorkingTreeOpenTarget {
+    const target = node.openTarget;
+    const registration = this.workingTreeRegistrations.get(target.contextId);
+    if (registration === undefined) {
+      throw new RangeError("PR Progress working-tree target is not registered.");
+    }
+    const { snapshot } = registration;
+    const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
+    if (
+      target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
+      target.baseSha !== snapshot.baseSha ||
+      target.headSha !== snapshot.headSha ||
+      target.originalDiffId !== snapshot.originalDiffId ||
+      file === undefined ||
+      file.oldPath !== target.file.oldPath ||
+      file.newPath !== target.file.newPath ||
+      file.status !== target.file.status
+    ) {
+      throw new RangeError("PR Progress working-tree target is stale for the registered snapshot.");
+    }
+    if (file.status === "deleted" || file.newPath === undefined) {
+      throw new RangeError("Deleted PR Progress file does not exist in the working tree.");
+    }
+    return {
+      repositoryRoot: registration.repositoryRoot,
+      repositoryPath: file.newPath,
+      fileSystemPathSemantics: registration.fileSystemPathSemantics,
+    };
   }
 }
