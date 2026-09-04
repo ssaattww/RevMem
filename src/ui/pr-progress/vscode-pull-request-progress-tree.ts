@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
 import {
   PrProgressDiffReviewContextController
 } from "./pr-progress-diff-review-context";
@@ -18,18 +19,33 @@ export const OPEN_PULL_REQUEST_PROGRESS_ITEM_COMMAND_ID = "reviewRange.openPrPro
 export const OPEN_PULL_REQUEST_PROGRESS_WORKING_TREE_FILE_COMMAND_ID =
   "reviewRange.openPrProgressWorkingTreeFile";
 
+export interface PullRequestProgressTreeSourceSubscription {
+  dispose(): void;
+}
+
 /** Minimal T304 source contract so the contributed view can switch between runtime owners. */
 export interface PullRequestProgressTreeSource {
   getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
   select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
   openWorkingTreeFile?(node: PullRequestProgressTreeFileNode): Promise<void>;
+  onDidChangeReviewProjection?(
+    listener: () => void | Promise<void>
+  ): PullRequestProgressTreeSourceSubscription;
+  ownsReviewDiffDocumentUri?(uri: string): boolean;
+  loadReviewedDecorations?(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
 }
 
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
 implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProgressTreeSource {
   private readonly changed = new vscode.EventEmitter<PullRequestProgressTreeNode | undefined>();
+  private readonly reviewedDecorationType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: new vscode.ThemeColor("reviewRange.reviewedBackground"),
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+  });
   private selectedSource: PullRequestProgressTreeSource | undefined;
+  private selectedSourceProjectionSubscription: PullRequestProgressTreeSourceSubscription | undefined;
   public readonly onDidChangeTreeData = this.changed.event;
 
   public constructor(private readonly defaultSource: PullRequestProgressTreeSource) {}
@@ -72,13 +88,47 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   public setPullRequestProgressSource(
     source: PullRequestProgressTreeSource | undefined
   ): void {
+    this.selectedSourceProjectionSubscription?.dispose();
+    this.selectedSourceProjectionSubscription = undefined;
     this.selectedSource = source;
+    if (source?.onDidChangeReviewProjection !== undefined) {
+      this.selectedSourceProjectionSubscription = source.onDidChangeReviewProjection(async () => {
+        this.refreshPullRequestProgressTree();
+        await this.refreshReviewDiffDecorations();
+      });
+    }
     this.refreshPullRequestProgressTree();
+    void this.refreshReviewDiffDecorations();
   }
 
   /** Notifies VS Code after this activated runtime replaced its immutable snapshot. */
   public refreshPullRequestProgressTree(): void {
     this.changed.fire(undefined);
+  }
+
+  public async refreshReviewDiffDecorations(): Promise<void> {
+    const source = this.activeSource();
+    for (const editor of vscode.window.visibleTextEditors) {
+      const uri = editor.document.uri.toString();
+      if (
+        source.ownsReviewDiffDocumentUri === undefined ||
+        source.loadReviewedDecorations === undefined ||
+        !source.ownsReviewDiffDocumentUri(uri)
+      ) {
+        editor.setDecorations(this.reviewedDecorationType, []);
+        continue;
+      }
+      const decorations = await source.loadReviewedDecorations(uri);
+      editor.setDecorations(
+        this.reviewedDecorationType,
+        decorations.map((decoration) => new vscode.Range(
+          decoration.interval.startLine,
+          0,
+          decoration.interval.endLineExclusive - 1,
+          Number.MAX_SAFE_INTEGER
+        ))
+      );
+    }
   }
 
   /** Backward-compatible local refresh alias used by the base runtime tests. */
@@ -87,6 +137,8 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   }
 
   public dispose(): void {
+    this.selectedSourceProjectionSubscription?.dispose();
+    this.reviewedDecorationType.dispose();
     this.changed.dispose();
   }
 
@@ -118,7 +170,10 @@ export const registerVscodePullRequestProgressTree = (
     setContext: (key, value) => vscode.commands.executeCommand("setContext", key, value)
   });
   const refreshReviewContext = (): void => {
-    void reviewContext.refresh().catch(reportError);
+    void Promise.all([
+      reviewContext.refresh(),
+      tree.refreshReviewDiffDecorations()
+    ]).catch(reportError);
   };
   const view = vscode.window.createTreeView(PULL_REQUEST_PROGRESS_VIEW_ID, {
     treeDataProvider: tree,
@@ -130,7 +185,10 @@ export const registerVscodePullRequestProgressTree = (
       if (node === undefined || node.kind !== "file") return;
       try {
         const result = await source.select(node);
-        if (result.kind === "opened-diff") await reviewContext.recordActiveDiff();
+        if (result.kind === "opened-diff") {
+          await reviewContext.recordActiveDiff();
+          await tree.refreshReviewDiffDecorations();
+        }
       } catch (error) {
         await reportError(error);
       }
