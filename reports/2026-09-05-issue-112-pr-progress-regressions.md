@@ -88,7 +88,7 @@ exact-head CI run `33853064264` はBuild、Contract typecheck、Architecture val
 失敗diagnostic artifact:
 
 - artifact: `ci-failure-diagnostics-33853064264-1`
-- artifact ID: `9929249879` ではなく、GitHubが返した実artifact ID `9929249877`
+- artifact ID: `9929249877`
 - artifact head SHA: `8e55b83d23f4ee5938933b45723846a8853766da`
 
 `t302` では、VS Code `Uri.toString(true)` がlanguage hintの `space%20name.ts` を `space name.ts` と表示するため、encoded stringとの直接比較が失敗していた。
