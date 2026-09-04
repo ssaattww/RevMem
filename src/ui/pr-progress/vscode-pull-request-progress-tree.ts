@@ -14,11 +14,15 @@ import {
 export const PULL_REQUEST_PROGRESS_VIEW_ID = "reviewRange.prProgress";
 /** Tree-item command that opens a selected reviewable file through the shared T304 provider. */
 export const OPEN_PULL_REQUEST_PROGRESS_ITEM_COMMAND_ID = "reviewRange.openPrProgressItem";
+/** Context-menu command that opens the current working-tree file for a PR Progress item. */
+export const OPEN_PULL_REQUEST_PROGRESS_WORKING_TREE_FILE_COMMAND_ID =
+  "reviewRange.openPrProgressWorkingTreeFile";
 
 /** Minimal T304 source contract so the contributed view can switch between runtime owners. */
 export interface PullRequestProgressTreeSource {
   getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
   select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
+  openWorkingTreeFile?(node: PullRequestProgressTreeFileNode): Promise<void>;
 }
 
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
@@ -54,6 +58,14 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
     node: PullRequestProgressTreeFileNode
   ): Promise<PullRequestProgressTreeSelectionResult> {
     return this.activeSource().select(node);
+  }
+
+  public async openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void> {
+    const activeSource = this.activeSource();
+    if (activeSource.openWorkingTreeFile === undefined) {
+      throw new Error("The active PR Progress source cannot open working-tree files.");
+    }
+    await activeSource.openWorkingTreeFile(node);
   }
 
   /** Switches this activated Extension Host to its active GitHub PR source. */
@@ -97,7 +109,9 @@ export const registerVscodePullRequestProgressTree = (
   reportError: (error: unknown) => void | Promise<void>
 ): VscodePullRequestProgressTreeDataProvider => {
   const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource);
-  const source: PullRequestProgressTreeSource = tree;
+  const source: PullRequestProgressTreeSource & {
+    openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void>;
+  } = tree;
   const reviewContext = new PrProgressDiffReviewContextController<vscode.Tab>({
     getActiveTab: () => vscode.window.tabGroups.activeTabGroup.activeTab,
     isDiffTab: (tab) => tab.input instanceof vscode.TabInputTextDiff,
@@ -122,6 +136,17 @@ export const registerVscodePullRequestProgressTree = (
       }
     }
   );
+  const openWorkingTreeFile = vscode.commands.registerCommand(
+    OPEN_PULL_REQUEST_PROGRESS_WORKING_TREE_FILE_COMMAND_ID,
+    async (node: PullRequestProgressTreeFileNode | undefined) => {
+      if (node === undefined || node.kind !== "file") return;
+      try {
+        await source.openWorkingTreeFile(node);
+      } catch (error) {
+        await reportError(error);
+      }
+    }
+  );
   const activeEditorChanged = vscode.window.onDidChangeActiveTextEditor(refreshReviewContext);
   refreshReviewContext();
   const reviewContextRegistration = new vscode.Disposable(() => {
@@ -131,6 +156,7 @@ export const registerVscodePullRequestProgressTree = (
     tree,
     view,
     open,
+    openWorkingTreeFile,
     activeEditorChanged,
     reviewContextRegistration
   );
