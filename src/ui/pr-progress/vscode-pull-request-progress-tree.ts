@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
+import { resolveT305RepositoryWorkingTreeFileTarget } from "../../t305-repository-root-uri";
 import {
   PrProgressDiffReviewContextController
 } from "./pr-progress-diff-review-context";
@@ -23,17 +24,35 @@ export interface PullRequestProgressTreeSourceSubscription {
   dispose(): void;
 }
 
+export interface PullRequestProgressWorkingTreeFileTarget {
+  readonly repositoryRoot: string;
+  readonly repositoryPath: string;
+  readonly fileSystemPathSemantics: "posix" | "windows";
+}
+
 /** Minimal T304 source contract so the contributed view can switch between runtime owners. */
 export interface PullRequestProgressTreeSource {
   getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
   select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
   openWorkingTreeFile?(node: PullRequestProgressTreeFileNode): Promise<void>;
+  workingTreeFileTarget?(node: PullRequestProgressTreeFileNode): PullRequestProgressWorkingTreeFileTarget;
   onDidChangeReviewProjection?(
     listener: () => void | Promise<void>
   ): PullRequestProgressTreeSourceSubscription;
   ownsReviewDiffDocumentUri?(uri: string): boolean;
   loadReviewedDecorations?(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
 }
+
+const toResourceUri = (uri: vscode.Uri) => ({
+  scheme: uri.scheme,
+  authority: uri.authority,
+  path: uri.path,
+  query: uri.query,
+  fragment: uri.fragment
+});
+
+const toVscodeUri = (uri: ReturnType<typeof toResourceUri>): vscode.Uri =>
+  vscode.Uri.from(uri);
 
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
@@ -78,6 +97,25 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
 
   public async openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void> {
     const activeSource = this.activeSource();
+    if (activeSource.workingTreeFileTarget !== undefined) {
+      const target = activeSource.workingTreeFileTarget(node);
+      const resolved = resolveT305RepositoryWorkingTreeFileTarget({
+        ...target,
+        workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+          filesystemPath: folder.uri.fsPath,
+          uri: toResourceUri(folder.uri)
+        }))
+      });
+      if (resolved === undefined) {
+        throw new Error("PR Progress working-tree file does not have one unambiguous workspace owner.");
+      }
+      const uri = vscode.Uri.joinPath(
+        toVscodeUri(resolved.workspaceFolderUri),
+        ...resolved.relativePathSegments
+      );
+      await vscode.commands.executeCommand("vscode.open", uri);
+      return;
+    }
     if (activeSource.openWorkingTreeFile === undefined) {
       throw new Error("The active PR Progress source cannot open working-tree files.");
     }
