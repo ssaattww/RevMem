@@ -10,14 +10,14 @@ import { ReviewDiffTextDocumentContentProvider } from "../../src/ui/diff-editor/
 
 const descriptor = {
   contextId: "branch:refs/heads/feature",
-  filePath: "src/file.ts",
+  filePath: "src/space name.ts",
   fileSystemPathSemantics: "posix" as const,
   side: "modified" as const,
   revisionSource: "git-commit" as const,
   revision: "0123456789abcdef0123456789abcdef01234567"
 };
 
-test("VS Code content provider preserves the canonical URI string", async () => {
+test("VS Code content provider preserves the canonical encoded URI string", async () => {
   const codec = new ReviewDiffUriCodec();
   const canonicalUri = codec.encode(descriptor);
   const calls: boolean[] = [];
@@ -33,7 +33,7 @@ test("VS Code content provider preserves the canonical URI string", async () => 
   const uri = {
     toString(skipEncoding?: boolean): string {
       calls.push(skipEncoding ?? false);
-      return canonicalUri;
+      return skipEncoding ? canonicalUri.replace("space%20name.ts", "space name.ts") : canonicalUri;
     }
   };
 
@@ -41,5 +41,5 @@ test("VS Code content provider preserves the canonical URI string", async () => 
     await provider.provideTextDocumentContent(uri as never),
     "current\n"
   );
-  assert.deepEqual(calls, [true]);
+  assert.deepEqual(calls, [false]);
 });
