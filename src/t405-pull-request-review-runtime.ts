@@ -27,6 +27,16 @@ interface ActiveFileProgress {
   readonly seen: Set<string>;
 }
 
+interface WorkingTreeOpenTarget {
+  readonly repositoryRoot: string;
+  readonly repositoryPath: string;
+  readonly fileSystemPathSemantics: "posix" | "windows";
+}
+
+type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
+  readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
+};
+
 /** Coordinates refreshes around the canonical PR review runtime. */
 export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<Uri> {
   private acceptedProgressKey: string | undefined;
@@ -35,13 +45,48 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private activeFileProgress: ActiveFileProgress | undefined;
   private readonly clearAcceptedTree: () => void;
   private readonly getExclusionPolicy: PullRequestReviewRuntimeOptions<Uri>["getExclusionPolicy"];
+  private readonly workingTreeRegistrations = new Map<string, PullRequestReviewRuntimeRegistration>();
+  private readonly openWorkingTreeFileHost: WorkingTreeRuntimeOptions<Uri>["openWorkingTreeFile"];
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
     super(options);
     this.getExclusionPolicy = options.getExclusionPolicy;
+    this.openWorkingTreeFileHost = (options as WorkingTreeRuntimeOptions<Uri>).openWorkingTreeFile;
     this.clearAcceptedTree = this.progress.clear.bind(this.progress);
     this.progress.clear = (): void => {
       if (!this.suppressTreeClear) this.clearAcceptedTree();
+    };
+    this.progress.openWorkingTreeFile = async (node): Promise<void> => {
+      const target = node.openTarget;
+      const registration = this.workingTreeRegistrations.get(target.contextId);
+      if (registration === undefined) {
+        throw new RangeError("PR Progress working-tree target is not registered.");
+      }
+      const { snapshot } = registration;
+      const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
+      if (
+        target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
+        target.baseSha !== snapshot.baseSha ||
+        target.headSha !== snapshot.headSha ||
+        target.originalDiffId !== snapshot.originalDiffId ||
+        file === undefined ||
+        file.oldPath !== target.file.oldPath ||
+        file.newPath !== target.file.newPath ||
+        file.status !== target.file.status
+      ) {
+        throw new RangeError("PR Progress working-tree target is stale for the registered snapshot.");
+      }
+      if (file.status === "deleted" || file.newPath === undefined) {
+        throw new RangeError("Deleted PR Progress file does not exist in the working tree.");
+      }
+      if (this.openWorkingTreeFileHost === undefined) {
+        throw new Error("Pull-request working-tree file host is unavailable.");
+      }
+      await this.openWorkingTreeFileHost({
+        repositoryRoot: registration.repositoryRoot,
+        repositoryPath: file.newPath,
+        fileSystemPathSemantics: registration.fileSystemPathSemantics,
+      });
     };
   }
 
@@ -76,6 +121,12 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         return result;
       },
     });
+    this.workingTreeRegistrations.set(registration.snapshot.contextId, registration);
+  }
+
+  public override unregister(contextId: string): void {
+    this.workingTreeRegistrations.delete(contextId);
+    super.unregister(contextId);
   }
 
   public override async getProgress(
