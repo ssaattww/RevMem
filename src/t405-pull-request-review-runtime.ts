@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 
+import type { NormalEditorReviewedDecoration } from "./application/editor-decoration/index";
 import {
   describePullRequestProgressFile,
   describePullRequestProgressSummary,
@@ -7,6 +8,7 @@ import {
   reportActiveOperationDetail,
   reportActiveOperationProgress,
 } from "./application/operation-feedback/index";
+import { normalizeLineIntervals } from "./core/intervals/index";
 import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
@@ -38,6 +40,19 @@ interface WorkingTreeOpenTarget {
 
 type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
   readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
+};
+
+const reviewContextLabel = (
+  contextState: Awaited<ReturnType<BasePullRequestReviewRuntime<unknown>["openSession"]>>["contextState"]
+): string => {
+  if (contextState.kind === "pull-request" && contextState.pullRequest !== undefined) {
+    const title = contextState.pullRequest.title?.trim();
+    return title === undefined || title.length === 0
+      ? `PR #${contextState.pullRequest.number}`
+      : `PR #${contextState.pullRequest.number}: ${title}`;
+  }
+  const displayName = contextState.displayName.trim();
+  return displayName.length === 0 ? "Workspace review" : displayName;
 };
 
 /** Coordinates refreshes around the canonical PR review runtime. */
@@ -105,6 +120,42 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       );
       await this.openFileHost(this.parseUri(pathToFileURL(filePath).toString()));
     };
+  }
+
+  /** Loads reviewed decorations for one current immutable PR diff document. */
+  public async loadReviewedDecorations(uri: string): Promise<readonly NormalEditorReviewedDecoration[]> {
+    const session = await this.openSession(uri);
+    const file = session.contextState.files[session.target.fileId];
+    if (file === undefined) return [];
+    const label = reviewContextLabel(session.contextState);
+    const side = this.sideForDiffDocumentUri(uri);
+    const intervals = side === "modified"
+      ? normalizeLineIntervals(file.modifiedReviewed)
+      : normalizeLineIntervals([
+        ...file.modifiedReviewed.flatMap((reviewed) =>
+          session.originalToModifiedLineMappings.flatMap((mapping) => {
+            const modifiedStart = Math.max(reviewed.startLine, mapping.modifiedStartLine);
+            const modifiedEnd = Math.min(
+              reviewed.endLineExclusive,
+              mapping.modifiedStartLine + mapping.lineCount
+            );
+            if (modifiedStart >= modifiedEnd) return [];
+            const offset = modifiedStart - mapping.modifiedStartLine;
+            return [{
+              startLine: mapping.originalStartLine + offset,
+              endLineExclusive: mapping.originalStartLine + offset + (modifiedEnd - modifiedStart)
+            }];
+          })
+        ),
+        ...(file.originalReviewedByDiff[session.diffId] ?? [])
+      ]);
+    return intervals.map((interval) => ({
+      interval,
+      source: "context",
+      contextLabel: label,
+      reviewedAt: file.updatedAt,
+      globalActive: false
+    }));
   }
 
   public override register(registration: PullRequestReviewRuntimeRegistration): void {
