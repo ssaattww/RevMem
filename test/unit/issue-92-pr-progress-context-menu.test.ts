@@ -155,18 +155,15 @@ test("PR Progress source and refresh ownership is scoped to each activated runti
   assert.match(activationSource, /runtimePort\.refreshPullRequestProgressTree\(/);
 });
 
-test("an applied PR diff review refreshes reviewed decorations and the owning progress tree before returning", async () => {
-  const baseSource = await readFile("src/extension.ts", "utf8");
-  const activationSource = await readFile("src/t305-extension.ts", "utf8");
+test("an applied PR diff review refreshes reviewed decorations and owning progress before returning", async () => {
+  const runtimeSource = await readFile("src/t405-pull-request-review-runtime.ts", "utf8");
+  const treeSource = await readFile("src/ui/pr-progress/vscode-pull-request-progress-tree.ts", "utf8");
 
-  assert.match(baseSource, /loadReviewedDecorations\(uri: string\)/);
-  assert.match(
-    baseSource,
-    /result === "applied"[\s\S]{0,500}await decorationController\.refreshVisibleEditors\(\)/
-  );
-  assert.match(
-    activationSource,
-    /const result = await pullRequestCommandService\[operation\]\(editor\)[\s\S]{0,600}result === "applied"[\s\S]{0,600}await pullRequestReviewRuntime\.refreshActiveProgress\(\)/
-  );
-  assert.match(activationSource, /runtimePort\.refreshPullRequestProgressTree\(\)/);
+  assert.match(runtimeSource, /synchronizeAppliedPullRequestReview/);
+  assert.match(runtimeSource, /\(\) => this\.refreshActiveProgress\(\)/);
+  assert.match(runtimeSource, /\(\) => this\.projectionNotifier\.notify\(\)/);
+  assert.match(runtimeSource, /loadReviewedDecorations\(uri: string\)/);
+  assert.match(treeSource, /onDidChangeReviewProjection/);
+  assert.match(treeSource, /loadReviewedDecorations/);
+  assert.match(treeSource, /refreshPullRequestProgressTree\(\)/);
 });
