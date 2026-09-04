@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import {
   describePullRequestProgressFile,
   describePullRequestProgressSummary,
@@ -5,6 +7,7 @@ import {
   reportActiveOperationDetail,
   reportActiveOperationProgress,
 } from "./application/operation-feedback/index";
+import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
   type PullRequestReviewRuntimeOptions,
@@ -47,11 +50,15 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private readonly getExclusionPolicy: PullRequestReviewRuntimeOptions<Uri>["getExclusionPolicy"];
   private readonly workingTreeRegistrations = new Map<string, PullRequestReviewRuntimeRegistration>();
   private readonly openWorkingTreeFileHost: WorkingTreeRuntimeOptions<Uri>["openWorkingTreeFile"];
+  private readonly openFileHost: PullRequestReviewRuntimeOptions<Uri>["openFile"];
+  private readonly parseUri: PullRequestReviewRuntimeOptions<Uri>["diffHost"]["parseUri"];
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
     super(options);
     this.getExclusionPolicy = options.getExclusionPolicy;
     this.openWorkingTreeFileHost = (options as WorkingTreeRuntimeOptions<Uri>).openWorkingTreeFile;
+    this.openFileHost = options.openFile;
+    this.parseUri = options.diffHost.parseUri;
     this.clearAcceptedTree = this.progress.clear.bind(this.progress);
     this.progress.clear = (): void => {
       if (!this.suppressTreeClear) this.clearAcceptedTree();
@@ -79,14 +86,24 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       if (file.status === "deleted" || file.newPath === undefined) {
         throw new RangeError("Deleted PR Progress file does not exist in the working tree.");
       }
-      if (this.openWorkingTreeFileHost === undefined) {
-        throw new Error("Pull-request working-tree file host is unavailable.");
-      }
-      await this.openWorkingTreeFileHost({
+      const openTarget = {
         repositoryRoot: registration.repositoryRoot,
         repositoryPath: file.newPath,
         fileSystemPathSemantics: registration.fileSystemPathSemantics,
-      });
+      } satisfies WorkingTreeOpenTarget;
+      if (this.openWorkingTreeFileHost !== undefined) {
+        await this.openWorkingTreeFileHost(openTarget);
+        return;
+      }
+      if (this.openFileHost === undefined) {
+        throw new Error("Pull-request working-tree file host is unavailable.");
+      }
+      const filePath = resolveWorkingTreeFilePath(
+        openTarget.repositoryRoot,
+        openTarget.repositoryPath,
+        openTarget.fileSystemPathSemantics
+      );
+      await this.openFileHost(this.parseUri(pathToFileURL(filePath).toString()));
     };
   }
 
