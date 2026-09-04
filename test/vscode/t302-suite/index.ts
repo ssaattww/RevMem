@@ -24,7 +24,7 @@ export async function run(): Promise<void> {
   const encoded = codec.encode(descriptor);
   const uri = vscode.Uri.parse(encoded, true);
 
-  assert.equal(uri.toString(true), encoded);
+  assert.equal(uri.toString(), encoded);
   assert.deepEqual(codec.decode(uri.toString(true)), descriptor);
 
   const source: RevisionTextContentSource = {
