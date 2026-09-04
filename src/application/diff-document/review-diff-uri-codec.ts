@@ -345,7 +345,10 @@ export class ReviewDiffUriCodec {
     const expectedLanguageHint = decodeLanguageHint(
       this.encode(descriptor).split("/").at(-1)!
     );
-    if (languageHint !== expectedLanguageHint || this.encode(descriptor) !== uri) {
+    if (
+      languageHint !== expectedLanguageHint ||
+      this.encode(descriptor) !== parsed.toString()
+    ) {
       throw uriError("Review diff URI is not in canonical form");
     }
     return descriptor;
