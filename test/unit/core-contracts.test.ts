@@ -10,6 +10,7 @@ import "./issue-84-pr85-review-followup.test";
 import "./issue-92-pr-progress-context-menu.test";
 import "./issue-112-pr-progress-working-tree.test";
 import "./issue-112-pr-progress-runtime.test";
+import "./issue-112-pr-review-projection-sync.test";
 import "./issue-112-working-tree-path.test";
 import "./repository-global-state-repository.test";
 import "./state-repository-memory.test";
