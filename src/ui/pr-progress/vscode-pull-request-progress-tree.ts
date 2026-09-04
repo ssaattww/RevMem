@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
+import type { ResourceUri } from "../../application/workspace-identity/index";
 import { resolveT305RepositoryWorkingTreeFileTarget } from "../../t305-repository-root-uri";
 import {
   PrProgressDiffReviewContextController
@@ -43,7 +44,7 @@ export interface PullRequestProgressTreeSource {
   loadReviewedDecorations?(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
 }
 
-const toResourceUri = (uri: vscode.Uri) => ({
+const toResourceUri = (uri: vscode.Uri): ResourceUri => ({
   scheme: uri.scheme,
   authority: uri.authority,
   path: uri.path,
@@ -51,8 +52,13 @@ const toResourceUri = (uri: vscode.Uri) => ({
   fragment: uri.fragment
 });
 
-const toVscodeUri = (uri: ReturnType<typeof toResourceUri>): vscode.Uri =>
-  vscode.Uri.from(uri);
+const toVscodeUri = (uri: ResourceUri): vscode.Uri => vscode.Uri.from({
+  scheme: uri.scheme,
+  authority: uri.authority ?? "",
+  path: uri.path,
+  query: uri.query ?? "",
+  fragment: uri.fragment ?? ""
+});
 
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
