@@ -23,7 +23,7 @@ PR #108 / Issue #106 の最新authoritative scope `reports/2026-09-05-pr108-prod
 - PRODUCT-004 Red: `bbfda2c53c93e25a1727835ada3a3b1cc397ce85`
 - PRODUCT-004 adapters: `8d6e66af332f9ceb561ecf48bd4d907237cf2bbc`, `99184dae06cde51da39639cc1ca43ba382632a84`
 - PRODUCT-004 activation: `64bff5e559ef53178790e47cfdb12aa268da47d9`
-- PRODUCT-004 CI type fixes: `48f0a06b0c7b9ac661b85448a22d0c08cd6a7046`, `86a8893c32973fe1639597a60a239db5498d3608`
+- PRODUCT-004 CI type fixes: `48f0a06b0c7b9ac661b85448a22d0c08cd6a7046`, `86a8893c32973fe1639597a60a239db5498d3608`, `6a142efb05b1c4bf85b2c22e7f9113bc94b2dbbf`
 - PRODUCT-005 fix: `70cca0195c6f47ae12cc3cc72bdc2dfb2e3c402c`
 
 ## Verification
@@ -31,7 +31,7 @@ PR #108 / Issue #106 の最新authoritative scope `reports/2026-09-05-pr108-prod
 Local reconstructed-source verification used Node 22.16.0 / TypeScript 5.8.3 transpile-only.
 
 - PRODUCT-001〜004 actual product regression: 12/12 pass.
-- Review State / PR runtime / Issue #106 related regression: direct implementation 47/47 pass; final adapter implementation focused set 39/39 pass; after the CI type corrections the focused PRODUCT-004/Review State/PR runtime set passed 29/29.
+- Review State / PR runtime / Issue #106 related regression: direct implementation 47/47 pass; final adapter implementation focused set 39/39 pass; after CI type corrections the focused PRODUCT-004/Review State/PR runtime set passed 29/29.
 - PRODUCT-003 dedicated regression: 2/2 pass after fix.
 - PRODUCT-004 dedicated regression: 2/2 pass after fix; both were Red before implementation.
 - `git diff --check`: pass.
@@ -40,11 +40,13 @@ The reconstructed local tree lacks installed `@types/node`, `@types/vscode`, and
 
 ## Exact-head CI diagnostics
 
-The first final-candidate exact-head run was CI run `33967575617` for PR HEAD `31eea70e2e05a8b56bae55005cf482a13f64daa5`. It failed at the Build step with TypeScript-only errors in the two new PRODUCT-004 adapter files: readonly Global snapshot types were assigned to mutable persisted contracts, and the snapshot adapter used the repository `ReviewStateCommit` type even though `captureImmutableRevisionSnapshots` returns only Context/Global state.
+The first final-candidate exact-head run was CI run `33967575617` for PR HEAD `31eea70e2e05a8b56bae55005cf482a13f64daa5`. It failed at Build with TypeScript-only errors in the two new PRODUCT-004 adapter files: readonly Global snapshot types were assigned to mutable persisted contracts, and the snapshot adapter used the repository `ReviewStateCommit` type even though `captureImmutableRevisionSnapshots` returns only Context/Global state. The failure artifact was `ci-failure-diagnostics-33967575617-1` (artifact ID `9969918842`).
 
-The existing failure-diagnostic workflow uploaded `ci-failure-diagnostics-33967575617-1` (artifact ID `9969918842`) including command stdout/stderr/results and source context. No CI mechanism was used to update code. The corrections were made locally and published only through the GitHub connector as `48f0a06...` and `86a8893...`.
+After the first type corrections, exact-head CI run `33967703901` for HEAD `f30f74a49bc4b08a2472ea5f0feba3692b414806` still failed at Build because the cloned `revisionSnapshots` map itself retained its deep-readonly type. Its failure artifact was `ci-failure-diagnostics-33967703901-1` (artifact ID `9969954469`). The map is now explicitly materialized to the mutable persistence contract in `6a142efb05b1c4bf85b2c22e7f9113bc94b2dbbf`.
 
-Completion requires checking only a new workflow run whose `head_sha` exactly equals the PR current HEAD after this report update. The previous failed run and all runs for other SHAs are diagnostic evidence only and are never substituted as final CI evidence.
+No CI mechanism was used to update code. Both failures were used only as diagnostic evidence; corrections were made locally and published through the GitHub connector.
+
+Completion requires checking only a new workflow run whose `head_sha` exactly equals the PR current HEAD after this report update. Both previous failed runs and all runs for other SHAs are diagnostic evidence only and are never substituted as final CI evidence.
 
 ## Diagnostics and CI policy
 
