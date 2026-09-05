@@ -60,6 +60,13 @@ const toVscodeUri = (uri: ResourceUri): vscode.Uri => vscode.Uri.from({
   fragment: uri.fragment ?? ""
 });
 
+const isCurrentFileNode = (
+  source: PullRequestProgressTreeSource,
+  node: PullRequestProgressTreeFileNode
+): boolean => source.getChildren().some((category) =>
+  category.kind === "category" && source.getChildren(category).includes(node)
+);
+
 /** Adapts the existing T304 tree model to the VS Code Tree View API without re-projecting progress. */
 export class VscodePullRequestProgressTreeDataProvider
 implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProgressTreeSource {
@@ -106,6 +113,9 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
 
   public async openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void> {
     const activeSource = this.activeSource();
+    if (!isCurrentFileNode(activeSource, node)) {
+      throw new RangeError("PR Progress working-tree target is stale for the active snapshot.");
+    }
     if (activeSource.workingTreeFileTarget !== undefined) {
       const target = activeSource.workingTreeFileTarget(node);
       const resolved = resolveT305RepositoryWorkingTreeFileTarget({

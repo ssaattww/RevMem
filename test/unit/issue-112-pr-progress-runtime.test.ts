@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import Module, { createRequire } from "node:module";
 import test from "node:test";
 
 import type { NormalEditorReviewedDecoration } from "../../src/application/editor-decoration/index.js";
@@ -20,6 +21,57 @@ import type {
   PullRequestProgressTreeCategoryNode,
   PullRequestProgressTreeFileNode
 } from "../../src/ui/pr-progress/index.js";
+import type { PullRequestProgressTreeSource } from
+  "../../src/ui/pr-progress/vscode-pull-request-progress-tree.js";
+
+const runtimeRequire = createRequire(__filename);
+const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
+  const loader = Module as unknown as {
+    _load: (request: string, parent: unknown, isMain: boolean) => unknown;
+  };
+  const originalLoad = loader._load;
+  loader._load = (request, parent, isMain) => request === "vscode"
+    ? vscode
+    : Reflect.apply(originalLoad, Module, [request, parent, isMain]) as unknown;
+  const modulePath = runtimeRequire.resolve(moduleName);
+  delete runtimeRequire.cache[modulePath];
+  const loaded = runtimeRequire(modulePath) as T;
+  loader._load = originalLoad;
+  return loaded;
+};
+
+const vscodeTreeStub = (
+  visibleTextEditors: unknown[] = [],
+  workspaceFolders: unknown[] = [],
+  executeCommand: (...values: unknown[]) => Promise<unknown> = async () => undefined
+) => {
+  class EventEmitter<T> {
+    public readonly event = (): { dispose(): void } => ({ dispose(): void {} });
+    public fire(value: T): void { void value; }
+    public dispose(): void {}
+  }
+  return {
+    EventEmitter,
+    ThemeColor: class { public constructor(value: string) { void value; } },
+    Range: class { public constructor(...values: unknown[]) { void values; } },
+    TreeItem: class { public constructor(...values: unknown[]) { void values; } },
+    TreeItemCollapsibleState: { None: 0, Expanded: 1 },
+    DecorationRangeBehavior: { ClosedClosed: 1 },
+    window: {
+      visibleTextEditors,
+      createTextEditorDecorationType: () => ({ dispose(): void {} })
+    },
+    workspace: { workspaceFolders },
+    Uri: {
+      from: (value: unknown) => value,
+      joinPath: (base: { readonly path: string }, ...segments: string[]) => ({
+        ...base,
+        path: [base.path, ...segments].join("/")
+      })
+    },
+    commands: { executeCommand }
+  };
+};
 
 const BASE_SHA = "a".repeat(40);
 const HEAD_SHA = "b".repeat(40);
@@ -244,7 +296,7 @@ test("PR Progress working-tree opens use the registered repository root and curr
   }]);
 });
 
-test("a PR A node is rejected for a working-tree open after PR B becomes active", async () => {
+test("a PR A node is rejected through the runtime and VS Code working-tree routes after PR B becomes active", async () => {
   const pullRequestBContextId = `${REPOSITORY_ID}#113`;
   const pullRequestBFileId = "file-113";
   const pullRequestBOldPath = "src/pr-b-old.ts";
@@ -331,6 +383,172 @@ test("a PR A node is rejected for a working-tree open after PR B becomes active"
     /stale|current snapshot/i
   );
   assert.equal(opened.length, 0);
+
+  const openedByVscodeHost: unknown[][] = [];
+  const workspaceUri = {
+    scheme: "file",
+    authority: "",
+    path: "/workspace",
+    query: "",
+    fragment: "",
+    fsPath: "/workspace"
+  };
+  const { VscodePullRequestProgressTreeDataProvider } = loadWithVscode<
+    typeof import("../../src/ui/pr-progress/vscode-pull-request-progress-tree.js")
+  >(
+    "../../src/ui/pr-progress/vscode-pull-request-progress-tree.js",
+    vscodeTreeStub([], [{ uri: workspaceUri }], async (...values) => {
+      openedByVscodeHost.push(values);
+    })
+  );
+  const tree = new VscodePullRequestProgressTreeDataProvider(runtime.progress);
+
+  await assert.rejects(
+    tree.openWorkingTreeFile(pullRequestANode),
+    /stale|current snapshot/i
+  );
+  assert.equal(openedByVscodeHost.length, 0);
+});
+
+test("Vscode PR Progress rejects stale source-A decorations and reports projection rejection", async () => {
+  let releaseSourceA: ((value: readonly NormalEditorReviewedDecoration[]) => void) | undefined;
+  const sourceAStarted = new Promise<void>((resolve) => {
+    const resolveSourceA = resolve;
+    releaseSourceA = (value) => {
+      resolveSourceA();
+      sourceAResult(value);
+    };
+  });
+  let sourceAResult: (value: readonly NormalEditorReviewedDecoration[]) => void = () => undefined;
+  const sourceADecorations = new Promise<readonly NormalEditorReviewedDecoration[]>((resolve) => {
+    sourceAResult = resolve;
+  });
+  const appliedDecorationCounts: number[] = [];
+  const editor = {
+    document: { uri: { toString: () => "review-range-diff://source-a" } },
+    setDecorations: (_type: unknown, values: readonly unknown[]) => {
+      appliedDecorationCounts.push(values.length);
+    }
+  };
+  const sourceA = {
+    getChildren: () => [],
+    select: async () => { throw new Error("selection is outside this fixture"); },
+    ownsReviewDiffDocumentUri: () => true,
+    loadReviewedDecorations: async () => {
+      await sourceAStarted;
+      return sourceADecorations;
+    }
+  } as unknown as PullRequestProgressTreeSource;
+  const sourceB = {
+    getChildren: () => [],
+    select: async () => { throw new Error("selection is outside this fixture"); },
+    ownsReviewDiffDocumentUri: () => true,
+    loadReviewedDecorations: async () => []
+  } as unknown as PullRequestProgressTreeSource;
+  let emitProjectionChange: (() => void | Promise<void>) | undefined;
+  let rejectProjection = false;
+  const sourceWithRejectedProjection = {
+    ...sourceB,
+    onDidChangeReviewProjection: (listener: () => void | Promise<void>) => {
+      emitProjectionChange = listener;
+      return { dispose: () => undefined };
+    },
+    loadReviewedDecorations: async () => {
+      if (rejectProjection) throw new Error("decoration refresh failed");
+      return [];
+    }
+  } as PullRequestProgressTreeSource;
+  const reported: unknown[] = [];
+  const { VscodePullRequestProgressTreeDataProvider } = loadWithVscode<
+    typeof import("../../src/ui/pr-progress/vscode-pull-request-progress-tree.js")
+  >(
+    "../../src/ui/pr-progress/vscode-pull-request-progress-tree.js",
+    vscodeTreeStub([editor])
+  );
+  const tree = new VscodePullRequestProgressTreeDataProvider(sourceA, (error) => {
+    reported.push(error);
+  });
+
+  const pendingSourceARefresh = tree.refreshReviewDiffDecorations();
+  tree.setPullRequestProgressSource(sourceB);
+  releaseSourceA?.([{
+    interval: { startLine: 0, endLineExclusive: 1 },
+    source: "context",
+    contextLabel: "PR A",
+    reviewedAt: UPDATED_AT,
+    globalActive: false
+  }]);
+  await pendingSourceARefresh;
+  assert.ok(!appliedDecorationCounts.includes(1));
+
+  tree.setPullRequestProgressSource(sourceWithRejectedProjection);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  rejectProjection = true;
+  emitProjectionChange?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(reported.length, 1);
+  assert.ok(reported[0] instanceof Error);
+  assert.match(reported[0].message, /decoration refresh failed/);
+});
+
+test("runtime command keeps its durable result, projects after progress failure, and reports it", async () => {
+  const repository = new MemoryRepository();
+  const reported: unknown[] = [];
+  const lifecycle: string[] = [];
+  const openedDiffs: Array<{ readonly original: string; readonly modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified) => { openedDiffs.push({ original, modified }); }
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    reportDerivedProjectionError: (error: unknown) => {
+      lifecycle.push("reported");
+      reported.push(error);
+    }
+  } as PullRequestReviewRuntimeOptions<string> & {
+    readonly reportDerivedProjectionError: (error: unknown) => void;
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/workspace/RevMem",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc"
+    })
+  });
+  let projectionAttempts = 0;
+  runtime.onDidChangeReviewProjection(() => {
+    lifecycle.push("owned-projection");
+    projectionAttempts += 1;
+  });
+  runtime.refreshActiveProgress = async () => {
+    lifecycle.push("progress-refresh");
+    throw new Error("progress refresh failed");
+  };
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const commandService = runtime.createCommandService<{ readonly uri: string }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: () => "modified",
+    getLineCount: () => 3,
+    getSelections: () => [],
+    confirmWholeFileOperation: async () => true
+  });
+
+  assert.equal(await commandService.markFileReviewed({ uri: openedDiffs[0]!.modified }), "applied");
+  assert.deepEqual(
+    repository.current.contextState.files[FILE_ID]!.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 3 }]
+  );
+  assert.equal(projectionAttempts, 1);
+  assert.equal(reported.length, 1);
+  assert.ok(reported[0] instanceof Error);
+  assert.match(reported[0].message, /progress refresh failed/);
+  assert.deepEqual(lifecycle, ["progress-refresh", "reported", "owned-projection"]);
 });
 
 const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> => {
@@ -361,9 +579,21 @@ const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> 
   });
 
   await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const originalUri = opened[0]?.original;
   const modifiedUri = opened[0]?.modified;
+  assert.ok(originalUri);
   assert.ok(modifiedUri);
-  assert.equal((await runtime.openSession(modifiedUri)).target.currentPath, filePath);
+  const vscodeUriAdapter = (uri: string) => ({
+    toString: (skipEncoding?: boolean) => skipEncoding === true ? decodeURIComponent(uri) : uri
+  });
+  const originalDocumentUri = vscodeUriAdapter(originalUri);
+  const modifiedDocumentUri = vscodeUriAdapter(modifiedUri);
+  const canonicalOriginalUri = originalDocumentUri.toString();
+  const canonicalModifiedUri = modifiedDocumentUri.toString();
+  assert.notEqual(canonicalModifiedUri, modifiedDocumentUri.toString(true));
+  runtime.validateDiffDocumentPair(canonicalOriginalUri, canonicalModifiedUri);
+  assert.equal((await runtime.openSession(canonicalModifiedUri)).target.currentPath, filePath);
+  assert.equal(runtime.sideForDiffDocumentUri(canonicalModifiedUri), "modified");
 
   const service = runtime.createCommandService<{ readonly uri: string }>({
     getDocumentUri: (editor) => editor.uri,
@@ -372,7 +602,7 @@ const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> 
     getSelections: () => [],
     confirmWholeFileOperation: async () => true
   });
-  assert.equal(await service.markFileReviewed({ uri: modifiedUri }), "applied");
+  assert.equal(await service.markFileReviewed({ uri: canonicalModifiedUri }), "applied");
 };
 
 test("review command and session route a path with spaces and Japanese segments", async () => {
