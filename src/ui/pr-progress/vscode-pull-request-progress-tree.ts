@@ -170,6 +170,7 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   public async refreshReviewDiffDecorations(): Promise<void> {
     const source = this.activeSource();
     for (const editor of vscode.window.visibleTextEditors) {
+      if (source !== this.activeSource()) return;
       const uri = editor.document.uri.toString();
       if (
         source.ownsReviewDiffDocumentUri === undefined ||
@@ -180,7 +181,7 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
         continue;
       }
       const decorations = await source.loadReviewedDecorations(uri);
-      if (source !== this.activeSource()) continue;
+      if (source !== this.activeSource()) return;
       editor.setDecorations(
         this.reviewedDecorationType,
         decorations.map((decoration) => new vscode.Range(

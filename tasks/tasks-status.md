@@ -8,8 +8,8 @@
 - GitHub Issue: #112（PR #113の通常レビュー指摘対応）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #112保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #112 / PR #113の`PR113-NR-002`〜`005`はSol/high通常fix verification R2でclosed。最終publication candidateのfull gateへ進む
-- 次のタスク: full local equivalence gate、独立final review、report attestation、exact-head required CI、squash merge
+- 現在のタスク: `PR113-IFR-001/002`はTDD修正・focused 14/14 Green。同じSol/high通常reviewerのfix verification待ち
+- 次のタスク: 通常fix verification、invalidated full gateの新candidate再実行、同じ独立reviewerのfinding限定closure、attestation、exact-head CI、squash merge
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。`PR113-NR-002`〜`005`のactual composition focused 10/10、compile、build、lintはGreen。最小NR-007はexact-head CIのExtension Host証拠待ち
@@ -33,6 +33,13 @@
 - 通常review verdict: `pass_with_held`、reviewed HEAD `7c88cd43f938b5afbe9bca6b1b44d749e0031ea1`。heldは最小NR-007のactual Host実行、full gate、exact-head CI、既知Windows別scope failures、後続finding
 - end-of-Issue Skill-gap判断: `no skill action needed`。既存review completeness gateが迂回を検出しており、Skillの不足や新しい再利用可能規則は確認されなかった
 - feedback分類: 新規feedback pointなし。早期リリースscopeとworktree削除はIssue #112固有の実行条件として扱う
+
+| 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| PR113-IFR-001 | closed候補 / focused Green | 0.5h以内 | source切替で旧refresh全体を終了し、非owned editorのstale clearを防ぐ | PR113-NR-002 | 2 editorのA await→B publish→A release fixtureがRed→Greenとなり、B decorationを保持 |
+| PR113-IFR-002 | closed候補 / focused Green | 0.5h以内 | legacy/current URIのwire formを保持してdescriptor identityを検証し、legacy pairとsessionを受理する | PR113-NR-005 | legacy original/modified pairとlegacy documentのreview command/session fixtureがRed→Green |
+
+- full local gate: candidate `9ff4b54e664cfd92fca07f76453ed691b073d5b0`のstatic 5項目Green、default `npm test` fail証拠はIFR content deltaでinvalidated。新candidateで1回再実行する
 
 ## Issue #92 / PR #94 CI repair and independent review
 

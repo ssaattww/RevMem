@@ -491,6 +491,62 @@ test("Vscode PR Progress rejects stale source-A decorations and reports projecti
   assert.match(reported[0].message, /decoration refresh failed/);
 });
 
+test("Vscode PR Progress leaves source-B decorations intact when a pending source-A refresh resumes", async () => {
+  let releaseSourceA: ((value: readonly NormalEditorReviewedDecoration[]) => void) | undefined;
+  let sourceALoaded: (() => void) | undefined;
+  const sourceAIsPending = new Promise<void>((resolve) => { sourceALoaded = resolve; });
+  const sourceADecorations = new Promise<readonly NormalEditorReviewedDecoration[]>((resolve) => {
+    releaseSourceA = resolve;
+  });
+  const decorationCounts = new Map<string, number>();
+  const editor = (uri: string) => ({
+    document: { uri: { toString: () => uri } },
+    setDecorations: (_type: unknown, values: readonly unknown[]) => {
+      decorationCounts.set(uri, values.length);
+    }
+  });
+  const sourceAUri = "review-range-diff://source-a";
+  const sourceBUri = "review-range-diff://source-b";
+  const sourceA = {
+    getChildren: () => [],
+    select: async () => { throw new Error("selection is outside this fixture"); },
+    ownsReviewDiffDocumentUri: (uri: string) => uri === sourceAUri,
+    loadReviewedDecorations: async () => {
+      sourceALoaded?.();
+      return sourceADecorations;
+    }
+  } as unknown as PullRequestProgressTreeSource;
+  const sourceB = {
+    getChildren: () => [],
+    select: async () => { throw new Error("selection is outside this fixture"); },
+    ownsReviewDiffDocumentUri: (uri: string) => uri === sourceBUri,
+    loadReviewedDecorations: async () => [{
+      interval: { startLine: 0, endLineExclusive: 1 },
+      source: "context" as const,
+      contextLabel: "PR B",
+      reviewedAt: UPDATED_AT,
+      globalActive: false
+    }]
+  } as unknown as PullRequestProgressTreeSource;
+  const { VscodePullRequestProgressTreeDataProvider } = loadWithVscode<
+    typeof import("../../src/ui/pr-progress/vscode-pull-request-progress-tree.js")
+  >(
+    "../../src/ui/pr-progress/vscode-pull-request-progress-tree.js",
+    vscodeTreeStub([editor(sourceAUri), editor(sourceBUri)])
+  );
+  const tree = new VscodePullRequestProgressTreeDataProvider(sourceA);
+
+  const pendingSourceARefresh = tree.refreshReviewDiffDecorations();
+  await sourceAIsPending;
+  tree.setPullRequestProgressSource(sourceB);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(decorationCounts.get(sourceBUri), 1);
+
+  releaseSourceA?.([]);
+  await pendingSourceARefresh;
+  assert.equal(decorationCounts.get(sourceBUri), 1);
+});
+
 test("runtime command keeps its durable result, projects after progress failure, and reports it", async () => {
   const repository = new MemoryRepository();
   const reported: unknown[] = [];
@@ -611,4 +667,48 @@ test("review command and session route a path with spaces and Japanese segments"
 
 test("review command and session route a path containing a literal percent", async () => {
   await assertReviewCommandSessionRoute("src/literal%name.ts");
+});
+
+test("legacy v1 PR diff documents retain pair, session, and review command routing", async () => {
+  const repository = new MemoryRepository();
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/workspace/RevMem",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc"
+    })
+  });
+  const encodeField = (value: string): string => Buffer.from(value, "utf8").toString("base64url");
+  const legacyUri = (side: "original" | "modified", path: string, revision: string): string => [
+    "review-range-diff://document",
+    "v1",
+    encodeField(CONTEXT_ID),
+    "posix",
+    side,
+    "git-commit",
+    encodeField(revision),
+    encodeField(path)
+  ].join("/");
+  const originalUri = legacyUri("original", ORIGINAL_PATH, BASE_SHA);
+  const modifiedUri = legacyUri("modified", MODIFIED_PATH, HEAD_SHA);
+
+  assert.equal(runtime.validateDiffDocumentPair(originalUri, modifiedUri).fileId, FILE_ID);
+  assert.equal((await runtime.openSession(modifiedUri)).target.currentPath, MODIFIED_PATH);
+  const service = runtime.createCommandService<{ readonly uri: string }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: () => "modified",
+    getLineCount: () => 3,
+    getSelections: () => [],
+    confirmWholeFileOperation: async () => true
+  });
+  assert.equal(await service.markFileReviewed({ uri: modifiedUri }), "applied");
 });
