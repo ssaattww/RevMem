@@ -738,7 +738,7 @@ export function registerT405ReviewContextsRuntime(
     if (known !== undefined) return known;
     const active = await inspectActiveRepository();
     if (active.repositoryId !== repositoryId) {
-      throw new Error("対豈PRのローカルGitリポジトリを解決できません。");
+      throw new Error("対象PRのローカルGitリポジトリを解決できません。");
     }
     return active.rootPath;
   };
@@ -1305,7 +1305,7 @@ export function registerT405ReviewContextsRuntime(
         throw new Error(`PR cacheを更新できませんでした: offline cache (${result.cache.freshness}) を表示しています。`);
       }
       if (result.cache.freshness !== "fresh") {
-        throw new Error("PR cacheを更新できませんでした: live取得結果をcacheほ保存できませんでした。");
+        throw new Error("PR cacheを更新できませんでした: live取得結果をcacheへ保存できませんでした。");
       }
     },
     openPullRequestDiff: async (context, feedbackContext) => {

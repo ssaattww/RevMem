@@ -392,3 +392,16 @@ test("Issue #106 T405 production runtime delegates explicit PR synchronization t
     "existing PR detection must not publish a second single-context commit after owner synchronization",
   );
 });
+
+for (const message of [
+  "対象PRのローカルGitリポジトリを解決できません。",
+  "PR cacheを更新できませんでした: live取得結果をcacheへ保存できませんでした。",
+]) {
+  test(`PR108-ACTION-003 preserves the user-facing Japanese error: ${message}`, async () => {
+    const runtimeSource = await readFile(
+      path.resolve(__dirname, "../../../src/t405-review-contexts-runtime.ts"),
+      "utf8",
+    );
+    assert.ok(runtimeSource.includes(`throw new Error(${JSON.stringify(message)})`));
+  });
+}
