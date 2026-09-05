@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import * as vscode from "vscode";
 
+import type { ReviewRangeRuntimePort } from "../../../src/extension";
 import {
   ReviewDiffUriCodec,
   RevisionTextContentProvider,
@@ -37,4 +38,20 @@ export async function run(): Promise<void> {
     new RevisionTextContentProvider(codec, source)
   );
   assert.equal(await provider.provideTextDocumentContent(uri), "before\n");
+
+  const extension = vscode.extensions.getExtension("taiga.review-range-tracker");
+  assert.ok(extension, "The Extension Development Host should load this extension.");
+  const runtimePort = await extension.activate() as ReviewRangeRuntimePort;
+  const registration = runtimePort.registerReviewDiffRuntime({
+    ownsDocumentUri: (candidate) => candidate === uri.toString(),
+    provideTextDocumentContent: (candidate) => provider.provideTextDocumentContent(candidate),
+    invokeCommand: async () => undefined
+  });
+  try {
+    const document = await vscode.workspace.openTextDocument(uri);
+    assert.equal(document.getText(), "before\n");
+    assert.equal(document.languageId, "typescript");
+  } finally {
+    registration.dispose();
+  }
 }

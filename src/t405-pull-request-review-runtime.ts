@@ -45,6 +45,7 @@ interface WorkingTreeOpenTarget {
 
 type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
   readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
+  readonly reportDerivedProjectionError?: (error: unknown) => void | Promise<void>;
 };
 
 interface ReviewProjectionProgressSource {
@@ -81,6 +82,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private readonly openWorkingTreeFileHost: WorkingTreeRuntimeOptions<Uri>["openWorkingTreeFile"];
   private readonly openFileHost: PullRequestReviewRuntimeOptions<Uri>["openFile"];
   private readonly parseUri: PullRequestReviewRuntimeOptions<Uri>["diffHost"]["parseUri"];
+  private readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   private readonly projectionNotifier = new PullRequestReviewProjectionNotifier();
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
@@ -89,6 +91,8 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     this.openWorkingTreeFileHost = (options as WorkingTreeRuntimeOptions<Uri>).openWorkingTreeFile;
     this.openFileHost = options.openFile;
     this.parseUri = options.diffHost.parseUri;
+    this.reportDerivedProjectionError =
+      (options as WorkingTreeRuntimeOptions<Uri>).reportDerivedProjectionError ?? (() => undefined);
     this.clearAcceptedTree = this.progress.clear.bind(this.progress);
     this.progress.clear = (): void => {
       if (!this.suppressTreeClear) this.clearAcceptedTree();
@@ -103,6 +107,13 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     projectionSource.workingTreeFileTarget = (node) =>
       this.resolveWorkingTreeOpenTarget(node);
     this.progress.openWorkingTreeFile = async (node): Promise<void> => {
+      const isCurrentNode = this.progress.getChildren().some((category) =>
+        category.kind === "category" &&
+        this.progress.getChildren(category).includes(node)
+      );
+      if (!isCurrentNode) {
+        throw new RangeError("PR Progress working-tree target is stale for the active snapshot.");
+      }
       const openTarget = this.resolveWorkingTreeOpenTarget(node);
       if (this.openWorkingTreeFileHost !== undefined) {
         await this.openWorkingTreeFileHost(openTarget);
@@ -133,7 +144,8 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     ): Promise<DiffEditorReviewCommandResult> => synchronizeAppliedPullRequestReview(
       await operation(),
       () => this.refreshActiveProgress(),
-      () => this.projectionNotifier.notify()
+      () => this.projectionNotifier.notify(),
+      this.reportDerivedProjectionError
     );
     const markSelectionReviewed = service.markSelectionReviewed.bind(service);
     const unmarkSelectionReviewed = service.unmarkSelectionReviewed.bind(service);

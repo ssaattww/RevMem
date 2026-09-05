@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import type { NormalEditorReviewedDecoration } from "../../src/application/editor-decoration/index.js";
+import type { ReviewStateCommit } from "../../src/adapters/state-repository/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -60,7 +61,7 @@ const snapshot: PullRequestDiffSnapshot = {
   }]
 };
 
-const contextState = (): ReviewContextState => ({
+const contextState = (currentPath = MODIFIED_PATH): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
   contextId: CONTEXT_ID,
   kind: "pull-request",
@@ -80,7 +81,7 @@ const contextState = (): ReviewContextState => ({
     [FILE_ID]: {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
       fileId: FILE_ID,
-      currentPath: MODIFIED_PATH,
+      currentPath,
       previousPaths: [ORIGINAL_PATH],
       revisionId: HEAD_SHA,
       modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }],
@@ -105,11 +106,15 @@ const globalState = (): RepositoryGlobalState => ({
 });
 
 class MemoryRepository implements PullRequestReviewRuntimeRepository {
-  public current = {
-    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
-    contextState: contextState(),
-    globalState: globalState()
-  };
+  public current: ReviewStateCommit;
+
+  public constructor(initialContextState = contextState()) {
+    this.current = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextState: initialContextState,
+      globalState: globalState()
+    };
+  }
 
   public async load(): Promise<typeof this.current> {
     return structuredClone(this.current);
@@ -237,4 +242,143 @@ test("PR Progress working-tree opens use the registered repository root and curr
     repositoryPath: MODIFIED_PATH,
     fileSystemPathSemantics: "posix"
   }]);
+});
+
+test("a PR A node is rejected for a working-tree open after PR B becomes active", async () => {
+  const pullRequestBContextId = `${REPOSITORY_ID}#113`;
+  const pullRequestBFileId = "file-113";
+  const pullRequestBOldPath = "src/pr-b-old.ts";
+  const pullRequestBPath = "src/pr-b.ts";
+  const pullRequestBSnapshot: PullRequestDiffSnapshot = {
+    ...snapshot,
+    contextId: pullRequestBContextId,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      fileId: pullRequestBFileId,
+      oldPath: pullRequestBOldPath,
+      newPath: pullRequestBPath
+    }))
+  };
+  const pullRequestACommit: ReviewStateCommit = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: contextState(),
+    globalState: globalState()
+  };
+  const pullRequestBState = contextState(pullRequestBPath);
+  const pullRequestBCommit: ReviewStateCommit = {
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+    contextState: {
+      ...pullRequestBState,
+      contextId: pullRequestBContextId,
+      displayName: "PR #113",
+      pullRequest: { ...pullRequestBState.pullRequest!, number: 113 },
+      files: {
+        [pullRequestBFileId]: {
+          ...pullRequestBState.files[FILE_ID]!,
+          fileId: pullRequestBFileId,
+          currentPath: pullRequestBPath,
+          previousPaths: [pullRequestBOldPath]
+        }
+      }
+    },
+    globalState: globalState()
+  };
+  const commits = new Map<string, ReviewStateCommit>([
+    [CONTEXT_ID, pullRequestACommit],
+    [pullRequestBContextId, pullRequestBCommit]
+  ]);
+  const opened: WorkingTreeOpenTarget[] = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: {
+      load: async (target) => {
+        const commit = commits.get(target.contextId);
+        return commit === undefined ? undefined : structuredClone(commit);
+      },
+      commit: async (transaction) => {
+        commits.set(transaction.contextId, {
+          schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+          contextState: structuredClone(transaction.next.contextState) as ReviewContextState,
+          globalState: structuredClone(transaction.next.globalState) as RepositoryGlobalState
+        });
+      }
+    },
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    openWorkingTreeFile: async (target: WorkingTreeOpenTarget) => { opened.push(target); },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  } as PullRequestReviewRuntimeOptions<string> & {
+    readonly openWorkingTreeFile: (target: WorkingTreeOpenTarget) => Promise<void>;
+  });
+  const registration = (snapshotInput: PullRequestDiffSnapshot) => ({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/workspace/RevMem",
+    fileSystemPathSemantics: "posix" as const,
+    snapshot: snapshotInput,
+    readTextContent: async (descriptor: { readonly side: "original" | "modified" }) => ({
+      kind: "found" as const,
+      content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc"
+    })
+  });
+  runtime.register(registration(snapshot));
+  runtime.register(registration(pullRequestBSnapshot));
+
+  await runtime.activateProgress(CONTEXT_ID);
+  const pullRequestANode = currentFileNode(runtime);
+  await runtime.activateProgress(pullRequestBContextId);
+
+  await assert.rejects(
+    runtime.progress.openWorkingTreeFile(pullRequestANode),
+    /stale|current snapshot/i
+  );
+  assert.equal(opened.length, 0);
+});
+
+const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> => {
+  const opened: Array<{ readonly original: string; readonly modified: string }> = [];
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(contextState(filePath)),
+    requestHistory: async () => undefined,
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (original, modified) => { opened.push({ original, modified }); }
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] })
+  });
+  const runtimeSnapshot = {
+    ...snapshot,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      oldPath: filePath,
+      newPath: filePath
+    }))
+  };
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/workspace/RevMem",
+    fileSystemPathSemantics: "posix",
+    snapshot: runtimeSnapshot,
+    readTextContent: async () => ({ kind: "found", content: "a\nd\nc" })
+  });
+
+  await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+  const modifiedUri = opened[0]?.modified;
+  assert.ok(modifiedUri);
+  assert.equal((await runtime.openSession(modifiedUri)).target.currentPath, filePath);
+
+  const service = runtime.createCommandService<{ readonly uri: string }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: () => "modified",
+    getLineCount: () => 3,
+    getSelections: () => [],
+    confirmWholeFileOperation: async () => true
+  });
+  assert.equal(await service.markFileReviewed({ uri: modifiedUri }), "applied");
+};
+
+test("review command and session route a path with spaces and Japanese segments", async () => {
+  await assertReviewCommandSessionRoute("src/日本語/space name.ts");
+});
+
+test("review command and session route a path containing a literal percent", async () => {
+  await assertReviewCommandSessionRoute("src/literal%name.ts");
 });

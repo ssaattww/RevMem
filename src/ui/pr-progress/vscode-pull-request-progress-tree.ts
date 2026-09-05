@@ -73,7 +73,10 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   private selectedSourceProjectionSubscription: PullRequestProgressTreeSourceSubscription | undefined;
   public readonly onDidChangeTreeData = this.changed.event;
 
-  public constructor(private readonly defaultSource: PullRequestProgressTreeSource) {}
+  public constructor(
+    private readonly defaultSource: PullRequestProgressTreeSource,
+    private readonly reportError: (error: unknown) => void | Promise<void> = () => undefined
+  ) {}
 
   public getTreeItem(node: PullRequestProgressTreeNode): vscode.TreeItem {
     if (node.kind === "category") return this.categoryTreeItem(node);
@@ -136,13 +139,17 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
     this.selectedSourceProjectionSubscription = undefined;
     this.selectedSource = source;
     if (source?.onDidChangeReviewProjection !== undefined) {
-      this.selectedSourceProjectionSubscription = source.onDidChangeReviewProjection(async () => {
+      this.selectedSourceProjectionSubscription = source.onDidChangeReviewProjection(() => {
         this.refreshPullRequestProgressTree();
-        await this.refreshReviewDiffDecorations();
+        void this.refreshReviewDiffDecorations().catch((error) =>
+          Promise.resolve(this.reportError(error)).catch(() => undefined)
+        );
       });
     }
     this.refreshPullRequestProgressTree();
-    void this.refreshReviewDiffDecorations();
+    void this.refreshReviewDiffDecorations().catch((error) =>
+      Promise.resolve(this.reportError(error)).catch(() => undefined)
+    );
   }
 
   /** Notifies VS Code after this activated runtime replaced its immutable snapshot. */
@@ -163,6 +170,7 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
         continue;
       }
       const decorations = await source.loadReviewedDecorations(uri);
+      if (source !== this.activeSource()) continue;
       editor.setDecorations(
         this.reviewedDecorationType,
         decorations.map((decoration) => new vscode.Range(
@@ -204,7 +212,7 @@ export const registerVscodePullRequestProgressTree = (
   defaultSource: PullRequestProgressTreeSource,
   reportError: (error: unknown) => void | Promise<void>
 ): VscodePullRequestProgressTreeDataProvider => {
-  const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource);
+  const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource, reportError);
   const source: PullRequestProgressTreeSource & {
     openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void>;
   } = tree;

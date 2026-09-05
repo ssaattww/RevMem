@@ -4,10 +4,16 @@ import type { DiffEditorReviewCommandResult } from "./application/review-command
 export const synchronizeAppliedPullRequestReview = async (
   result: DiffEditorReviewCommandResult,
   refreshProgress: () => void | Promise<void>,
-  refreshOwnedProjection: () => void | Promise<void>
+  refreshOwnedProjection: () => void | Promise<void>,
+  reportProjectionError: (error: unknown) => void | Promise<void> = () => undefined
 ): Promise<DiffEditorReviewCommandResult> => {
   if (result !== "applied") return result;
-  await refreshProgress();
-  await refreshOwnedProjection();
+  for (const refresh of [refreshProgress, refreshOwnedProjection]) {
+    try {
+      await refresh();
+    } catch (error) {
+      await Promise.resolve(reportProjectionError(error)).catch(() => undefined);
+    }
+  }
   return result;
 };

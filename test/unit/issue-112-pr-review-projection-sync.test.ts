@@ -26,3 +26,23 @@ test("non-applied PR review does not refresh progress or projections", async () 
   }
   assert.equal(calls, 0);
 });
+
+test("applied PR review keeps its durable result and attempts the owned projection when progress refresh fails", async () => {
+  const calls: string[] = [];
+  const reported: unknown[] = [];
+
+  const result = await synchronizeAppliedPullRequestReview(
+    "applied",
+    async () => {
+      calls.push("progress");
+      throw new Error("PR Progress refresh failed");
+    },
+    async () => { calls.push("projection"); },
+    async (error) => { reported.push(error); }
+  );
+
+  assert.equal(result, "applied");
+  assert.deepEqual(calls, ["progress", "projection"]);
+  assert.equal(reported.length, 1);
+  assert.match(String(reported[0]), /PR Progress refresh failed/);
+});
