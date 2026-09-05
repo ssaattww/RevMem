@@ -51,7 +51,7 @@ jobs:
       - name: Issue #106 owner atomic synchronization tests
         run: |
           node tools/run-ci-command.mjs issue106-compile-test npm run compile:test
-          node tools/run-ci-command.mjs test-issue106 node --test test-dist/test/unit/issue-106-global-three-way-synchronization.test.js test-dist/test/unit/issue-106-t405-owner-synchronization.test.js test-dist/test/unit/t405-composition-regression.test.js
+          node tools/run-ci-command.mjs test-issue106 node --test test-dist/test/unit/issue-106-global-three-way-synchronization.test.js test-dist/test/unit/issue-106-product-composition.test.js test-dist/test/unit/issue-106-t405-owner-synchronization.test.js test-dist/test/unit/t405-composition-regression.test.js
       - name: T304 PR progress tree tests
         run: node tools/run-ci-command.mjs test-t304 npm run test:t304
       - name: T502 Global mapping and display priority tests
