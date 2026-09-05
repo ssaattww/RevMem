@@ -46,6 +46,13 @@
      - impact: update前からrestoreされているreview diff tabで本文は表示されるのにreview操作だけ失敗する、明確な既存互換性回帰になる。新規URIのASCII、空白 / 日本語、literal `%` coverageは通っていても、この経路は別である。
      - required action: current / legacyそれぞれのcanonical wire formを保持したままdescriptor、context、side、revision、file mappingを検証し、legacy入力を新形式の文字列一致だけで拒否しない。legacy original / modified pairとlegacy documentから実際のreview command / sessionまで通すregression fixtureを追加し、通常review / Greenを行う。
 
+### 同一reviewerによるfinding限定closure
+
+- current open finding: **なし**。初回finding identityとsource severityを維持し、severity reclassificationは行っていない。
+- `PR113-IFR-001` — **High / closed**: `src/ui/pr-progress/vscode-pull-request-progress-tree.ts:170-194`は各editor処理前とowned decoration取得後にactive sourceを再確認し、source切替時に旧refresh全体をreturnする。これにより非owned editorへの空clearを含む旧sourceの後続publishが止まる。`test/unit/issue-112-pr-progress-runtime.test.ts:494-548`は2 visible editorsを実providerへcomposeし、A await、B切替 / publish、A release後もB decoration count 1を保持する。対象caseはRedの`0 !== 1`からfocused Greenへ遷移したため、required actionをCompleteとしてclosedとする。
+- `PR113-IFR-002` — **Medium / closed**: codecのcurrent / legacy canonical decodeを入口に維持し、`src/t405-pull-request-review-runtime-base.ts:98-107,475-539,681-710`はdecoded descriptorのcontext、file path、path semantics、side、revision source、revisionを登録済みsnapshot / file mappingと照合する。新形式への再encode文字列一致だけでlegacyを拒否しない。`test/unit/issue-112-pr-progress-runtime.test.ts:672-714`はlegacy rename pair、session、実command serviceによるmutationをcomposeし、pair-validation errorのRedからfocused Greenへ遷移したため、required actionをCompleteとしてclosedとする。
+- closure scopeは`PR113-IFR-001/002`、fix range `124e749c6981dcf8bc679306049bbc7f99ea57aa..1dc586ff97c24f338d44fd4e6e749115cfb25de5`、およびCI / evidence deltaだけである。新しいexhaustive passまたはreview criteriaは追加していない。
+
 ## 結果
 
 - `verdict=fail`。
@@ -80,6 +87,26 @@
 - `report_attestation_allowed=false`。open findingがあるため、本reportを現時点でadministrative attestation commitにしてはならず、mergeも許可しない。
 - attestation条件: 両findingを実装担当が修正し、同じ通常reviewerのnormal fix verificationと必要なGreen / tracking同期を完了し、全非final変更をcommitして新しいreviewed implementation HEADをfreezeした後、この同じindependent reviewerがfinding / CI-delta限定closureで全required action、production path、actual composition fixture、focused evidenceをCompleteにした場合だけ再判定できる。許可された場合も、attestationはその新しいreviewed implementation HEADをfirst parentとする直後1回のcommitで、変更pathは予約済みの本reportだけ、他working changeなし、後続commitなしとする。attestation SHAは作成後に外部記録し、そのcommit自身をreviewed implementationと主張しない。最終exact-head `pull_request` CIはattestation push後の別gateである。
 
+### Current finding / CI-delta closure result
+
+- `current_closure_verdict=pass_with_held`。
+- `updated_reviewed_implementation_head=1dc586ff97c24f338d44fd4e6e749115cfb25de5`。current closureのtechnical verdictはこのupdated reviewed implementation HEADだけに適用する。initial independent reviewed HEAD `124e749c6981dcf8bc679306049bbc7f99ea57aa`のfailed verdictと2 findingは上記のhistorical evidenceとして保持する。
+- reviewer continuity: `/root/pr113_independent_final_review`が初回exhaustive reviewから継続し、今回はfinding / CI-delta限定closureだけを実施した。実装、test実行、通常review、commit、push、mergeには関与していない。
+- normal reviewer closure: 同じSol/high通常reviewerはfix HEAD `e926770fa738a7beff6fa01e608799f5d870e74d`を対象に両findingの全matrix cellをComplete、new / continuing required findingなし、`verdict=pass_with_held`と判定した。normal report / trackingは`ebe8e91becd1c09c1b49dc14201401b2a20d8abf`でrepository-stableである。
+- finding completeness matrix:
+
+  | Finding | Required action | Production path | Actual composition fixture | Focused evidence | Closure |
+  | --- | --- | --- | --- | --- | --- |
+  | `PR113-IFR-001` High | source切替後に旧refresh全体を終了し、clearを含む後続publishを止める | `vscode-pull-request-progress-tree.ts:170-194` | `issue-112-pr-progress-runtime.test.ts:494-548`のprovider、editor A/B、source A/B composition | Red 7/9で対象caseのみ`0 !== 1`、Green runtime / URI 14/14 | Complete / closed |
+  | `PR113-IFR-002` Medium | canonicalなlegacy / current wire formを受理し、descriptor、pair、session、command identityを検証する | `review-diff-uri-codec.ts:257-354`、`t405-pull-request-review-runtime-base.ts:98-107,475-539,681-710` | `issue-112-pr-progress-runtime.test.ts:672-714`のlegacy rename pairと実runtime / repository / command service | Red 7/9でpair validation error、Green runtime / URI 14/14 | Complete / closed |
+
+- closure coverage dispositions: finding required actions=`checked_no_finding`、production paths / direct dependencies=`checked_no_finding`、actual composition fixtures=`checked_no_finding`、focused validation adequacy=`checked_no_finding`、scope discipline=`checked_no_finding`、legacy / current compatibility=`checked_no_finding`、normal review / reports / tracking accuracy=`checked_no_finding`、full local default gate=`held`、actual Host / current-head CI=`held`、new criteria=`not_applicable`、unexplored=`[]`。
+- validation assessment: IFR Redはruntime 9件中、新規2件だけが失敗した。修正後は`compile:test`、runtime / URI focused 14/14、build、TypeScript lintがGreen。full local gate R2 candidate `ebe8e91...`ではbuild、contracts、architecture positive / negative、lint、およびdefault unit出力内のIFR001/002がGreenだった。一方、default `npm test`はWindows別scopeのNode atomic symlink / junction、Issue #13 Git working-tree path、owned Extension Host temporary-process diagnosticsでunit stage exit 1となり、後続`test:git`、`test:github`、`test:t502`、`test:vscode`は未実行である。したがってR2 gateは**fail / held**であり、passへ変換しない。`ebe8e91...1dc586f`はR2 report / trackingだけでtechnical treeは同一である。
+- CI / Host assessment: `gh run list --commit 1dc586ff97c24f338d44fd4e6e749115cfb25de5`にmatching runはなく、remote PR headは旧`4940ab4c45744b344b4369c675753564dbabcff6`である。旧CI successをcurrent closureへ転用しない。minimal NR007のactual provider / `languageId === "typescript"`はattestation push後のexact-head required `pull_request` CIで確認する別gateとしてheldする。
+- persistence: `report_type=independent_final_review_report`、mode=`report_attestation_commit`、`technical_head=1dc586ff97c24f338d44fd4e6e749115cfb25de5`、`administrative_parent=1dc586ff97c24f338d44fd4e6e749115cfb25de5`、`commit_state=commit_pending`、`push_state=push_pending`、`ci_wait_state=ci_wait_pending`、`report_attestation_head=null`。
+- `current_closure_report_attestation_allowed=true`。これは上記initial `report_attestation_allowed=false`を削除または書換えず、updated HEADに対するbounded closureの現在判定として追加する。
+- attestation allowlist: `1dc586ff97c24f338d44fd4e6e749115cfb25de5`をfirst parentとする直後のexactly one commitで、変更pathが予約済み`reports/issue-112-pr113-independent-final-review-20260905.md`だけ、他working changeなし、実行可能code / test / design / workflow / configuration / tracking / feedback / handoff変更なし、後続commitなしであることを親workflowが検証する。attestation SHAはcommit後に外部記録し、report自身の将来attestation commitをreviewed implementationと主張しない。allowlist成立後も、exact attestation headのrequired `pull_request` CIとactual Host結果がGreenになるまでmerge gateは未完了である。
+
 ## リスク
 
 - open: `PR113-IFR-001` High、`PR113-IFR-002` Medium。いずれもnormal fix cycleと同じindependent reviewerのbounded closureが必要。
@@ -87,3 +114,10 @@
 - tooling limitation: Markdown wording lintはrepo-local設定とpackage wiringがなく`unsupported`。finding verdictを緩和せず、設定は変更していない。
 - unexplored: なし。actual Hostと未実行gateは未知扱いにせず、明示的なheld evidence gapとして記録した。
 - merge boundary: verdictがfailであり、report attestation、push、mergeへ進めない。
+
+### Current closure risks
+
+- closed: `PR113-IFR-001` High、`PR113-IFR-002` Medium。初回のfinding本文とseverityは履歴として保持し、現在のopen findingはない。
+- held: full local gate R2はstatic / IFR fixture Greenでもdefault `npm test`がWindows別scope failuresでfailした。後続git / GitHub / T502 / VS Code stageは未実行であり、full gate passとは扱わない。
+- held: minimal NR007 actual Extension Host、exact attestation-head required `pull_request` CI、NR001 / NR006 / NR008 / NR009 / NR010。Markdown wording lintもrepo-local wiring不在のためfocused / fullとも`unsupported`のままである。
+- current merge boundary: current closureは`pass_with_held`でreport attestationを許可するが、attestation allowlist検証、push、matching exact-head CI / actual Host Green、親authorityのmerge判断は未完了であり、このreport単体はmergeを許可しない。
