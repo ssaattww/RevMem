@@ -167,6 +167,10 @@ export async function createPr108ProductionFixture(options: {
       if (unavailable.has(number)) throw new Error("fixture lifecycle unavailable");
       return response(metadata(number));
     }
+    const compare = /\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/u.exec(url.pathname);
+    if (compare !== null) {
+      return response({ merge_base_commit: { sha: compare[1] } });
+    }
     throw new Error(`Unexpected request in PR108 production fixture: ${url.pathname}`);
   };
   const commands = new Map<string, (...args: unknown[]) => unknown>();
