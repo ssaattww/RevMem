@@ -707,7 +707,10 @@ export class PullRequestReviewRuntime<Uri> {
       logicalPath
     ) ?? diffFile.fileId;
     const persistedFile = persisted.contextState.files[resolvedFileId];
-    const persistedGlobalFile = persisted.globalState.files[resolvedFileId];
+    const targetGlobalFiles = persisted.globalState.currentRevisionId === registration.snapshot.headSha
+      ? persisted.globalState.files
+      : persisted.globalState.revisionSnapshots?.[registration.snapshot.headSha]?.files ?? {};
+    const persistedGlobalFile = targetGlobalFiles[resolvedFileId];
     const targetPath = persistedFile?.currentPath ??
       persistedGlobalFile?.currentPath ??
       logicalPath;
@@ -931,7 +934,10 @@ export class PullRequestReviewRuntime<Uri> {
         fileIds.add(fileId);
       }
     }
-    for (const [fileId, file] of Object.entries(persisted.globalState.files)) {
+    const targetGlobalFiles = persisted.globalState.currentRevisionId === registration.snapshot.headSha
+      ? persisted.globalState.files
+      : persisted.globalState.revisionSnapshots?.[registration.snapshot.headSha]?.files ?? {};
+    for (const [fileId, file] of Object.entries(targetGlobalFiles)) {
       if (this.canonicalRepositoryPath(registration, file.currentPath) === expectedPath) {
         fileIds.add(fileId);
       }
