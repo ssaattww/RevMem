@@ -1115,8 +1115,11 @@ export function registerT405ReviewContextsRuntime(
           ...context.pullRequest,
           state: latest.metadata.state,
           title: latest.metadata.title,
-          baseSha: latest.metadata.baseSha,
-          headSha: latest.metadata.headSha,
+          // Only explicit owner synchronization can advance persisted ranges.
+          // Tree, cache acquisition, progress and diff registration share this
+          // pinned comparison even while the remote PR has advanced.
+          baseSha: context.pullRequest.baseSha,
+          headSha: context.pullRequest.headSha,
         },
       });
     }
