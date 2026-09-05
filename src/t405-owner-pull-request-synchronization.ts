@@ -31,6 +31,11 @@ export interface PullRequestOwnerSynchronizationDependencies {
     input: UpdatePullRequestContextInput,
     current: PullRequestReviewStateCommit,
   ) => Promise<PreparedPullRequestContextUpdate>;
+  readonly prepareOwnerGlobal?: (
+    current: Readonly<ReviewStateRepositorySnapshot["globalState"]>,
+    targetRevision: string,
+    signal?: AbortSignal,
+  ) => Promise<ReviewStateRepositorySnapshot["globalState"]>;
   readonly recordPreparedUpdateHistory: (
     prepared: Readonly<PreparedPullRequestContextUpdate>,
   ) => Promise<void>;
@@ -72,6 +77,21 @@ const semanticUpdateRequired = (
 ): boolean =>
   context.displayName !== (input.displayName ?? context.displayName) ||
   !isDeepStrictEqual(context.pullRequest, input.pullRequest);
+
+const globalAtRevision = (
+  globalState: Readonly<ReviewStateRepositorySnapshot["globalState"]>,
+  revisionId: string,
+): ReviewStateRepositorySnapshot["globalState"] | undefined => {
+  if (globalState.currentRevisionId === revisionId) return clone(globalState);
+  const snapshot = globalState.revisionSnapshots?.[revisionId];
+  if (snapshot === undefined) return undefined;
+  return {
+    ...clone(globalState),
+    currentRevisionId: revisionId,
+    files: clone(snapshot.files),
+    updatedAt: snapshot.updatedAt,
+  };
+};
 
 const metadataOnlyInput = (
   context: Readonly<ReviewContextState>,
@@ -156,18 +176,21 @@ export const synchronizePullRequestOwner = async (
       context.pullRequest.baseSha !== resolved.pullRequest.baseSha ||
       context.pullRequest.headSha !== resolved.pullRequest.headSha;
     const revisionEligible =
-      !revisionChanged ||
-      (
-        resolved.pullRequest.headSha === target.headRevision &&
-        context.pullRequest.headSha === expected.globalState.currentRevisionId
-      );
+      !revisionChanged || resolved.pullRequest.headSha === target.headRevision;
     const input = revisionEligible ? resolved : metadataOnlyInput(context, resolved);
     if (!revisionEligible) skippedRevisionContextIds.push(context.contextId);
     if (!semanticUpdateRequired(context, input)) continue;
 
+    const sourceGlobal = revisionChanged
+      ? globalAtRevision(expected.globalState, context.pullRequest.headSha)
+      : clone(expected.globalState);
+    if (sourceGlobal === undefined) {
+      skippedRevisionContextIds.push(context.contextId);
+      continue;
+    }
     const current: PullRequestReviewStateCommit = {
       contextState: clone(context),
-      globalState: clone(expected.globalState),
+      globalState: sourceGlobal,
     };
     const prepared = await dependencies.prepareUpdate(input, current);
     assertCurrent(signal);
@@ -191,8 +214,20 @@ export const synchronizePullRequestOwner = async (
         throw new Error("Prepared pull-request update does not target the repository-owner revision.");
       }
       if (mappedGlobal === undefined) {
-        mappedGlobal = clone(prepared.next.globalState);
-      } else if (!globalStatesEquivalent(mappedGlobal, prepared.next.globalState)) {
+        mappedGlobal = dependencies.prepareOwnerGlobal === undefined
+          ? clone(prepared.next.globalState)
+          : await dependencies.prepareOwnerGlobal(expected.globalState, target.headRevision, signal);
+        assertCurrent(signal);
+        if (
+          mappedGlobal.repositoryId !== target.repositoryId ||
+          mappedGlobal.currentRevisionId !== target.headRevision
+        ) {
+          throw new Error("Prepared owner-wide Global snapshot does not target the repository-owner revision.");
+        }
+      } else if (
+        dependencies.prepareOwnerGlobal === undefined &&
+        !globalStatesEquivalent(mappedGlobal, prepared.next.globalState)
+      ) {
         throw new Error("Pull-request updates produced conflicting owner-wide Global snapshots.");
       }
       mappedContextIds.push(context.contextId);
