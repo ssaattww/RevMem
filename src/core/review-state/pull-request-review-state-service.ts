@@ -77,13 +77,13 @@ const rebasePullRequestGlobal = <T extends ReviewStateTransaction>(
   if (sourceSnapshot === undefined) return transaction;
   const mappedGlobal = transaction.next.globalState;
   const nextGlobal: RepositoryGlobalState = {
-    ...clone(input.globalState) as RepositoryGlobalState,
+    ...(clone(input.globalState) as unknown as RepositoryGlobalState),
     revisionSnapshots: {
       ...clone(input.globalState.revisionSnapshots ?? {}),
       [input.target.revisionId]: {
         schemaVersion: mappedGlobal.schemaVersion,
         revisionId: input.target.revisionId,
-        files: clone(mappedGlobal.files),
+        files: clone(mappedGlobal.files) as unknown as RepositoryGlobalState["files"],
         updatedAt: mappedGlobal.updatedAt,
       },
     },
