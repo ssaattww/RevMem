@@ -54,14 +54,13 @@ const projectPullRequestGlobal = <T extends SupportedInput>(input: T): T => {
   if (input.globalState.currentRevisionId === input.target.revisionId) return input;
   if (input.contextState.kind !== "pull-request") return input;
   const snapshot = input.globalState.revisionSnapshots?.[input.target.revisionId];
-  if (snapshot === undefined) return input;
   return {
     ...input,
     globalState: {
       ...clone(input.globalState),
       currentRevisionId: input.target.revisionId,
-      files: clone(snapshot.files),
-      updatedAt: snapshot.updatedAt,
+      files: snapshot === undefined ? {} : clone(snapshot.files),
+      updatedAt: snapshot?.updatedAt ?? input.globalState.updatedAt,
     },
   } as T;
 };
@@ -73,8 +72,6 @@ const rebasePullRequestGlobal = <T extends ReviewStateTransaction>(
   if (input.globalState.currentRevisionId === input.target.revisionId || input.contextState.kind !== "pull-request") {
     return transaction;
   }
-  const sourceSnapshot = input.globalState.revisionSnapshots?.[input.target.revisionId];
-  if (sourceSnapshot === undefined) return transaction;
   const mappedGlobal = transaction.next.globalState;
   const nextGlobal: RepositoryGlobalState = {
     ...(clone(input.globalState) as unknown as RepositoryGlobalState),
