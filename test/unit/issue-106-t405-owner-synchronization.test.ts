@@ -263,6 +263,81 @@ test("Issue #106 different remote HEAD stays dormant until that HEAD becomes the
   }
 });
 
+
+test("PR108-PRODUCT-001 deferred PR catches up when its HEAD becomes the owner revision", async () => {
+  const harness = await createHarness();
+  try {
+    const first = await synchronizePullRequestOwner(
+      { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+      {
+        repository: harness.repository,
+        resolveUpdate: async (context) => updateInput(
+          context,
+          context.pullRequest?.number === 52 ? SHA_C : SHA_D,
+        ),
+        prepareUpdate: async (input, current) => {
+          const prepared = await harness.service.prepareUpdate(input, current);
+          return {
+            ...prepared,
+            next: {
+              ...prepared.next,
+              globalState: {
+                ...prepared.next.globalState,
+                revisionSnapshots: {
+                  ...(prepared.next.globalState.revisionSnapshots ?? {}),
+                  [current.globalState.currentRevisionId]: {
+                    schemaVersion: current.globalState.schemaVersion,
+                    revisionId: current.globalState.currentRevisionId,
+                    files: structuredClone(current.globalState.files),
+                    updatedAt: current.globalState.updatedAt,
+                  },
+                },
+              },
+            },
+          };
+        },
+        recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+      },
+    );
+    assert.deepEqual(first.mappedContextIds, [contextId(52)]);
+    assert.deepEqual(first.skippedRevisionContextIds, [contextId(53)]);
+
+    const second = await synchronizePullRequestOwner(
+      { repositoryId: REPOSITORY_ID, headRevision: SHA_D },
+      {
+        repository: harness.repository,
+        resolveUpdate: async (context) => updateInput(
+          context,
+          context.pullRequest?.number === 52 ? SHA_C : SHA_D,
+        ),
+        prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
+        prepareOwnerGlobal: async (current, targetRevision) => ({
+          ...structuredClone(current),
+          currentRevisionId: targetRevision,
+          files: Object.fromEntries(Object.entries(current.files).map(([fileId, file]) => [fileId, {
+            ...file,
+            revisionId: targetRevision,
+          }])),
+        }),
+        recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+      },
+    );
+
+    assert.equal(second.committed, true);
+    assert.deepEqual(second.mappedContextIds, [contextId(53)]);
+    assert.deepEqual(second.skippedRevisionContextIds, [contextId(52)]);
+    const state52 = await harness.repository.load(target(52));
+    const state53 = await harness.repository.load(target(53));
+    assert.equal(state52?.contextState.pullRequest?.headSha, SHA_C);
+    assert.equal(state53?.contextState.pullRequest?.headSha, SHA_D);
+    assert.equal(state52?.globalState.currentRevisionId, SHA_D);
+    assert.equal(state53?.globalState.currentRevisionId, SHA_D);
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
 test("Issue #106 one unavailable lifecycle read aborts the whole owner synchronization", async () => {
   const harness = await createHarness();
   try {
