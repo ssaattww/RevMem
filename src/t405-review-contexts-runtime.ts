@@ -746,8 +746,8 @@ export function registerT405ReviewContextsRuntime(
   const contextStateService = createNodeGitHubPullRequestContextStateService(
     repository,
     options.reviewHistoryRecorder,
-    async (evidence) => {
-      const current = await repository.load({
+    async (evidence, preparedCurrent) => {
+      const current = preparedCurrent ?? await repository.load({
         kind: "pull-request",
         repositoryId: evidence.repositoryId,
         contextId: evidence.contextId,
@@ -1390,7 +1390,7 @@ export function registerT405ReviewContextsRuntime(
     ...registered,
     preparePullRequestCandidateForExplicitContextSelection,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
-      source.augmentCurrentContextCandidates(localCandidates, signal, feedbackContext),
+      source.augmentCurrentContextCandidates(localCandidates, signal,feedbackContext),
     getCancellationSnapshotForTest: async () => ({
       providerProjection: (registered.getProjectionSnapshotForTest?.() ?? []).map((item) => item.context.contextId),
       authoritativeContextCounts: await Promise.all(source.repositoryIds().map(async (repositoryId) => ({

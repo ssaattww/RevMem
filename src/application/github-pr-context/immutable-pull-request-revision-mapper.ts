@@ -14,6 +14,7 @@ import {
 } from "../../core/review-state/index";
 import type {
   PullRequestRevisionMapper,
+  PullRequestReviewStateCommit,
   PullRequestRevisionMappingEvidence,
 } from "./github-pull-request-context-layer-store";
 
@@ -29,7 +30,8 @@ export interface ImmutablePullRequestRevisionEvidence {
 }
 
 export type ImmutablePullRequestRevisionEvidenceLoader = (
-  evidence: Readonly<PullRequestRevisionMappingEvidence>
+  evidence: Readonly<PullRequestRevisionMappingEvidence>,
+  current?: Readonly<PullRequestReviewStateCommit>,
 ) => Promise<ImmutablePullRequestRevisionEvidence>;
 
 const DEFAULT_MAPPING_OPTIONS: GitFileStateTransitionInput["options"] = {
@@ -149,7 +151,7 @@ export function createImmutablePullRequestRevisionMapper(
       revisionId: evidence.sourceHeadSha,
       updatedAt: current.contextState.updatedAt
     });
-    const immutable = await loadEvidence(Object.freeze({ ...evidence }));
+    const immutable = await loadEvidence(Object.freeze({ ...evidence }), source);
     requireMatchingEvidence(evidence, immutable, source.contextState.files, source.globalState.files);
     const baseOnlyTransition =
       evidence.sourceHeadSha === evidence.targetHeadSha &&

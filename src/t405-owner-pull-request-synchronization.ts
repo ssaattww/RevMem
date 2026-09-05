@@ -81,15 +81,19 @@ const semanticUpdateRequired = (
 const globalAtRevision = (
   globalState: Readonly<ReviewStateRepositorySnapshot["globalState"]>,
   revisionId: string,
+  ownerGlobalMappedSeparately: boolean,
 ): ReviewStateRepositorySnapshot["globalState"] | undefined => {
   if (globalState.currentRevisionId === revisionId) return clone(globalState);
   const snapshot = globalState.revisionSnapshots?.[revisionId];
-  if (snapshot === undefined) return undefined;
+  if (snapshot === undefined && !ownerGlobalMappedSeparately) return undefined;
   return {
     ...clone(globalState),
     currentRevisionId: revisionId,
-    files: clone(snapshot.files),
-    updatedAt: snapshot.updatedAt,
+    // A missing historical Global is not inferred from another revision.
+    // The empty projection is used only to map this Context; owner Global
+    // is independently mapped from the captured authoritative current state.
+    files: snapshot === undefined ? {} : clone(snapshot.files),
+    updatedAt: snapshot?.updatedAt ?? globalState.updatedAt,
   };
 };
 
@@ -181,12 +185,15 @@ export const synchronizePullRequestOwner = async (
     if (!revisionEligible) skippedRevisionContextIds.push(context.contextId);
     if (!semanticUpdateRequired(context, input)) continue;
 
-    const sourceGlobal = revisionChanged
-      ? globalAtRevision(expected.globalState, context.pullRequest.headSha)
+    const sourceGlobal = revisionEligible && revisionChanged
+      ? globalAtRevision(
+          expected.globalState,
+          context.pullRequest.headSha,
+          dependencies.prepareOwnerGlobal !== undefined,
+        )
       : clone(expected.globalState);
     if (sourceGlobal === undefined) {
-      skippedRevisionContextIds.push(context.contextId);
-      continue;
+      throw new Error("Deferred pull-request mapping requires a source snapshot or a separate owner Global mapper.");
     }
     const current: PullRequestReviewStateCommit = {
       contextState: clone(context),
