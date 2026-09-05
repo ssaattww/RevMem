@@ -24,16 +24,14 @@ export {
   type ReviewStateTransactionCommitter,
   type ReviewStateTransactionExpectation,
   type ReviewStateTransactionNext
-} from "./review-state-service";
+} from "./pull-request-review-state-service";
 
 /** Immutable revision snapshot capture, validation, and independent restore contracts. */
 export {
-  captureImmutableRevisionSnapshots,
   restoreImmutableRevisionSnapshots,
   validateContextRevisionSnapshots,
   validateGlobalRevisionSnapshots,
   validateImmutableRevisionSnapshots,
-  type CaptureImmutableRevisionSnapshotsInput,
   type ImmutableRevisionSnapshotEvidence,
   type ImmutableRevisionSnapshotFileEvidence,
   type ImmutableRevisionSnapshotLayerResult,
@@ -41,3 +39,9 @@ export {
   type RestoreImmutableRevisionSnapshotsInput,
   type ValidateImmutableRevisionSnapshotsInput
 } from "./revision-snapshot-service";
+
+/** PR-aware exact snapshot capture that preserves the repository-owner current Global. */
+export {
+  captureImmutableRevisionSnapshots,
+  type CaptureImmutableRevisionSnapshotsInput
+} from "./pull-request-revision-snapshot-service";
