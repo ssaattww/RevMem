@@ -8,8 +8,8 @@
 - GitHub Issue: #112（PR #113の通常レビュー指摘対応）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #112保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: Issue #112 / PR #113の通常レビューfollow-upはactual composition Red/Green完了。同じSol/high reviewerのfix verification待ち
-- 次のタスク: 同じSol/high reviewerのfinding closure、full gate、独立final review、report attestation、exact-head required CI、squash merge
+- 現在のタスク: Issue #112 / PR #113の`PR113-NR-002`〜`005`はSol/high通常fix verification R2でclosed。最終publication candidateのfull gateへ進む
+- 次のタスク: full local equivalence gate、独立final review、report attestation、exact-head required CI、squash merge
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。`PR113-NR-002`〜`005`のactual composition focused 10/10、compile、build、lintはGreen。最小NR-007はexact-head CIのExtension Host証拠待ち
@@ -20,16 +20,19 @@
 
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| PR113-NR-002 | closed候補 / focused Green | 0.5h以内 | await後のcurrent source確認とfire-and-forget rejectionの既存error boundary接続だけでstale decoration publishを防ぐ | なし | actual tree compositionでsource切替後の旧結果をpublishせず、rejectをreportするfocused testがGreen |
-| PR113-NR-003 | closed候補 / focused Green | 0.5h以内 | durable mutation成功時の`applied`を維持し、各derived projectionを個別attempt・報告する | なし | actual runtime command compositionでprogress failure後もdecoration projectionをattemptし`applied`とreportを確認 |
-| PR113-NR-004 | closed候補 / focused Green | 0.5h以内 | actual VS Code wrapperのtarget分岐にもcurrent-node/current-snapshot membership検証を適用する | なし | actual provider/runtime compositionのRed後、PR A nodeをPR B切替後に拒否しhost未呼出しでGreen |
-| PR113-NR-005 | closed候補 / focused Green | 0.5h以内 | routing、command、pair validation、side/session resolutionのURI identityをcanonical表現へ統一する | なし | VS Code互換Uri adapterを通す空白・日本語、literal `%`の代表回帰testがGreen |
+| PR113-NR-002 | closed / normal fix verification R2 | 0.5h以内 | await後のcurrent source確認とfire-and-forget rejectionの既存error boundary接続だけでstale decoration publishを防ぐ | なし | actual tree compositionとfocused GreenをSol/high reviewerがCompleteと判定 |
+| PR113-NR-003 | closed / normal fix verification R2 | 0.5h以内 | durable mutation成功時の`applied`を維持し、各derived projectionを個別attempt・報告する | なし | actual runtime command compositionとfocused GreenをSol/high reviewerがCompleteと判定 |
+| PR113-NR-004 | closed / normal fix verification R2 | 0.5h以内 | actual VS Code wrapperのtarget分岐にもcurrent-node/current-snapshot membership検証を適用する | なし | actual provider/runtime compositionのRed→Greenとhost未呼出しをSol/high reviewerがCompleteと判定 |
+| PR113-NR-005 | closed / normal fix verification R2 | 0.5h以内 | routing、command、pair validation、side/session resolutionのURI identityをcanonical表現へ統一する | なし | VS Code互換Uri adapterの代表回帰とproduction pathをSol/high reviewerがCompleteと判定 |
 | PR113-NR-007-MIN | 実装済み・CI確認待ち | 0.5h以内 | actual Extension Hostでprovider経由の`.ts` documentのlanguage判定を確認する最小testを追加する | PR113-NR-005 | testはcompile済み。`document.languageId === "typescript"`をexact-head CIのExtension Host testで確認する |
 
 - 後続scope: `PR113-NR-001`、`006`、`008`、`009`、`010`。PR #113の製品実装へ混在させない
 - 設計判断: 既存のcurrent identity、durable mutation、working-tree membership契約を満たす不具合修正であり、新規・破壊的契約変更はないため設計書と`Design/BreakingChanges.md`は変更しない
 - governing TDD source: `tasks/phases-status.md`の計画前提「挙動実装では失敗するテストを先に追加」と更新済み通常レビュー報告の回帰5ケース
 - 全体終了条件: Red/Green、focused/broader local validation、Sol/high通常レビュー、full local equivalence gate、独立final review、report attestation、新candidate exact-head required pull_request CI、squash merge
+- 通常review verdict: `pass_with_held`、reviewed HEAD `7c88cd43f938b5afbe9bca6b1b44d749e0031ea1`。heldは最小NR-007のactual Host実行、full gate、exact-head CI、既知Windows別scope failures、後続finding
+- end-of-Issue Skill-gap判断: `no skill action needed`。既存review completeness gateが迂回を検出しており、Skillの不足や新しい再利用可能規則は確認されなかった
+- feedback分類: 新規feedback pointなし。早期リリースscopeとworktree削除はIssue #112固有の実行条件として扱う
 
 ## Issue #92 / PR #94 CI repair and independent review
 

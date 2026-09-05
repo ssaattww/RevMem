@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: Issue #112 / PR #113のblocking scopeはactual composition follow-upを含めfocused 10/10 Green。同じSol/high reviewerのfix verification待ち
-- 次の工程: 通常review closure、full gate、独立final review、report attestation、exact-head required CI、squash merge
+- 実装中タスク: Issue #112 / PR #113のblocking scopeはactual composition follow-upを含めSol/high通常fix verification R2でclosed
+- 次の工程: full local equivalence gate、独立final review、report attestation、exact-head required CI、squash merge
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestation
 - 後続候補: T608
 
