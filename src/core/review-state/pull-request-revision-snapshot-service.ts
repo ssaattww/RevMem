@@ -1,4 +1,3 @@
-import type { ReviewStateCommit } from "../../adapters/state-repository/index";
 import {
   captureImmutableRevisionSnapshots as captureBase,
   type CaptureImmutableRevisionSnapshotsInput,
@@ -8,7 +7,7 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export const captureImmutableRevisionSnapshots = (
   input: CaptureImmutableRevisionSnapshotsInput,
-): ReviewStateCommit => {
+): { readonly contextState: import("../contracts/index").ReviewContextState; readonly globalState: import("../contracts/index").RepositoryGlobalState } => {
   if (input.globalState.currentRevisionId === input.revisionId) return captureBase(input);
   if (input.contextState.kind !== "pull-request" || input.contextState.pullRequest?.headSha !== input.revisionId) {
     return captureBase(input);
