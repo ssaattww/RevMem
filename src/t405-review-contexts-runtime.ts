@@ -1037,6 +1037,31 @@ export function registerT405ReviewContextsRuntime(
           };
         },
         prepareUpdate: (input, current) => contextStateService.prepareUpdate(input, current),
+        prepareOwnerGlobal: async (currentGlobal, targetRevision, operationSignal) => {
+          const current = gitContextResolver.resolve({
+            repositoryId: owner.repositoryId,
+            rootPath: owner.repositoryRoot,
+            branch: owner.branchRef === undefined
+              ? { kind: "detached" }
+              : { kind: "branch", fullRef: owner.branchRef },
+            head: targetRevision,
+          });
+          const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
+          const prepared = await currentGlobalForNewPullRequest(
+            { loadGlobal: async () => clone(currentGlobal) },
+            current,
+            gitContextRevisionMapper,
+            resolveReviewRangeMappingOptions({
+              ignoreWhitespaceChanges: reviewRangeConfiguration.get("ignoreWhitespaceChanges", false),
+              ignoreEolChanges: reviewRangeConfiguration.get("ignoreEolChanges", false),
+            }),
+            openedEncodingHints(owner.repositoryRoot),
+          );
+          if (operationSignal?.aborted === true) {
+            throw new DOMException("PR synchronization was superseded.", "AbortError");
+          }
+          return prepared.nextGlobalState;
+        },
         recordPreparedUpdateHistory: (prepared) => contextStateService.recordPreparedUpdateHistory(prepared),
       },
       signal,
