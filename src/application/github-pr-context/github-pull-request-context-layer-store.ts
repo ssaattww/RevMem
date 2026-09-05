@@ -65,6 +65,16 @@ export interface UpdatePullRequestContextInput {
   readonly displayName?: string;
 }
 
+/** Side-effect-free update plan that can participate in a repository-owner transaction. */
+export interface PreparedPullRequestContextUpdate {
+  readonly repositoryId: string;
+  readonly contextId: string;
+  readonly expected: PullRequestReviewStateCommit;
+  readonly next: PullRequestReviewStateCommit;
+  readonly revisionChanged: boolean;
+  readonly mappingDisposition: PullRequestRevisionMappingDisposition;
+}
+
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 export function canonicalizeGitHubPullRequestIdentity(identity: GitHubPullRequestContextIdentity): GitHubPullRequestContextIdentity {
@@ -117,37 +127,89 @@ export class GitHubPullRequestContextStateService {
     return this.repository.load({ kind: "pull-request", repositoryId: canonicalRepositoryId, contextId: createGitHubPullRequestContextIdFromRepositoryId(canonicalRepositoryId, identity.pullRequestNumber) });
   }
 
-  public async update(input: UpdatePullRequestContextInput): Promise<PullRequestReviewStateCommit> {
+  /** Builds a validated update without committing state or writing history. */
+  public async prepareUpdate(
+    input: UpdatePullRequestContextInput,
+    suppliedCurrent?: PullRequestReviewStateCommit,
+  ): Promise<PreparedPullRequestContextUpdate> {
     const canonicalRepositoryId = requireCanonicalRepositoryId(input.repositoryId);
     requireIdentityMatchesRepositoryId(input.identity, canonicalRepositoryId);
     const contextId = createGitHubPullRequestContextIdFromRepositoryId(canonicalRepositoryId, input.identity.pullRequestNumber);
     requirePullRequestDescriptor(input.pullRequest, canonicalRepositoryId, input.identity.pullRequestNumber);
-    const current = await this.repository.load({ kind: "pull-request", repositoryId: canonicalRepositoryId, contextId });
-    if (current === undefined) throw new Error("Pull-request review context does not exist");
+    const loaded = suppliedCurrent ?? await this.repository.load({
+      kind: "pull-request",
+      repositoryId: canonicalRepositoryId,
+      contextId,
+    });
+    if (loaded === undefined) throw new Error("Pull-request review context does not exist");
+    const current = cloneCommit(loaded);
+    requireCurrentCommitIdentity(current, canonicalRepositoryId, contextId, input.identity.pullRequestNumber);
     const currentPullRequest = requirePullRequestContext(current.contextState);
     const nextPullRequest = preserveVisibilityOverride(currentPullRequest, input.pullRequest);
     const revisionChanged = currentPullRequest.baseSha !== nextPullRequest.baseSha || currentPullRequest.headSha !== nextPullRequest.headSha;
     let next: PullRequestReviewStateCommit;
     let mappingDisposition: PullRequestRevisionMappingDisposition = "mapped";
     if (revisionChanged) {
-      const evidence = Object.freeze<PullRequestRevisionMappingEvidence>({ repositoryId: canonicalRepositoryId, contextId, sourceBaseSha: currentPullRequest.baseSha, sourceHeadSha: currentPullRequest.headSha, targetBaseSha: nextPullRequest.baseSha, targetHeadSha: nextPullRequest.headSha });
-      next = await this.mapRevision({ current: cloneCommit(current), nextPullRequest: cloneValue(nextPullRequest), evidence });
+      const evidence = Object.freeze<PullRequestRevisionMappingEvidence>({
+        repositoryId: canonicalRepositoryId,
+        contextId,
+        sourceBaseSha: currentPullRequest.baseSha,
+        sourceHeadSha: currentPullRequest.headSha,
+        targetBaseSha: nextPullRequest.baseSha,
+        targetHeadSha: nextPullRequest.headSha,
+      });
+      next = await this.mapRevision({
+        current: cloneCommit(current),
+        nextPullRequest: cloneValue(nextPullRequest),
+        evidence,
+      });
       requireMappedCommit(next, current, nextPullRequest, evidence);
       mappingDisposition = next.mappingDisposition ?? "mapped";
     } else {
-      next = { contextState: { ...cloneValue(current.contextState), displayName: input.displayName ?? current.contextState.displayName, pullRequest: cloneValue(nextPullRequest), updatedAt: new Date().toISOString() }, globalState: cloneValue(current.globalState) };
+      next = {
+        contextState: {
+          ...cloneValue(current.contextState),
+          displayName: input.displayName ?? current.contextState.displayName,
+          pullRequest: cloneValue(nextPullRequest),
+          updatedAt: new Date().toISOString(),
+        },
+        globalState: cloneValue(current.globalState),
+      };
     }
-    await this.repository.commit({ repositoryId: canonicalRepositoryId, contextId, expected: cloneCommit(current), next: cloneCommit(next) });
-    if (revisionChanged) await this.historyRecorder?.recordRevisionMapping(
-      cloneCommit(current),
-      cloneCommit(next),
-      mappingDisposition === "restored"
+    return {
+      repositoryId: canonicalRepositoryId,
+      contextId,
+      expected: cloneCommit(current),
+      next: cloneCommit(next),
+      revisionChanged,
+      mappingDisposition,
+    };
+  }
+
+  /** Records history for an already committed prepared update. */
+  public async recordPreparedUpdateHistory(prepared: Readonly<PreparedPullRequestContextUpdate>): Promise<void> {
+    if (!prepared.revisionChanged) return;
+    await this.historyRecorder?.recordRevisionMapping(
+      cloneCommit(prepared.expected),
+      cloneCommit(prepared.next),
+      prepared.mappingDisposition === "restored"
         ? "exact-revision-snapshot-restored"
-        : mappingDisposition === "mixed"
+        : prepared.mappingDisposition === "mixed"
           ? "exact-revision-snapshot-mixed"
           : "git-revision-mapped"
     );
-    return cloneCommit(next);
+  }
+
+  public async update(input: UpdatePullRequestContextInput): Promise<PullRequestReviewStateCommit> {
+    const prepared = await this.prepareUpdate(input);
+    await this.repository.commit({
+      repositoryId: prepared.repositoryId,
+      contextId: prepared.contextId,
+      expected: cloneCommit(prepared.expected),
+      next: cloneCommit(prepared.next),
+    });
+    await this.recordPreparedUpdateHistory(prepared);
+    return cloneCommit(prepared.next);
   }
 }
 
@@ -169,6 +231,22 @@ function requireIdentityMatchesRepositoryId(identity: GitHubPullRequestContextId
   const canonical = canonicalizeGitHubPullRequestIdentity(identity);
   const canonicalIdentityRepository = canonicalizeHostedGitRepositoryIdentity(canonical.host, `${canonical.owner}/${canonical.repository}`);
   if (canonicalIdentityRepository !== repositoryId) throw new Error("PR identity does not match canonical repositoryId");
+}
+
+function requireCurrentCommitIdentity(
+  current: PullRequestReviewStateCommit,
+  repositoryId: string,
+  contextId: string,
+  pullRequestNumber: number,
+): void {
+  if (
+    current.contextState.repositoryId !== repositoryId ||
+    current.globalState.repositoryId !== repositoryId ||
+    current.contextState.contextId !== contextId
+  ) {
+    throw new Error("Supplied pull-request state does not match the requested repository/context identity");
+  }
+  requirePullRequestDescriptor(requirePullRequestContext(current.contextState), repositoryId, pullRequestNumber);
 }
 
 function requirePullRequestContext(context: ReviewContextState): PullRequestReviewContextVisibility {
