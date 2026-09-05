@@ -44,10 +44,6 @@ import {
   registerGlobalUnderstandingRuntime
 } from "./ui/global-understanding/index";
 import {
-  refreshPullRequestProgressTree,
-  setPullRequestProgressSource
-} from "./ui/pr-progress/vscode-pull-request-progress-tree";
-import {
   refreshAfterDocumentEdit,
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
@@ -60,7 +56,10 @@ import {
   registerT405ReviewContextsRuntime,
   type RegisteredT405ReviewContextsRuntime,
 } from "./t405-review-contexts-runtime";
-import { PullRequestReviewRuntime } from "./t405-pull-request-review-runtime";
+import {
+  PullRequestReviewRuntime,
+  type PullRequestReviewRuntimeOptions
+} from "./t405-pull-request-review-runtime";
 import {
   GitReviewContextResolver,
   type SelectedReviewContext
@@ -589,6 +588,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const prRepository = runtimePort.reviewStateRepository;
   const prHistory = runtimePort.reviewHistoryRecorder;
+  const reportPullRequestProgressError = async (error: unknown): Promise<void> => {
+    await vscode.window.showErrorMessage(
+      `PR Progressを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+    );
+  };
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
     repository: prRepository,
     requestHistory: (transaction) => prHistory.recordTransaction(
@@ -609,6 +613,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: exclusionPolicy.getUserGlobs(),
     }),
+    reportDerivedProjectionError: reportPullRequestProgressError
+  } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
+    readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
   const refreshPullRequestProgressForSelection = async (): Promise<void> => {
     const contextId = selectedContext?.kind === "pull-request" &&
@@ -621,20 +628,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       activateProgress: (selectedContextId) =>
         pullRequestReviewRuntime.activateProgress(selectedContextId),
       clearProgress: () => pullRequestReviewRuntime.clearProgress(),
-      setSource: (source) => setPullRequestProgressSource(source),
-      refreshTree: () => refreshPullRequestProgressTree()
+      setSource: (source) => runtimePort.setPullRequestProgressSource(source),
+      refreshTree: () => runtimePort.refreshPullRequestProgressTree()
     });
-  };
-  const reportPullRequestProgressError = async (error: unknown): Promise<void> => {
-    await vscode.window.showErrorMessage(
-      `PR Progressを更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
-    );
   };
   pullRequestReviewRuntimeRef.current = pullRequestReviewRuntime;
   const pullRequestCommandService = pullRequestReviewRuntime.createCommandService<vscode.TextEditor>({
-    getDocumentUri: (editor) => editor.document.uri.toString(true),
+    getDocumentUri: (editor) => editor.document.uri.toString(),
     getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(
-      editor.document.uri.toString(true)
+      editor.document.uri.toString()
     ),
     getLineCount: (editor) => editor.document.lineCount,
     getSelections: (editor) => editor.selections.map((selected) => ({
@@ -672,10 +674,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     if (!(tab?.input instanceof vscode.TabInputTextDiff)) {
       throw new Error("PR review command requires the active immutable diff tab.");
     }
-    const original = tab.input.original.toString(true);
-    const modified = tab.input.modified.toString(true);
+    const original = tab.input.original.toString();
+    const modified = tab.input.modified.toString();
     pullRequestReviewRuntime.validateDiffDocumentPair(original, modified);
-    const editorUri = editor.document.uri.toString(true);
+    const editorUri = editor.document.uri.toString();
     if (editorUri !== original && editorUri !== modified) {
       throw new Error("Active editor does not belong to the validated immutable PR diff tab.");
     }

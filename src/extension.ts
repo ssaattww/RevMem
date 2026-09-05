@@ -58,6 +58,7 @@ import {
 } from "./ui/pr-progress/index";
 import {
   registerVscodePullRequestProgressTree,
+  type PullRequestProgressTreeSource,
   type VscodePullRequestProgressTreeDataProvider
 } from "./ui/pr-progress/vscode-pull-request-progress-tree";
 import {
@@ -158,6 +159,10 @@ export interface ReviewRangeRuntimePort {
   setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
   refreshVisibleEditorDecorations(): Promise<void>;
+  /** Switches this Extension Host's PR Progress source without module-global ownership. */
+  setPullRequestProgressSource(source: PullRequestProgressTreeSource | undefined): void;
+  /** Refreshes only this Extension Host's PR Progress tree. */
+  refreshPullRequestProgressTree(): void;
   /** Subscribes UI projections that must be recalculated after review-state commands. */
   onDidChangeReviewState(listener: () => void): vscode.Disposable;
   /** Registers another canonical review-diff owner without registering a second URI scheme provider. */
@@ -770,7 +775,7 @@ export function activate(
     isDiffEditor: (editor) =>
       isActiveDiffEditor() || editor.document.uri.scheme === "review-range-diff",
     invokeDiffEditorCommand: async (operation, editor) => {
-      const documentUri = editor.document.uri.toString(true);
+      const documentUri = editor.document.uri.toString();
       const additional = matchingAdditionalReviewDiffRuntime(documentUri);
       if (additional !== undefined) {
         const result = await additional.invokeCommand(operation, editor);
@@ -865,6 +870,10 @@ export function activate(
     },
     refreshVisibleEditorDecorations: () =>
       decorationController.refreshVisibleEditors(),
+    setPullRequestProgressSource: (source) =>
+      localBaseHeadTreeReference.current?.setPullRequestProgressSource(source),
+    refreshPullRequestProgressTree: () =>
+      localBaseHeadTreeReference.current?.refreshPullRequestProgressTree(),
     onDidChangeReviewState: (listener) =>
       reviewStateChanged.event(listener),
     registerReviewDiffRuntime: (runtime) => {
@@ -905,7 +914,7 @@ export function activate(
     }
     const uri = vscode.Uri.parse(runtime.createPresentFileDocumentUri(target), true);
     await vscode.commands.executeCommand("vscode.open", uri);
-    openedLocalBaseHeadFiles.push(uri.toString(true));
+    openedLocalBaseHeadFiles.push(uri.toString());
   };
   const localBaseHeadRuntime = new LocalBaseHeadRuntime<vscode.Uri>({
     repository,
@@ -920,8 +929,8 @@ export function activate(
           title
         );
         openedLocalBaseHeadDiffs.push({
-          original: original.toString(true),
-          modified: modified.toString(true)
+          original: original.toString(),
+          modified: modified.toString()
         });
       }
     },
@@ -936,7 +945,7 @@ export function activate(
   localBaseHeadRuntimeReference.current = localBaseHeadRuntime;
   const localBaseHeadCommandService = localBaseHeadRuntime.createCommandService<vscode.TextEditor>({
     getSide: (editor) => localBaseHeadRuntime.sideForDiffDocumentUri(
-      editor.document.uri.toString(true)
+      editor.document.uri.toString()
     ),
     getLineCount: (editor) => editor.document.lineCount,
     getSelections: (editor) => editor.selections.map((selection) => ({
@@ -950,7 +959,7 @@ export function activate(
       }
     })),
     fileIdFor: (editor) => localBaseHeadRuntime.fileIdForDiffDocumentUri(
-      editor.document.uri.toString(true)
+      editor.document.uri.toString()
     ),
     confirmWholeFileOperation: async (operation) => {
       if (context.extensionMode === vscode.ExtensionMode.Test &&
@@ -988,7 +997,7 @@ export function activate(
       "review-range-diff",
       {
         provideTextDocumentContent: (uri) => {
-          const additional = matchingAdditionalReviewDiffRuntime(uri.toString(true));
+          const additional = matchingAdditionalReviewDiffRuntime(uri.toString());
           return additional === undefined
             ? localBaseHeadRuntime.documentContentProvider.provideTextDocumentContent(uri)
             : additional.provideTextDocumentContent(uri);

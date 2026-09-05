@@ -19,3 +19,4 @@ export {
   type PullRequestProgressTreeStagingOptions,
   type PullRequestProgressTreeSnapshotIdentity
 } from "./pull-request-progress-tree-data-provider";
+export { requireWorkingTreeFileTarget } from "./working-tree-file-target";

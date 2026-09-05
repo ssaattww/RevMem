@@ -5,6 +5,7 @@ import type {
   PullRequestDiffFileProgress,
   PullRequestDiffProgress
 } from "../../core/pr-progress/index";
+import { requireWorkingTreeFileTarget } from "./working-tree-file-target";
 
 /** Stable PR Progress Tree root categories in their default display order. */
 export type PullRequestProgressTreeCategory =
@@ -100,7 +101,7 @@ export interface PullRequestEffectiveFileProgress {
   readonly progress: number;
 }
 
-/** Aggregate T304 projection that is intentionally distinct from raw T301 progress. */
+/** Aggregate T304 projection that is intentionally distinct from raw T301 result. */
 export interface PullRequestEffectiveProgress {
   readonly reviewedLineCount: number;
   readonly totalLineCount: number;
@@ -159,6 +160,7 @@ export type PullRequestProgressTreeNode =
 export interface PullRequestProgressTreeHost {
   openDiff(target: PullRequestProgressTreeDiffTarget): Promise<void>;
   openFile(target: PullRequestProgressTreeDiffTarget): Promise<void>;
+  openWorkingTreeFile?(target: PullRequestProgressTreeDiffTarget): Promise<void>;
 }
 
 interface CategoryDefinition {
@@ -838,9 +840,6 @@ export class PullRequestProgressTreeDataProvider {
       sortedByCategory.set(category, Object.freeze(sorted));
     }
     if (!isCurrent()) return false;
-    // Publication is a single synchronous swap after every validation, node build,
-    // and category sort checkpoint has accepted this generation. Stale work leaves
-    // the previous immutable tree intact rather than clearing or partially replacing it.
     this.filesByCategory.clear();
     for (const { category } of CATEGORY_DEFINITIONS) {
       this.filesByCategory.set(category, sortedByCategory.get(category)!);
@@ -887,6 +886,20 @@ export class PullRequestProgressTreeDataProvider {
     }
     if (element.kind === "file") return [];
     return this.filesByCategory.get(element.category) ?? [];
+  }
+
+  /** Opens the current working-tree destination for one current non-deleted file node. */
+  public async openWorkingTreeFile(
+    node: PullRequestProgressTreeFileNode
+  ): Promise<void> {
+    const target = requireWorkingTreeFileTarget(
+      node,
+      this.currentFileNodes.has(node)
+    );
+    if (this.host.openWorkingTreeFile === undefined) {
+      throw new Error("The PR Progress host cannot open working-tree files.");
+    }
+    await this.host.openWorkingTreeFile(freezeOpenTarget(target));
   }
 
   /**

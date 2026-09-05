@@ -95,6 +95,17 @@ extends Omit<DiffEditorReviewCommandDependencies<Editor>, "openSession" | "reque
   readonly getDocumentUri: (editor: Editor) => string;
 }
 
+const matchesReviewDiffDescriptor = (
+  actual: ReviewDiffDocumentDescriptor,
+  expected: ReviewDiffDocumentDescriptor
+): boolean =>
+  actual.contextId === expected.contextId &&
+  actual.filePath === expected.filePath &&
+  actual.fileSystemPathSemantics === expected.fileSystemPathSemantics &&
+  actual.side === expected.side &&
+  actual.revisionSource === expected.revisionSource &&
+  actual.revision === expected.revision;
+
 interface PullRequestFullTextCache {
   readonly baseSha: string;
   readonly headSha: string;
@@ -496,23 +507,24 @@ export class PullRequestReviewRuntime<Uri> {
 
     const matchingFiles = snapshot.files.filter((file) => {
       const logicalPath = file.newPath ?? file.oldPath ?? file.fileId;
-      const expectedOriginal = this.codec.encode({
+      const expectedOriginal: ReviewDiffDocumentDescriptor = {
         contextId: snapshot.contextId,
         filePath: file.oldPath ?? logicalPath,
         fileSystemPathSemantics: registration.fileSystemPathSemantics,
         side: "original",
         revisionSource: file.oldPath === undefined ? "empty" : "git-commit",
         revision: snapshot.baseSha,
-      });
-      const expectedModified = this.codec.encode({
+      };
+      const expectedModified: ReviewDiffDocumentDescriptor = {
         contextId: snapshot.contextId,
         filePath: file.newPath ?? logicalPath,
         fileSystemPathSemantics: registration.fileSystemPathSemantics,
         side: "modified",
         revisionSource: file.newPath === undefined ? "empty" : "git-commit",
         revision: snapshot.headSha,
-      });
-      return expectedOriginal === originalUri && expectedModified === modifiedUri;
+      };
+      return matchesReviewDiffDescriptor(original, expectedOriginal) &&
+        matchesReviewDiffDescriptor(modified, expectedModified);
     });
     const file = matchingFiles[0];
     if (matchingFiles.length !== 1 || file === undefined || file.status === "binary") {
@@ -680,7 +692,7 @@ export class PullRequestReviewRuntime<Uri> {
       throw new Error("PR diff document and requested file identity do not match");
     }
     const logicalPath = diffFile.newPath ?? diffFile.oldPath ?? diffFile.fileId;
-    const expectedUri = this.codec.encode({
+    const expectedDescriptor: ReviewDiffDocumentDescriptor = {
       contextId: registration.snapshot.contextId,
       filePath: descriptor.side === "original"
         ? diffFile.oldPath ?? logicalPath
@@ -693,8 +705,8 @@ export class PullRequestReviewRuntime<Uri> {
       revision: descriptor.side === "original"
         ? registration.snapshot.baseSha
         : registration.snapshot.headSha,
-    });
-    if (uri !== expectedUri) {
+    };
+    if (!matchesReviewDiffDescriptor(descriptor, expectedDescriptor)) {
       throw new RangeError("PR diff document is stale for the current immutable comparison.");
     }
     const persisted = await this.options.repository.load(targetFor(registration));

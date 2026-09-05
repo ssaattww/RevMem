@@ -15,6 +15,7 @@ const MAX_CONTEXT_ID_BYTES = 8_192;
 const MAX_FILE_PATH_BYTES = 32_768;
 const BASE64_URL_TOKEN = /^[A-Za-z0-9_-]+$/u;
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const LANGUAGE_HINT_FALLBACK_BASENAME = "review-file";
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 export type ReviewDiffUriCodecErrorCode =
@@ -151,6 +152,40 @@ const validateRevision = (
 const encodeField = (value: string): string =>
   Buffer.from(value, "utf8").toString("base64url");
 
+const fileBasename = (filePath: string): string =>
+  filePath.slice(filePath.lastIndexOf("/") + 1);
+
+const fileExtension = (basename: string): string => {
+  const index = basename.lastIndexOf(".");
+  return index <= 0 ? "" : basename.slice(index);
+};
+
+const encodeLanguageHint = (filePath: string, remainingCharacters: number): string => {
+  const basename = fileBasename(filePath);
+  const encodedBasename = encodeURIComponent(basename);
+  if (encodedBasename.length <= remainingCharacters) return encodedBasename;
+
+  const encodedFallback = encodeURIComponent(
+    `${LANGUAGE_HINT_FALLBACK_BASENAME}${fileExtension(basename)}`
+  );
+  if (encodedFallback.length <= remainingCharacters) return encodedFallback;
+  throw descriptorError("Encoded review diff URI exceeds the supported size");
+};
+
+const decodeLanguageHint = (token: string): string => {
+  if (token.length === 0) throw uriError("file language hint must not be empty");
+  try {
+    const decoded = decodeURIComponent(token);
+    if (containsUnpairedSurrogate(decoded) || encodeURIComponent(decoded) !== token) {
+      throw uriError("file language hint is not in canonical percent-encoded form");
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof ReviewDiffUriCodecError) throw error;
+    throw uriError("file language hint is not valid UTF-8", error);
+  }
+};
+
 const decodeField = (token: string, name: string, maxBytes: number): string => {
   if (!BASE64_URL_TOKEN.test(token)) {
     throw uriError(`${name} is not canonical base64url`);
@@ -207,7 +242,12 @@ const validateDescriptor = (
 export class ReviewDiffUriCodec {
   public encode(descriptor: ReviewDiffDocumentDescriptor): string {
     const valid = validateDescriptor(descriptor, descriptorError);
-    const uri = `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}/${REVIEW_DIFF_VERSION}/${encodeField(valid.contextId)}/${valid.fileSystemPathSemantics}/${valid.side}/${valid.revisionSource}/${encodeField(valid.revision)}/${encodeField(valid.filePath)}`;
+    const identity = this.encodeCurrentIdentity(valid);
+    const languageHint = encodeLanguageHint(
+      valid.filePath,
+      MAX_URI_LENGTH - identity.length - 1
+    );
+    const uri = `${identity}/${languageHint}`;
     if (uri.length > MAX_URI_LENGTH) {
       throw descriptorError("Encoded review diff URI exceeds the supported size");
     }
@@ -245,8 +285,9 @@ export class ReviewDiffUriCodec {
     }
 
     const segments = parsed.pathname.split("/");
+    const isLegacy = segments.length === 8;
     if (
-      segments.length !== 8 ||
+      (!isLegacy && segments.length !== 9) ||
       segments[0] !== "" ||
       segments[1] !== REVIEW_DIFF_VERSION
     ) {
@@ -259,10 +300,11 @@ export class ReviewDiffUriCodec {
       contextToken,
       semanticsToken,
       sideToken,
-      sourceToken,
-      revisionToken,
-      fileToken
+      sourceToken
     ] = segments;
+    const revisionToken = isLegacy ? segments[6] : segments[7];
+    const fileToken = isLegacy ? segments[7] : segments[6];
+    const languageHintToken = isLegacy ? undefined : segments[8];
     if (semanticsToken !== "posix" && semanticsToken !== "windows") {
       throw uriError("Review diff URI path semantics are invalid");
     }
@@ -292,9 +334,53 @@ export class ReviewDiffUriCodec {
       (message) => uriError(message)
     );
 
-    if (this.encode(descriptor) !== uri) {
+    if (isLegacy) {
+      if (this.encodeLegacyIdentity(descriptor) !== uri) {
+        throw uriError("Review diff URI is not in canonical form");
+      }
+      return descriptor;
+    }
+
+    const languageHint = decodeLanguageHint(languageHintToken!);
+    const expectedLanguageHint = decodeLanguageHint(
+      this.encode(descriptor).split("/").at(-1)!
+    );
+    if (
+      languageHint !== expectedLanguageHint ||
+      this.encode(descriptor) !== parsed.toString()
+    ) {
       throw uriError("Review diff URI is not in canonical form");
     }
     return descriptor;
+  }
+
+  private encodeCurrentIdentity(
+    descriptor: ReviewDiffDocumentDescriptor
+  ): string {
+    return [
+      `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}`,
+      REVIEW_DIFF_VERSION,
+      encodeField(descriptor.contextId),
+      descriptor.fileSystemPathSemantics,
+      descriptor.side,
+      descriptor.revisionSource,
+      encodeField(descriptor.filePath),
+      encodeField(descriptor.revision)
+    ].join("/");
+  }
+
+  private encodeLegacyIdentity(
+    descriptor: ReviewDiffDocumentDescriptor
+  ): string {
+    return [
+      `${REVIEW_DIFF_SCHEME}://${REVIEW_DIFF_AUTHORITY}`,
+      REVIEW_DIFF_VERSION,
+      encodeField(descriptor.contextId),
+      descriptor.fileSystemPathSemantics,
+      descriptor.side,
+      descriptor.revisionSource,
+      encodeField(descriptor.revision),
+      encodeField(descriptor.filePath)
+    ].join("/");
   }
 }

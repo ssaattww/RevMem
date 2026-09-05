@@ -1,3 +1,6 @@
+import { pathToFileURL } from "node:url";
+
+import type { NormalEditorReviewedDecoration } from "./application/editor-decoration/index";
 import {
   describePullRequestProgressFile,
   describePullRequestProgressSummary,
@@ -5,8 +8,15 @@ import {
   reportActiveOperationDetail,
   reportActiveOperationProgress,
 } from "./application/operation-feedback/index";
+import type { DiffEditorReviewCommandResult } from "./application/review-commands/diff-editor-review-command-service";
+import { normalizeLineIntervals } from "./core/intervals/index";
+import { PullRequestReviewProjectionNotifier } from "./t405-pr-review-projection-notifier";
+import { synchronizeAppliedPullRequestReview } from "./t405-pr-review-projection-sync";
+import type { PullRequestProgressTreeFileNode } from "./ui/pr-progress/index";
+import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
+  type PullRequestReviewCommandDependencies,
   type PullRequestReviewRuntimeOptions,
   type PullRequestReviewRuntimeRegistration,
 } from "./t405-pull-request-review-runtime-base";
@@ -27,6 +37,39 @@ interface ActiveFileProgress {
   readonly seen: Set<string>;
 }
 
+interface WorkingTreeOpenTarget {
+  readonly repositoryRoot: string;
+  readonly repositoryPath: string;
+  readonly fileSystemPathSemantics: "posix" | "windows";
+}
+
+type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
+  readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
+  readonly reportDerivedProjectionError?: (error: unknown) => void | Promise<void>;
+};
+
+interface ReviewProjectionProgressSource {
+  onDidChangeReviewProjection(
+    listener: () => void | Promise<void>
+  ): { dispose(): void };
+  ownsReviewDiffDocumentUri(uri: string): boolean;
+  loadReviewedDecorations(uri: string): Promise<readonly NormalEditorReviewedDecoration[]>;
+  workingTreeFileTarget(node: PullRequestProgressTreeFileNode): WorkingTreeOpenTarget;
+}
+
+const reviewContextLabel = (
+  contextState: Awaited<ReturnType<BasePullRequestReviewRuntime<unknown>["openSession"]>>["contextState"]
+): string => {
+  if (contextState.kind === "pull-request" && contextState.pullRequest !== undefined) {
+    const title = contextState.pullRequest.title?.trim();
+    return title === undefined || title.length === 0
+      ? `PR #${contextState.pullRequest.number}`
+      : `PR #${contextState.pullRequest.number}: ${title}`;
+  }
+  const displayName = contextState.displayName.trim();
+  return displayName.length === 0 ? "Workspace review" : displayName;
+};
+
 /** Coordinates refreshes around the canonical PR review runtime. */
 export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<Uri> {
   private acceptedProgressKey: string | undefined;
@@ -35,14 +78,120 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private activeFileProgress: ActiveFileProgress | undefined;
   private readonly clearAcceptedTree: () => void;
   private readonly getExclusionPolicy: PullRequestReviewRuntimeOptions<Uri>["getExclusionPolicy"];
+  private readonly workingTreeRegistrations = new Map<string, PullRequestReviewRuntimeRegistration>();
+  private readonly openWorkingTreeFileHost: WorkingTreeRuntimeOptions<Uri>["openWorkingTreeFile"];
+  private readonly openFileHost: PullRequestReviewRuntimeOptions<Uri>["openFile"];
+  private readonly parseUri: PullRequestReviewRuntimeOptions<Uri>["diffHost"]["parseUri"];
+  private readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
+  private readonly projectionNotifier = new PullRequestReviewProjectionNotifier();
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
     super(options);
     this.getExclusionPolicy = options.getExclusionPolicy;
+    this.openWorkingTreeFileHost = (options as WorkingTreeRuntimeOptions<Uri>).openWorkingTreeFile;
+    this.openFileHost = options.openFile;
+    this.parseUri = options.diffHost.parseUri;
+    this.reportDerivedProjectionError =
+      (options as WorkingTreeRuntimeOptions<Uri>).reportDerivedProjectionError ?? (() => undefined);
     this.clearAcceptedTree = this.progress.clear.bind(this.progress);
     this.progress.clear = (): void => {
       if (!this.suppressTreeClear) this.clearAcceptedTree();
     };
+    const projectionSource = this.progress as typeof this.progress & ReviewProjectionProgressSource;
+    projectionSource.onDidChangeReviewProjection = (listener) =>
+      this.onDidChangeReviewProjection(listener);
+    projectionSource.ownsReviewDiffDocumentUri = (uri) =>
+      this.ownsDiffDocumentUri(uri);
+    projectionSource.loadReviewedDecorations = (uri) =>
+      this.loadReviewedDecorations(uri);
+    projectionSource.workingTreeFileTarget = (node) =>
+      this.resolveWorkingTreeOpenTarget(node);
+    this.progress.openWorkingTreeFile = async (node): Promise<void> => {
+      const isCurrentNode = this.progress.getChildren().some((category) =>
+        category.kind === "category" &&
+        this.progress.getChildren(category).includes(node)
+      );
+      if (!isCurrentNode) {
+        throw new RangeError("PR Progress working-tree target is stale for the active snapshot.");
+      }
+      const openTarget = this.resolveWorkingTreeOpenTarget(node);
+      if (this.openWorkingTreeFileHost !== undefined) {
+        await this.openWorkingTreeFileHost(openTarget);
+        return;
+      }
+      if (this.openFileHost === undefined) {
+        throw new Error("Pull-request working-tree file host is unavailable.");
+      }
+      const filePath = resolveWorkingTreeFilePath(
+        openTarget.repositoryRoot,
+        openTarget.repositoryPath,
+        openTarget.fileSystemPathSemantics
+      );
+      await this.openFileHost(this.parseUri(pathToFileURL(filePath).toString()));
+    };
+  }
+
+  public onDidChangeReviewProjection(listener: () => void | Promise<void>) {
+    return this.projectionNotifier.subscribe(listener);
+  }
+
+  public override createCommandService<Editor>(
+    dependencies: PullRequestReviewCommandDependencies<Editor>
+  ) {
+    const service = super.createCommandService(dependencies);
+    const synchronize = async (
+      operation: () => Promise<DiffEditorReviewCommandResult>
+    ): Promise<DiffEditorReviewCommandResult> => synchronizeAppliedPullRequestReview(
+      await operation(),
+      () => this.refreshActiveProgress(),
+      () => this.projectionNotifier.notify(),
+      this.reportDerivedProjectionError
+    );
+    const markSelectionReviewed = service.markSelectionReviewed.bind(service);
+    const unmarkSelectionReviewed = service.unmarkSelectionReviewed.bind(service);
+    const markFileReviewed = service.markFileReviewed.bind(service);
+    const unmarkFileReviewed = service.unmarkFileReviewed.bind(service);
+    service.markSelectionReviewed = (editor) => synchronize(() => markSelectionReviewed(editor));
+    service.unmarkSelectionReviewed = (editor) => synchronize(() => unmarkSelectionReviewed(editor));
+    service.markFileReviewed = (editor) => synchronize(() => markFileReviewed(editor));
+    service.unmarkFileReviewed = (editor) => synchronize(() => unmarkFileReviewed(editor));
+    return service;
+  }
+
+  /** Loads reviewed decorations for one current immutable PR diff document. */
+  public async loadReviewedDecorations(uri: string): Promise<readonly NormalEditorReviewedDecoration[]> {
+    const session = await this.openSession(uri);
+    const file = session.contextState.files[session.target.fileId];
+    if (file === undefined) return [];
+    const label = reviewContextLabel(session.contextState);
+    const side = this.sideForDiffDocumentUri(uri);
+    const intervals = side === "modified"
+      ? normalizeLineIntervals(file.modifiedReviewed)
+      : normalizeLineIntervals([
+        ...file.modifiedReviewed.flatMap((reviewed) =>
+          session.originalToModifiedLineMappings.flatMap((mapping) => {
+            const modifiedStart = Math.max(reviewed.startLine, mapping.modifiedStartLine);
+            const modifiedEnd = Math.min(
+              reviewed.endLineExclusive,
+              mapping.modifiedStartLine + mapping.lineCount
+            );
+            if (modifiedStart >= modifiedEnd) return [];
+            const offset = modifiedStart - mapping.modifiedStartLine;
+            return [{
+              startLine: mapping.originalStartLine + offset,
+              endLineExclusive: mapping.originalStartLine + offset + (modifiedEnd - modifiedStart)
+            }];
+          })
+        ),
+        ...(file.originalReviewedByDiff[session.diffId] ?? [])
+      ]);
+    return intervals.map((interval) => ({
+      interval,
+      source: "context",
+      contextLabel: label,
+      reviewedAt: file.updatedAt,
+      globalActive: false
+    }));
   }
 
   public override register(registration: PullRequestReviewRuntimeRegistration): void {
@@ -76,6 +225,12 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         return result;
       },
     });
+    this.workingTreeRegistrations.set(registration.snapshot.contextId, registration);
+  }
+
+  public override unregister(contextId: string): void {
+    this.workingTreeRegistrations.delete(contextId);
+    super.unregister(contextId);
   }
 
   public override async getProgress(
@@ -170,5 +325,37 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     this.activeFileProgress = undefined;
     this.suppressTreeClear = false;
     super.clearProgress();
+  }
+
+  private resolveWorkingTreeOpenTarget(
+    node: PullRequestProgressTreeFileNode
+  ): WorkingTreeOpenTarget {
+    const target = node.openTarget;
+    const registration = this.workingTreeRegistrations.get(target.contextId);
+    if (registration === undefined) {
+      throw new RangeError("PR Progress working-tree target is not registered.");
+    }
+    const { snapshot } = registration;
+    const file = snapshot.files.find((candidate) => candidate.fileId === target.file.fileId);
+    if (
+      target.snapshotId !== `${snapshot.contextId}:${snapshot.baseSha}:${snapshot.headSha}` ||
+      target.baseSha !== snapshot.baseSha ||
+      target.headSha !== snapshot.headSha ||
+      target.originalDiffId !== snapshot.originalDiffId ||
+      file === undefined ||
+      file.oldPath !== target.file.oldPath ||
+      file.newPath !== target.file.newPath ||
+      file.status !== target.file.status
+    ) {
+      throw new RangeError("PR Progress working-tree target is stale for the registered snapshot.");
+    }
+    if (file.status === "deleted" || file.newPath === undefined) {
+      throw new RangeError("Deleted PR Progress file does not exist in the working tree.");
+    }
+    return {
+      repositoryRoot: registration.repositoryRoot,
+      repositoryPath: file.newPath,
+      fileSystemPathSemantics: registration.fileSystemPathSemantics,
+    };
   }
 }

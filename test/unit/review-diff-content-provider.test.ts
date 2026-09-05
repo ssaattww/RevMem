@@ -130,7 +130,7 @@ test("review diff URI round-trips context, file, semantics, side, source, and re
 
   assert.match(
     originalUri,
-    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/posix\/original\/git-commit\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/u
+    /^review-range-diff:\/\/document\/v1\/[A-Za-z0-9_-]+\/posix\/original\/git-commit\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/space%20name\.ts$/u
   );
   assert.deepEqual(codec.decode(originalUri), originalDescriptor);
   assert.deepEqual(codec.decode(modifiedUri), modifiedDescriptor);
@@ -162,7 +162,7 @@ test("review diff URI decoding rejects non-canonical or malformed inputs determi
     valid.replace("/posix/", "/unknown/"),
     valid.replace("/original/", "/unknown/"),
     valid.replace("/git-commit/", "/moving-ref/"),
-    valid.replace(/\/[A-Za-z0-9_-]+$/u, "/***")
+    valid.replace(/\/[^/]+$/u, "/***")
   ];
 
   for (const uri of invalidUris) {
