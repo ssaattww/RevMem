@@ -8,8 +8,8 @@
 - GitHub Issue: #112（PR #113の通常レビュー指摘対応）
 - 現在のPhase: P1 ローカル行範囲管理（完了）、P2 編集・Git差分追従（完了）、P3 diff editorとPR進捗（Issue #112保守対応中）、P4 GitHub PR連携（完了）、P5 Global確認済みと理解率（完了）、P6 Gitなし対応と堅牢化（進行中）
 - 直近実装タスク: T609 repository解決とmixed encoding耐障害化（Issue #81、PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 現在のタスク: `PR113-IFR-001/002`は同じSol/high通常reviewerが全matrix Complete/closed。新candidateのfull gateへ進む
-- 次のタスク: full gate R2、同じ独立reviewerのIFR/CI-delta限定closure、attestation、exact-head CI、squash merge
+- 現在のタスク: `PR113-IFR-001/002`は通常review closed。candidate `ebe8e91becd1c09c1b49dc14201401b2a20d8abf`のfull gate R2を完了し、同じ独立reviewerの限定closureへ進む
+- 次のタスク: 同じ独立reviewerのIFR/CI-delta限定closure、reserved report attestation、exact-head required CI、squash merge
 - 実装状態: T405、T406、T506、T603〜T607はmainへ統合済み。T607はPR #80をsquash mergeし、merge commit `3bba5defe32b7da134817492427e09c70c97beaf`で統合済み
 - 独立review verdict: T506とT603はいずれも一度限りの全範囲独立review後、同一reviewerのfinding限定closureで`pass_with_held`。T604はPR #73をsquash mergeし、merge `64e47c590960a810a2439bd33f250ecbda9c41bf`、exact-head CI `32367553522` Greenで統合済み。T605は一度限りのindependent reviewでIFR001〜003を確定し、same reviewer closure R2で全件closed、`pass_with_held`
 - ブロッカー: なし。`PR113-NR-002`〜`005`のactual composition focused 10/10、compile、build、lintはGreen。最小NR-007はexact-head CIのExtension Host証拠待ち
@@ -40,6 +40,7 @@
 | PR113-IFR-002 | closed / normal fix verification | 0.5h以内 | legacy/current URIのwire formを保持してdescriptor identityを検証し、legacy pairとsessionを受理する | PR113-NR-005 | legacy pair/session Red→Greenとdescriptor一致を同じSol/high通常reviewerがCompleteと判定 |
 
 - full local gate: candidate `9ff4b54e664cfd92fca07f76453ed691b073d5b0`のstatic 5項目Green、default `npm test` fail証拠はIFR content deltaでinvalidated。新candidateで1回再実行する
+- full local gate R2: candidate `ebe8e91becd1c09c1b49dc14201401b2a20d8abf`でstatic 5項目Green、IFR fixture Green。default `npm test`はR1と同じWindows別scope failuresでfailし、後続stageは未実行。passへ変換せずheldとする
 
 ## Issue #92 / PR #94 CI repair and independent review
 

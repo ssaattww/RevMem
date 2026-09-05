@@ -37,8 +37,8 @@ Lを超える見込みになった場合は再分解する。
 
 - T306 merge commit: `ec74b88c68df73acf84373eeaf2706fae2d1b6f0`
 - 直近統合: T609 repository解決とmixed encoding耐障害化（PR #82、squash merge `477725632177f5c4fcbca5eb587644fdef06e4df`）
-- 実装中タスク: 独立final review findings `PR113-IFR-001/002`は同じ通常reviewerが全matrix Complete/closed
-- 次の工程: 新candidate full gate、同じ独立reviewerのfinding/CI-delta限定closure、report attestation、exact-head required CI、squash merge
+- 実装中タスク: 独立final review findings `PR113-IFR-001/002`は通常review closed。新candidate full gate R2はstatic Green、default testのWindows別scope failuresをheldとして記録
+- 次の工程: 同じ独立reviewerのfinding/CI-delta限定closure、report attestation、exact-head required CI、squash merge
 - 一時保留: T610 / Issue #78（PR #83）の独立final reviewとattestation
 - 後続候補: T608
 
