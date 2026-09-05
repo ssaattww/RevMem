@@ -1154,7 +1154,7 @@ export function registerT405ReviewContextsRuntime(
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
     const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
     assertDetectionCurrent();
-    let synchronizationCompleted = true;
+    let synchronizationCompleted = false;
     if (synchronizeBeforeSearch) {
       synchronizationCompleted = await synchronizeRepository({
         repositoryId: local.repositoryId,
@@ -1225,6 +1225,7 @@ export function registerT405ReviewContextsRuntime(
         }
         const synchronizedPullRequest = existing?.contextState.pullRequest;
         if (
+          !synchronizationCompleted ||
           existing === undefined ||
           synchronizedPullRequest === undefined ||
           synchronizedPullRequest.baseSha !== detectedPullRequest.baseSha ||
@@ -1233,6 +1234,24 @@ export function registerT405ReviewContextsRuntime(
           throw new Error("Selected pull-request revision was not published by repository-owner synchronization.");
         }
       } else {
+        // Authentication/search may have recovered after the initial lifecycle
+        // read, or explicit selection may have skipped that read altogether.
+        // Complete the whole owner boundary before publishing a new Context.
+        if (!synchronizationCompleted) {
+          synchronizationCompleted = await synchronizeRepository({
+            repositoryId: local.repositoryId,
+            repositoryRoot: local.rootPath,
+            headRevision: local.head,
+            snapshot: {
+              context: { kind: "branch", label: "active", headRevision: local.head },
+              progress: undefined,
+            },
+          }, persistedBefore, signal, feedbackContext);
+          assertDetectionCurrent();
+        }
+        if (!synchronizationCompleted) {
+          throw new Error("Repository-owner synchronization must complete before creating a new pull-request context.");
+        }
 
         const current = gitContextResolver.resolve({
           repositoryId: local.repositoryId,
