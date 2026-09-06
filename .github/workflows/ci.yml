@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -20,6 +23,10 @@ jobs:
         run: mkdir -p test-output/ci
       - name: Install dependencies
         run: node tools/run-ci-command.mjs npm-ci npm ci
+      - name: Tooling regression tests
+        run: |
+          node tools/run-ci-command.mjs test-tooling node --test test/tooling/*.test.mjs
+          node tools/run-ci-command.mjs test-vsix-verifier python3 -m unittest discover -s test/tooling -p 'test_*.py'
       - name: Build
         run: node tools/run-ci-command.mjs build npm run build
       - name: Contract typecheck
@@ -87,17 +94,30 @@ jobs:
         run: node tools/run-ci-command.mjs test-github npm run test:github
       - name: VS Code Extension Host tests
         run: node tools/run-ci-command.mjs test-vscode xvfb-run -a npm run test:vscode
-      - name: Package user validation artifacts
+      - name: Resolve CI VSIX version
+        id: ci-version
         if: github.event_name == 'pull_request' && success()
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           mkdir -p test-output/user-validation
-          npm run package -- --out "test-output/user-validation/review-range-tracker-${GITHUB_SHA}.vsix"
-          git archive --format=zip --output "test-output/user-validation/review-range-tracker-${GITHUB_SHA}-source.zip" HEAD
+          node tools/run-ci-command.mjs ci-vsix-version node tools/resolve-ci-vsix-version.mjs "$BASE_SHA" "$HEAD_SHA" test-output/user-validation/version.json
+      - name: Package user validation artifacts
+        if: github.event_name == 'pull_request' && success()
+        env:
+          PACKAGE_VERSION: ${{ steps.ci-version.outputs.package_version }}
+        run: |
+          asset="test-output/user-validation/review-range-tracker-${PACKAGE_VERSION}.vsix"
+          node tools/run-ci-command.mjs package-vsix npm run package -- "$PACKAGE_VERSION" --no-git-tag-version --no-update-package-json --pre-release --out "$asset"
+          node tools/run-ci-command.mjs verify-vsix python3 tools/verify-ci-vsix.py "$asset" "$PACKAGE_VERSION"
+          node tools/run-ci-command.mjs verify-package-manifests git diff --exit-code -- package.json package-lock.json
+          node tools/run-ci-command.mjs archive-source git archive --format=zip --output "test-output/user-validation/review-range-tracker-${PACKAGE_VERSION}-source.zip" HEAD
       - name: Upload user validation artifacts
         if: github.event_name == 'pull_request' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: review-range-user-validation-${{ github.sha }}
+          name: review-range-user-validation-${{ github.event.pull_request.head.sha }}
           if-no-files-found: error
           retention-days: 14
           path: test-output/user-validation/
