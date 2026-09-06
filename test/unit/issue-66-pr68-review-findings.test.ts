@@ -35,8 +35,8 @@ import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.j
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
-} from "../../src/t405-pull-request-review-runtime.js";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
