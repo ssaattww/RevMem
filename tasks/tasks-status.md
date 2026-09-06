@@ -2,6 +2,23 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
+
+- 現在のタスク: I116-DESIGN（P3保守）。PR #115はsquash merge d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a、最終PR CI34042269971成功、artifact9992115923照合済み、remote/local reviewブランチ削除済み。
+- branch: fix/issue-116-context-refresh。base: d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a。
+- 要求根拠: Issue #116。0.1.52-preでPR進捗計算36msに対してCurrent Context全体更新14303ms、続く更新4786ms。
+- 方針: 設計・通常/独立レビューはsol high、実装はterra high。100人の利用で月1回以上遭遇する程度の問題だけ対応し、それ未満はheldに記録する。
+- TDD: 挙動実装は本フェーズ計画の明示方針に従い、原因を再現する小さなRedを先に観測する。
+- 成果: 設計・実装・focused/full検証・通常レビュー・独立レビューとPR提出。Issue #116のmergeは今回未指定。
+- 過去の現在位置とPR #115の保存時点状態は以下に履歴として保持する。
+
+| 単位 | 状態 | 目安 | 対象 | 依存 | 終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| I116-DESIGN | 実施中 | 0.5h単位 | 更新全体の遅延経路を調査し既存設計へ最小改善を反映する | PR #115統合済み | 原因根拠、対応範囲、held、再現/検証方針を確定する |
+| I116-IMPL | 待機 | 設計後に必要なら分割 | 決定した遅延原因をTDDで修正する | I116-DESIGN | Red→Greenとfocused regressionで改善・既存挙動維持を示す |
+| I116-REVIEW | 待機 | S | 通常レビューと必要指摘の解消 | I116-IMPL | 頻度基準以上のrequired findingなし |
+| I116-FINAL | 待機 | S | 全体検証、独立レビュー、報告attestation、PR・exact-head CI | I116-REVIEW | 独立review合格と最終CI、成果物の証拠を保存する |
+
 ## PR #115 レビューと統合（2026-09-06）
 
 - 現在のタスク: PR115-FINAL。以下の過去の現在位置は履歴として保持する。
