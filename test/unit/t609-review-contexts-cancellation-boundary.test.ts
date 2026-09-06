@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import Module, { createRequire } from "node:module";
 import test from "node:test";
 
-import { settleReviewContextsRepositorySelection } from "../../src/t609-review-contexts-cancellation-boundary";
+import { settleReviewContextsRepositorySelection } from "../../src/application/review-contexts/repository-selection-cancellation";
 import {
   ReviewContextsRepositorySelectionCancelled,
   resolveReviewContextsRepository,
-} from "../../src/t609-review-contexts-repository";
+} from "../../src/application/review-contexts/repository-selection";
 
 const runtimeRequire = createRequire(__filename);
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveReviewContextsRepository } from "../../src/t609-review-contexts-repository.js";
+import { resolveReviewContextsRepository } from "../../src/application/review-contexts/repository-selection.js";
 
 test("T609 Review Contexts resolves the sole opened Git workspace without an active editor", async () => {
   const repository = await resolveReviewContextsRepository({

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { synchronizeAppliedPullRequestReview } from "../../src/t405-pr-review-projection-sync";
+import { synchronizeAppliedPullRequestReview } from "../../src/application/review-contexts/pull-request-review-projection-sync";
 
 test("applied PR review waits for progress and owned projection refresh in order", async () => {
   const calls: string[] = [];

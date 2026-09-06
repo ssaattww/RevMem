@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   resolveT305RepositoryRootUri,
   resolveT305RepositoryWorkingTreeFileTarget
-} from "../../src/t305-repository-root-uri.js";
+} from "../../src/application/repository-path/repository-root-uri.js";
 
 test("T305 resolves a Windows Git root within one workspace and retains the remote URI authority", () => {
   const selected = resolveT305RepositoryRootUri({

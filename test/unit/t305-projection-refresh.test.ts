@@ -5,7 +5,7 @@ import {
   refreshAfterDocumentEdit,
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress,
-} from "../../src/t305-projection-refresh.js";
+} from "../../src/application/review-context/projection-refresh.js";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;

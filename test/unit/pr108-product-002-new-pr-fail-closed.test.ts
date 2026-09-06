@@ -5,7 +5,7 @@ import test from "node:test";
 
 test("PR108-PRODUCT-002 new PR creation fails closed when owner synchronization is incomplete", async () => {
   const runtimeSource = await readFile(
-    path.resolve(__dirname, "../../../src/t405-review-contexts-runtime.ts"),
+    path.resolve(__dirname, "../../../src/composition/review-contexts/review-contexts-runtime.ts"),
     "utf8",
   );
   const detectStart = runtimeSource.indexOf("const detectPullRequest = async");
