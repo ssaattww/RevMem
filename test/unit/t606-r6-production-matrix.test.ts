@@ -20,7 +20,7 @@ import {
 } from "../../src/application/operation-feedback/index";
 import type { PullRequestDiffAcquisitionRequest, PullRequestDiffAcquisitionResult } from "../../src/application/github-pr-diff/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
-import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRegistration } from "../../src/t405-pull-request-review-runtime";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRegistration } from "../../src/composition/pull-request/pull-request-review-runtime";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion";
 import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewContextState } from "../../src/core/contracts";
 import { CurrentContextUiController, type CurrentContextUiSnapshot } from "../../src/ui/current-context";
