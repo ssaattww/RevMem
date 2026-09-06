@@ -101,6 +101,12 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   });
   const remote = new Map([52, 53].map((number) => [number, { base: A, head: B, state: "open" }]));
   const unavailable = new Set<number>();
+  const acquisitionCalls = { localCandidates: 0, repositoryContexts: 0, lifecycle: 0, diffRuntime: 0, progress: 0 };
+  const listRepositoryContexts = repository.listRepositoryContexts.bind(repository);
+  repository.listRepositoryContexts = async (repositoryId) => {
+    acquisitionCalls.repositoryContexts += 1;
+    return listRepositoryContexts(repositoryId);
+  };
   const auth = { required: false, connected: false, interactiveCalls: 0, rejectSearchOnce: false, reselections: 0 };
   const originalFetch = globalThis.fetch;
   const json = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), {
@@ -128,6 +134,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
         return json([{ filename: OWNER_FILE, status: "modified", additions: 1, deletions: 1,
           patch: diff.slice(diff.indexOf("@@")) }]);
       }
+      acquisitionCalls.lifecycle += 1;
       return json({ number, title: `PR ${number}`, state: revision.state, merged_at: null, changed_files: 1,
         html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
         base: { sha: revision.base }, head: { sha: revision.head } });
@@ -200,14 +207,17 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
     runtime = registerT405ReviewContextsRuntime({
       context: { globalStorageUri: { fsPath: storageRoot }, workspaceState, subscriptions } as never,
       git: createNodeLocalGitAdapter(),
-      enumerateCurrentContexts: async (): Promise<readonly CurrentContextUiSnapshot[]> => enabled ? [{ context: {
+      enumerateCurrentContexts: async (): Promise<readonly CurrentContextUiSnapshot[]> => {
+        acquisitionCalls.localCandidates += 1;
+        return enabled ? [{ context: {
         kind: "branch", label: "main", headRevision: ownerHead,
         selection: { kind: "branch", repositoryId: OWNER_ID, repositoryRoot, branchRef: "refs/heads/main" },
-      }, progress: undefined }] : [],
+      }, progress: undefined }] : [];
+      },
       refreshDecorations: async () => undefined, refreshCurrentContext: async () => undefined,
-      registerPullRequestReviewDiff: (registration) => { registrations.set(registration.snapshot.contextId, registration); review.register(registration); },
+      registerPullRequestReviewDiff: (registration) => { acquisitionCalls.diffRuntime += 1; registrations.set(registration.snapshot.contextId, registration); review.register(registration); },
       openPullRequestReviewDiff: (contextId, fileId, title) => review.openReviewDiff(contextId, fileId, title),
-      getPullRequestReviewProgress: (contextId) => review.getProgress(contextId),
+      getPullRequestReviewProgress: (contextId) => { acquisitionCalls.progress += 1; return review.getProgress(contextId); },
       reviewStateRepository: repository, reviewHistoryRecorder: historyRecorder,
     });
     enabled = true;
@@ -216,7 +226,15 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   await git("checkout", "--detach", B);
   await start();
   return {
-    A, B, C, D, repository, remote, unavailable, auth, publications, history, errors, registrations, opened,
+    A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened,
+    acquisitionCalls,
+    resetAcquisitionCalls: () => {
+      acquisitionCalls.lifecycle = 0;
+      acquisitionCalls.localCandidates = 0;
+      acquisitionCalls.repositoryContexts = 0;
+      acquisitionCalls.diffRuntime = 0;
+      acquisitionCalls.progress = 0;
+    },
     get review() { return review; },
     get runtime() { return runtime; },
     items: () => provider.getChildren(),

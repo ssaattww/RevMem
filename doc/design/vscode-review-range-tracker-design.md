@@ -860,7 +860,7 @@ Extension activationおよびactive editor変更に伴うCurrent Context更新�
 
 Current Context候補をPR情報で補完するときは、local候補snapshot、repositoryごとの保存済みcontext、GitHub lifecycle結果、選択PRのimmutable diff・進捗を、同じgenerationだけで有効な準備結果として保持する。Current Contextがそのgenerationを受理した場合、直後のReview Contexts更新は同じ準備結果を消費し、local候補列挙、保存済みcontext読込み、GitHub lifecycle取得、選択PRのdiff取得・進捗計算を繰り返さない。Review Contextsにだけ必要な未取得PR進捗はこの段階で1回取得し、対象PRのdiff runtime登録を完了してからPR Progressを開始する。
 
-準備結果はlocal候補identity、repository ID、HEAD、context ID、base SHA、head SHA、original diff ID、およびrefresh generationへ束縛する。いずれかが一致しない場合、別generationである場合、またはCurrent Contextがunresolved、cancel、stale、failureになった場合は再利用もpublishもせず破棄する。独立したReview Contexts更新、次のactive editor event、明示再計算、retryは新しい取得を行う。したがって、この共有は長寿命cache、時間基準TTL、GitHub再検出省略、またはrevision変更の推測を導入しない。
+準備結果はlocal候補identity、repository ID、HEAD、context ID、base SHA、head SHA、original diff ID、およびrefresh generationへ束縛する。いずれかが一致しない場合、別generationである場合、またはCurrent Contextがunresolved、cancel、stale、failureになった場合はReview Contexts Treeへ使用せず、PR Progressも開始せずに準備結果を破棄する。取得中にexact immutable requestをkeyとして保存済みのcache entryと、検証済みimmutable snapshotのdiff runtime登録は削除またはrollbackを要求しない。後続処理は受理した選択と登録済みruntimeの`contextId + baseSha + headSha + originalDiffId`が完全一致する場合だけそのruntimeを選択し、不一致ならPR Progressを開始しない。独立したReview Contexts更新、次のactive editor event、明示再計算、retryは新しい取得を行う。したがって、この共有は長寿命cache、時間基準TTL、GitHub再検出省略、またはrevision変更の推測を導入しない。
 
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
@@ -1120,7 +1120,7 @@ PR Progressのsupersession単位はimmutable snapshot identityとする。同一
 
 Current Contextのrefresh generation内では、候補補完で得たReview Contexts準備結果とGit inspection結果を後続処理へ引き渡し、同じ入力へのI/Oを1回にまとめる。共有の単位はwall-clock時間ではなくgenerationとimmutable identityで決定する。件数検証では、単一repository、単一visible document、単一保存済みPRのfixtureについて、同じstart pathおよび返却済みcanonical rootのGit inspection、repository context読込み、PR lifecycle取得、選択PR diff取得、Review Contexts用の選択PR進捗計算をそれぞれ1回以下とする。専用PR Progressの最終計算とGlobal Understandingは別projectionなので、この取得回数へ含めない。
 
-準備中のI/O、cache publication、diff runtime登録、Tree publicationの各境界でgenerationとAbortSignalを確認する。受理前の準備結果はReview Contexts Treeとしてpublishせず、staleまたは失敗した準備結果を後続のPR Progressへ渡さない。受理後は、選択PRのdiff runtime登録、Review Contexts Tree publication、PR Progress開始という既存の依存順序を維持する。途中失敗時は既存のfailure isolationに従い、PR Progressを未登録runtimeから計算しない。
+準備中のI/O、cache publication、diff runtime登録、Tree publicationの各境界でgenerationとAbortSignalを確認する。受理前の準備結果はReview Contexts Treeとしてpublishせず、staleまたは失敗した準備結果を後続のPR Progressへ渡さない。準備中に完了したexact immutable cache publicationとdiff runtime登録は取得結果として保持できるが、それ自体をCurrent Context受理またはTree publicationとして扱わない。受理後は、選択PRと完全identityが一致するdiff runtime、Review Contexts Tree publication、PR Progress開始という既存の依存順序を維持する。途中失敗時は既存のfailure isolationに従い、PR Progressを未登録またはidentity不一致のruntimeから計算しない。
 
 各 stage は raw progress、effective denominator、file identity、line-reviewability の整合を維持する。stale、cancel、failure は未確認または空表示へ fail-closed し、source本文、repository path、credential、PR title を診断へ追加しない。Tree の段階公開は入力処理を待機させず、既存のPR progress、Global aggregation、cancellation/error boundary の contract を変更しない。上位operationのwall-clock timeoutを性能対策として導入せず、bounded work schedulingと匿名count progressで応答性・可観測性を確保する。
 
@@ -1167,7 +1167,7 @@ Git command結果を最終的に完全なstringとして必要とする既存app
 - Review ContextsがPR runtimeを登録してからPR Progressを計算する依存順序
 - 単一repositoryのCurrent Context refresh generationで、active document、opened document、visible editor、workspace folder、および返却済みcanonical rootが重なっても、同じGit inspection start pathまたは返却済みrootを1回だけ検査し、別generationでは再検査すること
 - Current Context候補補完と直後のReview Contexts更新が、同じidentityのlocal候補、repository context読込み、PR lifecycle、選択PR diff、および選択PR進捗の準備結果を1回だけ取得して共有すること。独立したReview Contexts更新は新しい取得を行うこと
-- Current Context準備結果がcancel、stale、failure、identity不一致となった場合はReview Contexts Tree、cache、diff runtime、PR Progressへpublishせず、次generationが新しい取得から回復すること
+- Current Context準備結果がcancel、stale、failure、identity不一致となった場合はReview Contexts TreeをpublishせずPR Progressを開始しないこと。既に保存または登録されたexact immutable cache・diff runtimeのrollbackを要求せず、次generationが新しい取得を行い、受理した選択と完全identityが一致するruntimeだけを最終計算へ使用すること
 - 同一immutable PR snapshotの重複refreshが互いをcancelせず、受理済みTreeを再計算中に保持すること
 - 同一PR番号・表示labelを持つ別repositoryのReview Contexts rowが`contextId` identityで衝突しないこと
 - fail-closedで握りつぶされる処理もOutputへfailureを残すこと
