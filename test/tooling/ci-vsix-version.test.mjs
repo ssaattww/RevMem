@@ -3,8 +3,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 
 const script = fileURLToPath(new URL("../../tools/resolve-ci-vsix-version.mjs", import.meta.url));
 function repository(context) {
