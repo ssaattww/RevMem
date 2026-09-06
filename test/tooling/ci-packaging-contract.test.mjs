@@ -31,3 +31,14 @@ test("new regression tests and packaging diagnostics are wired into the required
   assert.match(workflow, /node tools\/run-ci-command\.mjs ci-source-archive git archive/u);
   assert.match(workflow, /- name: Upload failure diagnostics[\s\S]*?if: failure\(\)[\s\S]*?test-output\//u);
 });
+
+test("failure diagnostics distinguish the tested checkout from the workflow event identity", () => {
+  const diagnostics = /- name: Collect failure context[\s\S]*?\} > test-output\/ci\/environment\.txt/u.exec(workflow)?.[0];
+
+  assert.ok(diagnostics, "CI must write failure diagnostics to environment.txt");
+  assert.match(diagnostics, /echo "checkout_sha=\$\(git rev-parse HEAD\)"/u);
+  assert.match(diagnostics, /echo "event_sha=\$\{GITHUB_SHA\}"/u);
+  assert.match(diagnostics, /echo "event_ref=\$\{GITHUB_REF\}"/u);
+  assert.doesNotMatch(diagnostics, /echo "sha=\$\{GITHUB_SHA\}"/u);
+  assert.doesNotMatch(diagnostics, /echo "ref=\$\{GITHUB_REF\}"/u);
+});

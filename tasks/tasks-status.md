@@ -7,7 +7,7 @@
 - 現在のタスク: PR115-REVIEW。以下の過去の現在位置は履歴として保持する。
 - Phase: P0 開発基盤保守。source配置とCI VSIX版の変更をレビューする。
 - 対象HEAD: be8beb815d2d8d1445aa47c6c9ba8fdefa134fe7。
-- 通常レビュー: reports/pr-115-normal-review-20260906.md（実施中）。独立レビューと最終CIは未実施。
+- 通常レビュー: reports/pr-115-normal-review-20260906.md（PR115-NR001 lowを修正し、同じレビュワーのclosure待ち）。独立レビューと最終CIは未実施。
 - 実行方針: 設計・レビューはsol high、実装はterra high。100人の利用で月1回以上遭遇する程度の問題のみ修正し、それ未満はheldとして記録する。
 - 開始承認: ユーザーがPR #115レビュー、squash merge、ブランチ削除、続いてIssue #116の設計・実装・通常レビュー・独立レビューを明示した。
 - Skill判断: 今回の頻度基準は本作業のスコープ制約として記録する。既存Skillのユーザー指定優先とheld運用で表現できるため、Skill更新・新規FP・外部Issue作成は不要。既存の別件FPは変更しない。
@@ -17,8 +17,10 @@
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
 | PR115-REVIEW | 実施中 | 各修正0.5h目安 | source配置・entry・import・CI VSIX版の通常レビューと必要修正 | PR #115実装 | 頻度基準以上の指摘を閉じ、検証証拠を保存する |
+| PR115-NR001 | 実装・focused検証済み、closure待ち | 0.5h以内 | 失敗診断のtested SHAを実checkout HEADと一致させ、event SHA/refと区別する | PR115-REVIEW | Red→Greenのworkflow contractと同じ通常レビュワーのclosure |
 | PR115-FINAL | 未着手 | S | 独立レビュー、報告attestation、最終CI、squash mergeとブランチ削除 | PR115-REVIEW | 独立レビュー合格、exact-head CI成功、mergeと削除確認 |
-| ISSUE116-START | 待機 | 設計後に分割 | PR進捗更新遅延の設計・実装・通常レビュー・独立レビュー | PR115-FINAL | 原因と改善を再現可能な検証で確認し、レビュー済みPRを提出する |
+| ISSUE116-START | 待機 | 設計後に分割 | PR進捗更新遅延の設計・実装・通常レビュー・独立レビュー | PR115-NR001 | 実装・focused検証済み、closure待ち | 0.5h以内 | 失敗診断のtested SHAを実checkout HEADと一致させ、event SHA/refと区別する | PR115-REVIEW | Red→Greenのworkflow contractと同じ通常レビュワーのclosure |
+| PR115-FINAL | 原因と改善を再現可能な検証で確認し、レビュー済みPRを提出する |
 
 ## 現在位置
 
