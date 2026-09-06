@@ -1,4 +1,4 @@
-import type { RegisteredT405ReviewContextsRuntime } from "../../src/t405-review-contexts-runtime";
+import type { RegisteredT405ReviewContextsRuntime } from "../../src/composition/review-contexts/review-contexts-runtime";
 
 /** A consumer implementation compiled before Test-only cancellation snapshots were introduced. */
 const legacyRuntime: RegisteredT405ReviewContextsRuntime = {
