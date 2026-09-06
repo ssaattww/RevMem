@@ -8,7 +8,7 @@ export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
   {
-    files: ["src/t405-review-contexts-runtime.ts"],
+    files: ["src/composition/review-contexts/runtime.ts"],
     rules: {
       "no-useless-assignment": "off"
     }

@@ -2,9 +2,9 @@ import type {
   LocalGitAdapter,
   LocalGitRepository,
   LocalGitRepositoryInspection
-} from "./adapters/local-git/index";
-import { gitInspectionStartPath } from "./adapters/local-git/index";
-import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
+} from "../../adapters/local-git/index";
+import { gitInspectionStartPath } from "../../adapters/local-git/index";
+import type { CurrentContextUiSnapshot } from "../../ui/current-context/index";
 
 /** Inspects a filesystem-backed editor from its parent directory. */
 export const inspectCurrentContextDocument = (

@@ -1,11 +1,11 @@
 import path from "node:path";
 
-import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import {
   resolveWorkspaceResourceEligibility,
   type FileSystemPathSemantics,
   type ResourceUri
-} from "./application/workspace-identity/index";
+} from "../../application/workspace-identity/index";
 
 /** One workspace root whose URI identity has already crossed the T609 filesystem boundary. */
 export interface T305WorkspaceRootUriCandidate {

@@ -1,10 +1,10 @@
-import { NodeFolderUnderstandingStoppedStore } from "./adapters/state-repository/node-folder-understanding-stopped-store";
-import type { StorageRootLockDiagnostic } from "./adapters/state-repository/index";
-import { FolderUnderstandingScopeController, type FolderUnderstandingStoppedStore } from "./application/global-understanding/index";
+import { NodeFolderUnderstandingStoppedStore } from "../../adapters/state-repository/node-folder-understanding-stopped-store";
+import type { StorageRootLockDiagnostic } from "../../adapters/state-repository/index";
+import { FolderUnderstandingScopeController, type FolderUnderstandingStoppedStore } from "../../application/global-understanding/index";
 import {
   T505GlobalUnderstandingSource,
   type T505GlobalUnderstandingSourceDependencies
-} from "./t505-global-understanding-source";
+} from "./workspace-source";
 
 /** Dependencies supplied by the T305 extension composition root. */
 export interface T305GlobalUnderstandingCompositionDependencies extends T505GlobalUnderstandingSourceDependencies {

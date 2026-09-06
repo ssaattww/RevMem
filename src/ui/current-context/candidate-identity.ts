@@ -1,4 +1,4 @@
-import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
+import type { CurrentContextUiSnapshot } from "./index";
 
 /** Returns one repository root only when the current workspace has an unambiguous root owner. */
 export const resolveUniqueRepositoryRoot = (

@@ -1,4 +1,4 @@
-import type { DiffEditorReviewCommandResult } from "./application/review-commands/diff-editor-review-command-service";
+import type { DiffEditorReviewCommandResult } from "./diff-editor-review-command-service";
 
 /** Completes every PR review projection refresh before an applied command returns. */
 export const synchronizeAppliedPullRequestReview = async (

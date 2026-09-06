@@ -1,4 +1,4 @@
-import { reportActiveOperationFailure } from "./application/operation-feedback/index";
+import { reportActiveOperationFailure } from "../operation-feedback/index";
 
 /** Dependencies for one production document-open Global Understanding lifecycle. */
 export interface T305GlobalUnderstandingDocumentOpenDependencies {

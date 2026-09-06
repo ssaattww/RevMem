@@ -1,4 +1,4 @@
-import { ReviewContextsRepositorySelectionCancelled } from "./t609-review-contexts-repository";
+import { ReviewContextsRepositorySelectionCancelled } from "./repository-selection";
 
 export type ReviewContextsCancellationOutcome = "cancelled" | "terminal";
 

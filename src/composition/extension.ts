@@ -1,78 +1,78 @@
 import path from "node:path";
 import * as vscode from "vscode";
 
-import { NodeSha256StableHash } from "./adapters/crypto/index";
-import { getActiveReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
-import { createNodeLocalGitAdapter } from "./adapters/local-git/index";
-import { runPersistenceStartupMigration } from "./adapters/persistence-startup-migration";
+import { NodeSha256StableHash } from "../adapters/crypto/index";
+import { getActiveReviewFileExclusionPolicyService } from "../application/file-exclusion/review-file-exclusion-policy-service";
+import { createNodeLocalGitAdapter } from "../adapters/local-git/index";
+import { runPersistenceStartupMigration } from "../adapters/persistence-startup-migration";
 import {
   composeStartupFeedback,
   queueOperationStartDetails,
   reportActiveOperationFailure,
   reportActiveStorageLockDiagnostic,
   type OperationDiagnosticDetail,
-} from "./application/operation-feedback/index";
-import { VscodeOperationFeedbackHost } from "./ui/operation-feedback/index";
-import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
+} from "../application/operation-feedback/index";
+import { VscodeOperationFeedbackHost } from "../ui/operation-feedback/index";
+import { ReviewFileExclusionPolicy } from "../core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
   type ReviewRangeRuntimePort
-} from "./extension";
+} from "../extension";
 import {
   DocumentReviewEditRuntime,
   type DocumentReviewEditSnapshot
-} from "./document-review-edit-runtime";
+} from "../document-review-edit-runtime";
 import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
   type CurrentContextUiSnapshot
-} from "./ui/current-context/index";
+} from "../ui/current-context/index";
 import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
-} from "./t305-current-context-git";
-import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "./t609-repository-resolution";
-import { resolveT305RepositoryRootUri } from "./t305-repository-root-uri";
+} from "./current-context/git-candidates";
+import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-contexts/repository-resolution";
+import { resolveT305RepositoryRootUri } from "../ui/pr-progress/repository-working-tree-file-target";
 import {
   registerCurrentContextRuntime,
-} from "./ui/current-context/vscode-current-context-runtime";
+} from "../ui/current-context/vscode-current-context-runtime";
 import {
   GlobalUnderstandingRefreshCoalescer,
   registerGlobalUnderstandingRuntime
-} from "./ui/global-understanding/index";
+} from "../ui/global-understanding/index";
 import {
   refreshAfterDocumentEdit,
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
-} from "./t305-projection-refresh";
-import { type GlobalUnderstandingFileOpenTarget } from "./ui/global-understanding/global-understanding-ui-model";
-import { OperationCancelledError, type OperationFeedbackContext, type OperationLogEntry } from "./application/operation-feedback/index";
-import type { T505GlobalUnderstandingOwner } from "./t505-global-understanding-source";
-import { createT305GlobalUnderstandingSource } from "./t305-global-understanding-composition";
+} from "../ui/current-context/dependent-projection-refresh";
+import { type GlobalUnderstandingFileOpenTarget } from "../ui/global-understanding/global-understanding-ui-model";
+import { OperationCancelledError, type OperationFeedbackContext, type OperationLogEntry } from "../application/operation-feedback/index";
+import type { T505GlobalUnderstandingOwner } from "./global-understanding/workspace-source";
+import { createT305GlobalUnderstandingSource } from "./global-understanding/create-source";
 import {
   registerT405ReviewContextsRuntime,
   type RegisteredT405ReviewContextsRuntime,
-} from "./t405-review-contexts-runtime";
+} from "./review-contexts/runtime";
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeOptions
-} from "./t405-pull-request-review-runtime";
+} from "./pull-request/review-runtime";
 import {
   GitReviewContextResolver,
   type SelectedReviewContext
-} from "./application/review-context/index";
+} from "../application/review-context/index";
 import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
-} from "./application/workspace-identity/index";
-import { readReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
-import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "./core/contracts/index";
-import { TestReviewStateDependentQueue } from "./test-only-review-state-dependent-queue";
-import { observeStartupGlobalUnderstandingDocuments } from "./t305-global-understanding-startup";
-import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "./t305-global-understanding-lifecycle";
+} from "../application/workspace-identity/index";
+import { readReviewRangeMappingOptions } from "../application/configuration/review-range-mapping-options";
+import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../core/contracts/index";
+import { TestReviewStateDependentQueue } from "../test-only-review-state-dependent-queue";
+import { observeStartupGlobalUnderstandingDocuments } from "../application/global-understanding/startup-documents";
+import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../application/global-understanding/document-open-lifecycle";
 
 const FILESYSTEM_SCHEMES = new Set(["file", "vscode-remote"]);
 let activeDocumentReviewEditRuntime: DocumentReviewEditRuntime | undefined;
@@ -278,7 +278,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testGlobalUnderstandingSourceRefreshError: string | undefined;
   let testGlobalUnderstandingPublishedSnapshot = false;
   let testStartupGlobalUnderstanding = Promise.resolve();
-  let testGlobalUnderstandingPresentation: import("./ui/global-understanding/vscode-global-understanding-runtime").GlobalUnderstandingPresentationForTest | undefined;
+  let testGlobalUnderstandingPresentation: import("../ui/global-understanding/vscode-global-understanding-runtime").GlobalUnderstandingPresentationForTest | undefined;
   const testGlobalUnderstandingUiErrors: string[] = [];
   let testGlobalUnderstandingFolderEntryAcceptedCount = 0;
   let testGlobalUnderstandingFolderEntryDrainedCount = 0;
@@ -316,7 +316,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const observedGlobalSource = {
     recalculate: async (
       signal?: AbortSignal,
-      publishProgress?: (snapshot: import("./ui/global-understanding/global-understanding-ui-model").GlobalUnderstandingTreeSnapshot) => void | Promise<void>
+      publishProgress?: (snapshot: import("../ui/global-understanding/global-understanding-ui-model").GlobalUnderstandingTreeSnapshot) => void | Promise<void>
     ) => {
       if (context.extensionMode === vscode.ExtensionMode.Test) {
         testGlobalUnderstandingSourceRefreshOutcome = "not-started";

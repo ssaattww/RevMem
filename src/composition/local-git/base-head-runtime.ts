@@ -2,40 +2,40 @@ import {
   createNodeLocalGitAdapter,
   LocalGitPullRequestDiffAdapter,
   NodeGitCommandExecutor
-} from "./adapters/local-git/index";
-import { LocalGitRevisionTextContentSource } from "./adapters/diff-document/index";
-import type { DebouncedReviewStateRepository } from "./adapters/state-repository/index";
-import { PullRequestDiffAcquisitionService } from "./application/github-pr-diff/index";
+} from "../../adapters/local-git/index";
+import { LocalGitRevisionTextContentSource } from "../../adapters/diff-document/index";
+import type { DebouncedReviewStateRepository } from "../../adapters/state-repository/index";
+import { PullRequestDiffAcquisitionService } from "../../application/github-pr-diff/index";
 import {
   ReviewDiffUriCodec,
   RevisionTextContentProvider
-} from "./application/diff-document/index";
+} from "../../application/diff-document/index";
 import {
   DiffEditorReviewCommandService,
   type DiffEditorReviewCommandDependencies,
   type DiffEditorReviewStateSession
-} from "./application/review-commands/index";
-import type { ReviewHistoryRecorder } from "./application/review-history/index";
+} from "../../application/review-commands/index";
+import type { ReviewHistoryRecorder } from "../../application/review-history/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
   type ReviewContextState
-} from "./core/contracts/index";
+} from "../../core/contracts/index";
 import {
   calculatePullRequestDiffProgress,
   type PullRequestDiffSnapshot
-} from "./core/pr-progress/index";
-import { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
+} from "../../core/pr-progress/index";
+import { ReviewFileExclusionPolicy } from "../../core/file-exclusion/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeDiffTarget,
   type PullRequestProgressTreeHost
-} from "./ui/pr-progress/index";
+} from "../../ui/pr-progress/index";
 import {
   ReviewDiffEditorController,
   ReviewDiffTextDocumentContentProvider,
   type ReviewDiffEditorHost
-} from "./ui/diff-editor/index";
+} from "../../ui/diff-editor/index";
 
 /** Immutable local base/head input supplied by the T306 fixture boundary. */
 export interface LocalBaseHeadRuntimeInput {

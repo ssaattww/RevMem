@@ -3,13 +3,13 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   ReviewStateRepositorySnapshot,
   ReviewStateRepositoryTransactionLike,
-} from "./adapters/state-repository/index";
+} from "../../adapters/state-repository/index";
 import type {
   PreparedPullRequestContextUpdate,
   PullRequestReviewStateCommit,
   UpdatePullRequestContextInput,
-} from "./application/github-pr-context/index";
-import type { ReviewContextState } from "./core/contracts/index";
+} from "../../application/github-pr-context/index";
+import type { ReviewContextState } from "../../core/contracts/index";
 
 export interface PullRequestOwnerSynchronizationTarget {
   readonly repositoryId: string;

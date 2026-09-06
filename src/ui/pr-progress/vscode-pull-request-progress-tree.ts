@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
 import type { ResourceUri } from "../../application/workspace-identity/index";
-import { resolveT305RepositoryWorkingTreeFileTarget } from "../../t305-repository-root-uri";
+import { resolveT305RepositoryWorkingTreeFileTarget } from "./repository-working-tree-file-target";
 import {
   PrProgressDiffReviewContextController
 } from "./pr-progress-diff-review-context";

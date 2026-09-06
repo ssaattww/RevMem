@@ -38,7 +38,7 @@
     "onCommand:reviewRange.hideReviewContext",
     "onCommand:reviewRange.openReviewContextDiff"
   ],
-  "main": "./dist/t305-extension.js",
+  "main": "./dist/composition/extension.js",
   "extensionKind": ["workspace"],
   "contributes": {
     "commands": [
