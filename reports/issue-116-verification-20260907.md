@@ -14,7 +14,7 @@
 
 - full gate: not_started（この報告保存時点）。
 - 正本: .github/workflows/ci.ymlとpackage.json。WindowsではLinux用xvfb-run wrapperを付けない。
-- full gate継続担当: /root/pr115_validation（実行時に継続依頼する）。要求profileはterra high、original applied null / final_profile_hiddenを維持する。
+- full gate継続担当: /root/issue116_validation（専用担当へ実行を依頼する）。要求profileはterra high、applied null / final_profile_hiddenを明記する。
 - 出力先: C:/Users/taiga/AppData/Local/Temp/RevMem-issue116-full-<candidate7>/。
 - exact candidateの実行結果はbranch外証拠として独立レビュワーへ渡し、合格後の事前予約済み独立review報告に保存する。この計画文書を実行結果の自己参照のために再commitしない。
 

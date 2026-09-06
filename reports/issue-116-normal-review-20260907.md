@@ -28,7 +28,7 @@
 - role_plan: default; current tool permits explicit fresh override; config.toml has no agents role settings; planned unchanged.
 - planned_runtime_profile: gpt-5.6-sol / high.
 - applied: null; application_status: spawn_succeeded_profile_unverified; profile_observability: final_profile_hidden.
-- reviewer_continuity: /root/issue116_review; initial normal reviewer.
+- reviewer_continuity: /root/issue116_review; initial normal and fix verification; reused_existing_agent_profile; original applied null / final_profile_hidden.
 - constraints: monthly/100 users threshold; no speculative hardening; no implementation/nested agents; Japanese report; parent owns git/tracking.
 
 ## 実行コマンド
@@ -74,3 +74,37 @@
 - 未解決のリスクまたは後続対応: absolute wall-clock の改善量は環境依存であり保証しない。call count を決定的 gate とし、probe 値は advisory evidence に限定する。
 - 未解決のリスクまたは後続対応: Markdown focused / full lint は repository wiring 不在により `unsupported`。本レビューでは nonblocking とし、`git diff --check` と本文確認で補った。
 - 未解決のリスクまたは後続対応: finding 修正後の事実だけを反映する tracking / implementation・verification report 保存は administrative documentation delta として扱える。性能達成、検証成功、対象 identity を新たに主張する実質的変更があれば通常 review 対象へ戻す。
+
+## I116-NR-001 fix verification
+
+- review mode: fix verification。同じ reviewer identity `/root/issue116_review` を継続した。
+- initial reviewed implementation HEAD: `1a9711b90686b9a971875ca7ff353a7274c1fb2c`。
+- finding report / administrative parent: `08530d8c0fa421f547a791ec72f31926c03bf247`。
+- closure reviewed HEAD: `1ed77fe0a889462fd060ac6c65f03d493a0377ff`。
+- closure range: `08530d8c0fa421f547a791ec72f31926c03bf247..1ed77fe0a889462fd060ac6c65f03d493a0377ff`。
+- continuity: source finding `I116-NR-001` の severity は High のまま保持した。reclassification / erratum はない。
+
+### 指摘の確認
+
+- **[High][I116-NR-001][closed]** `src/composition/current-context/current-context-inspection-session.ts:1-25` が exact start path と返却済み canonical root の共有を production helper として所有し、`src/composition/extension.ts:348-490` は repository候補、workspace fallback、visible editor、fallback解決を同じ generation facade へ統一した。未検査 descendant / sibling は引き続き推測せず、各 Current Context signal は新しい session を得る。
+- `src/composition/review-contexts/review-contexts-runtime.ts:315-318,394-404,438-463,550-654` は候補補完時の local candidate snapshot を受理 selection に束縛して one-shot 保持し、直後の `load()` で消費・消去してから、保存済みcontext、lifecycle、selected PR diff / progress の準備結果と一緒に利用する。受理に至らない cancel / stale / failure は coordinator から arm されず、独立 refresh と retry は `acceptedLocalCandidates` 消去後に `enumerateCurrentContexts(signal)` へ戻る。
+- `src/ui/current-context/current-context-runtime-coordinator.ts:21-42` → `src/composition/extension.ts:710-743` → `RegisteredT405ReviewContextsRuntime.acceptCurrentContextPreparation` → `T405ReviewContextsSource.load` の production 順序を再確認した。Current Context の UI / selected identity 受理後に token を arm し、Review Contexts を先に完了してから既存の PR Progress / decoration / Global 経路へ進む。
+
+### closure completeness matrix
+
+| finding | required action | production path | actual composition fixture | focused evidence | disposition |
+| --- | --- | --- | --- | --- | --- |
+| I116-NR-001 | 受理した Current Context generation の local candidates / inspection を直後の Review Contexts へ one-shot で渡す | `CurrentContextRuntimeCoordinator` → `RegisteredT405ReviewContextsRuntime.acceptCurrentContextPreparation` → `T405ReviewContextsSource.load` | `test/unit/issue-116-current-context-refresh.test.ts:113-179` は production の Current Context composition / controller / coordinator と registered T405 runtime を接続し、Current signal と dependent Tree の refresh ownership を分離したまま実行する | dependent `localCandidates=0`、repository context / lifecycle / diff runtime / progress は各1。独立 refresh は `localCandidates=1` | resolved |
+| I116-NR-001 | workspace fallback の直接 inspection を generation session に統合する | `extension.ts` の `enumerateLocalContexts` / `resolveFallback` → `isNonGitCurrentContextWorkspace({ inspectRepository })` → `createCurrentContextInspectionSession` | `test/unit/issue-116-current-context-refresh.test.ts:67-111` は extension が使用する production session helper と production workspace fallback helper を合成し、active / opened / visible の exact path と canonical workspace root を与える | 同じ session の underlying inspection は合計1回 | resolved |
+| I116-NR-001 | 次 generation / 独立 Review Contexts command の fresh acquisition を保持する | signal ごとの新 inspection session、`load()` 冒頭の one-shot token 消去、token 不在時の `enumerateCurrentContexts` | 同 test `:94-110` の independent / next-generation sessions と `:167-175` の registered T405 independent refresh | independent session `+1`、next generation `+1`、T405 independent refresh `localCandidates=1` | resolved |
+
+### 検証と判定
+
+- reviewer 再実行: `npm run test:i116` は20/20 Green、`npm run build`、`npm run lint`、`git diff --check 08530d8..1ed77fe` はすべて exit 0。実装 report の結果と一致した。
+- Red evidence: follow-up の Red は helper import 前の `TS2307` compile failure であり、旧実合成の4回を直接観測した behavior Red ではない。実装 report はこの区別を erratum に明記しており、過剰な Red 主張はない。旧回数は initial review の production call graph 証拠、新回数は production units を用いた headless fixture と extension wiring の直接確認で評価した。
+- Host evidence: 追加を試みた T609 Extension Host は Windows updater mutex により test body 前で停止し、変更は残されておらず Green 証拠にも含まれていない。今回の修正 seam は production helper、production Current Context layers、registered T405 runtime の headless composition で直接検証され、full gate / Host は通常レビュー収束後に別途実行する計画なので、この環境事象は nonblocking held とする。
+- changed impact: follow-up の production 3件、test 1件、実装 report、tracking を全て確認した。新 helper は composition 内部であり外部 API / 永続形式 / configuration を変更しない。公開 interface の既存 JSDoc は役割を記載しており coding-standard finding はない。tracking は closure 待ち、verification / full-gate report は未開始を示し、現状態と整合する。
+- coverage disposition: `I116-NR-001` required actions は全て `resolved`。requirement / design conformance、normal-path correctness、changed files / direct dependencies、error / cancellation / stale / next-generation boundaries、tests / validation、reports / tracking、regression / maintainability は `checked_no_finding`。API / compatibility は `checked_no_finding`、security / secrets は `not_applicable`、full local gate / current-head CI は後続工程のため `unexplored`。
+- current verdict: `pass_with_held`。closure reviewed HEAD `1ed77fe0a889462fd060ac6c65f03d493a0377ff` には、100ユーザーで月1回以上の頻度基準を満たす未解決 required finding はない。held は本体前で停止した Windows Host 試行、未実施の full gate / CI、環境依存の absolute wall-clock だけである。
+- next action: 親が factual tracking / report status を同期して candidate HEAD を固定し、計画済み full local equivalence gate、独立 final review、exact-head CI へ進む。closure 結果と検証状態だけを反映する administrative document delta は再度の通常 technical review を要しない。production、design、test、workflow、configuration、要件または性能主張を変える場合は本 reviewer の対象へ戻す。
+- report attestation: normal review report であるため `report_attestation_allowed: false`。
