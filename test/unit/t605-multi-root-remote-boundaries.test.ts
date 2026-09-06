@@ -24,7 +24,7 @@ import { NonGitSnapshotTracker } from "../../src/application/non-git-snapshots/i
 import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
-} from "../../src/t405-root-scoped-candidate-identity";
+} from "../../src/ui/current-context/root-scoped-candidate-identity";
 import {
   SnapshotTrackingWorkspaceReviewStateSessionProvider,
   createWorkspaceRootRuntimeRegistry
