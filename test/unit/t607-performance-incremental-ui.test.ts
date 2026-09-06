@@ -33,8 +33,8 @@ import {
 } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { NormalEditorDecorationController, type DecorationDisposable, type NormalEditorDecorationHost, type NormalEditorDecorationSettings } from "../../src/ui/normal-editor/index";
 import type { ReviewStateFileTarget } from "../../src/core/review-state/index";
-import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/t405-pull-request-review-runtime";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/composition/pull-request/pull-request-review-runtime";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 
 const runtimeRequire = createRequire(__filename);
 const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
@@ -663,7 +663,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     if (url.includes("/files")) return new Response(JSON.stringify([{ filename: "f-0.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+opened" }]), { status: 200 });
     return new Response(JSON.stringify({ number: 79, title: "T607", html_url: "https://example.invalid/79", state: "open", merged_at: null, changed_files: 1, base: { sha: "a".repeat(40) }, head: { sha: revision } }), { status: 200 });
   };
-  const t405 = loadWithVscode<typeof import("../../src/t405-review-contexts-runtime.js")>("../../src/t405-review-contexts-runtime.js", vscode);
+  const t405 = loadWithVscode<typeof import("../../src/composition/review-contexts/review-contexts-runtime.js")>("../../src/composition/review-contexts/review-contexts-runtime.js", vscode);
   const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { feedbackLogs.push({ event: entry.event }); }, revealLog(): void {} });
   setActiveOperationFeedback(feedback);
   try {
