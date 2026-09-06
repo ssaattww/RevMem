@@ -23,8 +23,8 @@ import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.j
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
-} from "../../src/t405-pull-request-review-runtime.js";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source.js";
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
@@ -294,7 +294,7 @@ test("Issue #66 production composition switches the contributed PR Progress view
     "src/ui/pr-progress/vscode-pull-request-progress-tree.ts",
     "utf8"
   );
-  const composition = await readFile("src/t305-extension.ts", "utf8");
+  const composition = await readFile("src/composition/extension.ts", "utf8");
 
   assert.doesNotMatch(treeRuntime, /export const setPullRequestProgressSource/u);
   assert.doesNotMatch(treeRuntime, /export const refreshPullRequestProgressTree/u);

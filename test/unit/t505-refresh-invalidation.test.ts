@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 import {
   createGlobalUnderstandingTreeModel,
   GlobalUnderstandingRefreshCoalescer,

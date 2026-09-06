@@ -24,7 +24,7 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState
 } from "../../src/core/contracts/index";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 
 const incompleteSplitLimits = {
   maxSnapshots: 1,
@@ -155,7 +155,7 @@ test("T505-R001 retains immutable open-document evidence after save and close", 
 });
 
 test("T505-R001 wires change, save, and close events to Global evidence refresh", async () => {
-  const composition = await readFile("src/t305-extension.ts", "utf8");
+  const composition = await readFile("src/composition/extension.ts", "utf8");
   assert.match(composition, /onDidChangeTextDocument/u);
   assert.match(composition, /onDidSaveTextDocument/u);
   assert.match(composition, /onDidCloseTextDocument/u);
