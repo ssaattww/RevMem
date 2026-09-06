@@ -17,7 +17,10 @@ export default tseslint.config(
     }
   },
   {
-    files: ["src/t405-review-contexts-runtime.ts"],
+    files: [
+      "src/t405-review-contexts-runtime.ts",
+      "src/composition/review-contexts/review-contexts-runtime.ts"
+    ],
     rules: {
       "no-useless-assignment": "off"
     }
