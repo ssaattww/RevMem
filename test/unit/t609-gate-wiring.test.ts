@@ -148,8 +148,8 @@ test("T609 runner owns a 300-second deadline for the single-root phase", async (
 
 test("T609 phase ownership keeps mixed encoding in single-root and repository cancellation in multi-root", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
-  const extension = await readFile(path.join(projectRoot, "src/t305-extension.ts"), "utf8");
-  const runtime = await readFile(path.join(projectRoot, "src/t405-review-contexts-runtime.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src/composition/extension.ts"), "utf8");
+  const runtime = await readFile(path.join(projectRoot, "src/composition/review-contexts/review-contexts-runtime.ts"), "utf8");
   const singleRootStart = hostSuite.indexOf("if (isSingleRoot) {");
   const restartStart = hostSuite.indexOf("if (!isPrepare) {");
   const multiRootStart = hostSuite.indexOf('await within("multi-root fixture readiness"');
@@ -209,7 +209,7 @@ test("T609 single-root reuses its no-active Current Context selection without an
 
 test("T609 Host waits for the single handled startup Current Context refresh before its public no-active-editor command", async () => {
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
-  const extension = await readFile(path.join(projectRoot, "src/t305-extension.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src/composition/extension.ts"), "utf8");
   const runtime = await readFile(path.join(projectRoot, "src/ui/current-context/vscode-current-context-runtime.ts"), "utf8");
   const activationIndex = hostSuite.indexOf('const api = (await within("activate extension", extension.activate())) as T609ExtensionApi;');
   const drainIndex = hostSuite.indexOf('await within("drain startup Current Context", api.drainCurrentContextStartupForTest());');
@@ -227,7 +227,7 @@ test("T609 Host waits for the single handled startup Current Context refresh bef
     "only the active-editor event remains fire-and-forget and must remain non-interactive"
   );
   assert.match(runtime, /await reportRefreshError\(formatOperationFailureForUser\(error\)\);/u);
-  assert.match(extension, /drainCurrentContextStartupForTest: \(\) => currentContextRuntime\.startupRefresh/u);
+  assert.match(extension, /drainCurrentContextStartupForTest:\s*\(\)\s*=>\s*currentContextRuntime\.startupRefresh/u);
   assert.doesNotMatch(extension, /void currentContextRuntime\.refresh\(\)\.catch/u);
 });
 
@@ -382,7 +382,7 @@ test("T609 single-root uses public mixed-encoding marks after startup settlement
     "every normal mark operation must publish exactly one applied event"
   );
   assert.match(extension, /deferAppliedDecorationRefresh: true/u);
-  const composition = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const composition = await readFile(path.join(projectRoot, "src", "composition", "extension.ts"), "utf8");
   assert.match(composition, /new TestReviewStateDependentQueue\(/u);
   assert.match(composition, /enqueueAll\(\)/u);
   assert.doesNotMatch(hostSuite, /drainReviewStateDependentsForTest/u);
@@ -392,7 +392,7 @@ test("T609 single-root uses public mixed-encoding marks after startup settlement
 
 test("T609 production composition passes the shared validated mapping settings to Git revision mapping", async () => {
   const extension = await readFile(path.join(projectRoot, "src", "extension.ts"), "utf8");
-  const liveEdit = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const liveEdit = await readFile(path.join(projectRoot, "src", "composition", "extension.ts"), "utf8");
   const configuration = await readFile(
     path.join(projectRoot, "src", "application", "configuration", "review-range-mapping-options.ts"),
     "utf8"
@@ -430,8 +430,8 @@ test("T609 restart reobserves only its active UTF-8 BOM hint without Current Con
 });
 
 test("T609 Host observes actual VS Code URI safety and persisted encoding mapping without Test mutation seams", async () => {
-  const extension = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
-  const reviewContexts = await readFile(path.join(projectRoot, "src", "t405-review-contexts-runtime.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src", "composition", "extension.ts"), "utf8");
+  const reviewContexts = await readFile(path.join(projectRoot, "src", "composition", "review-contexts", "review-contexts-runtime.ts"), "utf8");
   const hostSuite = await readFile(path.join(projectRoot, "test/vscode/t609-suite/index.ts"), "utf8");
 
   assert.match(extension, /getT305WorkspaceUriPathForTest/u);
@@ -470,7 +470,7 @@ test("T609 mixed-encoding composition observes persisted Shift-JIS state at ever
 });
 
 test("T609 persisted Git snapshot reads the Current Context owner without mutating state", async () => {
-  const extension = await readFile(path.join(projectRoot, "src", "t305-extension.ts"), "utf8");
+  const extension = await readFile(path.join(projectRoot, "src", "composition", "extension.ts"), "utf8");
   const snapshotStart = extension.indexOf("const gitReviewStateSnapshotForTest");
   const snapshotEnd = extension.indexOf("return {", snapshotStart);
   assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
