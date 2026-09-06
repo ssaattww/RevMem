@@ -22,7 +22,7 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
-import { synchronizePullRequestOwner } from "../../src/t405-owner-pull-request-synchronization.js";
+import { synchronizePullRequestOwner } from "../../src/composition/pull-request/owner-pull-request-synchronization.js";
 
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const SHA_A = "a".repeat(40);
@@ -450,7 +450,7 @@ test("Issue #106 cancellation before owner publication leaves state and history 
 
 test("Issue #106 T405 production runtime delegates explicit PR synchronization to the owner synchronization boundary", async () => {
   const runtimeSource = await readFile(
-    path.resolve(__dirname, "../../../src/t405-review-contexts-runtime.ts"),
+    path.resolve(__dirname, "../../../src/composition/review-contexts/review-contexts-runtime.ts"),
     "utf8",
   );
   assert.match(runtimeSource, /synchronizePullRequestOwner/u);
@@ -474,7 +474,7 @@ for (const message of [
 ]) {
   test(`PR108-ACTION-003 preserves the user-facing Japanese error: ${message}`, async () => {
     const runtimeSource = await readFile(
-      path.resolve(__dirname, "../../../src/t405-review-contexts-runtime.ts"),
+      path.resolve(__dirname, "../../../src/composition/review-contexts/review-contexts-runtime.ts"),
       "utf8",
     );
     assert.ok(runtimeSource.includes(`throw new Error(${JSON.stringify(message)})`));
