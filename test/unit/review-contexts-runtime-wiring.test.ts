@@ -72,15 +72,15 @@ test("T405 contributes Review Contexts activation, commands, and menus", async (
 });
 
 test("T405 production entry delegates Review Contexts composition to the T405 runtime boundary", async () => {
-  const entry = await readFile("src/t305-extension.ts", "utf8");
-  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const entry = await readFile("src/composition/extension.ts", "utf8");
+  const composition = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
   assert.match(entry, /registerT405ReviewContextsRuntime/u);
   assert.match(composition, /registerReviewContextsRuntime/u);
   assert.match(composition, /ReviewContextsController/u);
 });
 
 test("Issue #57 maps an existing owner-wide Global revision before publishing a new PR context", async () => {
-  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const composition = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
 
   assert.match(composition, /GitContextRevisionMapper/u);
   assert.match(composition, /currentGlobalForNewPullRequest[\s\S]*\.map\(/u);
@@ -104,11 +104,11 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
     "utf8",
   );
   const pullRequestRuntime = await readFile(
-    "src/t405-pull-request-review-runtime.ts",
+    "src/composition/pull-request/pull-request-review-runtime.ts",
     "utf8",
   );
   const pullRequestRuntimeBase = await readFile(
-    "src/t405-pull-request-review-runtime-base.ts",
+    "src/composition/pull-request/pull-request-review-runtime-base.ts",
     "utf8",
   );
   const operationUi = await readFile(
@@ -135,7 +135,7 @@ test("Issue #63 wires streamed Git output, operation status, and Output diagnost
 });
 
 test("Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics", async () => {
-  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const composition = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
   const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
 
   assert.match(composition, /reportActiveOperationFailure/u);
@@ -150,7 +150,7 @@ test("Issue #63 reports fail-closed PR progress acquisition failures to Output d
 });
 
 test("R65-005 preserves safe PR progress acquisition attempts and final cause", async () => {
-  const composition = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const composition = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
 
   assert.match(
     composition,

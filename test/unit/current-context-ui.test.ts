@@ -7,7 +7,7 @@ import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
-} from "../../src/t305-current-context-git";
+} from "../../src/composition/current-context/git-context-inspection";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
@@ -151,7 +151,7 @@ test("selected context identity is applied to the review runtime before decorati
   const events: string[] = [];
   const selection = {
     kind: "workspace" as const,
-    workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
+    workspaceFolderUri: { scheme: "file", "authority": "", path: "/workspace" }
   };
   const controller = new CurrentContextUiController(createHost(events), {
     recompute: async () => undefined,

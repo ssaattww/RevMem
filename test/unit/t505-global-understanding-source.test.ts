@@ -14,7 +14,7 @@ import {
   type ReviewContextState
 } from "../../src/core/contracts/index";
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");

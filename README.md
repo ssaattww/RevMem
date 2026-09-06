@@ -32,7 +32,7 @@ VS Code で、確認済みにした行範囲を context ごとに記録・表示
 1. GitHub Releases の最新 Release から、その version に対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回 Release の例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
 2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選んでダウンロードしたファイルを指定します。
 
-pull request の検証では、成功した CI run の `review-range-user-validation-<SHA>` artifact に同じSHAを含むVSIXとtracked source ZIPを用意します。VSIXだけをダウンロードして、上記と同じ手順でインストールしてください。
+pull request の検証では、PR の current HEAD と `head_sha` が一致する成功済み CI run の `review-range-user-validation-<version>` artifact を使用します。`<version>` は分岐元 main の公開版と PR HEAD の先頭7桁を組み合わせた値です（例: `0.1.52-pre+abcdef0`）。artifact には `review-range-tracker-<version>.vsix`、同じ版名の tracked source ZIP、解決元の版・分岐点・HEAD を記録した `version.json` を含めます。VSIX 内部の版番号も同じ値です。VSIX をダウンロードして、上記と同じ手順でインストールしてください。解決規則とソース配置は [source layout / CI VSIX design](doc/design/source-layout-and-ci-vsix-version.md) を参照してください。
 
 CLI を使う場合は、次を実行します。
 

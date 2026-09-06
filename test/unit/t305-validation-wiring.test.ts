@@ -4,7 +4,7 @@ import test from "node:test";
 
 import {
   refreshCurrentContextDependents,
-} from "../../src/t305-projection-refresh.js";
+} from "../../src/application/review-context/projection-refresh.js";
 import "./global-understanding-ui.test";
 import "./t505-review-findings.test";
 import "./t505-refresh-invalidation.test";

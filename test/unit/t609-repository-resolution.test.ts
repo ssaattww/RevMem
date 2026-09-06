@@ -5,7 +5,7 @@ import {
   resolveCurrentContextRepositories,
   workspaceUriToFilesystemPath,
   type RepositoryResolutionInspection
-} from "../../src/t609-repository-resolution.js";
+} from "../../src/application/review-context/repository-resolution.js";
 
 const repository = (rootPath: string, repositoryId = rootPath): RepositoryResolutionInspection => ({
   kind: "repository",

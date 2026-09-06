@@ -16,7 +16,7 @@ import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeOptions,
   type PullRequestReviewRuntimeRepository
-} from "../../src/t405-pull-request-review-runtime.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type {
   PullRequestProgressTreeCategoryNode,
   PullRequestProgressTreeFileNode

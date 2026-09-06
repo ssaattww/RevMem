@@ -118,7 +118,7 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
       );
       return new Response(JSON.stringify({ number: 76, title: "T606", html_url: "https://example.invalid/76", state: "open", merged_at: null, changed_files: 1, base: { sha: baseSha }, head: { sha: headSha } }), { status: 200 });
     };
-    const t405 = loadWithVscode<typeof import("../../src/t405-review-contexts-runtime.js")>("../../src/t405-review-contexts-runtime.js", vscode);
+    const t405 = loadWithVscode<typeof import("../../src/composition/review-contexts/review-contexts-runtime.js")>("../../src/composition/review-contexts/review-contexts-runtime.js", vscode);
     const current = loadWithVscode<typeof import("../../src/ui/current-context/vscode-current-context-runtime.js")>("../../src/ui/current-context/vscode-current-context-runtime.js", vscode);
     const context = { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") }, workspaceState: new MemoryMemento(), subscriptions: [] };
     const stateRepository = {

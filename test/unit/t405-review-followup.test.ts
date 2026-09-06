@@ -237,7 +237,7 @@ test("T406-R001 explicit branch selection suppresses one saved open PR at the sa
 });
 
 test("R405-7 redetection persists and reloads explicit current PR identity", async () => {
-  const runtime = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const runtime = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
 
   assert.match(runtime, /currentPullRequestSelection\.select\([\s\S]*state\.contextId/u);
   assert.match(runtime, /currentPullRequestSelection\.read\([\s\S]*findCurrentPullRequestContext/u);

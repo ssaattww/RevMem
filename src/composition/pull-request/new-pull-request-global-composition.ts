@@ -1,7 +1,7 @@
-import type { ReviewStateRepositoryTarget } from "./adapters/state-repository/index";
-import type { GitDiffMappingOptions } from "./core/git-diff/index";
-import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "./core/contracts/index";
-import { type GitContextRevisionMapper, type ResolvedGitReviewContext } from "./application/review-context/index";
+import type { ReviewStateRepositoryTarget } from "../../adapters/state-repository/index";
+import type { GitDiffMappingOptions } from "../../core/git-diff/index";
+import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "../../core/contracts/index";
+import { type GitContextRevisionMapper, type ResolvedGitReviewContext } from "../../application/review-context/index";
 
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;
 

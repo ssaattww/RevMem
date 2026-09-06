@@ -3,60 +3,60 @@ import {
   reportActiveOperationProgress,
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
-} from "./application/operation-feedback/index";
+} from "../../application/operation-feedback/index";
 import type {
   GitCommitReviewDiffDocumentDescriptor,
   ReviewDiffDocumentDescriptor,
   RevisionTextContentReadResult,
-} from "./application/diff-document/index";
+} from "../../application/diff-document/index";
 import {
   ReviewDiffUriCodec,
   RevisionTextContentProvider,
-} from "./application/diff-document/index";
+} from "../../application/diff-document/index";
 import {
   registerPullRequestGlobalHeadFileProvider,
   type PullRequestGlobalHeadFile,
-} from "./application/global-understanding/pull-request-global-head-file-registry";
-import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
+} from "../../application/global-understanding/pull-request-global-head-file-registry";
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import { createHash } from "node:crypto";
 
 import {
   DiffEditorReviewCommandService,
   deriveOriginalToModifiedLineMappings,
   type DiffEditorReviewCommandDependencies,
-} from "./application/review-commands/index";
+} from "../../application/review-commands/index";
 import {
   captureImmutableRevisionSnapshots,
   type ReviewStateTransaction,
-} from "./core/review-state/index";
+} from "../../core/review-state/index";
 import type {
   RepositoryGlobalState,
   ReviewContextState,
-} from "./core/contracts/index";
+} from "../../core/contracts/index";
 import type {
   ReviewStateCommit,
   ReviewStateRepositoryTarget,
   ReviewStateTransactionLike,
-} from "./adapters/state-repository/index";
-import type { FileSystemPathSemantics } from "./application/workspace-identity/index";
-import type { ReviewFileExclusionPolicy } from "./core/file-exclusion/index";
+} from "../../adapters/state-repository/index";
+import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
+import type { ReviewFileExclusionPolicy } from "../../core/file-exclusion/index";
 import {
   calculatePullRequestDiffProgress,
   calculatePullRequestDiffProgressCooperatively,
   type PullRequestDiffFileProgress,
   type PullRequestDiffProgress,
   type PullRequestDiffSnapshot,
-} from "./core/pr-progress/index";
+} from "../../core/pr-progress/index";
 import {
   ReviewDiffEditorController,
   ReviewDiffTextDocumentContentProvider,
   type ReviewDiffEditorHost,
-} from "./ui/diff-editor/index";
+} from "../../ui/diff-editor/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeDiffTarget,
   type PullRequestLineReviewability,
-} from "./ui/pr-progress/index";
+} from "../../ui/pr-progress/index";
 
 export interface PullRequestReviewRuntimeRepository {
   load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined>;

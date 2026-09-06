@@ -16,7 +16,7 @@ import {
 import { projectReviewContexts } from "../../src/application/review-contexts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
-import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -314,7 +314,7 @@ test("R405-1 lifecycle adapter acquires an exact immutable revision comparison f
 });
 
 test("R405-1 T405 revision update maps B to C, permits layer operation, and survives restart", async () => {
-  const runtimeSource = await readFile("src/t405-review-contexts-runtime.ts", "utf8");
+  const runtimeSource = await readFile("src/composition/review-contexts/review-contexts-runtime.ts", "utf8");
   const detectStart = runtimeSource.indexOf("const detectPullRequest = async");
   const preparationStart = runtimeSource.indexOf("const preparePullRequestCandidateForExplicitContextSelection", detectStart);
   assert.ok(detectStart >= 0 && preparationStart > detectStart, "shared PR detection must precede the explicit Current Context preparation entry");
@@ -329,7 +329,7 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
     /await contextStateService\.update\(/u,
     "shared PR detection must not publish an existing PR Context after owner synchronization",
   );
-  const ownerSynchronizationSource = await readFile("src/t405-owner-pull-request-synchronization.ts", "utf8");
+  const ownerSynchronizationSource = await readFile("src/composition/pull-request/owner-pull-request-synchronization.ts", "utf8");
   assert.match(ownerSynchronizationSource, /loadRepositorySnapshot/u);
   assert.match(ownerSynchronizationSource, /prepareUpdate/u);
   assert.match(ownerSynchronizationSource, /commitRepository/u);

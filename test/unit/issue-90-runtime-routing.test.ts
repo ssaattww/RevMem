@@ -15,7 +15,7 @@ import {
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
-import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/t405-pull-request-review-runtime.js";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRepository } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import { GlobalUnderstandingRefreshCoalescer } from "../../src/ui/global-understanding/issue-90-global-refresh.js";
 
 const runtimeRequire = createRequire(__filename);

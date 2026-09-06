@@ -1,5 +1,26 @@
 # Breaking Changes
 
+## 2026-09-06 — PR CI artifact versions and production import paths
+
+PR user-validation VSIX packages now use the published main version at the
+resolved branch point plus the first seven PR HEAD digits, for example
+`0.1.52-pre+abcdef0`. The artifact is named
+`review-range-user-validation-<version>`; the VSIX and tracked source ZIP use
+that same version instead of the previous full synthetic merge-SHA filename.
+Consumers must select a run whose `head_sha` equals the PR current HEAD and read
+`version.json` for the full HEAD/base/branch-point identities. Do not parse a
+full commit identity from the new seven-digit human-facing package label.
+
+The twenty production modules formerly named `src/t...` move to their owning
+application, UI or composition folders. Internal source consumers must update
+imports; no task-named compatibility modules are retained. The production
+package entry becomes `dist/composition/extension.js`. The complete move table
+and version-resolution rules are in
+`doc/design/source-layout-and-ci-vsix-version.md`.
+
+This changes artifact discovery and development-time import paths, not command
+IDs, user-setting defaults, review-state schemas or main/release version policy.
+
 ## 2026-08-22 — Global Understanding is folder-scope controlled
 
 Global Understanding folder lifecycle now uses an owner identity containing the

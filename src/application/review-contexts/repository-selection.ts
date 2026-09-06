@@ -2,7 +2,7 @@ import {
   resolveCurrentContextRepositories,
   type CurrentContextRepositoryResolutionInput,
   type ResolvedRepositoryCandidate
-} from "./t609-repository-resolution";
+} from "../review-context/repository-resolution";
 
 /** Review Contextsが複数repositoryを明示選択するUI境界。 */
 export type ReviewContextsRepositorySelection = (

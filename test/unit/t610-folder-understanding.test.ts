@@ -20,11 +20,11 @@ import {
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
 import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
-import { createT305GlobalUnderstandingSource } from "../../src/t305-global-understanding-composition";
-import { T505GlobalUnderstandingSource } from "../../src/t505-global-understanding-source";
+import { createT305GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-composition";
+import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 import type { GlobalUnderstandingTreeSnapshot } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
-import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../../src/t305-global-understanding-lifecycle";
+import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../../src/application/global-understanding/document-open-lifecycle";
 
 test("T610 scopes file opens to direct folders, preserves stopped descendants, and isolates repository roots", async () => {
   const saved: string[][] = [];
@@ -372,7 +372,7 @@ test("T610-R7 never presents a partial repository aggregate as a percentage", as
 
 test("T610-R7 documents the real watcher and startup-open lifecycle without a callback shortcut", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   assert.match(activation, /for \(const document of vscode\.workspace\.textDocuments\)/u);
   assert.match(activation, /folderEntryWatcher\.onDidCreate/u);
@@ -383,7 +383,7 @@ test("T610-R7 documents the real watcher and startup-open lifecycle without a ca
 
 test("T610-R8 persists ordered Host subphases and drains the real watcher without local operation deadlines", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const runner = await readFile(path.join(root, "test", "vscode", "run-extension-host.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   assert.match(activation, /recordT610HostSubphaseForTest:/u);
@@ -678,7 +678,7 @@ test("T610-R15 routes the actual production document-open lifecycle through shar
     assert.deepEqual(messages, ["Global Understanding folderを開始できませんでした。詳細は Review Range Output を確認してください。"]);
     assert.ok(output.some((line) => line.includes("details were redacted")), "the shared Output records a redacted terminal");
     assert.equal(output.join("\n").includes("secret.ts"), false);
-    const extension = await readFile(path.join(path.resolve(__dirname, "../../.."), "src", "t305-extension.ts"), "utf8");
+    const extension = await readFile(path.join(path.resolve(__dirname, "../../.."), "src", "composition/extension.ts"), "utf8");
     assert.match(extension, /const observeRegisteredGlobalUnderstandingDocument =/u);
     assert.match(extension, /onDidOpenTextDocument\(\(document\) => \{\s*void observeRegisteredGlobalUnderstandingDocument\(document, true\);/u, "the actual registered listener uses the shared activated failure handler");
     assert.match(extension, /runInjectedGlobalUnderstandingDocumentOpenForTest:[\s\S]*await observeRegisteredGlobalUnderstandingDocument\(document, false\);/u, "the deterministic Test seam awaits that same activated handler");
@@ -862,7 +862,7 @@ test("T610-NR-005 keeps stopped markers isolated by actual URI authority and rej
 
 test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const runner = await readFile(path.join(root, "test", "vscode", "run-extension-host.ts"), "utf8");
   const ownedLaunch = await readFile(path.join(root, "test", "vscode", "owned-extension-host-launch.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
@@ -889,7 +889,7 @@ test("T610-NR-009 wires one Test API lifecycle seam and one Host selector", asyn
 
 test("T610-R4 separates accepted open, source refresh, and published runtime snapshot observations", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   assert.match(activation, /getGlobalUnderstandingLifecycleObservationForTest:/u);
   assert.match(activation, /drainGlobalUnderstandingFileOpenForTest:/u);
@@ -909,7 +909,7 @@ test("T610-R10 combined missing-cell contract: presentation hierarchy, startup h
   assert.match(hostSuite, /third-level folder hierarchy/u);
   assert.match(hostSuite, /Status Bar never exposes a percentage/u);
 
-  const startup = await import("../../src/t305-global-understanding-startup.js");
+  const startup = await import("../../src/application/global-understanding/startup-document-observation.js");
   const observed: string[] = [];
   let refreshed = 0;
   await startup.observeStartupGlobalUnderstandingDocuments(
@@ -961,9 +961,9 @@ test("T610-R12 persists before-and-after Host subphases around each R11 actual-c
 
 test("T610-R13 registers startup Global work outside activation and exposes its Test drain", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
-  const startup = await import("../../src/t305-global-understanding-startup.js");
+  const startup = await import("../../src/application/global-understanding/startup-document-observation.js");
   let releaseObservation: (() => void) | undefined;
   const observationGate = new Promise<void>((resolve) => { releaseObservation = resolve; });
   const observed: string[] = [];
@@ -988,7 +988,7 @@ test("T610-R13 registers startup Global work outside activation and exposes its 
 
 test("T610-R14 settles Current Context startup before queuing non-blocking startup Global work", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   const currentContextRuntime = activation.indexOf("const currentContextRuntime = registerCurrentContextRuntime(");
   const queuedGlobalStartup = activation.indexOf("const startupGlobalUnderstanding = currentContextRuntime.startupRefresh.then(");
@@ -1010,7 +1010,7 @@ test("T610-R14 settles Current Context startup before queuing non-blocking start
 
 test("T610-R15 publishes Test APIs without waiting for persistence migration while production still awaits it", async () => {
   const root = path.resolve(__dirname, "../../..");
-  const activation = await readFile(path.join(root, "src", "t305-extension.ts"), "utf8");
+  const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   assert.match(activation, /const persistenceStartup = composeStartupFeedback/u);
   assert.match(activation, /extensionMode === vscode\.ExtensionMode\.Test[\s\S]*?void persistenceStartup\.catch[\s\S]*?else \{\s*await persistenceStartup;/u);

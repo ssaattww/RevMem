@@ -145,7 +145,7 @@ test("PR Progress contributes a right-click command that opens the current worki
 test("PR Progress source and refresh ownership is scoped to each activated runtime", async () => {
   const treeSource = await readFile("src/ui/pr-progress/vscode-pull-request-progress-tree.ts", "utf8");
   const baseSource = await readFile("src/extension.ts", "utf8");
-  const activationSource = await readFile("src/t305-extension.ts", "utf8");
+  const activationSource = await readFile("src/composition/extension.ts", "utf8");
 
   assert.doesNotMatch(treeSource, /\blet activeRuntime\b/);
   assert.doesNotMatch(treeSource, /activeRuntime\?\./);
@@ -156,7 +156,7 @@ test("PR Progress source and refresh ownership is scoped to each activated runti
 });
 
 test("an applied PR diff review refreshes reviewed decorations and owning progress before returning", async () => {
-  const runtimeSource = await readFile("src/t405-pull-request-review-runtime.ts", "utf8");
+  const runtimeSource = await readFile("src/composition/pull-request/pull-request-review-runtime.ts", "utf8");
   const treeSource = await readFile("src/ui/pr-progress/vscode-pull-request-progress-tree.ts", "utf8");
 
   assert.match(runtimeSource, /synchronizeAppliedPullRequestReview/);

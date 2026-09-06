@@ -70,7 +70,7 @@ import {
   type NormalEditorDecorationSettings,
   type NormalEditorDecorationWorkBudget
 } from "./ui/normal-editor/index";
-import { LocalBaseHeadRuntime } from "./t306-local-base-head-runtime";
+import { LocalBaseHeadRuntime } from "./composition/local-git/local-base-head-runtime";
 
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";

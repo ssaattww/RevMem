@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PullRequestReviewProjectionNotifier } from "../../src/t405-pr-review-projection-notifier";
+import { PullRequestReviewProjectionNotifier } from "../../src/application/review-contexts/pull-request-review-projection-notifier";
 
 test("PR review projection notifier awaits only listeners owned by that runtime", async () => {
   const first = new PullRequestReviewProjectionNotifier();

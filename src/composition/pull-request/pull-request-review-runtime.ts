@@ -1,32 +1,32 @@
 import { pathToFileURL } from "node:url";
 
-import type { NormalEditorReviewedDecoration } from "./application/editor-decoration/index";
+import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
 import {
   describePullRequestProgressFile,
   describePullRequestProgressSummary,
   queueOperationStartDetails,
   reportActiveOperationDetail,
   reportActiveOperationProgress,
-} from "./application/operation-feedback/index";
-import type { DiffEditorReviewCommandResult } from "./application/review-commands/diff-editor-review-command-service";
-import { normalizeLineIntervals } from "./core/intervals/index";
-import { PullRequestReviewProjectionNotifier } from "./t405-pr-review-projection-notifier";
-import { synchronizeAppliedPullRequestReview } from "./t405-pr-review-projection-sync";
-import type { PullRequestProgressTreeFileNode } from "./ui/pr-progress/index";
-import { resolveWorkingTreeFilePath } from "./ui/pr-progress/working-tree-file-path";
+} from "../../application/operation-feedback/index";
+import type { DiffEditorReviewCommandResult } from "../../application/review-commands/diff-editor-review-command-service";
+import { normalizeLineIntervals } from "../../core/intervals/index";
+import { PullRequestReviewProjectionNotifier } from "../../application/review-contexts/pull-request-review-projection-notifier";
+import { synchronizeAppliedPullRequestReview } from "../../application/review-contexts/pull-request-review-projection-sync";
+import type { PullRequestProgressTreeFileNode } from "../../ui/pr-progress/index";
+import { resolveWorkingTreeFilePath } from "../../ui/pr-progress/working-tree-file-path";
 import {
   PullRequestReviewRuntime as BasePullRequestReviewRuntime,
   type PullRequestReviewCommandDependencies,
   type PullRequestReviewRuntimeOptions,
   type PullRequestReviewRuntimeRegistration,
-} from "./t405-pull-request-review-runtime-base";
+} from "./pull-request-review-runtime-base";
 
 export type {
   PullRequestReviewCommandDependencies,
   PullRequestReviewRuntimeOptions,
   PullRequestReviewRuntimeRegistration,
   PullRequestReviewRuntimeRepository,
-} from "./t405-pull-request-review-runtime-base";
+} from "./pull-request-review-runtime-base";
 
 const snapshotKey = (snapshot: PullRequestReviewRuntimeRegistration["snapshot"]): string =>
   `${snapshot.contextId}\0${snapshot.baseSha}\0${snapshot.headSha}\0${snapshot.originalDiffId}`;

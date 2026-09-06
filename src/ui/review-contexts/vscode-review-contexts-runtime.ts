@@ -8,7 +8,7 @@ import {
   runWithActiveOperationFeedback,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
-import { settleReviewContextsRepositorySelection } from "../../t609-review-contexts-cancellation-boundary";
+import { settleReviewContextsRepositorySelection } from "../../application/review-contexts/repository-selection-cancellation";
 
 import {
   formatReviewContextCacheStatus,

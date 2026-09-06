@@ -1,7 +1,7 @@
 import path from "node:path";
 import * as vscode from "vscode";
 
-import { NodeSha256StableHash } from "./adapters/crypto/index";
+import { NodeSha256StableHash } from "../../adapters/crypto/index";
 import {
   FetchGitHubPullRequestAdapter,
   FetchGitHubPullRequestDiffAdapter,
@@ -11,13 +11,13 @@ import {
   createNodeGitHubPullRequestContextStateService,
   gitHubApiBaseUrl,
   parseGitHubRemote,
-} from "./adapters/github/index";
+} from "../../adapters/github/index";
 import {
   LocalGitPullRequestDiffAdapter,
   NodeGitCommandExecutor,
   type LocalGitAdapter,
   type LocalGitRepository,
-} from "./adapters/local-git/index";
+} from "../../adapters/local-git/index";
 import {
   resolveReviewStateStorageRoute,
   type StorageRootLockDiagnostic,
@@ -28,40 +28,40 @@ import {
   type ReviewStateRepositoryTransactionLike,
   type ReviewStateTransactionLike,
   type ReviewStateStorageUris,
-} from "./adapters/state-repository/index";
-import { resolveReviewRangeMappingOptions } from "./application/configuration/review-range-mapping-options";
-import type { RevisionTextContentReadResult } from "./application/diff-document/index";
+} from "../../adapters/state-repository/index";
+import { resolveReviewRangeMappingOptions } from "../../application/configuration/review-range-mapping-options";
+import type { RevisionTextContentReadResult } from "../../application/diff-document/index";
 import {
   GitHubPullRequestCacheService,
   type GitHubPullRequestCacheStorage,
   type PullRequestDiffAcquisitionPort,
-} from "./application/github-pr-cache/index";
-import type { ReviewHistoryRecorder } from "./application/review-history/index";
+} from "../../application/github-pr-cache/index";
+import type { ReviewHistoryRecorder } from "../../application/review-history/index";
 import {
   GitHubPullRequestContextResolver,
   createGitHubPullRequestContextIdFromRepositoryId,
   type GitHubPullRequestCandidate,
   type GitHubRepositoryIdentity,
-} from "./application/github-pr-context/index";
+} from "../../application/github-pr-context/index";
 import {
   PullRequestDiffAcquisitionService,
   type LocalPullRequestDiffPort,
   type PullRequestRemoteDataPort,
-} from "./application/github-pr-diff/index";
+} from "../../application/github-pr-diff/index";
 import {
   reportActiveOperationProgress,
   reportActiveStorageLockDiagnostic,
   type OperationFeedbackContext,
-} from "./application/operation-feedback/index";
+} from "../../application/operation-feedback/index";
 import {
   OperationDiagnosticError,
   reportActiveOperationFailure,
-} from "./application/operation-feedback/index";
+} from "../../application/operation-feedback/index";
 import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
   type GitRevisionMappingSource,
-} from "./application/review-context/index";
+} from "../../application/review-context/index";
 import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
@@ -70,33 +70,33 @@ import {
   type ReviewContextCacheStatus,
   type ReviewContextListItem,
   type ReviewContextListProgress,
-} from "./application/review-contexts/index";
+} from "../../application/review-contexts/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
   type ReviewContextState,
-} from "./core/contracts/index";
-import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
+} from "../../core/contracts/index";
+import type { CurrentContextUiSnapshot } from "../../ui/current-context/index";
 import {
   VscodeCurrentPullRequestSelectionStore,
   VscodeReviewContextVisibilityStore,
   registerReviewContextsRuntime,
   type RegisteredReviewContextsRuntime,
   type ReviewContextsRuntimeSource,
-} from "./ui/review-contexts/index";
-import type { PullRequestReviewRuntimeRegistration } from "./t405-pull-request-review-runtime";
-import { synchronizePullRequestOwner } from "./t405-owner-pull-request-synchronization";
-import { workspaceUriToFilesystemPath } from "./t609-repository-resolution";
+} from "../../ui/review-contexts/index";
+import type { PullRequestReviewRuntimeRegistration } from "../pull-request/pull-request-review-runtime";
+import { synchronizePullRequestOwner } from "../pull-request/owner-pull-request-synchronization";
+import { workspaceUriToFilesystemPath } from "../../application/review-context/repository-resolution";
 import {
   currentContextCandidateKey,
   resolveUniqueRepositoryRoot
-} from "./t405-root-scoped-candidate-identity";
+} from "../../ui/current-context/root-scoped-candidate-identity";
 import {
   ReviewContextsRepositorySelectionCancelled,
   resolveReviewContextsRepository,
   type ReviewContextsRepositorySelection
-} from "./t609-review-contexts-repository";
-import { currentGlobalForNewPullRequest } from "./t405-new-pull-request-global-composition";
+} from "../../application/review-contexts/repository-selection";
+import { currentGlobalForNewPullRequest } from "../pull-request/new-pull-request-global-composition";
 
 const CACHE_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const PATH_SEMANTICS = process.platform === "win32" ? "windows" as const : "posix" as const;

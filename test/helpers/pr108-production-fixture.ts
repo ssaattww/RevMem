@@ -17,8 +17,8 @@ import { ReviewHistoryRecorder } from "../../src/application/review-history/inde
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
-import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
-import type { T405ReviewContextsRuntimeOptions } from "../../src/t405-review-contexts-runtime.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import type { T405ReviewContextsRuntimeOptions } from "../../src/composition/review-contexts/review-contexts-runtime.js";
 
 export const PR108_REPOSITORY_ID = "github.com/ssaattww/revmem";
 export const PR108_FILE = "src/example.ts";
@@ -208,10 +208,10 @@ export async function createPr108ProductionFixture(options: {
   });
   const loader = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
   const originalLoad = loader._load;
-  let runtimeModule: typeof import("../../src/t405-review-contexts-runtime.js");
+  let runtimeModule: typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
   try {
     loader._load = (request, parent, isMain) => request === "vscode" ? vscodeHost : Reflect.apply(originalLoad, Module, [request, parent, isMain]);
-    runtimeModule = runtimeRequire("../../src/t405-review-contexts-runtime.js") as typeof runtimeModule;
+    runtimeModule = runtimeRequire("../../src/composition/review-contexts/review-contexts-runtime.js") as typeof runtimeModule;
   } finally { loader._load = originalLoad; }
   const localGit = createNodeLocalGitAdapter();
   const createReviewRuntime = (): PullRequestReviewRuntime<string> => new PullRequestReviewRuntime<string>({

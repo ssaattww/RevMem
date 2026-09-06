@@ -8,7 +8,18 @@ export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
   {
-    files: ["src/t405-review-contexts-runtime.ts"],
+    files: ["test/tooling/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        URL: "readonly",
+        process: "readonly"
+      }
+    }
+  },
+  {
+    files: [
+      "src/composition/review-contexts/review-contexts-runtime.ts"
+    ],
     rules: {
       "no-useless-assignment": "off"
     }

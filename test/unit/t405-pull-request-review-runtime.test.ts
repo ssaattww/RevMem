@@ -19,7 +19,7 @@ import {
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
-} from "../../src/t405-pull-request-review-runtime.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -895,7 +895,7 @@ test("PR Progress command rejects an old diff URI pair after BASE or HEAD change
 
 
 test("production command routing validates the active immutable diff URI pair before mutation", async () => {
-  const source = await readFile("src/t305-extension.ts", "utf8");
+  const source = await readFile("src/composition/extension.ts", "utf8");
 
   assert.match(source, /TabInputTextDiff/u);
   assert.match(source, /validateDiffDocumentPair/u);

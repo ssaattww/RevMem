@@ -116,7 +116,7 @@ const runScenario = async (options: {
   const originalFetch = globalThis.fetch;
   const moduleLoader = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
   const originalModuleLoad = moduleLoader._load;
-  let runtime: ReturnType<typeof import("../../src/t405-review-contexts-runtime.js").registerT405ReviewContextsRuntime> | undefined;
+  let runtime: ReturnType<typeof import("../../src/composition/review-contexts/review-contexts-runtime.js").registerT405ReviewContextsRuntime> | undefined;
   let currentRuntime: ReturnType<typeof import("../../src/ui/current-context/vscode-current-context-runtime.js").registerCurrentContextRuntime> | undefined;
   const subscriptions: DisposableLike[] = [];
   const feedbackHost = new FeedbackHost();
@@ -280,9 +280,9 @@ const runScenario = async (options: {
     moduleLoader._load = (request, parent, isMain) => request === "vscode"
       ? fakeVscode
       : Reflect.apply(originalModuleLoad, Module, [request, parent, isMain]) as unknown;
-    const runtimeModulePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+    const runtimeModulePath = runtimeRequire.resolve("../../src/composition/review-contexts/review-contexts-runtime.js");
     const currentContextModulePath = runtimeRequire.resolve("../../src/ui/current-context/vscode-current-context-runtime.js");
-    const t305ModulePath = runtimeRequire.resolve("../../src/t305-extension.js");
+    const t305ModulePath = runtimeRequire.resolve("../../src/composition/extension.js");
     const reviewContextsModulePath = runtimeRequire.resolve("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
     const reviewContextsIndexPath = runtimeRequire.resolve("../../src/ui/review-contexts/index.js");
     delete runtimeRequire.cache[runtimeModulePath];
@@ -290,9 +290,9 @@ const runScenario = async (options: {
     delete runtimeRequire.cache[reviewContextsIndexPath];
     delete runtimeRequire.cache[currentContextModulePath];
     delete runtimeRequire.cache[t305ModulePath];
-    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
     const currentContextModule = runtimeRequire(currentContextModulePath) as typeof import("../../src/ui/current-context/vscode-current-context-runtime.js");
-    const t305Module = runtimeRequire(t305ModulePath) as typeof import("../../src/t305-extension.js");
+    const t305Module = runtimeRequire(t305ModulePath) as typeof import("../../src/composition/extension.js");
     moduleLoader._load = originalModuleLoad;
 
     let candidates: readonly CurrentContextUiSnapshot[] = [];

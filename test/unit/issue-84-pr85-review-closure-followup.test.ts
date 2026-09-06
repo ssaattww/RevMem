@@ -21,8 +21,8 @@ import {
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
-import { refreshSelectedPullRequestProgress } from "../../src/t305-projection-refresh.js";
-import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
+import { refreshSelectedPullRequestProgress } from "../../src/application/review-context/projection-refresh.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -222,9 +222,9 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
     moduleLoader._load = (request, parent, isMain) => request === "vscode"
       ? fakeVscode
       : Reflect.apply(originalModuleLoad, Module, [request, parent, isMain]) as unknown;
-    const runtimeModulePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+    const runtimeModulePath = runtimeRequire.resolve("../../src/composition/review-contexts/review-contexts-runtime.js");
     delete runtimeRequire.cache[runtimeModulePath];
-    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
     moduleLoader._load = originalModuleLoad;
 
     const pullRequestReviewRuntime = new PullRequestReviewRuntime<string>({

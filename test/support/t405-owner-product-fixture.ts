@@ -12,8 +12,8 @@ import { ReviewHistoryRecorder } from "../../src/application/review-history/inde
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
-import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
-import type { PullRequestReviewRuntimeRegistration } from "../../src/t405-pull-request-review-runtime.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import type { PullRequestReviewRuntimeRegistration } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
 export const OWNER_ID = "github.com/ssaattww/revmem";
@@ -179,9 +179,9 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   const originalLoad = moduleLoader._load;
   const oldCacheKeys = new Set(Object.keys(runtimeRequire.cache));
   moduleLoader._load = (request, parent, isMain) => request === "vscode" ? fakeVscode : Reflect.apply(originalLoad, Module, [request, parent, isMain]);
-  const runtimePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+  const runtimePath = runtimeRequire.resolve("../../src/composition/review-contexts/review-contexts-runtime.js");
   delete runtimeRequire.cache[runtimePath];
-  const { registerT405ReviewContextsRuntime } = runtimeRequire(runtimePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+  const { registerT405ReviewContextsRuntime } = runtimeRequire(runtimePath) as typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
   moduleLoader._load = originalLoad;
   const registrations = new Map<string, PullRequestReviewRuntimeRegistration>();
   const opened: Array<{ original: string; modified: string }> = [];

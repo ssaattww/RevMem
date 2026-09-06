@@ -1,20 +1,20 @@
 import path from "node:path";
 
-import { NodeSha256StableHash } from "./adapters/crypto/index";
-import { NodeRepositoryFilePathEnumerator } from "./adapters/repository-files/node-repository-file-path-enumerator";
-import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "./adapters/state-repository/index";
-import type { ReviewFileExclusionPolicyService } from "./application/file-exclusion/review-file-exclusion-policy-service";
-import { FolderUnderstandingScopeController, GlobalUnderstandingBackgroundRecalculator, InMemoryGlobalUnderstandingProgressCache, type GlobalUnderstandingFileSource, type LoadedGlobalUnderstandingFile } from "./application/global-understanding/index";
+import { NodeSha256StableHash } from "../../adapters/crypto/index";
+import { NodeRepositoryFilePathEnumerator } from "../../adapters/repository-files/node-repository-file-path-enumerator";
+import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "../../adapters/state-repository/index";
+import type { ReviewFileExclusionPolicyService } from "../../application/file-exclusion/review-file-exclusion-policy-service";
+import { FolderUnderstandingScopeController, GlobalUnderstandingBackgroundRecalculator, InMemoryGlobalUnderstandingProgressCache, type GlobalUnderstandingFileSource, type LoadedGlobalUnderstandingFile } from "../../application/global-understanding/index";
 import {
   readRegisteredPullRequestGlobalHeadFiles,
   type PullRequestGlobalHeadFile,
-} from "./application/global-understanding/pull-request-global-head-file-registry";
-import { requireCanonicalRepositoryRelativePath } from "./application/repository-path/index";
-import { type FileSystemPathSemantics, type ResourceUri, WorkspaceIdentityService } from "./application/workspace-identity/index";
-import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "./core/contracts/index";
-import type { CurrentContextUiSnapshot } from "./ui/current-context/index";
-import type { GlobalUnderstandingFileOpenTarget, GlobalUnderstandingTreeSnapshot } from "./ui/global-understanding/global-understanding-ui-model";
-import type { GlobalUnderstandingRuntimeSource } from "./ui/global-understanding/index";
+} from "../../application/global-understanding/pull-request-global-head-file-registry";
+import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
+import { type FileSystemPathSemantics, type ResourceUri, WorkspaceIdentityService } from "../../application/workspace-identity/index";
+import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "../../core/contracts/index";
+import type { CurrentContextUiSnapshot } from "../../ui/current-context/index";
+import type { GlobalUnderstandingFileOpenTarget, GlobalUnderstandingTreeSnapshot } from "../../ui/global-understanding/global-understanding-ui-model";
+import type { GlobalUnderstandingRuntimeSource } from "../../ui/global-understanding/index";
 
 /** Exclusion-policy surface required while discovering folder-scoped evidence. */
 export type T505GlobalUnderstandingExclusionPolicy = Pick<ReviewFileExclusionPolicyService, "evaluate" | "evaluateDirectory" | "getRevision">;

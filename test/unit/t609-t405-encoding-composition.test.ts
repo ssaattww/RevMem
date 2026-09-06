@@ -10,7 +10,7 @@ import { NodeSha256StableHash } from "../../src/adapters/crypto/index";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import { GitContextRevisionMapper, GitReviewContextResolver } from "../../src/application/review-context/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "../../src/core/contracts/index";
-import { currentGlobalForNewPullRequest } from "../../src/t405-new-pull-request-global-composition";
+import { currentGlobalForNewPullRequest } from "../../src/composition/pull-request/new-pull-request-global-composition";
 
 const execFileAsync = promisify(execFile);
 const runGit = async (root: string, args: readonly string[]): Promise<string> =>

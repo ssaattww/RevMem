@@ -43,7 +43,7 @@ import {
   unmarkReviewedRanges,
   type ReviewStateTransaction,
 } from "../../src/core/review-state/index.js";
-import { PullRequestReviewRuntime } from "../../src/t405-pull-request-review-runtime.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -514,9 +514,9 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     moduleLoader._load = (request, parent, isMain) => request === "vscode"
       ? fakeVscode
       : Reflect.apply(originalModuleLoad, Module, [request, parent, isMain]) as unknown;
-    const runtimeModulePath = runtimeRequire.resolve("../../src/t405-review-contexts-runtime.js");
+    const runtimeModulePath = runtimeRequire.resolve("../../src/composition/review-contexts/review-contexts-runtime.js");
     delete runtimeRequire.cache[runtimeModulePath];
-    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/t405-review-contexts-runtime.js");
+    const runtimeModule = runtimeRequire(runtimeModulePath) as typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
     moduleLoader._load = originalModuleLoad;
 
     // T406-R001: an explicit branch/no-PR preference is scoped to its repository
