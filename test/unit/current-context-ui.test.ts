@@ -7,7 +7,7 @@ import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace
-} from "../../src/composition/current-context/git-context-inspection";
+} from "../../src/t305-current-context-git";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
@@ -302,71 +302,137 @@ test("T609 background recompute never opens a multi-root Quick Pick while an exp
   assert.equal(
     await composition.recompute(undefined, undefined, { allowInteraction: true }),
     first,
-    "the explicit refresh command remains the user-interactive resolution boundary"
+    "the explicit refresh command remains the user-interactive selection path"
   );
   assert.equal(quickPickCalls, 1);
 });
 
-test("production T609 current-context composition preserves a stale explicit selection on background ambiguity", async () => {
-  const selected = branchSnapshot("selected", "refs/heads/selected");
-  const first = branchSnapshot("first", "refs/heads/first");
-  const second = branchSnapshot("second", "refs/heads/second");
-  const selection = new CurrentContextCandidateSelection();
-  selection.acceptExplicit(selected);
-  let quickPickCalls = 0;
-  const composition = new CurrentContextRuntimeComposition(selection, {
-    enumerateCandidates: async () => [first, second],
-    resolveFallback: async () => undefined,
-    requestSelection: async (available) => {
-      quickPickCalls += 1;
+test("explicit Current Context selection prepares PR candidates before its Quick Pick without changing background refresh", async () => {
+  const branch = branchSnapshot("private branch", "refs/heads/private");
+  let candidates: readonly CurrentContextUiSnapshot[] = [branch];
+  let connectionPrompts = 0;
+  let quickPickCandidates: readonly CurrentContextUiSnapshot[] = [];
+  const port = {
+    enumerateCandidates: async () => candidates,
+    resolveFallback: async (available: readonly CurrentContextUiSnapshot[]) => available[0],
+    requestSelection: async (available: readonly CurrentContextUiSnapshot[]) => {
+      quickPickCandidates = available;
       return available[0];
-    }
-  });
+    },
+    prepareExplicitSelection: async () => {
+      connectionPrompts += 1;
+      candidates = [pullRequestSnapshot];
+    },
+  };
+  const composition = new CurrentContextRuntimeComposition(
+    new CurrentContextCandidateSelection(),
+    port as never,
+  );
 
-  assert.deepEqual(
-    await composition.recompute(undefined, undefined, { allowInteraction: false }),
-    { kind: "retain-current" },
-    "the automatic path must keep the previous authoritative selection while multiple roots are unresolved"
-  );
-  assert.equal(quickPickCalls, 0);
-  assert.equal(
-    await composition.recompute(undefined, undefined, { allowInteraction: true }),
-    first,
-    "an explicit refresh may replace the stale selection with a user-picked current candidate"
-  );
-  assert.equal(quickPickCalls, 1);
+  await composition.recompute(undefined, undefined, { allowInteraction: false });
+  assert.equal(connectionPrompts, 0, "background recompute must not request GitHub connection");
+
+  const selected = await composition.selectContext();
+  assert.equal(connectionPrompts, 1, "explicit selection must prepare GitHub PR candidates once");
+  assert.deepEqual(quickPickCandidates, [pullRequestSnapshot], "the same Quick Pick must receive the detected PR candidate");
+  assert.equal(selected, pullRequestSnapshot);
 });
 
-test("Current Context controller retains the previous UI for an unresolved background recompute", async () => {
-  const host = createHost();
-  const retained = branchSnapshot("retained", "refs/heads/retained");
-  const controller = new CurrentContextUiController(host, {
-    recompute: async () => ({ kind: "retain-current" }),
-    selectContext: async () => retained
-  });
-  controller.update(retained);
-
-  assert.equal(await controller.refresh(), false);
-  assert.equal(host.contextLabel, "Branch: retained");
-  assert.equal(host.statusText, "$(git-branch) retained");
-});
-
-test("T609 explicitly selected context is kept while the candidate still exists", async () => {
+test("a stale candidate resolution cannot clear a newer explicit selection", async () => {
   const selection = new CurrentContextCandidateSelection();
-  const first = branchSnapshot("first", "refs/heads/first");
-  const second = branchSnapshot("second", "refs/heads/second");
-  selection.acceptExplicit(second);
+  const selected = branchSnapshot("selected", "refs/heads/selected");
+  const fallback = branchSnapshot("fallback", "refs/heads/fallback");
 
-  assert.equal(selection.resolve([first, second], first), second);
+  selection.acceptExplicit(selected);
+  assert.equal(selection.resolve([fallback], fallback), fallback);
+  assert.equal(
+    selection.resolve([selected, fallback], fallback),
+    selected,
+    "A resolution not accepted by the UI must not discard the explicit selection."
+  );
 });
 
-test("T609 production composition accepts a Quick Pick result only when the inventory is still current", async () => {
-  const oldBranch = branchSnapshot("old", "refs/heads/old");
-  const newBranch = branchSnapshot("new", "refs/heads/new");
+test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {
+  const repository = await createTemporaryGitRepository();
+  const git = createNodeLocalGitAdapter();
+  const documentFsPath = path.join(repository.path, "fixture.txt");
+  const events: string[] = [];
+
+  try {
+    assert.equal(await isNonGitCurrentContextWorkspace(git, repository.path), false);
+    const branchInspection = await inspectCurrentContextDocument(git, documentFsPath);
+    assert.equal(branchInspection.kind, "repository");
+    if (branchInspection.kind !== "repository") {
+      throw new Error("The temporary Git file must resolve to its repository.");
+    }
+    const branch = gitCurrentContextSnapshot(branchInspection.repository);
+    assert.equal(branch.context.selection?.kind, "branch");
+
+    let candidates = [branch];
+    const composition = new CurrentContextRuntimeComposition(
+      new CurrentContextCandidateSelection(),
+      {
+        enumerateCandidates: async () => candidates,
+        resolveFallback: async (available) => available[0],
+        requestSelection: async (available) => available[0]
+      }
+    );
+    const controller = new CurrentContextUiController(createHost(events), {
+      recompute: () => composition.recompute(),
+      selectContext: () => composition.selectContext(),
+      acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+    });
+    const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+      setSelectedContext: (selection) => {
+        events.push(`runtime:${selection?.kind === "branch"
+          ? selection.branchRef
+          : selection?.kind === "detached" ? selection.headRevision : "automatic"}`);
+      },
+      refreshDependents: () => {
+        events.push("dependents");
+      }
+    });
+
+    await coordinator.refresh();
+    await repository.runGit(["checkout", "--detach", repository.headCommit]);
+    const detachedInspection = await inspectCurrentContextDocument(git, documentFsPath);
+    assert.equal(detachedInspection.kind, "repository");
+    if (detachedInspection.kind !== "repository") {
+      throw new Error("The detached temporary Git file must resolve to its repository.");
+    }
+    const detached = gitCurrentContextSnapshot(detachedInspection.repository);
+    assert.equal(detached.context.selection?.kind, "detached");
+    candidates = [detached];
+    await coordinator.refresh();
+
+    assert.deepEqual(events, [
+      "tree:Branch: main",
+      "status:$(git-branch) main",
+      "runtime:refs/heads/main",
+      "dependents",
+      `tree:Branch: ${repository.headCommit.slice(0, 12)}`,
+      `status:$(git-branch) ${repository.headCommit.slice(0, 12)}`,
+      `runtime:${repository.headCommit}`,
+      "dependents"
+    ]);
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("Git-unavailable workspace fallback keeps the production candidate Tree Status and runtime selection aligned", async () => {
+  const events: string[] = [];
+  const unavailableGit = {
+    inspectRepository: async () => ({
+      kind: "git-unavailable" as const,
+      executable: "git"
+    })
+  };
   const workspace: CurrentContextUiSnapshot = {
     context: {
       kind: "workspace",
-      label: "workspace",
+      label: "fallback workspace",
       selection: {
         kind: "workspace",
         workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace" }
@@ -374,18 +440,75 @@ test("T609 production composition accepts a Quick Pick result only when the inve
     },
     progress: undefined
   };
-  const nextCandidates = [newBranch, workspace];
+  assert.equal(await isNonGitCurrentContextWorkspace(unavailableGit, "/workspace"), true);
+  const composition = new CurrentContextRuntimeComposition(
+    new CurrentContextCandidateSelection(),
+    {
+      enumerateCandidates: async () => [workspace],
+      resolveFallback: async (available) => available[0],
+      requestSelection: async (available) => available[0]
+    }
+  );
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: () => composition.recompute(),
+    selectContext: () => composition.selectContext(),
+    acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+    acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot)
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => {
+      events.push(`runtime:${selection?.kind ?? "automatic"}`);
+    },
+    refreshDependents: () => {
+      events.push("dependents");
+    }
+  });
 
-  for (const [label, candidatesAfterPick] of [
-    ["changed", nextCandidates],
-    ["disappeared", [workspace]],
-  ] as const) {
-    let candidates: CurrentContextUiSnapshot[] = [oldBranch, workspace];
+  await coordinator.refresh();
+
+  assert.deepEqual(events, [
+    "tree:Workspace: fallback workspace",
+    "status:$(folder) fallback workspace",
+    "runtime:workspace",
+    "dependents"
+  ]);
+});
+
+test("unexpected workspace Git inspection failures propagate instead of becoming a fallback candidate", async () => {
+  const failure = new Error("permission denied while inspecting /workspace");
+  await assert.rejects(
+    isNonGitCurrentContextWorkspace(
+      { inspectRepository: async () => { throw failure; } },
+      "/workspace"
+    ),
+    failure
+  );
+});
+
+test("a Quick Pick choice is not committed when its candidate inventory changes without another controller generation", async () => {
+  const oldBranch = branchSnapshot("old", "refs/heads/old");
+  const newBranch = branchSnapshot("new", "refs/heads/new");
+  const detached: CurrentContextUiSnapshot = {
+    context: {
+      kind: "branch",
+      label: "0123456789ab",
+      selection: {
+        kind: "detached",
+        repositoryId: "repo",
+        repositoryRoot: "/repo",
+        headRevision: "0123456789abcdef0123456789abcdef01234567"
+      }
+    },
+    progress: undefined
+  };
+
+  for (const nextCandidates of [[newBranch], [detached], []] as const) {
+    const events: string[] = [];
+    let candidates: readonly CurrentContextUiSnapshot[] = [oldBranch];
     let resolvePick!: (snapshot: CurrentContextUiSnapshot) => void;
     const pendingPick = new Promise<CurrentContextUiSnapshot>((resolve) => {
       resolvePick = resolve;
     });
-    const events: string[] = [];
     const composition = new CurrentContextRuntimeComposition(
       new CurrentContextCandidateSelection(),
       {
@@ -410,14 +533,14 @@ test("T609 production composition accepts a Quick Pick result only when the inve
     });
 
     const pendingCommand = coordinator.selectContext();
-    candidates = candidatesAfterPick;
+    candidates = nextCandidates;
     resolvePick(oldBranch);
     await pendingCommand;
 
     assert.deepEqual(
       events,
       [],
-      `A ${label} inventory must not apply the old Quick Pick result.`
+      "A changed or disappeared inventory must not apply the old Quick Pick result."
     );
   }
 });
