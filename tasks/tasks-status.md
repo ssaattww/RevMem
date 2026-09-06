@@ -19,8 +19,7 @@
 | PR115-REVIEW | 実施中 | 各修正0.5h目安 | source配置・entry・import・CI VSIX版の通常レビューと必要修正 | PR #115実装 | 頻度基準以上の指摘を閉じ、検証証拠を保存する |
 | PR115-NR001 | 実装・focused検証済み、closure待ち | 0.5h以内 | 失敗診断のtested SHAを実checkout HEADと一致させ、event SHA/refと区別する | PR115-REVIEW | Red→Greenのworkflow contractと同じ通常レビュワーのclosure |
 | PR115-FINAL | 未着手 | S | 独立レビュー、報告attestation、最終CI、squash mergeとブランチ削除 | PR115-REVIEW | 独立レビュー合格、exact-head CI成功、mergeと削除確認 |
-| ISSUE116-START | 待機 | 設計後に分割 | PR進捗更新遅延の設計・実装・通常レビュー・独立レビュー | PR115-NR001 | 実装・focused検証済み、closure待ち | 0.5h以内 | 失敗診断のtested SHAを実checkout HEADと一致させ、event SHA/refと区別する | PR115-REVIEW | Red→Greenのworkflow contractと同じ通常レビュワーのclosure |
-| PR115-FINAL | 原因と改善を再現可能な検証で確認し、レビュー済みPRを提出する |
+| ISSUE116-START | 待機 | 設計後に分割 | PR進捗更新遅延の設計・実装・通常レビュー・独立レビュー | PR115-FINAL | 原因と改善を再現可能な検証で確認し、レビュー済みPRを提出する |
 
 ## 現在位置
 
