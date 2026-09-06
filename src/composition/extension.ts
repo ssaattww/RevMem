@@ -33,6 +33,7 @@ import {
   gitCurrentContextSnapshot,
   isNonGitCurrentContextWorkspace
 } from "./current-context/git-context-inspection";
+import { createCurrentContextInspectionSession } from "./current-context/current-context-inspection-session";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-context/repository-resolution";
 import { resolveT305RepositoryRootUri } from "../application/repository-path/repository-root-uri";
 import {
@@ -346,24 +347,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   );
   type CurrentContextInspection = Awaited<ReturnType<typeof git.inspectRepository>>;
   const inspectionSessions = new WeakMap<AbortSignal, (startPath: string) => Promise<CurrentContextInspection>>();
-  const createInspectionSession = (): ((startPath: string) => Promise<CurrentContextInspection>) => {
-    const inspections = new Map<string, Promise<CurrentContextInspection>>();
-    return (startPath) => {
-      const existing = inspections.get(startPath);
-      if (existing !== undefined) return existing;
-      const pending = git.inspectRepository(startPath).then((inspection) => {
-        if (inspection.kind === "repository") {
-          inspections.set(inspection.repository.rootPath, Promise.resolve(inspection));
-        }
-        return inspection;
-      });
-      inspections.set(startPath, pending);
-      void pending.catch(() => {
-        if (inspections.get(startPath) === pending) inspections.delete(startPath);
-      });
-      return pending;
-    };
-  };
+  const createInspectionSession = (): ((startPath: string) => Promise<CurrentContextInspection>) =>
+    createCurrentContextInspectionSession(async (startPath) => {
+      return git.inspectRepository(startPath);
+    });
   const inspectForCurrentContextGeneration = (signal?: AbortSignal): ((startPath: string) => Promise<CurrentContextInspection>) => {
     if (signal === undefined) return createInspectionSession();
     const existing = inspectionSessions.get(signal);
@@ -402,7 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         fileSystemPathSemantics: workspaceSidePathSemantics()
       }) === undefined) continue;
       const folderPath = workspaceFilesystemPath(folder.uri);
-      if (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath))) continue;
+      if (folderPath === undefined || !(await isNonGitCurrentContextWorkspace({ inspectRepository }, folderPath))) continue;
       const snapshot: CurrentContextUiSnapshot = {
         context: {
           kind: "workspace",
@@ -437,7 +424,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
-        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath)))) continue;
+        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace({ inspectRepository }, folderPath)))) continue;
         const snapshot: CurrentContextUiSnapshot = {
           context: {
             kind: "workspace",
@@ -487,7 +474,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     let fallback: CurrentContextUiSnapshot | undefined;
     const editorPath = editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri);
     if (editor !== undefined && editorPath !== undefined) {
-      const inspection = await inspectForCurrentContextGeneration(signal)(editorPath);
+      const inspectRepository = inspectForCurrentContextGeneration(signal);
+      const inspection = await inspectRepository(editorPath);
       if (signal?.aborted === true) return undefined;
       if (inspection.kind === "repository") {
         fallback = candidates.find((candidate) =>
@@ -499,7 +487,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
-        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace(git, folderPath)))) return undefined;
+        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace({ inspectRepository }, folderPath)))) return undefined;
         fallback = candidates.find((candidate) =>
           candidate.context.kind === "workspace" &&
           candidate.context.selection?.kind === "workspace" &&

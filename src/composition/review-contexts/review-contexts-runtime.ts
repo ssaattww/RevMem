@@ -198,6 +198,8 @@ interface PreparedCurrentContext {
 const preparedCurrentContextKey = (selection: Extract<SelectedReviewContext, { readonly kind: "pull-request" }>): string =>
   [selection.repositoryId, selection.repositoryRoot, selection.contextId, selection.headRevision].join("\0");
 
+const localCandidatePreparationKey = (selection: SelectedReviewContext): string => JSON.stringify(selection);
+
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
   globalStorageUri: context.globalStorageUri,
   storageUri: context.storageUri,
@@ -311,7 +313,9 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private pendingCachePublishes: Array<() => Promise<void>> = [];
   private pendingProjection: (() => Promise<readonly ReviewContextListItem[]>) | undefined;
   private readonly preparedCurrentContexts = new Map<string, PreparedCurrentContext>();
+  private readonly preparedLocalCandidates = new Map<string, readonly CurrentContextUiSnapshot[]>();
   private acceptedCurrentContext: PreparedCurrentContext | undefined;
+  private acceptedLocalCandidates: readonly CurrentContextUiSnapshot[] | undefined;
 
   public constructor(
     private readonly repository: T405ReviewStateRepository,
@@ -395,7 +399,9 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     // Preparation is consumed only by the immediately following dependent
     // refresh. An independent Tree command always performs fresh acquisition.
     const acceptedPreparation = this.acceptedCurrentContext;
+    const acceptedLocalCandidates = this.acceptedLocalCandidates;
     this.acceptedCurrentContext = undefined;
+    this.acceptedLocalCandidates = undefined;
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
@@ -429,7 +435,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     };
     this.roots.clear();
 
-    for (const snapshot of await this.enumerateCurrentContexts(signal)) {
+    for (const snapshot of acceptedLocalCandidates ?? await this.enumerateCurrentContexts(signal)) {
       assertCurrent();
       await checkpoint("enumerated-current-context");
       const owner = localOwner(snapshot);
@@ -547,6 +553,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]> {
     this.preparedCurrentContexts.clear();
+    this.preparedLocalCandidates.clear();
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
     };
@@ -556,6 +563,12 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       assertCurrent();
       await work.item("collected-current-candidate");
       candidates.set(this.candidateKey(candidate), candidate);
+      if (candidate.context.selection !== undefined) {
+        this.preparedLocalCandidates.set(
+          localCandidatePreparationKey(candidate.context.selection),
+          localCandidates,
+        );
+      }
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
@@ -603,6 +616,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           preparedCurrentContextKey(selection),
           { owner, synchronized, pullRequest, progress },
         );
+        this.preparedLocalCandidates.set(localCandidatePreparationKey(selection), localCandidates);
       }
     }
     let sorted: CurrentContextUiSnapshot[] = [];
@@ -630,10 +644,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   }
 
   public acceptCurrentContextPreparation(selection: SelectedReviewContext | undefined): void {
+    this.acceptedLocalCandidates = selection === undefined
+      ? undefined
+      : this.preparedLocalCandidates.get(localCandidatePreparationKey(selection));
     this.acceptedCurrentContext = selection?.kind === "pull-request"
       ? this.preparedCurrentContexts.get(preparedCurrentContextKey(selection))
       : undefined;
     this.preparedCurrentContexts.clear();
+    this.preparedLocalCandidates.clear();
   }
 
   private candidateKey(snapshot: CurrentContextUiSnapshot): string {

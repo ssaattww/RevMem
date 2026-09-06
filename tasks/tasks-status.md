@@ -20,8 +20,8 @@
 | I116-DESIGN | 完了 | 0.5h単位 | 更新全体の遅延経路を調査し既存設計へ最小改善を反映する | PR #115統合済み | 原因根拠、対応範囲、held、再現/検証方針を確定する |
 | I116-IMPL-A | focused Green（通常レビュー待ち） | 0.5h単位 | refresh generation内で同じGit inspection start pathと返却済みcanonical rootの重複を除去する | I116-DESIGN | 回数Red→Green、次generation再検査、未検査descendantを推測しない |
 | I116-IMPL-B | focused Green（通常レビュー待ち） | 0.5h単位 | Current Context準備結果を直後のReview Contexts更新へ渡し同じPR取得を重複させない | I116-IMPL-A | identity/generation一致時のみ共有し、cancel/stale/failureと独立refresh、既存publish順序を回帰検証する |
-| I116-REVIEW | High I116-NR-001の修正待ち | S | 通常レビューと必要指摘の解消 | I116-IMPL-B | 頻度基準以上のrequired findingなし |
-| I116-NR-001 | 対応中 | 0.5h単位 | Currentから依存Review Contextsまでlocal候補/inspectionを渡しfallbackも統合する | I116-REVIEW | actual extension compositionで総inspection1回、次/独立refreshで各1回、同じreviewer closure |
+| I116-REVIEW | High I116-NR-001の同一reviewer closure待ち | S | 通常レビューと必要指摘の解消 | I116-IMPL-B | 頻度基準以上のrequired findingなし |
+| I116-NR-001 | 実装・focused 20/20、closure待ち | 0.5h単位 | Currentから依存Review Contextsまでlocal候補/inspectionを渡しfallbackも統合する | I116-REVIEW | actual extension compositionで総inspection1回、次/独立refreshで各1回、同じreviewer closure |
 | I116-FINAL | 待機 | S | 全体検証、独立レビュー、報告attestation、PR・exact-head CI | I116-REVIEW | 独立review合格と最終CI、成果物の証拠を保存する |
 
 ## PR #115 レビューと統合（2026-09-06）
