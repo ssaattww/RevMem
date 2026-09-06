@@ -1,0 +1,486 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: initial implementation - resumed
+  generated_at: '2026-09-06T12:29:00Z'
+repository: ssaattww/RevMem
+issue_or_pr: 'PR #115'
+task_id: null
+branch: refactor/source-layout-ci-vsix-version
+base_ref: main
+target:
+  current_head: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+  reviewed_head: null
+  commit_range: dbaee5dc84b2a98f9da895616dddfda810dbb143..afa25c7e691690149b234fd8ead9ec8d69e1e992
+verification:
+  capability: remote_ci_only
+  capability_evidence: &capability_evidence
+    - Local Node v22.16.0 runs supplementary tests; npm ci did not complete and npm ping reported EAI_AGAIN for registry.npmjs.org.
+    - Repository-pinned full local gate is unsupported; formal evidence comes from exact-head pull_request CI with Node24.
+  technical_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+  administrative_parent: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+  commit: {state: commit_pending, review_target_sha: null}
+  push: {state: push_pending, head_sha: unknown}
+  ci_wait: {state: ci_wait_pending, required_for: route_verification}
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements: &requirements
+  - {source: user_instruction, reference: 'PR115 user request', summary: 'One PR for responsibility-based production source filenames and PR CI VSIX version based on main branch point plus seven HEAD digits.'}
+  - {source: user_instruction, reference: 'Resume and smaller-push instructions', summary: 'Check GitHub connector; publish small logical changes; preserve completed work.'}
+  - {source: repository_instruction, reference: 'AGENTS.md and uploaded chatgpt-worker-skills 2.zip', summary: 'Use worker Skills; TDD; failure diagnostics; detailed repository report and concise PR comment; no merge.'}
+  - {source: design, reference: doc/design/source-layout-and-ci-vsix-version.md, summary: 'Twenty module mappings, version provenance algorithm, packaged manifest verification, exact-head CI.'}
+development_policy: &development_policy
+  method: TDD
+  testing_order: Regression failure before implementation; retain existing assertions and change paths only.
+  governing_source: RevMem project instructions and uploaded implementation-worker Skill
+validation_plan: &validation_plan
+  commands:
+    - node --test test/tooling/*.test.mjs
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm run test:unit
+    - All focused, temporary Git, mock GitHub and Extension Host commands in .github/workflows/ci.yml
+    - PR CI version resolution, VSIX package/manifest/entry verification and source archive verification
+  required_failure_diagnostics:
+    - command result JSON
+    - standard output
+    - standard error
+    - combined command log
+    - environment, git status, generated files, source/test/fixture context
+blocked: []
+authorized_actions: &authorized_actions
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - edit_workflows
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary: &write_boundary
+  allowed:
+    - {path_or_operation: 'PR115 branch source/tests/package entry/lint configuration', reason: 'Complete the requested relocation without product behavior changes.'}
+    - {path_or_operation: '.github/workflows/ci.yml and tools/resolve-ci-vsix-version.mjs', reason: 'Requested CI package version and associated diagnostics.'}
+    - {path_or_operation: 'README.md, Design/BreakingChanges.md, doc/design/source-layout-and-ci-vsix-version.md, reports/, handoffs/', reason: 'Requested design, compatibility and evidence records.'}
+    - {path_or_operation: 'GitHub connector commits, fast-forward push, PR metadata/comment', reason: 'Explicitly authorized user workflow.'}
+  forbidden:
+    - {path_or_operation: 'merge, force push, direct default-branch writes', reason: 'User owns merge; preserve existing work.'}
+    - {path_or_operation: 'CI-mediated source writes or non-connector GitHub access', reason: 'User requires connector-based repository changes.'}
+    - {path_or_operation: 'Independent review or spawning another worker', reason: 'Implementation wrapper boundary.'}
+    - {path_or_operation: tasks/tasks-status.md, reason: 'Dedicated management Skill required; unrelated prior task state retained.'}
+    - {path_or_operation: 'T607 pre-existing behavior changes, other repositories', reason: 'Outside the two requested changes.'}
+scope: &scope
+  - Move and rename twenty task-numbered production modules into application, composition and UI responsibilities; update imports, fixtures and package entry.
+  - PR CI VSIX uses the main version at the resolved branch point and exactly seven PR HEAD digits, consistently in manifests and artifact filenames.
+non_goals: &non_goals
+  - State schema, public symbol/command/setting, review synchronization or release-workflow behavior changes.
+  - Repair unrelated pre-existing T607 runtime assertions.
+  - Independent review, Marketplace publication, real Windows/Remote manual installation or merge.
+files:
+  changed: &changed_files
+    - {path: 'src/application/global-understanding/{document-open-lifecycle,startup-document-observation}.ts', purpose: 'Relocated document lifecycle policies.'}
+    - {path: src/application/repository-path/repository-root-uri.ts, purpose: 'Relocated repository URI policy.'}
+    - {path: 'src/application/review-context/{projection-refresh,repository-resolution}.ts', purpose: 'Relocated context policies.'}
+    - {path: 'src/application/review-contexts/{pull-request-review-projection-notifier,pull-request-review-projection-sync,repository-selection-cancellation,repository-selection}.ts', purpose: 'Relocated projection and selection policies.'}
+    - {path: src/composition/extension.ts, purpose: 'Production package composition entry.'}
+    - {path: src/composition/current-context/git-context-inspection.ts, purpose: 'Current Context Git composition.'}
+    - {path: 'src/composition/global-understanding/{global-understanding-composition,global-understanding-source}.ts', purpose: 'Global composition/source.'}
+    - {path: src/composition/local-git/local-base-head-runtime.ts, purpose: 'Local base/head composition.'}
+    - {path: 'src/composition/pull-request/{new-pull-request-global-composition,owner-pull-request-synchronization,pull-request-review-runtime-base,pull-request-review-runtime}.ts', purpose: 'PR composition.'}
+    - {path: src/composition/review-contexts/review-contexts-runtime.ts, purpose: 'Review Contexts composition.'}
+    - {path: src/ui/current-context/root-scoped-candidate-identity.ts, purpose: 'UI candidate identity.'}
+    - {path: 'src/extension.ts; src/ui/pr-progress/vscode-pull-request-progress-tree.ts; src/ui/review-contexts/vscode-review-contexts-runtime.ts', purpose: 'Three existing callers follow relocated modules.'}
+    - {path: 'test/unit/*.test.ts; test/helpers/pr108-production-fixture.ts; test/support/t405-owner-product-fixture.ts; type-fixtures/contracts/t609-registered-t405-review-contexts-runtime-old-shape.fixture.ts', purpose: 'Existing assertions retained; module and source-reading paths updated. Exact per-file delta is the recorded commit range.'}
+    - {path: 'test/tooling/{source-layout,ci-vsix-version,ci-packaging-contract}.test.mjs', purpose: 'Fifteen new regression tests for layout, version and workflow contracts.'}
+    - {path: package.json, purpose: 'Production entry and tooling gate.'}
+    - {path: eslint.config.mjs, purpose: 'Scoped rule follows relocated runtime; obsolete path removed.'}
+    - {path: tools/resolve-ci-vsix-version.mjs, purpose: 'Version provenance resolver.'}
+    - {path: .github/workflows/ci.yml, purpose: 'Exact checkout, versioned package/artifact and manifest verification.'}
+    - {path: 'README.md; Design/BreakingChanges.md; doc/design/source-layout-and-ci-vsix-version.md', purpose: 'Usage, compatibility and design.'}
+  inspected:
+    - {path: AGENTS.md, purpose: 'Repository instruction authority.'}
+    - {path: tasks/tasks-status.md, purpose: 'Confirm dedicated manager boundary and prior task ownership.'}
+    - {path: tools/run-ci-command.mjs, purpose: 'Confirm stdout/stderr/results and diagnostic workflow.'}
+    - {path: 'All production files at base tree f99ea5f6106f20b48a6226cbf82616a4ba520cac and technical source ZIP', purpose: 'Byte comparison after import-path relocation: no non-path production differences.'}
+    - {path: 'Actual VSIX extension/package.json and extension.vsixmanifest', purpose: 'Verify real package version, entry and provenance.'}
+  intentionally_untouched: &untouched
+    - {path_or_area: tasks/tasks-status.md, reason: 'Dedicated manager-only updates; prior task record is unrelated.'}
+    - {path_or_area: .github/workflows/release-vsix.yml, reason: 'Main/release version policy unchanged.'}
+    - {path_or_area: 'State schemas, exported symbol names, command IDs, setting defaults', reason: 'File-layout refactor only.'}
+    - {path_or_area: 'T607 existing assertions and historical reports/handoffs', reason: 'No weakening or retroactive evidence edits.'}
+commands: &commands
+  - {command: npm ci, purpose: 'Obtain pinned local dependencies.', exit_code: unknown, result: blocked, head_sha: fb704d9641330009a215af75abe7bd5291b95f45, evidence: 'Did not complete; npm ping subsequently reported registry.npmjs.org EAI_AGAIN.'}
+  - {command: 'node --test test/tooling/*.test.mjs', purpose: 'Layout/version/CI regression contracts.', exit_code: 0, result: passed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: '15/15 locally; formal CI Unit tests also passed.'}
+  - {command: 'node --test test-dist/test/unit/t610-folder-understanding.test.js', purpose: 'Supplementary path-migrated runtime reproduction.', exit_code: 0, result: passed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: '44/44; emitted diagnostic JS with path substitutions, not formal compile evidence.'}
+  - {command: 'node --test test-dist/test/unit/t607-performance-incremental-ui.test.js', purpose: 'Compare affected CI-excluded suite with base.', exit_code: 1, result: failed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: '17/20 both before and after; same three failures. Base tree verified; temporary baseline transpilation TypeScript5.8.3, Node22.16.0.'}
+  - {command: '.github/workflows/ci.yml pull_request all gates', purpose: 'Formal repository verification.', exit_code: 0, result: passed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: 'Run34032769138/job101485280913 completed success; artifact9989235604 head_sha matches.'}
+  - {command: 'ZIP/JSON/XML and source-blob verification of artifact9989235604', purpose: 'Inspect the actual packaged output.', exit_code: 0, result: passed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: 'Both manifest versions 0.1.52-pre+afa25c7; entry exists; provenance exact; old20 absent; source tracked version unchanged; test blobs match.'}
+tests: &tests
+  - {name: 'Initial layout contract', phase: red, result: failed, head_sha: unknown, evidence: 'PR115 start record documents three failures before relocation; not independently rerun in this resume.'}
+  - {name: 'Remaining T607/T610 import compilation', phase: pre_implementation, result: failed, head_sha: fb704d9641330009a215af75abe7bd5291b95f45, evidence: 'Exact-head run34030676487/artifact9988489010; Unit compile failed before this resume changed the two files.'}
+  - {name: 'All required CI gates and packaging', phase: green, result: passed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: 'Exact-head pull_request run34032769138 success.'}
+  - {name: 'T607 supplemental baseline comparison', phase: regression, result: failed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, evidence: 'Same three failures at verified main baseline and after path-only relocation; explicitly held, not part of required CI.'}
+ci: &technical_ci
+  required: true
+  workflow: .github/workflows/ci.yml
+  run_id: 34032769138
+  head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992
+  conclusion: success
+  artifacts:
+    - {id: 9989235604, name: review-range-user-validation-0.1.52-pre+afa25c7, purpose: 'Real VSIX, matching source ZIP and version.json; SHA256 48ad531e475ab9ee4334a34fd3e8c564b10945a017504447a42cda02cd9aee4d.'}
+implementation:
+  outcome: completed
+  final_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+  commits: &implementation_commits
+    - {sha: b0748d431a8da37a928f9eea86054a5127bc681c, purpose: 'T607 three import-bearing lines; verified blob40780050c972948b3803d991d34f9ecaef1e36f1.'}
+    - {sha: 7c301da8e0beba1e13cbac2cee9c4c641aa03400, purpose: 'T610 thirteen path-only lines; verified blobda3eddd8a6af9886984d4d9dca0c0adfadb9e76f.'}
+    - {sha: afa25c7e691690149b234fd8ead9ec8d69e1e992, purpose: 'Remove obsolete ESLint path; preserve relocated rule.'}
+  addressed_findings: []
+  failure_diagnostics: &failure_diagnostics
+    - {type: artifact, location: 'GitHub Actions run34030676487 artifact9988489010', summary: 'Initial exact-head Unit compile failure; stdout, stderr, combined logs, results and source snapshots. SHA256 5de3605cc6c55ce9aed5418c7b0d6b1920efe569efb4d6b6877a61e73d237e27.'}
+    - {type: log, location: '/mnt/data/pr115-resume-local-diagnostics.zip', summary: 'Session-local supplementary logs; runtime path reproduction, tooling and pre-existing T607 comparison. Persistence beyond the chat sandbox is not guaranteed.'}
+  blocked_items: []
+  summary:
+    - Both user requirements are implemented in PR115; all required technical-head CI gates and actual VSIX checks passed.
+    - Documentation publication has a new HEAD and still requires its own exact-head PR CI before final completion is reported.
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity: {previous_reviewer_identity: null, changed: false, reason: null}
+    independence:
+      implemented_change: true
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence: ['This is the implementing ChatGPT session, not an independent reviewer.']
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment:
+    - {item: 'Formal exact-head technical CI', result: supported, evidence: '34032769138 success on afa25c7e691690149b234fd8ead9ec8d69e1e992.'}
+    - {item: 'Full local equivalent gate', result: unavailable, evidence: 'Pinned dependency installation blocked; local temporary runtime checks distinguished.'}
+    - {item: 'Independent review', result: not_applicable, evidence: 'Not requested or performed by this implementation worker.'}
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary: ['No independent verdict or review-attestation claim.']
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths: ['reports/pr-115-source-layout-ci-vsix-version-20260906.md']
+  reviewed_head: null
+  attestation_head: null
+  pr_comments:
+    - {target: 'PR115 resume/evidence coordination', url_or_id: '5559047877'}
+  summary:
+    - Detailed report committed and pushed as a720a6eeea90efb284fd24237f2c1a7bbc98ae41.
+    - Final concise result comment follows this packet publication and exact-head CI.
+findings: []
+held: &held
+  - item: 'H1 pre-existing CI-excluded T607 failures'
+    reason: 'Same three failures in verified baseline and updated supplementary runs; 17/20 each. Two cancellation outcomes and one Review Contexts assertion.'
+    owner: user
+    remaining_risk: 'Underlying causes were not fully repaired or classified beyond same-condition baseline reproduction.'
+    verdict_impact: 'Not a required-CI failure; preserve as explicit supplementary validation hold, not a clean all-tests claim.'
+unexplored: &unexplored
+  - {area: 'Windows/Remote real manual VSIX installation', blocker: 'Not performed in this Linux worker/CI scope.', remaining_risk: 'No real-platform manual-install evidence.', verdict_impact: 'Do not substitute Ubuntu CI for this evidence.'}
+unknown: &unknowns
+  - {field_or_fact: 'This handoff commit SHA and its exact-head PR CI result', reason: 'Cannot exist inside its own pre-commit content. Read current PR metadata and final result comment after publication.'}
+not_applicable:
+  - {field_or_area: 'Independent final review/closure/attestation', reason: 'Implementation mode only.'}
+  - {field_or_area: 'Merge and Marketplace release', reason: 'User-owned or outside scope.'}
+remaining_risks: &risks
+  - Report/handoff publication changes HEAD; prior technical CI is not final-publication CI.
+  - H1 supplemental T607 failures remain explicitly held.
+  - Seven-digit hash is a human label; full SHA in run/version.json is authoritative.
+  - Incorporating main through merge/rebase can change the event-resolved branch point.
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: 'PR #115'
+      task_id: null
+      mode: implementation
+      branch: refactor/source-layout-ci-vsix-version
+      base_ref: main
+      current_head: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+      reviewed_head: null
+      verification_capability: remote_ci_only
+      verification_capability_evidence: *capability_evidence
+      execution_state:
+        technical_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+        administrative_parent: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+        commit: commit_pending
+        push: push_pending
+        ci_wait: ci_wait_pending
+        full_local_equivalence_gate:
+          state: unsupported
+          candidate_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+          invalidated_runs: []
+      scope: *scope
+      non_goals: *non_goals
+      authoritative_requirements: *requirements
+      write_boundary: *write_boundary
+      development_policy: *development_policy
+      validation: *validation_plan
+      ci: {matching_run: null, conclusion: unknown}
+      unknown: *unknowns
+      blocked: []
+      remaining_risks: *risks
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: initial implementation - resumed
+      accepted_scope: *scope
+      non_goals: *non_goals
+      requirements_and_design: *requirements
+      changed_files: *changed_files
+      intentionally_untouched: *untouched
+      validation_commands_and_results: *commands
+      tests: *tests
+      failure_diagnostics_and_artifacts: *failure_diagnostics
+      verification_capability: remote_ci_only
+      validation_evidence: *technical_ci
+      review_target_commit: {state: committed, sha: afa25c7e691690149b234fd8ead9ec8d69e1e992}
+      push: {state: pushed, head_sha: afa25c7e691690149b234fd8ead9ec8d69e1e992}
+      matching_ci: *technical_ci
+      final_technical_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+      administrative_parent: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+      commits: *implementation_commits
+      blocked_items: []
+      unknowns: *unknowns
+      held: *held
+      unexplored: *unexplored
+      remaining_risks: *risks
+      next_required_action: 'Finish report/handoff publication, update PR, verify new exact-head pull_request CI and artifact, post concise result; user chooses review/merge.'
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report_type: implementation_report
+      complete_body: |
+        # PR #115 実装・検証 report
+
+        ## 対象と結論
+
+        - Repository: `ssaattww/RevMem`
+        - PR: #115
+        - Branch: `refactor/source-layout-ci-vsix-version`
+        - Base/main: `dbaee5dc84b2a98f9da895616dddfda810dbb143`
+        - Base Git tree: `f99ea5f6106f20b48a6226cbf82616a4ba520cac`
+        - 今回の再開時HEAD: `fb704d9641330009a215af75abe7bd5291b95f45`
+        - 検証済みtechnical HEAD: `afa25c7e691690149b234fd8ead9ec8d69e1e992`
+        - Technical HEADのcommit/push: 完了
+        - Technical HEADの正式CI: `pull_request` run **34032769138** / job **101485280913**、`completed / success`
+        - 検証経路: **remote_ci_only**。ローカルでは補助的な実行が可能だが、repository指定依存関係によるfull gateは実行できない。
+
+        指定された2点の実装は、この1つのPRに反映した。全CIゲートの成功と、ダウンロードした実VSIXの版番号・起動先・source ZIPを確認した。独立レビューは実施しておらず、mergeも行っていない。
+
+        このreportとhandoffを保存するとPR HEADが変わる。本書が記録する成功は上記technical HEADに対する証拠であり、後続HEADの成功を代用しない。文書公開後の最終HEAD、対応するPR CI run、最終成果物、コメントの保存結果はPR本文・完了コメントに記録する。文書生成時点のpublication状態は `commit_pending / push_pending / ci_wait_pending`、administrative parentはtechnical HEADである。未生成の自分自身のcommit SHAは本書へ記入しない。
+
+        ## 要求・根拠・非対象
+
+        ユーザー要求は、(1) `src`直下のタスク番号付きソースを適切な責務のフォルダ・名前にすること、(2) PR CI成果物のVSIX版を分岐元mainの版＋PR HEAD先頭7桁にすること、の2点。小さい論理単位でpushし、GitHub操作はコネクタを使用する。
+
+        根拠はユーザー指示、`AGENTS.md`、アップロード済みworker Skills、`doc/design/source-layout-and-ci-vsix-version.md`、PR #115の開始記録。詳細設計・移動表は同design、利用者向け変更はREADMEと`Design/BreakingChanges.md`に保存済み。
+
+        Review stateのschema、command ID、設定既定値、公開symbol名、レビュー状態同期の振る舞いは変更しない。main/release用`.github/workflows/release-vsix.yml`の版管理は変更しない。テスト名のT番号やテスト内の仮想fixture名は移動対象ではない。
+
+        ## 実装
+
+        ### 1. Production sourceの配置
+
+        旧`src/t*.ts` 20件を削除し、同じ実装を以下の責務へ移した。task-named互換モジュールは残していない。
+
+        | 責務 | 移動先 |
+        | --- | --- |
+        | 文書open/startup lifecycle | `src/application/global-understanding/document-open-lifecycle.ts`、`startup-document-observation.ts` |
+        | repository URI解決 | `src/application/repository-path/repository-root-uri.ts` |
+        | 選択context依存projection、repository判定 | `src/application/review-context/projection-refresh.ts`、`repository-resolution.ts` |
+        | PR review projection、repository選択 | `src/application/review-contexts/pull-request-review-projection-notifier.ts`、`pull-request-review-projection-sync.ts`、`repository-selection-cancellation.ts`、`repository-selection.ts` |
+        | 拡張機能composition | `src/composition/extension.ts` |
+        | Current Context Git composition | `src/composition/current-context/git-context-inspection.ts` |
+        | Global composition/source | `src/composition/global-understanding/global-understanding-composition.ts`、`global-understanding-source.ts` |
+        | Local base/head composition | `src/composition/local-git/local-base-head-runtime.ts` |
+        | PR composition | `src/composition/pull-request/new-pull-request-global-composition.ts`、`owner-pull-request-synchronization.ts`、`pull-request-review-runtime-base.ts`、`pull-request-review-runtime.ts` |
+        | Review Contexts composition | `src/composition/review-contexts/review-contexts-runtime.ts` |
+        | Current Context表示identity | `src/ui/current-context/root-scoped-candidate-identity.ts` |
+
+        `package.json.main`は`./dist/composition/extension.js`。既存`src/extension.ts`はbase activationとして残る。呼び出し側、動的import、test helper、sourceを直接読むテスト、型契約fixture、path-scoped ESLint設定を追従した。
+
+        分岐元source archiveのGit treeを再計算し、GitHub上のmain tree `f99ea5f6106f20b48a6226cbf82616a4ba520cac`との一致を確認した。そのsourceと移動後sourceを照合した結果、productionの差分23件は20件の移動と3件の既存caller更新であり、module参照パス置換以外の差分はなかった。GitHubのbase/technical HEAD比較でも20件がrenameとして認識された。technical HEADの差分は文書保存前で74 files、+687/-235。
+
+        ### 2. CI VSIXの版と出所
+
+        `tools/resolve-ci-vsix-version.mjs`がPR HEADとbaseの一意なmerge-baseを求め、そのfirst-parent ancestry上の最寄りの有効なversion tagを使う。tagがなければ分岐点の`package.json.version`を使う。PR側manifestや後続mainの未取り込みcommit、run number、GitHubの一時merge SHAは版の根拠にしない。
+
+        版はbase versionに`+`とHEAD先頭7桁を付加する。既存build metadataがある場合は`.`と7桁を追加する。先頭ゼロを保持し、不正SHA、不正版、checkoutとHEADの不一致、曖昧な分岐点・同一点の異なる版tagは拒否する。分岐点はCI eventのHEAD/baseから計算するため、mainのmergeやrebaseを取り込んだ場合は分岐点が変わり得る。
+
+        CIはPR HEAD自体をfull-historyでcheckoutする。`vsce package`へ版と`--no-git-tag-version --no-update-package-json`を渡し、tracked manifestの変更がないことを検査する。成果物名、`extension/package.json.version`、`extension.vsixmanifest`のIdentity Versionを一致させ、package entryの存在も検査する。source ZIPは同じHEADを`git archive`したもの、`version.json`にはfull HEAD/base/branch-point SHAと版の出所を保存する。
+
+        ## 今回の再開で追加したcommit
+
+        | Commit | 変更と保存内容の確認 |
+        | --- | --- |
+        | `b0748d431a8da37a928f9eea86054a5127bc681c` | T607の3行のimport先だけを変更。full blob `40780050c972948b3803d991d34f9ecaef1e36f1`を計算値・保存値で照合 |
+        | `7c301da8e0beba1e13cbac2cee9c4c641aa03400` | T610のimportと8箇所のsource-reading path、計13行だけを変更。full blob `da3eddd8a6af9886984d4d9dca0c0adfadb9e76f`を照合 |
+        | `afa25c7e691690149b234fd8ead9ec8d69e1e992` | ESLint設定から削除済み旧ファイルの指定1行を除去。移動先の既存ruleは保持。blob `9a683d7367509a8b7a6a0a376331e6504a7bd566` |
+
+        各commitを別々にpushした。大きいテストファイルは全文blobのhash一致を確認してからtree/commitへ使用した。未アップロードblobを指定した422はblob作成で解消し、コネクタ全体の書き込み不可とは扱っていない。force push、CIを利用したコード書き換え、別PRへの分割は行っていない。
+
+        ## TDDと失敗診断
+
+        開始時点のPR記録には配置契約3件を実装前に追加してRedを確認したことが記録されている。今回の再開では、当時current HEADだった`fb704d9641330009a215af75abe7bd5291b95f45`に一致するrun **34030676487**の失敗を直接確認した。tooling 15件は成功したが、Unit内のTypeScript compileがT607/T610の旧importとその派生診断で失敗していた。失敗後に上記2ファイルの参照だけを更新した。
+
+        診断artifact **9988489010**、`ci-failure-diagnostics-34030676487-1`をコネクタ経由で取得した。SHA256は`5de3605cc6c55ce9aed5418c7b0d6b1920efe569efb4d6b6877a61e73d237e27`。artifact metadataのfull head SHAとPR HEADを照合した。
+
+        `.github/workflows/ci.yml`には開始時から診断保存が存在したため、重複workflowは追加していない。`tools/run-ci-command.mjs`がcommand result JSON、stdout、stderr、combined logを記録し、失敗時は環境情報、git status、generated-file一覧、source/test/型fixtureなどを保存する。新しい版解決・VSIX作成・source archive・manifest検査も同じrunnerで実行する。
+
+        ## 検証結果
+
+        ### 正式CI
+
+        technical HEAD `afa25c7e691690149b234fd8ead9ec8d69e1e992`とrun `head_sha`が一致する`pull_request` run **34032769138**、job **101485280913**が**success**で完了した。CI定義blobは`3d63fcaa957fbfc09587a5e53bf151ec029f3f34`。
+
+        成功したゲートは、依存関係導入、Build、contract typecheck、architecture positive/negative、lint、unit/tooling、T602/T603、T403/T404/T405/T406、Issue #106/PR108、T304、T502/T503/T504/T505、T506（Extension Hostを含む）、T604/T605/T606、T609とExtension Host、T610、temporary Git、mock GitHub、VS Code Extension Host、版解決、packaging、manifest検査、成果物upload。
+
+        実行commandの正本は上記blobのworkflowと同HEADのpackage scriptsである。中間HEADの成功やpush eventのrunを最終PR HEADの成功として流用しない。
+
+        ### 実成果物の照合
+
+        artifact **9989235604**、`review-range-user-validation-0.1.52-pre+afa25c7`をコネクタ経由でダウンロードした。SHA256は`48ad531e475ab9ee4334a34fd3e8c564b10945a017504447a42cda02cd9aee4d`。
+
+        確認済みの内容:
+
+        ```text
+        version:              0.1.52-pre+afa25c7
+        baseVersionSource:    tag:0.1.52-pre
+        headSha:              afa25c7e691690149b234fd8ead9ec8d69e1e992
+        baseSha/branchPoint:   dbaee5dc84b2a98f9da895616dddfda810dbb143
+        package entry:        ./dist/composition/extension.js
+        VSIX package version: 0.1.52-pre+afa25c7
+        VSIX Identity Version:0.1.52-pre+afa25c7
+        ```
+
+        同名VSIX、同版のsource ZIP、version.jsonの3ファイルを確認した。VSIX内にentryファイルが存在する。source側のtracked versionは元の`0.0.1-pre`のままで、旧20ファイルは存在せず、T607/T610のsource blobも上記hashと一致した。
+
+        ### ローカル補助検証と制約
+
+        ローカルNodeはv22.16.0。`npm ci`は完了せず、短い再確認の`npm ping`で`registry.npmjs.org`への`EAI_AGAIN`を観測した。CI指定のNode24/依存関係による正式build、typecheck、full local gateの成功とはしていない。
+
+        | 補助確認 | 結果 | 証拠の限界 |
+        | --- | --- | --- |
+        | `node --test test/tooling/*.test.mjs` | 15/15成功 | 一時Git repositoryを使う版・配置・CI配線契約 |
+        | T610のemitted JSを参照追従して実行 | 44/44成功 | 診断artifactからの再現で、正式compile成功の代用ではない |
+        | T607を同条件で変更前/後に実行 | 両方17/20、同じ3件失敗 | CI対象外suite。下記heldとして区別 |
+        | source archiveのGit tree再計算 | main treeと一致 | baseline出所を確認 |
+        | production全ファイルの比較 | 20移動＋3callerのmodule path変更のみ | 独立レビューではなく実装者の差分検査 |
+
+        初回補助実行で発生した`.github/workflows/ci.yml`のENOENTは、failure artifactにhidden fileが含まれないローカルsnapshotの不足だった。取得済みworkflowと同一blobを補って再実行した。repository側の欠損ではない。
+
+        ## Held・未実施・リスク
+
+        **H1: CI対象外T607の既存失敗。** `t607-performance-incremental-ui.test.ts`の次の3件は、main treeと一致する変更前sourceを一時transpileした実行と、移動後の補助実行で同じく失敗した。
+
+        - production VS Code Global runtime fences partial publication on invalidate and dispose
+        - production Global runtime supersedes old/new refreshes and gives each feedback operation one terminal
+        - IFR002 runs the actual Global source/recalculator and Review Contexts provider without stale publication
+
+        前2件は`OperationCancelledError`、後者はReview Contexts側のassertion失敗。baselineの一時transpileにはTypeScript5.8.3を使用した。これは指定full CIの失敗ではなく、今回のpath-only修正より前にも同条件で再現した補助検証の残件である。原因の全面調査・振る舞い修正はこの2点の依頼に含めず、テストを削除・弱体化して成功扱いにはしていない。担当・次の対応判断は利用者に残す。
+
+        **未実施:** 独立レビュー、Windows/Remote実機への手動インストール操作、Marketplace公開は実施していない。Ubuntu CIのExtension Host検証と実VSIX内検査を、これらの実施証拠としては扱わない。
+
+        **意図的に未変更:** `tasks/tasks-status.md`は別タスクの管理記録であり、指定された専用管理Skillsを使わず変更していない。release workflow、tracked package version、state schema、public command/setting/symbol、T607の既存assertion、過去のreport/handoffは保持した。
+
+        ## 公開と次の操作
+
+        保存先は本reportおよび`handoffs/pr-115-source-layout-ci-vsix-version-20260906.yaml`。文書公開後のcurrent HEADに一致するPR CIを再確認し、実成果物の版を検証してからPR本文・簡易reportコメントに記録する。これは独立レビュー後のattestationではなく、実装reportの通常保存である。
+
+        ユーザーが次のレビューとmergeを判断する。workerはmergeしない。
+      evidence_sources:
+        - 'Exact-head pull_request run34032769138 and artifact9989235604'
+        - 'Initial exact-head run34030676487 diagnostic artifact9988489010'
+        - 'GitHub compare dbaee5dc84b2a98f9da895616dddfda810dbb143..afa25c7e691690149b234fd8ead9ec8d69e1e992'
+        - 'Source/VSIX ZIP inspection, source-path audit and baseline T607 comparison'
+      target_identity:
+        branch: refactor/source-layout-ci-vsix-version
+        base_ref: main
+        current_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+        reviewed_implementation_head: null
+      verification:
+        capability: remote_ci_only
+        technical_head: afa25c7e691690149b234fd8ead9ec8d69e1e992
+        administrative_parent: afa25c7e691690149b234fd8ead9ec8d69e1e992
+        commit_state: commit_pending
+        push_state: push_pending
+        ci_wait_state: ci_wait_pending
+      independent_closure:
+        initial_independent_reviewed_head: null
+        closure_reviewed_heads: []
+        reviewer_continuity: null
+        closure_scope: []
+        completeness_matrix: []
+      severity_records: []
+      persistence:
+        mode: repository_file
+        reserved_paths: ['reports/pr-115-source-layout-ci-vsix-version-20260906.md']
+        report_attestation_head: null
+      concise_pr_comment_body: 'Both requested changes are implemented. Technical HEAD afa25c7e691690149b234fd8ead9ec8d69e1e992 passed PR CI34032769138; actual VSIX0.1.52-pre+afa25c7 and provenance were verified. Detailed report and handoff publication require a new exact-head CI check before final result. T607 supplemental same-baseline failures remain held; no independent review or merge.'
+      unresolved_discrepancies: []
+ext_action:
+  type: report
+  target_skill: chat-implementation-worker
+  mode: publication verification
+  summary: 'After this packet commit, re-read current PR HEAD; verify its matching pull_request CI and actual artifact; update PR and concise result comment. Then user chooses review/merge.'
+  instructions:
+    - Do not reuse technical run34032769138 as final-publication HEAD evidence.
+    - Use only GitHub connector. Do not spawn another worker, silently weaken T607 or merge.
+    - Current source changes are complete; earlier messages claiming old files remain are stale.
+    - Final publication identity and CI result belong in PR metadata/comment, not a self-referential packet rewrite.
+  required_attachments_or_references:
+    - 'ssaattww/RevMem PR115 current metadata and latest result comment'
+    - reports/pr-115-source-layout-ci-vsix-version-20260906.md
+    - doc/design/source-layout-and-ci-vsix-version.md
+    - 'Technical run34032769138/artifact9989235604'
+  requested_authorized_actions: [read_repository, update_pr, comment_pr]
+extensions:
+  - namespace: revmem.publication
+    payload:
+      report_commit: a720a6eeea90efb284fd24237f2c1a7bbc98ae41
+      packet_commit: unknown
+      initial_resume_comment: 5559047877
+      final_comment: pending
+      note: 'This packet is a pre-commit transport snapshot. Its own commit and final exact-head CI must be read from PR metadata/comment.'
+transport:
+  method: repository_file
+  packet_path: handoffs/pr-115-source-layout-ci-vsix-version-20260906.yaml
+  packet_url: null
+  transport_note: 'Persisted in the same PR. The typed projection and complete producing Skill outputs are retained; YAML aliases resolve within this packet. No next chat is started automatically.'
