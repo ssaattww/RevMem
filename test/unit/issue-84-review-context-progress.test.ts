@@ -24,7 +24,7 @@ import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.j
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
-} from "../../src/t405-pull-request-review-runtime.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
 
 const runtimeRequire = createRequire(__filename);
 const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
@@ -413,7 +413,7 @@ test("PR85-IFR-002 keeps an accepted Tree and in-flight generation when the same
 
 test("Issue #84 production sources report anonymous repository, PR-context, and PR-file counts", async () => {
   const reviewContexts = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
-  const pullRequestProgress = await readFile("src/t405-pull-request-review-runtime.ts", "utf8");
+  const pullRequestProgress = await readFile("src/composition/pull-request/pull-request-review-runtime.ts", "utf8");
 
   assert.match(reviewContexts, /reportActiveOperationProgress/u);
   assert.match(reviewContexts, /stage:\s*"repositories"/u);

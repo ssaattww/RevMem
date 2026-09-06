@@ -24,9 +24,9 @@ test("T610-NR-010 exhaustively documents the exported folder-scope API surface",
     includes: (name: string, statement: ts.Statement) => boolean;
   }>> = [
     { relativePath: "src/application/global-understanding/folder-understanding-scope-controller.ts", includes: () => true },
-    { relativePath: "src/t305-global-understanding-startup.ts", includes: () => true },
-    { relativePath: "src/t305-global-understanding-lifecycle.ts", includes: () => true },
-    { relativePath: "src/t505-global-understanding-source.ts", includes: () => true },
+    { relativePath: "src/application/global-understanding/startup-document-observation.ts", includes: () => true },
+    { relativePath: "src/application/global-understanding/document-open-lifecycle.ts", includes: () => true },
+    { relativePath: "src/composition/global-understanding/global-understanding-source.ts", includes: () => true },
     { relativePath: "src/ui/global-understanding/vscode-global-understanding-runtime.ts", includes: (name) => name.includes("GlobalUnderstanding") || name.endsWith("_COMMAND_ID") || name === "GLOBAL_UNDERSTANDING_VIEW_ID" },
     {
       relativePath: "src/ui/global-understanding/global-understanding-ui-model.ts",

@@ -16,11 +16,11 @@ import {
 } from "../../src/core/contracts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
-import { refreshCurrentContextDependents } from "../../src/t305-projection-refresh.js";
+import { refreshCurrentContextDependents } from "../../src/application/review-context/projection-refresh.js";
 import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
-} from "../../src/t405-pull-request-review-runtime.js";
+} from "../../src/composition/pull-request/pull-request-review-runtime.js";
 
 const runtimeRequire = createRequire(__filename);
 const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
