@@ -74,8 +74,8 @@ VS Code の設定で次の項目を変更できます。
 | `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタの装飾へ重ねて表示します。 |
 | `reviewRange.ignoreWhitespaceChanges` | `false` | `true` のとき、通常エディタの空白のみの編集では確認済み範囲を無効化しません。 |
 | `reviewRange.ignoreEolChanges` | `false` | `true` のとき、通常エディタの改行コードのみの編集では確認済み範囲を無効化しません。 |
-| `reviewRange.showGutterIcon` | `false` | 確認済み行のガターアイコンを表示します。 |
-| `reviewRange.showOverviewRuler` | `false` | 確認済み行の Overview Ruler の表示を行います。 |
+| `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
+| `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
 | `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
 
 ## 開発・検証
@@ -98,3 +98,4 @@ VSIX を作成するには次を実行します。
 ```powershell
 npm run package -- --pre-release --out artifacts/review-range-tracker-0.0.1-pre.vsix
 ```
+
