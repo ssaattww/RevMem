@@ -35,7 +35,7 @@ Lを超える見込みになった場合は再分解する。
 
 ## 現在位置（2026-09-06）
 
-- P0保守: PR #115 source配置・CI VSIX版を通常レビュー中。設計・レビューsol high、実装terra high。独立レビューと最終CI成功後、ユーザー指示によりsquash mergeとブランチ削除を行う。
+- P0保守: PR #115 source配置・CI VSIX版の通常レビューを完了（NR001/ADM001 closed）。full gateと独立レビュー待ち。設計・レビューsol high、実装terra high。独立レビューと最終CI成功後、ユーザー指示によりsquash mergeとブランチ削除を行う。
 - P3保守: PR #115統合後、Issue #116のCurrent Context/PR進捗更新遅延を設計・実装・通常レビュー・独立レビューする。
 - 対応基準: 100人の利用で月1回以上遭遇する程度の問題のみ修正。それ未満はheldとして記録する。
 - 現在の追跡: tasks/tasks-status.md の PR115-REVIEW / PR115-FINAL / ISSUE116-START。
