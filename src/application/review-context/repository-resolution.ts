@@ -95,10 +95,33 @@ export const resolveCurrentContextRepositories = async (
   ];
   const candidates: ResolvedRepositoryCandidate[] = [];
   const roots = new Set<string>();
+  // This map belongs to exactly one resolution call (one Current Context
+  // generation). It shares only an identical inspection start path, plus a
+  // canonical root returned by an earlier inspection. It deliberately never
+  // treats an arbitrary descendant as inspected just because a sibling found
+  // the same root.
+  const inspections = new Map<string, Promise<RepositoryResolutionInspection>>();
+  const inspect = (startPath: string): Promise<RepositoryResolutionInspection> => {
+    const existing = inspections.get(startPath);
+    if (existing !== undefined) return existing;
+    const pending = input.inspectRepository(startPath).then((inspection) => {
+      if (inspection.kind === "repository") {
+        inspections.set(inspection.repository.rootPath, Promise.resolve(inspection));
+      }
+      return inspection;
+    });
+    inspections.set(startPath, pending);
+    // A failed inspection is never a reusable result, even within a later
+    // independent resolution call.
+    void pending.catch(() => {
+      if (inspections.get(startPath) === pending) inspections.delete(startPath);
+    });
+    return pending;
+  };
   for (const [source, paths] of ordered) {
     for (const path of paths) {
       if (!nonEmpty(path)) continue;
-      const inspection = await input.inspectRepository(path);
+      const inspection = await inspect(path);
       if (inspection.kind !== "repository" || roots.has(inspection.repository.rootPath)) {
         continue;
       }

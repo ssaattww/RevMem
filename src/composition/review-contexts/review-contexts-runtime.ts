@@ -60,6 +60,7 @@ import {
 import {
   GitContextRevisionMapper,
   GitReviewContextResolver,
+  type SelectedReviewContext,
   type GitRevisionMappingSource,
 } from "../../application/review-context/index";
 import {
@@ -159,6 +160,8 @@ interface T405ReviewStateRepository {
 
 export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
+  /** Arms one accepted Current Context PR preparation for its direct dependent tree refresh. */
+  acceptCurrentContextPreparation?(selection: SelectedReviewContext | undefined): void;
   preparePullRequestCandidateForExplicitContextSelection?(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
@@ -184,6 +187,18 @@ interface LocalRepositoryOwner {
   readonly branchRef?: string;
   readonly snapshot: CurrentContextUiSnapshot;
 }
+
+interface PreparedCurrentContext {
+  readonly owner: LocalRepositoryOwner;
+  readonly synchronized: readonly ReviewContextState[];
+  readonly pullRequest: ReviewContextState;
+  readonly progress: ReviewContextListProgress | undefined;
+}
+
+const preparedCurrentContextKey = (selection: Extract<SelectedReviewContext, { readonly kind: "pull-request" }>): string =>
+  [selection.repositoryId, selection.repositoryRoot, selection.contextId, selection.headRevision].join("\0");
+
+const localCandidatePreparationKey = (selection: SelectedReviewContext): string => JSON.stringify(selection);
 
 const storageUris = (context: vscode.ExtensionContext): ReviewStateStorageUris => ({
   globalStorageUri: context.globalStorageUri,
@@ -228,6 +243,16 @@ const diffRequest = (context: ReviewContextState) => {
     headSha: pullRequest.headSha,
   };
 };
+
+/** Rejects a cache/acquisition result that cannot represent this pinned PR state. */
+const matchesImmutablePullRequestSnapshot = (
+  context: ReviewContextState,
+  snapshot: PullRequestReviewRuntimeRegistration["snapshot"],
+): boolean => context.kind === "pull-request" && context.pullRequest !== undefined &&
+  snapshot.contextId === context.contextId &&
+  snapshot.baseSha === context.pullRequest.baseSha &&
+  snapshot.headSha === context.pullRequest.headSha &&
+  snapshot.originalDiffId === `${context.pullRequest.baseSha}..${context.pullRequest.headSha}`;
 
 const createPullRequestSearch = (
   identity: GitHubRepositoryIdentity,
@@ -287,6 +312,10 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly roots = new Map<string, Set<string>>();
   private pendingCachePublishes: Array<() => Promise<void>> = [];
   private pendingProjection: (() => Promise<readonly ReviewContextListItem[]>) | undefined;
+  private readonly preparedCurrentContexts = new Map<string, PreparedCurrentContext>();
+  private readonly preparedLocalCandidates = new Map<string, readonly CurrentContextUiSnapshot[]>();
+  private acceptedCurrentContext: PreparedCurrentContext | undefined;
+  private acceptedLocalCandidates: readonly CurrentContextUiSnapshot[] | undefined;
 
   public constructor(
     private readonly repository: T405ReviewStateRepository,
@@ -367,6 +396,12 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextListItem[]> {
     this.pendingCachePublishes = [];
+    // Preparation is consumed only by the immediately following dependent
+    // refresh. An independent Tree command always performs fresh acquisition.
+    const acceptedPreparation = this.acceptedCurrentContext;
+    const acceptedLocalCandidates = this.acceptedLocalCandidates;
+    this.acceptedCurrentContext = undefined;
+    this.acceptedLocalCandidates = undefined;
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
@@ -400,22 +435,32 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     };
     this.roots.clear();
 
-    for (const snapshot of await this.enumerateCurrentContexts(signal)) {
+    for (const snapshot of acceptedLocalCandidates ?? await this.enumerateCurrentContexts(signal)) {
       assertCurrent();
       await checkpoint("enumerated-current-context");
       const owner = localOwner(snapshot);
       if (owner !== undefined) {
         this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
         reportRepository(owner.repositoryId);
-        const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
-        assertCurrent();
-        const synchronized = await this.readSynchronizedRepository(
-          owner,
-          persisted,
-          signal,
-          feedbackContext,
-          reportPullRequestContext,
-        );
+        const preparedForOwner = acceptedPreparation !== undefined &&
+          acceptedPreparation.owner.repositoryId === owner.repositoryId &&
+          acceptedPreparation.owner.repositoryRoot === owner.repositoryRoot &&
+          acceptedPreparation.owner.headRevision === owner.headRevision
+          ? acceptedPreparation
+          : undefined;
+        const synchronized = preparedForOwner === undefined
+          ? await (async () => {
+              const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+              assertCurrent();
+              return this.readSynchronizedRepository(
+                owner,
+                persisted,
+                signal,
+                feedbackContext,
+                reportPullRequestContext,
+              );
+            })()
+          : preparedForOwner.synchronized;
         assertCurrent();
         for (const context of synchronized) {
           saved.set(context.contextId, context);
@@ -445,7 +490,12 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         for (const context of synchronized) {
           await checkpoint("loaded-context-progress");
           if (context.kind !== "pull-request") continue;
-          const progress = await this.progressFor(context, owner.repositoryRoot, signal, feedbackContext);
+          const progress = preparedForOwner !== undefined &&
+            context.contextId === preparedForOwner.pullRequest.contextId &&
+            context.pullRequest?.baseSha === preparedForOwner.pullRequest.pullRequest?.baseSha &&
+            context.pullRequest?.headSha === preparedForOwner.pullRequest.pullRequest?.headSha
+            ? preparedForOwner.progress
+            : await this.progressFor(context, owner.repositoryRoot, signal, feedbackContext);
           assertCurrent();
           if (progress !== undefined) progressByContextId[context.contextId] = progress;
         }
@@ -502,6 +552,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly CurrentContextUiSnapshot[]> {
+    this.preparedCurrentContexts.clear();
+    this.preparedLocalCandidates.clear();
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
     };
@@ -511,6 +563,12 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       assertCurrent();
       await work.item("collected-current-candidate");
       candidates.set(this.candidateKey(candidate), candidate);
+      if (candidate.context.selection !== undefined) {
+        this.preparedLocalCandidates.set(
+          localCandidatePreparationKey(candidate.context.selection),
+          localCandidates,
+        );
+      }
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
@@ -552,6 +610,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         progress,
       };
       candidates.set(this.candidateKey(projected), projected);
+      const selection = projected.context.selection;
+      if (selection?.kind === "pull-request") {
+        this.preparedCurrentContexts.set(
+          preparedCurrentContextKey(selection),
+          { owner, synchronized, pullRequest, progress },
+        );
+        this.preparedLocalCandidates.set(localCandidatePreparationKey(selection), localCandidates);
+      }
     }
     let sorted: CurrentContextUiSnapshot[] = [];
     for (const candidate of candidates.values()) {
@@ -575,6 +641,17 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       sorted = next;
     }
     return sorted;
+  }
+
+  public acceptCurrentContextPreparation(selection: SelectedReviewContext | undefined): void {
+    this.acceptedLocalCandidates = selection === undefined
+      ? undefined
+      : this.preparedLocalCandidates.get(localCandidatePreparationKey(selection));
+    this.acceptedCurrentContext = selection?.kind === "pull-request"
+      ? this.preparedCurrentContexts.get(preparedCurrentContextKey(selection))
+      : undefined;
+    this.preparedCurrentContexts.clear();
+    this.preparedLocalCandidates.clear();
   }
 
   private candidateKey(snapshot: CurrentContextUiSnapshot): string {
@@ -883,6 +960,9 @@ export function registerT405ReviewContextsRuntime(
     });
     let result = await cache.acquireRead(diffRequest(context), feedbackContext, signal);
     assertCurrent();
+    if (result.kind === "acquired" && !matchesImmutablePullRequestSnapshot(context, result.snapshot)) {
+      throw new Error("Pull-request diff snapshot does not match the selected immutable context.");
+    }
     const publish = async (): Promise<void> => {
       result = await cache.publish(diffRequest(context), result, feedbackContext, signal);
       cacheStatusByContextId.set(
@@ -1410,6 +1490,7 @@ export function registerT405ReviewContextsRuntime(
 
   return {
     ...registered,
+    acceptCurrentContextPreparation: (selection) => source.acceptCurrentContextPreparation(selection),
     preparePullRequestCandidateForExplicitContextSelection,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>
       source.augmentCurrentContextCandidates(localCandidates, signal,feedbackContext),

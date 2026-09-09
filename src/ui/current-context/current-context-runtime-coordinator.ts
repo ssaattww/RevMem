@@ -6,6 +6,8 @@ import type { CurrentContextRecomputeOptions } from "./current-context-runtime-c
 export interface CurrentContextDependentRefresher {
   /** Sets the identity that command and decoration consumers must use. */
   setSelectedContext?(selection: SelectedReviewContext | undefined): void;
+  /** Arms a generation-scoped dependency preparation after Current Context accepts it. */
+  acceptCurrentContextPreparation?(selection: SelectedReviewContext | undefined): void;
   refreshDependents(): void | Promise<void>;
 }
 
@@ -26,6 +28,7 @@ export class CurrentContextRuntimeCoordinator {
       return;
     }
     this.dependentRefresher.setSelectedContext?.(result.snapshot?.context.selection);
+    this.dependentRefresher.acceptCurrentContextPreparation?.(result.snapshot?.context.selection);
     await this.dependentRefresher.refreshDependents();
   }
 
@@ -35,6 +38,7 @@ export class CurrentContextRuntimeCoordinator {
       return;
     }
     this.dependentRefresher.setSelectedContext?.(selection.context.selection);
+    this.dependentRefresher.acceptCurrentContextPreparation?.(selection.context.selection);
     await this.dependentRefresher.refreshDependents();
   }
 

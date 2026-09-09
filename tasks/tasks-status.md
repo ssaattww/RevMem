@@ -2,6 +2,28 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
+
+- 現在のタスク: I116-FINAL（P3保守）。PR #115はsquash merge d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a、最終PR CI34042269971成功、artifact9992115923照合済み、remote/local reviewブランチ削除済み。
+- branch: fix/issue-116-context-refresh。base: d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a。
+- 要求根拠: Issue #116。0.1.52-preでPR進捗計算36msに対してCurrent Context全体更新14303ms、続く更新4786ms。
+- 方針: 設計・通常/独立レビューはsol high、実装はterra high。100人の利用で月1回以上遭遇する程度の問題だけ対応し、それ未満はheldに記録する。
+- TDD: 挙動実装は本フェーズ計画の明示方針に従い、原因を再現する小さなRedを先に観測する。
+- 成果: 設計・実装・focused/full検証・通常レビュー・独立レビューとPR提出。Issue #116のmergeは今回未指定。
+- 設計補正: 既存immutable cache/runtime副作用の全面延期・rollbackは不要。受理selection/snapshot一致、stale非表示、generationごとの再取得を必須とする。根拠は設計レポート後記。
+- Skill/feedback判断: no skill action needed。今回の範囲絞込みは既存のユーザー指定優先・設計維持・held運用で表現できるため新規FP・Skill編集・外部Issue作成は不要。既存別件FPは変更しない。
+- 検証経路: local_execution_available。関連focusedとstatic後にreview-target commit、通常レビュー収束後のcandidateで非性能full gateを1回実行し、最終exact-head Linux PR CIを確認する。Windows既存baselineは成功へ丸めない。
+- 過去の現在位置とPR #115の保存時点状態は以下に履歴として保持する。
+
+| 単位 | 状態 | 目安 | 対象 | 依存 | 終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| I116-DESIGN | 完了 | 0.5h単位 | 更新全体の遅延経路を調査し既存設計へ最小改善を反映する | PR #115統合済み | 原因根拠、対応範囲、held、再現/検証方針を確定する |
+| I116-IMPL-A | 完了・通常レビューclosed | 0.5h単位 | refresh generation内で同じGit inspection start pathと返却済みcanonical rootの重複を除去する | I116-DESIGN | 回数Red→Green、次generation再検査、未検査descendantを推測しない |
+| I116-IMPL-B | 完了・通常レビューclosed | 0.5h単位 | Current Context準備結果を直後のReview Contexts更新へ渡し同じPR取得を重複させない | I116-IMPL-A | identity/generation一致時のみ共有し、cancel/stale/failureと独立refresh、既存publish順序を回帰検証する |
+| I116-REVIEW | pass_with_held | S | 通常レビューと必要指摘の解消 | I116-IMPL-B | 頻度基準以上のrequired findingなし |
+| I116-NR-001 | High保持・closed at 1ed77fe | 0.5h単位 | Currentから依存Review Contextsまでlocal候補/inspectionを渡しfallbackも統合する | I116-REVIEW | actual extension compositionで総inspection1回、次/独立refreshで各1回、同じreviewer closure |
+| I116-FINAL | full gate・独立review待ち | S | 全体検証、独立レビュー、報告attestation、PR・exact-head CI | I116-REVIEW | 独立review合格と最終CI、成果物の証拠を保存する |
+
 ## PR #115 レビューと統合（2026-09-06）
 
 - 現在のタスク: PR115-FINAL。以下の過去の現在位置は履歴として保持する。
