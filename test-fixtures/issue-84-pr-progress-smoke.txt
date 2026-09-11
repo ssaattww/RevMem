@@ -1,0 +1,2 @@
+Issue #84 PR Progress live smoke fixture.
+This file exists only to keep a stable real pull request available for manual/live verification.
