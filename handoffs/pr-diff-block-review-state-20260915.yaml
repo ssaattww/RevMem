@@ -1,0 +1,61 @@
+version: 1
+repository: ssaattww/RevMem
+pull_request: 120
+branch: investigation/issue-119-linked-diff-blocks
+task: PDS-05
+status: completed
+technical_head: a56499ecb0d339c651b18372625acf6894960bf1
+administrative_commit: commit_pending
+next_task: PDS-06
+next_task_started: false
+
+implementation:
+  transaction: diff-block-specific
+  operation_ids:
+    - mark-diff-block-reviewed
+    - unmark-diff-block-reviewed
+  invocation_origin: invokedFrom
+  components:
+    - original
+    - modified-context
+    - global
+  history_order:
+    - modified
+    - original
+
+verification:
+  red:
+    label: diff-block-state-red
+    result: compile_failure_missing_block_api
+    exit_code: 2
+  focused:
+    label: diff-block-state-green-final
+    result: 12_pass_0_fail
+  regression:
+    label: diff-block-regression-final
+    result: 42_pass_0_fail
+  static:
+    label: diff-block-static-final
+    build: pass
+    contract_typecheck: pass
+    architecture: pass
+    architecture_negative: pass_expected_11
+    lint: pass
+  full_unit:
+    result: 755_pass_24_fail_of_781
+    baseline_start_head: 744_pass_24_fail_of_770
+    same_unique_failure_names: true
+    new_failure_names: 0
+    reason_sample: document path is outside the resolved Git working tree
+
+diagnostics:
+  workflow_change_required: false
+  output_directory: test-output/ci
+  failure_artifact_workflow: ci-failure-diagnostics
+  baseline_logs:
+    - baseline-unit
+    - baseline-issue13-r6
+
+next:
+  instruction: connect setting and PR-only command path in PDS-06 after explicit user instruction
+  do_not_start_automatically: true
