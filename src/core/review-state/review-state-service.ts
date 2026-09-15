@@ -465,6 +465,7 @@ const createDiffBlockTransaction = (
   const previousContextFile = input.contextState.files[input.target.fileId];
   const previousGlobalFile = input.globalState.files[input.target.fileId];
   const originalReviewedByDiff = normalizeOriginalReviewedByDiff(previousContextFile?.originalReviewedByDiff);
+  const hasOriginalDiffKey = Object.hasOwn(originalReviewedByDiff, input.diffId);
   const currentOriginal = normalizeWithinFile(
     originalReviewedByDiff[input.diffId] ?? [],
     input.originalLineCount,
@@ -481,7 +482,9 @@ const createDiffBlockTransaction = (
   const nextGlobalRanges = targets.modifiedIntervals.length === 0
     ? currentGlobal
     : changedRanges(operation, currentGlobal, targets.modifiedIntervals);
-  if (targets.originalIntervals.length > 0) originalReviewedByDiff[input.diffId] = nextOriginal;
+  if (targets.originalIntervals.length > 0 && (nextOriginal.length > 0 || hasOriginalDiffKey)) {
+    originalReviewedByDiff[input.diffId] = nextOriginal;
+  }
 
   const nextInput: ReviewStateMutationInput = {
     ...input,

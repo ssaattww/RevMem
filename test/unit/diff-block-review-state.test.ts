@@ -366,6 +366,38 @@ test("empty block targets do not create missing side state", async () => {
   assert.equal(globalFile(transaction), undefined);
   assert.deepEqual(await eventsFor(transaction), []);
 });
+test("unmarking a missing original diff key stays a semantic no-op without creating the key", async () => {
+  const transaction = unmarkDiffBlockReviewed(inputFor({
+    invokedFrom: "original",
+    originalIntervals: [block],
+    modifiedIntervals: [],
+  }));
+  assert.equal(Object.hasOwn(transaction.expected.contextState.files["file-1"]!.originalReviewedByDiff, diffId), false);
+  assert.equal(Object.hasOwn(contextFile(transaction).originalReviewedByDiff, diffId), false);
+  assert.equal(hasReviewStateSemanticChange(transaction), false);
+  assert.deepEqual(await eventsFor(transaction), []);
+});
+
+test("fully unmarking an existing original diff key keeps an empty key and repeated unmark is a no-op", async () => {
+  const first = unmarkDiffBlockReviewed(inputFor({
+    original: "reviewed",
+    invokedFrom: "original",
+    originalIntervals: [block],
+    modifiedIntervals: [],
+  }));
+  assert.equal(Object.hasOwn(contextFile(first).originalReviewedByDiff, diffId), true);
+  assert.deepEqual(contextFile(first).originalReviewedByDiff[diffId], []);
+  assert.equal(hasReviewStateSemanticChange(first), true);
+
+  const repeated = unmarkDiffBlockReviewed({
+    ...inputFor({ invokedFrom: "original", originalIntervals: [block], modifiedIntervals: [] }),
+    contextState: first.next.contextState,
+  });
+  assert.equal(Object.hasOwn(contextFile(repeated).originalReviewedByDiff, diffId), true);
+  assert.equal(hasReviewStateSemanticChange(repeated), false);
+  assert.deepEqual(await eventsFor(repeated), []);
+});
+
 test("pull-request block updates the HEAD Global snapshot when the owner current revision differs", async () => {
   const base = inputFor({
     original: "reviewed",
