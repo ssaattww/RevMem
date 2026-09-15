@@ -49,6 +49,23 @@ test("document line contract derives the EOF newline table from present revision
   }
 });
 
+test("document line contract keeps bare CR display boundaries outside Git content coordinates", () => {
+  const cases: ReadonlyArray<readonly [string, number, number]> = [
+    ["a\rb", 2, 1],
+    ["a\rb\r\nc\nd", 4, 3],
+    ["a\r", 2, 1]
+  ];
+
+  for (const [content, editorLineCount, diffContentLineCount] of cases) {
+    assert.deepEqual(deriveDocumentLineContract(present(content)), {
+      existence: "present",
+      editorLineCount,
+      diffContentLineCount,
+      terminalNewline: "none"
+    }, JSON.stringify(content));
+  }
+});
+
 test("document line contract covers each revision pair in the EOF acceptance table", () => {
   const cases: ReadonlyArray<Readonly<{
     readonly description: string;

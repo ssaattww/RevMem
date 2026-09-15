@@ -46,6 +46,10 @@
 - 構造検査: `node tools/run-ci-command.mjs pds-01-architecture C:\\Windows\\System32\\cmd.exe /d /s /c "npm run validate:architecture"` — exit 0。
 - lint: `node tools/run-ci-command.mjs pds-01-lint C:\\Windows\\System32\\cmd.exe /d /s /c "npm run lint"` — exit 0。
 - 既定unit検出: `node tools/run-ci-command.mjs pds-01-unit-discovery C:\\Windows\\System32\\cmd.exe /d /s /c "npm run test:unit"` — 新規の契約testと検出契約testは通過したが、Git working-tree path環境の失敗により 736 tests 中 715 passed / 19 failed / 2 skipped、exit 1。診断は `test-output/ci/pds-01-unit-discovery.result.json` と各ログに保存した。
+- PDS01-NR1-001 Red: `node tools/run-ci-command.mjs pds-01-nr1-bare-cr-red C:\\Windows\\System32\\cmd.exe /d /s /c "npm run test:document-line-contract"` — bare CRの表示行数が1となり、期待値2に対して1件失敗、exit 1。`test-output/ci/pds-01-nr1-bare-cr-red.result.json` と各ログを保存した。
+- PDS01-NR1-001 Green: `node tools/run-ci-command.mjs pds-01-nr1-bare-cr-green C:\\Windows\\System32\\cmd.exe /d /s /c "npm run test:document-line-contract"` — 4 passed、exit 0。bare CR、mixed EOL、末尾bare CRで表示行数とGit内容行数を別々に検証した。`test-output/ci/pds-01-nr1-bare-cr-green.result.json` と各ログを保存した。
+- PDS01-NR1-001構造検査: `node tools/run-ci-command.mjs pds-01-nr1-architecture C:\\Windows\\System32\\cmd.exe /d /s /c "npm run validate:architecture"` — exit 0。
+- PDS01-NR1-001 lint: `node tools/run-ci-command.mjs pds-01-nr1-lint C:\\Windows\\System32\\cmd.exe /d /s /c "npm run lint"` — exit 0。
 
 ## 対象ファイル
 
@@ -55,17 +59,26 @@
 - `package.json`: 専用テストscriptと既定unit suiteへの登録。
 - `test/unit/ci-workflow-contract.test.ts`: 専用scriptと既定unit suiteの両方での検出を固定。
 - 確認のみ: `src/composition/pull-request/pull-request-review-runtime-base.ts` は既存の `split()` による表示行数だけの扱いを持つ。PDS-02の実PR入力経路で新しい契約を接続するまで変更しない。
+- PDS01-NR1-001 fix: `src/core/intervals/document-line-contract.ts` は表示行数をCRLF / bare CR / LFで数え、Git差分内容行数をCRLF / LFだけで数えるよう分離した。`test/unit/document-line-contract.test.ts` にbare CR、mixed EOL、末尾bare CRの回帰を追加した。
 
 ## 指摘事項
 
 - 自己レビューの判定は発行しない。
 - 既定unit suiteの19失敗は、Git working tree外のdocument pathを報告する失敗群であり、このタスクの変更箇所・新規契約test・検出契約testではない。既存の記録と同じ系統であることからbaseline相当と推定したが、基準HEADを別途再実行して比較した証拠はない。PDS-01の全焦点検証、契約型検査、構造検査、lintは成功している。
+- PDS01-NR1-001の修正はreviewerによるfix verification前の実装証拠であり、ここではclosure verdictを発行しない。
 
 ## 結果
 
 - `normal_persistence: repository_file`。
 - 技術HEAD: `c2dfc3cb27efd79bdf41c4e0ad7b9534161b588b`（未commit）。branch: `investigation/issue-119-linked-diff-blocks`。push、CI待機、mergeはいずれも未実施。
 - 不存在は空文字列から推測せず、`existence: "absent"` を明示入力にする。存在する空ファイルは editor 1 / diff content 0、存在しない側は 0 / 0。LFまたはCRLF終端時は表示用の末尾空行だけを差分内容行数から除く。連続末尾改行の実在空行は保持する。
+- PDS01-NR1-001 fix worktreeは通常レビュー対象HEAD `880b181fc7f0ee4b7be6ebdd5fe5d442d0be1c44` 上にあり、parentがreview target commitを作成するまで未commitである。push、CI待機、mergeは実施していない。
+
+### PDS01-NR1-001 closure completeness matrix
+
+| ID | required action | production path | composition or pure fixture | focused evidence |
+| --- | --- | --- | --- | --- |
+| PDS01-NR1-001 | editor行数だけをCRLF / bare CR / LFから導出し、Git内容行数とEOF種別を同じ規則に広げない | `src/core/intervals/document-line-contract.ts` | pure fixture: `test/unit/document-line-contract.test.ts` のbare CR、mixed EOL、末尾bare CRケース | Red: `pds-01-nr1-bare-cr-red` exit 1。Green: `pds-01-nr1-bare-cr-green` 4 passed / exit 0。`pds-01-nr1-architecture` と `pds-01-nr1-lint` はexit 0。 |
 
 ## リスク
 

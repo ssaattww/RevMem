@@ -47,14 +47,16 @@ export function deriveDocumentLineContract(
   }
 
   const terminalNewline = terminalNewlineFor(document.content);
-  const editorLineCount = (document.content.match(/\r\n|\n/gu)?.length ?? 0) + 1;
+  const editorLineCount = (document.content.match(/\r\n|\r|\n/gu)?.length ?? 0) + 1;
+  const gitContentLineCount = document.content.length === 0
+    ? 0
+    : (document.content.match(/\r\n|\n/gu)?.length ?? 0) + 1 -
+      (terminalNewline === "none" ? 0 : 1);
 
   return {
     existence: "present",
     editorLineCount,
-    diffContentLineCount: document.content.length === 0
-      ? 0
-      : editorLineCount - (terminalNewline === "none" ? 0 : 1),
+    diffContentLineCount: gitContentLineCount,
     terminalNewline
   };
 }
