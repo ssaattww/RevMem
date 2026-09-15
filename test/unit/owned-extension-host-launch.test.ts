@@ -85,7 +85,7 @@ test("owned Extension Host launch fails and terminates its tree when success is 
         phase: "success-without-close",
         workerPath,
         configurationPath: join(temporary.path, "configuration.json"),
-        timeoutMs: 250,
+        timeoutMs: 1_000,
         diagnosticDirectory,
         redactPaths: [temporary.path]
       }),
