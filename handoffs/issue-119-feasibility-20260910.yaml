@@ -1,0 +1,120 @@
+schema_version: 3
+producer: {skill: chat-implementation-worker, mode: feasibility-investigation, generated_at: '2026-09-09T21:26:45.147Z'}
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: I119-FEASIBILITY
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target: {current_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, reviewed_head: null, commit_range: '989317e00893e3b45a9e77ecb550e99274ac7e69..92f702ecfe70dcafe88e5117975c34a75f6f4d67'}
+verification:
+  capability: local_execution_available
+  capability_evidence: ['RDC Windows: Node v24.21.0, npm 11.19.0; npm ci and focused tests executed']
+  technical_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+  administrative_parent: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+  commit: {state: commit_pending, review_target_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67}
+  push: {state: push_pending, head_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67}
+  ci_wait: {state: ci_wait_pending, required_for: route_verification}
+  final_publication: {sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update}
+authoritative_requirements: &requirements
+  - {source: user_instruction, reference: current-chat, summary: 'Investigate feasibility of #119 first; clone into home/CodexProjects using RDC.'}
+  - {source: repository_instruction, reference: 'AGENTS.md and uploaded chatgpt-worker-skills 2.zip', summary: 'Use applicable Skills, TDD for implementation, diagnostic artifacts, GitHub connector publication, reports and PR comment; never merge.'}
+  - {source: issue, reference: 'ssaattww/RevMem#119', summary: 'Reviewing one diff side should review both sides of its block; difficult work may be deferred.'}
+development_policy: {method: TDD, testing_order: 'Prototype tests failed before candidate implementation; product implementation not started.', governing_source: project-instructions}
+scope: &scope ['Feasibility investigation, isolated probe, repository report and handoff, one draft PR']
+non_goals: &non_goals ['Product implementation', 'GitHub Viewed synchronization', 'Unrelated Windows test fixes', 'Normal-editor behaviour changes', 'Independent review', 'Merge']
+authorized_actions: [read_repository, edit_documentation, write_report, write_handoff, create_branch, commit, push, create_pr, update_pr, comment_pr]
+write_boundary:
+  allowed: [{path_or_operation: 'reports/issue-119-feasibility and handoffs/issue-119-feasibility-20260910.yaml', reason: 'Authorized investigation evidence and continuation'}]
+  forbidden: [{path_or_operation: 'merge, Issue closure, unrelated changes', reason: 'Outside current task and explicit merge boundary'}]
+validation_plan: {commands: ['npm run compile:test', 'node reports/issue-119-feasibility/probe.mjs', 'node reports/issue-119-feasibility/probe.mjs --require-feature', 'focused node --test suite', 'build, contracts, architecture positive/negative, lint, npm test'], required_failure_diagnostics: ['stdout', 'stderr', 'test results', 'exit status', 'environment and source context']}
+commands: &commands
+  - {command: 'npm ci', purpose: dependency-installation, exit_code: 0, result: passed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'test-output/ci/issue119-npm-ci.result.json'}
+  - {command: 'npm run compile:test', purpose: test-compilation, exit_code: 0, result: passed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'test-output/ci/issue119-compile-test.result.json'}
+  - {command: 'node --test: six files listed in report', purpose: baseline-focused, exit_code: 0, result: passed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'test-output/ci/issue119-baseline-focused.stdout.log; 45/45'}
+  - {command: 'node reports/issue-119-feasibility/probe.mjs (stub)', purpose: prototype-red, exit_code: 1, result: failed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'issue119-probe-red: 4 passed, 3 failed; saved red source'}
+  - {command: 'node reports/issue-119-feasibility/probe.mjs', purpose: prototype-green, exit_code: 0, result: passed, head_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, evidence: 'issue119-probe-green: 7/7; tested blob 38f805e8135244c09c978147f7a06e063612704e'}
+  - {command: 'node reports/issue-119-feasibility/probe.mjs --require-feature', purpose: production-gap-reproduction, exit_code: 1, result: failed, head_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, evidence: 'issue119-production-feature-gap: 5 passed, 2 expected failures (2/3 vs 5 reviewed lines)'}
+  - {command: 'npm run build; npm run typecheck:contracts; npm run validate:architecture; npm run validate:architecture:negative; npm run lint', purpose: baseline-gates, exit_code: 0, result: passed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'test-output/ci/issue119-gate-*.result.json'}
+  - {command: 'npm test', purpose: broader-baseline, exit_code: 1, result: failed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: 'tooling 16 passed; unit 710 passed, 20 failed, 2 skipped; later suites not run'}
+tests: [{name: candidate-block-extraction, phase: red, result: failed, head_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69, evidence: '3 failures with empty stub'}, {name: feasibility-probe, phase: green, result: passed, head_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, evidence: '7/7 with identical local and published blob'}]
+files:
+  changed: &changed [{path: reports/issue-119-feasibility/probe.mjs, purpose: isolated-investigation}, {path: reports/issue-119-feasibility/README.md, purpose: detailed-report}, {path: handoffs/issue-119-feasibility-20260910.yaml, purpose: continuation}]
+  inspected: [{path: .github/workflows/ci.yml, purpose: diagnostic-artifacts}, {path: tools/run-ci-command.mjs, purpose: separate-stdout-stderr-results}, {path: src/application/review-commands, purpose: selection-and-mapping}, {path: src/core/review-state, purpose: composite-transactions}, {path: src/application/review-history, purpose: both-side-history}, {path: src/composition/pull-request, purpose: immutable-session-input}, {path: src/composition/local-git/local-base-head-runtime.ts, purpose: shared-service-consumer}, {path: src/core/pr-progress, purpose: addition-plus-deletion-counting}]
+  intentionally_untouched: &untouched [{path_or_area: 'src, default tests, workflows, configuration, storage schema', reason: 'Feasibility first; no product implementation'}, {path_or_area: tasks/tasks-status.md, reason: 'No existing #119 implementation task was completed; existing task history retained'}]
+ci: {required: true, workflow: CI, run_id: null, head_sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, conclusion: unknown, artifacts: []}
+implementation:
+  outcome: completed
+  final_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+  commits: [{sha: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, purpose: isolated-feasibility-probe}]
+  addressed_findings: []
+  failure_diagnostics: &diagnostics [{type: standard_output, location: 'test-output/ci/issue119-*.stdout.log', summary: 'Full local test output'}, {type: standard_error, location: 'test-output/ci/issue119-*.stderr.log', summary: 'Separate stderr'}, {type: test_result, location: 'test-output/ci/issue119-*.result.json', summary: 'Timing, exit code, signal and spawnError'}, {type: other, location: 'test-output/ci/issue119-probe-red-source.mjs', summary: 'Pre-implementation prototype source'}]
+  blocked_items: []
+  summary: ['Only the feasibility investigation is completed. Product linkage is not implemented. Candidate grouping and existing state/history/progress representation are feasible.']
+review: {mode: not_applicable, reviewed_head: unknown, verdict: not_applicable, summary: ['No independent or formal review verdict issued.']}
+report: {report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/issue-119-feasibility/README.md], reviewed_head: null, attestation_head: null, pr_comments: [], summary: ['Report commit and final exact-head CI/comment pending at packet generation.']}
+findings: []
+blocked: []
+held: [{item: product-implementation, reason: 'Feasibility-first scope; partial-selection and unmark semantics not yet accepted', owner: user, remaining_risk: 'Unselected lines could be marked unexpectedly', verdict_impact: 'No release-readiness verdict'}]
+unexplored: [{area: 'Real Extension Host linkage, disk CAS, large-diff performance, visual block matching and full acceptance matrix', blocker: 'Outside completed isolated investigation', remaining_risk: 'Runtime behaviour remains unverified', verdict_impact: 'Cannot claim product completion'}]
+unknown: &unknown [{field_or_fact: 'Final documentation commit SHA and its CI', reason: 'The commit does not exist yet; final PR comment records the publication SHA and matching runs'}, {field_or_fact: 'Causes of all 20 Windows baseline test failures', reason: 'Not individually diagnosed; product code unchanged'}]
+not_applicable: [{field_or_area: independent-review-attestation, reason: 'This is investigation, not an independent final review'}]
+remaining_risks: &risks ['Partial-block and unmark policies need acceptance', 'Windows full npm test is not green', 'No new production path is exercised by the prototype', 'Visual and parsed block boundaries may differ']
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      issue_or_pr: 'Issue #119 / PR #120'
+      task_id: I119-FEASIBILITY
+      mode: implementation
+      branch: investigation/issue-119-linked-diff-blocks
+      base_ref: main
+      current_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+      reviewed_head: null
+      verification_capability: local_execution_available
+      verification_capability_evidence: ['RDC Windows execution; compile and focused tests completed']
+      execution_state: {technical_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, administrative_parent: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, commit: commit_pending, push: push_pending, ci_wait: ci_wait_pending, full_local_equivalence_gate: {state: unsupported, candidate_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67, invalidated_runs: []}}
+      scope: *scope
+      non_goals: *non_goals
+      authoritative_requirements: *requirements
+      write_boundary: {allowed: ['Investigation code, documentation and PR'], forbidden: ['Merge', 'Unrelated product changes']}
+      development_policy: {method: TDD, testing_order: 'Prototype Red then Green; product implementation not started'}
+      validation: {commands: ['npm run compile:test', 'node reports/issue-119-feasibility/probe.mjs', 'focused node --test suite', 'build, contracts, architecture, lint, npm test'], required_failure_diagnostics: ['stdout', 'stderr', 'test results', 'exit status and source context']}
+      ci: {matching_run: null, conclusion: 'Not yet inspected for final publication HEAD'}
+      unknown: *unknown
+      blocked: []
+      remaining_risks: *risks
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: initial-implementation-feasibility-only
+      accepted_scope: *scope
+      non_goals: *non_goals
+      requirements_and_design_references: *requirements
+      changed_files_and_purpose: *changed
+      intentionally_untouched_areas: *untouched
+      validation_commands_and_results: *commands
+      failure_diagnostics_and_artifacts: *diagnostics
+      verification_capability: local_execution_available
+      validation_evidence: ['Baseline focused 45/45; prototype Red 4/7 then Green 7/7; feature-gap mode fails as expected; broad Windows unit 710 pass / 20 fail / 2 skip']
+      review_target_commit: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+      push_state: 'Probe pushed; documentation publication pending'
+      matching_ci_evidence: 'Final publication SHA does not exist yet; CI not claimed'
+      final_technical_head: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+      administrative_parent: 92f702ecfe70dcafe88e5117975c34a75f6f4d67
+      blocked_items: []
+      unknowns: *unknown
+      remaining_risks: *risks
+      next_required_action: 'Publish documentation, update PR, inspect only matching final-HEAD pull_request runs, and post concise report. Product implementation follows accepted selection/unmark semantics.'
+extensions: [{namespace: revmem.rdc, payload: {worktree: '~/CodexProjects/RevMem', device: DonabeThinkBook, os: Windows, logs: 'test-output/ci/issue119-*', preservation: 'Keep worktree and diagnostic logs; no user work was deleted.'}}, {namespace: revmem.publication, payload: {pr: 120, future_sha_policy: 'This packet describes its parent/probe SHA. Final documentation SHA and matching CI are recorded externally in the PR comment.', new_chat_permission: 'Permissions do not automatically transfer; obtain a fresh user grant.'}}]
+next_action:
+  type: user_decision
+  target_skill: chat-implementation-worker
+  mode: initial-implementation
+  summary: 'Decide partial-selection and unmark semantics before product TDD.'
+  instructions: ['Read the detailed report and probe, then add failing production tests before implementing.', 'Keep replacement action grouping separate from surviving-line mapping.', 'Use GitHub connector for publication and RDC for execution; verify current PR HEAD and matching run SHA.', 'Never merge or close the Issue merely because the investigation is complete.']
+  required_attachments_or_references: ['Issue #119', 'PR #120 and its latest summary comment', 'reports/issue-119-feasibility/README.md', 'uploaded chatgpt-worker-skills 2.zip']
+  requested_authorized_actions: [read_repository, edit_code, edit_tests, edit_documentation, write_report, write_handoff, commit, push, update_pr, comment_pr]
+transport: {method: repository_file, packet_path: handoffs/issue-119-feasibility-20260910.yaml, packet_url: null, transport_note: 'Use with the final PR comment to resolve the later publication SHA and exact-head CI; this is not a merge attestation.'}

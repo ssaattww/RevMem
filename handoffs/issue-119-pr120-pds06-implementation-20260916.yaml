@@ -1,0 +1,368 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: implementation
+  generated_at: "2026-09-16T08:02:09+09:00"
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #119 / PR #120"
+task_id: PDS-06
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  reviewed_head: null
+  commit_range: "9fbee35335bf735564f1f1388367e3f7fe371079..00d42300d838d510b2101d03d7969ba7ce0a4a31"
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - "RDC Ubuntu device ibis-ThinkBook-14-G7-IML executed repository commands and tests."
+    - "GitHub connector read PR #120 and exact-SHA workflow runs."
+  technical_head: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  administrative_parent: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  commit:
+    state: committed
+    review_target_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  push:
+    state: pushed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instructions
+    summary: "Use RDC for git, GitHub connector for PR/comment operations, TDD, small commits/pushes, detailed repository report and concise PR comment, never merge."
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md PDS-06
+    summary: "Connect reviewRange.prDiffSelectionMode to RevMem-managed PR diff selection commands only; default side, explicit block, config change, invalid rejection, isolation from non-PR paths."
+  - source: design
+    reference: Design/pr-diff-selection-mode.md
+    summary: "Sample mode per operation, derive blocks only in block mode, keep side and whole-file semantics stable, fail closed on invalid or incomplete evidence."
+  - source: report
+    reference: reports/pr120-pds05-normal-rereview-20260916.md
+    summary: "PDS-05 dependency closed with PDS05-NR1-001 fixed and pass_with_held."
+
+development_policy:
+  method: TDD
+  testing_order: "tests first -> confirm Red -> product implementation -> focused Green -> regression/static gates"
+  governing_source: RevMem project instructions and tasks/pr-diff-selection-mode/tasks-status.md
+validation_plan:
+  commands:
+    - "node tools/run-ci-command.mjs pr-diff-selection-connection-red bash -lc 'npm run compile:test && node --test test-dist/test/unit/pr-diff-selection-configuration.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js'"
+    - "node tools/run-ci-command.mjs pr-diff-selection-connection-green bash -lc 'npm run compile:test && node --test test-dist/test/unit/pr-diff-selection-configuration.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js'"
+    - "node tools/run-ci-command.mjs pr-diff-selection-focused npm run test:pr-diff-selection"
+    - "node tools/run-ci-command.mjs pr-diff-selection-build npm run build"
+    - "node tools/run-ci-command.mjs pr-diff-selection-contracts npm run typecheck:contracts"
+    - "node tools/run-ci-command.mjs pr-diff-selection-architecture npm run validate:architecture"
+    - "node tools/run-ci-command.mjs pr-diff-selection-architecture-negative npm run validate:architecture:negative"
+    - "node tools/run-ci-command.mjs pr-diff-selection-lint npm run lint"
+    - "node tools/run-ci-command.mjs pr-diff-selection-unit npm run test:unit"
+    - "git diff --check"
+  required_failure_diagnostics:
+    - "test result JSON"
+    - "standard output"
+    - "standard error"
+    - "combined command log"
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: "PDS-06 product/tests/configuration"
+      reason: "Explicit implementation request."
+    - path_or_operation: "tasks/pr-diff-selection-mode/*.md"
+      reason: "Progress synchronization through progress-sync-manager."
+    - path_or_operation: "reports/pr120-pds06-implementation-20260916.md"
+      reason: "Required detailed implementation report."
+    - path_or_operation: "handoffs/issue-119-pr120-pds06-implementation-20260916.yaml"
+      reason: "Required cross-chat transport."
+  forbidden:
+    - path_or_operation: merge
+      reason: "User performs merge."
+    - path_or_operation: "PDS-07+ product implementation"
+      reason: "Not part of this task."
+
+scope:
+  - "Expose and validate side/block PR diff selection setting."
+  - "Wire block target planning and atomic state transaction into PR selection commands."
+  - "Keep setting sampled once per selection operation and re-read on the next operation."
+  - "Preserve empty-selection no-session behavior and non-selection paths."
+non_goals:
+  - "PDS-07 complete design-table acceptance coverage."
+  - "PDS-08 stale comparison/CAS/reload coverage."
+  - "PDS-09 actual Extension Host acceptance."
+  - "PDS-10 final review/publication gate."
+
+files:
+  changed:
+    - path: package.json
+      purpose: "Publish setting and focused/default test entrypoints."
+    - path: src/application/configuration/index.ts
+      purpose: "Export selection-mode configuration contract."
+    - path: src/application/configuration/review-range-configuration.ts
+      purpose: "Define and validate side/block selection mode with side default."
+    - path: src/application/review-commands/diff-editor-review-command-service.ts
+      purpose: "Route block selection through target plan and atomic block transaction."
+    - path: src/composition/extension.ts
+      purpose: "Read VS Code setting at PR composition boundary and classify block history as user-selection."
+    - path: src/composition/pull-request/pull-request-review-runtime-base.ts
+      purpose: "Sample mode per selection operation and derive blocks only for block mode."
+    - path: test/unit/pr-diff-selection-configuration.test.ts
+      purpose: "Configuration default/allowed/invalid tests."
+    - path: test/unit/t405-pull-request-review-runtime.test.ts
+      purpose: "Real PR runtime side/block/config-change/empty-selection tests."
+    - path: type-fixtures/contracts/review-contracts.fixture.ts
+      purpose: "Update configuration type fixture."
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: "Verify diagnostic artifacts already include test outputs and logs."
+    - path: Design/pr-diff-selection-mode.md
+      purpose: "Authoritative behavior and isolation contract."
+    - path: tasks/pr-diff-selection-mode/tasks-status.md
+      purpose: "PDS-06 scope, dependencies, done criteria, validation policy."
+    - path: reports/pr120-pds05-normal-rereview-20260916.md
+      purpose: "Dependency closure evidence."
+  intentionally_untouched:
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Existing workflow already satisfies diagnostic artifact requirements."
+    - path_or_area: "normal editor and local base/head composition"
+      reason: "Setting is injected only into PR runtime."
+
+commands:
+  - command: "focused Red"
+    purpose: "Prove missing setting and block route fail before implementation."
+    exit_code: 1
+    result: failed
+    head_sha: 9fbee35335bf735564f1f1388367e3f7fe371079
+    evidence: "test-output/ci/pr-diff-selection-connection-red.*; 24 pass / 5 fail"
+  - command: "focused connection Green"
+    purpose: "Verify configuration and PR runtime connection."
+    exit_code: 0
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "test-output/ci/pr-diff-selection-connection-green.*; 29/29"
+  - command: "npm run test:pr-diff-selection"
+    purpose: "Run PDS-06 focused and component regressions."
+    exit_code: 0
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "test-output/ci/pr-diff-selection-focused.*; 59/59"
+  - command: "build + contract typecheck + architecture +/- + lint"
+    purpose: "Static and structural gates."
+    exit_code: 0
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "test-output/ci/pr-diff-selection-{build,contracts,architecture,architecture-negative,lint}.*"
+  - command: "npm run test:unit"
+    purpose: "Default unit regression gate including non-PR paths."
+    exit_code: 0
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "test-output/ci/pr-diff-selection-unit.*; tooling 16/16, unit 790/790"
+
+tests:
+  - name: "configuration and PR connection Red"
+    phase: red
+    result: failed
+    head_sha: 9fbee35335bf735564f1f1388367e3f7fe371079
+    evidence: "Expected five failures before product implementation."
+  - name: "configuration and PR connection Green"
+    phase: green
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "29/29"
+  - name: "focused PDS-06 regression"
+    phase: regression
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "59/59"
+  - name: "default unit regression"
+    phase: verification
+    result: passed
+    head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+    evidence: "790/790 plus tooling 16/16"
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35033585889
+  head_sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  conclusion: in_progress
+  artifacts: []
+
+implementation:
+  outcome: completed
+  final_head: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+  commits:
+    - sha: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+      purpose: "Connect PR diff selection setting and block-mode command route with tests."
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: test-output/ci/pr-diff-selection-connection-red.result.json
+      summary: "Red command status."
+    - type: standard_output
+      location: test-output/ci/pr-diff-selection-connection-red.stdout.log
+      summary: "Red test output."
+    - type: standard_error
+      location: test-output/ci/pr-diff-selection-connection-red.stderr.log
+      summary: "Red stderr."
+    - type: log
+      location: test-output/ci/pr-diff-selection-connection-red.log
+      summary: "Combined Red log."
+  blocked_items: []
+  summary:
+    - "Default side behavior remains stable."
+    - "Explicit block selection links original/modified state through existing PDS-03..05 primitives."
+    - "Invalid configuration rejects without fallback."
+    - "Mode changes apply on the next operation; empty selection does not open state."
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary: []
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr120-pds06-implementation-20260916.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed PDS-06 TDD, implementation, validation, commit and CI state recorded."
+
+findings: []
+held: []
+unexplored:
+  - area: "PDS-07 design-table end-to-end acceptance"
+    blocker: "Separate planned task."
+    remaining_risk: "Full table-to-real-route coverage not yet demonstrated."
+    verdict_impact: "Does not invalidate PDS-06 local done criteria; blocks later phase completion."
+  - area: "PDS-09 actual Extension Host behavior"
+    blocker: "Separate planned task after PDS-07/PDS-08."
+    remaining_risk: "Actual host decoration/progress synchronization not yet accepted."
+    verdict_impact: "Blocks final feature completion."
+unknown:
+  - field_or_fact: "Final exact-head CI conclusion after administrative documentation commit"
+    reason: "That commit does not exist at packet creation time."
+not_applicable:
+  - field_or_area: "merge"
+    reason: "Merge is reserved to the user."
+remaining_risks:
+  - "PDS-07 through PDS-10 remain outstanding."
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      outcome: completed
+      start_head: 9fbee35335bf735564f1f1388367e3f7fe371079
+      final_head: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+      development_policy: TDD
+      red: "29 tests: 24 pass, 5 expected fail before implementation"
+      green: "29/29"
+      focused: "59/59"
+      unit: "790/790; tooling 16/16"
+      static_gates: "build, contract typecheck, architecture positive/negative, lint passed"
+      commit: 00d42300d838d510b2101d03d7969ba7ce0a4a31
+      push_state: pushed
+      ci_run: 35033585889
+      ci_state: in_progress
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: "reports/pr120-pds06-implementation-20260916.md"
+extensions:
+  - namespace: revmem.progress
+    payload:
+      pds05_rereview: "PDS05-NR1-001 fixed; pass_with_held"
+      pds06: completed
+      phase: "接続と受入"
+      next_task: PDS-07
+
+next_action:
+  type: implementation
+  target_skill: development-orchestrator
+  mode: PDS-07
+  summary: "Complete design-table integration acceptance coverage after PDS-06."
+  instructions:
+    - "Re-read tasks/pr-diff-selection-mode/tasks-status.md and Design/pr-diff-selection-mode.md."
+    - "Maintain RevMem TDD: add acceptance tests and confirm Red before product changes."
+    - "Use RDC for git and GitHub connector for PR/comment operations."
+    - "Use only workflow runs whose head_sha matches the then-current PR HEAD."
+    - "Do not merge."
+  required_attachments_or_references:
+    - reports/pr120-pds06-implementation-20260916.md
+    - tasks/pr-diff-selection-mode/tasks-status.md
+    - Design/pr-diff-selection-mode.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - edit_documentation
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds06-implementation-20260916.yaml
+  packet_url: null
+  transport_note: "Administrative documentation commit will persist this packet; exact-head CI must be re-evaluated after that push."

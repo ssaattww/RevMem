@@ -1,0 +1,67 @@
+schema_version: 3
+producer: {skill: task-breakdown-planner, mode: planning, generated_at: '2026-09-15T18:05:10+09:00'}
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: null
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target: {current_head: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, reviewed_head: null, commit_range: 'c7a5d2b1d9a34e60614ae48c619217b9568e1e8e..454c9b7d1a11632f5f83f174e83ace8811e8cbd7'}
+verification:
+  capability: local_execution_available
+  capability_evidence: ['FA780 / Windows / Node v24.20.0; local plan checks and 17 existing tests passed.']
+  technical_head: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7
+  administrative_parent: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7
+  commit: {state: commit_pending, review_target_sha: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7}
+  push: {state: push_pending, head_sha: unknown}
+  ci_wait: {state: ci_wait_pending, required_for: route_verification}
+  final_publication: {sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait, pr_action: update}
+authoritative_requirements:
+  - {source: user_instruction, reference: current_chat, summary: 'Split implementation into tasks; do not start implementation.'}
+  - {source: user_instruction, reference: current_chat, summary: 'Carry implementation deficiencies into task tracking, never into the design.'}
+  - {source: design, reference: Design/pr-diff-selection-mode.md, summary: 'Use all normal/state/selection/newline tables as acceptance conditions.'}
+development_policy: {method: planning_only, testing_order: 'Validate tracking now; every later implementation task is TDD.', governing_source: 'Current request and RevMem project policy'}
+validation_plan: {commands: ['node tools/run-ci-command.mjs pr-diff-task-plan node test-output/ci/verify-task-plan.mjs', 'test source compile', 'design and CI contract tests'], required_failure_diagnostics: ['stdout', 'stderr', 'combined logs', 'result JSON', 'checkout SHA']}
+blocked: []
+authorized_actions: [read_repository, edit_documentation, write_report, write_handoff, commit, push, update_pr, comment_pr]
+write_boundary: {allowed: [{path_or_operation: 'tasks/pr-diff-selection-mode/**', reason: 'Feature-scoped task and phase tracking'}, {path_or_operation: 'reports/pr-diff-selection-mode-task-breakdown-20260915.md', reason: 'Detailed report'}, {path_or_operation: 'handoffs/pr-diff-selection-mode-task-breakdown-20260915.yaml', reason: 'Continuation packet'}], forbidden: [{path_or_operation: 'src/**, test/**, Design/**, configuration, workflow, other task tracking', reason: 'Planning-only request'}]}
+scope: ['Create 10 tasks and 4 phases', 'Assign design acceptance cases and existing newline defect', 'Publish planning records only']
+non_goals: ['Product implementation', 'Design revision', 'New issues', 'Merge']
+files:
+  changed: [{path: tasks/pr-diff-selection-mode/tasks-status.md, purpose: 'Task scope, dependencies, size and exit criteria'}, {path: tasks/pr-diff-selection-mode/phases-status.md, purpose: 'Four milestone checkpoints'}, {path: reports/pr-diff-selection-mode-task-breakdown-20260915.md, purpose: 'Detailed evidence'}, {path: handoffs/pr-diff-selection-mode-task-breakdown-20260915.yaml, purpose: 'Continuation'}]
+  inspected: [{path: AGENTS.md, purpose: 'Skill-first requirements'}, {path: tasks/tasks-status.md, purpose: 'Existing tracking'}, {path: tasks/phases-status.md, purpose: 'Existing phases'}, {path: Design/pr-diff-selection-mode.md, purpose: 'Accepted specification'}, {path: handoffs/issue-119-pr120-newline-contract-followup-20260915.yaml, purpose: 'Implementation carry-forward'}, {path: .github/workflows/ci.yml, purpose: 'Failure artifacts'}]
+  intentionally_untouched: [{path_or_area: 'Design/**, src/**, test/**, workflow, configuration, existing global task tracking and historical reports', reason: 'Planning only'}]
+commands:
+  - {command: 'Plan structure/links/dependency checker', purpose: 'Task consistency', exit_code: 0, result: passed, head_sha: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, evidence: 'test-output/ci/pr-diff-task-plan-published.*'}
+  - {command: 'tsc -p tsconfig.test.json', purpose: 'Compile existing tests', exit_code: 0, result: passed, head_sha: c7a5d2b1d9a34e60614ae48c619217b9568e1e8e, evidence: 'test-output/ci/pr-diff-task-plan-compile.*; new planning files in working tree'}
+  - {command: 'node --test design-document-structure.test.js ci-workflow-contract.test.js', purpose: 'Existing documentation and diagnostic contracts', exit_code: 0, result: passed, head_sha: c7a5d2b1d9a34e60614ae48c619217b9568e1e8e, evidence: '17 passed; test-output/ci/pr-diff-task-plan-focused.*; new planning files in working tree'}
+tests: [{name: 'Planning consistency', phase: verification, result: passed, head_sha: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, evidence: '10 tasks, 4 phases, no dependency cycles, valid tables and links'}, {name: 'Product block acceptance', phase: not_applicable, result: not_run, head_sha: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, evidence: 'No implementation in this request'}]
+ci: {required: true, workflow: CI, run_id: null, head_sha: unknown, conclusion: unknown, artifacts: []}
+implementation:
+  outcome: not_applicable
+  final_head: unknown
+  commits: [{sha: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, purpose: 'Publish the task and phase plan'}]
+  addressed_findings: []
+  failure_diagnostics: [{type: test_result, location: 'test-output/ci/pr-diff-task-plan*', summary: 'Planning checks and 17 existing tests passed; product defect not repaired.'}]
+  blocked_items: []
+  summary: ['All product tasks are unstarted. PDS-01 is next only after implementation authorization.']
+review: {mode: not_applicable, reviewed_head: unknown, reviewer: {identity: unknown, role: not_applicable, continuity: {previous_reviewer_identity: null, changed: false, reason: null}, independence: {implemented_change: false, implemented_review_fix: false, served_as_normal_reviewer: false, inherited_conversation: true, evidence: ['No independent verdict issued for this plan']}}, verdict: not_applicable, required_coverage: [], independent_closure: {initial_independent_reviewed_head: null, closure_reviewed_heads: [], reviewer_continuity: null, closure_scope: [], completeness_matrix: []}, validation_assessment: [], reserved_report_paths: [], report_attestation: {allowed: false, reviewed_implementation_head: null, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [], no_later_commits_required: not_applicable, validation_status: not_applicable, validation_evidence: []}, summary: ['Prior design review applies only to its original reviewed HEAD; no automatic inheritance.']}
+report: {report_type: verification_report, outcome: created, persistence_mode: repository_file, paths: [reports/pr-diff-selection-mode-task-breakdown-20260915.md], reviewed_head: null, attestation_head: null, pr_comments: [], summary: ['The report preserves scope, exact planning commit, validation and remaining product work.']}
+findings:
+  - {id: IR1, severity: medium, origin: pre_existing, location: 'PR runtime line count and original selection mapping', description: 'Newline-boundary product reproduction remains 3 passed and 4 failed in the prior independent review; design finding is closed.', impact: 'Valid additions, deletions and replacements with newline differences can fail before saving.', evidence: 'reports/pr-diff-selection-mode-independent-review-20260915.md and independent-closure-20260915.md', required_action: 'PDS-01 and PDS-02 implement the accepted contract using tests from real bodies before changing production code.'}
+held: []
+unexplored: [{area: 'New block implementation and full local/Extension Host acceptance', blocker: 'Not authorized in this planning request', remaining_risk: 'Product tasks remain unimplemented', verdict_impact: 'No product pass verdict'}]
+unknown: [{field_or_fact: 'Final report publication SHA and exact-head CI', reason: 'Record after publishing this packet, in the PR comment.'}]
+not_applicable: [{field_or_area: 'Product TDD execution now', reason: 'Task division only; every later implementation task requires Red then Green.'}]
+remaining_risks: ['New feature is not implemented.', 'Existing newline product gap remains.', 'Prior Windows full-suite failures require separate comparison at implementation validation; do not silently fix unrelated scope.']
+source_payloads:
+  - source_skill: task-breakdown-planner
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload: {task_file: tasks/pr-diff-selection-mode/tasks-status.md, task_blob: 1376de0c66b8048b68c7fe9ba1498662e488ec94, phase_file: tasks/pr-diff-selection-mode/phases-status.md, phase_blob: 16a9760d6e797fb1bb5302eef8dd4c3609cd8eea, commit: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, tasks: 10, phases: 4, status: unstarted, next_task: PDS-01}
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: {complete_body_repository_path: reports/pr-diff-selection-mode-task-breakdown-20260915.md, persistence_mode: repository_file, report_type: verification_report, technical_head: 454c9b7d1a11632f5f83f174e83ace8811e8cbd7, note: 'Read the full companion report in the same publication commit; not an independent attestation.'}
+extensions: [{namespace: revmem.task_planning, payload: {source_severity: 'IR1 / P2', severity_reclassified: false, design_unchanged: true, merge_performed: false, global_tracking_unchanged: true, feature_tracking_entrypoint: 'PR #120 body'}}]
+next_action: {type: user_decision, target_skill: implementation-worker, mode: initial implementation, summary: 'Begin PDS-01 after explicit implementation instruction.', instructions: ['Read the accepted design and feature-scoped task/phase files.', 'Carry PDS-02 newline defect work forward; do not reinsert it into design.', 'Use the design tables for Red tests before implementation.'], required_attachments_or_references: [Design/pr-diff-selection-mode.md, tasks/pr-diff-selection-mode/tasks-status.md, tasks/pr-diff-selection-mode/phases-status.md, reports/pr-diff-selection-mode-task-breakdown-20260915.md], requested_authorized_actions: [read_repository, edit_code, edit_tests, edit_configuration, edit_workflows, commit, push, update_pr, comment_pr]}
+transport: {method: repository_file, packet_path: handoffs/pr-diff-selection-mode-task-breakdown-20260915.yaml, packet_url: null, transport_note: 'Final publication SHA and CI are supplied in the PR comment; pending fields reflect packet creation time. Permissions do not transfer automatically.'}

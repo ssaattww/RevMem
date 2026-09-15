@@ -254,7 +254,7 @@ test("PR68-R001 mixed-case Windows PR-diff-first review remains readable by PR P
   const runtime = createRuntime(repository, opened);
   registerRuntimeContext(runtime, CONTEXT_A, RAW_PATH_A, async (descriptor) => ({
     kind: "found",
-    content: descriptor.side === "original" ? "old-a" : CONTENT_A,
+    content: descriptor.side === "original" ? "old" : "new",
   }));
 
   await runtime.openReviewDiff(CONTEXT_A, RAW_PATH_A, RAW_PATH_A);

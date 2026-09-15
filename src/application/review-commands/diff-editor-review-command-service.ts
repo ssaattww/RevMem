@@ -1,10 +1,13 @@
+import type { PrDiffSelectionMode } from "../configuration/index";
 import type { TextSelection } from "../../core/intervals/index";
 import { normalizeLineIntervals, selectionsToLineIntervals } from "../../core/intervals/index";
 import {
   commitReviewStateTransaction,
+  markDiffBlockReviewed,
   markFileReviewed,
   markOriginalSelectionReviewed,
   markReviewedRanges,
+  unmarkDiffBlockReviewed,
   unmarkFileReviewed,
   unmarkOriginalSelectionReviewed,
   unmarkReviewedRanges,
@@ -21,6 +24,8 @@ import {
   createOriginalSelectionReviewPlan,
   type OriginalToModifiedLineMapping
 } from "./original-selection-review-plan";
+import { createDiffSelectionTargetPlan } from "./diff-selection-target-plan";
+import type { ChangeBlock } from "./change-blocks";
 
 /** User-confirmed operation that changes all reviewable ranges in a diff file. */
 export type DiffReviewWholeFileOperation = "mark-file-reviewed" | "unmark-file-reviewed";
@@ -39,6 +44,14 @@ export interface DiffEditorReviewStateSession {
   readonly diffId: string;
   /** Number of lines in the immutable original-side document. */
   readonly originalLineCount: number;
+  /** Git LF-delimited original-content lines used for immutable hunk mapping, when the session supplies them. */
+  readonly originalContentLineCount?: number;
+  /** Git LF-delimited modified-content lines; editor display-only lines are excluded from selection persistence. */
+  readonly modifiedContentLineCount?: number;
+  /** Selection unit captured for this operation; absent sessions retain legacy side behavior. */
+  readonly selectionMode?: PrDiffSelectionMode;
+  /** Complete immutable change blocks required only when selectionMode is block. */
+  readonly changeBlocks?: readonly ChangeBlock[];
   /** Original-side intervals representing deletions in the current diff. */
   readonly originalDeletionIntervals: readonly { readonly startLine: number; readonly endLineExclusive: number }[];
   /** Immutable surviving-line mappings; an absent value must be treated as unprojectable. */
@@ -55,8 +68,8 @@ export interface DiffEditorReviewCommandDependencies<Editor> {
   readonly getLineCount: (editor: Editor) => number;
   /** Returns the current host selections. */
   readonly getSelections: (editor: Editor) => readonly TextSelection[];
-  /** Opens the state snapshot that matches the focused editor. */
-  readonly openSession: (editor: Editor) => Promise<DiffEditorReviewStateSession>;
+  /** Opens the state snapshot that matches the focused editor and operation scope. */
+  readonly openSession: (editor: Editor, scope: "selection" | "whole-file") => Promise<DiffEditorReviewStateSession>;
   /** Requests confirmation before a whole-file mutation. */
   readonly confirmWholeFileOperation: (operation: DiffReviewWholeFileOperation) => Promise<boolean>;
   /** Appends history only after the transaction has committed. */
@@ -172,19 +185,69 @@ export class DiffEditorReviewCommandService<Editor> {
   private async applySelectionOperation(editor: Editor, operation: "mark" | "unmark"): Promise<DiffEditorReviewCommandResult> {
     const side = this.dependencies.getSide(editor);
     const lineCount = this.dependencies.getLineCount(editor);
-    const intervals = selectionsToLineIntervals(this.dependencies.getSelections(editor), lineCount);
+    const selections = this.dependencies.getSelections(editor);
+    const intervals = selectionsToLineIntervals(selections, lineCount);
     if (intervals.length === 0) return "no-op";
-    const session = await this.openMatchingSession(editor, side, lineCount);
+    const session = await this.openMatchingSession(editor, side, lineCount, "selection");
     const common = {
       contextState: session.contextState,
       globalState: session.globalState,
       target: session.target,
       occurredAt: this.now().toISOString()
     };
-    if (side === "modified") {
+    if (session.selectionMode === "block") {
+      if (
+        session.originalContentLineCount === undefined ||
+        session.modifiedContentLineCount === undefined ||
+        session.changeBlocks === undefined ||
+        session.originalToModifiedLineMappings === undefined
+      ) {
+        throw new Error("Block diff selection requires complete immutable diff targeting evidence.");
+      }
+      const blockMappings = session.originalToModifiedLineMappings.map((mapping) =>
+        "original" in mapping
+          ? {
+            originalStartLine: mapping.original.startLine,
+            modifiedStartLine: mapping.modifiedStartLine,
+            lineCount: mapping.original.endLineExclusive - mapping.original.startLine
+          }
+          : mapping
+      );
+      const plan = createDiffSelectionTargetPlan({
+        side,
+        selections,
+        editorLineCount: lineCount,
+        originalContentLineCount: session.originalContentLineCount,
+        modifiedContentLineCount: session.modifiedContentLineCount,
+        changeBlocks: session.changeBlocks,
+        originalToModifiedLineMappings: blockMappings
+      });
+      if (plan.originalIntervals.length === 0 && plan.modifiedIntervals.length === 0) return "no-op";
+      const input = {
+        ...common,
+        invokedFrom: side,
+        diffId: canonicalDiffIdFor(session.contextState, session.diffId),
+        originalLineCount: session.originalContentLineCount,
+        originalIntervals: plan.originalIntervals,
+        modifiedIntervals: plan.modifiedIntervals
+      } as const;
       const transaction = operation === "mark"
-        ? markReviewedRanges({ ...common, intervals })
-        : unmarkReviewedRanges({ ...common, intervals });
+        ? markDiffBlockReviewed(input)
+        : unmarkDiffBlockReviewed(input);
+      return this.commitWhenChanged(transaction, session.committer);
+    }
+    if (side === "modified") {
+      const contentLineCount = session.modifiedContentLineCount ?? session.target.lineCount;
+      const contentIntervals = normalizeLineIntervals(intervals.flatMap((interval) => {
+        const endLineExclusive = Math.min(interval.endLineExclusive, contentLineCount);
+        return interval.startLine < endLineExclusive
+          ? [{ startLine: interval.startLine, endLineExclusive }]
+          : [];
+      }));
+      if (contentIntervals.length === 0) return "no-op";
+      const transaction = operation === "mark"
+        ? markReviewedRanges({ ...common, intervals: contentIntervals })
+        : unmarkReviewedRanges({ ...common, intervals: contentIntervals });
       return this.commitWhenChanged(transaction, session.committer);
     }
     if (session.originalToModifiedLineMappings === undefined) return "no-op";
@@ -211,7 +274,7 @@ export class DiffEditorReviewCommandService<Editor> {
     if (!(await this.dependencies.confirmWholeFileOperation(operation))) return "cancelled";
     const side = this.dependencies.getSide(editor);
     const lineCount = this.dependencies.getLineCount(editor);
-    const session = await this.openMatchingSession(editor, side, lineCount);
+    const session = await this.openMatchingSession(editor, side, lineCount, "whole-file");
     const input: ReviewStateMutationInput = {
       contextState: session.contextState,
       globalState: session.globalState,
@@ -223,8 +286,13 @@ export class DiffEditorReviewCommandService<Editor> {
       : unmarkFileReviewed(input);
     return this.commitWhenChanged(transaction, session.committer);
   }
-  private async openMatchingSession(editor: Editor, side: "original" | "modified", lineCount: number): Promise<DiffEditorReviewStateSession> {
-    const session = await this.dependencies.openSession(editor);
+  private async openMatchingSession(
+    editor: Editor,
+    side: "original" | "modified",
+    lineCount: number,
+    scope: "selection" | "whole-file"
+  ): Promise<DiffEditorReviewStateSession> {
+    const session = await this.dependencies.openSession(editor, scope);
     const expected = side === "original" ? session.originalLineCount : session.target.lineCount;
     if (lineCount !== expected) throw new Error("Diff review-state session line count must match the focused side.");
     return session;

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import "./change-blocks.test.js";
+
 import {
   DiffEditorReviewCommandService,
   buildOriginalSideLineProjection,

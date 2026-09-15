@@ -68,6 +68,7 @@ import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
 } from "../application/workspace-identity/index";
+import { readPrDiffSelectionMode } from "../application/configuration/index";
 import { readReviewRangeMappingOptions } from "../application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../core/contracts/index";
 import { TestReviewStateDependentQueue } from "../test-only-review-state-dependent-queue";
@@ -613,7 +614,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     repository: prRepository,
     requestHistory: (transaction) => prHistory.recordTransaction(
       transaction,
-      transaction.operation === "mark-ranges-reviewed" || transaction.operation === "unmark-ranges-reviewed"
+      transaction.operation === "mark-ranges-reviewed" ||
+      transaction.operation === "unmark-ranges-reviewed" ||
+      transaction.operation === "mark-diff-block-reviewed" ||
+      transaction.operation === "unmark-diff-block-reviewed"
         ? "user-selection"
         : "user-file"
     ),
@@ -629,6 +633,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: exclusionPolicy.getUserGlobs(),
     }),
+    getDiffSelectionMode: () => readPrDiffSelectionMode(
+      vscode.workspace.getConfiguration("reviewRange")
+    ),
     reportDerivedProjectionError: reportPullRequestProgressError
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;

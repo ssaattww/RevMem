@@ -20,6 +20,8 @@ import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeRepository,
 } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { buildSnapshotFromLocalGitDiff } from "../../src/application/github-pr-diff/pull-request-diff-builders.js";
+import { deriveDocumentLineContract } from "../../src/core/intervals/index.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -185,6 +187,16 @@ test("PR runtime command snapshot survives immutable PR A-to-B-to-A store restor
     baseSha: C,
     headSha: A,
     originalDiffId: `${C}..${A}`,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      hunks: file.hunks.map((hunk) => ({
+        ...hunk,
+        lines: [
+          { kind: "deletion" as const, oldLine: 1, text: "base" },
+          { kind: "addition" as const, newLine: 1, text: "alpha" },
+        ],
+      })),
+    })),
   };
   runtime.register({
     repositoryId: REPOSITORY_ID,
@@ -745,10 +757,14 @@ test("PR Progress original-side selection projects unchanged lines and retains o
     }]
   };
   const repository = new MemoryRepository();
-  const projectionModifiedText = Array.from(
-    { length: 11 },
-    (_, index) => `modified-${String(index + 1)}`
-  ).join("\n");
+  const projectionOriginalText = [
+    "original-1", "original-2", "old-three", "original-4", "original-5",
+    "same-six", "old-seven", "same-eight", "original-9", "original-10",
+  ].join("\n");
+  const projectionModifiedText = [
+    "modified-1", "modified-2", "new-three", "modified-4", "modified-5",
+    "same-six", "new-seven", "new-eight", "same-eight", "modified-10", "modified-11",
+  ].join("\n");
   repository.current.contextState = {
     ...repository.current.contextState,
     files: {
@@ -794,7 +810,7 @@ test("PR Progress original-side selection projects unchanged lines and retains o
     readTextContent: async (descriptor) => ({
       kind: "found",
       content: descriptor.side === "original"
-        ? Array.from({ length: 10 }, (_, index) => `original-${String(index + 1)}`).join("\n")
+        ? projectionOriginalText
         : projectionModifiedText
     })
   });
@@ -901,4 +917,326 @@ test("production command routing validates the active immutable diff URI pair be
   assert.match(source, /validateDiffDocumentPair/u);
   assert.match(source, /tab\.input\.original/u);
   assert.match(source, /tab\.input\.modified/u);
+});
+
+const lineText = (content: string): string => content.replace(/\r?\n$/u, "");
+
+const patchForRevisionTexts = (
+  original: string | undefined,
+  modified: string | undefined
+): string => {
+  const added = original === undefined;
+  const deleted = modified === undefined;
+  const originalContentLines = original === undefined || original.length === 0 ? 0 : 1;
+  const modifiedContentLines = modified === undefined || modified.length === 0 ? 0 : 1;
+  const hunkPosition = (count: number): string => count === 0 ? "0,0" : "1";
+  const lines = [
+    "diff --git a/src/example.ts b/src/example.ts",
+    ...(added ? ["new file mode 100644"] : deleted ? ["deleted file mode 100644"] : []),
+    added ? "--- /dev/null" : "--- a/src/example.ts",
+    deleted ? "+++ /dev/null" : "+++ b/src/example.ts",
+    `@@ -${hunkPosition(originalContentLines)} +${hunkPosition(modifiedContentLines)} @@`,
+  ];
+
+  if (originalContentLines > 0) {
+    lines.push(`-${lineText(original!)}`);
+    if (!original!.endsWith("\n")) lines.push("\\ No newline at end of file");
+  }
+  if (modifiedContentLines > 0) {
+    lines.push(`+${lineText(modified!)}`);
+    if (!modified!.endsWith("\n")) lines.push("\\ No newline at end of file");
+  }
+  return `${lines.join("\n")}\n`;
+};
+
+const runtimeSnapshotFromRevisionTexts = (
+  original: string | undefined,
+  modified: string | undefined
+): PullRequestDiffSnapshot => {
+  const built = buildSnapshotFromLocalGitDiff({
+    contextId: CONTEXT_ID,
+    repository: { host: "github.com", owner: "ssaattww", repository: "revmem" },
+    number: 52,
+    baseSha: A,
+    headSha: B,
+  }, patchForRevisionTexts(original, modified));
+  assert.equal(built.kind, "success");
+  return built.snapshot;
+};
+
+const runtimeForRevisionTexts = (
+  original: string | undefined,
+  modified: string | undefined,
+  snapshot = runtimeSnapshotFromRevisionTexts(original, modified),
+  getDiffSelectionMode?: () => "side" | "block"
+) => {
+  const repository = new MemoryRepository();
+  repository.current.contextState = {
+    ...repository.current.contextState,
+    pullRequest: {
+      ...repository.current.contextState.pullRequest!,
+      baseSha: snapshot.baseSha,
+      headSha: snapshot.headSha,
+    },
+    files: {},
+  };
+  repository.current.globalState = {
+    ...repository.current.globalState,
+    currentRevisionId: snapshot.headSha,
+    files: {},
+  };
+  const opened: Array<{ original: string; modified: string }> = [];
+  let commits = 0;
+  let histories = 0;
+  const commit = repository.commit.bind(repository);
+  repository.commit = async (transaction) => {
+    commits += 1;
+    await commit(transaction);
+  };
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => { histories += 1; },
+    diffHost: {
+      parseUri: (value) => value,
+      openDiff: async (originalUri, modifiedUri) => { opened.push({ original: originalUri, modified: modifiedUri }); },
+    },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    ...(getDiffSelectionMode === undefined ? {} : { getDiffSelectionMode }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async (descriptor) => {
+      const content = descriptor.side === "original" ? original : modified;
+      return content === undefined
+        ? { kind: "missing-file" as const }
+        : { kind: "found" as const, content };
+    },
+  });
+  return {
+    repository,
+    runtime,
+    snapshot,
+    opened,
+    counts: () => ({ commits, histories }),
+    fileId: snapshot.files[0]!.fileId,
+  };
+};
+
+const openRevisionTextCommand = async (
+  fixture: ReturnType<typeof runtimeForRevisionTexts>,
+  side: "original" | "modified",
+  selectionLine: number
+) => {
+  const file = fixture.snapshot.files[0]!;
+  await fixture.runtime.openReviewDiff(CONTEXT_ID, file.fileId);
+  const pair = fixture.opened[0]!;
+  fixture.runtime.validateDiffDocumentPair(pair.original, pair.modified);
+  const uri = pair[side];
+  const content = await fixture.runtime.documentContentProvider.provideTextDocumentContent({
+    toString: () => uri,
+  } as never);
+  const editorLineCount = deriveDocumentLineContract({
+    existence: "present",
+    content,
+  }).editorLineCount;
+  const commands = fixture.runtime.createCommandService<{
+    readonly uri: string;
+    readonly side: "original" | "modified";
+  }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => editorLineCount,
+    getSelections: () => [{
+      anchor: { line: selectionLine, character: 0 },
+      active: { line: selectionLine, character: 0 },
+    }],
+    confirmWholeFileOperation: async () => true,
+  });
+  return {
+    editor: { uri, side },
+    commands,
+  };
+};
+
+for (const [description, original, modified, side] of [
+  ["added content without a terminal newline", undefined, "new", "modified"],
+  ["added LF-terminated content", undefined, "new\n", "modified"],
+  ["deleted content without a terminal newline", "old", undefined, "original"],
+  ["deleted LF-terminated content", "old\n", undefined, "original"],
+  ["replacement with terminal newlines", "old\n", "new\n", "modified"],
+  ["replacement that adds a terminal newline", "old", "new\n", "modified"],
+  ["replacement that removes a terminal newline", "old\n", "new", "modified"],
+] as const) {
+  test(`PR runtime persists mark and unmark for ${description}`, async () => {
+    const fixture = runtimeForRevisionTexts(original, modified);
+    const command = await openRevisionTextCommand(fixture, side, 0);
+
+    assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+    assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
+    assert.deepEqual(fixture.counts(), { commits: 2, histories: 2 });
+    assert.deepEqual(fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed, []);
+    assert.deepEqual(
+      fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+      side === "original" ? { [`${A}..${B}`]: [] } : {},
+    );
+  });
+}
+
+test("PR runtime preserves empty existing files and CRLF content through body-derived line contracts", async () => {
+  for (const [original, modified] of [["", "new"], ["old\r\n", "new\r\n"]] as const) {
+    const fixture = runtimeForRevisionTexts(original, modified);
+    const command = await openRevisionTextCommand(fixture, "modified", 0);
+
+    assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+    assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
+    assert.deepEqual(fixture.counts(), { commits: 2, histories: 2 });
+  }
+});
+
+test("PR runtime treats a terminal display line as outside Git content", async () => {
+  const fixture = runtimeForRevisionTexts(undefined, "new\n");
+  const command = await openRevisionTextCommand(fixture, "modified", 1);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "no-op");
+  assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
+});
+
+test("PR runtime leaves bare CR display fragments outside one-line Git replacements", async () => {
+  const fixture = runtimeForRevisionTexts("a\rb", "a\rc");
+  const command = await openRevisionTextCommand(fixture, "modified", 1);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "no-op");
+  assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
+});
+
+test("PR runtime rejects truncated, mismatched, and inconsistent local Git hunk evidence before mutation", async () => {
+  const complete = patchForRevisionTexts("old", "new");
+  assert.equal(
+    buildSnapshotFromLocalGitDiff({
+      contextId: CONTEXT_ID,
+      repository: { host: "github.com", owner: "ssaattww", repository: "revmem" },
+      number: 52,
+      baseSha: A,
+      headSha: B,
+    }, complete.replace("+new\n", "")).kind,
+    "failure",
+  );
+
+  const snapshot = runtimeSnapshotFromRevisionTexts("old", "new");
+  const inconsistentCount = {
+    ...snapshot,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      hunks: file.hunks.map((hunk) => ({ ...hunk, newCount: hunk.newCount + 1 })),
+    })),
+  };
+  const inconsistentCoordinate = {
+    ...snapshot,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      hunks: file.hunks.map((hunk) => ({
+        ...hunk,
+        lines: hunk.lines.map((line) => line.kind === "addition" ? { ...line, newLine: 2 } : line),
+      })),
+    })),
+  };
+  const mismatchedBody = {
+    ...snapshot,
+    files: snapshot.files.map((file) => ({
+      ...file,
+      hunks: file.hunks.map((hunk) => ({
+        ...hunk,
+        lines: hunk.lines.map((line) => line.kind === "addition" ? { ...line, text: "other" } : line),
+      })),
+    })),
+  };
+
+  for (const invalid of [inconsistentCount, inconsistentCoordinate, mismatchedBody]) {
+    const fixture = runtimeForRevisionTexts("old", "new", invalid);
+    const command = await openRevisionTextCommand(fixture, "modified", 0);
+    await assert.rejects(
+      () => command.commands.markSelectionReviewed(command.editor),
+      /hunk body|line count|immutable diff|diff cursor|hunk text/i,
+    );
+    assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
+  }
+});
+
+
+test("PR runtime block mode links both sides while a later side-mode operation stays on the operated side", async () => {
+  let mode: "side" | "block" = "block";
+  let modeReads = 0;
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => {
+    modeReads += 1;
+    return mode;
+  });
+  const command = await openRevisionTextCommand(fixture, "modified", 0);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.deepEqual(
+    fixture.repository.current.globalState.files[fixture.fileId]?.reviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.equal(modeReads, 1);
+
+  mode = "side";
+  assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed, []);
+  assert.deepEqual(fixture.repository.current.globalState.files[fixture.fileId]?.reviewed, []);
+  assert.equal(modeReads, 2);
+});
+
+test("PR runtime block mode expands an original replacement selection to modified Context and Global", async () => {
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => "block");
+  const command = await openRevisionTextCommand(fixture, "original", 0);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.deepEqual(
+    fixture.repository.current.globalState.files[fixture.fileId]?.reviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+});
+
+test("PR runtime does not read selection mode or open state for an empty selection", async () => {
+  let modeReads = 0;
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => {
+    modeReads += 1;
+    return "block";
+  });
+  await fixture.runtime.openReviewDiff(CONTEXT_ID, fixture.fileId);
+  const pair = fixture.opened[0]!;
+  const commands = fixture.runtime.createCommandService<{ readonly uri: string; readonly side: "modified" }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => [],
+    confirmWholeFileOperation: async () => true,
+  });
+
+  assert.equal(await commands.markSelectionReviewed({ uri: pair.modified, side: "modified" }), "no-op");
+  assert.equal(modeReads, 0);
+  assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
 });
