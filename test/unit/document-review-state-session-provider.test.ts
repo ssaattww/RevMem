@@ -97,7 +97,7 @@ const repositoryInspection = (
   kind: "repository",
   repository: {
     gitVersion: "2.50.0",
-    rootPath: path.resolve("/repo"),
+    rootPath: path.posix.resolve("/repo"),
     repositoryId: "github.com/example/project",
     remote: {
       name: "origin",
@@ -121,7 +121,7 @@ const descriptor = (
     authority: "",
     path: "/repo/src/example.ts"
   },
-  documentFsPath: path.resolve("/repo/src/example.ts"),
+  documentFsPath: path.posix.resolve("/repo/src/example.ts"),
   fileSystemPathSemantics: "posix",
   lineCount: 8,
   contentHash: "hash-current",
@@ -191,7 +191,7 @@ test("Git ownership routes a workspace-external file to the branch repository", 
   assert.equal(session.contextState.branch?.refName, "refs/heads/feature/issue-13");
   assert.equal(session.target.currentPath, "src/example.ts");
   assert.equal(repository.loads[0]?.kind, "git");
-  assert.equal(gitInspector.inspectedPaths[0], path.dirname(path.resolve("/repo/src/example.ts")));
+  assert.equal(gitInspector.inspectedPaths[0], path.dirname(path.posix.resolve("/repo/src/example.ts")));
 });
 
 /** Verifies that discovered Git ownership takes precedence over otherwise valid workspace membership. */

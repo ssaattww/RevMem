@@ -59,7 +59,7 @@ const repositoryInspection = (
   kind: "repository",
   repository: {
     gitVersion: "2.55.0",
-    rootPath: path.resolve("/repo"),
+    rootPath: path.posix.resolve("/repo"),
     repositoryId: "github.com/example/project",
     remote: {
       name: "origin",
@@ -80,7 +80,7 @@ const descriptor = (): DocumentEditorReviewDescriptor => ({
     authority: "",
     path: "/repo/src/example.ts"
   },
-  documentFsPath: path.resolve("/repo/src/example.ts"),
+  documentFsPath: path.posix.resolve("/repo/src/example.ts"),
   fileSystemPathSemantics: "posix",
   workspace: {
     workspaceFolderUri: {
@@ -102,7 +102,7 @@ const alternateDescriptor = (): DocumentEditorReviewDescriptor => ({
     authority: "",
     path: "/repo/src/other.ts"
   },
-  documentFsPath: path.resolve("/repo/src/other.ts"),
+  documentFsPath: path.posix.resolve("/repo/src/other.ts"),
   workspace: {
     ...descriptor().workspace!,
     relativePath: "src/other.ts"

@@ -101,7 +101,7 @@ const repositoryInspection = (): LocalGitRepositoryInspection => ({
   kind: "repository",
   repository: {
     gitVersion: "2.55.0",
-    rootPath: path.resolve("/repo"),
+    rootPath: path.posix.resolve("/repo"),
     repositoryId: "github.com/example/project",
     remote: {
       name: "origin",
@@ -125,7 +125,7 @@ const descriptor = (
     authority: "",
     path: "/repo/src/example.ts"
   },
-  documentFsPath: path.resolve("/repo/src/example.ts"),
+  documentFsPath: path.posix.resolve("/repo/src/example.ts"),
   fileSystemPathSemantics: "posix",
   ...(includeWorkspace
     ? {
