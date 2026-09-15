@@ -115,3 +115,5 @@ Globalだけ、元側とGlobalだけの変化、繰返し操作、対象外範�
 - Markdown用tools/lintとlint:mdは未構成のためunsupportedを記録し、製品の検証成功として扱わない。本文・リンクは通常レビュー対象。
 
 - PDS01-NR1-001 / P2: bare CRをエディタ行境界として扱い、Git内容行数はLF基準のまま分離する。bare CR・mixed EOL・末尾CRの失敗→成功を追加し、同じ通常レビュワーで解消確認する。
+
+- PDS01-NR1-001 / P2はd95e06eで通常解消確認済み。PDS01-NR2-002 / P3: 公開型のコメントをCR表示行とGit EOFの意味へ合わせる。動作変更なし。

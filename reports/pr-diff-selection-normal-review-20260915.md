@@ -88,3 +88,63 @@
 - PDS01-NR1-001を直した新しいcommitted HEADに対し、同じreviewerによるfix verificationが必要。
 - fix verificationでは、editor側はbare CRを表示境界として数える一方、Git hunk内容行数とterminal newlineを同じ規則へ誤って広げていないことを確認する。
 - PDS-02以降、実Extension Host、Linux CI parity、最終artifactは後続タスクで検証する。今回のfailはそれら未来の未実装・未実施を理由にしていない。
+
+## Round 2 — PDS-01 fix verification
+
+### 対象と継続性
+
+- review mode: `fix verification`。
+- reviewer continuity: round 1と同じ `/root/normal_review`。実装・指摘修正は行っていない。
+- reviewed implementation HEAD: `d95e06eb0b5c7bb2b84e76e4af35611731d5943d`。
+- initial reviewed HEAD: `880b181fc7f0ee4b7be6ebdd5fe5d442d0be1c44`。
+- fix range: `880b181fc7f0ee4b7be6ebdd5fe5d442d0be1c44..d95e06eb0b5c7bb2b84e76e4af35611731d5943d`。
+- application status: `reused_existing_agent_profile`。round 1のrequested profile、final profile非表示、role/default-role、fork policyの記録を継続し、新しいprofile適用は主張しない。
+
+### 実行コマンドと対象
+
+- `git diff --check 880b181fc7f0ee4b7be6ebdd5fe5d442d0be1c44..d95e06eb0b5c7bb2b84e76e4af35611731d5943d` — exit 0。
+- `node tools/run-ci-command.mjs pds-01-normal-review-fix-verification C:\\Windows\\System32\\cmd.exe /d /s /c "npm run test:document-line-contract"` — 4 passed / 0 failed / 0 skipped、exit 0。
+- 追加property probe — 空文字、`a`、bare CR、LFからなる長さ0〜6の本文1,093件について、editorは`/\\r\\n|\\r|\\n/`、Git内容行はLF数とEOF LF、terminalはCRLF優先の基準式に一致した。
+- 実装証拠 `pds-01-nr1-bare-cr-red` exit 1、`pds-01-nr1-bare-cr-green` 4 passed / exit 0、`pds-01-nr1-architecture` exit 0、`pds-01-nr1-lint` exit 0のresult JSONを照合した。
+- fix差分5ファイル全文: `src/core/intervals/document-line-contract.ts`、`test/unit/document-line-contract.test.ts`、`reports/pr-diff-selection-line-contract-implementation-20260915.md`、`reports/pr-diff-selection-normal-review-20260915.md`、`tasks/pr-diff-selection-mode/tasks-status.md`。
+- 直接影響: bare CR、CRLF、LF、mixed EOL、末尾bare CR、空本文、不存在、既存のPDS-01受入表、Git hunk LF座標、公開line contractコメント。
+
+### Finding closure
+
+| Finding | source severity | required action | production path | fixture | focused evidence | disposition |
+| --- | --- | --- | --- | --- | --- | --- |
+| PDS01-NR1-001 | P2 / medium | editorだけをCRLF / bare CR / LFで数え、Git内容行とEOF種別を広げず、bare CR / mixed / terminal CRを試験する | `src/core/intervals/document-line-contract.ts:50-59` | `test/unit/document-line-contract.test.ts:52-67` | Red exit 1、Green 4 pass、reviewer再実行4 pass、property 1,093件pass | `fixed` |
+
+severity reclassification: なし。PDS01-NR1-001はP2 / mediumのまま解消した。
+
+### 追加指摘
+
+#### PDS01-NR2-002 — P3 / low — 公開コメントへbare CR時の行数差を反映する
+
+- Origin: introduced by change / exposed by fix。
+- Location: `src/core/intervals/document-line-contract.ts:50-54`。不一致する公開説明は同ファイル14〜17行。
+- Description: 修正後はbare CRをeditor表示行の境界として数え、Git内容行では数えないため、末尾改行がなくても両行数が異なる。しかし公開interfaceコメントは「diff content line count excludes only that [trailing] display line」と説明したままで、`a\\rb` の editor/diff `2 / 1` を表現できない。`TerminalNewline` がGitのEOF LF / CRLFを表すこともコメントから判別できない。
+- Impact: PDS-02以降の利用者が、両行数の差はEOF表示空行だけだと誤解し、bare CRを同じ座標系として再結合するおそれがある。新規の共通契約の保守説明と実動作が一致しない。
+- Evidence: current implementationの50〜54行と回帰testは、interior bare CRでもeditor/diffが分離する。14〜17行は差が末尾表示行だけであると説明する。
+- Required action: 公開コメントを、editor境界はCRLF / bare CR / LF、Git内容行境界はLF（CRLFを含む）、EOF種別はGit上のLF / CRLF / noneであることが分かる記述へ更新する。動作変更や追加設計変更は不要。
+
+### Round 2 verdict and coverage
+
+- Verdict: `fail`。PDS01-NR1-001は解消したが、PDS01-NR2-002の必須文書修正が残る。
+- verification capability: `local_execution_available`。technical HEADは`d95e06eb0b5c7bb2b84e76e4af35611731d5943d`、commit stateは`committed`、push stateは`push_pending`、CI waitは`ci_wait_pending`。
+- coverage:
+  - source finding required action: `checked_no_finding` — PDS01-NR1-001の全actionと兄弟ケースを確認しfixed。
+  - correctness and edge cases: `checked_no_finding` — 焦点4件と1,093件property probeで値を確認。
+  - changed files / scope discipline: `checked_no_finding` — fixと通常レビュー・追跡証拠の5ファイルに限定。
+  - API / compatibility / maintainability: `checked_finding` — PDS01-NR2-002。
+  - error handling / security: `not_applicable` — fixは純粋な行数導出と試験・報告だけ。
+  - tests / validation adequacy: `checked_no_finding` — required siblingsと既存受入表を同じfocused suiteで実行。
+  - reports / tracking: `checked_no_finding` — round 1 finding、severity、fail verdictを保持し、completeness matrixは実証と一致。
+  - current-HEAD CI: `held` — local通常レビュー中は最終publication前CIを要求しない。
+- held items: round 1記載の既定unit 19失敗はbase再実行なし。最終exact-head CIは後続PDS-10の所有。
+- unexplored: なし。PDS-02以降の実接続は今回のfix verification対象外。
+
+### Round 2 next action and risks
+
+- PDS01-NR2-002のコメント修正をcommitしたHEADで、同じreviewerが文書差分とfocused test evidenceの限定確認を行う。
+- PDS-02の実経路でeditorとGit内容行の使い分けを接続する責務は継続するが、今回のPDS-01完了判定へ先取りしない。
