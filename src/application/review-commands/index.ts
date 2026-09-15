@@ -14,3 +14,7 @@ export {
   type ReviewWholeFileOperation
 } from "./normal-editor-review-command-service";
 export * from "./original-selection-review-plan";
+export {
+  deriveChangeBlocks,
+  type ChangeBlock,
+} from "./change-blocks";
