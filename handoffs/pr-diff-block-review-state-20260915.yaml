@@ -4,7 +4,8 @@ pull_request: 120
 branch: investigation/issue-119-linked-diff-blocks
 task: PDS-05
 status: completed
-technical_head: a56499ecb0d339c651b18372625acf6894960bf1
+core_implementation_head: a56499ecb0d339c651b18372625acf6894960bf1
+technical_head: 7e01bd4c6c9f97acc78f93e45161fbee7c71bec6
 administrative_commit: commit_pending
 next_task: PDS-06
 next_task_started: false
@@ -25,9 +26,10 @@ implementation:
 
 verification:
   red:
-    label: diff-block-state-red
-    result: compile_failure_missing_block_api
+    label: diff-block-state-start-head-red
+    result: compile_failure_missing_block_api_on_start_head
     exit_code: 2
+    chronology: reconstructed_start_head_evidence_not_strict_preimplementation_red
   focused:
     label: diff-block-state-green-final
     result: 12_pass_0_fail
@@ -35,18 +37,20 @@ verification:
     label: diff-block-regression-final
     result: 42_pass_0_fail
   static:
-    label: diff-block-static-final
+    label: pds05-static-after-unit-fix
     build: pass
     contract_typecheck: pass
     architecture: pass
     architecture_negative: pass_expected_11
     lint: pass
   full_unit:
-    result: 755_pass_24_fail_of_781
-    baseline_start_head: 744_pass_24_fail_of_770
-    same_unique_failure_names: true
-    new_failure_names: 0
-    reason_sample: document path is outside the resolved Git working tree
+    label: pds05-unit-final
+    result: 780_pass_0_fail_2_skip_of_782
+    tooling: 16_pass_0_fail
+  verification_repairs:
+    windows_posix_fixture: 19_fail_to_33_pass
+    immutable_hunk_body_fixture: 3_fail_to_18_pass
+    owned_extension_host_stability: 9_pass_across_3_runs
 
 diagnostics:
   workflow_change_required: false

@@ -6,7 +6,8 @@
 - PR: `#120`
 - branch: `investigation/issue-119-linked-diff-blocks`
 - 対象タスク: `PDS-05`
-- 実装技術HEAD: `a56499ecb0d339c651b18372625acf6894960bf1`
+- core実装commit: `a56499ecb0d339c651b18372625acf6894960bf1`
+- 最終技術HEAD: `7e01bd4c6c9f97acc78f93e45161fbee7c71bec6`
 - 実装開始時HEAD: `49e395731724f7f3e8defef4a6bc8b21875e8c7f`
 - 永続化方式: `normal_persistence: repository_file`
 - 管理report commit: `commit_pending`
@@ -35,14 +36,11 @@ modified ContextまたはGlobalのどちらかが変化した場合はmodified�
 
 ## TDD証拠
 
-新規テストは`test/unit/diff-block-review-state.test.ts`へ実装より先に追加した。診断ラッパーのWindows起動経路は`cmd.exe /d /s /c`へ補正し、次のRedを実装編集前に保存した。
+新規テスト`test/unit/diff-block-review-state.test.ts`はcore実装編集より先に作成した。ただし最初の診断ラッパー実行はWindows上の`npm`起動方法が原因で製品Redを取得できず、有効な`diff-block-state-red`を保存した時点ではcore実装断片の編集が始まっていた。このため「失敗確認後に実装開始」という厳密な時系列は満たしていない。
 
-`node tools/run-ci-command.mjs diff-block-state-red cmd.exe /d /s /c "npm run test:diff-block-state"`
+実装開始時HEAD `49e395731724f7f3e8defef4a6bc8b21875e8c7f`へ最終担当テストを一時配置した`diff-block-state-start-head-red`では、block専用API未実装によるcompile failure（exit 2）を再現した。これは未実装状態でテストが失敗することの再現証拠であり、時系列を遡ってTDD完了とみなすものではない。
 
-- 終了コード: 2。
-- 未実装の`hasReviewStateSemanticChange`、`markDiffBlockReviewed`、`unmarkDiffBlockReviewed`、`DiffBlockReviewRangeMutationInput`が原因でcompile failureとなった。
-- 証拠: `test-output/ci/diff-block-state-red.result.json`、`stdout.log`、`stderr.log`、`log`。
-- 実装開始時HEADを使った後追い再現 `diff-block-state-start-head-red` でも、block専用APIがない状態のcompile failureを確認した。これは補助証拠であり、TDD Redの時系列根拠は上記`diff-block-state-red`である。
+追加の検証修正では、各修正前に`pds05-windows-path-fixture-red`（33件中19失敗）と`pds05-hunk-body-fixture-red`（18件中3失敗）のRedを保存してからfixtureを修正した。Extension Hostの待機修正は既定unitで発生した`timed-out`誤分類をRed証拠とした。
 
 実装後の最終Green:
 
@@ -57,21 +55,25 @@ modified ContextまたはGlobalのどちらかが変化した場合はmodified�
 | --- | --- | --- |
 | focused | 12成功 / 0失敗 | `diff-block-state-green-final` |
 | 関連回帰 | 42成功 / 0失敗 | `diff-block-regression-final` |
-| compile・型契約・構造・負例構造・lint | 成功 | `diff-block-static-final` |
-| 負例構造 | 期待11件と一致 | `diff-block-static-final` |
+| compile・型契約・構造・負例構造・lint | 成功 | `pds05-static-after-unit-fix` |
+| 負例構造 | 期待11件と一致 | `pds05-static-after-unit-fix` |
+| 既定unit | 780成功 / 0失敗 / 2skip | `pds05-unit-final` |
+| POSIX fixture回帰 | 33成功 / 0失敗 | `pds05-windows-path-fixture-green2` |
+| immutable本文fixture回帰 | 18成功 / 0失敗 | `pds05-hunk-body-fixture-green` |
+| Extension Host安定性 | 3件×3回、9成功 / 0失敗 | `pds05-owned-extension-host-stability` |
 | `git diff --check` | 成功 | whitespace errorなし |
 
 関連回帰は`review-state-service`、`review-history-original-side`、`diff-review-state-service`、`t405-pull-request-review-runtime`を実行した。
 
-既定unit全体は成功ではない。
+既定unit全体は、利用者指示後の検証修正を含む最終技術HEADで成功した。
 
-- 変更後: 781テスト中755成功、24失敗。
-- 実装開始時HEADのpristine worktree: 770テスト中744成功、24失敗。
-- 正規化した失敗テスト名は双方23種類で完全一致し、変更後だけの失敗は0件、pristineだけの失敗も0件だった。
-- 代表的な`issue-13-r6-review-followup`はpristine HEADでも8件中5件が`document path is outside the resolved Git working tree.`で失敗した。
-- baseline証拠: `test-output/ci/baseline-unit.*`、`test-output/ci/baseline-issue13-r6.*`。
+- `pds05-unit-final`: 782件中780成功 / 0失敗 / 2skip。toolingは別集計で16/16成功。
+- 旧Windows失敗の主因は、POSIX意味論fixtureがhost依存の`path.resolve`を使いWindowsで`C:\repo`へ変換されていたこと。製品の境界検証は変更せず、fixtureを`path.posix.resolve`へ揃えた。focusedはRed 14/33成功・19失敗からGreen 33/33へ改善した。
+- immutable diffの3失敗は、PDS-02で追加した本文/hunk照合に対して旧fixture本文がhunk内容と不一致だったことが原因。本文fixtureを正しいoriginal/modified内容へ揃え、focusedは15/18成功・3失敗から18/18成功へ改善した。
+- Extension Hostの一過性1件は、success IPC受信前に250msのdeadlineへ達し`failed`ではなく`timed-out`へ誤分類された。success-without-close試験だけ待機上限を1,000msへ広げ、対象3件を3連続実行して9/9成功を確認した。
+- `pds05-static-after-unit-fix`: build、型契約、architecture正負、lintすべて成功。負例architectureは期待11件と一致した。
 
-したがって24失敗はPDS-05による新規回帰ではないと比較実行で確認した。ただし既定unit自体は失敗であり、成功とは扱わない。
+失敗をskip化したり製品のfail-closed検証を緩めたりせず、fixtureの意味論と試験待機だけを修正した。
 
 ## 診断workflow
 
@@ -86,12 +88,21 @@ modified ContextまたはGlobalのどちらかが変化した場合はmodified�
 - `src/adapters/document-review-state/reconciled-document-review-state-session-provider.ts`
 - `test/unit/diff-block-review-state.test.ts`
 - `package.json`
+- `test/unit/document-review-state-session-provider.test.ts`
+- `test/unit/issue-13-atomic-reconciliation-review.test.ts`
+- `test/unit/issue-13-baseline-metadata-review.test.ts`
+- `test/unit/issue-13-owner-reconciliation-review.test.ts`
+- `test/unit/issue-13-r5-review-followup.test.ts`
+- `test/unit/issue-13-r6-review-followup.test.ts`
+- `test/unit/issue-112-pr-progress-runtime.test.ts`
+- `test/unit/issue-66-pr68-review-findings.test.ts`
+- `test/unit/owned-extension-host-launch.test.ts`
 
 Repository Global側は新しいoperation unionを受けられるように型を伝播し、reconciliation側は`ReviewStateTransaction` union拡張に合わせてblock transactionの`invokedFrom`と`diffId`を保持する。通常editorや設定経路へblock動作は接続していない。
 
 ## コミットと公開
 
-実装・テストの論理コミットは`a56499ecb0d339c651b18372625acf6894960bf1`。RDCのgitから`origin/investigation/issue-119-linked-diff-blocks`へpush済みで、GitHub PR #120のHEAD一致を確認した。
+core実装・担当テストの論理コミットは`a56499ecb0d339c651b18372625acf6894960bf1`。検証修正は`9069379ced11cb86a140d10ce2fc0fa53ff4e1e2`（POSIX fixture）、`e9d4d6f92515df7f1824984ea9b42cdfcb18a717`（immutable本文fixture）、`7e01bd4c6c9f97acc78f93e45161fbee7c71bec6`（Extension Host待機）に分離してRDCのgitからpushした。
 
 本report、handoff、タスク/フェーズ同期は別の管理コミットにする。本report自身の将来SHAは記載しない。管理コミット後のPR current HEADに対するCIは外部記録で確認し、別SHAのrunを代用しない。
 
