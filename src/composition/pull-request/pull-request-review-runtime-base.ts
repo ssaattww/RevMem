@@ -29,6 +29,10 @@ import {
   captureImmutableRevisionSnapshots,
   type ReviewStateTransaction,
 } from "../../core/review-state/index";
+import {
+  deriveDocumentLineContract,
+  type DocumentLineContract,
+} from "../../core/intervals/index";
 import type {
   RepositoryGlobalState,
   ReviewContextState,
@@ -112,6 +116,12 @@ interface PullRequestFullTextCache {
   readonly files: Map<string, Promise<RevisionTextContentReadResult>>;
 }
 
+/** Exact immutable text plus the distinct editor and Git-content line coordinates derived from it. */
+interface RevisionDocumentLineInput {
+  readonly content: string | undefined;
+  readonly lineContract: DocumentLineContract;
+}
+
 interface CalculatedPullRequestProgress {
   readonly registration: PullRequestReviewRuntimeRegistration;
   readonly persisted: ReviewStateCommit;
@@ -136,6 +146,36 @@ const targetFor = (registration: PullRequestReviewRuntimeRegistration): ReviewSt
 
 const fullTextCacheKey = (revision: string, repositoryPath: string): string =>
   `${revision}\0${repositoryPath}`;
+
+/** Splits immutable revision text into Git LF-delimited content lines for hunk-text verification. */
+const gitContentLines = (content: string): readonly string[] => {
+  if (content.length === 0) return [];
+  const lines = content.split("\n");
+  if (content.endsWith("\n")) lines.pop();
+  return lines.map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+};
+
+/** Rejects hunk line text that cannot be proven to come from the immutable bodies for this exact comparison. */
+const requireHunkTextMatchesRevisionBodies = (
+  originalContent: string | undefined,
+  modifiedContent: string | undefined,
+  hunks: PullRequestDiffSnapshot["files"][number]["hunks"],
+): void => {
+  const originalLines = originalContent === undefined ? [] : gitContentLines(originalContent);
+  const modifiedLines = modifiedContent === undefined ? [] : gitContentLines(modifiedContent);
+  for (const hunk of hunks) for (const line of hunk.lines) {
+    if (line.kind !== "addition") {
+      if (line.oldLine === undefined || originalLines[line.oldLine - 1] !== line.text) {
+        throw new Error("Immutable diff hunk text does not match the original revision body.");
+      }
+    }
+    if (line.kind !== "deletion") {
+      if (line.newLine === undefined || modifiedLines[line.newLine - 1] !== line.text) {
+        throw new Error("Immutable diff hunk text does not match the modified revision body.");
+      }
+    }
+  }
+};
 
 const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted) throw new DOMException("PR Progress refresh was superseded.", "AbortError");
@@ -726,32 +766,19 @@ export class PullRequestReviewRuntime<Uri> {
     const targetPath = persistedFile?.currentPath ??
       persistedGlobalFile?.currentPath ??
       logicalPath;
-    const modifiedContent = diffFile.newPath === undefined
-      ? undefined
-      : await this.revisionTextContentProvider.provideTextDocumentContent(
-          this.codec.encode({
-            contextId: registration.snapshot.contextId,
-            filePath: diffFile.newPath,
-            fileSystemPathSemantics: registration.fileSystemPathSemantics,
-            side: "modified",
-            revisionSource: "git-commit",
-            revision: registration.snapshot.headSha,
-          })
-        );
-    const modifiedLineCount = modifiedContent === undefined
-      ? 0
-      : modifiedContent.split(/\r\n|\r|\n/u).length;
-    const originalLineCount = diffFile.oldPath === undefined
-      ? 0
-      : await this.lineCount(
-          registration.snapshot.contextId,
-          diffFile.oldPath,
-          registration.snapshot.baseSha,
-          "original"
-        );
+    const fullTextCache = this.fullTextCacheFor(registration);
+    const [originalDocument, modifiedDocument] = await Promise.all([
+      this.readRevisionDocumentLineInput(registration, fullTextCache, diffFile.oldPath, registration.snapshot.baseSha, "original"),
+      this.readRevisionDocumentLineInput(registration, fullTextCache, diffFile.newPath, registration.snapshot.headSha, "modified"),
+    ]);
+    requireHunkTextMatchesRevisionBodies(
+      originalDocument.content,
+      modifiedDocument.content,
+      diffFile.hunks,
+    );
     const originalToModifiedLineMappings = deriveOriginalToModifiedLineMappings({
-      originalLineCount,
-      modifiedLineCount,
+      originalLineCount: originalDocument.lineContract.diffContentLineCount,
+      modifiedLineCount: modifiedDocument.lineContract.diffContentLineCount,
       hunks: diffFile.hunks,
     });
     return {
@@ -761,13 +788,15 @@ export class PullRequestReviewRuntime<Uri> {
         fileId: resolvedFileId,
         currentPath: targetPath,
         revisionId: registration.snapshot.headSha,
-        lineCount: modifiedLineCount,
-        ...(modifiedContent === undefined
+        lineCount: modifiedDocument.lineContract.editorLineCount,
+        ...(modifiedDocument.content === undefined
           ? {}
-          : { contentHash: createHash("sha256").update(modifiedContent, "utf8").digest("hex") }),
+          : { contentHash: createHash("sha256").update(modifiedDocument.content, "utf8").digest("hex") }),
       },
       diffId: registration.snapshot.originalDiffId,
-      originalLineCount,
+      originalLineCount: originalDocument.lineContract.editorLineCount,
+      originalContentLineCount: originalDocument.lineContract.diffContentLineCount,
+      modifiedContentLineCount: modifiedDocument.lineContract.diffContentLineCount,
       originalDeletionIntervals: diffFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
         line.kind === "deletion" && line.oldLine !== undefined
           ? [{ startLine: line.oldLine - 1, endLineExclusive: line.oldLine }]
@@ -1118,23 +1147,24 @@ export class PullRequestReviewRuntime<Uri> {
       sameRegistrationSnapshot(this.registrations.get(contextId)!, registration);
   }
 
-  private async lineCount(
-    contextId: string,
-    filePath: string,
+  private async readRevisionDocumentLineInput(
+    registration: PullRequestReviewRuntimeRegistration,
+    cache: PullRequestFullTextCache,
+    filePath: string | undefined,
     revision: string,
-    side: "original" | "modified"
-  ): Promise<number> {
-    const content = await this.revisionTextContentProvider.provideTextDocumentContent(
-      this.codec.encode({
-        contextId,
-        filePath,
-        fileSystemPathSemantics: this.requireRegistration(contextId).fileSystemPathSemantics,
-        side,
-        revisionSource: "git-commit",
-        revision,
-      })
-    );
-    return content.split(/\r\n|\r|\n/u).length;
+    side: "original" | "modified",
+  ): Promise<RevisionDocumentLineInput> {
+    if (filePath === undefined) {
+      return { content: undefined, lineContract: deriveDocumentLineContract({ existence: "absent" }) };
+    }
+    const result = await this.readCachedFullText(registration, cache, filePath, revision, side);
+    if (result.kind !== "found") {
+      throw new Error(`PR ${side} file is unavailable for line review: ${filePath} (${result.kind})`);
+    }
+    return {
+      content: result.content,
+      lineContract: deriveDocumentLineContract({ existence: "present", content: result.content }),
+    };
   }
 
   private requireRegistration(contextId: string): PullRequestReviewRuntimeRegistration {

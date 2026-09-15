@@ -39,6 +39,10 @@ export interface DiffEditorReviewStateSession {
   readonly diffId: string;
   /** Number of lines in the immutable original-side document. */
   readonly originalLineCount: number;
+  /** Git LF-delimited original-content lines used for immutable hunk mapping, when the session supplies them. */
+  readonly originalContentLineCount?: number;
+  /** Git LF-delimited modified-content lines; editor display-only lines are excluded from selection persistence. */
+  readonly modifiedContentLineCount?: number;
   /** Original-side intervals representing deletions in the current diff. */
   readonly originalDeletionIntervals: readonly { readonly startLine: number; readonly endLineExclusive: number }[];
   /** Immutable surviving-line mappings; an absent value must be treated as unprojectable. */
@@ -182,9 +186,17 @@ export class DiffEditorReviewCommandService<Editor> {
       occurredAt: this.now().toISOString()
     };
     if (side === "modified") {
+      const contentLineCount = session.modifiedContentLineCount ?? session.target.lineCount;
+      const contentIntervals = normalizeLineIntervals(intervals.flatMap((interval) => {
+        const endLineExclusive = Math.min(interval.endLineExclusive, contentLineCount);
+        return interval.startLine < endLineExclusive
+          ? [{ startLine: interval.startLine, endLineExclusive }]
+          : [];
+      }));
+      if (contentIntervals.length === 0) return "no-op";
       const transaction = operation === "mark"
-        ? markReviewedRanges({ ...common, intervals })
-        : unmarkReviewedRanges({ ...common, intervals });
+        ? markReviewedRanges({ ...common, intervals: contentIntervals })
+        : unmarkReviewedRanges({ ...common, intervals: contentIntervals });
       return this.commitWhenChanged(transaction, session.committer);
     }
     if (session.originalToModifiedLineMappings === undefined) return "no-op";
