@@ -18,3 +18,8 @@ export {
   deriveChangeBlocks,
   type ChangeBlock,
 } from "./change-blocks";
+export {
+  createDiffSelectionTargetPlan,
+  type DiffSelectionSide,
+  type DiffSelectionTargetPlan,
+} from "./diff-selection-target-plan";
