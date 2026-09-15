@@ -157,8 +157,8 @@ original履歴はoriginal成分が変化した場合だけ記録する。
 | 全確認 | 全確認 | 全確認 | 確認済みにする | 全成分が全確認 | semantic no-op。commit・履歴なし |
 | 未確認 | 未確認 | 未確認 | 解除する | 全成分が未確認 | semantic no-op。commit・履歴なし |
 
-実装時はoriginal、modified Context、Globalの3状態の直積を確認済み化・解除の双方でテストする。
-表に個別列挙していない組み合わせも、各状態成分の遷移表とcommit・履歴表から一意に期待値を導出する。
+original、modified Context、Globalの3状態の直積についても、各状態成分の遷移表とcommit・履歴表から期待結果が一意に決まるものとする。
+この規則と表を受入条件とする。
 
 ### 追加のみ・削除のみ
 
@@ -166,100 +166,114 @@ original履歴はoriginal成分が変化した場合だけ記録する。
 削除のみではoriginalだけを上記規則で揃える。
 存在しない成分に状態、commit理由、履歴を生成しない。
 
-## 変更ブロック生成と接続契約
+## 文書行数と末尾改行の契約
 
-### ブロック生成の責務
+差分の選択範囲では、エディタ上の行数とGit差分座標上の内容行数を区別する。
+両者を同じ値として扱わない。
 
-変更ブロックの導出は `application/review-commands` の純粋なprojectionとして実装する。
-候補ファイル名は `diff-change-block-projection.ts` とし、PR runtimeやstate serviceへhunk走査を重複実装しない。
+- `エディタ行数`: エディタで選択可能な表示行数。末尾改行がある文書では、改行後の末尾空行を含む。
+- `差分内容行数`: Git差分の行番号・hunk count・変更ブロックが参照する内容行数。末尾改行後の表示上の空行は含まない。
+- `末尾改行`: なし / LF / CRLF を区別し、対象revisionの本文と同じ根拠から確定する。
+- `不存在`: そのrevisionにファイルが存在しない状態。長さ0の既存ファイルとは区別する。
 
-projectionはexactな `originalLineCount`、`modifiedLineCount`、完全なimmutable `DiffHunk[]` を入力に取り、各ブロックを次の形で返す。
+存在する長さ0のファイルは、エディタ行数1、差分内容行数0として扱う。
+不存在側は内容行を持たず、差分内容行数0として扱う。存在しない側へ表示上の空行を補わない。
+非空文書では、LFまたはCRLFで終端していても、その終端自体によって差分内容行数を1増やさない。
+CRLFは1つの改行として数える。
 
-```ts
-interface DiffChangeBlock {
-  readonly original?: LineInterval;
-  readonly modified?: LineInterval;
-}
-```
+選択範囲の境界検証にはエディタ行数を使用する。
+変更ブロック、hunk座標、未変更行の対応、差分末尾の整合性判定には差分内容行数を使用する。
+末尾改行後のエディタ上の空行はGit差分上の内容行ではないため、単独で選択しても変更ブロックや未変更行の対応には含めない。
 
-context行またはhunk境界でブロックを閉じる。
-originalとmodifiedの一方が存在しないaddition-only/deletion-onlyを許可するが、両方が存在しないブロックは生成しない。
-既存のoriginal-to-modified unchanged-line mappingとは別projectionとし、replacement行の対応推測には使用しない。
-既存hunkの座標・count検証と同等の不変条件を満たさない入力は拒否する。
+差分情報の完全性は、両側の存在有無、差分内容行数、末尾改行、hunk座標・countが同一revisionについて整合していることを条件とする。
+これらが矛盾する差分を、不完全な検証の緩和によって受け入れない。
+末尾改行だけが変化した場合も、完全な差分がその変更を示すなら通常の変更ブロックとして扱う。
 
-### PR runtimeとsession
+### 末尾改行と不存在側の受入表
 
-`PullRequestReviewRuntime.openSession` はexact base/head、対象file、hunk、両側line countをすでに所有するため、ここで変更ブロックprojectionを生成する。
-`DiffEditorReviewStateSession` には次の入力を追加する。
+表中の `エディタ/差分` は `エディタ行数 / 差分内容行数` を表す。
 
-```ts
-readonly selectionMode: "side" | "block";
-readonly changeBlocks?: readonly DiffChangeBlock[];
-```
+| 変更 | 元の内容 | 先の内容 | 元 エディタ/差分 | 先 エディタ/差分 | `block` の対象 |
+| --- | --- | --- | --- | --- | --- |
+| 新規追加 | 不存在 | `new` | 0 / 0 | 1 / 1 | 先側の追加ブロックだけ |
+| 新規追加 | 不存在 | `new\n` | 0 / 0 | 2 / 1 | 先側の追加ブロックだけ |
+| 新規追加 | 不存在 | `new\r\n` | 0 / 0 | 2 / 1 | 先側の追加ブロックだけ |
+| 削除 | `old` | 不存在 | 1 / 1 | 0 / 0 | 元側の削除ブロックだけ |
+| 削除 | `old\n` | 不存在 | 2 / 1 | 0 / 0 | 元側の削除ブロックだけ |
+| 削除 | `old\r\n` | 不存在 | 2 / 1 | 0 / 0 | 元側の削除ブロックだけ |
+| 置換 | `old\n` | `new\n` | 2 / 1 | 2 / 1 | 元・先の置換ブロック |
+| 置換 | `old` | `new\n` | 1 / 1 | 2 / 1 | 元・先の置換ブロック |
+| 置換 | `old\n` | `new` | 2 / 1 | 1 / 1 | 元・先の置換ブロック |
+| 既存空ファイルへの追加 | 空文字列 | `new` | 1 / 0 | 1 / 1 | 先側の追加ブロックだけ |
+| 既存ファイルを空にする | `old` | 空文字列 | 1 / 1 | 1 / 0 | 元側の削除ブロックだけ |
+| 末尾改行だけを追加 | `same` | `same\n` | 1 / 1 | 2 / 1 | 完全な差分が示す元・先の変更ブロック |
+| 末尾改行だけを削除 | `same\n` | `same` | 2 / 1 | 1 / 1 | 完全な差分が示す元・先の変更ブロック |
 
-`selectionMode === "block"` のPR sessionでは `changeBlocks` を必須とする。
-`selectionMode === "side"` では既存経路をそのまま使い、変更ブロックprojectionへ依存しない。
-設定変更は次回sessionから反映し、開いたsessionの途中で動作単位を切り替えない。
+追加のみでは先側、削除のみでは元側だけが操作可能な変更行を持つ。
+置換では元側・先側のどちらから操作しても同じブロック集合へ展開する。
+確認済み化と解除は、上表で決まる同じ対象集合へ適用する。
 
-PR以外で同じ `DiffEditorReviewCommandService` を使うlocal base/head runtimeは `selectionMode: "side"` を明示し、`changeBlocks` を渡さない。
-したがって新しい`block`動作を共有サービスの全利用箇所へ暗黙に広げない。
+| 変更種別 | 操作可能側 | 確認済み化 / 解除 |
+| --- | --- | --- |
+| 追加のみ | 先側 | 同じ追加ブロック集合へ適用 |
+| 削除のみ | 元側 | 同じ削除ブロック集合へ適用 |
+| 置換 | 元側・先側のどちらでも可 | どちらから操作しても同じ置換ブロック集合へ適用 |
+| 末尾改行後の表示空行または既存空ファイルの表示行だけ | その表示行が存在する側 | 差分内容行ではないため単独では状態更新なし |
 
-### command serviceの処理順
+末尾改行後の表示上の空行、または既存空ファイルの唯一の表示行にカーソルだけを置いた場合、その行は差分内容行ではないため変更ブロックには重ならない。
+他の選択範囲がなければ状態更新は行わない。
 
-`DiffEditorReviewCommandService` は次の順序を守る。
+## 変更ブロック情報と状態更新の契約
 
-1. focused sideとline countを取得する。
-2. raw selectionsを `selectionsToLineIntervals` で正規化する。
-3. 空ならsessionを開く前にno-opを返す。
-4. sessionを開き、line countとimmutable comparison identityを既存どおり検証する。
-5. `side` なら現行処理を行う。
-6. `block` なら正規化済みintervalと操作側のchange block intervalの積集合で対象ブロックを決める。
-7. 変更ブロック分と、必要なcontext行の既存projectionを統合してstate mutation inputを作る。
+### 変更ブロック情報
 
-### 左右ブロック更新用のstate API
+変更ブロックは、対象PRの同一base/head・同一ファイルに属する完全な差分情報と両側の行数から導出する。
+ブロック情報は元側範囲と先側範囲を持ち、追加のみ・削除のみでは片側だけを持つ。
+context行またはhunk境界で必ず区切り、差分座標や行数と矛盾する情報は有効なブロックとして扱わない。
 
-既存の `OriginalSelectionReviewRangeMutationInput` はoriginal側起点のunchanged-line mappingを表す契約なので、modified側起点の変更ブロック操作へ流用しない。
-操作元のsideを偽装せず、変更ブロック専用の入力と操作識別値を追加する。
+変更ブロック情報は、未変更行の元側・先側対応とは別の情報として扱う。
+未変更行の対応を、置換行の対応推測や変更ブロックの生成へ流用しない。
+差分確認のアプリケーション境界で、同一revisionの本文と差分から存在有無・エディタ行数・差分内容行数・末尾改行を確定する。
+これらを一つの操作セッションの不変入力として、変更ブロック生成と未変更行対応の双方へ渡す。
 
-候補契約は次のとおりとする。
+### 操作に必要な情報
 
-```ts
-interface DiffBlockReviewRangeMutationInput extends ReviewStateMutationInput {
-  readonly diffId: string;
-  readonly originalLineCount: number;
-  readonly originalIntervals: readonly LineInterval[];
-  readonly modifiedIntervals: readonly LineInterval[];
-  readonly invokedFrom: "original" | "modified";
-}
-```
+`block` 操作は、少なくとも次の情報が同一のPR差分に結び付いていることを前提とする。
 
-state serviceには `markDiffBlockReviewed` / `unmarkDiffBlockReviewed` を追加する。
-transaction operationは `mark-diff-block-reviewed` / `unmark-diff-block-reviewed` とし、既存のoriginal selection操作と区別する。
-`invokedFrom` は操作起点の証拠であり、更新対象や履歴対象を決める条件には使わない。
+| 情報 | 用途 |
+| --- | --- |
+| 選択単位 `side` / `block` | 操作範囲の決定 |
+| PRのbase/headと差分識別 | staleな比較との混同防止 |
+| 対象ファイル識別 | 別ファイル状態への誤反映防止 |
+| 元側・先側の存在有無 | 不存在と既存空ファイルの区別 |
+| 元側・先側のエディタ行数 | 選択範囲の境界検証 |
+| 元側・先側の差分内容行数 | hunk・ブロック・未変更行対応の境界検証 |
+| 元側・先側の末尾改行 | 差分の完全性と末尾空行の判定 |
+| 変更ブロック一覧 | `block` 時の左右展開 |
+| 操作元の側 | 選択範囲をどちらのブロック座標と照合するかの決定 |
 
-modifiedIntervalsはContextの`modifiedReviewed`とGlobalの`reviewed`へ同じ範囲を追加/削除する。
-originalIntervalsは`originalReviewedByDiff[diffId]`へ追加/削除する。
-これらを1つのexpected/next transactionにまとめ、CAS境界で原子的にcommitする。
-永続化schemaは追加しない。
+上記情報は一つの操作セッションで固定し、操作中にbase/head、ファイル、行数契約、末尾改行、変更ブロックの組合せを差し替えない。
 
-### historyの分岐契約
+`block` はPR差分でのみ利用可能とし、PR以外の比較へ暗黙に適用しない。
+設定変更は次の操作から反映し、一つの操作の途中で選択単位を切り替えない。
 
-`ReviewHistoryRecorder` は新しいblock operationを明示的に扱う。
-履歴対象は `invokedFrom` ではなく、transactionのexpected/next差分で決める。
+### 状態更新
 
-- Contextのmodified範囲またはGlobal範囲が変化した場合、modifiedイベントを1件記録する。
-- original範囲が変化した場合、対象`diffId`のoriginalイベントを1件記録する。
-- 両方変化した場合、既存の複合更新と同様にmodifiedイベントを先に、originalイベントを後に記録する。
-- どの成分にもsemantic changeがなければcommitせず、履歴も記録しない。
+選択正規化とブロック展開の結果として、元側対象範囲と先側対象範囲を確定する。
+先側対象範囲はmodified ContextとGlobalへ同じ操作を適用し、元側対象範囲は対象差分のoriginal状態へ適用する。
+複数成分が対象になる場合は一回の原子的な状態更新として扱い、途中状態を公開しない。
+永続化する状態の種類は増やさない。
 
-modifiedイベントは `rangeRepresentation: "context-and-global"` を使い、Globalだけが変化した場合もContextとGlobal双方のbefore/afterを保持する。
-これによりPR両側が既に目的状態でもGlobalだけが変わる操作を履歴から失わない。
+`side` の片側操作と `block` の左右連動操作は、履歴上でも区別可能な操作として扱う。
+ただし、履歴を実際に記録する側は操作元ではなく状態差分で決定する。
 
-### unchanged-line mappingとの分離
+### 履歴
 
-既存の `createOriginalSelectionReviewPlan` はunchanged original行をmodified行へ投影するためだけに使用する。
-変更ブロックprojectionはreplacement/addition/deletionのブロック連動だけを扱う。
-両者を同じmappingとして表現せず、command planの統合段階でinterval集合だけを合成する。
+- modified ContextまたはGlobalのどちらかが変化した場合、modified側の履歴を1件記録する。
+- original状態が変化した場合、対象差分のoriginal側履歴を1件記録する。
+- 両方が変化した場合はmodified側、original側の順に記録する。
+- Globalだけが変化した場合もmodified側の履歴を記録し、ContextとGlobal双方の変更前後を保持する。
+- 全成分がsemantic no-opなら状態更新も履歴追加も行わない。
 
 ## 更新の原子性と表示
 
@@ -272,54 +286,23 @@ GlobalはPR Progressの分子には直接加算しないが、同じmodified実�
 
 ## stale safety
 
-ブロックprojectionは現在のPR runtimeが保持するexact base/headと対象fileのimmutable hunksだけから生成する。
-古いdiff URI、別context、別base/head、別file identityは既存のsession検証境界で拒否する。
-state transactionのcommit時にも現在登録されているimmutable PR snapshotとの一致を既存どおり再確認する。
+変更ブロック情報は、操作対象となるPR差分のexact base/headと対象ファイルに属する差分だけから導出する。
+古い差分、別context、別base/head、別ファイルの情報を操作へ使用しない。
+状態更新時にも操作開始時と同じPR比較を対象としていることを保証する。
 設定変更時に既存の保存状態を書き換えず、次回の操作単位だけを変える。
 
-## テストへの対応
+## 受入条件
 
-本設計の各表を実装時の受入条件とする。
-テストファイル名・テスト名は機能責務で命名し、作業管理番号を含めない。
+本設計の各表と境界条件を受入条件とする。
 
-実装時は少なくとも次を先にRedとして固定する。
-
-- 設定enum、default、manifest、PR runtimeへの設定伝播。
-- 正常系ケース表の各行。
-- original / modified Context / Globalの状態直積について確認済み化と解除の期待状態、commit有無、履歴種別。
-- Globalだけが変化する操作と、original＋Globalが変化する操作。
-- カーソルのみ、正方向、逆方向、列0終端、空selection配列を元側・先側、確認・解除の双方で検証する境界表。
-- change block projectionのcontext/hunk境界、replacement、addition-only、deletion-only、複数ブロック。
-- PR sessionがexact hunks由来のchangeBlocksを渡し、local base/head sessionが`side`固定であること。
-- block専用state operationがContext modified・Global・originalを1transactionで更新すること。
-- historyがactual deltaからmodified/originalイベントを決め、Global-only差分をmodifiedイベントとして残すこと。
-- stale URI、base/head更新、file identity不一致、CAS競合で部分更新しないこと。
-- Extension Hostで設定切替、左右の装飾、PR Progress同期を確認すること。
-
-## 実装順序（TDD）
-
-1. 設定契約とPR限定のsession mode伝播のRedを追加する。
-2. selection正規化境界表とchange block projectionのRedを追加する。
-3. 状態成分・commit・履歴表のRedを追加する。
-4. block projectionとcommand planを実装する。
-5. block専用state transactionとhistory分岐を実装する。
-6. PR runtimeへ結線し、local base/headが`side`のままであることを確認する。
-7. 正常系ケース表、状態直積、stale safety、no-op、PR Progress、Globalの回帰を通す。
-8. Extension Hostで設定切替と表示同期を確認する。
-
-## transaction型の契約補足
-
-block操作は既存の `ModifiedReviewStateTransaction` または `OriginalReviewStateTransaction` に偽装しない。
-`ReviewStateTransaction` のdiscriminated unionへ、block専用のtransaction型を追加する。
-
-```ts
-interface DiffBlockReviewStateTransaction extends ReviewStateTransactionBase {
-  readonly operation: "mark-diff-block-reviewed" | "unmark-diff-block-reviewed";
-  readonly diffId: string;
-  readonly invokedFrom: "original" | "modified";
-}
-```
-
-`diffId` はoriginal stateの比較identityとして必須とし、`invokedFrom` は入力由来の監査情報として保持する。
-state repositoryのCAS契約はexpected/next snapshotを扱う既存境界をそのまま利用するため、保存schemaやrepository protocolは増やさない。
-history recorderはoperation discriminatorでblock transactionを判定し、実際のexpected/next差分からmodified/originalイベントを生成する。
+- `side` では従来の片側単位の結果が変わらないこと。
+- `block` では正常系ケース表どおりに対象ブロックが決まること。
+- 選択範囲の正規化表どおりに、カーソル、正逆方向、列0終端、空selectionを扱うこと。
+- original、modified Context、Globalの状態遷移とcommit・履歴が各表から一意に決まること。
+- Globalだけが変化する場合も、状態更新と履歴へ反映されること。
+- 追加のみ・削除のみでは存在する成分だけを扱うこと。
+- 文書行数と末尾改行の受入表どおりに、不存在・既存空ファイル・LF・CRLF・末尾改行追加/削除を扱うこと。
+- 末尾改行後の表示上の空行だけを選択しても変更ブロックへ展開しないこと。
+- PR以外の比較へ`block`動作が適用されないこと。
+- staleなPR比較や別ファイルの情報を使って状態を更新しないこと。
+- 状態更新後の装飾とPR Progressが同じ確定状態を参照すること。
