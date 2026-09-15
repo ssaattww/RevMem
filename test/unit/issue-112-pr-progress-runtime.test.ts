@@ -631,7 +631,10 @@ const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> 
     repositoryRoot: "/workspace/RevMem",
     fileSystemPathSemantics: "posix",
     snapshot: runtimeSnapshot,
-    readTextContent: async () => ({ kind: "found", content: "a\nd\nc" })
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc"
+    })
   });
 
   await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
