@@ -967,7 +967,8 @@ const runtimeSnapshotFromRevisionTexts = (
 const runtimeForRevisionTexts = (
   original: string | undefined,
   modified: string | undefined,
-  snapshot = runtimeSnapshotFromRevisionTexts(original, modified)
+  snapshot = runtimeSnapshotFromRevisionTexts(original, modified),
+  getDiffSelectionMode?: () => "side" | "block"
 ) => {
   const repository = new MemoryRepository();
   repository.current.contextState = {
@@ -1000,6 +1001,7 @@ const runtimeForRevisionTexts = (
       openDiff: async (originalUri, modifiedUri) => { opened.push({ original: originalUri, modified: modifiedUri }); },
     },
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    ...(getDiffSelectionMode === undefined ? {} : { getDiffSelectionMode }),
   });
   runtime.register({
     repositoryId: REPOSITORY_ID,
@@ -1161,4 +1163,80 @@ test("PR runtime rejects truncated, mismatched, and inconsistent local Git hunk 
     );
     assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
   }
+});
+
+
+test("PR runtime block mode links both sides while a later side-mode operation stays on the operated side", async () => {
+  let mode: "side" | "block" = "block";
+  let modeReads = 0;
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => {
+    modeReads += 1;
+    return mode;
+  });
+  const command = await openRevisionTextCommand(fixture, "modified", 0);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.deepEqual(
+    fixture.repository.current.globalState.files[fixture.fileId]?.reviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.equal(modeReads, 1);
+
+  mode = "side";
+  assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed, []);
+  assert.deepEqual(fixture.repository.current.globalState.files[fixture.fileId]?.reviewed, []);
+  assert.equal(modeReads, 2);
+});
+
+test("PR runtime block mode expands an original replacement selection to modified Context and Global", async () => {
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => "block");
+  const command = await openRevisionTextCommand(fixture, "original", 0);
+
+  assert.equal(await command.commands.markSelectionReviewed(command.editor), "applied");
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.originalReviewedByDiff,
+    { [`${A}..${B}`]: [{ startLine: 0, endLineExclusive: 1 }] },
+  );
+  assert.deepEqual(
+    fixture.repository.current.contextState.files[fixture.fileId]?.modifiedReviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+  assert.deepEqual(
+    fixture.repository.current.globalState.files[fixture.fileId]?.reviewed,
+    [{ startLine: 0, endLineExclusive: 1 }],
+  );
+});
+
+test("PR runtime does not read selection mode or open state for an empty selection", async () => {
+  let modeReads = 0;
+  const fixture = runtimeForRevisionTexts("old", "new", undefined, () => {
+    modeReads += 1;
+    return "block";
+  });
+  await fixture.runtime.openReviewDiff(CONTEXT_ID, fixture.fileId);
+  const pair = fixture.opened[0]!;
+  const commands = fixture.runtime.createCommandService<{ readonly uri: string; readonly side: "modified" }>({
+    getDocumentUri: (editor) => editor.uri,
+    getSide: (editor) => editor.side,
+    getLineCount: () => 1,
+    getSelections: () => [],
+    confirmWholeFileOperation: async () => true,
+  });
+
+  assert.equal(await commands.markSelectionReviewed({ uri: pair.modified, side: "modified" }), "no-op");
+  assert.equal(modeReads, 0);
+  assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
 });

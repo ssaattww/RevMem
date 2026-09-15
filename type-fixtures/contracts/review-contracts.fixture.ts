@@ -158,6 +158,7 @@ const contextHistoryEvent = {
   reason: "resolver-created"
 } satisfies ReviewHistoryEvent;
 const configuration = {
+  prDiffSelectionMode: "side",
   showGlobalReviewed: true,
   ignoreWhitespaceChanges: false,
   ignoreEolChanges: false,

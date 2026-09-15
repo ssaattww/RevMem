@@ -1,3 +1,19 @@
+/** Selection unit used by RevMem-managed pull-request diff commands. */
+export type PrDiffSelectionMode = "side" | "block";
+
+/** Minimal configuration reader used at the VS Code composition boundary. */
+export interface ReviewRangeConfigurationReader {
+  get<T>(section: string): T | undefined;
+}
+
+/** Reads the PR diff selection unit and rejects invalid configured values. */
+export const readPrDiffSelectionMode = (configuration: ReviewRangeConfigurationReader): PrDiffSelectionMode => {
+  const value = configuration.get<unknown>("prDiffSelectionMode");
+  if (value === undefined || value === "side") return "side";
+  if (value === "block") return "block";
+  throw new TypeError('reviewRange.prDiffSelectionMode must be either "side" or "block".');
+};
+
 /**
  * Enables one optional decoration category.
  */
@@ -21,6 +37,8 @@ export interface ReviewRangeDecorationsConfiguration {
  * configuration API that supplies them.
  */
 export interface ReviewRangeConfiguration {
+  /** Selection unit for RevMem-managed pull-request diff selection commands. */
+  prDiffSelectionMode: PrDiffSelectionMode;
   /** Whether currently valid repository-wide Global ranges are displayed. */
   showGlobalReviewed: boolean;
   /** Whether whitespace-only changes are ignored during range mapping. */
@@ -47,6 +65,8 @@ export interface ReviewRangeConfiguration {
  * Stable VS Code configuration keys for each application configuration field.
  */
 export interface ReviewRangeConfigurationKeys {
+  /** Key for the pull-request diff selection-unit setting. */
+  prDiffSelectionMode: "reviewRange.prDiffSelectionMode";
   /** Key for the Global-range visibility setting. */
   showGlobalReviewed: "reviewRange.showGlobalReviewed";
   /** Key for the whitespace-change mapping setting. */
@@ -75,6 +95,7 @@ export interface ReviewRangeConfigurationKeys {
  * Maps the application configuration fields to their stable VS Code setting keys.
  */
 export const REVIEW_RANGE_CONFIGURATION_KEYS = {
+  prDiffSelectionMode: "reviewRange.prDiffSelectionMode",
   showGlobalReviewed: "reviewRange.showGlobalReviewed",
   ignoreWhitespaceChanges: "reviewRange.ignoreWhitespaceChanges",
   ignoreEolChanges: "reviewRange.ignoreEolChanges",
@@ -93,6 +114,7 @@ export const REVIEW_RANGE_CONFIGURATION_KEYS = {
  * zero represents indefinite history retention.
  */
 export const DEFAULT_REVIEW_RANGE_CONFIGURATION: Readonly<ReviewRangeConfiguration> = {
+  prDiffSelectionMode: "side",
   showGlobalReviewed: true,
   ignoreWhitespaceChanges: false,
   ignoreEolChanges: false,

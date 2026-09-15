@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 
 import {
   DiffEditorReviewCommandService,
+  deriveChangeBlocks,
   deriveOriginalToModifiedLineMappings,
   type DiffEditorReviewCommandDependencies,
 } from "../../application/review-commands/index";
@@ -33,6 +34,7 @@ import {
   deriveDocumentLineContract,
   type DocumentLineContract,
 } from "../../core/intervals/index";
+import type { PrDiffSelectionMode } from "../../application/configuration/index";
 import type {
   RepositoryGlobalState,
   ReviewContextState,
@@ -85,6 +87,8 @@ export interface PullRequestReviewRuntimeOptions<Uri> {
   readonly diffHost: ReviewDiffEditorHost<Uri>;
   readonly openFile?: (uri: Uri) => Promise<void>;
   readonly getExclusionPolicy: () => ReviewFileExclusionPolicy;
+  /** Reads the validated PR diff selection mode at the start of each selection operation. */
+  readonly getDiffSelectionMode?: () => PrDiffSelectionMode;
   /** Optional deterministic scheduler seam; production keeps the 128-item default. */
   readonly progressWork?: {
     readonly maxItems?: number;
@@ -711,14 +715,16 @@ export class PullRequestReviewRuntime<Uri> {
   ): DiffEditorReviewCommandService<Editor> {
     return new DiffEditorReviewCommandService({
       ...dependencies,
-      openSession: async (editor) => this.openSession(
-        dependencies.getDocumentUri(editor)
+      openSession: async (editor, scope) => this.openSession(
+        dependencies.getDocumentUri(editor),
+        undefined,
+        scope === "selection" ? this.options.getDiffSelectionMode?.() ?? "side" : undefined
       ),
       requestHistory: (transaction) => this.options.requestHistory(transaction),
     });
   }
 
-  public async openSession(uri: string, fileId?: string) {
+  public async openSession(uri: string, fileId?: string, selectionMode?: PrDiffSelectionMode) {
     const descriptor = this.codec.decode(uri);
     const registration = this.requireRegistration(descriptor.contextId);
     const descriptorFile = this.diffFileForDescriptor(registration, descriptor);
@@ -776,11 +782,13 @@ export class PullRequestReviewRuntime<Uri> {
       modifiedDocument.content,
       diffFile.hunks,
     );
-    const originalToModifiedLineMappings = deriveOriginalToModifiedLineMappings({
+    const blockInput = {
       originalLineCount: originalDocument.lineContract.diffContentLineCount,
       modifiedLineCount: modifiedDocument.lineContract.diffContentLineCount,
       hunks: diffFile.hunks,
-    });
+    };
+    const originalToModifiedLineMappings = deriveOriginalToModifiedLineMappings(blockInput);
+    const changeBlocks = selectionMode === "block" ? deriveChangeBlocks(blockInput) : undefined;
     return {
       contextState: persisted.contextState,
       globalState: persisted.globalState,
@@ -797,6 +805,8 @@ export class PullRequestReviewRuntime<Uri> {
       originalLineCount: originalDocument.lineContract.editorLineCount,
       originalContentLineCount: originalDocument.lineContract.diffContentLineCount,
       modifiedContentLineCount: modifiedDocument.lineContract.diffContentLineCount,
+      ...(selectionMode === undefined ? {} : { selectionMode }),
+      ...(changeBlocks === undefined ? {} : { changeBlocks }),
       originalDeletionIntervals: diffFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
         line.kind === "deletion" && line.oldLine !== undefined
           ? [{ startLine: line.oldLine - 1, endLineExclusive: line.oldLine }]
