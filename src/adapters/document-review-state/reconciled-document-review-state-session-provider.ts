@@ -364,9 +364,13 @@ export class DocumentReviewStateSessionProvider {
         globalState: clone<RepositoryGlobalState>(plan.globalState)
       }
     };
-    const transaction: ReviewStateTransaction = promotion?.side === "original"
-      ? { ...snapshots, operation: promotion.operation, side: "original", diffId: promotion.diffId }
-      : { ...snapshots, operation: promotion?.operation ?? "mark-ranges-reviewed" };
+    const transaction: ReviewStateTransaction = promotion === undefined
+      ? { ...snapshots, operation: "mark-ranges-reviewed" }
+      : promotion.operation === "mark-diff-block-reviewed" || promotion.operation === "unmark-diff-block-reviewed"
+        ? { ...snapshots, operation: promotion.operation, invokedFrom: promotion.invokedFrom, diffId: promotion.diffId }
+        : "side" in promotion && promotion.side === "original"
+          ? { ...snapshots, operation: promotion.operation, side: "original", diffId: promotion.diffId }
+          : { ...snapshots, operation: promotion.operation };
     await target.committer.commit(transaction);
     return {
       ...target,

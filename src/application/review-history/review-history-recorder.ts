@@ -5,6 +5,7 @@ import type {
   RepositoryGlobalState
 } from "../../core/contracts/index";
 import type {
+  DeepReadonly,
   ReviewStateFileTarget,
   ReviewStateTransaction
 } from "../../core/review-state/index";
@@ -39,14 +40,24 @@ const targetFor = (state: Readonly<{
   contextId: state.contextId
 });
 
+const globalFileForRevision = (
+  state: ReviewStateTransaction["expected"]["globalState"],
+  fileId: string,
+  revisionId: string,
+) => state.currentRevisionId === revisionId
+  ? state.files[fileId]
+  : state.revisionSnapshots?.[revisionId]?.files[fileId];
+
 const typeForOperation = (operation: ReviewStateTransaction["operation"]): FileReviewHistoryEventType => {
   switch (operation) {
     case "mark-ranges-reviewed":
     case "mark-original-ranges-reviewed": return "marked-reviewed";
-    case "mark-original-selection-reviewed": return "marked-reviewed";
+    case "mark-original-selection-reviewed":
+    case "mark-diff-block-reviewed": return "marked-reviewed";
     case "unmark-ranges-reviewed":
     case "unmark-original-ranges-reviewed": return "unmarked-reviewed";
-    case "unmark-original-selection-reviewed": return "unmarked-reviewed";
+    case "unmark-original-selection-reviewed":
+    case "unmark-diff-block-reviewed": return "unmarked-reviewed";
     case "mark-file-reviewed": return "marked-file-reviewed";
     case "unmark-file-reviewed": return "unmarked-file-reviewed";
   }
@@ -65,11 +76,14 @@ export class ReviewHistoryRecorder {
    */
   public async recordTransaction(transaction: Readonly<ReviewStateTransaction>, reason: string): Promise<void> {
     const nextContext = transaction.next.contextState;
+    const revisionId = revisionOf(nextContext);
     const nextFile = nextContext.files[transaction.fileId];
-    if (nextFile === undefined) throw new Error("Committed review-state transaction must retain its affected file for history.");
     const previousFile = transaction.expected.contextState.files[transaction.fileId];
-    const previousGlobalFile = transaction.expected.globalState.files[transaction.fileId];
-    const nextGlobalFile = transaction.next.globalState.files[transaction.fileId];
+    const previousGlobalFile = globalFileForRevision(transaction.expected.globalState, transaction.fileId, revisionId);
+    const nextGlobalFile = globalFileForRevision(transaction.next.globalState, transaction.fileId, revisionId);
+    const fileIdentity = nextFile ?? nextGlobalFile ?? previousFile ?? previousGlobalFile;
+    if (fileIdentity === undefined) throw new Error("Committed review-state transaction must retain affected file identity for history.");
+    const eventOccurredAt = nextFile?.updatedAt ?? nextGlobalFile?.updatedAt ?? nextContext.updatedAt;
     const eventType = typeForOperation(transaction.operation);
     const events: ReviewHistoryEvent[] = [];
     const appendFileEvent = (
@@ -83,14 +97,14 @@ export class ReviewHistoryRecorder {
       const common = {
         schemaVersion: nextContext.schemaVersion,
         eventId: this.options.createEventId(),
-        occurredAt: nextContext.updatedAt,
+        occurredAt: eventOccurredAt,
         sessionId: this.options.sessionId,
         repositoryId: transaction.repositoryId,
         contextId: transaction.contextId,
-        revisionId: nextFile.revisionId,
+        revisionId,
         type: eventType,
         reason,
-        filePath: nextFile.currentPath,
+        filePath: fileIdentity.currentPath,
         previousRanges: previousRanges.map((range) => ({ ...range })),
         nextRanges: nextRanges.map((range) => ({ ...range }))
       };
@@ -105,18 +119,20 @@ export class ReviewHistoryRecorder {
         });
       } else events.push({ ...common, diffSide });
     };
-    const isOriginalSelection =
+    const isCoupledDiffSelection =
       transaction.operation === "mark-original-selection-reviewed" ||
-      transaction.operation === "unmark-original-selection-reviewed";
-    if (isOriginalSelection) {
+      transaction.operation === "unmark-original-selection-reviewed" ||
+      transaction.operation === "mark-diff-block-reviewed" ||
+      transaction.operation === "unmark-diff-block-reviewed";
+    if (isCoupledDiffSelection) {
       if (
-        JSON.stringify(previousFile?.modifiedReviewed ?? []) !== JSON.stringify(nextFile.modifiedReviewed) ||
+        JSON.stringify(previousFile?.modifiedReviewed ?? []) !== JSON.stringify(nextFile?.modifiedReviewed ?? []) ||
         JSON.stringify(previousGlobalFile?.reviewed ?? []) !== JSON.stringify(nextGlobalFile?.reviewed ?? [])
       ) {
         appendFileEvent(
           "modified",
           previousFile?.modifiedReviewed ?? [],
-          nextFile.modifiedReviewed,
+          nextFile?.modifiedReviewed ?? [],
           undefined,
           previousGlobalFile?.reviewed ?? [],
           nextGlobalFile?.reviewed ?? []
@@ -124,11 +140,11 @@ export class ReviewHistoryRecorder {
       }
       if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
       const previousOriginal = previousFile?.originalReviewedByDiff[transaction.diffId] ?? [];
-      const nextOriginal = nextFile.originalReviewedByDiff[transaction.diffId] ?? [];
+      const nextOriginal = nextFile?.originalReviewedByDiff[transaction.diffId] ?? [];
       if (JSON.stringify(previousOriginal) !== JSON.stringify(nextOriginal)) {
         appendFileEvent("original", previousOriginal, nextOriginal, transaction.diffId);
       }
-    } else if (transaction.side === "original") {
+    } else if ("side" in transaction && transaction.side === "original") {
       if (transaction.diffId === undefined) throw new Error("Original-side review transaction must include a diff identity for history.");
       appendFileEvent(
         "original",
@@ -288,7 +304,7 @@ export class ReviewHistoryRecorder {
   }
 }
 
-const revisionOf = (state: Readonly<ReviewContextState>): string => {
+const revisionOf = (state: DeepReadonly<ReviewContextState>): string => {
   if (state.kind === "branch") {
     if (state.branch === undefined) throw new Error("Branch review context must include a revision for history.");
     return state.branch.headRevision;

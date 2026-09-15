@@ -34,6 +34,8 @@ extends ReviewStateMutationInput {
     | "unmark-original-ranges-reviewed"
     | "mark-original-selection-reviewed"
     | "unmark-original-selection-reviewed"
+    | "mark-diff-block-reviewed"
+    | "unmark-diff-block-reviewed"
   >;
   /** Atomic full-snapshot compare-and-replace boundary. */
   readonly committer: ReviewStateTransactionCommitter;

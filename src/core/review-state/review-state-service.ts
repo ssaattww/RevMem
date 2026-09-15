@@ -22,10 +22,15 @@ export type OriginalReviewStateOperation =
   | "mark-original-ranges-reviewed" | "unmark-original-ranges-reviewed"
   | "mark-original-selection-reviewed" | "unmark-original-selection-reviewed";
 
+/** Linked diff-block mutations that retain the side where the user acted. */
+export type DiffBlockReviewStateOperation =
+  | "mark-diff-block-reviewed" | "unmark-diff-block-reviewed";
+
 /** Supported atomic review-state mutation operations. */
 export type ReviewStateOperation =
   | ModifiedReviewStateOperation
-  | OriginalReviewStateOperation;
+  | OriginalReviewStateOperation
+  | DiffBlockReviewStateOperation;
 
 /** Immutable current-side file identity used to validate a state mutation. */
 export interface ReviewStateFileTarget {
@@ -80,6 +85,14 @@ export interface OriginalSelectionReviewRangeMutationInput extends ReviewStateMu
   /** Original-only deletion or replacement intervals. */
   readonly originalIntervals: readonly DeepReadonly<LineInterval>[];
 }
+/** Input for one linked diff-block mutation initiated from either displayed side. */
+export interface DiffBlockReviewRangeMutationInput extends ReviewStateMutationInput {
+  readonly invokedFrom: "original" | "modified";
+  readonly diffId: string;
+  readonly originalLineCount: number;
+  readonly originalIntervals: readonly DeepReadonly<LineInterval>[];
+  readonly modifiedIntervals: readonly DeepReadonly<LineInterval>[];
+}
 /** Expected snapshot used by the atomic compare-and-swap boundary. */
 export interface ReviewStateTransactionExpectation {
   readonly contextState: DeepReadonly<ReviewContextState>;
@@ -116,8 +129,14 @@ export interface OriginalReviewStateTransaction extends ReviewStateTransactionBa
   /** Canonical non-empty comparison identity required for the affected original ranges. */
   readonly diffId: string;
 }
+/** Atomic linked diff-block transaction retaining the actual operated side. */
+export interface DiffBlockReviewStateTransaction extends ReviewStateTransactionBase {
+  readonly operation: DiffBlockReviewStateOperation;
+  readonly invokedFrom: "original" | "modified";
+  readonly diffId: string;
+}
 /** Discriminated atomic review-state transaction with side-specific diff identity requirements. */
-export type ReviewStateTransaction = ModifiedReviewStateTransaction | OriginalReviewStateTransaction;
+export type ReviewStateTransaction = ModifiedReviewStateTransaction | OriginalReviewStateTransaction | DiffBlockReviewStateTransaction;
 /** Persistence port for a complete compare-and-swap transaction. */
 export interface ReviewStateTransactionCommitter {
   /** Persists the expected and next snapshots atomically or reports a conflict. */
@@ -133,6 +152,24 @@ function cloneValue<T>(value: T): T {
   }
   return value;
 }
+function semanticValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(semanticValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== "updatedAt")
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, semanticValue(nested)]));
+  }
+  return value;
+}
+
+const semanticallyEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(semanticValue(left)) === JSON.stringify(semanticValue(right));
+
+/** Returns whether a transaction changes persisted meaning rather than generated timestamps only. */
+export const hasReviewStateSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boolean =>
+  !semanticallyEqual(transaction.expected.contextState, transaction.next.contextState) ||
+  !semanticallyEqual(transaction.expected.globalState, transaction.next.globalState);
 function assertNonEmptyString(value: string, name: string): void {
   if (value.trim().length === 0) throw new TypeError(`${name} must be a non-empty string.`);
 }
@@ -394,6 +431,111 @@ export function unmarkOriginalSelectionReviewed(input: OriginalSelectionReviewRa
     subtractLineIntervals(currentOriginal, intervals.originalIntervals)
   );
 }
+const validateDiffBlockInput = (input: DiffBlockReviewRangeMutationInput): {
+  readonly originalIntervals: LineInterval[];
+  readonly modifiedIntervals: LineInterval[];
+} => {
+  validateMappedCurrentInput(input);
+  assertNonEmptyString(input.diffId, "diffId");
+  assertLineCount(input.originalLineCount);
+  if (input.invokedFrom !== "original" && input.invokedFrom !== "modified") {
+    throw new TypeError("invokedFrom must identify the operated diff side.");
+  }
+  return {
+    originalIntervals: normalizeWithinFile(input.originalIntervals, input.originalLineCount, "originalIntervals"),
+    modifiedIntervals: normalizeWithinFile(input.modifiedIntervals, input.target.lineCount, "modifiedIntervals"),
+  };
+};
+
+const changedRanges = (
+  operation: DiffBlockReviewStateOperation,
+  current: readonly LineInterval[],
+  targets: readonly LineInterval[],
+): LineInterval[] => operation === "mark-diff-block-reviewed"
+  ? normalizeLineIntervals([...current, ...targets])
+  : subtractLineIntervals(current, targets);
+
+const createDiffBlockTransaction = (
+  operation: DiffBlockReviewStateOperation,
+  input: DiffBlockReviewRangeMutationInput,
+): DiffBlockReviewStateTransaction => {
+  const targets = validateDiffBlockInput(input);
+  const expectedContextState = cloneValue(input.contextState);
+  const expectedGlobalState = cloneValue(input.globalState);
+  const previousContextFile = input.contextState.files[input.target.fileId];
+  const previousGlobalFile = input.globalState.files[input.target.fileId];
+  const originalReviewedByDiff = normalizeOriginalReviewedByDiff(previousContextFile?.originalReviewedByDiff);
+  const currentOriginal = normalizeWithinFile(
+    originalReviewedByDiff[input.diffId] ?? [],
+    input.originalLineCount,
+    "originalReviewedByDiff",
+  );
+  const currentModified = currentContextRanges(input);
+  const currentGlobal = currentGlobalRanges(input);
+  const nextOriginal = targets.originalIntervals.length === 0
+    ? currentOriginal
+    : changedRanges(operation, currentOriginal, targets.originalIntervals);
+  const nextModified = targets.modifiedIntervals.length === 0
+    ? currentModified
+    : changedRanges(operation, currentModified, targets.modifiedIntervals);
+  const nextGlobalRanges = targets.modifiedIntervals.length === 0
+    ? currentGlobal
+    : changedRanges(operation, currentGlobal, targets.modifiedIntervals);
+  if (targets.originalIntervals.length > 0) originalReviewedByDiff[input.diffId] = nextOriginal;
+
+  const nextInput: ReviewStateMutationInput = {
+    ...input,
+    contextState: cloneValue(input.contextState),
+    globalState: cloneValue(input.globalState),
+    target: cloneValue(input.target),
+  };
+  let nextContextState = cloneValue(input.contextState) as ReviewContextState;
+  const hasStoredOriginalRanges = Object.values(originalReviewedByDiff).some((ranges) => ranges.length > 0);
+  const shouldWriteContext = previousContextFile !== undefined || nextModified.length > 0 || hasStoredOriginalRanges;
+  if (shouldWriteContext) {
+    const contextFile = createContextFileState(nextInput, nextModified, originalReviewedByDiff);
+    nextContextState = {
+      ...nextContextState,
+      files: { ...nextContextState.files, [input.target.fileId]: contextFile },
+      updatedAt: input.occurredAt,
+    };
+  }
+
+  let nextGlobalState = cloneValue(input.globalState) as RepositoryGlobalState;
+  const shouldWriteGlobal = targets.modifiedIntervals.length > 0 &&
+    (previousGlobalFile !== undefined || nextGlobalRanges.length > 0);
+  if (shouldWriteGlobal) {
+    const globalFile = createGlobalFileState(nextInput, nextGlobalRanges);
+    nextGlobalState = {
+      ...nextGlobalState,
+      currentRevisionId: input.target.revisionId,
+      files: { ...nextGlobalState.files, [input.target.fileId]: globalFile },
+      updatedAt: input.occurredAt,
+    };
+  }
+
+  return {
+    operation,
+    repositoryId: input.contextState.repositoryId,
+    contextId: input.contextState.contextId,
+    fileId: input.target.fileId,
+    invokedFrom: input.invokedFrom,
+    diffId: input.diffId,
+    expected: { contextState: expectedContextState, globalState: expectedGlobalState },
+    next: { contextState: nextContextState, globalState: nextGlobalState },
+  };
+};
+
+/** Marks every existing component targeted by one linked diff-block operation. */
+export const markDiffBlockReviewed = (
+  input: DiffBlockReviewRangeMutationInput,
+): DiffBlockReviewStateTransaction => createDiffBlockTransaction("mark-diff-block-reviewed", input);
+
+/** Clears every existing component targeted by one linked diff-block operation. */
+export const unmarkDiffBlockReviewed = (
+  input: DiffBlockReviewRangeMutationInput,
+): DiffBlockReviewStateTransaction => createDiffBlockTransaction("unmark-diff-block-reviewed", input);
+
 /** Commits a complete atomic transaction through the caller-provided persistence boundary. */
 export async function commitReviewStateTransaction(transaction: Readonly<ReviewStateTransaction>, committer: ReviewStateTransactionCommitter): Promise<void> {
   await committer.commit(transaction);
