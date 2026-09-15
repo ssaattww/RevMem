@@ -1,0 +1,115 @@
+schema_version: 3
+producer:
+  skill: implementation-worker
+  mode: design-review-followup
+  generated_at: 2026-09-15T14:20:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "PR #120"
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  reviewed_head: cda5317a6895c4e31628219bae48fc54460995de
+  design_commit: 867f3aa5bfa5714dd097569f36100c1ff982148a
+  current_head: pending_report_commit
+authoritative_requirements:
+  - source: independent_review
+    reference: IR1/P2
+    summary: Define document-line, diff-line, EOF-newline, absent-side, and empty-file contracts.
+  - source: user_instruction
+    reference: current_chat
+    summary: Implementation deficiencies belong in the later tasklist, not in the design document.
+  - source: user_instruction
+    reference: current_chat
+    summary: Only address the findings; do not broaden the design rewrite.
+scope:
+  - Fix IR1 in the design specification.
+  - Remove implementation-task notes from the design while preserving D1-D3 specification contracts.
+  - Preserve implementation follow-up for later tasklist creation.
+files:
+  changed:
+    - path: Design/pr-diff-selection-mode.md
+      purpose: Define newline and line-count input contract and remove implementation-task notes.
+    - path: reports/pr-diff-selection-mode-newline-contract-followup-20260915.md
+      purpose: Detailed follow-up report.
+    - path: handoffs/issue-119-pr120-newline-contract-followup-20260915.yaml
+      purpose: Continuation packet.
+  intentionally_untouched:
+    - path_or_area: src/**
+      reason: Product implementation is not part of this design finding response.
+    - path_or_area: test/**
+      reason: No product implementation or new acceptance fixture in this step.
+    - path_or_area: tasks/tasks-status.md
+      reason: Tasklist work is deferred until tasklist creation is requested.
+findings:
+  - id: IR1
+    severity: P2
+    disposition: addressed_in_design
+    evidence:
+      - Design separates editor line count from Git diff content line count.
+      - Design distinguishes absent side, existing empty file, LF, CRLF, and final newline.
+      - Acceptance tables include the seven review cases plus empty-file and CRLF cases.
+  - id: D1-D3
+    disposition: previously_closed_preserved
+    evidence:
+      - State, selection-boundary, and connection responsibilities remain specified.
+verification:
+  capability: local_execution_available
+  environment: FA780 / Windows / Node 24
+  commands:
+    - command: git diff --check
+      result: passed
+    - command: test source compile
+      result: passed
+      evidence: test-output/ci/pr-diff-design-ir1-compile.result.json
+    - command: focused related suites
+      result: passed
+      evidence: 88 passed, 0 failed, 0 skipped; test-output/ci/pr-diff-design-ir1-focused.result.json
+    - command: design management-number scan
+      result: passed
+      evidence: 0 matches
+    - command: implementation-task-text scan
+      result: passed
+      evidence: 0 matches for implementation-order/API-task patterns
+  diagnostics_workflow:
+    present: true
+    artifact: ci-failure-diagnostics-<run_id>-<attempt>
+    captures:
+      - test-output
+      - stdout
+      - stderr
+      - result metadata
+      - environment and checkout identity
+ci:
+  required: true
+  exact_head_only: true
+  final_head: pending_report_commit
+  run_id: pending
+  conclusion: pending
+tasklist_carry_forward:
+  required: true
+  destination: tasks/tasks-status.md when the implementation tasklist is created
+  items:
+    - Preserve the design distinction between editor line count and diff content line count through the product path.
+    - Carry absent-side, existing-empty-file, LF, CRLF, and final-newline acceptance cases into implementation tasks.
+    - Include the independent review's newline-boundary product gap as implementation work rather than design text.
+    - Derive implementation acceptance tests from the design tables before production changes.
+  restriction:
+    - Do not copy implementation-deficiency descriptions back into Design/pr-diff-selection-mode.md.
+report:
+  path: reports/pr-diff-selection-mode-newline-contract-followup-20260915.md
+  status: created
+implementation:
+  status: not_started
+  product_code_changed: false
+  product_tests_changed: false
+review:
+  latest_independent_finding: IR1/P2
+  prior_findings: D1-D3 closed
+  closure_status: design_fix_pushed_review_recheck_pending
+next_action:
+  type: independent_review_followup
+  summary: Re-review the IR1 design delta and exact-head CI. Product implementation remains deferred.
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-newline-contract-followup-20260915.yaml
+merge_performed: false
