@@ -742,31 +742,62 @@ test("normal acceptance matrix preserves required side-mode scenarios", () => {
   const names = new Set(normalCases.map((item) => item.name));
   assert.deepEqual(requiredNames.filter((name) => !names.has(name)), []);
 });
+const normalHistoryOperations = ["mark", "unmark"] as const;
+
+test("normal acceptance matrix verifies both mark and unmark history payloads", () => {
+  assert.deepEqual(normalHistoryOperations, ["mark", "unmark"]);
+});
+
 test("normal selection cases persist the designed ranges with matching history and PR progress", async (t) => {
   for (const item of normalCases) {
     await t.test(item.name, async () => {
-      const { fixture, result } = await markSelectionCase(item);
-      assert.equal(result, "applied");
-      assert.equal(fixture.repository.commits, 1);
-      assert.deepEqual(reviewedRanges(fixture), {
-        original: item.expectedOriginal,
-        modified: item.expectedModified,
-        global: item.expectedGlobal,
-      });
-      assertHistoryPayloads(fixture.events, expectedHistoryPayloads(
-        item.historySides,
-        item.mode === "block" ? "user-block-selection" : item.side === "modified" ? "user-selection" : "user-file",
-        {
-          originalPrevious: [], originalNext: item.expectedOriginal,
-          modifiedPrevious: [], modifiedNext: item.expectedModified,
-          globalPrevious: [], globalNext: item.expectedGlobal,
-        },
-      ));
-      await assertProgress(fixture, item.reviewed, item.total);
+      const fixture = createFixture(
+        item.original,
+        item.modified,
+        item.patch ?? wholeFilePatch(item.original, item.modified),
+        () => item.mode,
+      );
+      const command = await openCommand(fixture, item.side, item.selections);
+      const reason = item.mode === "block"
+        ? "user-block-selection"
+        : item.side === "modified"
+          ? "user-selection"
+          : "user-file";
+
+      for (const operation of normalHistoryOperations) {
+        const eventOffset = fixture.events.length;
+        const result = operation === "mark"
+          ? await command.commands.markSelectionReviewed(command.editor)
+          : await command.commands.unmarkSelectionReviewed(command.editor);
+        const marking = operation === "mark";
+        const expectedOriginal = marking ? item.expectedOriginal : [];
+        const expectedModified = marking ? item.expectedModified : [];
+        const expectedGlobal = marking ? item.expectedGlobal : [];
+
+        assert.equal(result, "applied");
+        assert.equal(fixture.repository.commits, marking ? 1 : 2);
+        assert.deepEqual(reviewedRanges(fixture), {
+          original: expectedOriginal,
+          modified: expectedModified,
+          global: expectedGlobal,
+        });
+        assertHistoryPayloads(fixture.events.slice(eventOffset), expectedHistoryPayloads(
+          item.historySides,
+          reason,
+          {
+            originalPrevious: marking ? [] : item.expectedOriginal,
+            originalNext: expectedOriginal,
+            modifiedPrevious: marking ? [] : item.expectedModified,
+            modifiedNext: expectedModified,
+            globalPrevious: marking ? [] : item.expectedGlobal,
+            globalNext: expectedGlobal,
+          },
+        ));
+        await assertProgress(fixture, marking ? item.reviewed : 0, item.total);
+      }
     });
   }
 });
-
 test("whole-file review ignores the selection mode and keeps the legacy transaction", async () => {
   let modeReads = 0;
   const fixture = createFixture(contextualOriginal, contextualModified, contextualPatch, () => {
