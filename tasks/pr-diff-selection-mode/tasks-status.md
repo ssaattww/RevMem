@@ -7,7 +7,7 @@
 - 対象: Issue #119 / PR #120。設計: [PR差分の確認単位切替](../../Design/pr-diff-selection-mode.md)。フェーズ: [phases-status.md](phases-status.md)。
 - 計画基準HEAD: `c7a5d2b1d9a34e60614ae48c619217b9568e1e8e`。設計blob: `83a16fd656f9f66ebc6ef81d3b97c97f902710c9`。
 - 設計は独立レビューで合格済み。製品の実装完了・今回のタスク計画のレビュー合格を意味しない。
-- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06のPDS06-NR1-001 / PDS06-NR1-002（各P2）も同じ通常レビュワーの再レビューでfixedとなり `pass_with_held`。PDS-07は通常レビューでPDS07-NR1-001 / PDS07-NR1-002（各P2）が指摘された。両方の受入試験修正・ローカル検証・pushを完了し、現在は同じ通常レビュワーの再レビュー待ち。PDS-08以降には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
+- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06のPDS06-NR1-001 / PDS06-NR1-002（各P2）も同じ通常レビュワーの再レビューでfixedとなり `pass_with_held`。PDS-07は通常レビューでPDS07-NR1-001 / PDS07-NR1-002（各P2）が指摘され、同一通常レビュワー再レビューでNR1-001はfixed、NR1-002は正常系unmark履歴payload不足のためopenとなった。残件の受入修正・ローカル検証・pushを完了し、現在はNR1-002だけの再確認待ち。PDS-08以降には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
 - この機能の追跡は本一覧を正とする。[全体タスク](../tasks-status.md)・[全体フェーズ](../phases-status.md)の他案件の状態は変更しない。
 - 規模は作業範囲の相対値。Sは単一処理、Mは関連する複数処理または結合試験を扱う。所要時間の確約ではない。
 
@@ -136,6 +136,8 @@ PDS-07の通常レビュー指摘2件は修正・push済み。同じ通常レビ
 - PDS-07: [設計表受入](../../reports/pr120-pds07-implementation-20260917.md)。実runtime→保存→実履歴recorder→PR Progressで正常系、選択境界、三成分132基本ケース、末尾改行13行、設定切替、Global-only進捗を常設化。新規受入50/50、focused 116/116、既定unit 847件中845成功・0失敗・2skip、tooling16/16、build・型契約・構造正負・lint成功。受入試験commitは`2f1b3d516209182cfcf867149306a8a2152cda60`。同SHAのCI run `35150950188` は記録時点でin_progress。通常レビュー待ち。
 - PDS-07通常レビュー: reviewed HEAD `3fe8233320b692a8a68f49b36017098a28514db0` でPDS07-NR1-001 / PDS07-NR1-002（各P2）を確認し、verdict=`fail`。詳細: [通常レビュー](../../reports/pr120-pds07-normal-review-20260917.md)。
 - PDS07-NR1-001 / P2: 正常系表で不足していたsideの9実経路ケースをcoverage guardのRed（51件中50成功・1失敗）で固定。複数行追加・削除の部分選択、context-only／混在、複数block／複数selectionを追加し、Green 60/60。修正commit `e6dd2d19206700f1e19355f869d9bbe9d0f659a9`。
-- PDS07-NR1-002 / P2: 正常系・境界・末尾改行／存在、追加18、削除6で実履歴payloadのContext previous/next、Global previous/next、reason、original diffIdまで検証。初回の詳細化でside-originalのlegacy `user-file` を `user-selection` と誤認した期待値6件が失敗したため契約に合わせて修正し、最終60/60。製品不具合のRedとしては扱わない。修正commit `cebdf252af94fa5096d2ab9d4338d5385226ac7e`。
+- PDS07-NR1-002 / P2: `cebdf252af94fa5096d2ab9d4338d5385226ac7e` では正常系はmark後payload、境界・末尾改行／存在はmark/unmark双方、追加18・削除6は各操作の実履歴payloadについてContext previous/next、Global previous/next、reason、original diffIdまで検証した。初回の詳細化でside-originalのlegacy `user-file` を `user-selection` と誤認した期待値6件が失敗したため契約に合わせて修正し、直接受入60/60。正常系unmark後payloadはこのcommit時点では未検証だった。
 - PDS-07指摘対応後: focused 126/126、既定unit 857件中855成功・0失敗・2既存Windows skip、tooling 16/16、build・型契約・構造正負・lint成功。技術HEAD `cebdf252af94fa5096d2ab9d4338d5385226ac7e` のCI run `35160456646` は追跡更新時点でin_progress。管理commit公開後はその新HEAD一致runのみを最終CIとして扱う。
+- PDS-07同一通常レビュワー再レビュー: reviewed implementation HEAD `74d5f31e824d5f1bf52ff6bb5c9ef358ca4fb4ca`。PDS07-NR1-001はfixed、PDS07-NR1-002は正常系matrixのunmark後詳細履歴payload未検証のためopen、verdict=`fail`。詳細: [再レビュー](../../reports/pr120-pds07-normal-rereview-20260917.md)。`b84d7f630b2afaf5db3c1d707fb15d314822209a` のexact-head CI run `35162281109` はT506 Extension Host timeoutでfailure。
+- PDS07-NR1-002 follow-up: 正常系matrixでmark→unmarkを連続実行し、両操作のContext/Global before-after、reason、original diffId、event順序、commit回数、PR Progress復帰を検証するcoverage guardをRed（61件中60成功・1失敗）で固定。Green 61/61、focused 127/127。修正commit `0763ca7826d7ed2df5a226f91740ad60ee77e3f2`、未使用helper cleanup `fba9d3ac4079f4b448ea007496e977cf1302f200`。
 - PDS-08以降、統合通常レビュー・独立レビュー・最終公開CIは未実施。PDS-07の通常レビューが収束するまでPDS-08へ進まない。mergeは利用者が行う。

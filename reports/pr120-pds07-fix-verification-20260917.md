@@ -62,7 +62,7 @@
 - original eventの `diffId`
 - event件数と `modified` → `original` の順序
 
-正常系全ケース、選択境界10ケースのmark/unmark、末尾改行・存在13ケースのmark/unmark、追加状態積18ケース、削除状態積6ケースへ適用した。
+正常系全ケースではmark後のpayload、選択境界10ケースと末尾改行・存在13ケースではmark/unmark双方、追加状態積18ケースと削除状態積6ケースでは各操作のpayloadへ適用した。この時点では正常系matrixのunmark後payloadは未検証であり、後続の同一通常レビュワー再レビューで残件として検出された。
 
 最初の詳細化実行 `pds07-fix-history-green` は60件中54成功・6失敗だった。6件は製品不具合ではなく、`side` のoriginal側操作で既存互換の `user-file` reasonを使う契約を、テスト側で `user-selection` と誤認した期待値不備だった。`src/composition/pull-request/pull-request-review-history.ts` の既存契約に合わせ、block=`user-block-selection`、modified側のrange操作=`user-selection`、original側のlegacy fallback=`user-file` として期待値を明示した。
 
