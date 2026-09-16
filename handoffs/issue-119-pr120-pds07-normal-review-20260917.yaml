@@ -1,0 +1,260 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: initial_review
+  generated_at: '2026-09-17T06:34:15+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-07
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  commit_range: 'a5ab79df980f15394ffb7d9547e25e739f565169..3fe8233320b692a8a68f49b36017098a28514db0'
+execution_environment: &environment
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 75840a70-dea0-4d8c-9bb4-fe97c78bc11e
+  connection: available
+  os: Linux
+  shell: /bin/bash
+  working_directory: /home/ibis/RevMem-pr120-pds07-review-20260917
+  repository: ssaattww/RevMem
+  branch: detached review worktree
+  head_sha: 3fe8233320b692a8a68f49b36017098a28514db0
+  source_state: snapshot
+  source_fingerprint: 'git-tree:d006b43c7c90b42bf28d696ad1f677bd4e3e3ffd'
+  ownership: current_task
+  writable_paths:
+    - reports/pr120-pds07-normal-review-20260917.md
+    - handoffs/issue-119-pr120-pds07-normal-review-20260917.yaml
+    - /home/ibis/RevMem-pr120-pds07-review-evidence-20260917
+  dependencies:
+    - {name: Node.js, status: available, evidence: v22.13.1}
+    - {name: npm, status: available, evidence: '11.4.2; existing node_modules reused after package-lock equality'}
+  evidence:
+    - 'RDC sessions checked before review commands; no active ibis session was present.'
+    - 'Reviewed source was independently materialized with git archive at the exact reviewed HEAD.'
+verification:
+  capability: local_execution_available
+  technical_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  administrative_parent: 3fe8233320b692a8a68f49b36017098a28514db0
+  commit: {state: commit_pending, review_target_sha: 3fe8233320b692a8a68f49b36017098a28514db0}
+  push: {state: push_pending, head_sha: 3fe8233320b692a8a68f49b36017098a28514db0}
+  ci_wait: {state: ci_wait_completed, required_for: reviewed_head_verification, run_id: 35152083842}
+  final_publication: {sequence: pending, pr_action: comment}
+authoritative_requirements:
+  - source: user_instruction
+    reference: 'pr120.PDS-07 レビュー'
+    summary: 'PDS-07 normal review only; do not implement findings or start PDS-08.'
+  - source: project_workflow
+    reference: 'AGENTS.md and uploaded chatgpt-worker-skills 4.zip'
+    summary: 'Skill-first review, RDC git operations, detailed repository report, concise PR comment, no merge.'
+  - source: design
+    reference: Design/pr-diff-selection-mode.md
+    summary: 'Each normal case defines side and block behavior; state, history, Global and PR Progress must remain coherent.'
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md
+    summary: 'PDS-07 requires every design-table row to have executed real-path acceptance with saved state, history and PR Progress checked together.'
+development_policy:
+  method: TDD
+  testing_order: 'test first, Red, implementation, Green'
+  governing_source: 'RevMem project instructions; this review makes no product change'
+validation_plan:
+  commands:
+    - npm run test:pr-diff-selection
+    - npm run test:unit
+    - git diff --check a5ab79df980f15394ffb7d9547e25e739f565169..3fe8233320b692a8a68f49b36017098a28514db0
+  required_failure_diagnostics: [result_json, stdout, stderr, combined_log]
+blocked: []
+authorized_actions: [read_repository, write_report, write_handoff, commit, push, comment_pr]
+write_boundary:
+  allowed:
+    - path_or_operation: 'normal review report and handoff'
+      reason: 'Review publication workflow'
+  forbidden:
+    - path_or_operation: 'product, tests, configuration, design, tracking, or next-phase implementation'
+      reason: 'Review only'
+    - path_or_operation: 'merge'
+      reason: 'Reserved to user'
+scope:
+  - 'All PDS-07 changed files from a5ab79d through reviewed HEAD'
+  - 'Direct runtime, state, history, progress, line-contract and configuration dependencies'
+  - 'Exact-head local validation and CI metadata'
+non_goals:
+  - 'Product fixes'
+  - 'Later phase implementation or final review'
+files:
+  changed:
+    - {path: reports/pr120-pds07-normal-review-20260917.md, purpose: 'Detailed normal review evidence'}
+    - {path: handoffs/issue-119-pr120-pds07-normal-review-20260917.yaml, purpose: 'Review handoff'}
+  inspected:
+    - {path: test/unit/pr-diff-selection-acceptance.test.ts, purpose: 'PDS-07 real-path acceptance coverage'}
+    - {path: Design/pr-diff-selection-mode.md, purpose: 'Authoritative behavior tables'}
+    - {path: tasks/pr-diff-selection-mode/tasks-status.md, purpose: 'PDS-07 completion conditions'}
+    - {path: src/application/review-commands/diff-editor-review-command-service.ts, purpose: 'Selection routing and commit boundary'}
+    - {path: src/composition/pull-request/pull-request-review-runtime-base.ts, purpose: 'Actual PR runtime/session/configuration route'}
+    - {path: src/application/review-history/review-history-recorder.ts, purpose: 'Persisted history payload'}
+    - {path: src/composition/pull-request/pull-request-review-history.ts, purpose: 'History reason by operation mode'}
+commands:
+  - command: 'node tools/run-ci-command.mjs review-pds07-focused npm run test:pr-diff-selection'
+    purpose: 'Focused PDS-07 regression'
+    exit_code: 0
+    result: passed
+    head_sha: 3fe8233320b692a8a68f49b36017098a28514db0
+    execution_environment: *environment
+    evidence: '116/116; logs under external review evidence directory'
+  - command: 'node tools/run-ci-command.mjs review-pds07-unit npm run test:unit'
+    purpose: 'Default unit and tooling regression'
+    exit_code: 0
+    result: passed
+    head_sha: 3fe8233320b692a8a68f49b36017098a28514db0
+    execution_environment: *environment
+    evidence: 'tooling 16/16; unit 847/847 on Linux'
+  - command: 'git diff --check a5ab79df980f15394ffb7d9547e25e739f565169..3fe8233320b692a8a68f49b36017098a28514db0'
+    purpose: 'Whitespace validation'
+    exit_code: 0
+    result: passed
+    head_sha: 3fe8233320b692a8a68f49b36017098a28514db0
+tests:
+  - {name: focused, phase: regression, result: passed, head_sha: 3fe8233320b692a8a68f49b36017098a28514db0, evidence: '116/116'}
+  - {name: unit, phase: regression, result: passed, head_sha: 3fe8233320b692a8a68f49b36017098a28514db0, evidence: '847/847 plus tooling 16/16'}
+ci:
+  required: true
+  workflow: CI
+  run_id: 35152083842
+  head_sha: 3fe8233320b692a8a68f49b36017098a28514db0
+  conclusion: success
+  artifacts:
+    - id: 10469607687
+      name: review-range-user-validation-0.1.53-pre+3fe8233
+      digest: 'sha256:109097f9c29b00c31e2948d80d4d45818da6c5c65d8b1112b67db1398091a6df'
+implementation:
+  outcome: not_applicable
+  final_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary: ['Review only; no product or test fix was made.']
+review: &review
+  mode: initial_review
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  reviewer:
+    identity: 'ChatGPT PDS-07 normal reviewer, 2026-09-17'
+    role: normal_reviewer
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+  verdict: fail
+  required_coverage:
+    - {criterion: 'All changed files and direct dependencies', disposition: checked_finding, evidence: 'Detailed report coverage table'}
+    - {criterion: 'Normal design table through real-path acceptance', disposition: checked_finding, evidence: PDS07-NR1-001}
+    - {criterion: 'Selection normalization and state product', disposition: checked_no_finding, evidence: 'Focused acceptance and source inspection'}
+    - {criterion: 'Saved history contents', disposition: checked_finding, evidence: PDS07-NR1-002}
+    - {criterion: 'PR Progress and Global-only behavior', disposition: checked_no_finding, evidence: 'Acceptance cases and current-head CI'}
+    - {criterion: 'EOF/existence and configuration switching', disposition: checked_no_finding, evidence: '13 EOF cases plus operation-time mode switch'}
+    - {criterion: 'Static/default regression and exact-head CI', disposition: checked_no_finding, evidence: 'Focused 116/116, unit 847/847, CI success'}
+    - {criterion: 'Later PDS phases', disposition: unexplored, evidence: 'Separate tasks by authoritative plan'}
+  validation_assessment:
+    - {item: 'Existing PDS-07 execution results', result: supported, evidence: 'Independent focused/unit reproduction and exact-head CI'}
+    - {item: 'Claim that every normal-table behavior is accepted end to end', result: failed, evidence: PDS07-NR1-001}
+    - {item: 'Claim that history contents are jointly checked across acceptance tables', result: failed, evidence: PDS07-NR1-002}
+  reserved_report_paths: [reports/pr120-pds07-normal-review-20260917.md]
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: 3fe8233320b692a8a68f49b36017098a28514db0
+    validation_status: not_applicable
+  summary:
+    - 'Fail: two P2 acceptance-coverage findings; no product defect newly reproduced.'
+report: &report
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths: [reports/pr120-pds07-normal-review-20260917.md]
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - 'Detailed evidence is in the repository report; publication commit and new-head CI are recorded after push.'
+findings: &findings
+  - id: PDS07-NR1-001
+    severity: medium
+    priority: P2
+    origin: introduced_by_change
+    location: 'test/unit/pr-diff-selection-acceptance.test.ts:498-600; Design/pr-diff-selection-mode.md:53-68'
+    description: 'The PDS-07 normal-case acceptance matrix does not exercise the side-mode behavior for every design row.'
+    impact: 'Side-mode regressions in multi-line additions/deletions, context/mixed selections or multi-block selections can pass the current PDS-07 acceptance despite the explicit all-row completion criterion.'
+    evidence: 'Only four normalCases use mode=side; addition, deletion, context-only, mixed context and multi-selection rows are represented by block-mode cases. Earlier tests do not jointly assert real persistence, actual history and PR Progress for those side rows.'
+    required_action: 'Add real-runtime side-mode acceptance for the uncovered design rows, including multi-line narrow addition/deletion selection, and jointly verify ranges, commit count, actual history, PR Progress and Global.'
+  - id: PDS07-NR1-002
+    severity: medium
+    priority: P2
+    origin: introduced_by_change
+    location: 'test/unit/pr-diff-selection-acceptance.test.ts:604-619,707-729,815-854'
+    description: 'Many PDS-07 acceptance cases assert only history event sides rather than the persisted history contents required by the task.'
+    impact: 'Incorrect Context/Global before-after ranges, reason or original diff identity can pass normal, boundary, EOF/existence, addition or deletion acceptance while state and PR Progress remain correct.'
+    evidence: 'The 108 replacement state-product cases and Global-only case inspect detailed payloads, but normal cases, boundary cases and newline cases use eventSides; addition/deletion state products do not verify the full before/after history payload.'
+    required_action: 'Assert expected persisted history payloads through the actual recorder for mark and unmark, including Context before/after, Global before/after, reason and original diffId where applicable.'
+held: []
+unexplored:
+  - {area: 'Later PDS phases and integrated final review', blocker: 'Separate planned tasks', remaining_risk: 'Stale/CAS/reload and actual Extension Host visual acceptance remain pending', verdict_impact: 'Not treated as PDS-07 defects'}
+unknown:
+  - field_or_fact: 'Normal review report commit SHA and exact-head CI after publication'
+    reason: 'The administrative review commit does not exist at packet creation; it is resolved after push without rewriting this packet recursively.'
+not_applicable:
+  - {field_or_area: merge, reason: 'Reserved to user'}
+  - {field_or_area: 'Independent final attestation', reason: 'Normal review only'}
+remaining_risks:
+  - 'Two P2 acceptance-coverage findings remain unresolved.'
+  - 'RDC local review logs are machine-local; GitHub CI supplies current-head hosted verification.'
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      execution_environment: *environment
+      reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+      capability: local_execution_available
+      scope: 'PDS-07 normal review only'
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review: *review
+      findings: *findings
+      detailed_evidence: reports/pr120-pds07-normal-review-20260917.md
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      report: *report
+      complete_body_reference: reports/pr120-pds07-normal-review-20260917.md
+extensions:
+  - namespace: revmem.review_priorities
+    payload:
+      PDS07-NR1-001: P2
+      PDS07-NR1-002: P2
+next_action:
+  type: implementation
+  target_skill: development-orchestrator
+  mode: 'PDS-07 finding fixes'
+  summary: 'Fix both acceptance-coverage findings, then return to this normal reviewer for bounded re-review.'
+  instructions:
+    - 'Recheck RDC sessions, PR current HEAD and permissions before modifying files.'
+    - 'Use TDD for each finding and preserve diagnostic artifacts for failures.'
+    - 'Do not start the next PDS phase until this normal review converges.'
+    - 'After every pushed HEAD change, verify only the CI run whose head_sha equals the new PR HEAD.'
+    - 'Do not merge.'
+  required_attachments_or_references:
+    - reports/pr120-pds07-normal-review-20260917.md
+    - Design/pr-diff-selection-mode.md
+  requested_authorized_actions: [read_repository, edit_tests, write_report, write_handoff, commit, push, comment_pr]
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds07-normal-review-20260917.yaml
+  packet_url: null
+  transport_note: 'Normal review packet. Publication commit and its exact-head CI are recorded in the PR comment and final response after this pre-commit packet is pushed.'
