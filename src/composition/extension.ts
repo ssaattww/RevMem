@@ -60,6 +60,7 @@ import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeOptions
 } from "./pull-request/pull-request-review-runtime";
+import { recordPullRequestReviewHistory } from "./pull-request/pull-request-review-history";
 import {
   GitReviewContextResolver,
   type SelectedReviewContext
@@ -612,15 +613,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
     repository: prRepository,
-    requestHistory: (transaction) => prHistory.recordTransaction(
-      transaction,
-      transaction.operation === "mark-ranges-reviewed" ||
-      transaction.operation === "unmark-ranges-reviewed" ||
-      transaction.operation === "mark-diff-block-reviewed" ||
-      transaction.operation === "unmark-diff-block-reviewed"
-        ? "user-selection"
-        : "user-file"
-    ),
+    requestHistory: (transaction) => recordPullRequestReviewHistory(prHistory, transaction),
     diffHost: {
       parseUri: (value) => vscode.Uri.parse(value, true),
       openDiff: async (original, modified, title) => {
