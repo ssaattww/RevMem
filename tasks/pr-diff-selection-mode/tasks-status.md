@@ -7,7 +7,7 @@
 - 対象: Issue #119 / PR #120。設計: [PR差分の確認単位切替](../../Design/pr-diff-selection-mode.md)。フェーズ: [phases-status.md](phases-status.md)。
 - 計画基準HEAD: `c7a5d2b1d9a34e60614ae48c619217b9568e1e8e`。設計blob: `83a16fd656f9f66ebc6ef81d3b97c97f902710c9`。
 - 設計は独立レビューで合格済み。製品の実装完了・今回のタスク計画のレビュー合格を意味しない。
-- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06は通常レビューでPDS06-NR1-001 / PDS06-NR1-002（各P2）の指摘があり、現在は指摘対応中。PDS-07には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
+- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06の通常レビュー指摘PDS06-NR1-001 / PDS06-NR1-002（各P2）は実装修正・ローカル検証・push済みで、現在は同じ通常レビュワーの再レビュー待ち。PDS-07には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
 - この機能の追跡は本一覧を正とする。[全体タスク](../tasks-status.md)・[全体フェーズ](../phases-status.md)の他案件の状態は変更しない。
 - 規模は作業範囲の相対値。Sは単一処理、Mは関連する複数処理または結合試験を扱う。所要時間の確約ではない。
 
@@ -20,7 +20,7 @@
 | PDS-03 | ブロック処理 | 完了 | S | 変更ブロックを導出する | PDS-01 | 置換・追加・削除を正しく区切り、未変更行・hunk境界を越えて連動しない |
 | PDS-04 | ブロック処理 | 完了 | S | 選択範囲から左右の更新対象を組み立てる | PDS-02, PDS-03 | 正常系表と選択境界表の対象範囲が一致し、未選択ブロックを巻き込まない |
 | PDS-05 | ブロック処理 | 完了 | M | 三成分の原子的な更新・変更なし判定・履歴を実装する | PDS-04 | 状態直積、Globalだけの更新、履歴の内容・順序・回数を同一更新単位で検証する |
-| PDS-06 | 接続と受入 | 指摘対応中 | M | 設定とPR限定のコマンド経路を接続する | PDS-02, PDS-04, PDS-05 | 既定side、明示block、設定変更、不正値、通常エディタ・PR以外の分離が実経路で成立する |
+| PDS-06 | 接続と受入 | 再レビュー待ち | M | 設定とPR限定のコマンド経路を接続する | PDS-02, PDS-04, PDS-05 | 既定side、明示block、設定変更、不正値、通常エディタ・PR以外の分離が実経路で成立する |
 | PDS-07 | 接続と受入 | 未着手 | M | 設計表全行の結合受入試験を完成させる | PDS-06 | 表の各行に実行済みテストが対応し、保存状態・履歴・PR Progressを一緒に照合できる |
 | PDS-08 | 接続と受入 | 未着手 | M | 古い比較・競合・再読込の回帰を固定する | PDS-06 | 別比較・別ファイルへの誤更新、競合時の片側保存、再読込での状態欠落がない |
 | PDS-09 | 接続と受入 | 未着手 | M | 実Extension Hostで設定と左右の表示同期を検証する | PDS-07, PDS-08 | 実際の差分画面で確認・解除と設定切替を行い、左右の装飾・進捗が確定状態に一致する |
@@ -106,7 +106,7 @@ Globalだけ、元側とGlobalだけの変化、繰返し操作、対象外範�
 
 ## 次の操作
 
-PDS-06のPDS06-NR1-001 / PDS06-NR1-002をTDDで修正し、同じ通常レビュワー文脈の再レビューでfixedを確認する。PDS-07には進まない。
+PDS-06のPDS06-NR1-001 / PDS06-NR1-002は実装修正済み。同じ通常レビュワー文脈の再レビューでfixedを確認するまでPDS-07には進まない。
 
 ## 今回の実行証拠
 
@@ -130,4 +130,6 @@ PDS-06のPDS06-NR1-001 / PDS06-NR1-002をTDDで修正し、同じ通常レビュ
 - PDS-05再レビュー: `903480b123fcccf57eb27a5f7d08495f77287a45` を同じレビュワー文脈で確認し、PDS05-NR1-001はfixed、verdictは`pass_with_held`。詳細: [再レビュー](../../reports/pr120-pds05-normal-rereview-20260916.md)。
 - PDS-06: [設定とPR限定コマンド結線](../../reports/pr120-pds06-implementation-20260916.md)。Redは29件中24成功・5失敗、Greenは29/29、焦点59/59、既定unit 790/790、tooling 16/16。build・型契約・構造正負・lint成功。実装コミットは`00d42300d838d510b2101d03d7969ba7ce0a4a31`。同SHAのCI run `35033585889` は本記録作成時点で実行中。
 - PDS-06通常レビュー: reviewed implementation HEAD `d256b2506247c302ad1edd5b2af247368fe2fdba` でPDS06-NR1-001 / PDS06-NR1-002（各P2）を確認し、verdictは`fail`。詳細: [通常レビュー](../../reports/pr120-pds06-normal-review-20260916.md)。
+- PDS06-NR1-001 / P2: PR HEADとowner current Globalが異なるとき、Context両側が既に目的状態でもHEAD側Global snapshotだけの差分をno-op扱いする問題を4ケースのRedで再現。コマンド側の独自current-file比較を削除し、coreの全snapshot semantic判定へ統一。修正commit `bc6c143`。Green関連55/55。
+- PDS06-NR1-002 / P2: side/blockが同じ履歴`reason`で保存され識別不能な問題をRedで固定。PR履歴境界を分離し、side=`user-selection`、block=`user-block-selection`として保存。修正commit `444eb6e`。履歴関連22/22、PDS-06焦点66/66、既定unit797/797、tooling16/16、build・型契約・構造正負・lint成功。詳細: [指摘修正検証](../../reports/pr120-pds06-fix-verification-20260916.md)。同じ通常レビュワーの再レビュー待ち。
 - PDS-07以降、統合通常レビュー・独立レビュー・最終公開CIは未実施。PDS-06の2指摘がfixedになるまで後続へ進まない。mergeは利用者が行う。
