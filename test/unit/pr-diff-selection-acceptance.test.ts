@@ -296,6 +296,59 @@ const finalRanges = (operation: "mark" | "unmark"): LineInterval[] =>
 const eventSides = (events: readonly ReviewHistoryEvent[]): Array<"modified" | "original"> =>
   events.map((event) => (event as FileReviewHistoryEvent).diffSide);
 
+type HistoryPayloadExpectation = {
+  readonly side: "modified" | "original";
+  readonly reason: "user-file" | "user-selection" | "user-block-selection";
+  readonly previousRanges: readonly LineInterval[];
+  readonly nextRanges: readonly LineInterval[];
+  readonly globalPreviousRanges?: readonly LineInterval[];
+  readonly globalNextRanges?: readonly LineInterval[];
+};
+
+const expectedHistoryPayloads = (
+  sides: readonly ("modified" | "original")[],
+  reason: HistoryPayloadExpectation["reason"],
+  transition: {
+    readonly originalPrevious: readonly LineInterval[];
+    readonly originalNext: readonly LineInterval[];
+    readonly modifiedPrevious: readonly LineInterval[];
+    readonly modifiedNext: readonly LineInterval[];
+    readonly globalPrevious: readonly LineInterval[];
+    readonly globalNext: readonly LineInterval[];
+  },
+): HistoryPayloadExpectation[] => sides.map((side) => side === "modified" ? {
+  side,
+  reason,
+  previousRanges: transition.modifiedPrevious,
+  nextRanges: transition.modifiedNext,
+  globalPreviousRanges: transition.globalPrevious,
+  globalNextRanges: transition.globalNext,
+} : {
+  side,
+  reason,
+  previousRanges: transition.originalPrevious,
+  nextRanges: transition.originalNext,
+});
+
+const assertHistoryPayloads = (
+  events: readonly ReviewHistoryEvent[],
+  expected: readonly HistoryPayloadExpectation[],
+): void => {
+  assert.equal(events.length, expected.length);
+  for (const [index, item] of expected.entries()) {
+    const event = events[index] as FileReviewHistoryEvent;
+    assert.equal(event.diffSide, item.side);
+    assert.equal(event.reason, item.reason);
+    assert.deepEqual(event.previousRanges, item.previousRanges);
+    assert.deepEqual(event.nextRanges, item.nextRanges);
+    if (item.side === "modified") {
+      assert.deepEqual(event.globalPreviousRanges ?? [], item.globalPreviousRanges ?? []);
+      assert.deepEqual(event.globalNextRanges ?? [], item.globalNextRanges ?? []);
+    } else {
+      assert.equal(event.diffId, DIFF_ID);
+    }
+  }
+};
 const assertProgress = async (
   fixture: AcceptanceFixture,
   reviewedLineCount: number,
@@ -387,8 +440,15 @@ test("addition state product persists only modified Context and Global through t
         assert.equal(Object.hasOwn(contextFile.originalReviewedByDiff, DIFF_ID), false);
         assert.deepEqual(contextFile.modifiedReviewed, expected);
         assert.deepEqual(fixture.repository.current.globalState.files[fixture.fileId]?.reviewed, expected);
-        assert.deepEqual(eventSides(fixture.events), anyChanged ? ["modified"] : []);
-        if (anyChanged) assert.equal(fixture.events[0]?.reason, "user-block-selection");
+        assertHistoryPayloads(fixture.events, anyChanged ? expectedHistoryPayloads(
+          ["modified"],
+          "user-block-selection",
+          {
+            originalPrevious: [], originalNext: [],
+            modifiedPrevious: rangesFor(modifiedState), modifiedNext: expected,
+            globalPrevious: rangesFor(globalState), globalNext: expected,
+          },
+        ) : []);
         await assertProgress(fixture, operation === "mark" ? 2 : 0, 2);
         caseCount += 1;
       }
@@ -416,8 +476,14 @@ test("deletion state product persists only original review state through the run
       assert.deepEqual(contextFile.originalReviewedByDiff[DIFF_ID] ?? [], expected);
       assert.deepEqual(contextFile.modifiedReviewed, []);
       assert.equal(fixture.repository.current.globalState.files[fixture.fileId], undefined);
-      assert.deepEqual(eventSides(fixture.events), changed ? ["original"] : []);
-      if (changed) assert.equal(fixture.events[0]?.reason, "user-block-selection");
+      assertHistoryPayloads(fixture.events, changed ? expectedHistoryPayloads(
+        ["original"],
+        "user-block-selection",
+        {
+          originalPrevious: rangesFor(originalState), originalNext: expected,
+          modifiedPrevious: [], modifiedNext: [], globalPrevious: [], globalNext: [],
+        },
+      ) : []);
       await assertProgress(fixture, operation === "mark" ? 2 : 0, 2);
       caseCount += 1;
     }
@@ -687,7 +753,15 @@ test("normal selection cases persist the designed ranges with matching history a
         modified: item.expectedModified,
         global: item.expectedGlobal,
       });
-      assert.deepEqual(eventSides(fixture.events), item.historySides);
+      assertHistoryPayloads(fixture.events, expectedHistoryPayloads(
+        item.historySides,
+        item.mode === "block" ? "user-block-selection" : item.side === "modified" ? "user-selection" : "user-file",
+        {
+          originalPrevious: [], originalNext: item.expectedOriginal,
+          modifiedPrevious: [], modifiedNext: item.expectedModified,
+          globalPrevious: [], globalNext: item.expectedGlobal,
+        },
+      ));
       await assertProgress(fixture, item.reviewed, item.total);
     });
   }
@@ -791,12 +865,28 @@ test("selection normalization applies the same block targets to mark and unmark"
         modified: item.expectedModified,
         global: item.expectedModified,
       });
-      assert.deepEqual(eventSides(fixture.events), item.historySides);
+      assertHistoryPayloads(fixture.events, expectedHistoryPayloads(
+        item.historySides,
+        "user-block-selection",
+        {
+          originalPrevious: [], originalNext: item.expectedOriginal,
+          modifiedPrevious: [], modifiedNext: item.expectedModified,
+          globalPrevious: [], globalNext: item.expectedModified,
+        },
+      ));
       await assertProgress(fixture, item.reviewed, 4);
 
       assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
       assert.deepEqual(reviewedRanges(fixture), { original: [], modified: [], global: [] });
-      assert.deepEqual(eventSides(fixture.events), [...item.historySides, ...item.historySides]);
+      assertHistoryPayloads(fixture.events.slice(item.historySides.length), expectedHistoryPayloads(
+        item.historySides,
+        "user-block-selection",
+        {
+          originalPrevious: item.expectedOriginal, originalNext: [],
+          modifiedPrevious: item.expectedModified, modifiedNext: [],
+          globalPrevious: item.expectedModified, globalNext: [],
+        },
+      ));
       await assertProgress(fixture, 0, 4);
       assert.equal(fixture.repository.commits, 2);
     });
@@ -917,11 +1007,27 @@ test("newline and existence acceptance cases keep editor and Git-content ranges 
         modified: expectedModified,
         global: expectedModified,
       });
-      assert.deepEqual(eventSides(fixture.events), expectedHistorySides);
+      assertHistoryPayloads(fixture.events, expectedHistoryPayloads(
+        expectedHistorySides,
+        "user-block-selection",
+        {
+          originalPrevious: [], originalNext: expectedOriginal,
+          modifiedPrevious: [], modifiedNext: expectedModified,
+          globalPrevious: [], globalNext: expectedModified,
+        },
+      ));
       await assertProgress(fixture, file.additions + file.deletions, file.additions + file.deletions);
       assert.equal(await command.commands.unmarkSelectionReviewed(command.editor), "applied");
       assert.deepEqual(reviewedRanges(fixture), { original: [], modified: [], global: [] });
-      assert.deepEqual(eventSides(fixture.events), [...expectedHistorySides, ...expectedHistorySides]);
+      assertHistoryPayloads(fixture.events.slice(expectedHistorySides.length), expectedHistoryPayloads(
+        expectedHistorySides,
+        "user-block-selection",
+        {
+          originalPrevious: expectedOriginal, originalNext: [],
+          modifiedPrevious: expectedModified, modifiedNext: [],
+          globalPrevious: expectedModified, globalNext: [],
+        },
+      ));
       await assertProgress(fixture, 0, file.additions + file.deletions);
       assert.equal(fixture.repository.commits, 2);
     });
