@@ -1240,3 +1240,39 @@ test("PR runtime does not read selection mode or open state for an empty selecti
   assert.equal(modeReads, 0);
   assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
 });
+
+const BLOCK_RANGE = [{ startLine: 0, endLineExclusive: 1 }];
+
+for (const side of ["original", "modified"] as const) {
+  for (const operation of ["mark", "unmark"] as const) {
+    test(`PR runtime block ${operation} from ${side} commits when only the target revision Global snapshot changes`, async () => {
+      const fixture = runtimeForRevisionTexts("old", "new", undefined, () => "block");
+      const command = await openRevisionTextCommand(fixture, side, 0);
+      await command.commands.markSelectionReviewed(command.editor);
+      if (operation === "unmark") await command.commands.unmarkSelectionReviewed(command.editor);
+
+      const global = fixture.repository.current.globalState;
+      const ownerFile = structuredClone(global.files[fixture.fileId]!);
+      ownerFile.revisionId = C;
+      global.currentRevisionId = C;
+      global.files = { [fixture.fileId]: ownerFile };
+      global.revisionSnapshots![B]!.files[fixture.fileId]!.reviewed = operation === "mark"
+        ? []
+        : structuredClone(BLOCK_RANGE);
+      const before = fixture.counts();
+      const ownerGlobalBefore = structuredClone(global.files);
+
+      const result = operation === "mark"
+        ? await command.commands.markSelectionReviewed(command.editor)
+        : await command.commands.unmarkSelectionReviewed(command.editor);
+
+      assert.equal(result, "applied");
+      assert.deepEqual(fixture.counts(), { commits: before.commits + 1, histories: before.histories + 1 });
+      assert.deepEqual(fixture.repository.current.globalState.files, ownerGlobalBefore);
+      assert.deepEqual(
+        fixture.repository.current.globalState.revisionSnapshots?.[B]?.files[fixture.fileId]?.reviewed,
+        operation === "mark" ? BLOCK_RANGE : [],
+      );
+    });
+  }
+}

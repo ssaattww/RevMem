@@ -3,6 +3,7 @@ import type { TextSelection } from "../../core/intervals/index";
 import { normalizeLineIntervals, selectionsToLineIntervals } from "../../core/intervals/index";
 import {
   commitReviewStateTransaction,
+  hasReviewStateSemanticChange,
   markDiffBlockReviewed,
   markFileReviewed,
   markOriginalSelectionReviewed,
@@ -77,22 +78,6 @@ export interface DiffEditorReviewCommandDependencies<Editor> {
   /** Optional clock for transaction timestamps. */
   readonly now?: () => Date;
 }
-
-/** Returns only the persisted file attributes that distinguish an effective review mutation. */
-const semanticFileEntry = <File extends { readonly updatedAt: string }>(file: File | undefined): Omit<File, "updatedAt"> | undefined => {
-  if (file === undefined) return undefined;
-  return Object.fromEntries(Object.entries(file).filter(([key]) => key !== "updatedAt")) as Omit<File, "updatedAt">;
-};
-
-/** Ignores generated timestamps while retaining file presence, ranges, path, revision, hash, and line-count changes. */
-const hasSemanticChange = (transaction: Readonly<ReviewStateTransaction>): boolean => {
-  const expectedContext = transaction.expected.contextState.files[transaction.fileId];
-  const nextContext = transaction.next.contextState.files[transaction.fileId];
-  const expectedGlobal = transaction.expected.globalState.files[transaction.fileId];
-  const nextGlobal = transaction.next.globalState.files[transaction.fileId];
-  return JSON.stringify(semanticFileEntry(expectedContext)) !== JSON.stringify(semanticFileEntry(nextContext)) ||
-    JSON.stringify(semanticFileEntry(expectedGlobal)) !== JSON.stringify(semanticFileEntry(nextGlobal));
-};
 
 /** Derives the one canonical original-side state key required by a pull-request context. */
 const canonicalDiffIdFor = (contextState: DiffEditorReviewStateSession["contextState"], fallback: string): string => {
@@ -298,7 +283,7 @@ export class DiffEditorReviewCommandService<Editor> {
     return session;
   }
   private async commitWhenChanged(transaction: ReviewStateTransaction, committer: ReviewStateTransactionCommitter): Promise<DiffEditorReviewCommandResult> {
-    if (!hasSemanticChange(transaction)) return "no-op";
+    if (!hasReviewStateSemanticChange(transaction)) return "no-op";
     await commitReviewStateTransaction(transaction, committer);
     await this.dependencies.requestHistory(transaction);
     return "applied";
