@@ -1,0 +1,1114 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix_verification
+  generated_at: '2026-09-16T22:09:35.032434+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-06
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  commit_range: cc0a34a16cb9535661fb97b054c99bdeec5b0a25..8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+execution_environment: &id001
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 75840a70-dea0-4d8c-9bb4-fe97c78bc11e
+  connection: available
+  os: Linux
+  shell: /bin/bash
+  working_directory: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source
+  repository: ssaattww/RevMem
+  branch: investigation/issue-119-linked-diff-blocks
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  source_state: snapshot
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  ownership: current_task
+  writable_paths:
+  - /home/ibis/RevMem-pr120-pds06-rereview-20260916/reports/pr120-pds06-normal-rereview-20260916.md
+  - /home/ibis/RevMem-pr120-pds06-rereview-20260916/handoffs/issue-119-pr120-pds06-normal-rereview-20260916.yaml
+  - /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916
+  dependencies:
+  - name: Node.js
+    status: available
+    evidence: v22.13.1
+  - name: npm
+    status: available
+    evidence: 11.4.2; matching package-lock and existing dependencies
+  evidence:
+  - Fresh dedicated worktree; archived exact HEAD; 1476 tracked-file SHA-256 values matched after tests.
+  - Other sessions/worktrees were not reset, stashed, cleaned or terminated.
+verification: &id023
+  capability: local_execution_available
+  capability_evidence: &id002
+  - RDC focused 66/66; unit 797/797 and tooling 16/16; external closure probes 27/27; static gates passed.
+  technical_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  administrative_parent: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  commit:
+    state: committed
+    review_target_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  push:
+    state: pushed
+    head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  ci_wait:
+    state: ci_wait_completed
+    required_for: route_verification
+  final_publication:
+    sequence: not_applicable
+    pr_action: update
+authoritative_requirements: &id005
+- source: user_instruction
+  reference: 再レビュー; standing project instructions
+  summary: Rereview the two PDS-06 findings in the same review context, use RDC git and GitHub connector, persist
+    report, do not merge.
+- source: design
+  reference: Design/pr-diff-selection-mode.md
+  summary: Persist Global-only changes and distinguish side/block history while preserving event rules.
+- source: task
+  reference: tasks/pr-diff-selection-mode/tasks-status.md
+  summary: PDS-06 fix verification before any separately requested next-task work.
+development_policy: &id007
+  method: TDD
+  testing_order: Required for RevMem product fixes; this task is review/validation only.
+  governing_source: Standing project instructions and scoped task plan
+validation_plan:
+  commands:
+  - npm run build
+  - node --test ../closure-probes.mjs
+  - npm run lint
+  - npm run test:pr-diff-selection
+  - npm run test:unit
+  - npm run typecheck:contracts
+  - npm run validate:architecture:negative
+  - npm run validate:architecture
+  required_failure_diagnostics: &id009
+  - result JSON
+  - stdout
+  - stderr
+  - combined log
+  - source fingerprint
+blocked: []
+authorized_actions:
+- read_repository
+- write_report
+- write_handoff
+- commit
+- push
+- update_pr
+- comment_pr
+write_boundary: &id006
+  allowed:
+  - path_or_operation: reports/pr120-pds06-normal-rereview-20260916.md
+    reason: Detailed rereview report
+  - path_or_operation: handoffs/issue-119-pr120-pds06-normal-rereview-20260916.yaml
+    reason: Normal review handoff
+  - path_or_operation: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916
+    reason: External validation evidence
+  - path_or_operation: PR review/body update and report-only git publication
+    reason: Standing review workflow
+  forbidden:
+  - path_or_operation: product/tests/configuration/design/workflow/tracking edits or PDS-07 implementation
+    reason: Review-only scope
+  - path_or_operation: merge
+    reason: User-owned action
+scope: &id003
+- Two existing findings and direct fix/regression delta; 10 changed files
+non_goals: &id004
+- Product fixes
+- PDS-07 through PDS-10 work
+- Independent final review
+- Merge
+files:
+  changed:
+  - path: reports/pr120-pds06-normal-rereview-20260916.md
+    purpose: Detailed rereview report
+  - path: handoffs/issue-119-pr120-pds06-normal-rereview-20260916.yaml
+    purpose: Lossless normal rereview handoff
+  inspected:
+  - path: handoffs/issue-119-pr120-pds06-fix-verification-20260916.yaml
+    purpose: Fix diff review
+  - path: package.json
+    purpose: Fix diff review
+  - path: reports/pr120-pds06-fix-verification-20260916.md
+    purpose: Fix diff review
+  - path: src/application/review-commands/diff-editor-review-command-service.ts
+    purpose: Fix diff review
+  - path: src/composition/extension.ts
+    purpose: Fix diff review
+  - path: src/composition/pull-request/pull-request-review-history.ts
+    purpose: Fix diff review
+  - path: tasks/pr-diff-selection-mode/phases-status.md
+    purpose: Fix diff review
+  - path: tasks/pr-diff-selection-mode/tasks-status.md
+    purpose: Fix diff review
+  - path: test/unit/pr-diff-selection-history.test.ts
+    purpose: Fix diff review
+  - path: test/unit/t405-pull-request-review-runtime.test.ts
+    purpose: Fix diff review
+  - path: src/core/review-state/review-state-service.ts
+    purpose: Direct dependency or authoritative requirement
+  - path: src/core/review-state/pull-request-review-state-service.ts
+    purpose: Direct dependency or authoritative requirement
+  - path: src/application/review-history/review-history-recorder.ts
+    purpose: Direct dependency or authoritative requirement
+  - path: src/composition/pull-request/pull-request-review-runtime-base.ts
+    purpose: Direct dependency or authoritative requirement
+  - path: Design/pr-diff-selection-mode.md
+    purpose: Direct dependency or authoritative requirement
+  - path: .github/workflows/ci.yml
+    purpose: Direct dependency or authoritative requirement
+  intentionally_untouched:
+  - path_or_area: all product/tests/configuration/design/workflow/tracking files
+    reason: No implementation or progress edits in this review
+commands: &id008
+- command: npm run build
+  purpose: rereview-pds06-build
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.log
+- command: node --test ../closure-probes.mjs
+  purpose: rereview-pds06-closure-probes
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.log
+- command: npm run lint
+  purpose: rereview-pds06-lint
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.log
+- command: npm run test:pr-diff-selection
+  purpose: rereview-pds06-test-pr-diff-selection
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.log
+- command: npm run test:unit
+  purpose: rereview-pds06-test-unit
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.log
+- command: npm run typecheck:contracts
+  purpose: rereview-pds06-typecheck-contracts
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.log
+- command: npm run validate:architecture:negative
+  purpose: rereview-pds06-validate-architecture-negative
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.log
+- command: npm run validate:architecture
+  purpose: rereview-pds06-validate-architecture
+  exit_code: 0
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.result.json
+  execution_environment: *id001
+  source_fingerprint: git-tree:e61b6794f3160665c5e11648c08c33ef1400beb5
+  diagnostics:
+    stdout: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.stdout.log
+    stderr: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.stderr.log
+    combined: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.log
+tests:
+- name: focused
+  phase: verification
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: 66/66
+- name: unit
+  phase: verification
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: 797/797
+- name: tooling
+  phase: verification
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: 16/16
+- name: external closure probes
+  phase: verification
+  result: passed
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  evidence: 27/27
+ci: &id010
+  required: true
+  workflow: CI
+  run_id: 35082927011
+  head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  conclusion: success
+  event: pull_request
+  attempt: 1
+  artifacts:
+  - id: 10441406775
+    name: review-range-user-validation-0.1.53-pre+8f2a67e
+    purpose: Exact-head user validation; metadata inspected, binary not downloaded
+implementation:
+  outcome: not_applicable
+  final_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  commits: []
+  addressed_findings: []
+  failure_diagnostics: []
+  blocked_items: []
+  summary:
+  - Review only; no implementation changes.
+review:
+  mode: fix_verification
+  reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  reviewer: &id012
+    identity: ChatGPT PDS-06 normal reviewer, 2026-09-16
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT PDS-06 normal reviewer, 2026-09-16
+      changed: false
+      reason: Same current conversation as the initial PDS-06 review.
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+      - Current chat reviewed and ran external validation only; not an independent-final review.
+  verdict: pass_with_held
+  required_coverage: &id013
+  - criterion: Requirements/design
+    disposition: checked_no_finding
+    evidence: Both source findings satisfy every matrix row.
+  - criterion: Correctness and sibling cases
+    disposition: checked_no_finding
+    evidence: 27 closure probes, including same/different owner revisions, both sides, mark/unmark and repeat no-op.
+  - criterion: Scope and direct dependencies
+    disposition: checked_no_finding
+    evidence: All 10 changed files plus core comparison, PR projection, history recorder and invocation inspected.
+  - criterion: API/configuration/compatibility
+    disposition: checked_no_finding
+    evidence: Existing side and whole-file behavior retained; no schema or configuration delta.
+  - criterion: Errors and diagnostics
+    disposition: checked_no_finding
+    evidence: Recorder receiver/promise propagation retained; failure diagnostic workflow exists.
+  - criterion: Tests and validation
+    disposition: checked_no_finding
+    evidence: 66/66 focused, 797/797 unit, 16/16 tooling, static gates passed.
+  - criterion: Current-head CI
+    disposition: checked_no_finding
+    evidence: Run 35082927011 event pull_request, attempt 1, exact head match, success.
+  - criterion: Report/tracking accuracy
+    disposition: checked_no_finding
+    evidence: Implementation success counts reproduced; tracking correctly awaited this review.
+  - criterion: Regression and maintainability
+    disposition: checked_no_finding
+    evidence: Duplicate comparator removed; production history boundary tested.
+  - criterion: Security/secret handling
+    disposition: not_applicable
+    evidence: No new network/authentication path; fixed history reasons and state comparison only.
+  - criterion: PDS-07 through PDS-10
+    disposition: held
+    evidence: Separate planned table/CAS/reload/actual Host/final-review work.
+  independent_closure: &id024
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment:
+  - item: rereview-pds06-build
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.result.json
+  - item: rereview-pds06-closure-probes
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.result.json
+  - item: rereview-pds06-lint
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.result.json
+  - item: rereview-pds06-test-pr-diff-selection
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.result.json
+  - item: rereview-pds06-test-unit
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.result.json
+  - item: rereview-pds06-typecheck-contracts
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.result.json
+  - item: rereview-pds06-validate-architecture-negative
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.result.json
+  - item: rereview-pds06-validate-architecture
+    result: supported
+    evidence: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.result.json
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence:
+    - Normal report; not independent-final attestation.
+  summary:
+  - Both prior P2 findings fixed; new required findings none.
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+  - reports/pr120-pds06-normal-rereview-20260916.md
+  reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+  attestation_head: null
+  pr_comments: []
+  summary:
+  - Administrative commit and publication SHA will be recorded externally after commit.
+findings: &id014
+- id: PDS06-NR1-001
+  severity: medium
+  origin: introduced_by_change
+  location: src/application/review-commands/diff-editor-review-command-service.ts:234-237; existing comparator :88-94
+    and :300-303
+  description: 'P2: block operations discard a Global-only change when repository currentRevisionId differs from
+    PR headSha.'
+  impact: PR head Global remains inconsistent after mark/unmark and no history is written.
+  evidence: 'Actual runtime: both sides x mark/unmark returned no-op; commits/history unchanged; snapshot ranges
+    not updated. PR wrapper writes revisionSnapshots but command compares files only.'
+  required_action: Compare semantic state including PR revisionSnapshots; preserve owner current Global. Add both
+    sides x mark/unmark real-runtime tests, one commit and modified history, owner state unchanged, plus no-op and
+    same-revision regressions.
+- id: PDS06-NR1-002
+  severity: medium
+  origin: introduced_by_change
+  location: src/composition/extension.ts:615-623; review-history-recorder.ts:51-60,97-120
+  description: 'P2: side and block operations are indistinguishable in persisted history.'
+  impact: Violates Design/pr-diff-selection-mode.md:267; addition-only and modified-only changes cannot reveal selection
+    mode.
+  evidence: Actual composition callback and recorder produced equal events for the same one-line addition in both
+    modes after excluding occurredAt; operation/mode is not persisted.
+  required_action: Persist distinguishable mode/operation evidence without adding fake events; test composition-to-recorder
+    mark/unmark, addition-only, and one-component replacement changes.
+held: &id022
+- item: PDS-07 through PDS-10 acceptance and final verification
+  reason: Outside this bounded normal rereview
+  owner: PDS-07/08/09/10 implementation and verification owner
+  remaining_risk: Complete table coverage, actual persistence/reload and Extension Host acceptance remain unverified
+    here.
+  verdict_impact: Does not block closure of the two PDS-06 findings; required before feature completion.
+unexplored: []
+unknown:
+- field_or_fact: New administrative commit SHA/CI at packet creation
+  reason: Not created yet; record in PR comment and final response without self-reference.
+not_applicable:
+- field_or_area: Merge and independent-final attestation
+  reason: Normal rereview only.
+remaining_risks: &id011
+- Complete table coverage, actual persistence/reload and Extension Host acceptance remain unverified here.
+source_payloads:
+- source_skill: work-context-manager
+  output_contract_version: current uploaded worker skill
+  content_type: application/yaml
+  payload:
+    repository: ssaattww/RevMem
+    issue_or_pr: 'Issue #119 / PR #120'
+    task_id: PDS-06
+    mode: review
+    branch: investigation/issue-119-linked-diff-blocks
+    base_ref: main
+    current_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    verification_capability: local_execution_available
+    verification_capability_evidence: *id002
+    execution_environment: *id001
+    execution_state:
+      technical_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      administrative_parent: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      commit: committed
+      push: pushed
+      ci_wait: ci_wait_completed
+      full_local_equivalence_gate:
+        state: not_required
+        candidate_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+        invalidated_runs: []
+    scope: *id003
+    non_goals: *id004
+    authoritative_requirements: *id005
+    write_boundary: *id006
+    development_policy: *id007
+    validation:
+      commands: *id008
+      required_failure_diagnostics: *id009
+    ci: *id010
+    unknown: []
+    blocked: []
+    remaining_risks: *id011
+- source_skill: review-worker
+  output_contract_version: current uploaded worker skill
+  content_type: application/yaml
+  payload:
+    review_mode: fix_verification
+    reviewed_implementation_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    base_ref: main
+    base_sha: 989317e00893e3b45a9e77ecb550e99274ac7e69
+    commit_range: cc0a34a16cb9535661fb97b054c99bdeec5b0a25..8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    reviewer: *id012
+    required_coverage: *id013
+    findings: *id014
+    finding_dispositions: &id026
+    - id: PDS06-NR1-001
+      source_severity: medium
+      priority: P2
+      disposition: fixed
+      source_reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+      reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      evidence:
+      - &id015
+        finding_id: PDS06-NR1-001
+        required_action: Include revision snapshots in semantic change
+        production_path: DiffEditorReviewCommandService.commitWhenChanged -> hasReviewStateSemanticChange
+        actual_composition_fixture: t405-pull-request-review-runtime.test.ts four permanent cases; external Global-only
+          eight cases
+        focused_evidence: 66/66 focused; 27/27 closure probes
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      - &id016
+        finding_id: PDS06-NR1-001
+        required_action: Preserve owner current Global
+        production_path: PR core projection/rebase -> commitCurrentRevisionSnapshot
+        actual_composition_fixture: Different-owner Global-only cases assert files/currentRevisionId unchanged
+        focused_evidence: 27/27 closure probes
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      - &id017
+        finding_id: PDS06-NR1-001
+        required_action: One commit and one modified event with both before/after components
+        production_path: runtime -> recordPullRequestReviewHistory -> ReviewHistoryRecorder
+        actual_composition_fixture: Global-only eight cases inspect actual recorder events
+        focused_evidence: 27/27 closure probes; observed-events.json
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      - &id018
+        finding_id: PDS06-NR1-001
+        required_action: Same-revision and repeated no-op regressions
+        production_path: Shared comparator and existing command paths
+        actual_composition_fixture: Eight Global-only cases repeat operation; existing selection/whole-file tests
+        focused_evidence: 27/27 closure probes; 797/797 unit
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    - id: PDS06-NR1-002
+      source_severity: medium
+      priority: P2
+      disposition: fixed
+      source_reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+      reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      evidence:
+      - &id019
+        finding_id: PDS06-NR1-002
+        required_action: Persist distinguishable selection mode
+        production_path: extension -> recordPullRequestReviewHistory
+        actual_composition_fixture: pr-diff-selection-history.test.ts three cases; external addition-only four cases
+        focused_evidence: 66/66 focused; 27/27 closure probes
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      - &id020
+        finding_id: PDS06-NR1-002
+        required_action: Retain identity for single-event operations
+        production_path: runtime -> composition history boundary -> recorder
+        actual_composition_fixture: Eight single-component replacements and two deletion-only cases
+        focused_evidence: 27/27 closure probes
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      - &id021
+        finding_id: PDS06-NR1-002
+        required_action: Preserve event count/order and actual composition wiring
+        production_path: extension callback and recorder
+        actual_composition_fixture: Four two-event cases; one source-wiring assertion
+        focused_evidence: 27/27 closure probes
+        disposition: complete
+        head_sha: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    new_findings: []
+    completeness_matrix: &id027
+    - *id015
+    - *id016
+    - *id017
+    - *id018
+    - *id019
+    - *id020
+    - *id021
+    severity_records: &id025
+    - finding_id: PDS06-NR1-001
+      source_severity: medium
+      new_severity: null
+      record_type: preserved
+      reason: null
+      approved_by: null
+    - finding_id: PDS06-NR1-002
+      source_severity: medium
+      new_severity: null
+      record_type: preserved
+      reason: null
+      approved_by: null
+    held: *id022
+    unexplored: []
+    validation_assessment: *id008
+    verdict: pass_with_held
+    remaining_risks:
+    - Complete table coverage, actual persistence/reload and Extension Host acceptance remain unverified here.
+    next_action: Await user-selected next task; synchronize tracking from this review before implementation.
+    reserved_report_paths: []
+    report_attestation_allowed: false
+    report_attestation_conditions: []
+- source_skill: report-writer
+  output_contract_version: current uploaded worker skill
+  content_type: application/yaml
+  payload:
+    report_type: review_report
+    complete_body: '# PR差分選択モード PDS-06 通常再レビュー
+
+
+      ## 判定
+
+
+      **pass_with_held**。前回の `PDS06-NR1-001` と `PDS06-NR1-002` はともに **fixed**。元の重大度 `P2 / medium` を維持し、再分類はしていない。修正差分と直接影響する範囲に新規指摘はない。
+
+      この判定はPDS-06の指摘修正確認であり、PR全体の独立最終レビューやPDS-07〜10の完了を意味しない。
+
+
+      ## 対象と証拠の識別
+
+
+      - Repository / PR: `ssaattww/RevMem` / #120。
+
+      - ブランチ: `investigation/issue-119-linked-diff-blocks`。
+
+      - 今回の reviewed implementation HEAD: `8f2a67e1fe85851e5fc210e21da602ed4f11a7c1`。
+
+      - tree: `e61b6794f3160665c5e11648c08c33ef1400beb5`。
+
+      - 前回の reviewed implementation HEAD: `d256b2506247c302ad1edd5b2af247368fe2fdba`。前回報告コミット: `cc0a34a16cb9535661fb97b054c99bdeec5b0a25`。
+
+      - 確認差分: `cc0a34a16cb9535661fb97b054c99bdeec5b0a25..8f2a67e1fe85851e5fc210e21da602ed4f11a7c1`。4コミット・10変更ファイル。
+
+      - 修正コミット: `bc6c143`（snapshotだけの更新）、`444eb6e15a3574d7241ea78ac94181b83d4da428`（履歴識別）。
+
+      - base: `main` / `989317e00893e3b45a9e77ecb550e99274ac7e69`。
+
+      - review mode: `fix_verification`。前回と同じ通常レビューチャットで実施。実装修正は行っていない。
+
+      - 根拠: [前回レビュー](pr120-pds06-normal-review-20260916.md)、[修正報告](pr120-pds06-fix-verification-20260916.md)、[設計](../Design/pr-diff-selection-mode.md)、[タスク一覧](../tasks/pr-diff-selection-mode/tasks-status.md)。
+
+
+      ## 環境と実行方法
+
+
+      RDCの端末一覧・セッション一覧を再確認し、短い確認コマンドの応答後、Linux端末 `ibis-ThinkBook-14-G7-IML`（`75840a70-dea0-4d8c-9bb4-fe97c78bc11e`）で実施した。他作業のプロセスや作業ツリーは変更していない。
+
+      作業ツリーは `/home/ibis/RevMem-pr120-pds06-rereview-20260916`。検証は同一HEADを `git archive` で展開した別領域 `/home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source`
+      で行った。
+
+      Node.js `v22.13.1`、npm `11.4.2`。package-lockの一致を確認した既存依存関係を参照し、システム設定・認証・グローバルな依存関係は変更していない。CIのNode.jsは24である。
+
+      検証後、追跡1476ファイルのSHA-256を元の作業ツリー・検証用コピーと照合し、不一致0件。内容一覧と実行結果を `source-manifest.json`、`source.json`、`validation-summary.json`
+      へ保存した。
+
+      アップロード済みworker skill 5種類は参照先CodexSkillの同名ファイルとSHA-256が一致した。参照先は `70cd31f` で、取得した `origin/main` と同一だった。
+
+
+      ## 指摘の確認結果
+
+
+      ### PDS06-NR1-001 / P2・medium — fixed
+
+
+      元の問題は、PRのheadとGlobalの現在改訂が異なるとき、PR側のGlobalだけを変更する操作が `no-op` となり、確認状態の不一致と履歴欠落が残ることだった。originは `introduced_by_change`。元の位置は
+      `diff-editor-review-command-service.ts:88-94,234-237,300-303`。
+
+      今回の修正では独自のファイル限定比較を削除し、`commitWhenChanged` がcoreの `hasReviewStateSemanticChange` を使用する。比較はContext・Globalの改訂別snapshotを含み、生成時刻だけの違いは無視する。core側の改訂投影・現在Globalの保持処理は変更していない。
+
+      常設テストの左右×確認／解除4ケースを実行した。さらに実PR runtimeへ製品の履歴境界・ReviewHistoryRecorderを接続し、現在改訂がPR headと同じ場合／異なる場合の計8ケースを確認した。
+
+      全ケースで保存1回・履歴要求1回、変更対象のPR snapshot更新、modified履歴1件、ContextとGlobalの正しい変更前後を確認。異なる現在改訂のGlobal.filesとcurrentRevisionIdは不変だった。続けて同じ操作を行うと
+      `no-op` となり、保存・履歴は増えなかった。
+
+
+      ### PDS06-NR1-002 / P2・medium — fixed
+
+
+      元の問題は、sideとblockが同じ履歴reasonとevent typeになり、追加のみなど履歴が1件の操作を保存後に識別できないことだった。originは `introduced_by_change`。元の位置は
+      `src/composition/extension.ts:615-623` と `review-history-recorder.ts:51-60,97-120`。
+
+      今回追加された `src/composition/pull-request/pull-request-review-history.ts` が、blockの確認／解除を `user-block-selection`
+      として記録する。modified側の既存side範囲操作は `user-selection`、その他の既存fallbackは `user-file` を維持する。元側の旧side操作を新たに別分類へ変更したとは扱わない。
+
+      `extension.ts` がこの境界へ委譲することと、実際の境界からrecorderへ渡されたイベントを確認した。追加のみのside/block×確認／解除4ケース、置換の1成分だけが変わる左右×確認／解除×変更成分8ケース、両側が変わる4ケース、削除のみ2ケースが成功した。
+
+      イベントが1件でもblockのreasonが残り、2件の場合はmodified→originalの順序を維持する。存在しないmodified側へGlobal状態や履歴を追加していない。識別用の余分なイベントもない。
+
+
+      ## 必要対応と証拠の照合表
+
+
+      | 指摘・必要対応 | 製品経路 | 実行した試験・証拠 | 判定 |
+
+      | --- | --- | --- | --- |
+
+      | NR1-001: snapshotを含む意味差判定 | command service → core共通判定 → PR Global投影 | 常設runtime 4件、追加Global-only 8件 | Complete
+      |
+
+      | NR1-001: 現在のGlobalを保持 | PR投影 → commitCurrentRevisionSnapshot | 異なる改訂のGlobal.files/currentRevisionId不変を照合
+      | Complete |
+
+      | NR1-001: 保存・履歴と変更前後 | 実runtime → 製品履歴境界 → ReviewHistoryRecorder | 追加8件で保存1回・modified履歴1件と双方のbefore/afterを照合
+      | Complete |
+
+      | NR1-001: 同一改訂・繰返しの回帰 | 共通判定と既存whole-file/selection経路 | 追加8件内の再操作no-op、既定単体試験 | Complete |
+
+      | NR1-002: 保存後の識別情報 | extension → recordPullRequestReviewHistory | 常設history 3件、追加の追加のみ4件 | Complete |
+
+      | NR1-002: 1件だけの履歴・左右・確認／解除 | 実runtime → 製品履歴境界 → recorder | 追加の1成分置換8件と削除のみ2件 | Complete |
+
+      | NR1-002: 件数・順序・実接続 | 同上、extensionの委譲 | 両側置換4件、製品委譲の静的確認1件 | Complete |
+
+
+      ## 現在のHEADで再実行した検証
+
+
+      | コマンド | 結果 | 診断ラベル（rereview-pds06-に続く値） |
+
+      | --- | --- | --- |
+
+      | npm run test:pr-diff-selection | 66/66成功 | test-pr-diff-selection |
+
+      | npm run test:unit | 単体797/797、tooling 16/16成功。skipなし | test-unit |
+
+      | npm run build | 成功 | build |
+
+      | npm run typecheck:contracts | 成功 | typecheck-contracts |
+
+      | npm run validate:architecture | 成功 | validate-architecture |
+
+      | npm run validate:architecture:negative | 期待する違反11件を検出して成功 | validate-architecture-negative |
+
+      | npm run lint | 成功 | lint |
+
+      | node --test ../closure-probes.mjs | 27/27成功、skipなし | closure-probes |
+
+      | git diff --check | 成功 | Gitの直接確認 |
+
+
+      各npm／Node検証は `node tools/run-ci-command.mjs <診断ラベル> <コマンド>` で実行し、結果JSON・標準出力・標準エラー・結合ログを保存した。試験群は重複を含むため、件数を合算した総件数とはしない。
+
+      追加27件は、前回指摘と修正影響を検証するレビュー用試験であり、製品のテストファイルを変更していない。チェックイン済みのコンパイル済みfixtureを再利用し、その元の試験登録だけを抑制した。差分計画・core状態更新・PR
+      runtimeは置き換えていない。
+
+      履歴用ポートだけに製品の履歴境界とrecorderを接続し、appenderへ渡されたイベントを捕捉した。これは実Extension Hostや実ファイル保存adapterを用いた試験ではない。
+
+      RDC証拠ルート: `/home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916`。追加試験は `closure-probes.mjs`、捕捉イベントは `observed-events.json`、診断は
+      `source/test-output/ci/rereview-pds06-*`、集約結果は `validation-summary.json`。
+
+      追加試験スクリプトSHA-256: `423f2e1474f5fd71071b0225aab53d8c72bc8a578e863a20d6aeed3bd96d3373`。これらはRDC先のファイルであり、アップロード済み成果物ではない。
+
+      修正時のRed→Greenは実装担当の報告にある履歴証拠として扱い、この再レビューで当時の未コミット状態を独立に証明したとはしない。今回は修正後の同一HEADで成功を再実行した。
+
+
+      ## CIと診断workflow
+
+
+      開始時に `.github/workflows/ci.yml` と既存診断経路を確認した。テスト結果・stdout・stderr・結合ログを生成し、失敗時にtest-outputと関連ソース・生成物をartifactへ保存する既存workflowがある。追加・変更は不要だった。成功時にも同じ診断一式を公開する最終監査はPDS-10の範囲に残る。
+
+      GitHub connectorでCI run `35082927011` を確認。eventは `pull_request`、attempt 1、conclusionは `success`、head_shaは今回のレビュー対象
+      `8f2a67e1fe85851e5fc210e21da602ed4f11a7c1` と一致した。
+
+      対応artifactは `10441406775`、名前は `review-range-user-validation-0.1.53-pre+8f2a67e`。一覧・head_sha対応を確認したが、バイナリ内容は取得していない。
+
+      本レポートを含む記録用コミットをpushするとHEADが変わる。そのHEADのCIは別途確認し、レビュー対象HEADの成功を代用しない。記録用コミットのSHAとCI状態はPRコメント・最終回答へ記録する。
+
+
+      ## レビュー範囲と留保
+
+
+      | 観点 | disposition | 確認結果 |
+
+      | --- | --- | --- |
+
+      | 要件・設計への適合 | checked_no_finding | 2件の必要対応は照合表の全行Complete |
+
+      | 正しさ・同種の境界条件 | checked_no_finding | 同一／別改訂、左右、確認／解除、繰返し、1件／2件履歴を確認 |
+
+      | 全変更ファイル・直接依存 | checked_no_finding | 修正差分10ファイル、core比較とPR投影・履歴生成・呼出元を確認 |
+
+      | API・設定・互換性 | checked_no_finding | 履歴reasonの分岐追加と共通判定利用。旧side・whole-fileの回帰成功 |
+
+      | エラー・診断 | checked_no_finding | 履歴Promiseと受信オブジェクトを保持し、既存の失敗伝播を変更しない。診断workflow確認 |
+
+      | security・secret handling | not_applicable | 修正は状態比較と固定reason値。新しい外部通信・認証経路はない |
+
+      | 試験の妥当性・必須経路 | checked_no_finding | 新規history試験がfocusedと既定unitに追加。既存試験の削除なし |
+
+      | current-HEAD CI | checked_no_finding | 対象SHA一致のpull_request CI成功 |
+
+      | 報告・追跡 | checked_no_finding | 実装報告の成功結果を再実行。追跡の再レビュー待ちは本確認前の状態として正当 |
+
+      | 回帰・保守性 | checked_no_finding | 独自比較の重複がなくなり、履歴境界を実コードで試験可能。追加必須指摘なし |
+
+      | PDS-07〜10 | held | 全表受入・競合/再読込・実Host・独立最終レビューと最終公開監査は後続担当 |
+
+
+      留保の担当はPDS-07〜10の実装・検証担当である。この27件は指摘修正の確認であり、後続の全表・実Host受入を済ませたことにはしない。後続タスクの未実施はPDS-06の2件の解消を妨げないが、機能全体の完成判断には必要である。
+
+      対象範囲内に判定を妨げる未探索事項はない。CI artifactのバイナリ内容、過去の未コミットソース、実ファイル保存・再起動は今回の独立確認対象に含めていない。
+
+
+      ## 公開と次の操作
+
+
+      保存対象は本レポートと通常再レビューhandoffのみ。製品コード・製品テスト・設計・workflow・既存タスクファイルは変更せず、PDS-07は開始しない。マージは行わない。
+
+      PDS-06の指摘はこの同じ通常レビュワーによって解消確認済みとする。次の実装開始時に担当者がタスク／フェーズの記録を本結果へ同期し、指定された次タスクへ進む。
+
+      記録用コミットはnormal reportであり、独立最終レビューのattestationではない。技術判定は上記レビュー対象HEADに結び付ける。後続の記録用HEADへ製品変更が混在していないことを確認し、そのpush・PR更新・CI状態を別に記録する。
+
+      '
+    evidence_sources:
+    - /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source.json
+    - /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/validation-summary.json
+    - /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/observed-events.json
+    - GitHub CI run 35082927011
+    - handoffs/issue-119-pr120-pds06-fix-verification-20260916.yaml
+    - package.json
+    - reports/pr120-pds06-fix-verification-20260916.md
+    - src/application/review-commands/diff-editor-review-command-service.ts
+    - src/composition/extension.ts
+    - src/composition/pull-request/pull-request-review-history.ts
+    - tasks/pr-diff-selection-mode/phases-status.md
+    - tasks/pr-diff-selection-mode/tasks-status.md
+    - test/unit/pr-diff-selection-history.test.ts
+    - test/unit/t405-pull-request-review-runtime.test.ts
+    target_identity:
+      branch: investigation/issue-119-linked-diff-blocks
+      base_ref: main
+      current_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      reviewed_implementation_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+    verification: *id023
+    execution_environment: *id001
+    independent_closure: *id024
+    severity_records: *id025
+    persistence:
+      mode: repository_file
+      reserved_paths:
+      - reports/pr120-pds06-normal-rereview-20260916.md
+      report_attestation_head: null
+    concise_pr_comment_body: 'PDS-06: pass_with_held. PDS06-NR1-001 and PDS06-NR1-002 fixed at 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1.
+      Focused 66/66; unit 797/797; tooling 16/16; closure probes 27/27; static gates and matching CI passed. No
+      new findings. No product edits or merge.'
+    unresolved_discrepancies: []
+extensions:
+- namespace: revmem.rereview
+  payload:
+    source_reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+    source_report_commit: cc0a34a16cb9535661fb97b054c99bdeec5b0a25
+    finding_dispositions: *id026
+    new_findings: []
+    completeness_matrix: *id027
+    source_summary:
+      reviewed_head: 8f2a67e1fe85851e5fc210e21da602ed4f11a7c1
+      source_files_checked: 1476
+      source_mismatches: []
+      result_labels:
+      - label: rereview-pds06-build
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-build.result.json
+      - label: rereview-pds06-closure-probes
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-closure-probes.result.json
+      - label: rereview-pds06-lint
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-lint.result.json
+      - label: rereview-pds06-test-pr-diff-selection
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-pr-diff-selection.result.json
+      - label: rereview-pds06-test-unit
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-test-unit.result.json
+      - label: rereview-pds06-typecheck-contracts
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-typecheck-contracts.result.json
+      - label: rereview-pds06-validate-architecture-negative
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture-negative.result.json
+      - label: rereview-pds06-validate-architecture
+        exit_code: 0
+        result_file: /home/ibis/RevMem-pr120-pds06-rereview-evidence-20260916/source/test-output/ci/rereview-pds06-validate-architecture.result.json
+      probe_script_sha256: 423f2e1474f5fd71071b0225aab53d8c72bc8a578e863a20d6aeed3bd96d3373
+    report_commit: commit_pending
+    report_push: push_pending
+    full_feature_completion: false
+    prior_findings_full_report: '# PR120 PDS-06 通常レビュー
+
+
+      ## 判定と対象
+
+
+      判定: **fail / 要修正**。P2の指摘2件。製品コード・製品テスト・設定・設計・タスク状態は変更していない。
+
+
+      - 対象: `ssaattww/RevMem` PR #120、PDS-06「設定とPR限定のコマンド経路接続」。
+
+      - ブランチ: `investigation/issue-119-linked-diff-blocks`。
+
+      - reviewed implementation HEAD: `d256b2506247c302ad1edd5b2af247368fe2fdba`。
+
+      - PDS-06差分: `9fbee35335bf735564f1f1388367e3f7fe371079..d256b2506247c302ad1edd5b2af247368fe2fdba`。
+
+      - 製品実装コミット: `00d42300d838d510b2101d03d7969ba7ce0a4a31`。
+
+      - PR base: `main` / `989317e00893e3b45a9e77ecb550e99274ac7e69`。
+
+      - レビュー種別: initial review。現在のチャットはこの実装・修正を行っていない通常レビュワー。PR全体の独立最終レビューではない。
+
+      - 本レポートは通常レビュー記録。後続の記録用コミットを製品レビュー済みHEADとは扱わない。マージしない。
+
+
+      ## 確認方法
+
+
+      RDC接続先 `ibis-ThinkBook-14-G7-IML`、device `75840a70-dea0-4d8c-9bb4-fe97c78bc11e` に固定して確認した。コマンド前に実行中セッションを確認し、他作業の待機プロセスと作業ツリーを変更していない。
+
+      レビュー作業ツリーは `/home/ibis/RevMem-pr120-pds06-review-20260916`。検証は同一HEADをgit archiveした別領域 `/home/ibis/RevMem-pr120-pds06-review-evidence-20260916/source`
+      で実施した。
+
+      HEADのtreeは `77f1f3415a22ffad11746085b0d741d38fad2a1b`。検証後、追跡1470ファイルの内容を作業ツリーと比較し、不一致0件だった。
+
+      依存関係は同一package-lockを確認した既存node_modulesを参照。Node.js v22.13.1 / npm 11.4.2。CIはNode.js 24。
+
+
+      ## 指摘
+
+
+      ### PDS06-NR1-001 / P2: 別改訂のPRでGlobalだけの更新が捨てられる
+
+
+      origin: introduced_by_change。既存のno-op判定へ今回block transactionを接続したことで、blockの受入条件を満たさない。旧side経路にも同種の比較不足があるが、本指摘は新設block経路で再現した。
+
+      位置: `src/application/review-commands/diff-editor-review-command-service.ts:234-237`、比較元 `:88-94`、commit判定
+      `:300-303`。
+
+
+      再現条件は `globalState.currentRevisionId !== PR.headSha` で、originalとmodified Contextは操作後の状態と一致し、PR head側のGlobalだけが一致していない場合。
+
+      `pull-request-review-state-service.ts:76-129` は現在のGlobalを保護し、PR側の変更を `globalState.revisionSnapshots[headSha].files`
+      へ格納する。しかしコマンド側はContext.filesとGlobal.filesしか比較せず、snapshot内だけの変更を `no-op` として破棄する。
+
+
+      | 操作元 | 操作 | 期待 | 実測 |
+
+      | --- | --- | --- | --- |
+
+      | original | 確認 | PR側Globalを確認済みにし、commitと履歴を追加 | no-op、Globalは未確認のまま、追加なし |
+
+      | modified | 確認 | 同上 | 同上 |
+
+      | original | 解除 | PR側Globalを未確認にし、commitと履歴を追加 | no-op、Globalは確認済みのまま、追加なし |
+
+      | modified | 解除 | 同上 | 同上 |
+
+
+      既存の実PR runtime fixtureで4ケースを実行し、すべて期待値 `applied` に対して `no-op` となった。確認時のcommit/history件数は1→1、解除時は2→2。設定や差分本文を模擬的に差し替えたコマンド実装ではなく、製品のcreateCommandServiceとcore更新処理を通している。
+
+      影響: 設計の「Globalだけが変化する場合も保存・履歴へ反映」を満たさず、確認状態の不一致が操作後も残る。
+
+      必要対応: 改訂別snapshotも含めてsemantic changeを判断する。既存の `hasReviewStateSemanticChange` はContext/Global全体を比較するため、共通判定の利用を検討する。現在のGlobalを書き換えて解決してはならない。
+
+      修正後の確認: 上記左右×確認/解除の4ケースを実PR runtime経路で常設化し、PR snapshotの更新、現在のGlobalの不変、commit1回、modified履歴1回を確認する。現在改訂とPR
+      headが一致する場合、および全成分no-opの回帰も残す。
+
+
+      ### PDS06-NR1-002 / P2: 保存履歴でsideとblockを区別できない
+
+
+      origin: introduced_by_change。位置: `src/composition/extension.ts:615-623`。関連: `src/application/review-history/review-history-recorder.ts:51-60,97-120`。
+
+      今回の接続ではblock操作のreasonもside操作と同じ `user-selection` になり、recorderは両者を同じ `marked-reviewed` / `unmarked-reviewed`
+      に変換する。transactionのoperationやselectionModeは保存イベントへ残らない。
+
+      1行追加のmodified側をsideとblockそれぞれで確認し、実際のcompositionに記述された履歴callbackと製品ReviewHistoryRecorderへ渡した。発生時刻を除いた保存イベントは完全に一致し、どちらもtype=marked-reviewed、reason=user-selection、同じContext/Globalのbefore/afterとなった。
+
+      影響: `Design/pr-diff-selection-mode.md:267` の「履歴上でも区別可能」を満たさない。追加のみ、または元側に変化がない操作では、イベント件数や範囲からもモードを復元できない。
+
+      必要対応: reasonまたは専用フィールドに、保存後も区別可能な操作情報を残す。履歴件数を増やして区別するのではなく、既定の状態差分に基づくイベント生成規則を維持する。
+
+      修正後の確認: composition callbackから実recorderまで通し、確認と解除、追加のみ、置換で片側だけ変化する場合にも識別情報が残ることを常設テストで確認する。
+
+
+      ## 検証結果
+
+
+      全コマンドは `tools/run-ci-command.mjs` 経由で結果JSON・stdout・stderr・結合ログを保存した。以下はレビュー対象HEADの検証結果であり、記録用コミットのCIではない。
+
+
+      | 検証 | 結果 |
+
+      | --- | --- |
+
+      | npm run test:pr-diff-selection | 59/59成功 |
+
+      | npm run test:unit | tooling 16/16、unit 790/790成功。skipなし |
+
+      | npm run build | 成功 |
+
+      | npm run typecheck:contracts | 成功 |
+
+      | npm run validate:architecture | 成功 |
+
+      | npm run validate:architecture:negative | 期待した違反11件を検出し成功 |
+
+      | npm run lint | 成功 |
+
+      | git diff --check | 成功 |
+
+      | 外部領域のruntime-probes.cjs | 7件中2件成功、5件失敗。Global更新4件と履歴識別1件が上記指摘を再現 |
+
+
+      追加試験で成功した2件は、repository.load待機中の設定変更がその操作へ影響せず次の操作から反映されること、設定readerが例外を投げてもファイル全体操作には影響せず選択操作だけが拒否されること。
+
+      再現試験は既存のコンパイル済みt405 fixtureの登録処理だけを抑えて再利用し、製品のPR runtime・差分計画・状態更新を呼び出した。履歴試験はcompositionソースのcallbackをそのまま読み出し製品recorderへ接続した。実Extension
+      Host起動の代替と主張するものではない。
+
+      再現スクリプト: `/home/ibis/RevMem-pr120-pds06-review-evidence-20260916/runtime-probes.cjs`。
+
+      診断保存先: 同領域の `source/test-output/ci/review-pds06-*.{result.json,stdout.log,stderr.log,log}`。再現結果は `runtime-probes.console.log`
+      にも保存した。これらはRDC先のファイルであり、アップロード済み成果物ではない。
+
+      実行済み再現コマンド: 検証用sourceから `node tools/run-ci-command.mjs review-pds06-runtime-probes node --test ../runtime-probes.cjs`。
+
+      同一改訂の追加対照試験を後から追加するコマンドはツールの安全確認で拒否され、実行していない。拒否された処理を別経路で再実行していない。上記7件の実行済み証拠とは区別する。
+
+
+      ## CIと履歴証拠
+
+
+      GitHub connectorでrun `35034039691` を確認した。event=pull_request、head_sha=`d256b2506247c302ad1edd5b2af247368fe2fdba`、attempt=2、conclusion=success。attempt
+      1の失敗診断artifactも残っており、無再試行で成功したとは扱わない。
+
+      artifact `10423250803` は `review-range-user-validation-0.1.53-pre+d256b25`、`10423085920` は `ci-failure-diagnostics-35034039691-1`。一覧とHEAD対応のみ確認し、バイナリ内容はダウンロードしていない。
+
+      実装時のRed結果JSONは2026-09-15 22:46:21Z開始・exit1、Greenは22:52:05Z開始・exit0を確認した。履歴ログから当時の未commitソース内容までは独立証明できない。本レビューの現在HEAD検証と混同しない。
+
+      PDS05-NR1-001は既存再レビューの解決済み扱いを維持する。今回のsnapshot比較不足は別の指摘であり、その重大度や解決記録を書き換えない。
+
+
+      ## 確認範囲と判断
+
+
+      | 観点 | disposition | 根拠 |
+
+      | --- | --- | --- |
+
+      | 差分の範囲と依存関係 | checked_no_finding | PDS-06の全13変更ファイルと呼出先・呼出元を確認 |
+
+      | 設定の既定値・許可値・不正値 | checked_no_finding | config reader、manifest、type fixture、設定単体試験 |
+
+      | 操作中の設定固定と次回反映 | checked_no_finding | 実runtimeの設定切替試験とload待機を用いた追加試験 |
+
+      | 通常エディタ・任意diff・local base/headとの分離 | checked_no_finding | src/extension.ts:776-795、local-base-head-runtime.ts:226-240、composition/extension.ts:692-715、既存回帰
+      |
+
+      | 空選択・ファイル全体操作 | checked_no_finding | session前の空選択return、scope分離、例外を投げる設定readerを用いた試験 |
+
+      | block計画と左右の更新 | checked_no_finding | deriveChangeBlocks、createDiffSelectionTargetPlan、focused試験 |
+
+      | Globalのみの差分・no-op判定 | checked_finding | PDS06-NR1-001、実runtimeの4ケース失敗 |
+
+      | 履歴識別と生成順序 | checked_finding | PDS06-NR1-002。状態差分によるmodified/original生成順序自体は維持 |
+
+      | stale・保存・表示の接続 | checked_no_finding | descriptor/file検証、commit時registration照合、原子的commit後の再計算経路を確認。全受入試験は後続タスク
+      |
+
+      | ビルド・型・lint・CI接続 | checked_no_finding | 上記実行結果、package.jsonの既定試験接続、CIの同一HEAD確認 |
+
+      | 報告・追跡の整合 | checked_finding | 記録された成功結果は再現できたが、上記2件によりPDS-06は合格扱いにできない |
+
+
+      対象外・未完了の境界: PDS-07の全設計表の統合受入、PDS-08の網羅的stale/CAS/reload、PDS-09の実VS Code操作、PDS-10の最終判定は実施していない。これらが未着手であること自体は本レビューの新規不具合には数えない。
+
+      通常/任意diffとの分離はソース経路と既存試験による確認であり、block設定を入れた実Extension Hostでの新規UI試験は含まない。
+
+
+      ## 次の対応と公開境界
+
+
+      実装担当が上記2件を修正し、指摘ごとの「必要対応・製品経路・実際のcomposition fixture・focused evidence」を揃えて、この通常レビューの指摘確認へ戻す。PDS-07以降やマージは自動開始しない。
+
+      今回の保存対象は本詳細レポートと通常レビューhandoffのみ。製品修正・既存テスト修正・タスク状態変更は行わない。
+
+      記録用コミットはこのレビュー対象HEADを親に作成する予定で、作成時点のSHAは本レポートに自己参照で書かない。pushとPRコメントの実際の成否・記録用HEADは最終回答およびPRコメントに記載する。
+
+      '
+next_action:
+  type: user_decision
+  target_skill: development-orchestrator
+  mode: null
+  summary: Await the next user-selected task. Both PDS-06 findings are closed; synchronize task/phase records before
+    new implementation.
+  instructions:
+  - Recheck source HEAD and RDC sessions before any next-task work.
+  - Do not infer PDS-07 implementation or merge permission from this review.
+  required_attachments_or_references:
+  - reports/pr120-pds06-normal-rereview-20260916.md
+  - handoffs/issue-119-pr120-pds06-normal-rereview-20260916.yaml
+  - tasks/pr-diff-selection-mode/tasks-status.md
+  requested_authorized_actions: []
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds06-normal-rereview-20260916.yaml
+  packet_url: null
+  transport_note: Normal rereview; authorized report-only publication results will be recorded in PR metadata/comment
+    after this file is committed.
