@@ -7,7 +7,7 @@
 - 対象: Issue #119 / PR #120。設計: [PR差分の確認単位切替](../../Design/pr-diff-selection-mode.md)。フェーズ: [phases-status.md](phases-status.md)。
 - 計画基準HEAD: `c7a5d2b1d9a34e60614ae48c619217b9568e1e8e`。設計blob: `83a16fd656f9f66ebc6ef81d3b97c97f902710c9`。
 - 設計は独立レビューで合格済み。製品の実装完了・今回のタスク計画のレビュー合格を意味しない。
-- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06のPDS06-NR1-001 / PDS06-NR1-002（各P2）も同じ通常レビュワーの再レビューでfixedとなり `pass_with_held`。PDS-07は設計表全行の実経路受入を追加してローカル検証済みで、現在は通常レビュー待ち。PDS-08以降には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
+- 2026-09-15の利用者指示で実装開始。PDS-05通常レビューのPDS05-NR1-001（P2 / medium）は修正後、同じレビュワー文脈の再レビューでfixedとなり `pass_with_held`。PDS-06のPDS06-NR1-001 / PDS06-NR1-002（各P2）も同じ通常レビュワーの再レビューでfixedとなり `pass_with_held`。PDS-07は通常レビューでPDS07-NR1-001 / PDS07-NR1-002（各P2）が指摘された。両方の受入試験修正・ローカル検証・pushを完了し、現在は同じ通常レビュワーの再レビュー待ち。PDS-08以降には進まない。全タスク・レビュー・必須CI完了後のmergeは利用者が行い、workerはmergeしない。
 - この機能の追跡は本一覧を正とする。[全体タスク](../tasks-status.md)・[全体フェーズ](../phases-status.md)の他案件の状態は変更しない。
 - 規模は作業範囲の相対値。Sは単一処理、Mは関連する複数処理または結合試験を扱う。所要時間の確約ではない。
 
@@ -21,7 +21,7 @@
 | PDS-04 | ブロック処理 | 完了 | S | 選択範囲から左右の更新対象を組み立てる | PDS-02, PDS-03 | 正常系表と選択境界表の対象範囲が一致し、未選択ブロックを巻き込まない |
 | PDS-05 | ブロック処理 | 完了 | M | 三成分の原子的な更新・変更なし判定・履歴を実装する | PDS-04 | 状態直積、Globalだけの更新、履歴の内容・順序・回数を同一更新単位で検証する |
 | PDS-06 | 接続と受入 | 完了 | M | 設定とPR限定のコマンド経路を接続する | PDS-02, PDS-04, PDS-05 | 既定side、明示block、設定変更、不正値、通常エディタ・PR以外の分離が実経路で成立する |
-| PDS-07 | 接続と受入 | 通常レビュー待ち | M | 設計表全行の結合受入試験を完成させる | PDS-06 | 表の各行に実行済みテストが対応し、保存状態・履歴・PR Progressを一緒に照合できる |
+| PDS-07 | 接続と受入 | 再レビュー待ち | M | 設計表全行の結合受入試験を完成させる | PDS-06 | 表の各行に実行済みテストが対応し、保存状態・履歴・PR Progressを一緒に照合できる |
 | PDS-08 | 接続と受入 | 未着手 | M | 古い比較・競合・再読込の回帰を固定する | PDS-06 | 別比較・別ファイルへの誤更新、競合時の片側保存、再読込での状態欠落がない |
 | PDS-09 | 接続と受入 | 未着手 | M | 実Extension Hostで設定と左右の表示同期を検証する | PDS-07, PDS-08 | 実際の差分画面で確認・解除と設定切替を行い、左右の装飾・進捗が確定状態に一致する |
 | PDS-10 | 検証とレビュー | 未着手 | M | 必須CIへの組込みを監査し、全体検証・レビュー・公開を完了する | PDS-09 | 必須指摘を解消し、公開HEAD一致のCIと診断成果物を確認する。mergeは利用者が行い、workerは実行しない |
@@ -106,7 +106,7 @@ Globalだけ、元側とGlobalだけの変化、繰返し操作、対象外範�
 
 ## 次の操作
 
-PDS-07の受入試験実装・ローカル検証は完了した。通常レビューで設計表全行の実経路対応と期待値の妥当性を確認し、収束するまでPDS-08には進まない。
+PDS-07の通常レビュー指摘2件は修正・push済み。同じ通常レビュワーでPDS07-NR1-001 / PDS07-NR1-002の解消を確認し、収束するまでPDS-08には進まない。
 
 ## 今回の実行証拠
 
@@ -134,4 +134,8 @@ PDS-07の受入試験実装・ローカル検証は完了した。通常レビ�
 - PDS06-NR1-002 / P2: side/blockが同じ履歴`reason`で保存され識別不能な問題をRedで固定。PR履歴境界を分離し、side=`user-selection`、block=`user-block-selection`として保存。修正commit `444eb6e`。履歴関連22/22、PDS-06焦点66/66、既定unit797/797、tooling16/16、build・型契約・構造正負・lint成功。詳細: [指摘修正検証](../../reports/pr120-pds06-fix-verification-20260916.md)。同じ通常レビュワーの再レビューでfixed確認済み。
 - PDS-06再レビュー: reviewed implementation HEAD `8f2a67e1fe85851e5fc210e21da602ed4f11a7c1`。2件ともfixed、verdict=`pass_with_held`、新規指摘なし。詳細: [再レビュー](../../reports/pr120-pds06-normal-rereview-20260916.md)。
 - PDS-07: [設計表受入](../../reports/pr120-pds07-implementation-20260917.md)。実runtime→保存→実履歴recorder→PR Progressで正常系、選択境界、三成分132基本ケース、末尾改行13行、設定切替、Global-only進捗を常設化。新規受入50/50、focused 116/116、既定unit 847件中845成功・0失敗・2skip、tooling16/16、build・型契約・構造正負・lint成功。受入試験commitは`2f1b3d516209182cfcf867149306a8a2152cda60`。同SHAのCI run `35150950188` は記録時点でin_progress。通常レビュー待ち。
+- PDS-07通常レビュー: reviewed HEAD `3fe8233320b692a8a68f49b36017098a28514db0` でPDS07-NR1-001 / PDS07-NR1-002（各P2）を確認し、verdict=`fail`。詳細: [通常レビュー](../../reports/pr120-pds07-normal-review-20260917.md)。
+- PDS07-NR1-001 / P2: 正常系表で不足していたsideの9実経路ケースをcoverage guardのRed（51件中50成功・1失敗）で固定。複数行追加・削除の部分選択、context-only／混在、複数block／複数selectionを追加し、Green 60/60。修正commit `e6dd2d19206700f1e19355f869d9bbe9d0f659a9`。
+- PDS07-NR1-002 / P2: 正常系・境界・末尾改行／存在、追加18、削除6で実履歴payloadのContext previous/next、Global previous/next、reason、original diffIdまで検証。初回の詳細化でside-originalのlegacy `user-file` を `user-selection` と誤認した期待値6件が失敗したため契約に合わせて修正し、最終60/60。製品不具合のRedとしては扱わない。修正commit `cebdf252af94fa5096d2ab9d4338d5385226ac7e`。
+- PDS-07指摘対応後: focused 126/126、既定unit 857件中855成功・0失敗・2既存Windows skip、tooling 16/16、build・型契約・構造正負・lint成功。技術HEAD `cebdf252af94fa5096d2ab9d4338d5385226ac7e` のCI run `35160456646` は追跡更新時点でin_progress。管理commit公開後はその新HEAD一致runのみを最終CIとして扱う。
 - PDS-08以降、統合通常レビュー・独立レビュー・最終公開CIは未実施。PDS-07の通常レビューが収束するまでPDS-08へ進まない。mergeは利用者が行う。
