@@ -599,8 +599,83 @@ const normalCases: readonly NormalCase[] = [
     expectedOriginal: intervals([1, 2], [3, 4]), expectedModified: intervals([1, 2], [3, 4]), expectedGlobal: intervals([1, 2], [3, 4]),
     reviewed: 4, total: 4, historySides: ["modified", "original"],
   },
-];
+  {
+    name: "addition side mode keeps a multi-line partial selection narrow",
+    original: undefined, modified: "new-1\nnew-2", mode: "side", side: "modified", selections: [cursor(0)],
+    expectedOriginal: [], expectedModified: intervals([0, 1]), expectedGlobal: intervals([0, 1]),
+    reviewed: 1, total: 2, historySides: ["modified"],
+  },
+  {
+    name: "deletion side mode keeps a multi-line partial selection narrow",
+    original: "old-1\nold-2", modified: undefined, mode: "side", side: "original", selections: [cursor(0)],
+    expectedOriginal: intervals([0, 1]), expectedModified: [], expectedGlobal: [],
+    reviewed: 1, total: 2, historySides: ["original"],
+  },
+  {
+    name: "original context-only selection stays narrow in side mode",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "original", selections: [cursor(0)],
+    expectedOriginal: [], expectedModified: intervals([0, 1]), expectedGlobal: intervals([0, 1]),
+    reviewed: 0, total: 4, historySides: ["modified"],
+  },
+  {
+    name: "modified context-only selection stays narrow in side mode",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "modified", selections: [cursor(0)],
+    expectedOriginal: [], expectedModified: intervals([0, 1]), expectedGlobal: intervals([0, 1]),
+    reviewed: 0, total: 4, historySides: ["modified"],
+  },
+  {
+    name: "original changed and adjacent context selection stays side-local",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "original", selections: [selection(1, 0, 2, 1)],
+    expectedOriginal: intervals([1, 2]), expectedModified: intervals([2, 3]), expectedGlobal: intervals([2, 3]),
+    reviewed: 1, total: 4, historySides: ["modified", "original"],
+  },
+  {
+    name: "modified changed and adjacent context selection stays side-local",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "modified", selections: [selection(1, 0, 2, 1)],
+    expectedOriginal: [], expectedModified: intervals([1, 3]), expectedGlobal: intervals([1, 3]),
+    reviewed: 1, total: 4, historySides: ["modified"],
+  },
+  {
+    name: "one selection touching multiple blocks stays narrow in side mode",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "modified", selections: [selection(1, 0, 3, 1)],
+    expectedOriginal: [], expectedModified: intervals([1, 4]), expectedGlobal: intervals([1, 4]),
+    reviewed: 2, total: 4, historySides: ["modified"],
+  },
+  {
+    name: "multiple selections touching one block stay narrow in side mode",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "modified", selections: [cursor(1), cursor(1)],
+    expectedOriginal: [], expectedModified: intervals([1, 2]), expectedGlobal: intervals([1, 2]),
+    reviewed: 1, total: 4, historySides: ["modified"],
+  },
+  {
+    name: "multiple selections on different blocks stay narrow in side mode",
+    original: contextualOriginal, modified: contextualModified, patch: contextualPatch,
+    mode: "side", side: "modified", selections: [cursor(1), cursor(3)],
+    expectedOriginal: [], expectedModified: intervals([1, 2], [3, 4]), expectedGlobal: intervals([1, 2], [3, 4]),
+    reviewed: 2, total: 4, historySides: ["modified"],
+  },];
 
+test("normal acceptance matrix preserves required side-mode scenarios", () => {
+  const requiredNames = [
+    "addition side mode keeps a multi-line partial selection narrow",
+    "deletion side mode keeps a multi-line partial selection narrow",
+    "original context-only selection stays narrow in side mode",
+    "modified context-only selection stays narrow in side mode",
+    "original changed and adjacent context selection stays side-local",
+    "modified changed and adjacent context selection stays side-local",
+    "one selection touching multiple blocks stays narrow in side mode",
+    "multiple selections touching one block stay narrow in side mode",
+    "multiple selections on different blocks stay narrow in side mode",
+  ] as const;
+  const names = new Set(normalCases.map((item) => item.name));
+  assert.deepEqual(requiredNames.filter((name) => !names.has(name)), []);
+});
 test("normal selection cases persist the designed ranges with matching history and PR progress", async (t) => {
   for (const item of normalCases) {
     await t.test(item.name, async () => {
