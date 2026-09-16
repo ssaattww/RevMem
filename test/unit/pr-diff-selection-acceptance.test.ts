@@ -527,24 +527,6 @@ const reviewedRanges = (fixture: AcceptanceFixture) => {
   };
 };
 
-const markSelectionCase = async (options: {
-  readonly original: string | undefined;
-  readonly modified: string | undefined;
-  readonly mode: "side" | "block";
-  readonly side: "original" | "modified";
-  readonly selections: readonly TextSelection[];
-  readonly patch?: string;
-}) => {
-  const fixture = createFixture(
-    options.original,
-    options.modified,
-    options.patch ?? wholeFilePatch(options.original, options.modified),
-    () => options.mode,
-  );
-  const command = await openCommand(fixture, options.side, options.selections);
-  const result = await command.commands.markSelectionReviewed(command.editor);
-  return { fixture, command, result };
-};
 type NormalCase = {
   readonly name: string;
   readonly original: string | undefined;
