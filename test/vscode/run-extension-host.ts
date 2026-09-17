@@ -196,6 +196,7 @@ async function main(): Promise<void> {
   const focusedT506SavedPullRequest = process.argv.includes("--t506-saved-pr");
   const focusedT609 = process.argv.includes("--t609");
   const focusedT610 = process.argv.includes("--t610");
+  const focusedPrDiffSelectionMode = process.argv.includes("--pr-diff-selection-mode");
   const focusedLifecycleRestore = process.argv.includes("--lifecycle-through-restore");
   const projectRoot = resolve(__dirname, "../../..");
   const temporaryDirectory = await createTemporaryDirectory("review-range-vscode");
@@ -252,6 +253,11 @@ async function main(): Promise<void> {
     userData: join(temporaryDirectory.path, "t610-user-data"),
     extensions: join(temporaryDirectory.path, "t610-extensions")
   };
+  const prDiffSelectionModePaths = {
+    workspace: join(temporaryDirectory.path, "pr-diff-selection-mode-workspace"),
+    userData: join(temporaryDirectory.path, "pr-diff-selection-mode-user-data"),
+    extensions: join(temporaryDirectory.path, "pr-diff-selection-mode-extensions")
+  };
   const launch = async (
     phase: string,
     paths: { readonly workspace: string; readonly userData: string; readonly extensions: string },
@@ -305,7 +311,8 @@ async function main(): Promise<void> {
       t610Paths.workspace,
       t610Paths.additionalWorkspace,
       t610Paths.userData,
-      t610Paths.extensions
+      t610Paths.extensions,
+      ...Object.values(prDiffSelectionModePaths)
     ].map((path) => mkdir(path)));
     if (focusedT609) {
       await prepareT609Fixture(t609Paths.workspace);
@@ -333,6 +340,15 @@ async function main(): Promise<void> {
       await launch("t610-initial", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-initial");
       await advanceT610Fixture(t610Paths.workspace);
       await launch("t610-restart", t610LaunchPaths, join(__dirname, "t610-suite"), "t610-restart");
+      return;
+    }
+
+    if (focusedPrDiffSelectionMode) {
+      await launch(
+        "pr-diff-selection-mode",
+        prDiffSelectionModePaths,
+        join(__dirname, "pr-diff-selection-mode-suite")
+      );
       return;
     }
 
@@ -399,6 +415,12 @@ async function main(): Promise<void> {
     if (focusedT306) return;
 
     await launch("t302", t302Paths, join(__dirname, "t302-suite"));
+
+    await launch(
+      "pr-diff-selection-mode",
+      prDiffSelectionModePaths,
+      join(__dirname, "pr-diff-selection-mode-suite")
+    );
 
     for (const phase of testPhases) {
       await launch(`lifecycle-${phase}`, lifecyclePaths, join(__dirname, "suite"), phase);

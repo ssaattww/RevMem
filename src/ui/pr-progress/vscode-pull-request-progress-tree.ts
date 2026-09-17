@@ -78,6 +78,12 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   });
   private selectedSource: PullRequestProgressTreeSource | undefined;
   private selectedSourceProjectionSubscription: PullRequestProgressTreeSourceSubscription | undefined;
+  /**
+   * The exact ranges last supplied to VS Code for immutable PR diff editors.
+   * This is deliberately owned by the real renderer (rather than a test
+   * projection) so Extension Host tests can observe both diff panes.
+   */
+  private readonly appliedReviewDiffDecorations = new Map<string, readonly NormalEditorReviewedDecoration[]>();
   public readonly onDidChangeTreeData = this.changed.event;
 
   public constructor(
@@ -178,20 +184,34 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
         !source.ownsReviewDiffDocumentUri(uri)
       ) {
         editor.setDecorations(this.reviewedDecorationType, []);
+        this.appliedReviewDiffDecorations.delete(uri);
         continue;
       }
       const decorations = await source.loadReviewedDecorations(uri);
       if (source !== this.activeSource()) return;
+      const applied = decorations.map((decoration) => ({
+        ...decoration,
+        interval: { ...decoration.interval }
+      }));
       editor.setDecorations(
         this.reviewedDecorationType,
-        decorations.map((decoration) => new vscode.Range(
+        applied.map((decoration) => new vscode.Range(
           decoration.interval.startLine,
           0,
           decoration.interval.endLineExclusive - 1,
           Number.MAX_SAFE_INTEGER
         ))
       );
+      this.appliedReviewDiffDecorations.set(uri, applied);
     }
+  }
+
+  /** Test-mode reader exposed through the activated extension's test API. */
+  public getAppliedReviewDiffDecorations(uri: string): readonly NormalEditorReviewedDecoration[] {
+    return (this.appliedReviewDiffDecorations.get(uri) ?? []).map((decoration) => ({
+      ...decoration,
+      interval: { ...decoration.interval }
+    }));
   }
 
   /** Backward-compatible local refresh alias used by the base runtime tests. */
@@ -202,6 +222,7 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   public dispose(): void {
     this.selectedSourceProjectionSubscription?.dispose();
     this.reviewedDecorationType.dispose();
+    this.appliedReviewDiffDecorations.clear();
     this.changed.dispose();
   }
 

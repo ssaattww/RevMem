@@ -169,7 +169,7 @@ export interface ReviewRangeRuntimePort {
   registerReviewDiffRuntime(runtime: ReviewDiffRuntimePort): vscode.Disposable;
 }
 
-interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
+export interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
   /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
@@ -210,6 +210,12 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   getLocalBaseHeadOpenedFiles(): readonly string[];
   getLocalBaseHeadPersistence(): ReturnType<LocalBaseHeadRuntime<vscode.Uri>["getPersistence"]>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
+  /** Actual rendered PR Progress file nodes for the currently selected source. */
+  getActivePullRequestProgressTreeForTest(): readonly PullRequestProgressTreeFileNode[];
+  /** Actual immutable-diff decoration ranges last applied by the PR Progress renderer. */
+  getVisiblePrDiffReviewedIntervalsForTest(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  /** Awaits the real PR Progress renderer after a public review-state command. */
+  refreshActivePullRequestDiffDecorationsForTest(): Promise<void>;
 }
 
 interface ActiveExtensionRuntime {
@@ -1080,6 +1086,26 @@ export function activate(
     getLocalBaseHeadPersistence: () => localBaseHeadRuntime.getPersistence(),
     setLocalBaseHeadConfirmationAnswer: (answer) => {
       localBaseHeadConfirmationAnswer = answer;
+    },
+    getActivePullRequestProgressTreeForTest: () => {
+      const tree = localBaseHeadTreeReference.current;
+      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+      return tree.getChildren()
+        .flatMap((category) => tree.getChildren(category))
+        .filter((node): node is PullRequestProgressTreeFileNode => node.kind === "file");
+    },
+    getVisiblePrDiffReviewedIntervalsForTest: (documentUri) => {
+      const tree = localBaseHeadTreeReference.current;
+      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+      return tree.getAppliedReviewDiffDecorations(documentUri).map((decoration) => ({
+        startLine: decoration.interval.startLine,
+        endLineExclusive: decoration.interval.endLineExclusive
+      }));
+    },
+    refreshActivePullRequestDiffDecorationsForTest: async () => {
+      const tree = localBaseHeadTreeReference.current;
+      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+      await tree.refreshReviewDiffDecorations();
     }
   };
 }
