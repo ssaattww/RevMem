@@ -974,6 +974,20 @@ const runtimeSnapshotFromRevisionTexts = (
   return built.snapshot;
 };
 
+const redactedCacheSnapshot = (snapshot: PullRequestDiffSnapshot): PullRequestDiffSnapshot => ({
+  ...snapshot,
+  files: snapshot.files.map((file) => ({
+    ...file,
+    hunks: file.hunks.map((hunk) => ({
+      ...hunk,
+      lines: hunk.lines.map((line) => ({
+        ...line,
+        text: "",
+      })),
+    })),
+  })),
+});
+
 const runtimeForRevisionTexts = (
   original: string | undefined,
   modified: string | undefined,
@@ -1173,6 +1187,53 @@ test("PR runtime rejects truncated, mismatched, and inconsistent local Git hunk 
     );
     assert.deepEqual(fixture.counts(), { commits: 0, histories: 0 });
   }
+});
+
+test("PR runtime hydrates complete legacy-redacted cache hunks and rejects tampered or incomplete evidence", async () => {
+  const complete = redactedCacheSnapshot(runtimeSnapshotFromRevisionTexts("old", "new"));
+  const completeFixture = runtimeForRevisionTexts("old", "new", complete);
+  const completeCommand = await openRevisionTextCommand(completeFixture, "modified", 0);
+  assert.equal(await completeCommand.commands.markSelectionReviewed(completeCommand.editor), "applied");
+  assert.equal(await completeCommand.commands.unmarkSelectionReviewed(completeCommand.editor), "applied");
+  assert.deepEqual(completeFixture.counts(), { commits: 2, histories: 2 });
+
+  const tampered = structuredClone(complete);
+  tampered.files[0]!.hunks[0]!.lines[1]!.newLine = 2;
+  const tamperedFixture = runtimeForRevisionTexts("old", "new", tampered);
+  const tamperedCommand = await openRevisionTextCommand(tamperedFixture, "modified", 0);
+  await assert.rejects(
+    () => tamperedCommand.commands.markSelectionReviewed(tamperedCommand.editor),
+    /modified revision body/u,
+  );
+  assert.deepEqual(tamperedFixture.counts(), { commits: 0, histories: 0 });
+
+  const incomplete: PullRequestDiffSnapshot = {
+    ...complete,
+    files: [{
+      ...complete.files[0]!,
+      additions: 0,
+      deletions: 0,
+      hunks: [{
+        oldStart: 2,
+        oldCount: 1,
+        newStart: 2,
+        newCount: 1,
+        lines: [{
+          kind: "context",
+          oldLine: 2,
+          newLine: 2,
+          text: "",
+        }],
+      }],
+    }],
+  };
+  const incompleteFixture = runtimeForRevisionTexts("old\nsame", "new\nsame", incomplete);
+  const incompleteCommand = await openRevisionTextCommand(incompleteFixture, "modified", 0);
+  await assert.rejects(
+    () => incompleteCommand.commands.markSelectionReviewed(incompleteCommand.editor),
+    /omits a revision-body change/u,
+  );
+  assert.deepEqual(incompleteFixture.counts(), { commits: 0, histories: 0 });
 });
 
 

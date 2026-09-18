@@ -159,26 +159,82 @@ const gitContentLines = (content: string): readonly string[] => {
   return lines.map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
 };
 
-/** Rejects hunk line text that cannot be proven to come from the immutable bodies for this exact comparison. */
-const requireHunkTextMatchesRevisionBodies = (
+const hunkAnchor = (start: number, count: number): number => count === 0 ? start : start - 1;
+
+const requireEqualLines = (actual: readonly string[], expected: readonly string[], message: string): void => {
+  if (actual.length !== expected.length || actual.some((line, index) => line !== expected[index])) {
+    throw new Error(message);
+  }
+};
+
+/**
+ * Proves every cache hunk line against the immutable bodies and reconstructs
+ * its source text from exact immutable bodies. Applying the
+ * complete hydrated hunk sequence must reproduce the immutable HEAD body, so
+ * a truncated cache cannot be accepted as a partial diff.
+ */
+const hydrateAndRequireCompleteHunks = (
   originalContent: string | undefined,
   modifiedContent: string | undefined,
   hunks: PullRequestDiffSnapshot["files"][number]["hunks"],
-): void => {
+): PullRequestDiffSnapshot["files"][number]["hunks"] => {
   const originalLines = originalContent === undefined ? [] : gitContentLines(originalContent);
   const modifiedLines = modifiedContent === undefined ? [] : gitContentLines(modifiedContent);
-  for (const hunk of hunks) for (const line of hunk.lines) {
-    if (line.kind !== "addition") {
-      if (line.oldLine === undefined || originalLines[line.oldLine - 1] !== line.text) {
+  const usesRedactedCache = hunks.length > 0 && hunks.every((hunk) => hunk.lines.every((line) => line.text === ""));
+  const hydrated = hunks.map((hunk) => ({
+    ...hunk,
+    lines: hunk.lines.map((line) => {
+      const originalText = line.oldLine === undefined ? undefined : originalLines[line.oldLine - 1];
+      const modifiedText = line.newLine === undefined ? undefined : modifiedLines[line.newLine - 1];
+      if (line.kind !== "addition" && (line.oldLine === undefined || originalText === undefined)) {
         throw new Error("Immutable diff hunk text does not match the original revision body.");
       }
-    }
-    if (line.kind !== "deletion") {
-      if (line.newLine === undefined || modifiedLines[line.newLine - 1] !== line.text) {
+      if (line.kind !== "deletion" && (line.newLine === undefined || modifiedText === undefined)) {
         throw new Error("Immutable diff hunk text does not match the modified revision body.");
       }
+      if (originalText !== undefined && modifiedText !== undefined && originalText !== modifiedText) {
+        throw new Error("Immutable diff context text does not match both revision bodies.");
+      }
+      const text = originalText ?? modifiedText;
+      if (text === undefined) throw new Error("Immutable diff hunk has no revision-body source.");
+      if (!usesRedactedCache) {
+        if (line.text !== text) {
+          throw new Error(line.kind === "addition"
+            ? "Immutable diff hunk text does not match the modified revision body."
+            : "Immutable diff hunk text does not match the original revision body.");
+        }
+      }
+      return { ...line, text };
+    }),
+  }));
+
+  if (!usesRedactedCache) return hydrated;
+
+  const reconstructed: string[] = [];
+  let originalCursor = 0;
+  let modifiedCursor = 0;
+  for (const hunk of hydrated) {
+    const originalAnchor = hunkAnchor(hunk.oldStart, hunk.oldCount);
+    const modifiedAnchor = hunkAnchor(hunk.newStart, hunk.newCount);
+    if (originalAnchor < originalCursor || modifiedAnchor < modifiedCursor) {
+      throw new Error("Immutable diff hunks are not ordered.");
     }
+    const originalPrefix = originalLines.slice(originalCursor, originalAnchor);
+    const modifiedPrefix = modifiedLines.slice(modifiedCursor, modifiedAnchor);
+    requireEqualLines(originalPrefix, modifiedPrefix, "Immutable diff cache omits a revision-body change.");
+    reconstructed.push(...originalPrefix);
+    for (const line of hunk.lines) {
+      if (line.kind !== "deletion") reconstructed.push(line.text);
+    }
+    originalCursor = originalAnchor + hunk.oldCount;
+    modifiedCursor = modifiedAnchor + hunk.newCount;
   }
+  const originalTail = originalLines.slice(originalCursor);
+  const modifiedTail = modifiedLines.slice(modifiedCursor);
+  requireEqualLines(originalTail, modifiedTail, "Immutable diff cache omits a revision-body change.");
+  reconstructed.push(...originalTail);
+  requireEqualLines(reconstructed, modifiedLines, "Immutable diff cache does not reconstruct the modified revision body.");
+  return hydrated;
 };
 
 const throwIfProgressCancelled = (signal: AbortSignal | undefined): void => {
@@ -777,7 +833,7 @@ export class PullRequestReviewRuntime<Uri> {
       this.readRevisionDocumentLineInput(registration, fullTextCache, diffFile.oldPath, registration.snapshot.baseSha, "original"),
       this.readRevisionDocumentLineInput(registration, fullTextCache, diffFile.newPath, registration.snapshot.headSha, "modified"),
     ]);
-    requireHunkTextMatchesRevisionBodies(
+    const hydratedHunks = hydrateAndRequireCompleteHunks(
       originalDocument.content,
       modifiedDocument.content,
       diffFile.hunks,
@@ -785,7 +841,7 @@ export class PullRequestReviewRuntime<Uri> {
     const blockInput = {
       originalLineCount: originalDocument.lineContract.diffContentLineCount,
       modifiedLineCount: modifiedDocument.lineContract.diffContentLineCount,
-      hunks: diffFile.hunks,
+      hunks: hydratedHunks,
     };
     const originalToModifiedLineMappings = deriveOriginalToModifiedLineMappings(blockInput);
     const changeBlocks = selectionMode === "block" ? deriveChangeBlocks(blockInput) : undefined;
@@ -807,7 +863,7 @@ export class PullRequestReviewRuntime<Uri> {
       modifiedContentLineCount: modifiedDocument.lineContract.diffContentLineCount,
       ...(selectionMode === undefined ? {} : { selectionMode }),
       ...(changeBlocks === undefined ? {} : { changeBlocks }),
-      originalDeletionIntervals: diffFile.hunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
+      originalDeletionIntervals: hydratedHunks.flatMap((hunk) => hunk.lines.flatMap((line) =>
         line.kind === "deletion" && line.oldLine !== undefined
           ? [{ startLine: line.oldLine - 1, endLineExclusive: line.oldLine }]
           : []
