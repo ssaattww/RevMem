@@ -13,7 +13,6 @@ interface ReviewedInterval {
 
 interface PullRequestHostTestApi {
   initializePullRequestReviewRuntimeForTest(input: PullRequestReviewRuntimeTestFixture): Promise<void>;
-  refreshPullRequestProgressForTest(): Promise<void>;
   getPullRequestReviewStateForTest(): Promise<{
     readonly contextState: {
       readonly files: Record<string, {
@@ -27,6 +26,8 @@ interface PullRequestHostTestApi {
   } | undefined>;
   getActivePullRequestProgressTreeForTest(): readonly PullRequestProgressTreeFileNode[];
   getVisiblePrDiffReviewedIntervalsForTest(documentUri: string): readonly ReviewedInterval[];
+  getPrDiffDecorationProjectionVersionForTest(): number;
+  waitForPrDiffDecorationProjectionForTest(version: number): Promise<void>;
 }
 
 const baseSha = "1111111111111111111111111111111111111111";
@@ -187,7 +188,38 @@ const stateFor = async (api: PullRequestHostTestApi, fileId: string) => {
   return { file, global: state.globalState.files[fileId]?.reviewed ?? [] };
 };
 
-const refresh = (api: PullRequestHostTestApi) => api.refreshPullRequestProgressForTest();
+const applyPublicReviewCommand = async (
+  api: PullRequestHostTestApi,
+  command: "reviewRange.markSelectionReviewed" | "reviewRange.unmarkSelectionReviewed"
+): Promise<void> => {
+  const before = api.getPrDiffDecorationProjectionVersionForTest();
+  const rendered = api.waitForPrDiffDecorationProjectionForTest(before);
+  await vscode.commands.executeCommand(command);
+  await rendered;
+  assert.ok(
+    api.getPrDiffDecorationProjectionVersionForTest() > before,
+    `${command} must resolve only after the real PR-diff renderer applied its projection.`
+  );
+};
+
+const assertProjection = (
+  api: PullRequestHostTestApi,
+  fileId: string,
+  expected: { readonly reviewedLineCount: number; readonly totalLineCount: number },
+  diff: { readonly original: string; readonly modified: string },
+  original: readonly ReviewedInterval[],
+  modified: readonly ReviewedInterval[]
+): void => {
+  const node = api.getActivePullRequestProgressTreeForTest().find((candidate) => candidate.source.fileId === fileId);
+  assert.ok(node, `The real PR Progress Tree must retain ${fileId}.`);
+  assert.deepEqual(
+    { reviewedLineCount: node.reviewedLineCount, totalLineCount: node.totalLineCount },
+    expected,
+    `The real PR Progress row must render ${fileId}'s reviewed/total changed-line count.`
+  );
+  assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(diff.original), original, `${fileId} original renderer semantics.`);
+  assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(diff.modified), modified, `${fileId} modified renderer semantics.`);
+};
 
 const assertDoesNotReviewLine = (intervals: readonly ReviewedInterval[], line: number, message: string): void => {
   assert.equal(intervals.some((interval) => interval.startLine <= line && line < interval.endLineExclusive), false, message);
@@ -209,97 +241,87 @@ export async function run(): Promise<void> {
 
     const replacement = await openProgressFile(api, "replacement");
     await focus("original", replacement, 1);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     let state = await stateFor(api, "replacement");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 2)], "Default side mode persists only the original selection.");
     assert.deepEqual(state.file.modifiedReviewed, []);
     assert.deepEqual(state.global, []);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.original), [reviewed(1, 2)]);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.modified), []);
+    assertProjection(api, "replacement", { reviewedLineCount: 1, totalLineCount: 4 }, replacement, [reviewed(1, 2)], []);
 
     await configuration.update("prDiffSelectionMode", "block", vscode.ConfigurationTarget.Workspace);
     await focus("original", replacement, 1);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "replacement");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 3)], "Block mode expands a partial original replacement selection.");
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(1, 3)]);
     assert.deepEqual(state.global, [reviewed(1, 3)]);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.original), [reviewed(1, 3)]);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.modified), [reviewed(1, 3)]);
-    const replacementNode = api.getActivePullRequestProgressTreeForTest().find((node) => node.source.fileId === "replacement");
-    assert.equal(replacementNode?.reviewedLineCount, 4, "The real PR Progress row includes both reviewed replacement sides.");
+    assertProjection(api, "replacement", { reviewedLineCount: 4, totalLineCount: 4 }, replacement, [reviewed(1, 3)], [reviewed(1, 3)]);
 
     await focus("modified", replacement, 1);
-    await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.unmarkSelectionReviewed");
     state = await stateFor(api, "replacement");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], []);
     assert.deepEqual(state.file.modifiedReviewed, []);
     assert.deepEqual(state.global, []);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.original), []);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(replacement.modified), []);
+    assertProjection(api, "replacement", { reviewedLineCount: 0, totalLineCount: 4 }, replacement, [], []);
 
     const addition = await openProgressFile(api, "addition");
     await focus("modified", addition, 1);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "addition");
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(1, 3)], "An addition-only block expands only the modified side.");
     assert.deepEqual(state.global, [reviewed(1, 3)]);
     assert.deepEqual(state.file.originalReviewedByDiff[diffId] ?? [], []);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(addition.modified), [reviewed(1, 3)]);
+    assertProjection(api, "addition", { reviewedLineCount: 2, totalLineCount: 2 }, addition, [], [reviewed(1, 3)]);
     await focus("modified", addition, 1);
-    await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.unmarkSelectionReviewed");
     state = await stateFor(api, "addition");
     assert.deepEqual(state.file.modifiedReviewed, [], "The modified-side public unmark clears an addition-only block.");
     assert.deepEqual(state.global, []);
+    assertProjection(api, "addition", { reviewedLineCount: 0, totalLineCount: 2 }, addition, [], []);
 
     const deletion = await openProgressFile(api, "deletion");
     await focus("original", deletion, 1);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "deletion");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 3)], "A deletion-only block expands only the original side.");
     assert.deepEqual(state.file.modifiedReviewed, []);
     assert.deepEqual(state.global, []);
-    assert.deepEqual(api.getVisiblePrDiffReviewedIntervalsForTest(deletion.original), [reviewed(1, 3)]);
+    assertProjection(api, "deletion", { reviewedLineCount: 2, totalLineCount: 2 }, deletion, [reviewed(1, 3)], []);
     await focus("original", deletion, 1);
-    await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.unmarkSelectionReviewed");
     state = await stateFor(api, "deletion");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [], "The original-side public unmark clears a deletion-only block.");
+    assertProjection(api, "deletion", { reviewedLineCount: 0, totalLineCount: 2 }, deletion, [], []);
 
     const eol = await openProgressFile(api, "eol");
     await focus("modified", eol, 0);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "eol");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(0, 1)], "An EOL-only immutable diff reviews its original content line.");
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(0, 1)]);
     assert.deepEqual(state.global, [reviewed(0, 1)]);
+    assertProjection(api, "eol", { reviewedLineCount: 2, totalLineCount: 2 }, eol, [reviewed(0, 1)], [reviewed(0, 1)]);
 
     const boundary = await openProgressFile(api, "boundary");
     await focus("original", boundary, 1);
     const boundaryEditor = vscode.window.activeTextEditor;
     assert.ok(boundaryEditor);
     boundaryEditor.selection = new vscode.Selection(1, 0, 3, 0);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "boundary");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 2)], "A nonempty selection ending at the next changed line column 0 excludes that next block while retaining its selected context.");
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(1, 3)], "The selected intervening context is preserved through normal mapping.");
+    assertProjection(api, "boundary", { reviewedLineCount: 2, totalLineCount: 4 }, boundary, [reviewed(1, 3)], [reviewed(1, 3)]);
     assertDoesNotReviewLine(api.getVisiblePrDiffReviewedIntervalsForTest(boundary.original), 3, "The original renderer must not decorate the next changed block at the column-0 boundary.");
     assertDoesNotReviewLine(api.getVisiblePrDiffReviewedIntervalsForTest(boundary.modified), 3, "The modified renderer must not decorate the next changed block at the column-0 boundary.");
     boundaryEditor.selection = new vscode.Selection(3, 0, 1, 0);
-    await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.unmarkSelectionReviewed");
     state = await stateFor(api, "boundary");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [], "The reverse selection has the same column-0 boundary and clears only its first block.");
     assert.deepEqual(state.file.modifiedReviewed, []);
     assert.deepEqual(state.global, []);
+    assertProjection(api, "boundary", { reviewedLineCount: 0, totalLineCount: 4 }, boundary, [], []);
 
     await api.initializePullRequestReviewRuntimeForTest(fixture(workspace, {
       originalReviewedByFile: { replacement: [reviewed(1, 3)] },
@@ -308,18 +330,22 @@ export async function run(): Promise<void> {
     }));
     const mismatch = await openProgressFile(api, "replacement");
     await focus("modified", mismatch, 1);
-    await vscode.commands.executeCommand("reviewRange.markSelectionReviewed");
-    await refresh(api);
+    await applyPublicReviewCommand(api, "reviewRange.markSelectionReviewed");
     state = await stateFor(api, "replacement");
     assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 3)]);
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(1, 3)]);
     assert.deepEqual(state.global, [reviewed(1, 3)], "A public block mark repairs a persisted Global-only mismatch.");
+    assertProjection(api, "replacement", { reviewedLineCount: 4, totalLineCount: 4 }, mismatch, [reviewed(1, 3)], [reviewed(1, 3)]);
 
     await focus("modified", mismatch, 0);
+    const projectionBeforeNoOp = api.getPrDiffDecorationProjectionVersionForTest();
     await vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed");
-    await refresh(api);
     state = await stateFor(api, "replacement");
     assert.deepEqual(state.file.modifiedReviewed, [reviewed(1, 3)], "A cursor on context never expands to a neighboring change block.");
+    assert.deepEqual(state.file.originalReviewedByDiff[diffId], [reviewed(1, 3)]);
+    assert.deepEqual(state.global, [reviewed(1, 3)]);
+    assertProjection(api, "replacement", { reviewedLineCount: 4, totalLineCount: 4 }, mismatch, [reviewed(1, 3)], [reviewed(1, 3)]);
+    assert.equal(api.getPrDiffDecorationProjectionVersionForTest(), projectionBeforeNoOp, "A context no-op does not emit a new PR-diff renderer projection.");
   } finally {
     await configuration.update("prDiffSelectionMode", undefined, vscode.ConfigurationTarget.Workspace);
   }

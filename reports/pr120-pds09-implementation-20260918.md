@@ -64,3 +64,8 @@
 - 親のMarkdown検査: tools/lintとlint:md未構成のためfocused/fullはunsupported。今回も非blockingの記録とし、差分空白検査と通常レビューで本文を確認する。
 - 初期化と状態読取は `ExtensionMode.Test` 以外では返却されず、initializer自体もTest modeを要求する。製品のPR取得・通常UI経路を置換しない。
 - PDS-10の全体gate、独立レビュー、CI/公開判定は未実施で親の担当範囲である。
+
+## 2026-09-18 通常レビュー後の訂正（PDS09-NR1-002）
+
+- 上記「各mutation後に実永続Review State、実PR Progress Tree row、左右diff rendererの適用装飾を照合した」という記述は、`b0afe9f` 時点のHost assertionより強く、正確ではなかった。同時点でrowの明示assertionはreplacement block markだけで、addition/deletion unmark、EOL、column 0正逆境界、Global mismatch、context no-opにはrowまたは両paneの完全な照合がなかった。
+- この訂正は当時の実行履歴を変更しない。PDS09-NR1 follow-upで各代表mutationに保存state、実PR Progress rowのreviewed/total、左右rendererのassertionを追加し、original paneのunchanged Context投影は永続original rangeの単純mirrorとして扱わない。実行結果とcoverage matrixは `reports/pr120-pds09-fix-verification-20260918.md` に記録する。

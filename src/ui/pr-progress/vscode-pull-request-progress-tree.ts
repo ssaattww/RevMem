@@ -31,6 +31,11 @@ export interface PullRequestProgressWorkingTreeFileTarget {
   readonly fileSystemPathSemantics: "posix" | "windows";
 }
 
+/** Test-only observation of decoration application by the real VS Code renderer. */
+export interface PullRequestProgressTreeTestObserver {
+  onReviewDiffDecorationsApplied(): void;
+}
+
 /** Minimal T304 source contract so the contributed view can switch between runtime owners. */
 export interface PullRequestProgressTreeSource {
   getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
@@ -78,18 +83,19 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   });
   private selectedSource: PullRequestProgressTreeSource | undefined;
   private selectedSourceProjectionSubscription: PullRequestProgressTreeSourceSubscription | undefined;
-  /**
-   * The exact ranges last supplied to VS Code for immutable PR diff editors.
-   * This is deliberately owned by the real renderer (rather than a test
-   * projection) so Extension Host tests can observe both diff panes.
-   */
-  private readonly appliedReviewDiffDecorations = new Map<string, readonly NormalEditorReviewedDecoration[]>();
+  /** Present only for the Extension Host Test-mode renderer observer. */
+  private readonly appliedReviewDiffDecorations: Map<string, readonly NormalEditorReviewedDecoration[]> | undefined;
   public readonly onDidChangeTreeData = this.changed.event;
 
   public constructor(
     private readonly defaultSource: PullRequestProgressTreeSource,
-    private readonly reportError: (error: unknown) => void | Promise<void> = () => undefined
-  ) {}
+    private readonly reportError: (error: unknown) => void | Promise<void> = () => undefined,
+    private readonly testObserver: PullRequestProgressTreeTestObserver | undefined = undefined
+  ) {
+    this.appliedReviewDiffDecorations = testObserver === undefined
+      ? undefined
+      : new Map<string, readonly NormalEditorReviewedDecoration[]>();
+  }
 
   public getTreeItem(node: PullRequestProgressTreeNode): vscode.TreeItem {
     if (node.kind === "category") return this.categoryTreeItem(node);
@@ -157,9 +163,9 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
     if (source?.onDidChangeReviewProjection !== undefined) {
       this.selectedSourceProjectionSubscription = source.onDidChangeReviewProjection(() => {
         this.refreshPullRequestProgressTree();
-        void this.refreshReviewDiffDecorations().catch((error) =>
-          Promise.resolve(this.reportError(error)).catch(() => undefined)
-        );
+        return this.refreshReviewDiffDecorations().catch(async (error) => {
+          await Promise.resolve(this.reportError(error)).catch(() => undefined);
+        });
       });
     }
     this.refreshPullRequestProgressTree();
@@ -184,31 +190,33 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
         !source.ownsReviewDiffDocumentUri(uri)
       ) {
         editor.setDecorations(this.reviewedDecorationType, []);
-        this.appliedReviewDiffDecorations.delete(uri);
+        this.appliedReviewDiffDecorations?.delete(uri);
         continue;
       }
       const decorations = await source.loadReviewedDecorations(uri);
       if (source !== this.activeSource()) return;
-      const applied = decorations.map((decoration) => ({
-        ...decoration,
-        interval: { ...decoration.interval }
-      }));
       editor.setDecorations(
         this.reviewedDecorationType,
-        applied.map((decoration) => new vscode.Range(
+        decorations.map((decoration) => new vscode.Range(
           decoration.interval.startLine,
           0,
           decoration.interval.endLineExclusive - 1,
           Number.MAX_SAFE_INTEGER
         ))
       );
-      this.appliedReviewDiffDecorations.set(uri, applied);
+      if (this.appliedReviewDiffDecorations !== undefined) {
+        this.appliedReviewDiffDecorations.set(uri, decorations.map((decoration) => ({
+          ...decoration,
+          interval: { ...decoration.interval }
+        })));
+      }
     }
+    this.testObserver?.onReviewDiffDecorationsApplied();
   }
 
   /** Test-mode reader exposed through the activated extension's test API. */
   public getAppliedReviewDiffDecorations(uri: string): readonly NormalEditorReviewedDecoration[] {
-    return (this.appliedReviewDiffDecorations.get(uri) ?? []).map((decoration) => ({
+    return (this.appliedReviewDiffDecorations?.get(uri) ?? []).map((decoration) => ({
       ...decoration,
       interval: { ...decoration.interval }
     }));
@@ -222,7 +230,7 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
   public dispose(): void {
     this.selectedSourceProjectionSubscription?.dispose();
     this.reviewedDecorationType.dispose();
-    this.appliedReviewDiffDecorations.clear();
+    this.appliedReviewDiffDecorations?.clear();
     this.changed.dispose();
   }
 
@@ -242,9 +250,13 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
 export const registerVscodePullRequestProgressTree = (
   context: vscode.ExtensionContext,
   defaultSource: PullRequestProgressTreeSource,
-  reportError: (error: unknown) => void | Promise<void>
+  reportError: (error: unknown) => void | Promise<void>,
+  testObserver: PullRequestProgressTreeTestObserver | undefined = undefined
 ): VscodePullRequestProgressTreeDataProvider => {
-  const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource, reportError);
+  const activeTestObserver = context.extensionMode === vscode.ExtensionMode.Test
+    ? testObserver
+    : undefined;
+  const tree = new VscodePullRequestProgressTreeDataProvider(defaultSource, reportError, activeTestObserver);
   const source: PullRequestProgressTreeSource & {
     openWorkingTreeFile(node: PullRequestProgressTreeFileNode): Promise<void>;
   } = tree;

@@ -17,7 +17,6 @@ import { ReviewFileExclusionPolicy } from "../core/file-exclusion/index";
 import {
   activate as activateBaseExtension,
   deactivate as deactivateBaseExtension,
-  type ReviewRangeExtensionTestApi,
   type ReviewRangeRuntimePort
 } from "../extension";
 import {
@@ -657,10 +656,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
   const refreshPullRequestProgressForSelection = async (): Promise<void> => {
-    const contextId = selectedContext?.kind === "pull-request" &&
+    const testContextId = context.extensionMode === vscode.ExtensionMode.Test
+      ? testPullRequestRuntimeTarget?.contextId
+      : undefined;
+    const contextId = testContextId ?? (selectedContext?.kind === "pull-request" &&
       pullRequestReviewRuntime.hasContext(selectedContext.contextId)
       ? selectedContext.contextId
-      : undefined;
+      : undefined);
     await refreshSelectedPullRequestProgress({
       contextId,
       source: pullRequestReviewRuntime.progress,
@@ -1089,7 +1091,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   context.subscriptions.push(...folderEntryWatcherRegistrations);
 
   if (context.extensionMode === vscode.ExtensionMode.Test) {
-    const testBaseApi = baseApi as ReviewRangeExtensionTestApi;
     const gitReviewStateSnapshotForTest = async (document: vscode.TextDocument) => {
       const documentPath = workspaceFilesystemPath(document.uri);
       if (documentPath === undefined) {
@@ -1173,15 +1174,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return {
       ...baseApi,
       initializePullRequestReviewRuntimeForTest,
-      refreshPullRequestProgressForTest: async () => {
-        if (testPullRequestRuntimeTarget === undefined) {
-          throw new Error("Pull-request runtime fixture has not been initialized.");
-        }
-        await pullRequestReviewRuntime.activateProgress(testPullRequestRuntimeTarget.contextId);
-        runtimePort.setPullRequestProgressSource(pullRequestReviewRuntime.progress);
-        runtimePort.refreshPullRequestProgressTree();
-        await testBaseApi.refreshActivePullRequestDiffDecorationsForTest();
-      },
       getPullRequestReviewStateForTest: () => testPullRequestRuntimeTarget === undefined
         ? Promise.resolve(undefined)
         : runtimePort.reviewStateRepository.load({

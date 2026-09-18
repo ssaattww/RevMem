@@ -214,8 +214,10 @@ export interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   getActivePullRequestProgressTreeForTest(): readonly PullRequestProgressTreeFileNode[];
   /** Actual immutable-diff decoration ranges last applied by the PR Progress renderer. */
   getVisiblePrDiffReviewedIntervalsForTest(documentUri: string): readonly ReviewedIntervalSnapshot[];
-  /** Awaits the real PR Progress renderer after a public review-state command. */
-  refreshActivePullRequestDiffDecorationsForTest(): Promise<void>;
+  /** Monotonic Test-mode signal from the real PR-diff decoration renderer. */
+  getPrDiffDecorationProjectionVersionForTest(): number;
+  /** Resolves after a real PR-diff decoration render newer than `version`. */
+  waitForPrDiffDecorationProjectionForTest(version: number): Promise<void>;
 }
 
 interface ActiveExtensionRuntime {
@@ -989,6 +991,17 @@ export function activate(
     }
   });
   localBaseHeadCommandServiceReference.current = localBaseHeadCommandService;
+  const prDiffDecorationProjectionForTest = context.extensionMode === vscode.ExtensionMode.Test
+    ? { version: 0, waiters: [] as Array<() => void> }
+    : undefined;
+  const prDiffDecorationProjectionObserverForTest = prDiffDecorationProjectionForTest === undefined
+    ? undefined
+    : {
+        onReviewDiffDecorationsApplied: (): void => {
+          prDiffDecorationProjectionForTest.version += 1;
+          for (const resolve of prDiffDecorationProjectionForTest.waiters.splice(0)) resolve();
+        }
+      };
   localBaseHeadTreeReference.current = registerVscodePullRequestProgressTree(
     context,
     localBaseHeadRuntime.progress,
@@ -996,7 +1009,8 @@ export function activate(
       await vscode.window.showErrorMessage(
         `PR Progressを開けませんでした: ${errorMessage(error)}`
       );
-    }
+    },
+    prDiffDecorationProjectionObserverForTest
   );
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
@@ -1102,10 +1116,12 @@ export function activate(
         endLineExclusive: decoration.interval.endLineExclusive
       }));
     },
-    refreshActivePullRequestDiffDecorationsForTest: async () => {
-      const tree = localBaseHeadTreeReference.current;
-      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
-      await tree.refreshReviewDiffDecorations();
+    getPrDiffDecorationProjectionVersionForTest: () => prDiffDecorationProjectionForTest!.version,
+    waitForPrDiffDecorationProjectionForTest: (version) => {
+      if (prDiffDecorationProjectionForTest!.version > version) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        prDiffDecorationProjectionForTest!.waiters.push(resolve);
+      });
     }
   };
 }
