@@ -7,7 +7,7 @@
 - 対象: Issue #119 / PR #120。設計: [PR差分の確認単位切替](../../Design/pr-diff-selection-mode.md)。フェーズ: [phases-status.md](phases-status.md)。
 - 計画基準HEAD: `c7a5d2b1d9a34e60614ae48c619217b9568e1e8e`。設計blob: `83a16fd656f9f66ebc6ef81d3b97c97f902710c9`。
 - 設計は独立レビューで合格済み。製品の実装完了・今回のタスク計画のレビュー合格を意味しない。
-- 2026-09-18にPR公開HEAD `3330ffd200d042146d3e8cc4145a51c2d40cbd34` へ同期した。PDS-01〜07は完了。PDS-07の2件の通常レビュー指摘は同じレビュワーでfixedとなり `pass_with_held`。公開HEAD一致CIもsuccess。PDS-08も通常レビューが収束し、現在はPDS-09の実Extension Host検証に着手する。全体の独立レビューと最終CIはPDS-10に残る。
+- 2026-09-18にPR公開HEAD `3330ffd200d042146d3e8cc4145a51c2d40cbd34` へ同期した。PDS-01〜07は完了。PDS-07の2件の通常レビュー指摘は同じレビュワーでfixedとなり `pass_with_held`。公開HEAD一致CIもsuccess。PDS-08も通常レビューが収束し、PDS-09も同一通常レビュワーで必須3件のfixedを確認した。現在はPDS-10の全体検証と統合レビューを進める。全体の独立レビューと最終CIはPDS-10に残る。
 - この機能の追跡は本一覧を正とする。[全体タスク](../tasks-status.md)・[全体フェーズ](../phases-status.md)の他案件の状態は変更しない。
 - 規模は作業範囲の相対値。Sは単一処理、Mは関連する複数処理または結合試験を扱う。所要時間の確約ではない。
 
@@ -23,8 +23,8 @@
 | PDS-06 | 接続と受入 | 完了 | M | 設定とPR限定のコマンド経路を接続する | PDS-02, PDS-04, PDS-05 | 既定side、明示block、設定変更、不正値、通常エディタ・PR以外の分離が実経路で成立する |
 | PDS-07 | 接続と受入 | 完了 | M | 設計表全行の結合受入試験を完成させる | PDS-06 | 表の各行に実行済みテストが対応し、保存状態・履歴・PR Progressを一緒に照合できる |
 | PDS-08 | 接続と受入 | 完了（Issue #121を保留） | M | 古い比較・競合・再読込の回帰を固定する | PDS-06 | 別比較・別ファイルへの誤更新、競合時の片側保存、再読込での状態欠落がない |
-| PDS-09 | 接続と受入 | 再レビュー待ち | M | 実Extension Hostで設定と左右の表示同期を検証する | PDS-07, PDS-08 | 実際の差分画面で確認・解除と設定切替を行い、左右の装飾・進捗が確定状態に一致する |
-| PDS-10 | 検証とレビュー | 未着手 | M | 必須CIへの組込みを監査し、全体検証・レビュー・公開を完了する | PDS-09 | 必須指摘を解消し、公開HEAD一致のCIと診断成果物を確認する。mergeは利用者が行い、workerは実行しない |
+| PDS-09 | 接続と受入 | 完了 | M | 実Extension Hostで設定と左右の表示同期を検証する | PDS-07, PDS-08 | 実際の差分画面で確認・解除と設定切替を行い、左右の装飾・進捗が確定状態に一致する |
+| PDS-10 | 検証とレビュー | 進行中 | M | 必須CIへの組込みを監査し、全体検証・レビュー・公開を完了する | PDS-09 | 必須指摘を解消し、公開HEAD一致のCIと診断成果物を確認する。現チャットの利用者依頼に基づき、独立レビューと最終必須CI・成果物確認後に親がmergeする |
 
 ## 各タスクの変更範囲と検証
 
@@ -79,7 +79,7 @@ Globalだけ、元側とGlobalだけの変化、繰返し操作、対象外範�
 ### PDS-10 — 全体検証・レビュー・公開
 
 各タスクで追加したテストが既定の単体／結合／Extension Hostコマンドと必須CIから実行されることを監査する。診断出力は成功・失敗双方で結果、標準出力、標準エラー、関連ログ、検証SHAを保持する。
-通常レビューと指摘対応後に、最終候補で全体ローカル検証を行う。独立レビューの残指摘を同じレビュワーで確認し、詳細報告、PRの簡易報告、公開HEAD一致のpull_request CI、対応する成果物を確認する。mergeは利用者が行い、workerは実行しない。
+通常レビューと指摘対応後に、最終候補で全体ローカル検証を行う。独立レビューの残指摘を同じレビュワーで確認し、詳細報告、PRの簡易報告、公開HEAD一致のpull_request CI、対応する成果物を確認する。現チャットの利用者依頼に基づき、独立レビューと最終必須CI・成果物確認後に親がmergeする。
 既存のWindows全体試験には前回19失敗・2skipの記録がある。再検証時は個別に今回差分との関係を判定し、成功へ丸めない。無関係な全体修正をこの機能へ自動追加しない。
 
 ## 設計・引継ぎとの対応
@@ -105,6 +105,8 @@ Globalだけ、元側とGlobalだけの変化、繰返し操作、対象外範�
 公開時はPRのcurrent HEADとworkflow runのhead SHAの一致を確認する。一致するrunがなければCI未実施と記録する。各タスクの完了証拠を本一覧へ反映してから次へ進む。
 
 ## 次の操作
+
+PDS-09は `0feb9819572828b8a3366dc4f7ef1cb839a8d1f0` の[同一通常レビュワー再レビュー](../../reports/pr120-pds09-normal-rereview-20260918.md)でpass_with_held。必須3件はP2を維持してfixed、新規直接退行0件。CI-T610もlocal 74件成功。PDS-10のdiscovery監査、統合通常レビュー、全体gate、独立レビュー、最終CI・成果物確認を進める。[最終化方針](../../reports/pr120-finalization-context-20260918.md)に権限、Skill-gap判断、低頻度Issue方針、終了境界を集約した。以下は経過記録であり当時の未完了状態を残す。
 
 PDS-09の必須3件とCI-T610は修正・焦点検証済み。[指摘対応記録](../../reports/pr120-pds09-fix-verification-20260918.md)に対応表と最終検証を記録した。指摘対応をコミット・push後、同じ通常レビュワーで解消を確認する。以下のfail記録は修正前の履歴であり、再レビュー合格はまだ宣言しない。
 
@@ -152,4 +154,4 @@ PDS-08は `c8aff99da29a0082f39cc364940c2e66c0b4653c` で通常レビュー `pass
 - PDS-07指摘対応後: focused 126/126、既定unit 857件中855成功・0失敗・2既存Windows skip、tooling 16/16、build・型契約・構造正負・lint成功。技術HEAD `cebdf252af94fa5096d2ab9d4338d5385226ac7e` のCI run `35160456646` は追跡更新時点でin_progress。管理commit公開後はその新HEAD一致runのみを最終CIとして扱う。
 - PDS-07同一通常レビュワー再レビュー: reviewed implementation HEAD `74d5f31e824d5f1bf52ff6bb5c9ef358ca4fb4ca`。PDS07-NR1-001はfixed、PDS07-NR1-002は正常系matrixのunmark後詳細履歴payload未検証のためopen、verdict=`fail`。詳細: [再レビュー](../../reports/pr120-pds07-normal-rereview-20260917.md)。`b84d7f630b2afaf5db3c1d707fb15d314822209a` のexact-head CI run `35162281109` はT506 Extension Host timeoutでfailure。
 - PDS07-NR1-002 follow-up: 正常系matrixでmark→unmarkを連続実行し、両操作のContext/Global before-after、reason、original diffId、event順序、commit回数、PR Progress復帰を検証するcoverage guardをRed（61件中60成功・1失敗）で固定。Green 61/61、focused 127/127。修正commit `0763ca7826d7ed2df5a226f91740ad60ee77e3f2`、未使用helper cleanup `fba9d3ac4079f4b448ea007496e977cf1302f200`。
-- PDS-08以降、統合通常レビュー・独立レビュー・最終公開CIは未実施。PDS-07の通常レビューが収束するまでPDS-08へ進まない。mergeは利用者が行う。
+- PDS-08以降、統合通常レビュー・独立レビュー・最終公開CIは未実施。PDS-07の通常レビューが収束するまでPDS-08へ進まない。当時のmerge境界は現チャットの明示依頼で更新された。
