@@ -48,3 +48,12 @@
 - PDS-09: [元通常レビュー](pr120-pds09-normal-review-20260918.md)、[修正証拠](pr120-pds09-fix-verification-20260918.md)、[再レビュー](pr120-pds09-normal-rereview-20260918.md)。
 - 実行環境とLinux検証用clone: [環境記録](pr-diff-selection-verification-route-20260915.md)。
 - 最終技術判定と公開結果は後続の独立報告およびPR本文を参照する。本記録は未実施の全体gate、独立レビュー、最終CI、mergeを完了とは扱わない。
+
+## 通常レビュー収束と最終工程への引継ぎ
+
+- `d366e47f1c1e372008c8eb00d7921feb801e714f` の同一通常レビュワー解消確認でPDS10-NR1-002 / P1はfixed、pass_with_held、新規直接退行0件。legacy cache形式・本文redactionは維持し、追加schema/hashは最終実装に含めない。
+- Issue #121/#122を既決の保留として引き継ぐ。型・構造・公開API互換性を壊す変更はなく、BreakingChanges追記は不要。
+- 最終の報告・追跡commitはcommit_pending。このcommitを候補として全体local gateを実行する。独立報告の予約・freezeはまだ行っていない。
+- 全体gateの実行場所はLinux task-owned clone。候補SHA、clean状態、Node/npm/Xvfbを確認し、workflow順の必須コマンドとpackagingを実行する。結果はbranch外の診断に保持し、独立報告へ最終証拠として集約する。
+- parent Skill-gap判断は引き続きno skill action needed。初回Redで対象commandを誤った点は既存TDDの実行不備で、既存Skillの規則不足ではない。誤ったRedは修正根拠にせず、逸脱・途中失敗・legacy修正の証拠を実装報告へ残した。新規プロセスIssueや共通Skillの重複追加はしない。
+- attestation前に残るrepository変更が発生した場合は通常レビューへ戻る。変更がなければ全体gate→独立レビュー→一回の報告attestation→最終push/PR CI/artifact→利用者指示によるmergeを進める。最終結果は独立報告とPR本文を正とし、本引継ぎへ自分自身の将来SHAや未実施の合格を書かない。
