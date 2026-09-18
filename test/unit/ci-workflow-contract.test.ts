@@ -37,6 +37,17 @@ test("unit and focused suites execute the integrated design contract", async () 
   }
 });
 
+test("document line contract coverage is runnable directly and through the required unit suite", async () => {
+  const manifest = JSON.parse(
+    await readFile(packageJsonPath, "utf8")
+  ) as PackageManifest;
+  const scripts = manifest.scripts ?? {};
+  const contractTest = /test-dist\/test\/unit\/document-line-contract\.test\.js/u;
+
+  assert.match(requireScript(scripts, "test:document-line-contract"), contractTest);
+  assert.match(requireScript(scripts, "test:unit"), contractTest);
+});
+
 test("unit, npm test, focused CI execute the complete T304 tree contract", async () => {
   const manifest = JSON.parse(
     await readFile(packageJsonPath, "utf8")

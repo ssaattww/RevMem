@@ -998,7 +998,16 @@ test("T610-R14 settles Current Context startup before queuing non-blocking start
     /currentContextRuntime\.startupRefresh\.then\(\(\) =>\s*observeStartupGlobalUnderstandingDocuments/u,
     "startup Global observation waits for Current Context startup settlement"
   );
-  assert.doesNotMatch(activation, /await currentContextRuntime\.startupRefresh/gu, "activation never waits for Current Context or startup Global completion");
+  const productionStartup = activation.slice(currentContextRuntime, queuedGlobalStartup);
+  assert.doesNotMatch(productionStartup, /await currentContextRuntime\.startupRefresh/gu, "production activation never waits for Current Context or startup Global completion");
+  const fixtureInitializer = activation.indexOf("const initializePullRequestReviewRuntimeForTest = async");
+  const fixtureInitializerEnd = activation.indexOf("pullRequestReviewRuntimeRef.current", fixtureInitializer);
+  assert.ok(fixtureInitializer >= 0 && fixtureInitializerEnd > fixtureInitializer, "the PR fixture initializer remains a separate Test-mode seam");
+  assert.match(
+    activation.slice(fixtureInitializer, fixtureInitializerEnd),
+    /if \(context\.extensionMode !== vscode\.ExtensionMode\.Test\) \{\s*throw new Error\([\s\S]*?await currentContextRuntime\.startupRefresh/gu,
+    "only the Test-mode PR fixture waits for startup settlement before installing immutable fixture state"
+  );
   const currentContextDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");
   const globalStartupDrain = suite.indexOf("await api.drainStartupGlobalUnderstandingForTest();");
   const firstMarker = suite.indexOf('recordT610HostSubphaseForTest("context-ready")');

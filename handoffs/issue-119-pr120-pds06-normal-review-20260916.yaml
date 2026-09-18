@@ -1,0 +1,114 @@
+schema_version: 3
+producer: {skill: chat-handoff-manager, mode: initial_review, generated_at: '2026-09-16T13:07:40+09:00'}
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-06
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target: {current_head: d256b2506247c302ad1edd5b2af247368fe2fdba, reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba, commit_range: '9fbee35335bf735564f1f1388367e3f7fe371079..d256b2506247c302ad1edd5b2af247368fe2fdba'}
+execution_environment: &environment
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 75840a70-dea0-4d8c-9bb4-fe97c78bc11e
+  connection: available
+  os: Linux
+  shell: /bin/bash
+  working_directory: /home/ibis/RevMem-pr120-pds06-review-20260916
+  repository: ssaattww/RevMem
+  branch: detached review worktree
+  head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba
+  source_state: snapshot
+  source_fingerprint: 'git-tree:77f1f3415a22ffad11746085b0d741d38fad2a1b'
+  ownership: current_task
+  writable_paths: [reports/pr120-pds06-normal-review-20260916.md, handoffs/issue-119-pr120-pds06-normal-review-20260916.yaml, /home/ibis/RevMem-pr120-pds06-review-evidence-20260916]
+  dependencies: [{name: Node.js, status: available, evidence: v22.13.1}, {name: npm, status: available, evidence: '11.4.2; existing node_modules reused after package-lock equality'}]
+  evidence: ['Commands preceded by list_sessions; unrelated waiting processes untouched.', 'git archive used for validation; all 1470 tracked source files matched afterward.']
+verification:
+  capability: local_execution_available
+  capability_evidence: ['RDC local focused, unit and static checks executed; exact-head CI read with GitHub connector.']
+  technical_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  administrative_parent: d256b2506247c302ad1edd5b2af247368fe2fdba
+  commit: {state: commit_pending, review_target_sha: d256b2506247c302ad1edd5b2af247368fe2fdba}
+  push: {state: push_pending, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba}
+  ci_wait: {state: ci_wait_completed, required_for: route_verification}
+  final_publication: {sequence: not_applicable, pr_action: update}
+authoritative_requirements:
+  - {source: user_instruction, reference: 'pr120.PDS-06レビュー', summary: 'Normal review only; no product fixes or next-task implementation.'}
+  - {source: user_instruction, reference: 'Standing project workflow and AGENTS.md skill entrypoint', summary: 'Skill-first workflow; RDC git operations; detailed report and handoff, concise PR review; no merge.'}
+  - {source: design, reference: Design/pr-diff-selection-mode.md, summary: 'Global-only changes must persist with history; saved history must distinguish side and block.'}
+  - {source: task, reference: tasks/pr-diff-selection-mode/tasks-status.md, summary: 'PDS-06 settings and PR-only command composition; PDS-07 through PDS-10 remain separate.'}
+development_policy: {method: TDD, testing_order: 'test first, Red, implementation, Green', governing_source: 'RevMem task instructions; this review makes no product change'}
+validation_plan: {commands: ['npm run test:pr-diff-selection', 'npm run test:unit', 'npm run build', 'npm run typecheck:contracts', 'npm run validate:architecture', 'npm run validate:architecture:negative', 'npm run lint', 'git diff --check', 'node tools/run-ci-command.mjs review-pds06-runtime-probes node --test ../runtime-probes.cjs'], required_failure_diagnostics: [result_json, stdout, stderr, combined_log]}
+blocked: [{item: 'Optional additional same-revision control probe', reason: 'The later command was denied by the tool safety check; not retried through another route.', required_input_or_decision: null}]
+authorized_actions: [read_repository, write_report, write_handoff, commit, push, comment_pr]
+write_boundary: {allowed: [{path_or_operation: 'normal review report and handoff', reason: 'Review publication workflow'}], forbidden: [{path_or_operation: 'product/tests/configuration/design/tracking changes or PDS-07 implementation', reason: 'Review only'}, {path_or_operation: merge, reason: 'Reserved to user'}]}
+scope: ['All 13 PDS-06 changed files', 'Direct command, configuration, state and history dependencies', 'Exact-head local validation and CI metadata']
+non_goals: ['Product fixes', 'Full PDS-07/08/09 acceptance', 'Independent final review', merge]
+files:
+  changed: [{path: reports/pr120-pds06-normal-review-20260916.md, purpose: 'Complete normal review evidence'}, {path: handoffs/issue-119-pr120-pds06-normal-review-20260916.yaml, purpose: 'Review handoff'}]
+  inspected: [{path: 'PDS-06 13-file commit range', purpose: 'Complete changed-file review'}, {path: src/core/review-state/pull-request-review-state-service.ts, purpose: 'PR Global snapshot projection'}, {path: src/application/review-history/review-history-recorder.ts, purpose: 'Actual persisted events'}, {path: src/extension.ts, purpose: 'Non-PR routing'}, {path: src/composition/local-git/local-base-head-runtime.ts, purpose: 'Local diff isolation'}, {path: .github/workflows/ci.yml, purpose: 'Validation and artifacts'}]
+  intentionally_untouched: [{path_or_area: 'all product and existing task files', reason: 'Review-only boundary'}]
+commands:
+  - {command: 'tools/run-ci-command.mjs review-pds06-focused npm run test:pr-diff-selection', purpose: 'Focused regression', exit_code: 0, result: passed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, execution_environment: *environment, source_fingerprint: 'git-tree:77f1f3415a22ffad11746085b0d741d38fad2a1b', evidence: 'external source/test-output/ci/review-pds06-focused.*; 59/59'}
+  - {command: 'wrapped build, contracts, architecture positive/negative, lint, test:unit', purpose: 'Static and default regression gates', exit_code: 0, result: passed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, execution_environment: *environment, source_fingerprint: 'git-tree:77f1f3415a22ffad11746085b0d741d38fad2a1b', evidence: 'external source/test-output/ci/review-pds06-*.{result.json,stdout.log,stderr.log,log}; tooling 16/16 and unit 790/790'}
+  - {command: 'node tools/run-ci-command.mjs review-pds06-runtime-probes node --test ../runtime-probes.cjs', purpose: 'Actual-runtime defect reproduction', exit_code: 1, result: failed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, execution_environment: *environment, source_fingerprint: 'git-tree:77f1f3415a22ffad11746085b0d741d38fad2a1b', evidence: '7 tests, 2 pass, 5 fail; runtime-probes.console.log'}
+tests: [{name: focused, phase: regression, result: passed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, evidence: '59/59'}, {name: unit, phase: regression, result: passed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, evidence: '790/790 plus tooling 16/16'}, {name: reviewer-runtime-probes, phase: verification, result: failed, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, evidence: '4 Global-only cases and 1 history-mode case failed; in-flight mode and whole-file isolation passed'}]
+ci: {required: true, workflow: CI, run_id: 35034039691, head_sha: d256b2506247c302ad1edd5b2af247368fe2fdba, conclusion: success, artifacts: [{id: 10423250803, name: 'review-range-user-validation-0.1.53-pre+d256b25', purpose: 'Attempt 2 user validation'}, {id: 10423085920, name: ci-failure-diagnostics-35034039691-1, purpose: 'Historical failed attempt 1'}]}
+implementation: {outcome: not_applicable, final_head: d256b2506247c302ad1edd5b2af247368fe2fdba, commits: [], addressed_findings: [], failure_diagnostics: [], blocked_items: [], summary: ['No fixes made.']}
+review: &review
+  mode: initial_review
+  reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  reviewer: {identity: 'ChatGPT PDS-06 normal reviewer, 2026-09-16', role: normal_reviewer, continuity: {previous_reviewer_identity: null, changed: false, reason: 'Initial PDS-06 review in this chat'}, independence: {implemented_change: false, implemented_review_fix: false, served_as_normal_reviewer: true, inherited_conversation: true, evidence: ['Current chat performed review and external probes only; historical summaries do not constitute independent-final-review evidence.']}}
+  verdict: fail
+  required_coverage:
+    - {criterion: 'All changed files and direct dependencies', disposition: checked_no_finding, evidence: '13 changed files plus routing/state/history/CI; report coverage table'}
+    - {criterion: 'Default, valid/invalid setting and per-operation capture', disposition: checked_no_finding, evidence: 'Config tests, real runtime tests, suspended-load probe'}
+    - {criterion: 'Empty selection, whole-file and non-PR isolation', disposition: checked_no_finding, evidence: 'Source routing, existing regression, throwing-reader whole-file probe; actual Host outside PDS-06'}
+    - {criterion: 'Block targeting and both-side state', disposition: checked_no_finding, evidence: 'Focused 59 tests and planner/core source inspection'}
+    - {criterion: 'Global-only snapshot changes', disposition: checked_finding, evidence: PDS06-NR1-001}
+    - {criterion: 'Persisted history mode identity', disposition: checked_finding, evidence: PDS06-NR1-002}
+    - {criterion: 'Static gates, unit and exact-head CI', disposition: checked_no_finding, evidence: 'All stated gates passed; CI attempt 2 success'}
+    - {criterion: 'Reported completion', disposition: checked_finding, evidence: 'PDS-06 cannot pass with the two reproduced defects'}
+  independent_closure: {initial_independent_reviewed_head: null, closure_reviewed_heads: [], reviewer_continuity: null, closure_scope: [], completeness_matrix: []}
+  validation_assessment: [{item: 'Existing test success claims', result: supported, evidence: '59/59 and 790/790 reproduced'}, {item: 'Global-only and history contracts', result: failed, evidence: '5 failed assertions across two findings'}, {item: 'Historical TDD source identity', result: unavailable, evidence: 'Red/Green timestamp and exit logs observed; pre-commit source cannot be independently reconstructed from those logs alone'}]
+  reserved_report_paths: [reports/pr120-pds06-normal-review-20260916.md]
+  report_attestation: {allowed: not_applicable, reviewed_implementation_head: d256b2506247c302ad1edd5b2af247368fe2fdba, allowed_paths: [], required_first_parent: null, maximum_commits_after_reviewed_head: null, forbidden_path_classes: [], no_later_commits_required: not_applicable, validation_status: not_applicable, validation_evidence: ['Normal review report, not final attestation']}
+  summary: ['Fail: two P2 findings; no product fixes.']
+report: &report
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths: [reports/pr120-pds06-normal-review-20260916.md]
+  reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  attestation_head: null
+  pr_comments: []
+  summary: ['Complete evidence in detailed report; commit/push/comment result recorded externally after publication.']
+findings: &findings
+  - id: PDS06-NR1-001
+    severity: medium
+    origin: introduced_by_change
+    location: 'src/application/review-commands/diff-editor-review-command-service.ts:234-237; existing comparator :88-94 and :300-303'
+    description: 'P2: block operations discard a Global-only change when repository currentRevisionId differs from PR headSha.'
+    impact: 'PR head Global remains inconsistent after mark/unmark and no history is written.'
+    evidence: 'Actual runtime: both sides x mark/unmark returned no-op; commits/history unchanged; snapshot ranges not updated. PR wrapper writes revisionSnapshots but command compares files only.'
+    required_action: 'Compare semantic state including PR revisionSnapshots; preserve owner current Global. Add both sides x mark/unmark real-runtime tests, one commit and modified history, owner state unchanged, plus no-op and same-revision regressions.'
+  - id: PDS06-NR1-002
+    severity: medium
+    origin: introduced_by_change
+    location: 'src/composition/extension.ts:615-623; review-history-recorder.ts:51-60,97-120'
+    description: 'P2: side and block operations are indistinguishable in persisted history.'
+    impact: 'Violates Design/pr-diff-selection-mode.md:267; addition-only and modified-only changes cannot reveal selection mode.'
+    evidence: 'Actual composition callback and recorder produced equal events for the same one-line addition in both modes after excluding occurredAt; operation/mode is not persisted.'
+    required_action: 'Persist distinguishable mode/operation evidence without adding fake events; test composition-to-recorder mark/unmark, addition-only, and one-component replacement changes.'
+held: [{item: 'Prior PDS-05 historical TDD limitation', reason: 'Historical records remain unchanged; this review cannot prove old working-tree content from timestamped result JSON alone.', owner: implementation, remaining_risk: 'Historical chronology evidence only', verdict_impact: 'Does not replace the two current blocking findings'}]
+unexplored: [{area: 'Complete PDS-07/08/09 acceptance and final PDS-10 review', blocker: 'Separate planned tasks', remaining_risk: 'Full table, stale/CAS/reload and actual Extension Host coverage not newly executed here', verdict_impact: 'Not counted as new PDS-06 defects; final feature completion remains unaccepted'}]
+unknown: [{field_or_fact: 'Normal report commit SHA and its CI at packet creation', reason: 'Administrative commit has not been created; record later in PR comment and final response'}]
+not_applicable: [{field_or_area: merge, reason: 'Reserved to user'}, {field_or_area: 'Independent final attestation', reason: 'Normal review only'}]
+remaining_risks: ['Two reproduced P2 findings remain unresolved.', 'RDC evidence paths are machine-local, not uploaded artifacts.']
+source_payloads:
+  - {source_skill: work-context-manager, output_contract_version: unknown, content_type: application/yaml, payload: {execution_environment: *environment, reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba, capability: local_execution_available, scope: 'PDS-06 normal review only'}}
+  - {source_skill: review-worker, output_contract_version: unknown, content_type: application/yaml, payload: {review: *review, findings: *findings, detailed_evidence: reports/pr120-pds06-normal-review-20260916.md}}
+  - {source_skill: report-writer, output_contract_version: unknown, content_type: application/yaml, payload: {report: *report, complete_body_reference: reports/pr120-pds06-normal-review-20260916.md}}
+extensions: [{namespace: revmem.review_priorities, payload: {PDS06-NR1-001: P2, PDS06-NR1-002: P2, 'PDS05-NR1-001': 'Previously fixed; not reopened or reclassified'}}]
+next_action: {type: implementation, target_skill: development-orchestrator, mode: 'PDS-06 finding fixes', summary: 'Fix both findings, then return to this normal review for bounded verification.', instructions: ['Recheck RDC sessions, source HEAD and permissions.', 'Preserve TDD and provide required-action / production-path / actual-composition-fixture / focused-evidence matrix.', 'Do not start PDS-07 or merge automatically.'], required_attachments_or_references: [reports/pr120-pds06-normal-review-20260916.md, Design/pr-diff-selection-mode.md], requested_authorized_actions: [read_repository, edit_code, edit_tests, write_report, write_handoff, commit, push, comment_pr]}
+transport: {method: repository_file, packet_path: handoffs/issue-119-pr120-pds06-normal-review-20260916.yaml, packet_url: null, transport_note: 'Normal review packet. Publication results will be recorded outside this pre-commit file; permissions must be re-resolved by the next chat.'}

@@ -1,0 +1,65 @@
+version: 1
+repository: ssaattww/RevMem
+pull_request: 120
+branch: investigation/issue-119-linked-diff-blocks
+task: PDS-05
+status: completed
+core_implementation_head: a56499ecb0d339c651b18372625acf6894960bf1
+technical_head: 7e01bd4c6c9f97acc78f93e45161fbee7c71bec6
+administrative_commit: commit_pending
+next_task: PDS-06
+next_task_started: false
+
+implementation:
+  transaction: diff-block-specific
+  operation_ids:
+    - mark-diff-block-reviewed
+    - unmark-diff-block-reviewed
+  invocation_origin: invokedFrom
+  components:
+    - original
+    - modified-context
+    - global
+  history_order:
+    - modified
+    - original
+
+verification:
+  red:
+    label: diff-block-state-start-head-red
+    result: compile_failure_missing_block_api_on_start_head
+    exit_code: 2
+    chronology: reconstructed_start_head_evidence_not_strict_preimplementation_red
+  focused:
+    label: diff-block-state-green-final
+    result: 12_pass_0_fail
+  regression:
+    label: diff-block-regression-final
+    result: 42_pass_0_fail
+  static:
+    label: pds05-static-after-unit-fix
+    build: pass
+    contract_typecheck: pass
+    architecture: pass
+    architecture_negative: pass_expected_11
+    lint: pass
+  full_unit:
+    label: pds05-unit-final
+    result: 780_pass_0_fail_2_skip_of_782
+    tooling: 16_pass_0_fail
+  verification_repairs:
+    windows_posix_fixture: 19_fail_to_33_pass
+    immutable_hunk_body_fixture: 3_fail_to_18_pass
+    owned_extension_host_stability: 9_pass_across_3_runs
+
+diagnostics:
+  workflow_change_required: false
+  output_directory: test-output/ci
+  failure_artifact_workflow: ci-failure-diagnostics
+  baseline_logs:
+    - baseline-unit
+    - baseline-issue13-r6
+
+next:
+  instruction: connect setting and PR-only command path in PDS-06 after explicit user instruction
+  do_not_start_automatically: true

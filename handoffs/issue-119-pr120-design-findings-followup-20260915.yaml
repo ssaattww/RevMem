@@ -1,0 +1,174 @@
+schema_version: 3
+producer:
+  skill: implementation-worker
+  mode: review follow-up
+  generated_at: 2026-09-15T07:05:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "PR #120"
+task_id: null
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: pending_administrative_commit
+  reviewed_head: bb14a8f217a0dd29e269939297aca5e51aff60ae
+  reviewer_report_head: 732eaf1893df502ff0f123aec4157a715ff8a2d5
+  technical_head: 0bfbba02ac284e335e2394648db502ae94c19482
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - RDC FA780 executed repository inspection, validation, git commit, and push.
+  commit:
+    state: technical_commit_pushed
+    review_target_sha: 0bfbba02ac284e335e2394648db502ae94c19482
+  push:
+    state: technical_push_complete
+    head_sha: 0bfbba02ac284e335e2394648db502ae94c19482
+  ci_wait:
+    state: pending_final_administrative_head
+    required_for: completion_report
+  final_publication:
+    sequence: technical_push_then_report_handoff_push_then_exact_head_pull_request_ci
+    pr_action: update
+
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Address PR #120 review findings, with design before implementation.
+  - source: user_instruction
+    reference: current chat
+    summary: When RDC is available, repository files and git operations use RDC.
+  - source: user_instruction
+    reference: current chat
+    summary: Source code and design documents must not contain issue or task numbers; reports and handoffs are exempt.
+  - source: review_comment
+    reference: PR #120 comment 5671251812
+    summary: Resolve D1 Global/no-op/history, D2 selection boundaries, and D3 connection contract.
+  - source: design
+    reference: Design/pr-diff-selection-mode.md
+    summary: Accepted side/block mode contract and implementation acceptance tables.
+development_policy:
+  method: Design-only follow-up; product implementation remains TDD and is not started here.
+  governing_source: RevMem project instructions and current user direction.
+
+scope:
+  - Resolve D1 by including Global in semantic change and history acceptance rules.
+  - Resolve D2 by defining selection normalization and boundary cases.
+  - Resolve D3 by defining block projection, session, transaction, and history contracts.
+non_goals:
+  - Product implementation.
+  - Renaming unrelated historical files.
+  - PR merge or Issue close.
+
+write_boundary:
+  allowed:
+    - path_or_operation: Design/pr-diff-selection-mode.md
+      reason: Design finding remediation.
+    - path_or_operation: reports/pr-diff-selection-mode-design-findings-followup-20260915.md
+      reason: Required detailed report.
+    - path_or_operation: handoffs/issue-119-pr120-design-findings-followup-20260915.yaml
+      reason: Required continuation packet.
+  forbidden:
+    - path_or_operation: src/** and test/**
+      reason: Product implementation is outside this design-only follow-up.
+files:
+  changed:
+    - path: Design/pr-diff-selection-mode.md
+      purpose: Resolve D1-D3 design contracts.
+    - path: reports/pr-diff-selection-mode-design-findings-followup-20260915.md
+      purpose: Detailed evidence-faithful remediation report.
+    - path: handoffs/issue-119-pr120-design-findings-followup-20260915.yaml
+      purpose: Continuation packet.
+  inspected:
+    - path: src/core/intervals/selections.ts
+      purpose: Selection normalization semantics for D2.
+    - path: src/application/review-commands/diff-editor-review-command-service.ts
+      purpose: Current selection/session/no-op boundary.
+    - path: src/core/review-state/review-state-service.ts
+      purpose: Context/Global/original atomic transaction semantics.
+    - path: src/application/review-history/review-history-recorder.ts
+      purpose: Actual delta history behavior for D1/D3.
+    - path: src/application/review-commands/original-selection-review-plan.ts
+      purpose: Keep unchanged mapping separate from change block projection.
+    - path: src/composition/pull-request/pull-request-review-runtime-base.ts
+      purpose: Exact PR hunk/session ownership for D3.
+    - path: .github/workflows/ci.yml
+      purpose: Confirm failure diagnostics artifact workflow.
+commands:
+  - command: node tools/run-ci-command.mjs pr-diff-design-findings-compile node node_modules/typescript/bin/tsc -p tsconfig.test.json
+    purpose: Compile test sources before focused verification.
+    exit_code: 0
+    result: passed
+  - command: node tools/run-ci-command.mjs pr-diff-design-findings-focused-final node --test <seven related files>
+    purpose: Verify design structure and existing diff/state/history/progress contracts.
+    exit_code: 0
+    result: passed
+    evidence: 46 passed, 0 failed, 0 skipped.
+  - command: node tools/run-ci-command.mjs pr-diff-design-findings-full node npm-cli.js test
+    purpose: Repository full local gate.
+    exit_code: 1
+    result: environment_specific_failure
+    evidence: tooling 16/16 passed; unit 711 passed, 19 failed, 2 skipped; representative error was document path outside resolved Git working tree.
+
+tests:
+  focused:
+    result: passed
+    passed: 46
+    failed: 0
+    skipped: 0
+  full_local:
+    result: failed
+    unit_passed: 711
+    unit_failed: 19
+    unit_skipped: 2
+    tooling_passed: 16
+    interpretation: Do not claim full local success; final Linux exact-head CI is authoritative.
+implementation:
+  outcome: design_findings_addressed
+  technical_head: 0bfbba02ac284e335e2394648db502ae94c19482
+  addressed_findings:
+    - id: D1
+      disposition: addressed_in_design
+      evidence: Global is a first-class state component; semantic change and history tables include Global-only and original-plus-Global cases.
+    - id: D2
+      disposition: addressed_in_design
+      evidence: Raw selections normalize through selectionsToLineIntervals before block overlap; cursor, reverse, char-zero endpoint, and empty arrays are tabled for both sides and operations.
+    - id: D3
+      disposition: addressed_in_design
+      evidence: Design defines block projection ownership, PR-only session inputs, dedicated transaction operations, history branching, and separation from unchanged mapping.
+  product_implementation_started: false
+  merge_performed: false
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: pending_final_administrative_commit
+  conclusion: pending
+  matching_rule: Only pull_request run with head_sha exactly equal to final PR HEAD counts.
+  artifacts: []
+report:
+  report_type: design_followup_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr-diff-selection-mode-design-findings-followup-20260915.md
+  reviewed_head: bb14a8f217a0dd29e269939297aca5e51aff60ae
+  technical_head: 0bfbba02ac284e335e2394648db502ae94c19482
+  pr_comments: []
+
+remaining_risks:
+  - Product behavior remains unimplemented; design tables are acceptance criteria, not implementation evidence.
+  - Windows full local gate has existing path-resolution failures, so local full success is not claimed.
+
+next_action:
+  type: review_or_implementation
+  summary: Re-review D1-D3 design closure before any product implementation; when implementation is authorized, derive Red tests from the tables first.
+  required_attachments_or_references:
+    - Design/pr-diff-selection-mode.md
+    - reports/pr-diff-selection-mode-design-findings-followup-20260915.md
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-design-findings-followup-20260915.yaml
+  packet_url: null
+  transport_note: Commit and push report/handoff, then record final exact-head CI and concise PR comment externally.

@@ -1,0 +1,333 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix_verification
+  generated_at: '2026-09-17T08:06:08+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-07
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  commit_range: '3fe8233320b692a8a68f49b36017098a28514db0..cebdf252af94fa5096d2ab9d4338d5385226ac7e'
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 4eae589f-096b-4362-9bec-0f392d77d44f
+  connection: available
+  os: Windows
+  shell: cmd.exe / PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-pr120-pds07-fix-20260917'
+  repository: ssaattww/RevMem
+  branch: work/pr120-pds07-fix-20260917
+  head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  source_state: dirty
+  ownership: current_task
+  dependencies:
+    - name: Node.js/npm
+      status: available
+      evidence: 'npm ci and all local gates succeeded'
+    - name: git
+      status: available
+      evidence: 'commits and pushes succeeded through RDC'
+  evidence:
+    - 'Dedicated worktree created from PR current HEAD 15808b6039f1a95930451648344878774aeb8d40.'
+    - 'Existing CI workflow retains result JSON, stdout, stderr and combined logs and uploads failure diagnostics.'
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - 'Acceptance 60/60, focused 126/126.'
+    - 'Default unit 855 pass, 0 fail, 2 existing Windows skips; tooling 16/16.'
+    - 'Build, contracts, architecture positive/negative and lint passed.'
+  technical_head: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  administrative_parent: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  commit:
+    state: committed
+    review_target_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  push:
+    state: pushed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  ci_wait:
+    state: ci_wait_pending
+    required_for: final_publication
+  final_publication:
+    sequence: final_push_then_pr_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: report
+    reference: reports/pr120-pds07-normal-review-20260917.md
+    summary: 'Normal review verdict fail; PDS07-NR1-001 and PDS07-NR1-002 are P2 findings against reviewed HEAD 3fe8233.'
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md
+    summary: 'PDS-07 must map every design-table row to executed real-path acceptance and jointly verify state, history and PR Progress.'
+  - source: user_instruction
+    reference: 指摘対応
+    summary: 'Resolve the PDS-07 review findings, publish evidence, do not merge.'
+development_policy:
+  method: TDD
+  testing_order: 'finding-specific coverage Red where valid -> smallest acceptance-test change -> Green -> focused -> default unit/static'
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - pds07-fix-coverage-red
+    - pds07-fix-side-green
+    - pds07-fix-history-green-2
+    - pds07-fix-focused-after-findings
+    - pds07-fix-unit-final
+    - build + typecheck:contracts + architecture +/- + lint
+  required_failure_diagnostics:
+    - result JSON
+    - standard output
+    - standard error
+    - combined command log
+blocked:
+  - item: PDS-08
+    reason: 'PDS-07 findings require same-normal-reviewer closure first.'
+    required_input_or_decision: 'Same reviewer verifies both P2 findings.'
+authorized_actions:
+  - read_repository
+  - edit_tests
+  - edit_tracking
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: test/unit/pr-diff-selection-acceptance.test.ts
+      reason: 'Resolve the two PDS-07 acceptance coverage findings.'
+    - path_or_operation: reports/pr120-pds07-fix-verification-20260917.md
+      reason: 'Detailed fix verification report.'
+    - path_or_operation: handoffs/issue-119-pr120-pds07-fix-verification-20260917.yaml
+      reason: 'Lossless fix verification handoff.'
+    - path_or_operation: tasks/pr-diff-selection-mode/tasks-status.md
+      reason: 'Progress synchronization.'
+    - path_or_operation: tasks/pr-diff-selection-mode/phases-status.md
+      reason: 'Phase synchronization.'
+  forbidden:
+    - path_or_operation: src product code
+      reason: 'Review findings are acceptance evidence gaps; no product change required.'
+    - path_or_operation: Design/pr-diff-selection-mode.md
+      reason: 'No design change.'
+    - path_or_operation: PDS-08 through PDS-10 implementation
+      reason: 'Separate later tasks.'
+    - path_or_operation: merge
+      reason: 'User-owned action.'
+scope:
+  - 'Cover all missing side-mode normal cases through real runtime acceptance.'
+  - 'Verify persisted history payload contents for normal, boundary, newline/existence, addition and deletion acceptance.'
+non_goals:
+  - 'Product implementation changes.'
+  - 'PDS-08 stale/CAS/reload work.'
+  - 'PDS-09 Extension Host acceptance.'
+  - 'PDS-10 final review or merge.'
+files:
+  changed:
+    - path: test/unit/pr-diff-selection-acceptance.test.ts
+      purpose: 'Add missing side cases and detailed persisted history assertions.'
+    - path: tasks/pr-diff-selection-mode/tasks-status.md
+      purpose: 'Record findings addressed and rereview pending.'
+    - path: tasks/pr-diff-selection-mode/phases-status.md
+      purpose: 'Record PDS-07 rereview waiting state.'
+    - path: reports/pr120-pds07-fix-verification-20260917.md
+      purpose: 'Detailed evidence.'
+    - path: handoffs/issue-119-pr120-pds07-fix-verification-20260917.yaml
+      purpose: 'Review follow-up transport.'
+  inspected:
+    - path: reports/pr120-pds07-normal-review-20260917.md
+      purpose: 'Authoritative finding definitions.'
+    - path: src/composition/pull-request/pull-request-review-history.ts
+      purpose: 'Existing legacy side/block history reason contract.'
+    - path: .github/workflows/ci.yml
+      purpose: 'Failure diagnostic artifact contract.'
+commands:
+  - command: pds07-fix-coverage-red
+    purpose: 'Prove the nine missing side-mode acceptance scenarios before adding them.'
+    exit_code: 1
+    result: failed
+    head_sha: 15808b6039f1a95930451648344878774aeb8d40
+    evidence: '51 total, 50 pass, 1 coverage-guard failure listing all nine missing scenarios.'
+  - command: pds07-fix-side-green
+    purpose: 'Verify the missing side-mode acceptance cases.'
+    exit_code: 0
+    result: passed
+    head_sha: e6dd2d19206700f1e19355f869d9bbe9d0f659a9
+    evidence: '60/60 direct acceptance tests passed.'
+  - command: pds07-fix-history-green-2
+    purpose: 'Verify detailed history payload assertions after correcting the legacy reason expectation.'
+    exit_code: 0
+    result: passed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+    evidence: '60/60 direct acceptance tests passed.'
+  - command: pds07-fix-focused-after-findings
+    purpose: 'Focused PR diff selection regression.'
+    exit_code: 0
+    result: passed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+    evidence: '126/126 passed.'
+  - command: pds07-fix-unit-final
+    purpose: 'Default unit regression.'
+    exit_code: 0
+    result: passed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+    evidence: '855 pass, 0 fail, 2 existing Windows skips; tooling 16/16.'
+  - command: build + typecheck:contracts + architecture +/- + lint
+    purpose: 'Static and compile gates.'
+    exit_code: 0
+    result: passed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+    evidence: 'All passed; architecture negative matched expected 11 findings.'
+tests:
+  - name: missing side-mode normal acceptance coverage
+    phase: red
+    result: failed
+    head_sha: 15808b6039f1a95930451648344878774aeb8d40
+    evidence: 'Coverage guard failed with all nine missing scenarios.'
+  - name: side-mode normal acceptance coverage
+    phase: green
+    result: passed
+    head_sha: e6dd2d19206700f1e19355f869d9bbe9d0f659a9
+    evidence: '60/60 direct acceptance tests.'
+  - name: persisted history payload coverage
+    phase: green
+    result: passed
+    head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+    evidence: '60/60 direct acceptance and 126/126 focused.'
+ci:
+  required: true
+  workflow: CI
+  run_id: 35160456646
+  head_sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  conclusion: in_progress
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+  commits:
+    - sha: e6dd2d19206700f1e19355f869d9bbe9d0f659a9
+      purpose: 'Add the nine missing side-mode real-path acceptance scenarios.'
+    - sha: cebdf252af94fa5096d2ab9d4338d5385226ac7e
+      purpose: 'Verify detailed persisted review history payloads.'
+  addressed_findings:
+    - id: PDS07-NR1-001
+      severity: P2
+      reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+      disposition: addressed_pending_rereview
+      evidence: 'Coverage Red 50/51 -> acceptance Green 60/60; commit e6dd2d1.'
+    - id: PDS07-NR1-002
+      severity: P2
+      reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+      disposition: addressed_pending_rereview
+      evidence: 'Detailed payload assertions added; 60/60 direct and 126/126 focused; commit cebdf25.'
+  failure_diagnostics:
+    - type: test_result
+      location: test-output/ci/pds07-fix-coverage-red.result.json
+      summary: 'NR1-001 coverage Red.'
+    - type: standard_output
+      location: test-output/ci/pds07-fix-coverage-red.stdout.log
+      summary: 'NR1-001 Red stdout.'
+    - type: standard_error
+      location: test-output/ci/pds07-fix-coverage-red.stderr.log
+      summary: 'NR1-001 Red stderr.'
+    - type: log
+      location: test-output/ci/pds07-fix-coverage-red.combined.log
+      summary: 'NR1-001 Red combined log.'
+    - type: other
+      location: test-output/ci/pds07-fix-*
+      summary: 'Green, focused, unit and static validation diagnostics.'
+  blocked_items:
+    - item: PDS-07 review closure
+      reason: 'Implementation worker cannot change the reviewer verdict.'
+      required_input_or_decision: 'Same normal reviewer verifies both findings.'
+  summary:
+    - 'Both P2 findings have acceptance-test changes and local Green evidence.'
+    - 'No src product code change was required.'
+review:
+  mode: fix_verification
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  reviewer:
+    identity: 'same normal reviewer from reports/pr120-pds07-normal-review-20260917.md'
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: 'ChatGPT PDS-07 normal reviewer, 2026-09-17'
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - reports/pr120-pds07-normal-review-20260917.md
+  verdict: fail
+  required_coverage:
+    - criterion: PDS07-NR1-001
+      disposition: addressed_pending_rereview
+      evidence: 'e6dd2d1 and 60/60 direct acceptance.'
+    - criterion: PDS07-NR1-002
+      disposition: addressed_pending_rereview
+      evidence: 'cebdf25 and detailed history assertions; focused 126/126.'
+  validation_assessment:
+    - item: local fix validation
+      result: supported
+      evidence: 'unit 855/0/2, tooling 16/16, build/contracts/architecture/lint all passed.'
+  summary:
+    - 'Original normal-review verdict remains fail until the same reviewer closes both findings.'
+report:
+  report_type: fix_verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr120-pds07-fix-verification-20260917.md
+  reviewed_head: 3fe8233320b692a8a68f49b36017098a28514db0
+  attestation_head: null
+  pr_comments: []
+findings:
+  - id: PDS07-NR1-001
+    severity: P2
+    disposition: addressed_pending_rereview
+  - id: PDS07-NR1-002
+    severity: P2
+    disposition: addressed_pending_rereview
+held: []
+unexplored:
+  - area: PDS-08 through PDS-10
+    blocker: 'PDS-07 normal review has not converged.'
+unknown:
+  - field_or_fact: final management publication HEAD and exact-head CI result
+    reason: 'Report/tracking/handoff commit is not yet published at handoff creation.'
+remaining_risks:
+  - 'Same normal reviewer must verify both P2 findings and any sibling cases.'
+  - 'PDS-08 must not start before PDS-07 closure.'
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: same_reviewer_fix_verification
+  summary: 'Re-review the two PDS-07 P2 findings against the published current HEAD.'
+  instructions:
+    - 'Confirm NR1-001 has real-runtime side coverage for every previously missing normal-table row.'
+    - 'Confirm NR1-002 checks Context/Global before-after, reason and original diff identity through the real recorder.'
+    - 'Re-resolve PR current HEAD and cite only workflow runs whose head SHA exactly matches it.'
+    - 'Do not start PDS-08 until both findings are closed.'
+  required_attachments_or_references:
+    - reports/pr120-pds07-normal-review-20260917.md
+    - reports/pr120-pds07-fix-verification-20260917.md
+    - test/unit/pr-diff-selection-acceptance.test.ts
+    - tasks/pr-diff-selection-mode/tasks-status.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds07-fix-verification-20260917.yaml
+  packet_url: null
+  transport_note: 'Re-resolve PR current HEAD, RDC ownership and exact-head CI before rereview.'
+extensions: []

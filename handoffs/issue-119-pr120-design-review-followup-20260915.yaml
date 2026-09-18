@@ -1,0 +1,236 @@
+schema_version: 3
+producer:
+  skill: implementation-worker
+  mode: review follow-up
+  generated_at: 2026-09-15T06:20:56+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "PR #120"
+task_id: null
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: unknown
+  reviewed_head: 428409326623a95826361d8953bf045997b8b8f6
+  commit_range: 428409326623a95826361d8953bf045997b8b8f6..8024b90397ddc1ea8d68bc38c526636c17e54d48
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - RDC on FA780 can execute repository tests and git commands.
+  technical_head: 7bd81948239152c8c8323c20ce32e40528a1580c
+  administrative_parent: 8024b90397ddc1ea8d68bc38c526636c17e54d48
+  commit:
+    state: commit_pending
+    review_target_sha: 7bd81948239152c8c8323c20ce32e40528a1580c
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_pending
+    required_for: merge_gate
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: user_instruction
+    reference: current chat
+    summary: Fix PR #120 findings; design before implementation.
+  - source: user_instruction
+    reference: current chat
+    summary: Source code and design documents must not contain issue or task numbers; reports and handoffs are exempt.
+  - source: user_instruction
+    reference: current chat
+    summary: Enumerate normal and edge cases in tables and use those tables as implementation test acceptance criteria.
+  - source: design
+    reference: Design/pr-diff-selection-mode.md
+    summary: side/block modes and block-state transition contract.
+development_policy:
+  method: TDD for product implementation; this follow-up changes design only.
+  testing_order: Design structure and acceptance-contract checks; implementation later must derive Red tests from the tables first.
+  governing_source: RevMem project instructions and user direction
+validation_plan:
+  commands:
+    - git diff --check HEAD^ HEAD
+    - npm run compile:test
+    - node --test test-dist/test/unit/design-document-structure.test.js
+  required_failure_diagnostics:
+    - test-output/ci logs with stdout, stderr, result metadata
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: Design/pr-diff-selection-mode.md
+      reason: Accepted design-finding follow-up.
+    - path_or_operation: reports/issue-119-feasibility/design-review-followup-20260915.md
+      reason: Required detailed follow-up report.
+    - path_or_operation: handoffs/issue-119-pr120-design-review-followup-20260915.yaml
+      reason: Required continuation packet.
+  forbidden:
+    - path_or_operation: src/** and test/**
+      reason: Product implementation is outside this design-only follow-up.
+scope:
+  - Remove ambiguous state handling from PR diff block design.
+  - Fix exact post-operation states for mixed reviewed/unreviewed block sides.
+  - Make design tables executable acceptance criteria for later TDD.
+non_goals:
+  - Product implementation.
+  - Existing unrelated naming cleanup.
+  - PR merge.
+files:
+  changed:
+    - path: Design/pr-diff-selection-mode.md
+      purpose: Replace ambiguous state cases with exhaustive transition tables.
+    - path: reports/issue-119-feasibility/design-review-followup-20260915.md
+      purpose: Detailed follow-up report.
+    - path: handoffs/issue-119-pr120-design-review-followup-20260915.yaml
+      purpose: Current continuation state.
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: Confirm failure-diagnostic artifact coverage.
+  intentionally_untouched:
+    - path_or_area: src/** and test/**
+      reason: No product implementation in this follow-up.
+commands:
+  - command: npm run compile:test
+    purpose: Compile test sources.
+    exit_code: 0
+    result: passed
+    head_sha: 7bd81948239152c8c8323c20ce32e40528a1580c
+    evidence: RDC local execution.
+  - command: node --test test-dist/test/unit/design-document-structure.test.js
+    purpose: Verify design document placement and no task identifiers.
+    exit_code: 0
+    result: passed
+    head_sha: 7bd81948239152c8c8323c20ce32e40528a1580c
+    evidence: 1/1 passed.
+tests:
+  - name: design-document-structure
+    phase: verification
+    result: passed
+    head_sha: 7bd81948239152c8c8323c20ce32e40528a1580c
+    evidence: 1 test passed, 0 failed.
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: unknown
+  commits:
+    - sha: 7bd81948239152c8c8323c20ce32e40528a1580c
+      purpose: Fix PR diff block state transitions in design.
+    - sha: 8024b90397ddc1ea8d68bc38c526636c17e54d48
+      purpose: Persist detailed design follow-up report.
+  addressed_findings:
+    - id: design-state-transition-ambiguity
+      reviewed_head: 428409326623a95826361d8953bf045997b8b8f6
+      disposition: addressed
+      evidence: Design defines unreviewed/partially-reviewed/fully-reviewed states and exhaustive transitions.
+  failure_diagnostics:
+    - type: standard_error
+      location: test-output/ci/pr-diff-design-*
+      summary: Initial Windows npm.cmd spawn path produced EINVAL; Node npm-cli route passed.
+  blocked_items: []
+  summary:
+    - Removed ambiguous any-state rows.
+    - Defined 3x3 state matrices for mark and unmark.
+    - Defined addition-only and deletion-only state behavior.
+    - Declared design tables as later TDD acceptance criteria.
+review:
+  mode: not_applicable
+  reviewed_head: 428409326623a95826361d8953bf045997b8b8f6
+  reviewer:
+    identity: user/chat finding
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+      evidence:
+        - No submitted GitHub review or inline review thread existed; current chat supplied the design finding.
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary: []
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-119-feasibility/design-review-followup-20260915.md
+  reviewed_head: 428409326623a95826361d8953bf045997b8b8f6
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed report records scope, design fixes, validation, and remaining implementation work.
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final exact-head CI conclusion
+    reason: Final handoff commit has not yet been created and pushed.
+not_applicable:
+  - field_or_area: product implementation
+    reason: This follow-up is design-only.
+remaining_risks:
+  - Product behavior remains unimplemented; later TDD must cover every acceptance-table row.
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: text/plain
+    payload: "Review follow-up completed for design-state-transition ambiguity; design-only changes validated locally."
+extensions:
+  - namespace: revmem.review_followup
+    payload:
+      diagnostic_workflow_present: true
+      exact_head_ci_required: true
+      merge_performed: false
+next_action:
+  type: implementation
+  target_skill: implementation-worker
+  mode: initial implementation
+  summary: Implement the accepted design using TDD when authorized.
+  instructions:
+    - Derive Red tests from every normal-case and state-transition table row before production implementation.
+    - Preserve side mode compatibility and implement block mode atomically.
+  required_attachments_or_references:
+    - Design/pr-diff-selection-mode.md
+    - reports/issue-119-feasibility/design-review-followup-20260915.md
+  requested_authorized_actions: []
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-design-review-followup-20260915.yaml
+  packet_url: null
+  transport_note: Commit and push this packet, then record final exact-head CI externally.

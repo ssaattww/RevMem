@@ -484,8 +484,9 @@ test("Vscode PR Progress rejects stale source-A decorations and reports projecti
   tree.setPullRequestProgressSource(sourceWithRejectedProjection);
   await new Promise<void>((resolve) => setImmediate(resolve));
   rejectProjection = true;
-  emitProjectionChange?.();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  const projection = emitProjectionChange?.();
+  assert.ok(projection instanceof Promise, "the source projection listener returns the renderer completion promise");
+  await projection;
   assert.equal(reported.length, 1);
   assert.ok(reported[0] instanceof Error);
   assert.match(reported[0].message, /decoration refresh failed/);
@@ -545,6 +546,49 @@ test("Vscode PR Progress leaves source-B decorations intact when a pending sourc
   releaseSourceA?.([]);
   await pendingSourceARefresh;
   assert.equal(decorationCounts.get(sourceBUri), 1);
+});
+
+test("Vscode PR Progress captures applied decoration ranges only when a Test observer is supplied", async () => {
+  const uri = "review-range-diff://test-observer";
+  const decorations: readonly NormalEditorReviewedDecoration[] = [{
+    interval: { startLine: 2, endLineExclusive: 4 },
+    source: "context",
+    contextLabel: "PR observer",
+    reviewedAt: UPDATED_AT,
+    globalActive: false
+  }];
+  const source = {
+    getChildren: () => [],
+    select: async () => { throw new Error("selection is outside this fixture"); },
+    ownsReviewDiffDocumentUri: (candidate: string) => candidate === uri,
+    loadReviewedDecorations: async () => decorations
+  } as unknown as PullRequestProgressTreeSource;
+  const editor = {
+    document: { uri: { toString: () => uri } },
+    setDecorations: () => undefined
+  };
+  const { VscodePullRequestProgressTreeDataProvider } = loadWithVscode<
+    typeof import("../../src/ui/pr-progress/vscode-pull-request-progress-tree.js")
+  >(
+    "../../src/ui/pr-progress/vscode-pull-request-progress-tree.js",
+    vscodeTreeStub([editor])
+  );
+  const productionTree = new VscodePullRequestProgressTreeDataProvider(source);
+  await productionTree.refreshReviewDiffDecorations();
+  assert.equal(
+    (productionTree as unknown as { appliedReviewDiffDecorations?: unknown }).appliedReviewDiffDecorations,
+    undefined,
+    "production renderer allocates no applied-decoration capture"
+  );
+  assert.deepEqual(productionTree.getAppliedReviewDiffDecorations(uri), []);
+
+  let applied = 0;
+  const testTree = new VscodePullRequestProgressTreeDataProvider(source, undefined, {
+    onReviewDiffDecorationsApplied: () => { applied += 1; }
+  });
+  await testTree.refreshReviewDiffDecorations();
+  assert.equal(applied, 1);
+  assert.deepEqual(testTree.getAppliedReviewDiffDecorations(uri), decorations);
 });
 
 test("runtime command keeps its durable result, projects after progress failure, and reports it", async () => {
@@ -631,7 +675,10 @@ const assertReviewCommandSessionRoute = async (filePath: string): Promise<void> 
     repositoryRoot: "/workspace/RevMem",
     fileSystemPathSemantics: "posix",
     snapshot: runtimeSnapshot,
-    readTextContent: async () => ({ kind: "found", content: "a\nd\nc" })
+    readTextContent: async (descriptor) => ({
+      kind: "found",
+      content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc"
+    })
   });
 
   await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);

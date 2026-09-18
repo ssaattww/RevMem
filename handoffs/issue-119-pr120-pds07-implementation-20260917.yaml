@@ -1,0 +1,423 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: initial_implementation
+  generated_at: '2026-09-17T06:17:33+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-07
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 2f1b3d516209182cfcf867149306a8a2152cda60
+  reviewed_head: null
+  commit_range: a5ab79df980f15394ffb7d9547e25e739f565169..2f1b3d516209182cfcf867149306a8a2152cda60
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 4eae589f-096b-4362-9bec-0f392d77d44f
+  connection: available
+  os: Windows
+  shell: cmd.exe / PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-pr120-pds07-20260917'
+  repository: ssaattww/RevMem
+  branch: work/pr120-pds07-20260917
+  head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+  source_state: dirty
+  source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  ownership: current_task
+  writable_paths:
+    - package.json
+    - test/unit/pr-diff-selection-acceptance.test.ts
+    - reports/pr120-pds07-implementation-20260917.md
+    - handoffs/issue-119-pr120-pds07-implementation-20260917.yaml
+    - tasks/pr-diff-selection-mode/tasks-status.md
+    - tasks/pr-diff-selection-mode/phases-status.md
+  dependencies:
+    - name: Node.js
+      status: available
+      evidence: v24.20.0
+    - name: npm
+      status: available
+      evidence: 11.19.0; npm ci succeeded
+    - name: git
+      status: available
+      evidence: 2.46.0.windows.1
+  evidence:
+    - Dedicated worktree created from PR current HEAD a5ab79df980f15394ffb7d9547e25e739f565169.
+    - Validation content is exactly the tree committed as 2f1b3d516209182cfcf867149306a8a2152cda60.
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - focused 116/116; unit 845 pass, 0 fail, 2 skip; tooling 16/16; build/typecheck/architecture/lint passed.
+  technical_head: 2f1b3d516209182cfcf867149306a8a2152cda60
+  administrative_parent: 2f1b3d516209182cfcf867149306a8a2152cda60
+  commit:
+    state: committed
+    review_target_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+  push:
+    state: pushed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: not_applicable
+    pr_action: update
+authoritative_requirements:
+  - source: user_instruction
+    reference: 'pr120.PDS-07 実装開始'
+    summary: Implement PDS-07, use uploaded/repository Skills and RDC git, update PR, do not merge.
+  - source: repository_instruction
+    reference: AGENTS.md and standing RevMem project instructions
+    summary: Skill-first workflow, TDD, diagnostic artifacts, small commits, detailed report and concise PR comment.
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md
+    summary: Every design-table row must map to executed real-path acceptance covering persistence, history and PR Progress.
+  - source: design
+    reference: Design/pr-diff-selection-mode.md
+    summary: side/block targeting, selection normalization, three-component state, history, newline and progress contracts.
+development_policy:
+  method: TDD
+  testing_order: Test-first required; PDS-07 is acceptance-coverage completion and valid new acceptance cases were green against existing product behavior, so no product-defect Red existed.
+  governing_source: Standing RevMem instructions and PDS task plan
+validation_plan:
+  commands:
+    - npm run test:pr-diff-selection
+    - npm run test:unit
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - git diff --check
+  required_failure_diagnostics:
+    - result JSON
+    - stdout
+    - stderr
+    - combined log
+    - failure investigation logs
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_tests
+  - edit_configuration
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: package.json
+      reason: Acceptance-suite wiring.
+    - path_or_operation: test/unit/pr-diff-selection-acceptance.test.ts
+      reason: Real-path acceptance coverage.
+    - path_or_operation: reports/pr120-pds07-implementation-20260917.md
+      reason: Detailed report.
+    - path_or_operation: handoffs/issue-119-pr120-pds07-implementation-20260917.yaml
+      reason: Lossless handoff.
+    - path_or_operation: tasks/pr-diff-selection-mode/tasks-status.md
+      reason: Progress synchronization.
+    - path_or_operation: tasks/pr-diff-selection-mode/phases-status.md
+      reason: Phase synchronization.
+    - path_or_operation: PR #120 body/comment
+      reason: Publish status and concise evidence.
+  forbidden:
+    - path_or_operation: src product code
+      reason: No valid acceptance failure required a product change.
+    - path_or_operation: Design/pr-diff-selection-mode.md
+      reason: No design change in this task.
+    - path_or_operation: .github/workflows/ci.yml
+      reason: Existing diagnostic artifact workflow is sufficient.
+    - path_or_operation: PDS-08 through PDS-10 implementation
+      reason: Separate tasks.
+    - path_or_operation: merge
+      reason: User-owned action.
+scope:
+  - Complete design-table real-path acceptance coverage for PDS-07.
+  - Verify original, modified Context, Global, commit count, persisted history and PR Progress together.
+  - Wire acceptance coverage into focused and default unit gates.
+non_goals:
+  - stale/CAS/save-failure/reload regression work
+  - real Extension Host acceptance
+  - final independent review
+  - merge
+files:
+  changed:
+    - path: test/unit/pr-diff-selection-acceptance.test.ts
+      purpose: Real runtime acceptance matrix.
+    - path: package.json
+      purpose: Focused/default unit test wiring.
+    - path: reports/pr120-pds07-implementation-20260917.md
+      purpose: Detailed implementation report.
+    - path: tasks/pr-diff-selection-mode/tasks-status.md
+      purpose: PDS-06 closure and PDS-07 state sync.
+    - path: tasks/pr-diff-selection-mode/phases-status.md
+      purpose: Current phase sync.
+    - path: handoffs/issue-119-pr120-pds07-implementation-20260917.yaml
+      purpose: Review handoff.
+  inspected:
+    - path: Design/pr-diff-selection-mode.md
+      purpose: Acceptance tables.
+    - path: src/composition/pull-request/pull-request-review-runtime-base.ts
+      purpose: PR session, persistence and progress path.
+    - path: src/application/review-commands/diff-editor-review-command-service.ts
+      purpose: Selection command path.
+    - path: src/application/review-history/review-history-recorder.ts
+      purpose: Persisted history path.
+    - path: .github/workflows/ci.yml
+      purpose: Failure artifact path.
+  intentionally_untouched:
+    - path_or_area: product implementation
+      reason: Existing behavior satisfied all valid PDS-07 acceptance cases.
+    - path_or_area: design
+      reason: Requirements did not change.
+    - path_or_area: workflow
+      reason: Existing diagnostics are sufficient.
+commands:
+  - command: npm run test:pr-diff-selection
+    purpose: Pre-acceptance baseline.
+    exit_code: 0
+    result: passed
+    head_sha: a5ab79df980f15394ffb7d9547e25e739f565169
+    evidence: 66/66
+    execution_environment: null
+    source_fingerprint: null
+  - command: node --test test-dist/test/unit/pr-diff-selection-acceptance.test.js
+    purpose: New acceptance matrix.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: pds07-acceptance-complete-green; 50/50
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: npm run test:pr-diff-selection
+    purpose: Focused regression with acceptance suite.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: pds07-focused-green; 116/116
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: npm run test:unit
+    purpose: Default unit regression.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: pds07-unit-green; 845 pass, 0 fail, 2 existing Windows skips; tooling 16/16
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: npm run build && npm run typecheck:contracts
+    purpose: Compile and contract gates.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: pds07-build and pds07-contracts
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: npm run validate:architecture && npm run validate:architecture:negative
+    purpose: Architecture gates.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: positive passed; negative matched expected 11 findings
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: npm run lint
+    purpose: Lint gate.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: pds07-lint
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+  - command: git diff --check
+    purpose: Whitespace validation.
+    exit_code: 0
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: no whitespace errors
+    execution_environment: null
+    source_fingerprint: git-tree:775973aaeb1356a1509d4c69eb1c6af472e4b90b
+tests:
+  - name: design-table real-path acceptance
+    phase: verification
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: 50/50 top-level tests; 132 state-product iterations included.
+  - name: focused regression
+    phase: regression
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: 116/116.
+  - name: default unit regression
+    phase: regression
+    result: passed
+    head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+    evidence: 845 pass, 0 fail, 2 platform skips.
+ci:
+  required: true
+  workflow: CI
+  run_id: 35150950188
+  head_sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+  conclusion: in_progress
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 2f1b3d516209182cfcf867149306a8a2152cda60
+  commits:
+    - sha: 2f1b3d516209182cfcf867149306a8a2152cda60
+      purpose: Add real-path acceptance coverage and validation wiring.
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: test-output/ci/pds07-acceptance-complete-green.result.json
+      summary: Acceptance result JSON.
+    - type: standard_output
+      location: test-output/ci/pds07-acceptance-complete-green.stdout.log
+      summary: Acceptance stdout.
+    - type: standard_error
+      location: test-output/ci/pds07-acceptance-complete-green.stderr.log
+      summary: Acceptance stderr.
+    - type: log
+      location: test-output/ci/pds07-acceptance-complete-green.combined.log
+      summary: Acceptance combined log.
+    - type: other
+      location: test-output/ci/
+      summary: Focused, unit, build, contracts, architecture and lint diagnostics are retained by pds07 labels.
+  blocked_items: []
+  summary:
+    - Every PDS-07 table is represented in the permanent acceptance suite.
+    - Existing production behavior passed all valid acceptance cases; no product code change was needed.
+    - Global-only changes create modified history without double-counting PR Progress.
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: false
+      evidence: []
+  verdict: not_applicable
+  required_coverage:
+    - criterion: PDS-07 normal review
+      disposition: unexplored
+      evidence: Implementation is ready; normal review has not yet been performed.
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment:
+    - item: local implementation validation
+      result: supported
+      evidence: focused 116/116, unit 845 pass/0 fail/2 skip, tooling 16/16 and static gates passed.
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - Normal review has not started; implementation worker issues no review verdict.
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr120-pds07-implementation-20260917.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed report maps design tables to acceptance evidence and records validation/CI state.
+findings: []
+held: []
+unexplored:
+  - area: PDS-08 stale/CAS/save-failure/reload behavior
+    blocker: Separate later task.
+    remaining_risk: Concurrency and reload behavior is not proven by PDS-07.
+    verdict_impact: Blocks feature completion, not PDS-07 implementation evidence.
+  - area: PDS-09 real Extension Host synchronization
+    blocker: Depends on PDS-07 and PDS-08.
+    remaining_risk: Real-host decorations and PR Progress synchronization are not yet accepted.
+    verdict_impact: Blocks feature completion.
+unknown:
+  - field_or_fact: management-commit SHA and exact-head CI after report/tracking/handoff publication
+    reason: The management commit does not yet exist at packet creation.
+not_applicable:
+  - field_or_area: product-code change
+    reason: Valid acceptance cases passed existing production behavior.
+remaining_risks:
+  - PDS-07 requires normal review before PDS-08 begins.
+  - Feature completion still depends on PDS-08 through PDS-10.
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: initial_review
+  summary: Review PDS-07 acceptance coverage and expectations before starting PDS-08.
+  instructions:
+    - Re-resolve PR #120 current HEAD before review.
+    - Review every design-table mapping, especially the 132 state-product cases, selection boundaries, newline table and Global-only progress case.
+    - Confirm the fixture uses production runtime, persistence, actual history recorder and PR Progress.
+    - Cite only CI runs whose head SHA exactly matches the PR current HEAD.
+    - Do not start PDS-08 until normal review converges.
+  required_attachments_or_references:
+    - reports/pr120-pds07-implementation-20260917.md
+    - Design/pr-diff-selection-mode.md
+    - tasks/pr-diff-selection-mode/tasks-status.md
+    - test/unit/pr-diff-selection-acceptance.test.ts
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds07-implementation-20260917.yaml
+  packet_url: null
+  transport_note: Management commit/push is pending; receiving chat must re-resolve current HEAD and permissions.
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      repository: ssaattww/RevMem
+      task_id: PDS-07
+      verification_capability: local_execution_available
+      technical_head: 2f1b3d516209182cfcf867149306a8a2152cda60
+  - source_skill: implementation-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      mode: initial implementation
+      outcome: completed
+      acceptance: 50/50
+      focused: 116/116
+      unit: 845 pass, 0 fail, 2 skip
+      final_technical_head: 2f1b3d516209182cfcf867149306a8a2152cda60
+      next_required_action: normal review
+  - source_skill: report-writer
+    output_contract_version: unknown
+    content_type: text/markdown
+    payload: reports/pr120-pds07-implementation-20260917.md
+extensions: []

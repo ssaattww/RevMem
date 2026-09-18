@@ -169,7 +169,7 @@ export interface ReviewRangeRuntimePort {
   registerReviewDiffRuntime(runtime: ReviewDiffRuntimePort): vscode.Disposable;
 }
 
-interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
+export interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
   /** Test-only direct path that preserves normal-editor command failures for Host diagnostics. */
@@ -210,6 +210,14 @@ interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
   getLocalBaseHeadOpenedFiles(): readonly string[];
   getLocalBaseHeadPersistence(): ReturnType<LocalBaseHeadRuntime<vscode.Uri>["getPersistence"]>;
   setLocalBaseHeadConfirmationAnswer(answer: boolean): void;
+  /** Actual rendered PR Progress file nodes for the currently selected source. */
+  getActivePullRequestProgressTreeForTest(): readonly PullRequestProgressTreeFileNode[];
+  /** Actual immutable-diff decoration ranges last applied by the PR Progress renderer. */
+  getVisiblePrDiffReviewedIntervalsForTest(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  /** Monotonic Test-mode signal from the real PR-diff decoration renderer. */
+  getPrDiffDecorationProjectionVersionForTest(): number;
+  /** Resolves after a real PR-diff decoration render newer than `version`. */
+  waitForPrDiffDecorationProjectionForTest(version: number): Promise<void>;
 }
 
 interface ActiveExtensionRuntime {
@@ -983,6 +991,17 @@ export function activate(
     }
   });
   localBaseHeadCommandServiceReference.current = localBaseHeadCommandService;
+  const prDiffDecorationProjectionForTest = context.extensionMode === vscode.ExtensionMode.Test
+    ? { version: 0, waiters: [] as Array<() => void> }
+    : undefined;
+  const prDiffDecorationProjectionObserverForTest = prDiffDecorationProjectionForTest === undefined
+    ? undefined
+    : {
+        onReviewDiffDecorationsApplied: (): void => {
+          prDiffDecorationProjectionForTest.version += 1;
+          for (const resolve of prDiffDecorationProjectionForTest.waiters.splice(0)) resolve();
+        }
+      };
   localBaseHeadTreeReference.current = registerVscodePullRequestProgressTree(
     context,
     localBaseHeadRuntime.progress,
@@ -990,7 +1009,8 @@ export function activate(
       await vscode.window.showErrorMessage(
         `PR Progressを開けませんでした: ${errorMessage(error)}`
       );
-    }
+    },
+    prDiffDecorationProjectionObserverForTest
   );
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
@@ -1080,6 +1100,28 @@ export function activate(
     getLocalBaseHeadPersistence: () => localBaseHeadRuntime.getPersistence(),
     setLocalBaseHeadConfirmationAnswer: (answer) => {
       localBaseHeadConfirmationAnswer = answer;
+    },
+    getActivePullRequestProgressTreeForTest: () => {
+      const tree = localBaseHeadTreeReference.current;
+      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+      return tree.getChildren()
+        .flatMap((category) => tree.getChildren(category))
+        .filter((node): node is PullRequestProgressTreeFileNode => node.kind === "file");
+    },
+    getVisiblePrDiffReviewedIntervalsForTest: (documentUri) => {
+      const tree = localBaseHeadTreeReference.current;
+      if (tree === undefined) throw new Error("PR Progress Tree is not available.");
+      return tree.getAppliedReviewDiffDecorations(documentUri).map((decoration) => ({
+        startLine: decoration.interval.startLine,
+        endLineExclusive: decoration.interval.endLineExclusive
+      }));
+    },
+    getPrDiffDecorationProjectionVersionForTest: () => prDiffDecorationProjectionForTest!.version,
+    waitForPrDiffDecorationProjectionForTest: (version) => {
+      if (prDiffDecorationProjectionForTest!.version > version) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        prDiffDecorationProjectionForTest!.waiters.push(resolve);
+      });
     }
   };
 }

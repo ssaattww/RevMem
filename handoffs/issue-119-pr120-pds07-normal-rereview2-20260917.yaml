@@ -1,0 +1,347 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix_verification
+  generated_at: '2026-09-17T09:46:48+09:00'
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #119 / PR #120'
+task_id: PDS-07
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  reviewed_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  commit_range: 'b84d7f630b2afaf5db3c1d707fb15d314822209a..290a1054c66ec281d03964e13b9e178021dd43a3'
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: 75840a70-dea0-4d8c-9bb4-fe97c78bc11e
+  connection: available
+  os: Linux
+  shell: /bin/bash
+  working_directory: /home/ibis/RevMem-pr120-pds07-rereview2-20260917
+  repository: ssaattww/RevMem
+  branch: detached-review-worktree
+  head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+  source_state: clean
+  source_fingerprint: 'tree da843695239182eb444a6f3ba02073ec73ff2d00; package-lock sha256 3e7611244b1729f3d701b60a726b69dcc630f8e0fb1fd945018ca9e74845a3b4'
+  ownership: current_task
+  writable_paths:
+    - reports/pr120-pds07-normal-rereview2-20260917.md
+    - handoffs/issue-119-pr120-pds07-normal-rereview2-20260917.yaml
+  dependencies:
+    - name: git
+      status: available
+      evidence: fetch/worktree/diff checks succeeded through RDC
+    - name: Node.js
+      status: available
+      evidence: v22.13.1
+    - name: npm
+      status: available
+      evidence: v11.4.2
+    - name: node_modules
+      status: available
+      evidence: package-lock hash matched existing dependency tree
+  evidence:
+    - reviewed source was archived to /home/ibis/RevMem-pr120-pds07-rereview2-evidence-20260917/source
+    - existing unrelated Python REPL sessions were left untouched
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - direct acceptance 61/61 passed on exact reviewed HEAD archive
+    - focused 127/127 and unit 858/858 passed on exact reviewed HEAD archive
+  technical_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  administrative_parent: 290a1054c66ec281d03964e13b9e178021dd43a3
+  commit:
+    state: commit_pending
+    review_target_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+  push:
+    state: push_pending
+    head_sha: null
+  ci_wait:
+    state: ci_wait_pending
+    required_for: review_record_publication
+  final_publication:
+    sequence: final_push_then_pr_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: prior_review
+    reference: reports/pr120-pds07-normal-rereview-20260917.md
+    summary: PDS07-NR1-002 remained open only because normal matrix unmark history payloads were not verified.
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md
+    summary: PDS-07 requires design-table acceptance to jointly verify persisted state, history content, PR Progress, and Global.
+  - source: user_instruction
+    reference: 再レビュー
+    summary: Same normal reviewer rechecks the remaining PDS-07 finding.
+development_policy:
+  method: review_only
+  testing_order: inspect fix diff and sibling cases, run exact-head acceptance/focused/unit, verify exact-head CI
+validation_plan:
+  commands:
+    - node tools/run-ci-command.mjs rereview2-compile npm run compile:test
+    - node tools/run-ci-command.mjs rereview2-acceptance node --test test-dist/test/unit/pr-diff-selection-acceptance.test.js
+    - node tools/run-ci-command.mjs rereview2-focused npm run test:pr-diff-selection
+    - node tools/run-ci-command.mjs rereview2-unit npm run test:unit
+    - git diff --check b84d7f6..290a105
+  required_failure_diagnostics:
+    - result JSON
+    - stdout log
+    - stderr log
+    - combined log
+scope:
+  - Verify PDS07-NR1-002 normal-case unmark history payload closure.
+  - Inspect the follow-up diff, directly affected history/progress composition, corrected reports and tracking.
+  - Confirm exact-current-HEAD CI and artifact.
+non_goals:
+  - Implement fixes.
+  - Start PDS-08 through PDS-10.
+  - Merge PR #120.
+write_boundary:
+  allowed:
+    - reports/pr120-pds07-normal-rereview2-20260917.md
+    - handoffs/issue-119-pr120-pds07-normal-rereview2-20260917.yaml
+  forbidden:
+    - src product code
+    - test product changes
+    - Design
+    - workflow
+    - configuration
+    - task/phase tracking
+    - merge
+commands:
+  - command: rereview2-acceptance
+    purpose: Verify PDS-07 direct acceptance on exact reviewed HEAD.
+    exit_code: 0
+    result: passed
+    head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+    evidence: 61/61 passed, including normal mark/unmark history payload test.
+  - command: rereview2-focused
+    purpose: Focused PR diff selection regression.
+    exit_code: 0
+    result: passed
+    head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+    evidence: 127/127 passed.
+  - command: rereview2-unit
+    purpose: Default unit regression.
+    exit_code: 0
+    result: passed
+    head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+    evidence: tooling 16/16 and unit 858/858 passed on Linux.
+  - command: git diff --check
+    purpose: Validate follow-up diff formatting.
+    exit_code: 0
+    result: passed
+    head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+    evidence: no whitespace errors.
+ci:
+  required: true
+  workflow: CI
+  run_id: 35164155623
+  head_sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+  conclusion: success
+  artifact:
+    id: 10474620534
+    name: review-range-user-validation-0.1.53-pre+290a105
+    digest: 'sha256:2912687ab9f3514962da47616588fb051e14fc6388998643863582fa21e4f70f'
+implementation:
+  outcome: completed
+  final_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  commits:
+    - sha: 0763ca7826d7ed2df5a226f91740ad60ee77e3f2
+      purpose: Verify normal unmark history payloads.
+    - sha: fba9d3ac4079f4b448ea007496e977cf1302f200
+      purpose: Remove obsolete acceptance helper after refactor.
+    - sha: 290a1054c66ec281d03964e13b9e178021dd43a3
+      purpose: Publish follow-up report, handoff and tracking state.
+review:
+  mode: fix_verification
+  reviewed_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  reviewer:
+    identity: 'ChatGPT PDS-07 normal reviewer, same chat as prior PDS-07 reviews'
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: 'ChatGPT PDS-07 normal reviewer'
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - reports/pr120-pds07-normal-review-20260917.md
+        - reports/pr120-pds07-normal-rereview-20260917.md
+  verdict: pass_with_held
+  required_coverage:
+    - criterion: PDS07-NR1-001 remains fixed
+      disposition: checked_no_finding
+      evidence: side-mode acceptance guard and cases remain present and pass.
+    - criterion: PDS07-NR1-002 normal-case unmark history payloads
+      disposition: checked_no_finding
+      evidence: normal cases run mark then unmark and assert full per-operation history payloads.
+    - criterion: persistence and PR Progress reset
+      disposition: checked_no_finding
+      evidence: each normal case asserts commit count 1 then 2 and Progress returns to zero.
+    - criterion: corrected review records
+      disposition: checked_no_finding
+      evidence: prior overclaim was corrected to mark-only normal coverage at cebdf25.
+    - criterion: exact-head CI
+      disposition: checked_no_finding
+      evidence: run 35164155623 matches 290a1054 and succeeded including T506.
+  validation_assessment:
+    - item: local exact-head direct acceptance
+      result: supported
+      evidence: 61/61 passed.
+    - item: local exact-head focused regression
+      result: supported
+      evidence: 127/127 passed.
+    - item: local exact-head default unit regression
+      result: supported
+      evidence: 858/858 passed; tooling 16/16.
+    - item: current-head CI
+      result: supported
+      evidence: exact SHA run 35164155623 completed success.
+  summary:
+    - PDS07-NR1-002 is fixed with no new required finding.
+    - PDS-07 normal review has converged; PDS-08 through PDS-10 remain held for their own scope.
+findings:
+  - id: PDS07-NR1-001
+    severity: P2
+    origin: introduced_by_change
+    location: test/unit/pr-diff-selection-acceptance.test.ts
+    description: Prior side-mode normal-case acceptance gap.
+    impact: Could previously miss side-mode regressions.
+    evidence: Previously fixed; unchanged acceptance cases pass in this round.
+    required_action: none; fixed in prior round
+    disposition: fixed
+  - id: PDS07-NR1-002
+    severity: P2
+    origin: introduced_by_change
+    location: test/unit/pr-diff-selection-acceptance.test.ts:727-782
+    description: Prior normal-case unmark history payload coverage gap.
+    impact: Could previously allow incorrect unmark history payloads while state/progress passed.
+    evidence: Same-fixture mark/unmark now checks ranges, Global, reason, diffId, event order, commit count and progress; 61/61 direct and 127/127 focused.
+    required_action: Verify detailed unmark history payloads for every normal acceptance case.
+    disposition: fixed
+held:
+  - item: PDS-08
+    reason: Separate stale comparison, CAS conflict and reload task.
+    owner: implementation worker
+    remaining_risk: stale/competing comparisons and persistence reload are not closed by PDS-07.
+    verdict_impact: does not block PDS-07 acceptance
+  - item: PDS-09
+    reason: Separate real Extension Host display synchronization task.
+    owner: implementation worker
+    remaining_risk: final UI synchronization is not established by this unit/integration acceptance task.
+    verdict_impact: does not block PDS-07 acceptance
+  - item: PDS-10
+    reason: Separate final integration, independent review and publication audit.
+    owner: review/implementation workers
+    remaining_risk: feature-wide final acceptance remains pending.
+    verdict_impact: does not block PDS-07 acceptance
+unexplored:
+  - area: PDS-08 through PDS-10 implementation details
+    blocker: out of PDS-07 bounded fix-verification scope
+    remaining_risk: recorded under held items
+    verdict_impact: non-blocking for this task
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: user-owned action; reviewer does not merge
+remaining_risks:
+  - PDS-08 through PDS-10 must still complete before feature-wide completion.
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr120-pds07-normal-rereview2-20260917.md
+  reviewed_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - Detailed bounded re-review report records PDS07-NR1-002 fixed and pass_with_held.
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: PDS-08
+  summary: After review-record publication and exact-head CI confirmation, synchronize tracking and proceed to PDS-08.
+  instructions:
+    - Preserve PDS07-NR1-001 and PDS07-NR1-002 as fixed.
+    - Do not merge PR #120.
+    - Re-resolve PR current HEAD and use only matching workflow runs.
+  required_attachments_or_references:
+    - reports/pr120-pds07-normal-rereview2-20260917.md
+    - handoffs/issue-119-pr120-pds07-normal-rereview2-20260917.yaml
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: unknown
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 290a1054c66ec281d03964e13b9e178021dd43a3
+      base_ref: main
+      commit_range: 'b84d7f630b2afaf5db3c1d707fb15d314822209a..290a1054c66ec281d03964e13b9e178021dd43a3'
+      reviewer_identity: same PDS-07 normal reviewer
+      reviewer_continuity: unchanged
+      findings:
+        - id: PDS07-NR1-001
+          severity: P2
+          disposition: fixed
+        - id: PDS07-NR1-002
+          severity: P2
+          disposition: fixed
+      finding_completeness_matrix:
+        - finding_id: PDS07-NR1-002
+          required_action: Every normal acceptance case must verify unmark history payloads after mark.
+          production_path: buildSnapshotFromLocalGitDiff -> PullRequestReviewRuntime -> command service -> repository commit -> recordPullRequestReviewHistory -> ReviewHistoryRecorder -> getProgress
+          actual_composition_fixture: normalCases in pr-diff-selection-acceptance.test.ts uses createFixture/openCommand and same fixture/command for mark then unmark.
+          focused_evidence: direct 61/61, focused 127/127, unit 858/858, exact-head CI run 35164155623 success.
+      required_coverage:
+        - criterion: required action closure
+          disposition: checked_no_finding
+        - criterion: direct dependencies and sibling cases
+          disposition: checked_no_finding
+        - criterion: current-head CI
+          disposition: checked_no_finding
+      held:
+        - PDS-08
+        - PDS-09
+        - PDS-10
+      unexplored:
+        - PDS-08 through PDS-10 implementation details are outside this bounded round.
+      validation_assessment:
+        - direct acceptance supported 61/61
+        - focused supported 127/127
+        - unit supported 858/858
+        - exact-head CI supported by run 35164155623
+      verdict: pass_with_held
+      remaining_risks:
+        - PDS-08 through PDS-10 remain required for feature-wide completion.
+      next_action: publish review record, confirm publication HEAD CI, then proceed to PDS-08.
+      report_attestation_allowed: false
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds07-normal-rereview2-20260917.yaml
+  packet_url: null
+  transport_note: Re-resolve branch HEAD, RDC ownership and exact-head CI before PDS-08 work.
+extensions:
+  - namespace: review_publication
+    payload:
+      reviewed_tree: da843695239182eb444a6f3ba02073ec73ff2d00
+      evidence_directory: /home/ibis/RevMem-pr120-pds07-rereview2-evidence-20260917/source
+      prior_review_report: reports/pr120-pds07-normal-rereview-20260917.md
+      prior_review_record_head: b84d7f630b2afaf5db3c1d707fb15d314822209a
+      publication_commit_state: pending
+      publication_exact_head_ci_state: pending

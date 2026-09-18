@@ -60,6 +60,7 @@ import {
   PullRequestReviewRuntime,
   type PullRequestReviewRuntimeOptions
 } from "./pull-request/pull-request-review-runtime";
+import { recordPullRequestReviewHistory } from "./pull-request/pull-request-review-history";
 import {
   GitReviewContextResolver,
   type SelectedReviewContext
@@ -68,8 +69,11 @@ import {
   resolveWorkspaceFolderMembership,
   resolveWorkspaceResourceEligibility
 } from "../application/workspace-identity/index";
+import { readPrDiffSelectionMode } from "../application/configuration/index";
 import { readReviewRangeMappingOptions } from "../application/configuration/review-range-mapping-options";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../core/contracts/index";
+import { deriveDocumentLineContract } from "../core/intervals/index";
+import type { PullRequestDiffSnapshot } from "../core/pr-progress/index";
 import { TestReviewStateDependentQueue } from "../test-only-review-state-dependent-queue";
 import { observeStartupGlobalUnderstandingDocuments } from "../application/global-understanding/startup-document-observation";
 import { observeGlobalUnderstandingDocumentOpen, shouldRefreshGlobalUnderstandingFolderEntry } from "../application/global-understanding/document-open-lifecycle";
@@ -88,6 +92,25 @@ const toResourceUri = (uri: vscode.Uri) => ({
 });
 const MARK_FILE_CONFIRMATION = "確認済みにする";
 const UNMARK_FILE_CONFIRMATION = "すべて解除";
+
+/** Immutable PR input accepted only by the Extension Host test activation seam. */
+export interface PullRequestReviewRuntimeTestFixture {
+  readonly repositoryId: string;
+  readonly repositoryRoot: string;
+  readonly pullRequestNumber: number;
+  readonly snapshot: PullRequestDiffSnapshot;
+  readonly texts: readonly {
+    readonly revision: string;
+    readonly filePath: string;
+    readonly content: string;
+  }[];
+  /** Optional persisted mismatch used to exercise the real command repair path. */
+  readonly initialState?: Readonly<{
+    readonly modifiedReviewedByFile?: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>;
+    readonly originalReviewedByFile?: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>;
+    readonly globalReviewedByFile?: Readonly<Record<string, readonly { readonly startLine: number; readonly endLineExclusive: number }[]>>;
+  }>;
+}
 
 /** Ports owned by the T305 activation composition for the public Current Context command. */
 export interface T305CurrentContextRuntimeCompositionPorts {
@@ -152,6 +175,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testCurrentContextSelectionRequestCount = 0;
   let testCurrentContextStaleAfterPick = false;
   let testCurrentContextDependentRefreshCount = 0;
+  let testPullRequestRuntimeTarget: { readonly repositoryId: string; readonly contextId: string } | undefined;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     selectedContext = next;
@@ -611,12 +635,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
   const pullRequestReviewRuntime = new PullRequestReviewRuntime<vscode.Uri>({
     repository: prRepository,
-    requestHistory: (transaction) => prHistory.recordTransaction(
-      transaction,
-      transaction.operation === "mark-ranges-reviewed" || transaction.operation === "unmark-ranges-reviewed"
-        ? "user-selection"
-        : "user-file"
-    ),
+    requestHistory: (transaction) => recordPullRequestReviewHistory(prHistory, transaction),
     diffHost: {
       parseUri: (value) => vscode.Uri.parse(value, true),
       openDiff: async (original, modified, title) => {
@@ -629,15 +648,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     getExclusionPolicy: () => new ReviewFileExclusionPolicy({
       userGlobs: exclusionPolicy.getUserGlobs(),
     }),
+    getDiffSelectionMode: () => readPrDiffSelectionMode(
+      vscode.workspace.getConfiguration("reviewRange")
+    ),
     reportDerivedProjectionError: reportPullRequestProgressError
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
   const refreshPullRequestProgressForSelection = async (): Promise<void> => {
-    const contextId = selectedContext?.kind === "pull-request" &&
+    const testContextId = context.extensionMode === vscode.ExtensionMode.Test
+      ? testPullRequestRuntimeTarget?.contextId
+      : undefined;
+    const contextId = testContextId ?? (selectedContext?.kind === "pull-request" &&
       pullRequestReviewRuntime.hasContext(selectedContext.contextId)
       ? selectedContext.contextId
-      : undefined;
+      : undefined);
     await refreshSelectedPullRequestProgress({
       contextId,
       source: pullRequestReviewRuntime.progress,
@@ -647,6 +672,121 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       setSource: (source) => runtimePort.setPullRequestProgressSource(source),
       refreshTree: () => runtimePort.refreshPullRequestProgressTree()
     });
+  };
+  const initializePullRequestReviewRuntimeForTest = async (
+    input: PullRequestReviewRuntimeTestFixture
+  ): Promise<void> => {
+    if (context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error("Pull-request runtime fixture is available only in Extension Host tests.");
+    }
+    // Startup context refresh may otherwise supersede this fixture's first
+    // progress generation before the test has an immutable PR selected.
+    await currentContextRuntime.startupRefresh;
+    const { snapshot } = input;
+    if (snapshot.originalDiffId !== `${snapshot.baseSha}..${snapshot.headSha}`) {
+      throw new Error("Test PR snapshot originalDiffId must match base/head revisions.");
+    }
+    const textFor = (revision: string, filePath: string): string | undefined =>
+      input.texts.find((text) => text.revision === revision && text.filePath === filePath)?.content;
+    const now = new Date().toISOString();
+    const files = Object.fromEntries(snapshot.files.map((file) => {
+      const modifiedContent = file.newPath === undefined
+        ? undefined
+        : textFor(snapshot.headSha, file.newPath);
+      if (file.newPath !== undefined && modifiedContent === undefined) {
+        throw new Error(`Test PR fixture is missing immutable HEAD text for ${file.newPath}.`);
+      }
+      if (file.oldPath !== undefined && textFor(snapshot.baseSha, file.oldPath) === undefined) {
+        throw new Error(`Test PR fixture is missing immutable BASE text for ${file.oldPath}.`);
+      }
+      const logicalPath = file.newPath ?? file.oldPath;
+      if (logicalPath === undefined) throw new Error("Test PR fixture file must have a path.");
+      return [file.fileId, {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        fileId: file.fileId,
+        currentPath: logicalPath,
+        previousPaths: file.oldPath !== undefined && file.oldPath !== logicalPath ? [file.oldPath] : [],
+        revisionId: snapshot.headSha,
+        modifiedReviewed: (input.initialState?.modifiedReviewedByFile?.[file.fileId] ?? [])
+          .map((interval) => ({ ...interval })),
+        originalReviewedByDiff: input.initialState?.originalReviewedByFile?.[file.fileId] === undefined
+          ? {}
+          : { [snapshot.originalDiffId]: input.initialState.originalReviewedByFile[file.fileId].map((interval) => ({ ...interval })) },
+        ...(modifiedContent === undefined ? {} : {
+          contentHash: stableHash.digest(modifiedContent)
+        }),
+        lineCount: modifiedContent === undefined
+          ? 0
+          : deriveDocumentLineContract({ existence: "present", content: modifiedContent }).editorLineCount,
+        updatedAt: now
+      }];
+    }));
+    const contextState: ReviewContextState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextId: snapshot.contextId,
+      kind: "pull-request",
+      repositoryId: input.repositoryId,
+      displayName: `PR #${input.pullRequestNumber}`,
+      pullRequest: {
+        host: "fixture.invalid",
+        owner: "extension-host",
+        repository: "pds09",
+        number: input.pullRequestNumber,
+        state: "open",
+        baseSha: snapshot.baseSha,
+        headSha: snapshot.headSha
+      },
+      files,
+      createdAt: now,
+      updatedAt: now
+    };
+    const globalFiles = Object.fromEntries(snapshot.files.flatMap((file) => {
+      const reviewed = input.initialState?.globalReviewedByFile?.[file.fileId];
+      const content = file.newPath === undefined ? undefined : textFor(snapshot.headSha, file.newPath);
+      if (reviewed === undefined || file.newPath === undefined || content === undefined) return [];
+      return [[file.fileId, {
+        fileId: file.fileId,
+        currentPath: file.newPath,
+        revisionId: snapshot.headSha,
+        reviewed: reviewed.map((interval) => ({ ...interval })),
+        contentHash: stableHash.digest(content),
+        updatedAt: now
+      }]];
+    }));
+    const globalState: RepositoryGlobalState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      repositoryId: input.repositoryId,
+      currentRevisionId: snapshot.headSha,
+      files: globalFiles,
+      updatedAt: now
+    };
+    await runtimePort.reviewStateRepository.save(
+      { kind: "pull-request", repositoryId: input.repositoryId, contextId: snapshot.contextId },
+      { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState }
+    );
+    pullRequestReviewRuntime.register({
+      repositoryId: input.repositoryId,
+      repositoryRoot: input.repositoryRoot,
+      fileSystemPathSemantics: workspaceSidePathSemantics(),
+      snapshot,
+      readTextContent: async (descriptor) => {
+        const content = textFor(descriptor.revision, descriptor.filePath);
+        return content === undefined ? { kind: "missing-file" } : { kind: "found", content };
+      }
+    });
+    acceptSelectedContext({
+      kind: "pull-request",
+      repositoryId: input.repositoryId,
+      repositoryRoot: input.repositoryRoot,
+      contextId: snapshot.contextId,
+      pullRequestNumber: input.pullRequestNumber,
+      headRevision: snapshot.headSha
+    });
+    testPullRequestRuntimeTarget = {
+      repositoryId: input.repositoryId,
+      contextId: snapshot.contextId
+    };
+    await refreshPullRequestProgressForSelection();
   };
   pullRequestReviewRuntimeRef.current = pullRequestReviewRuntime;
   const pullRequestCommandService = pullRequestReviewRuntime.createCommandService<vscode.TextEditor>({
@@ -1033,6 +1173,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     };
     return {
       ...baseApi,
+      initializePullRequestReviewRuntimeForTest,
+      getPullRequestReviewStateForTest: () => testPullRequestRuntimeTarget === undefined
+        ? Promise.resolve(undefined)
+        : runtimePort.reviewStateRepository.load({
+            kind: "pull-request",
+            repositoryId: testPullRequestRuntimeTarget.repositoryId,
+            contextId: testPullRequestRuntimeTarget.contextId
+          }),
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
       /** Test-mode T610 drain for non-blocking activation startup Global work. */
       drainStartupGlobalUnderstandingForTest: () => testStartupGlobalUnderstanding,

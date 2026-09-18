@@ -17,6 +17,7 @@ import {
   resolveReviewStateStorageRoute,
 } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
+import { PullRequestDiffAcquisitionService } from "../../src/application/github-pr-diff/index.js";
 import { NormalEditorReviewCommandService } from "../../src/application/review-commands/index.js";
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
@@ -576,6 +577,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       progress: undefined,
     };
     let enumerateEnabled = false;
+    let localDiffUnavailable = false;
     let registered: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime> | undefined;
     const selectedContexts: Array<SelectedReviewContext | undefined> = [];
 
@@ -642,6 +644,12 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
         reviewStateRepository: stateRepository,
         reviewHistoryRecorder: historyRecorder,
+        createPullRequestDiffAcquisition: ({ local, remote }) => new PullRequestDiffAcquisitionService({
+          local: localDiffUnavailable
+            ? { loadDiff: async () => ({ kind: "unavailable" as const, reason: "git-unavailable" as const }) }
+            : local,
+          remote,
+        }),
         ...(injectCacheStorage ? { createPullRequestCacheStorage: cacheStorageFactory } : {}),
       } as Parameters<typeof runtimeModule.registerT405ReviewContextsRuntime>[0]);
       registered = runtime;
@@ -755,18 +763,147 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       const value = JSON.parse(await readFile(filePath, "utf8")) as Record<string, unknown>;
       value.updatedAt = "2000-01-01T00:00:00.000Z";
       value.expiresAt = "2000-01-01T00:00:01.000Z";
+      const snapshot = value.snapshot as { files?: Array<{ hunks?: Array<{ lines?: Array<Record<string, unknown>> }> }> } | undefined;
+      for (const file of snapshot?.files ?? []) for (const hunk of file.hunks ?? []) {
+        for (const line of hunk.lines ?? []) delete line.textHash;
+      }
       await writeFile(filePath, JSON.stringify(value), "utf8");
     }
+    const offlineEntry = await new NodeGitHubPullRequestCacheStorage({ cacheDirectory }).read({
+      contextId: contextId52,
+      repository: { host: "github.com", owner: "ssaattww", repository: "revmem" },
+      number: 52,
+      baseSha,
+      headSha: targetHeadSha,
+    });
+    assert.ok(offlineEntry, "the source-redacted offline cache must remain parseable after expiry");
+    assert.ok(
+      offlineEntry.snapshot.files.flatMap((file) => file.hunks.flatMap((hunk) => hunk.lines))
+        .every((line) => line.text === "" && !("textHash" in line)),
+      "a legacy persisted offline cache must retain redaction without requiring a new source-derived field",
+    );
     refreshTransport = "offline";
-    const offlineRefreshErrors = await refreshCache(findPullRequestItem(current.provider, 52));
+    const offlineSelectedItem = findPullRequestItem(current.provider, 52);
+    const stateBeforeOfflineMark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(stateBeforeOfflineMark?.contextState.files[FILE_ID]?.modifiedReviewed, [
+      { startLine: 0, endLineExclusive: 1 },
+    ]);
+    const offlineRefreshErrors = await refreshCache(offlineSelectedItem);
     assert.equal(offlineRefreshErrors.length, 1);
     assert.match(offlineRefreshErrors[0]!, /詳細は Review Range Output/u);
     assert.throws(
       () => findPullRequestItem(current.provider, 52),
       /PR #52 should be projected/u,
-      "a terminal cache refresh failure must clear the old fresh projection",
+      "an explicit refresh must reject an offline cache because it promises a fresh remote result",
+    );
+    localDiffUnavailable = true;
+    errors.length = 0;
+    await invoke("reviewRange.openReviewContextDiff", offlineSelectedItem);
+    const offlineDiff = openedDiffs.at(-1);
+    assert.ok(offlineDiff, "an exact offline cache must still open its immutable PR diff");
+    const offlineCommandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
+      getDocumentUri: (editor) => editor.uri,
+      getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(editor.uri),
+      getLineCount: () => 2,
+      getSelections: () => [],
+      confirmWholeFileOperation: async () => true,
+    });
+    const offlineWholeHistoryCheckpoint = historyEvents.length;
+    assert.equal(
+      await offlineCommandService.markFileReviewed({ uri: offlineDiff.modified }),
+      "applied",
+      "an offline cache must safely hydrate the exact HEAD body before a whole-file mark",
+    );
+    assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
+      reviewedLineCount: 2,
+      totalLineCount: 2,
+      progress: 1,
+    });
+    assert.equal(
+      await offlineCommandService.unmarkFileReviewed({ uri: offlineDiff.modified }),
+      "applied",
+      "an offline cache must safely hydrate the exact HEAD body before a whole-file unmark",
+    );
+    const offlineWholeHistory = historyEvents.slice(offlineWholeHistoryCheckpoint);
+    assert.deepEqual(
+      offlineWholeHistory.map((event) => event.action),
+      ["marked-file-reviewed", "marked-file-reviewed", "unmarked-file-reviewed", "unmarked-file-reviewed"],
+    );
+    assert.ok(offlineWholeHistory.every((event) =>
+      event.contextId === contextId52 && event.fileId === FILE_ID && event.revisionId === targetHeadSha,
+    ));
+    assert.deepEqual(await pullRequestReviewRuntime.getProgress(contextId52), {
+      reviewedLineCount: 0,
+      totalLineCount: 2,
+      progress: 0,
+    });
+    const stateAfterOfflineUnmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(stateAfterOfflineUnmark?.contextState.files[FILE_ID]?.modifiedReviewed, []);
+    const offlineSelectionCommandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
+      getDocumentUri: (editor) => editor.uri,
+      getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(editor.uri),
+      getLineCount: () => 2,
+      getSelections: () => [{
+        anchor: { line: 1, character: 0 },
+        active: { line: 1, character: 0 },
+      }],
+      confirmWholeFileOperation: async () => true,
+    });
+    const offlineSelectionHistoryCheckpoint = historyEvents.length;
+    assert.equal(await offlineSelectionCommandService.markSelectionReviewed({ uri: offlineDiff.modified }), "applied");
+    const stateAfterOfflineSelectionMark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(stateAfterOfflineSelectionMark?.contextState.files[FILE_ID]?.modifiedReviewed, [
+      { startLine: 1, endLineExclusive: 2 },
+    ]);
+    assert.equal(await offlineSelectionCommandService.unmarkSelectionReviewed({ uri: offlineDiff.modified }), "applied");
+    assert.deepEqual(historyEvents.slice(offlineSelectionHistoryCheckpoint), [
+      { contextId: contextId52, fileId: FILE_ID, revisionId: targetHeadSha, action: "marked-reviewed" },
+      { contextId: contextId52, fileId: FILE_ID, revisionId: targetHeadSha, action: "unmarked-reviewed" },
+    ]);
+    const stateAfterOfflineSelectionUnmark = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(stateAfterOfflineSelectionUnmark?.contextState.files[FILE_ID]?.modifiedReviewed, []);
+    const offlineRestoreCommandService = pullRequestReviewRuntime.createCommandService<{ readonly uri: string }>({
+      getDocumentUri: (editor) => editor.uri,
+      getSide: (editor) => pullRequestReviewRuntime.sideForDiffDocumentUri(editor.uri),
+      getLineCount: () => 2,
+      getSelections: () => [{
+        anchor: { line: 0, character: 0 },
+        active: { line: 0, character: 0 },
+      }],
+      confirmWholeFileOperation: async () => true,
+    });
+    assert.equal(
+      await offlineRestoreCommandService.markSelectionReviewed({ uri: offlineDiff.modified }),
+      "applied",
+      "restore the pre-existing fixture selection through the same public PR command before later isolation assertions",
+    );
+    const stateAfterOfflineRestore = await new FileSystemReviewStateRepository({ storageUris }).load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: contextId52,
+    });
+    assert.deepEqual(
+      stateAfterOfflineRestore?.contextState.files[FILE_ID]?.modifiedReviewed,
+      stateBeforeOfflineMark?.contextState.files[FILE_ID]?.modifiedReviewed,
     );
 
+    localDiffUnavailable = false;
     refreshTransport = "live";
     await rm(cacheDirectory, { recursive: true, force: true });
     await mkdir(cacheDirectory, { recursive: true });

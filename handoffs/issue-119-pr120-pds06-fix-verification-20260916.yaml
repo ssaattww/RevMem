@@ -1,0 +1,354 @@
+schema_version: 3
+producer:
+  skill: chat-handoff-manager
+  mode: fix_verification
+  generated_at: "2026-09-16T19:03:17+09:00"
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #119 / PR #120"
+task_id: PDS-06
+branch: investigation/issue-119-linked-diff-blocks
+base_ref: main
+target:
+  current_head: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  commit_range: "d256b2506247c302ad1edd5b2af247368fe2fdba..444eb6e15a3574d7241ea78ac94181b83d4da428"
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: "75840a70-dea0-4d8c-9bb4-fe97c78bc11e"
+  connection: available
+  os: Ubuntu
+  shell: /bin/bash
+  working_directory: /home/ibis/RevMem-pds05-ci
+  repository: ssaattww/RevMem
+  branch: investigation/issue-119-linked-diff-blocks
+  head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  source_state: clean
+  source_fingerprint: "git HEAD 444eb6e15a3574d7241ea78ac94181b83d4da428"
+  ownership: current_task
+  writable_paths:
+    - /home/ibis/RevMem-pds05-ci
+  dependencies:
+    - name: git
+      status: available
+      evidence: "commit and push succeeded through RDC"
+    - name: node/npm
+      status: available
+      evidence: "focused and default unit suites executed locally"
+  evidence:
+    - "RDC git status was clean after both fix commits."
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - "PDS-06 focused 66/66 passed on RDC Ubuntu."
+    - "Default unit 797/797 plus tooling 16/16 passed."
+  technical_head: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  administrative_parent: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  commit:
+    state: committed
+    review_target_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  push:
+    state: pushed
+    head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: report
+    reference: reports/pr120-pds06-normal-review-20260916.md
+    summary: "PDS06-NR1-001 and PDS06-NR1-002 are P2 findings; reviewed implementation HEAD d256b25; verdict fail."
+  - source: task
+    reference: tasks/pr-diff-selection-mode/tasks-status.md
+    summary: "Resolve PDS-06 findings with TDD and obtain same-normal-reviewer closure before PDS-07."
+development_policy:
+  method: TDD
+  testing_order: "finding-specific Red -> smallest production fix -> finding-specific Green -> focused -> default unit/static"
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - "pr-diff-selection-snapshot-only-red / green"
+    - "pr-diff-selection-history-red / green"
+    - "npm run test:pr-diff-selection"
+    - "npm run test:unit"
+    - "build + typecheck:contracts + architecture +/- + lint"
+  required_failure_diagnostics:
+    - test result JSON
+    - standard output
+    - standard error
+    - combined command log
+blocked:
+  - item: PDS-07
+    reason: "Same normal reviewer has not yet closed both PDS-06 findings."
+    required_input_or_decision: "Same-reviewer fix verification."
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: "PDS-06 finding fixes and verification artifacts"
+      reason: "User requested 指摘対応."
+  forbidden:
+    - path_or_operation: merge
+      reason: "User performs merge."
+    - path_or_operation: "PDS-07+ product implementation"
+      reason: "Blocked by PDS-06 same-reviewer closure."
+scope:
+  - "Fix snapshot-only semantic no-op for non-owner PR HEAD Global."
+  - "Persist a distinguishable history reason for block selection."
+non_goals:
+  - "PDS-07 acceptance implementation"
+  - "PDS-08 stale/CAS/reload work"
+  - "PDS-09 Extension Host acceptance"
+  - "PDS-10 final review and merge"
+files:
+  changed:
+    - path: src/application/review-commands/diff-editor-review-command-service.ts
+      purpose: "Use full-snapshot semantic-change authority."
+    - path: test/unit/t405-pull-request-review-runtime.test.ts
+      purpose: "Four snapshot-only PR Global regression cases."
+    - path: src/composition/pull-request/pull-request-review-history.ts
+      purpose: "Persist distinct side/block history reasons."
+    - path: src/composition/extension.ts
+      purpose: "Use the PR history reason boundary."
+    - path: test/unit/pr-diff-selection-history.test.ts
+      purpose: "Verify actual recorder output distinguishes side and block."
+    - path: package.json
+      purpose: "Wire new history tests into focused and default unit suites."
+  inspected:
+    - path: reports/pr120-pds06-normal-review-20260916.md
+      purpose: "Authoritative finding definitions."
+    - path: .github/workflows/ci.yml
+      purpose: "Confirm diagnostic artifact workflow already exists."
+  intentionally_untouched:
+    - path_or_area: Design/pr-diff-selection-mode.md
+      reason: "Implementation finding; design is unchanged."
+    - path_or_area: .github/workflows/ci.yml
+      reason: "Existing diagnostic artifact workflow is sufficient."
+commands:
+  - command: pr-diff-selection-snapshot-only-red
+    purpose: "Reproduce NR1-001 before product change."
+    exit_code: 1
+    result: failed
+    head_sha: a1e1a2c
+    evidence: "26 pass / 4 fail; all four repeated operations returned no-op."
+  - command: pr-diff-selection-snapshot-only-green
+    purpose: "Verify NR1-001 fix."
+    exit_code: 0
+    result: passed
+    head_sha: bc6c143
+    evidence: "55/55 related tests passed."
+  - command: pr-diff-selection-history-red
+    purpose: "Require a persisted block/side history distinction before implementation."
+    exit_code: 2
+    result: failed
+    head_sha: bc6c143
+    evidence: "Production PR history boundary module did not exist."
+  - command: pr-diff-selection-history-green
+    purpose: "Verify actual ReviewHistoryRecorder output after NR1-002 fix."
+    exit_code: 0
+    result: passed
+    head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+    evidence: "22/22 history-related tests passed."
+  - command: npm run test:pr-diff-selection
+    purpose: "Focused PDS-06 regression."
+    exit_code: 0
+    result: passed
+    head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+    evidence: "66/66 passed."
+  - command: npm run test:unit
+    purpose: "Default unit regression."
+    exit_code: 0
+    result: passed
+    head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+    evidence: "797/797 plus tooling 16/16 passed."
+tests:
+  - name: "snapshot-only target revision Global regression"
+    phase: red
+    result: failed
+    head_sha: a1e1a2c
+    evidence: "4 expected failures across mark/unmark and original/modified."
+  - name: "snapshot-only target revision Global regression"
+    phase: green
+    result: passed
+    head_sha: bc6c143
+    evidence: "All four cases applied and preserved owner-current Global."
+  - name: "persisted side/block history identity"
+    phase: green
+    result: passed
+    head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+    evidence: "Actual recorder persists user-selection vs user-block-selection."
+ci:
+  required: true
+  workflow: CI
+  run_id: 35082458412
+  head_sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  conclusion: in_progress
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 444eb6e15a3574d7241ea78ac94181b83d4da428
+  commits:
+    - sha: bc6c143
+      purpose: "Fix snapshot-only PR Global semantic no-op."
+    - sha: 444eb6e15a3574d7241ea78ac94181b83d4da428
+      purpose: "Persist distinct block-selection history reason."
+  addressed_findings:
+    - id: PDS06-NR1-001
+      reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+      disposition: addressed
+      evidence: "4 Red cases -> related 55/55 Green; commit bc6c143."
+    - id: PDS06-NR1-002
+      reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+      disposition: addressed
+      evidence: "Persisted reason differs; 22/22 history Green; commit 444eb6e."
+  failure_diagnostics:
+    - type: test_result
+      location: test-output/ci/pr-diff-selection-snapshot-only-red.result.json
+      summary: "NR1-001 Red."
+    - type: test_result
+      location: test-output/ci/pr-diff-selection-history-red.result.json
+      summary: "NR1-002 Red."
+  blocked_items:
+    - item: "PDS-06 review closure"
+      reason: "Implementation worker cannot change reviewer verdict."
+      required_input_or_decision: "Same normal reviewer verifies both findings."
+  summary:
+    - "Both P2 findings have implementation fixes and local Green evidence."
+review:
+  mode: fix_verification
+  reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  reviewer:
+    identity: "same normal reviewer from reports/pr120-pds06-normal-review-20260916.md"
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: unknown
+      evidence:
+        - "Source review report and GitHub review threads."
+  verdict: fail
+  required_coverage:
+    - criterion: PDS06-NR1-001
+      disposition: checked_finding
+      evidence: "Source finding implemented; closure pending reviewer."
+    - criterion: PDS06-NR1-002
+      disposition: checked_finding
+      evidence: "Source finding implemented; closure pending reviewer."
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment:
+    - item: local fix validation
+      result: supported
+      evidence: "Focused 66/66 and unit 797/797."
+  reserved_report_paths:
+    - reports/pr120-pds06-fix-verification-20260916.md
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - "Do not promote verdict; same normal reviewer must verify fixes."
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/pr120-pds06-fix-verification-20260916.md
+  reviewed_head: d256b2506247c302ad1edd5b2af247368fe2fdba
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - "Detailed finding fix evidence is persisted separately from PR summary."
+findings:
+  - id: PDS06-NR1-001
+    severity: medium
+    origin: introduced_by_change
+    location: src/application/review-commands/diff-editor-review-command-service.ts
+    description: "Snapshot-only PR Global semantic changes were suppressed as no-op."
+    impact: "Review state/history could miss the PR HEAD Global transition."
+    evidence: "4-case Red then Green after core semantic comparator."
+    required_action: "Same reviewer verifies snapshot-only mark/unmark from both sides."
+  - id: PDS06-NR1-002
+    severity: medium
+    origin: introduced_by_change
+    location: src/composition/extension.ts
+    description: "Persisted history did not identify block vs side selection."
+    impact: "Audit/acceptance could not prove which selection unit caused an event."
+    evidence: "Actual recorder now persists user-block-selection separately."
+    required_action: "Same reviewer verifies persisted distinction without extra events."
+held: []
+unexplored:
+  - area: PDS-07+
+    blocker: "PDS-06 review closure pending."
+    remaining_risk: "Later acceptance/host/competition work is intentionally not assessed here."
+    verdict_impact: "No PDS-06 pass until source findings close."
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: "User performs merge."
+remaining_risks:
+  - "Both source findings remain open until the same normal reviewer closes them."
+  - "Final current-HEAD CI after the administrative report commit is not represented by the technical-head run."
+source_payloads:
+  - source_skill: report-writer
+    output_contract_version: current
+    content_type: text/markdown
+    payload: "reports/pr120-pds06-fix-verification-20260916.md"
+  - source_skill: review-worker
+    output_contract_version: current
+    content_type: text/markdown
+    payload: "reports/pr120-pds06-normal-review-20260916.md"
+extensions:
+  - namespace: revmem.progress
+    payload:
+      task_state: rereview_pending
+      next_task: PDS-07
+      next_task_blocked: true
+next_action:
+  type: review
+  target_skill: review-worker
+  mode: fix_verification
+  summary: "Same normal reviewer verifies PDS06-NR1-001 and PDS06-NR1-002 on the fix HEAD."
+  instructions:
+    - "Review only the two source findings plus directly affected regression/CI delta."
+    - "Preserve P2 severities and finding IDs."
+    - "Do not start PDS-07 until both findings are fixed."
+  required_attachments_or_references:
+    - reports/pr120-pds06-normal-review-20260916.md
+    - reports/pr120-pds06-fix-verification-20260916.md
+    - "commits bc6c143 and 444eb6e15a3574d7241ea78ac94181b83d4da428"
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-119-pr120-pds06-fix-verification-20260916.yaml
+  packet_url: null
+  transport_note: "Recheck RDC connection, worktree ownership, branch, HEAD, and exact-head CI before continuing."
