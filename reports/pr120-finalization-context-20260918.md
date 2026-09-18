@@ -16,6 +16,8 @@
 - PDS08-NR1-001 / P2は[Issue #121](https://github.com/ssaattww/RevMem/issues/121)で保留する。severityを下げず、既存のqueue/CAS保護と回帰試験の不足を区別する。将来ガードを迂回した場合の推定は仮定付きであり、実測値ではない。
 - PDS09-NR1-001/002/003は通常操作の完了境界・必須受入試験・本番の試験観測漏出に関する指摘で、今回修正する対象である。
 
+- PDS10-NR1-001 / P2は[Issue #122](https://github.com/ssaattww/RevMem/issues/122)へ保留。通常providerの完全hunkとcache parserの統計検査が維持される限り、末尾改行差と空hunkの不正組合せに到達する影響は月0回を期待する条件付き推定。実測なし、内部bypassや統計も整合した改ざんの頻度は不明であり、通常到達経路が判明すれば再評価する。PDS10-NR1-002 / P1のoffline-cache更新不能は実経路で頻度不明なので修正する。
+
 ## Skill不足とプロセスの振り返り
 
 - `development-orchestrator` と `feedback-points-manager` を通じた親の判断: **no skill action needed**。
@@ -28,6 +30,8 @@
 ## 現在のCI証拠
 
 - technical HEAD `0feb9819572828b8a3366dc4f7ef1cb839a8d1f0` のpull_request CI run `35289494999`、job `105429048589` はT506 step 24でfailure。それ以前のbuild・型・構造・lint・unit等は成功、T610と後続Host・packagingはskipped。原因は限定調査中で、旧T610失敗の再発と推定しない。
+
+- 後続の管理commit `38c9e6e7d7b260761bd92e06dbdd4f1309737a1b` は製品・試験sourceが0feb981と同じで、pull_request CI run `35290071932` がsuccess。Linuxの同HEAD focused T506も `pds10-t506-baseline-20260918` でexit 0、Node3/3、全Host phaseとcleanup成功、実行後clean。旧失敗は再現できず、QuickPick待機仮説だけでsourceを変更しない。旧2回のartifactではinner `refresh current context after restart` の10秒timeoutが確定し、それより下位の待機原因は不明。全体gateとは区別する。
 
 ## 終了までの境界
 
