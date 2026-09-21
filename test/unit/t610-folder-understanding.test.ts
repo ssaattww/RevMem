@@ -557,6 +557,67 @@ test("T610-NR-007 marks every current scope failed when owner-shared capture fai
   assert.equal(controller.aggregate("repo", repositoryRoot, "").complete, false);
 });
 
+test("I124-R001 keeps the actual failed folder row visible and restartable after source failure", async (t) => {
+  setActiveOperationFeedback(undefined);
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-r001-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "src", "a.ts"), "source\n", "utf8");
+
+  let provider: {
+    getChildren(node?: unknown): readonly { readonly kind: string; readonly path?: string; readonly state?: string }[];
+    getTreeItem(node: unknown): { readonly iconPath?: unknown; readonly command?: unknown };
+  } | undefined;
+  const disposable = { dispose(): void {} };
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class { public description: unknown; public tooltip: unknown; public iconPath: unknown; public contextValue: unknown; public command: unknown; public constructor(...args: unknown[]) { void args; } },
+    ThemeIcon: class { public constructor(public readonly id: string) {} },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    StatusBarAlignment: { Left: 1 },
+    window: {
+      createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+      createOutputChannel: () => ({ appendLine(): void {}, show(): void {}, dispose(): void {} }),
+      createTreeView: (_id: string, options: { treeDataProvider: typeof provider }) => {
+        provider = options.treeDataProvider;
+        return { onDidChangeSelection: () => disposable, reveal: async () => undefined, dispose(): void {} };
+      }
+    },
+    commands: { registerCommand: () => disposable },
+    workspace: { onDidChangeConfiguration: () => disposable }
+  };
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode
+  );
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "global"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => { throw new Error("owner shared capture failed"); },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r001", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "src", "a.ts"));
+
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source,
+    readGlobalLayerEnabled: () => false,
+    writeGlobalLayerEnabled: async () => undefined,
+    refreshDecorations: async () => undefined,
+    openFile: async () => undefined,
+    reportError: async () => undefined
+  });
+  await assert.rejects(() => registered.refresh(), /owner shared capture failed/u);
+  const rootFolder = provider!.getChildren().find((node) => node.kind === "folder" && node.path === "");
+  const failed = provider!.getChildren(rootFolder).find((node) => node.kind === "folder" && node.path === "src");
+  assert.equal(failed?.state, "failed");
+  const item = provider!.getTreeItem(failed!);
+  assert.equal((item.iconPath as { id?: string } | undefined)?.id, "warning");
+  assert.equal((item.command as { title?: string } | undefined)?.title, "開始");
+  registered.dispose();
+  setActiveOperationFeedback(undefined);
+});
+
 test("T610-NR-008 retries owner-shared capture without a stopped scope or post-stop copy work", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-shared-cancel-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));

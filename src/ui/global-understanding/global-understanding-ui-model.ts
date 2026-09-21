@@ -579,6 +579,7 @@ export class GlobalUnderstandingRefreshController {
   public clear(): void { this.invalidate(); this.host.clear(); }
   public async refresh(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
+    let publishedProgress = false;
     try {
       const snapshot = (await runWithBoundedRetry(
         () => this.source.recalculate(signal, async (progress) => {
@@ -587,6 +588,7 @@ export class GlobalUnderstandingRefreshController {
             progress,
             () => currentGeneration === this.generation && signal?.aborted !== true
           );
+          publishedProgress = true;
         }),
         { maxAttempts: 3, signal },
       )).value;
@@ -606,7 +608,7 @@ export class GlobalUnderstandingRefreshController {
       return snapshot;
     } catch (error) {
       if (currentGeneration !== this.generation) return undefined;
-      this.host.clear();
+      if (!publishedProgress) this.host.clear();
       throw error;
     }
   }

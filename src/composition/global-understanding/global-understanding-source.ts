@@ -180,6 +180,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
+          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
           throw error;
         }
       }
@@ -215,6 +216,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
               this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, scope.folder, scope.generation);
             }
           }
+          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
           throw error;
         }
       }
@@ -272,6 +274,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
+          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
           throw error;
         }
       }
