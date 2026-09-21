@@ -2,28 +2,29 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
-## Issue #124 Global Understanding View改善（2026-09-21）
+## Issue #124 Global Understanding View改善（2026-09-21、R2対応 2026-09-22）
 
-- 現在のタスク: I124-REVIEW-FOLLOWUP。PR #125 normal review finding I124-R001〜R003の実装・local検証完了、fix verification用recordのcommit/pushとexact-head CI待ち。
+- 現在のタスク: I124-REVIEW-FOLLOWUP-R2。前回fix verificationでR001/R003はclosed、残ったR002と新規R004の実装・local検証完了。fix verification用recordとexact-head CI待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
-- 初回reviewed implementation HEAD: `4e6ddb45966ec96e7b5e16834f44af7e5858979d`。review-record HEAD: `81d7d078cf8ecf4f7c3dc6464c487138e88d65d2`。
-- fix technical HEAD: `b4436d5a864b7133c78750e5dcece447d54f6c0e`。R001=`f46df7e`、R002=`1290869`、R003=`b4436d5`。
-- TDD: R001はfailed row消失、R002はrunning中file 129→0、R003はfirst yieldまで10,128 path accessをRed確認後にGreen化。
-- focused: `npm run test:t610` 77/77 Green。R003と既存T607 bounded 2件もGreen。
+- 最新review-record HEAD: `c139eefa6c39670f2516e786ba7bf1f8bdb4de2f`。
+- R2 fix technical HEAD: `5358788110bd907f0ec54f7e14c67ee2b5b7888e`。R002=`655b7dd`、R004=`5358788`。
+- R002 TDD: same remote・same revision・different rootでroot A rowがroot B runningへ流入するRedを確認し、root-aware evidence keyでGreen化。
+- R004 TDD: 10,000 current-evidence fileでyield間最大10,016 accessのRedを確認し、incremental validation内map構築で全interval <=128へGreen化。
+- focused: `npm run test:t610` 78/78 Green。R003/R004と既存T607 bounded probes 4/4 Green。
 - static gate: build、lint、contracts typecheck、architecture正負はいずれもGreen。
 - default full local gate: `npm test` exit 0。unit 863/0、Git 35/0、GitHub 48/48、T502 11/11、Extension Host全phase成功。
-- performance回帰: `test:t607`は85/88。失敗3件はclean `origin/main`でも同一再現済みのbaseline failureで、新規failureなし。
-- normal review verdictは実装担当では変更しない。同じnormal review chatのfix verificationを次のreview stepとする。
-- CI: report/tracking/handoff administrative commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
+- performance回帰: `test:t607`は86/89。失敗3件はclean `origin/main`でも同一再現済みのbaseline failureで、新規failureなし。
+- normal review verdictは実装担当では変更しない。同じnormal review chatの再fix verificationを次のreview stepとする。
+- CI: R2 report/tracking/handoff administrative commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
 
 | 単位 | 状態 | 変更範囲 | 終了条件 |
 | --- | --- | --- | --- |
-| I124-TDD | 完了 | path-only file表示、running spinner、action labelのRed/Green | focused testで新規契約を固定する |
-| I124-IMPL | 完了 | Global Understanding source/model/runtime、command表示、設計契約 | 本文全体scanを増やさずIssue #124要求を満たす |
-| I124-R001 | 実装・検証完了 / fix verification待ち | failed lifecycleをTreeへpublishし、published progressをerror clearから保持 | actual providerでfailed/warning/開始を確認 |
-| I124-R002 | 実装・検証完了 / fix verification待ち | exact owner/revisionの直前成功file projectionをrunning lifecycleへ保持 | running中も129 file + spinner + 停止を確認 |
-| I124-R003 | 実装・検証完了 / fix verification待ち | incremental discovered/progress/open-target validationを128-item budget化 | 10,000 path-onlyでfirst yield <=128 |
-| I124-FINAL | normal fix verification待ち | follow-up report/handoff、exact-head CI、同一reviewer closure | required finding closure後に最終状態を確定する |
+| I124-TDD | 完了 | Issue #124初期要求のRed/Green | focused testで要求を固定する |
+| I124-R001 | closed by normal review | failed lifecycle publication | closed状態を維持する |
+| I124-R002 | R2実装・検証完了 / fix verification待ち | retained snapshot identityへcanonical scopeRootを追加 | same-revision different-rootで別root row/targetを再利用しない |
+| I124-R003 | closed by normal review | incremental discovered/progress/open-target validation budget | closed状態を維持する |
+| I124-R004 | 実装・検証完了 / fix verification待ち | progressByPath preparationをincremental budget内へ統合 | 10,000 current-evidenceで全yield interval <=128 |
+| I124-FINAL | normal fix verification待ち | R2 report/handoff、exact-head CI、同一reviewer closure | R002/R004 closure後に最終状態を確定する |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
