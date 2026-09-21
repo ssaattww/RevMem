@@ -2,29 +2,29 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
-## Issue #124 Global Understanding View改善（2026-09-21、R2対応 2026-09-22）
+## Issue #124 Global Understanding View改善（R3対応 2026-09-22）
 
-- 現在のタスク: I124-REVIEW-FOLLOWUP-R2。前回fix verificationでR001/R003はclosed、残ったR002と新規R004の実装・local検証完了。fix verification用recordとexact-head CI待ち。
+- 現在のタスク: I124-REVIEW-FOLLOWUP-R3。normal reviewでR001/R002/R003はclosed。残件R004のTDD修正・focused/static検証完了、同じnormal reviewerによるfix verification待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
-- 最新review-record HEAD: `c139eefa6c39670f2516e786ba7bf1f8bdb4de2f`。
-- R2 fix technical HEAD: `5358788110bd907f0ec54f7e14c67ee2b5b7888e`。R002=`655b7dd`、R004=`5358788`。
-- R002 TDD: same remote・same revision・different rootでroot A rowがroot B runningへ流入するRedを確認し、root-aware evidence keyでGreen化。
-- R004 TDD: 10,000 current-evidence fileでyield間最大10,016 accessのRedを確認し、incremental validation内map構築で全interval <=128へGreen化。
-- focused: `npm run test:t610` 78/78 Green。R003/R004と既存T607 bounded probes 4/4 Green。
+- 最新review-record HEAD: `700d9b40b06c7789d19cab22648088069a169213`。
+- R3 fix technical HEAD: `8db0cafedadcce6db1ef9de5b0aa111de60721ef`。
+- R004 TDD: validation残余16 + projection128でall-work最大144のRedを確認し、validation残余があるphase境界でyieldすることで全interval <=128へGreen化。
+- focused: R003/R004 + 既存bounded-stage 4/4 Green、`npm run test:t610` 78/78 Green。
+- performance回帰: `npm run test:t607` 86/89。失敗3件はclean `origin/main`でも再現済みの既知baseline failureのみ。
 - static gate: build、lint、contracts typecheck、architecture正負はいずれもGreen。
-- default full local gate: `npm test` exit 0。unit 863/0、Git 35/0、GitHub 48/48、T502 11/11、Extension Host全phase成功。
-- performance回帰: `test:t607`は86/89。失敗3件はclean `origin/main`でも同一再現済みのbaseline failureで、新規failureなし。
-- normal review verdictは実装担当では変更しない。同じnormal review chatの再fix verificationを次のreview stepとする。
-- CI: R2 report/tracking/handoff administrative commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
+- default local gate: unit 863/0、Git 35/0、GitHub 48/48、T502 11/11までGreen。Extension Host開始後にFA780 RDCがofflineとなり、local terminal exitは取得できなかったため成功へ丸めない。
+- technical HEAD CI #4615 run `35662709435`: attempt 1はT606内T604 child-process lease timing testでfailure、diagnostics artifact `10667981517`。same-SHA failed-job retryではT610までsuccessしExtension Hostへ進行した。
+- report: `reports/issue-124-global-understanding-view-review-followup-r3-20260922.md`。
+- handoff: `handoffs/issue-124-global-understanding-view-review-followup-r3-20260922.yaml`。
+- normal review verdictは実装担当では変更しない。記録更新後のPR current HEADと完全一致するCIだけを最終証拠にする。mergeしない。
 
 | 単位 | 状態 | 変更範囲 | 終了条件 |
 | --- | --- | --- | --- |
-| I124-TDD | 完了 | Issue #124初期要求のRed/Green | focused testで要求を固定する |
 | I124-R001 | closed by normal review | failed lifecycle publication | closed状態を維持する |
-| I124-R002 | R2実装・検証完了 / fix verification待ち | retained snapshot identityへcanonical scopeRootを追加 | same-revision different-rootで別root row/targetを再利用しない |
-| I124-R003 | closed by normal review | incremental discovered/progress/open-target validation budget | closed状態を維持する |
-| I124-R004 | 実装・検証完了 / fix verification待ち | progressByPath preparationをincremental budget内へ統合 | 10,000 current-evidenceで全yield interval <=128 |
-| I124-FINAL | normal fix verification待ち | R2 report/handoff、exact-head CI、同一reviewer closure | R002/R004 closure後に最終状態を確定する |
+| I124-R002 | closed by normal review | retained snapshot root isolation | closed状態を維持する |
+| I124-R003 | closed by normal review | incremental validation budget | closed状態を維持する |
+| I124-R004 | R3実装・検証完了 / fix verification待ち | validation残余budgetをprojection前にflushし、all-work fixtureへ修正 | 全隣接scheduler yield間のvalidation+projection work <=128 |
+| I124-FINAL | normal fix verification待ち | R3 report/handoff/tracking、exact-head CI、同一reviewer closure | R004 closure後に最終状態を確定する |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
