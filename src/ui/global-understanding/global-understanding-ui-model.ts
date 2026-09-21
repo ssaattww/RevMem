@@ -241,6 +241,7 @@ interface ValidatedTreeSnapshot {
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
   readonly discoveredFilePaths: readonly string[];
+  readonly progressByPath: ReadonlyMap<string, GlobalUnderstandingFileProgress>;
   readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
   readonly folders: readonly GlobalUnderstandingFolderSnapshot[];
   readonly repositoryPartial: boolean;
@@ -282,6 +283,11 @@ const validateTreeSnapshot = (
     throw new RangeError("openedFileCount must match Global progress file count.");
   }
   const discoveredFilePaths = validateDiscoveredFilePaths(snapshot, openedFileCount, unopenedFileCount);
+  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
+  for (const file of progress.files) {
+    if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
+    progressByPath.set(file.path, file);
+  }
   const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
   for (const target of snapshot.fileOpenTargets ?? []) {
     if (openTargetsByPath.has(target.repositoryPath)) {
@@ -299,6 +305,7 @@ const validateTreeSnapshot = (
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
     discoveredFilePaths,
+    progressByPath,
     openTargetsByPath,
     folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true
   };
@@ -330,6 +337,7 @@ const validateTreeSnapshotIncrementally = async (
 
   const discoveredFilePaths: string[] = [];
   const discoveredPaths = new Set<string>();
+  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
   if (snapshot.discoveredFilePaths === undefined) {
     for (const file of progress.files) {
       const repositoryPath = file.path;
@@ -337,6 +345,7 @@ const validateTreeSnapshotIncrementally = async (
       if (discoveredPaths.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
       discoveredPaths.add(repositoryPath);
       discoveredFilePaths.push(repositoryPath);
+      progressByPath.set(repositoryPath, file);
       if (!await validateOne()) return undefined;
     }
   } else {
@@ -349,6 +358,8 @@ const validateTreeSnapshotIncrementally = async (
     }
     for (const file of progress.files) {
       if (!discoveredPaths.has(file.path)) throw new RangeError(`Global understanding progress path was not discovered: ${file.path}`);
+      if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
+      progressByPath.set(file.path, file);
       if (!await validateOne()) return undefined;
     }
     if (discoveredFilePaths.length !== openedFileCount + unopenedFileCount) {
@@ -374,6 +385,7 @@ const validateTreeSnapshotIncrementally = async (
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
     discoveredFilePaths,
+    progressByPath,
     openTargetsByPath,
     folders: snapshot.folders ?? [],
     repositoryPartial: snapshot.repositoryPartial === true
@@ -443,17 +455,12 @@ const cooperativeSortFileNodes = async (
 
 export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const validated = validateTreeSnapshot(snapshot);
-  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
-  for (const file of validated.progress.files) {
-    if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
-    progressByPath.set(file.path, file);
-  }
   const files = validated.discoveredFilePaths.map((repositoryPath) => {
     const target = validated.openTargetsByPath.get(repositoryPath);
     if (snapshot.fileOpenTargets !== undefined && target === undefined) {
       throw new RangeError(`Global understanding open target is missing: ${repositoryPath}`);
     }
-    const progress = progressByPath.get(repositoryPath);
+    const progress = validated.progressByPath.get(repositoryPath);
     return progress === undefined
       ? uncollectedFileNode(repositoryPath, target)
       : fileNode(progress, target);
@@ -477,11 +484,6 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
   const validated = await validateTreeSnapshotIncrementally(snapshot, options.maxFilesPerStage, options.yieldControl, isCurrent, options.accountWork);
   if (validated === undefined) return undefined;
   const built: GlobalUnderstandingFileNode[] = [];
-  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
-  for (const file of validated.progress.files) {
-    if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
-    progressByPath.set(file.path, file);
-  }
   for (let index = 0; index < validated.discoveredFilePaths.length; index += 1) {
     if (!isCurrent()) return undefined;
     const repositoryPath = validated.discoveredFilePaths[index]!;
@@ -489,7 +491,7 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
     if (snapshot.fileOpenTargets !== undefined && target === undefined) {
       throw new RangeError(`Global understanding open target is missing: ${repositoryPath}`);
     }
-    const progress = progressByPath.get(repositoryPath);
+    const progress = validated.progressByPath.get(repositoryPath);
     built.push(progress === undefined
       ? uncollectedFileNode(repositoryPath, target)
       : fileNode(progress, target));

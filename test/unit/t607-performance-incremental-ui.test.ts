@@ -185,6 +185,52 @@ test("I124-R003 bounds path-only validation before the first scheduler yield", a
   );
 });
 
+test("I124-R004 bounds current-evidence preparation between every scheduler yield", async () => {
+  const rawFiles = Array.from({ length: 10_000 }, (_, index) => ({
+    path: `src/current-${index}.ts`,
+    state: "current" as const,
+    reviewedNonEmptyLineCount: 0,
+    totalNonEmptyLineCount: 1,
+    progress: 0
+  }));
+  let readsSinceYield = 0;
+  let maximumReadsBetweenYields = 0;
+  const progressFiles = new Proxy(rawFiles, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && /^\d+$/u.test(property)) readsSinceYield += 1;
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const currentEvidenceSnapshot: GlobalUnderstandingTreeSnapshot = {
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: rawFiles.length,
+      progress: 0,
+      files: progressFiles
+    },
+    openedFileCount: rawFiles.length,
+    unopenedFileCount: 0,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  };
+
+  const checkpoint = (): void => {
+    maximumReadsBetweenYields = Math.max(maximumReadsBetweenYields, readsSinceYield);
+    readsSinceYield = 0;
+  };
+  const model = await createGlobalUnderstandingTreeModelIncrementally(currentEvidenceSnapshot, {
+    maxFilesPerStage: 128,
+    yieldControl: checkpoint
+  });
+  checkpoint();
+
+  assert.equal(model?.files.length, 10_000);
+  assert.ok(
+    maximumReadsBetweenYields <= 128,
+    `all scheduler intervals must stay within the 128-item budget, observed ${maximumReadsBetweenYields} progress-file accesses`
+  );
+});
+
 test("T607 never publishes a stale Tree stage after its generation is invalidated", async () => {
   let current = true;
   const published: number[] = [];
