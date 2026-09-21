@@ -101,7 +101,9 @@ technical HEADで以下を確認した。
 
 local full gateについて、確認できていないExtension Host terminalを成功へ丸めない。
 
-## Technical HEAD CI
+## CI参考情報
+
+ユーザー指示により、今回の完了条件はlocal test Greenとし、CI完走待ちは行わない。
 
 technical HEAD `8db0caf...` のpull_request CI run:
 `35662709435` / CI #4615。
@@ -115,12 +117,9 @@ attempt 1:
 - failure diagnostics artifact:
   `ci-failure-diagnostics-35662709435-1`
   artifact id `10667981517`
-- Build / contracts / architecture / lint / unit / T602 / T603 / T403 / T404 / T405 / T406 /
-  T304 / T502 / T503 / T504 / T505 / T506 / standalone T604 / T605 はfailure前までsuccess。
+- R004関連ではない。
 
-このT604 child-process timing failureは直前のreview-record HEADでもattempt 1で発生し、
-同HEAD retryで成功した既知の不安定経路と同一で、R004のUI scheduling差分とは独立している。
-same technical HEADのfailed job rerunを要求済み。
+same technical HEADのfailed-job rerunは開始済みだが、今回の完了判定には使用しない。
 
 ユーザー指示「CI確認はとりあえず不要、ローカルで動けば待機不要」に従い、
 このrerunの完走待機・pollingは行わない。
