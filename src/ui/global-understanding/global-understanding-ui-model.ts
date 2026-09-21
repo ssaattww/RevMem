@@ -378,6 +378,11 @@ const validateTreeSnapshotIncrementally = async (
   if (snapshot.fileOpenTargets !== undefined && targets.length !== discoveredFilePaths.length) {
     throw new RangeError("Global understanding open target count must match displayed file count.");
   }
+  if (pendingValidationItems > 0) {
+    pendingValidationItems = 0;
+    await yieldControl();
+    if (!isCurrent()) return undefined;
+  }
   return {
     progress,
     openedFileCount,

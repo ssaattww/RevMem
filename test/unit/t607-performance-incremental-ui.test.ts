@@ -185,7 +185,7 @@ test("I124-R003 bounds path-only validation before the first scheduler yield", a
   );
 });
 
-test("I124-R004 bounds current-evidence preparation between every scheduler yield", async () => {
+test("I124-R004 bounds validation and projection work between every scheduler yield", async () => {
   const rawFiles = Array.from({ length: 10_000 }, (_, index) => ({
     path: `src/current-${index}.ts`,
     state: "current" as const,
@@ -193,11 +193,11 @@ test("I124-R004 bounds current-evidence preparation between every scheduler yiel
     totalNonEmptyLineCount: 1,
     progress: 0
   }));
-  let readsSinceYield = 0;
-  let maximumReadsBetweenYields = 0;
+  let workSinceYield = 0;
+  let maximumWorkBetweenYields = 0;
   const progressFiles = new Proxy(rawFiles, {
     get(target, property, receiver) {
-      if (typeof property === "string" && /^\d+$/u.test(property)) readsSinceYield += 1;
+      if (typeof property === "string" && /^\d+$/u.test(property)) workSinceYield += 1;
       return Reflect.get(target, property, receiver);
     }
   });
@@ -215,19 +215,22 @@ test("I124-R004 bounds current-evidence preparation between every scheduler yiel
   };
 
   const checkpoint = (): void => {
-    maximumReadsBetweenYields = Math.max(maximumReadsBetweenYields, readsSinceYield);
-    readsSinceYield = 0;
+    maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+    workSinceYield = 0;
   };
   const model = await createGlobalUnderstandingTreeModelIncrementally(currentEvidenceSnapshot, {
     maxFilesPerStage: 128,
-    yieldControl: checkpoint
+    yieldControl: checkpoint,
+    accountWork: (entry) => {
+      if (entry.kind === "built-file-node") workSinceYield += entry.count;
+    }
   });
   checkpoint();
 
   assert.equal(model?.files.length, 10_000);
   assert.ok(
-    maximumReadsBetweenYields <= 128,
-    `all scheduler intervals must stay within the 128-item budget, observed ${maximumReadsBetweenYields} progress-file accesses`
+    maximumWorkBetweenYields <= 128,
+    `all scheduler intervals must stay within the 128-item budget, observed ${maximumWorkBetweenYields} validation/projection work items`
   );
 });
 
