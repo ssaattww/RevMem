@@ -4,7 +4,7 @@
 
 ## Issue #124 Global Understanding View改善（R3対応 2026-09-22）
 
-- 現在のタスク: I124-REVIEW-FOLLOWUP-R3。normal reviewでR001/R002/R003はclosed。残件R004のTDD修正・focused/static検証完了、同じnormal reviewerによるfix verification待ち。
+- 現在のタスク: I124-REVIEW-FOLLOWUP-R3。normal reviewでR001/R002/R003はclosed。残件R004のTDD修正・focused/static検証完了、同じnormal reviewerによるfix verification待ち。CI確認はユーザー指示により後回しで、待機条件にしない。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
 - 最新review-record HEAD: `700d9b40b06c7789d19cab22648088069a169213`。
 - R3 fix technical HEAD: `8db0cafedadcce6db1ef9de5b0aa111de60721ef`。
@@ -16,7 +16,7 @@
 - technical HEAD CI #4615 run `35662709435`: attempt 1はT606内T604 child-process lease timing testでfailure、diagnostics artifact `10667981517`。same-SHA failed-job retryではT610までsuccessしExtension Hostへ進行した。
 - report: `reports/issue-124-global-understanding-view-review-followup-r3-20260922.md`。
 - handoff: `handoffs/issue-124-global-understanding-view-review-followup-r3-20260922.yaml`。
-- normal review verdictは実装担当では変更しない。記録更新後のPR current HEADと完全一致するCIだけを最終証拠にする。mergeしない。
+- normal review verdictは実装担当では変更しない。CIは未待機・未確認を成功扱いしない。将来確認する場合だけPR current HEADと完全一致するrunを使う。mergeしない。
 
 | 単位 | 状態 | 変更範囲 | 終了条件 |
 | --- | --- | --- | --- |
@@ -24,7 +24,7 @@
 | I124-R002 | closed by normal review | retained snapshot root isolation | closed状態を維持する |
 | I124-R003 | closed by normal review | incremental validation budget | closed状態を維持する |
 | I124-R004 | R3実装・検証完了 / fix verification待ち | validation残余budgetをprojection前にflushし、all-work fixtureへ修正 | 全隣接scheduler yield間のvalidation+projection work <=128 |
-| I124-FINAL | normal fix verification待ち | R3 report/handoff/tracking、exact-head CI、同一reviewer closure | R004 closure後に最終状態を確定する |
+| I124-FINAL | normal fix verification待ち | R3 report/handoff/tracking、同一reviewer closure。CIはユーザー指示で後回し | R004 closure後に最終状態を確定する |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
