@@ -127,7 +127,9 @@ tests:
     evidence: unit 863/0, Git 35/0, GitHub 48/48, T502 11/11; RDC disconnected after Extension Host phase started
 
 ci:
-  required: true
+  required: false
+  completion_gate: false
+  state: deferred_by_user
   workflow: CI
   technical_head_run:
     run_id: 35662709435
@@ -237,4 +239,4 @@ transport:
   method: repository_file
   packet_path: handoffs/issue-124-global-understanding-view-review-followup-r3-20260922.yaml
   packet_url: null
-  transport_note: implementation pushed by RDC; record publication falls back to GitHub connector while RDC is offline
+  transport_note: implementation pushed by RDC; record publication falls back to GitHub connector while RDC is offline; CI wait deferred by user
