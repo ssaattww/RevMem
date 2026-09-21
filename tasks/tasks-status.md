@@ -2,6 +2,23 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #124 Global Understanding View改善（2026-09-21）
+
+- 現在のタスク: I124-FINAL。PR #125の最終report/tracking commit後のexact-head CI確認。
+- branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
+- 実装technical HEAD: `c3931612700d683cdea1c05ab30fc6e79008592a`。
+- TDD: 未収集file一覧、running spinner、action表示のRed 4件を確認後に実装し、focused 57/57、`test:t610` 75/75 Green。
+- static gate: build、lint、contracts typecheck、architecture正負はいずれもGreen。
+- default full local gate: `npm test`はExtension Hostまで完走しexit code 0。
+- performance回帰: `test:t607`は84/87。失敗3件はclean `origin/main`同一HEADでも3/3再現し、本変更起因ではないbaseline failureとして保持する。
+- CI: final report/tracking commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
+
+| 単位 | 状態 | 変更範囲 | 終了条件 |
+| --- | --- | --- | --- |
+| I124-TDD | 完了 | path-only file表示、running spinner、action labelのRed/Green | focused testで新規契約を固定する |
+| I124-IMPL | 完了 | Global Understanding source/model/runtime、command表示、設計契約 | 本文全体scanを増やさず要求3点を満たす |
+| I124-FINAL | exact-head CI確認待ち | 詳細report、handoff、PR更新、exact-head CI | final HEADのrequired CIを照合しPRへ簡易reportを投稿する |
+
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
 - 現在のタスク: I116-FINAL（P3保守）。PR #115はsquash merge d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a、最終PR CI34042269971成功、artifact9992115923照合済み、remote/local reviewブランチ削除済み。
