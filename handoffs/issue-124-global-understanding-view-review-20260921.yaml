@@ -1,0 +1,250 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: initial_review
+  generated_at: 2026-09-21T18:05:38+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-REVIEW-1
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  reviewed_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  commit_range: eb8dc52f1c329a5768c263a8773289c9865f5dd4..4e6ddb45966ec96e7b5e16834f44af7e5858979d
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  source_state: clean
+  source_fingerprint: eb8dc52f1c329a5768c263a8773289c9865f5dd4..4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue124\handoffs'
+  dependencies:
+    - name: node
+      status: available
+      evidence: node v24.20.0 used by focused review probes
+    - name: npm
+      status: available
+      evidence: npm run test:t610 completed
+  evidence:
+    - reviewed worktree matched PR #125 current HEAD before review writes
+    - reviewed source was clean
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - RDC local command execution available on FA780
+    - npm run test:t610 passed 75/75 at reviewed HEAD
+    - focused T607 existing bounded-stage tests passed
+    - external path-only 10000-file probe reproduced unbounded pre-yield work
+  technical_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  administrative_parent: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  commit:
+    state: commit_pending
+    review_target_sha: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_completed
+    required_for: reviewed_implementation_head
+  final_publication:
+    sequence: review_record_commit_then_push_then_pr_comment
+authoritative_requirements:
+  - source: issue
+    reference: Issue #124
+    summary: running spinner, action-result labels, path-only file visibility without repository-wide body scan
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md sections 16.5 and performance staging contract
+    summary: current state/action presentation and deterministic bounded stage work
+write_boundary:
+  allowed:
+    - path_or_operation: review report
+      reason: required review record
+    - path_or_operation: review handoff
+      reason: required lossless continuation
+    - path_or_operation: PR review comment
+      reason: required concise review summary
+  forbidden:
+    - path_or_operation: implementation or test fixes
+      reason: reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user performs merge
+development_policy:
+  method: TDD
+  testing_order: Red before implementation, then focused Green and regression
+validation_plan:
+  commands:
+    - npm run test:t610
+    - focused T607 bounded-stage tests
+    - external path-only 10000-file review probe
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - result/exit status
+    - probe output
+ci:
+  required: true
+  workflow: CI
+  run_id: 35578008752
+  head_sha: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  conclusion: success
+  artifacts:
+    - id: 10629046478
+      name: review-range-user-validation-0.1.55-pre+4e6ddb4
+      head_sha: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+review:
+  mode: initial_review
+  reviewed_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - this chat inspected the already-implemented PR and did not modify implementation
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: I124-R001, I124-R002, I124-R003
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: failed transition and running refresh paths
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: implementation diff stays within Issue #124 plus required records
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: source, model, runtime, controller, enumerator, tests inspected
+    - criterion: API data configuration compatibility
+      disposition: checked_no_finding
+      evidence: optional discoveredFilePaths preserves legacy snapshot compatibility
+    - criterion: error handling and failure diagnostics
+      disposition: checked_finding
+      evidence: failed state is mutated but UI is cleared
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no new credential or secret exposure
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: missing failed/running/bounded-path-only coverage
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: exact-head CI run 35578008752 success
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_no_finding
+      evidence: implementation report distinguishes pre-CI report content from later PR CI evidence
+    - criterion: regression and maintainability risks
+      disposition: checked_finding
+      evidence: transient tree clearing and unbounded synchronous validation
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment:
+    - item: npm run test:t610
+      result: supported
+      evidence: 75/75 pass
+    - item: exact-head CI
+      result: supported
+      evidence: run 35578008752 success
+    - item: path-only bounded-stage contract
+      result: failed
+      evidence: first yield after 10128 path accesses with maxFilesPerStage=128
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - three required findings
+    - implementation fixes are required before fix verification
+findings:
+  - id: I124-R001
+    severity: high
+    origin: introduced_by_change
+    location: src/composition/global-understanding/global-understanding-source.ts; src/ui/global-understanding/global-understanding-ui-model.ts
+    description: failed scope state is updated in the controller but current refresh failure clears the Tree instead of publishing the failed row
+    impact: failed warning and restart action are unavailable after collection failure
+    evidence: folderScopes.fail is followed by throw; GlobalUnderstandingRefreshController catch calls host.clear
+    required_action: publish the current failed folder state and cover actual source plus runtime provider failed-row behavior
+  - id: I124-R002
+    severity: high
+    origin: introduced_by_change
+    location: src/composition/global-understanding/global-understanding-source.ts; src/ui/global-understanding/vscode-global-understanding-runtime.ts
+    description: each running publication uses an empty snapshot, replacing previously known file rows until enumeration completes
+    impact: file list disappears during collection, preserving the user-visible problem while spinner is active
+    evidence: publishProgress(emptySnapshot) precedes enumeration; runtime replaces the Tree model for progress publications
+    required_action: retain known path-only file rows during running publication or separate lifecycle publication from file snapshot replacement
+  - id: I124-R003
+    severity: medium
+    origin: introduced_by_change
+    location: src/ui/global-understanding/global-understanding-ui-model.ts
+    description: validateDiscoveredFilePaths scans all discovered and progress paths synchronously before the first scheduler yield
+    impact: large repositories can block the Extension Host and violate the deterministic item budget
+    evidence: 10000 path-only probe first yielded after 10128 path accesses with maxFilesPerStage 128
+    required_action: make discovered-path validation cooperative and add a 10000 path-only bounded-stage regression fixture
+held: []
+unexplored:
+  - area: manual installed-VSIX visual smoke test
+    blocker: not required to establish the three source/runtime findings
+    remaining_risk: icon rendering was verified through provider contracts rather than manual UI interaction
+    verdict_impact: none
+remaining_risks:
+  - CI is green because current tests do not exercise the three missing contracts
+report:
+  report_type: review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-review-20260921.md
+  reviewed_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - verdict fail
+    - I124-R001 high
+    - I124-R002 high
+    - I124-R003 medium
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: fix
+  summary: fix I124-R001 through I124-R003 with TDD, then return to this normal review chat for fix verification
+  instructions:
+    - preserve finding IDs and severities
+    - provide required-action, production-path, actual-composition-fixture, and focused-evidence cells for each finding
+    - verify CI only against the new PR current HEAD SHA
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-review-20260921.md
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-review-20260921.yaml
+  packet_url: null
+  transport_note: commit and push through RDC, then post concise PR comment with GitHub connector
