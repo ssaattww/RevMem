@@ -705,6 +705,79 @@ test("I124-R002 keeps known file rows while the actual source publishes a runnin
   setActiveOperationFeedback(undefined);
 });
 
+test("I124-R002 isolates retained running files across same-revision repository roots", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i124-r002-cross-root-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const rootA = path.join(fixture, "a");
+  const rootB = path.join(fixture, "b");
+  await Promise.all([
+    mkdir(path.join(rootA, "src"), { recursive: true }),
+    mkdir(path.join(rootB, "src"), { recursive: true })
+  ]);
+  await Promise.all([
+    writeFile(path.join(rootA, "src", "a.ts"), "root-a\n", "utf8"),
+    writeFile(path.join(rootB, "src", "b.ts"), "root-b\n", "utf8")
+  ]);
+
+  const revisionId = "same-revision";
+  const repositoryId = "same-remote-repository";
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "global"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "global") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: (owner) => owner.repositoryRoot === rootA
+      ? [{ path: "src/a.ts", revisionId, lineCount: 2, nonEmptyLines: [0], contentHash: "a", cacheKey: "a" }]
+      : [{ path: "src/b.ts", revisionId, lineCount: 2, nonEmptyLines: [0], contentHash: "b", cacheKey: "b" }],
+    resolveRepositoryRootUri: (repositoryRoot) => ({
+      scheme: "file",
+      authority: "",
+      path: repositoryRoot.split(path.sep).join("/"),
+      query: "",
+      fragment: ""
+    }),
+    yieldControl: () => undefined
+  });
+  const context = (repositoryRoot: string) => ({
+    context: {
+      kind: "branch" as const,
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: revisionId,
+      selection: {
+        kind: "branch" as const,
+        repositoryId,
+        repositoryRoot,
+        branchRef: "refs/heads/main"
+      }
+    },
+    progress: undefined
+  });
+
+  source.setContext(context(rootA));
+  await source.observeFileOpen(path.join(rootA, "src", "a.ts"));
+  const first = await source.recalculate();
+  assert.deepEqual(first?.discoveredFilePaths, ["src/a.ts"]);
+  assert.equal(first?.fileOpenTargets?.[0]?.kind, "working-tree");
+  assert.equal(
+    first?.fileOpenTargets?.[0]?.kind === "working-tree" ? first.fileOpenTargets[0].filePath : undefined,
+    path.join(rootA, "src", "a.ts")
+  );
+
+  source.setContext(context(rootB));
+  await source.observeFileOpen(path.join(rootB, "src", "b.ts"));
+  let running: GlobalUnderstandingTreeSnapshot | undefined;
+  const second = await source.recalculate(undefined, async (snapshot) => {
+    const folder = snapshot.folders?.find((candidate) => candidate.path === "src");
+    if (folder?.state !== "running" || running !== undefined) return;
+    running = snapshot;
+    await source.stopFolder("src");
+  });
+
+  assert.deepEqual(running?.discoveredFilePaths ?? [], [], "root B running state never reuses root A file rows");
+  assert.deepEqual(running?.fileOpenTargets ?? [], [], "root B running state never reuses root A working-tree targets");
+  assert.equal(second?.folders?.find((folder) => folder.path === "src")?.state, "stopped");
+});
+
 test("T610-NR-008 retries owner-shared capture without a stopped scope or post-stop copy work", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-shared-cancel-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));

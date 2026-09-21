@@ -75,11 +75,11 @@ const emptyGlobalState = (repositoryId: string, currentRevisionId: string): Repo
   updatedAt: new Date(0).toISOString()
 });
 
-const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner): string =>
-  JSON.stringify(owner.target);
+const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner, scopeRoot: string): string =>
+  JSON.stringify([owner.target, scopeRoot]);
 
-const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner): string =>
-  `${ownerIdentityKey(owner)}\0${owner.currentRevisionId}`;
+const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner, scopeRoot: string): string =>
+  `${ownerIdentityKey(owner, scopeRoot)}\0${owner.currentRevisionId}`;
 const resourceIdentity = (uri: ResourceUri): string =>
   [uri.scheme, uri.authority, uri.path, uri.query ?? "", uri.fragment ?? ""].join("\0");
 
@@ -454,8 +454,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   }
 
   private activateEvidenceRevision(owner: T505GlobalUnderstandingOwner): string {
-    const identityKey = ownerIdentityKey(owner);
-    const nextEvidenceKey = ownerEvidenceKey(owner);
+    const scopeRoot = this.scopeRoot(owner);
+    if (scopeRoot === undefined) throw new Error("Global repository root identity is unavailable");
+    const identityKey = ownerIdentityKey(owner, scopeRoot);
+    const nextEvidenceKey = ownerEvidenceKey(owner, scopeRoot);
     const previousEvidenceKey = this.activeEvidenceKeyByOwner.get(identityKey);
     if (previousEvidenceKey !== undefined && previousEvidenceKey !== nextEvidenceKey) {
       this.openedEvidenceByOwner.delete(previousEvidenceKey);
@@ -467,8 +469,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   }
 
   private requireActiveEvidenceKey(owner: T505GlobalUnderstandingOwner): string {
-    const identityKey = ownerIdentityKey(owner);
-    const expectedEvidenceKey = ownerEvidenceKey(owner);
+    const scopeRoot = this.scopeRoot(owner);
+    if (scopeRoot === undefined) throw new Error("Global repository root identity is unavailable");
+    const identityKey = ownerIdentityKey(owner, scopeRoot);
+    const expectedEvidenceKey = ownerEvidenceKey(owner, scopeRoot);
     if (this.activeEvidenceKeyByOwner.get(identityKey) !== expectedEvidenceKey) {
       throw new Error("Global owner revision changed during recalculation");
     }
