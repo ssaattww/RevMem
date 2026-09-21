@@ -618,6 +618,93 @@ test("I124-R001 keeps the actual failed folder row visible and restartable after
   setActiveOperationFeedback(undefined);
 });
 
+test("I124-R002 keeps known file rows while the actual source publishes a running generation", async (t) => {
+  setActiveOperationFeedback(undefined);
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-r002-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await Promise.all(Array.from({ length: 129 }, (_, index) =>
+    writeFile(path.join(root, "src", `f-${index}.ts`), `file-${index}\n`, "utf8")
+  ));
+
+  let provider: {
+    getChildren(node?: unknown): readonly { readonly kind: string; readonly path?: string; readonly state?: string }[];
+    getTreeItem(node: unknown): { readonly iconPath?: unknown; readonly command?: unknown };
+  } | undefined;
+  const disposable = { dispose(): void {} };
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class { public description: unknown; public tooltip: unknown; public iconPath: unknown; public contextValue: unknown; public command: unknown; public constructor(...args: unknown[]) { void args; } },
+    ThemeIcon: class { public constructor(public readonly id: string) {} },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    StatusBarAlignment: { Left: 1 },
+    window: {
+      createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+      createOutputChannel: () => ({ appendLine(): void {}, show(): void {}, dispose(): void {} }),
+      createTreeView: (_id: string, options: { treeDataProvider: typeof provider }) => {
+        provider = options.treeDataProvider;
+        return { onDidChangeSelection: () => disposable, reveal: async () => undefined, dispose(): void {} };
+      }
+    },
+    commands: { registerCommand: () => disposable },
+    workspace: { onDidChangeConfiguration: () => disposable }
+  };
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode
+  );
+
+  let blockNextYield = false;
+  let releaseYield: (() => void) | undefined;
+  let reachedBlockedYield: (() => void) | undefined;
+  const blockedYield = new Promise<void>((resolve) => { reachedBlockedYield = resolve; });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "global"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [{
+      path: "src/f-0.ts", revisionId: "r002", lineCount: 2,
+      nonEmptyLines: [0], contentHash: "f-0", cacheKey: "f-0"
+    }],
+    yieldControl: async () => {
+      if (!blockNextYield) return;
+      blockNextYield = false;
+      reachedBlockedYield?.();
+      await new Promise<void>((resolve) => { releaseYield = resolve; });
+    }
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r002", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "src", "f-0.ts"));
+
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source,
+    readGlobalLayerEnabled: () => false,
+    writeGlobalLayerEnabled: async () => undefined,
+    refreshDecorations: async () => undefined,
+    openFile: async () => undefined,
+    reportError: async () => undefined
+  });
+  await registered.refresh();
+  const firstGroup = provider!.getChildren().find((node) => node.kind === "files-group");
+  assert.equal(provider!.getChildren(firstGroup).length, 129);
+
+  blockNextYield = true;
+  const secondRefresh = registered.refresh();
+  await blockedYield;
+  const runningGroup = provider!.getChildren().find((node) => node.kind === "files-group");
+  assert.equal(provider!.getChildren(runningGroup).length, 129, "running lifecycle publication retains the previous known file rows");
+  const rootFolder = provider!.getChildren().find((node) => node.kind === "folder" && node.path === "");
+  const running = provider!.getChildren(rootFolder).find((node) => node.kind === "folder" && node.path === "src");
+  assert.equal(running?.state, "running");
+  const runningItem = provider!.getTreeItem(running!);
+  assert.equal((runningItem.iconPath as { id?: string } | undefined)?.id, "loading~spin");
+  assert.equal((runningItem.command as { title?: string } | undefined)?.title, "停止");
+
+  releaseYield?.();
+  await secondRefresh;
+  registered.dispose();
+  setActiveOperationFeedback(undefined);
+});
+
 test("T610-NR-008 retries owner-shared capture without a stopped scope or post-stop copy work", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-shared-cancel-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));

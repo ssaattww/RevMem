@@ -103,6 +103,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   private readonly openedEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly pullRequestEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly activeEvidenceKeyByOwner = new Map<string, string>();
+  private readonly lastSnapshotByEvidenceKey = new Map<string, GlobalUnderstandingTreeSnapshot>();
   private currentContext: CurrentContextUiSnapshot | undefined;
   private readonly folderScopes: FolderUnderstandingScopeController | undefined;
 
@@ -130,9 +131,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const scopeRoot = this.scopeRoot(owner);
     if (scopeRoot === undefined) return undefined;
     await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot);
-    this.activateEvidenceRevision(owner);
+    const evidenceKey = this.activateEvidenceRevision(owner);
     const activeFolders = this.folderScopes?.activeFolders(owner.target.repositoryId, scopeRoot) ?? [""];
-    if (activeFolders.length === 0 && this.folderScopes !== undefined) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (activeFolders.length === 0 && this.folderScopes !== undefined) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const persisted = await this.repository.loadGlobal(owner.target);
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
@@ -161,7 +162,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (scopeSignal?.aborted === true) throw new DOMException("Folder understanding scope was superseded.", "AbortError");
       };
       try {
-        await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
         assertScopeCurrent();
         const enumerator = new NodeRepositoryFilePathEnumerator(this.dependencies.exclusionPolicy, {
           maxEntriesPerStage: 128, yieldControl: this.yieldControl,
@@ -180,12 +181,12 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
     }
-    if (scopeWork.length === 0) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (scopeWork.length === 0) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const sharedCapture = await (async (): Promise<Readonly<{
       pullRequestHeadPaths: ReadonlySet<string>;
       evidenceByPath: ReadonlyMap<string, LoadedGlobalUnderstandingFile>;
@@ -216,12 +217,12 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
               this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, scope.folder, scope.generation);
             }
           }
-          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
     })();
-    if (sharedCapture === undefined) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (sharedCapture === undefined) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const { pullRequestHeadPaths, evidenceByPath, globalState } = sharedCapture;
     assertCurrent();
     for (const { folder, generation, scopeSignal, pathEnumeration, candidatePaths } of scopeWork) {
@@ -274,7 +275,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
@@ -294,7 +295,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       partial: !folder.total.complete
     }));
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
-    return {
+    const snapshot: GlobalUnderstandingTreeSnapshot = {
       progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files },
       discoveredFilePaths: displayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
@@ -305,6 +306,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       ...(folders === undefined ? {} : { folders }),
       ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
+    this.lastSnapshotByEvidenceKey.set(this.requireActiveEvidenceKey(owner), snapshot);
+    return snapshot;
   }
 
   /**
@@ -388,12 +391,37 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) { await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot); await this.folderScopes?.resume(owner.target.repositoryId, scopeRoot, folderPath); } }
   }
 
-  private emptySnapshot(controller?: FolderUnderstandingScopeController, owner?: T505GlobalUnderstandingOwner, scopeRoot?: string): GlobalUnderstandingTreeSnapshot {
-    const folders = controller === undefined || owner === undefined || scopeRoot === undefined ? undefined : controller.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
+  private lifecycleSnapshot(
+    controller: FolderUnderstandingScopeController | undefined,
+    owner: T505GlobalUnderstandingOwner,
+    scopeRoot: string,
+    evidenceKey: string
+  ): GlobalUnderstandingTreeSnapshot {
+    const folders = controller?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
       totalNonEmptyLineCount: folder.total.total, partial: !folder.total.complete
     }));
-    return { progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, ...(folders === undefined ? {} : { folders }), ...(folders?.some((folder) => folder.partial) === true ? { repositoryPartial: true } : {}) };
+    const previous = this.lastSnapshotByEvidenceKey.get(evidenceKey);
+    const repositoryPartial = folders?.some((folder) => folder.partial) === true;
+    if (previous === undefined) {
+      return {
+        progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] },
+        openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0,
+        ...(folders === undefined ? {} : { folders }),
+        ...(repositoryPartial ? { repositoryPartial: true } : {})
+      };
+    }
+    return {
+      progress: previous.progress,
+      ...(previous.discoveredFilePaths === undefined ? {} : { discoveredFilePaths: previous.discoveredFilePaths }),
+      ...(previous.fileOpenTargets === undefined ? {} : { fileOpenTargets: previous.fileOpenTargets }),
+      openedFileCount: previous.openedFileCount,
+      unopenedFileCount: previous.unopenedFileCount,
+      excludedFileCount: previous.excludedFileCount,
+      prunedExcludedDirectoryCount: previous.prunedExcludedDirectoryCount,
+      ...(folders === undefined ? {} : { folders }),
+      ...(repositoryPartial ? { repositoryPartial: true } : {})
+    };
   }
 
   private createFileOpenTarget(
@@ -432,6 +460,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (previousEvidenceKey !== undefined && previousEvidenceKey !== nextEvidenceKey) {
       this.openedEvidenceByOwner.delete(previousEvidenceKey);
       this.pullRequestEvidenceByOwner.delete(previousEvidenceKey);
+      this.lastSnapshotByEvidenceKey.delete(previousEvidenceKey);
     }
     this.activeEvidenceKeyByOwner.set(identityKey, nextEvidenceKey);
     return nextEvidenceKey;
