@@ -1,0 +1,376 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-21T23:54:36+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-FIX-VERIFICATION-2
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  reviewed_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  commit_range: 81d7d078cf8ecf4f7c3dc6464c487138e88d65d2..94fceee9ab1e587b034131cb25bd3484e10dfdb6
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  source_state: clean
+  source_fingerprint: 81d7d078cf8ecf4f7c3dc6464c487138e88d65d2..94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue124\handoffs'
+  dependencies:
+    - name: node
+      status: available
+      evidence: v24.20.0 used by current-head focused and T607 validation
+    - name: npm
+      status: available
+      evidence: npm run test:t610 and npm run test:t607 executed
+  evidence:
+    - same normal-review chat as initial review
+    - worktree HEAD matched PR #125 current HEAD before review writes
+    - reviewed source was clean before report persistence
+    - validation outputs were saved outside the reviewed source
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - npm run test:t610 passed 77 of 77 on reviewed HEAD
+    - focused T607 R003 and existing bounded-stage tests passed 3 of 3
+    - full test:t607 produced only the known three baseline failures
+    - cross-root probe reproduced I124-R002 owner isolation defect
+    - sibling budget probe reproduced I124-R004
+  technical_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  administrative_parent: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  commit:
+    state: commit_pending
+    review_target_sha: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_completed
+    required_for: reviewed_current_head
+  final_publication:
+    sequence: review_record_commit_then_push_then_exact_head_ci_then_pr_comment
+    pr_action: update
+
+authoritative_requirements:
+  - source: initial_review
+    reference: I124-R001
+    summary: failed scope remains visible with warning and start action
+  - source: initial_review
+    reference: I124-R002
+    summary: current owner and revision keep known file rows during running
+  - source: initial_review
+    reference: I124-R003
+    summary: discovered/progress/open-target validation obeys incremental item budget
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 16.5, 19.1
+    summary: repository-root isolation and bounded validation/sorting/projection work
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: TDD, exact-head CI, detailed report, PR comment, no merge
+
+write_boundary:
+  allowed:
+    - reports/issue-124-global-understanding-view-fix-verification-20260921.md
+    - handoffs/issue-124-global-understanding-view-fix-verification-20260921.yaml
+    - PR #125 review comment
+  forbidden:
+    - implementation fixes
+    - test fixes
+    - design changes
+    - workflow changes
+    - merge
+
+development_policy:
+  method: TDD
+  testing_order: Red before implementation fixes, then focused Green and regression
+
+validation_plan:
+  commands:
+    - npm run test:t610
+    - focused T607 R003 plus existing bounded-stage tests
+    - npm run test:t607
+    - current compiled cross-root probe
+    - current compiled sibling budget probe
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - exit status
+    - probe logs
+    - exact-head CI artifact on remote failure
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35601536693
+  head_sha: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  conclusion: success
+  artifacts:
+    - id: 10638638710
+      name: review-range-user-validation-0.1.55-pre+94fceee
+      head_sha: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+
+review:
+  mode: fix_verification
+  reviewed_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - initial review and this fix verification are the same normal-review chat
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: I124-R002 root isolation and I124-R004 bounded projection
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: same-remote same-revision different-root probe
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: fix diff stays within findings plus records/tracking
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: source/model/tests plus repository ID and root identity dependencies inspected
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_no_finding
+      evidence: no workflow change and exact-head CI passed
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: I124-R001 closure verified
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no credential or secret exposure change
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: R002 cross-root and R004 all-yield budget coverage absent
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: run 35601536693 success for exact reviewed HEAD
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_no_finding
+      evidence: follow-up report distinguishes technical and administrative heads
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: cross-root stale open target and unbounded synchronous projection preparation
+  validation_assessment:
+    - item: npm run test:t610
+      result: supported
+      evidence: 77 of 77
+    - item: focused R003 and bounded-stage tests
+      result: supported
+      evidence: 3 of 3
+    - item: npm run test:t607
+      result: baseline_failures_only
+      evidence: 85 of 88; same three failures previously reproduced on clean origin/main
+    - item: I124-R002 cross-root owner isolation
+      result: failed
+      evidence: root B running publication reused root A row and open target
+    - item: I124-R004 sibling budget
+      result: failed
+      evidence: 10032 progress-file accesses between scheduler yields with maxFilesPerStage 128
+    - item: exact-head CI
+      result: supported
+      evidence: run 35601536693 success and artifact head_sha match
+  findings:
+    - id: I124-R001
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: src/composition/global-understanding/global-understanding-source.ts; src/ui/global-understanding/global-understanding-ui-model.ts
+      description: failed scope row was cleared after refresh error
+      impact: failed state and restart action were unavailable
+      evidence: actual source plus runtime provider fixture now passes
+      required_action: publish failed lifecycle and retain restart action
+    - id: I124-R002
+      severity: high
+      origin: introduced_by_change
+      status: not_closed
+      location: src/composition/global-understanding/global-understanding-source.ts
+      description: lastSnapshotByEvidenceKey omits canonical repository root identity and can reuse another checkout snapshot
+      impact: wrong-checkout rows and working-tree open targets appear during running
+      evidence: cross-root probe reused root A src/a.ts and root A open target in root B running publication
+      required_action: include canonical repository root URI or scopeRoot in retained snapshot identity and add same-remote same-revision different-root actual composition coverage
+    - id: I124-R003
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: src/ui/global-understanding/global-understanding-ui-model.ts
+      description: path-only validation previously ran synchronously before first yield
+      impact: large repositories could block the Extension Host
+      evidence: current R003 fixture and focused bounded-stage tests pass
+      required_action: bound discovered/progress/open-target validation
+    - id: I124-R004
+      severity: medium
+      origin: introduced_by_change
+      status: required
+      location: src/ui/global-understanding/global-understanding-ui-model.ts:480-484
+      description: progressByPath construction synchronously scans all progress files without yield or current-generation check
+      impact: large current-evidence repositories can block the Extension Host and delay supersession/cancel/dispose
+      evidence: 10000-file probe measured 10032 file accesses between scheduler yields with budget 128
+      required_action: make progressByPath preparation cooperative under the same item budget and add an all-adjacent-yield workload fixture
+  finding_completeness_matrix:
+    - finding_id: I124-R001
+      required_action: publish failed current-generation folder state and retain restart action
+      production_path: source failure lifecycle publication plus refresh published-progress preserve
+      actual_composition_fixture: I124-R001 keeps the actual failed folder row visible and restartable after source failure
+      focused_evidence: T610 77/77 and fixture pass
+      disposition: closed
+    - finding_id: I124-R002
+      required_action: retain known rows only for the exact current owner and revision
+      production_path: lastSnapshotByEvidenceKey plus lifecycleSnapshot
+      actual_composition_fixture: existing single-root 129-file fixture is insufficient; cross-root probe fails
+      focused_evidence: same-remote same-revision different-root reproduction
+      disposition: not_closed
+    - finding_id: I124-R003
+      required_action: bound discovered/progress/open-target validation
+      production_path: shared pendingValidationItems budget
+      actual_composition_fixture: I124-R003 bounds path-only validation before the first scheduler yield
+      focused_evidence: focused T607 3/3
+      disposition: closed
+    - finding_id: I124-R004
+      required_action: bound progressByPath preparation and check current generation at checkpoints
+      production_path: createGlobalUnderstandingTreeModelIncrementally progressByPath construction
+      actual_composition_fixture: 10000 current-evidence all-yield budget fixture required
+      focused_evidence: review probe reproduces 10032 accesses between yields
+      disposition: required
+  severity_reclassifications: []
+  held: []
+  unexplored:
+    - actual installed VSIX manual visual smoke test
+  remaining_risks:
+    - R002 can expose stale rows/open targets from another checkout during running
+    - R004 leaves an unbounded synchronous projection-preparation phase
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - I124-R001 closed
+    - I124-R002 not closed
+    - I124-R003 closed
+    - I124-R004 new Medium required finding
+
+held: []
+unexplored:
+  - area: manual installed-VSIX visual smoke test
+    blocker: not required to establish current findings
+    remaining_risk: visual rendering not manually exercised
+    verdict_impact: none
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-fix-verification-20260921.md
+  reviewed_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - verdict fail
+    - R001 closed
+    - R002 not closed
+    - R003 closed
+    - R004 Medium required
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "2026-09"
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+      base: eb8dc52f1c329a5768c263a8773289c9865f5dd4
+      commit_range: 81d7d078cf8ecf4f7c3dc6464c487138e88d65d2..94fceee9ab1e587b034131cb25bd3484e10dfdb6
+      reviewer_identity: ChatGPT current normal-review chat
+      reviewer_continuity: same normal reviewer as initial review
+      findings:
+        - I124-R001 High closed
+        - I124-R002 High not closed
+        - I124-R003 Medium closed
+        - I124-R004 Medium required
+      held: []
+      unexplored:
+        - manual installed-VSIX visual smoke test
+      validation_assessment:
+        - T610 77/77 pass
+        - focused T607 3/3 pass
+        - T607 85/88 baseline failures only
+        - R002 cross-root probe failed
+        - R004 sibling budget probe failed
+        - exact-head CI success
+      verdict: fail
+      next_action: implementation fixes for I124-R002 and I124-R004
+      report_attestation_allowed: false
+
+extensions:
+  - namespace: review_evidence_paths
+    payload:
+      t610: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-20260921\test-t610.log'
+      t607: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-20260921\test-t607.log'
+      r002_cross_root: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-20260921\r002-cross-root-probe.log'
+      r004_budget: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-20260921\r003-sibling-budget-probe.log'
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: fix
+  summary: fix I124-R002 and I124-R004, then return to this same normal-review chat
+  instructions:
+    - preserve I124-R002 High severity
+    - preserve I124-R004 Medium severity
+    - add same-remote same-revision different-root actual composition Red to Green for R002
+    - add all-adjacent-yield 10000 current-evidence budget fixture for R004
+    - provide required-action production-path actual-composition-fixture focused-evidence cells
+    - verify only the new PR current HEAD exact-match CI
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-fix-verification-20260921.md
+    - reports/issue-124-global-understanding-view-review-20260921.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-fix-verification-20260921.yaml
+  packet_url: null
+  transport_note: persist review records only; implementation remains for a separate implementation pass
