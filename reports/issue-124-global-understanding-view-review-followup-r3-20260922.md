@@ -122,6 +122,11 @@ attempt 1:
 同HEAD retryで成功した既知の不安定経路と同一で、R004のUI scheduling差分とは独立している。
 same technical HEADのfailed job rerunを要求済み。
 
+ユーザー指示「CI確認はとりあえず不要、ローカルで動けば待機不要」に従い、
+このrerunの完走待機・pollingは行わない。
+CIは未確認のまま成功扱いせず、I124-R004の完了根拠はRed→Greenのall-work fixture、
+focused 4/4、T610 78/78、static/local主要phase evidenceとする。
+
 ## Finding completeness matrix
 
 | Finding | Required action | Production path | Actual fixture | Focused evidence |
@@ -145,5 +150,6 @@ I124-R004の実装とfocused/static/local主要phase検証は完了した。
 normal review verdictは実装担当では変更しない。
 同じnormal review chatによるI124-R004限定の再fix verificationが次のreview stepである。
 
-このreport/handoff/tracking更新後のPR current HEADと完全一致するCI runだけを最終CI証拠とする。
+CI確認はユーザー指示により後回しとし、fix verificationの待機条件にはしない。
+将来CI結果を確認する場合も、その時点のPR current HEADとrun head SHAが完全一致するrunだけを使用し、
 別SHAのrunは代用しない。mergeは行わない。
