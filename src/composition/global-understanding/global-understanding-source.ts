@@ -137,7 +137,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const files: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
-    const openTargets: GlobalUnderstandingFileOpenTarget[] = [];
+    const discoveredFilePaths = new Set<string>();
     let openedFileCount = 0;
     let unopenedFileCount = 0;
     let excludedFileCount = 0;
@@ -263,7 +263,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         const total = direct.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
         files.push(...direct);
-        openTargets.push(...direct.map((file) => this.createFileOpenTarget(owner, file.path)));
+        for (const repositoryPath of availablePaths) discoveredFilePaths.add(repositoryPath);
         openedFileCount += openedByPath.size;
         unopenedFileCount += Math.max(0, availablePaths.size - openedByPath.size);
         excludedFileCount += pathEnumeration.excluded.length;
@@ -279,8 +279,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     assertCurrent();
     const reviewed = files.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
     const total = files.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
-    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
-    fileOpenTargets.push(...openTargets);
+    const displayedFilePaths = [...discoveredFilePaths].sort((left, right) => left === right ? 0 : left < right ? -1 : 1);
+    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = displayedFilePaths.map((repositoryPath) =>
+      this.createFileOpenTarget(owner, repositoryPath)
+    );
     const folders = this.folderScopes?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path,
       state: folder.state,
@@ -291,6 +293,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
     return {
       progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files },
+      discoveredFilePaths: displayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
       openedFileCount,
       unopenedFileCount,

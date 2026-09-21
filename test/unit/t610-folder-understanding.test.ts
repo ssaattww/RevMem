@@ -140,12 +140,15 @@ test("T610-IFR-002 publishes a running scope before I/O so the same row can stop
 test("T610-IFR-002 exposes the running row through the actual provider before public stop", async () => {
   setActiveOperationFeedback(undefined);
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
-  let provider: { getChildren(node?: unknown): readonly { readonly kind: string; readonly state?: string }[] } | undefined;
+  let provider: {
+    getChildren(node?: unknown): readonly { readonly kind: string; readonly state?: string }[];
+    getTreeItem(node: unknown): { readonly tooltip?: unknown; readonly iconPath?: unknown; readonly command?: unknown };
+  } | undefined;
   const disposable = { dispose(): void {} };
   const vscode = {
     EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
     TreeItem: class { public description: unknown; public tooltip: unknown; public iconPath: unknown; public contextValue: unknown; public command: unknown; public constructor(...args: unknown[]) { void args; } },
-    ThemeIcon: class { public constructor(...args: unknown[]) { void args; } }, TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 }, StatusBarAlignment: { Left: 1 },
+    ThemeIcon: class { public constructor(public readonly id: string) {} }, TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 }, StatusBarAlignment: { Left: 1 },
     window: {
       createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
       createOutputChannel: () => ({ appendLine(): void {}, show(): void {}, dispose(): void {} }),
@@ -183,6 +186,11 @@ test("T610-IFR-002 exposes the running row through the actual provider before pu
   await published;
   const running = provider!.getChildren().find((node) => node.kind === "folder")!;
   assert.equal(running.state, "running");
+  const runningItem = provider!.getTreeItem(running);
+  assert.equal((runningItem.iconPath as { id?: string } | undefined)?.id, "loading~spin");
+  assert.equal((runningItem.command as { title?: string } | undefined)?.title, "停止");
+  assert.match(String(runningItem.tooltip), /状態: running/u);
+  assert.match(String(runningItem.tooltip), /操作: 停止/u);
   await commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(running);
   await assert.rejects(
     initialRefresh,
@@ -190,7 +198,10 @@ test("T610-IFR-002 exposes the running row through the actual provider before pu
     "the stopped running generation terminates as typed cancellation",
   );
   assert.equal(stopCalls, 1);
-  assert.equal(provider!.getChildren().find((node) => node.kind === "folder")?.state, "stopped");
+  const stopped = provider!.getChildren().find((node) => node.kind === "folder")!;
+  assert.equal(stopped.state, "stopped");
+  const stoppedItem = provider!.getTreeItem(stopped);
+  assert.equal((stoppedItem.command as { title?: string } | undefined)?.title, "再開");
   registered.dispose(); setActiveOperationFeedback(undefined);
 });
 
@@ -233,13 +244,31 @@ test("T610 contributes one focused package/CI gate and mutually exclusive folder
   const manifestText = await readFile(path.join(root, "package.json"), "utf8");
   const manifest = JSON.parse(manifestText) as {
     scripts: Record<string, string>;
-    contributes: { commands: Array<{ command: string }>; configuration: { properties: Record<string, { default?: unknown }> }; menus: { "view/item/context": Array<{ command: string; when?: string }>; "editor/context": Array<{ command: string }> } };
+    contributes: {
+      commands: Array<{ command: string; title: string; icon?: string }>;
+      configuration: { properties: Record<string, { default?: unknown }> };
+      menus: { "view/item/context": Array<{ command: string; when?: string }>; "editor/context": Array<{ command: string }> };
+    };
   };
   assert.match(manifest.scripts["test:t610"]!, /t610-folder-understanding\.test\.js/u);
   assert.equal(manifest.contributes.configuration.properties["reviewRange.globalUnderstanding.autoStartDescendants"]?.default, false);
   const actions = manifest.contributes.menus["view/item/context"].filter((item) => item.command.includes("GlobalUnderstandingFolder"));
   assert.equal(actions.length, 3);
   assert.equal(new Set(actions.map((item) => item.when)).size, 3, "one row action is selected by the current folder state");
+  const folderCommands = new Map(
+    manifest.contributes.commands
+      .filter((item) => item.command.includes("GlobalUnderstandingFolder"))
+      .map((item) => [item.command, item])
+  );
+  assert.deepEqual(
+    [...folderCommands.values()].map((item) => ({ title: item.title, icon: item.icon })),
+    [
+      { title: "開始", icon: "$(play)" },
+      { title: "停止", icon: "$(debug-stop)" },
+      { title: "再開", icon: "$(debug-continue)" }
+    ],
+    "folder buttons describe the action that happens after clicking"
+  );
   assert.equal((manifestText.match(/"editor\/context"\s*:/gu) ?? []).length, 1, "the manifest has one non-overwriting editor/context menu key");
   assert.equal(manifest.contributes.menus["editor/context"].length, 7, "four review commands and three folder commands remain contributed together");
   const workflow = await readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
