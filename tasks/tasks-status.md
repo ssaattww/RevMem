@@ -4,20 +4,26 @@
 
 ## Issue #124 Global Understanding View改善（2026-09-21）
 
-- 現在のタスク: I124-FINAL。PR #125の最終report/tracking commit後のexact-head CI確認。
+- 現在のタスク: I124-REVIEW-FOLLOWUP。PR #125 normal review finding I124-R001〜R003の実装・local検証完了、fix verification用recordのcommit/pushとexact-head CI待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
-- 実装technical HEAD: `c3931612700d683cdea1c05ab30fc6e79008592a`。
-- TDD: 未収集file一覧、running spinner、action表示のRed 4件を確認後に実装し、focused 57/57、`test:t610` 75/75 Green。
+- 初回reviewed implementation HEAD: `4e6ddb45966ec96e7b5e16834f44af7e5858979d`。review-record HEAD: `81d7d078cf8ecf4f7c3dc6464c487138e88d65d2`。
+- fix technical HEAD: `b4436d5a864b7133c78750e5dcece447d54f6c0e`。R001=`f46df7e`、R002=`1290869`、R003=`b4436d5`。
+- TDD: R001はfailed row消失、R002はrunning中file 129→0、R003はfirst yieldまで10,128 path accessをRed確認後にGreen化。
+- focused: `npm run test:t610` 77/77 Green。R003と既存T607 bounded 2件もGreen。
 - static gate: build、lint、contracts typecheck、architecture正負はいずれもGreen。
-- default full local gate: `npm test`はExtension Hostまで完走しexit code 0。
-- performance回帰: `test:t607`は84/87。失敗3件はclean `origin/main`同一HEADでも3/3再現し、本変更起因ではないbaseline failureとして保持する。
-- CI: final report/tracking commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
+- default full local gate: `npm test` exit 0。unit 863/0、Git 35/0、GitHub 48/48、T502 11/11、Extension Host全phase成功。
+- performance回帰: `test:t607`は85/88。失敗3件はclean `origin/main`でも同一再現済みのbaseline failureで、新規failureなし。
+- normal review verdictは実装担当では変更しない。同じnormal review chatのfix verificationを次のreview stepとする。
+- CI: report/tracking/handoff administrative commit後のPR current HEADと一致するrunだけを確認する。別SHAのrunは代用しない。
 
 | 単位 | 状態 | 変更範囲 | 終了条件 |
 | --- | --- | --- | --- |
 | I124-TDD | 完了 | path-only file表示、running spinner、action labelのRed/Green | focused testで新規契約を固定する |
-| I124-IMPL | 完了 | Global Understanding source/model/runtime、command表示、設計契約 | 本文全体scanを増やさず要求3点を満たす |
-| I124-FINAL | exact-head CI確認待ち | 詳細report、handoff、PR更新、exact-head CI | final HEADのrequired CIを照合しPRへ簡易reportを投稿する |
+| I124-IMPL | 完了 | Global Understanding source/model/runtime、command表示、設計契約 | 本文全体scanを増やさずIssue #124要求を満たす |
+| I124-R001 | 実装・検証完了 / fix verification待ち | failed lifecycleをTreeへpublishし、published progressをerror clearから保持 | actual providerでfailed/warning/開始を確認 |
+| I124-R002 | 実装・検証完了 / fix verification待ち | exact owner/revisionの直前成功file projectionをrunning lifecycleへ保持 | running中も129 file + spinner + 停止を確認 |
+| I124-R003 | 実装・検証完了 / fix verification待ち | incremental discovered/progress/open-target validationを128-item budget化 | 10,000 path-onlyでfirst yield <=128 |
+| I124-FINAL | normal fix verification待ち | follow-up report/handoff、exact-head CI、同一reviewer closure | required finding closure後に最終状態を確定する |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
