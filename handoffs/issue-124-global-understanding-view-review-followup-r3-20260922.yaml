@@ -43,8 +43,9 @@ verification:
     - default npm test unit 863/0, Git 35/0, GitHub 48/48, T502 11/11 confirmed before RDC disconnect
     - local Extension Host terminal result was not observed after RDC disconnect
   final_publication:
-    sequence: record commits via GitHub connector then exact-head pull_request CI then PR comment
+    sequence: record commits via GitHub connector then PR comment
     pr_action: update
+    ci_wait: deferred_by_user
 
 authoritative_requirements:
   - source: normal_review
@@ -142,10 +143,12 @@ ci:
       state: requested
       evidence: same run id failed jobs rerun requested through GitHub connector
   final_current_head:
+    state: deferred_by_user
     run_id: null
     head_sha: unknown
     conclusion: unknown
     artifacts: []
+    note: user explicitly requested no CI waiting when local validation is sufficient
 
 implementation:
   outcome: completed_pending_fix_verification
@@ -190,8 +193,8 @@ review:
       result: supported
       evidence: combined validation and projection counter passes
     - item: final exact-head CI
-      result: pending
-      evidence: record publication will create final PR HEAD
+      result: deferred_by_user
+      evidence: user requested no CI wait; do not convert to success
   reserved_report_paths: []
   report_attestation:
     allowed: not_applicable
@@ -223,7 +226,8 @@ next_action:
     - preserve I124-R004 Medium severity
     - retain R001 R002 R003 as closed
     - verify phase-boundary budget flush and all-work fixture
-    - use only PR current HEAD exact-match CI
+    - CI is not a blocking condition for this handoff per user instruction
+    - if CI is checked later, use only PR current HEAD exact-match CI
     - do not merge
   required_attachments_or_references:
     - reports/issue-124-global-understanding-view-fix-verification-r2-20260922.md
