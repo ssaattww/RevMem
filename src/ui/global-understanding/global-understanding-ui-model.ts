@@ -318,18 +318,66 @@ const validateTreeSnapshotIncrementally = async (
   requireCount(openedFileCount, "openedFileCount"); requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount"); requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
   if (openedFileCount !== progress.files.length) throw new RangeError("openedFileCount must match Global progress file count.");
-  const discoveredFilePaths = validateDiscoveredFilePaths(snapshot, openedFileCount, unopenedFileCount);
+
+  let pendingValidationItems = 0;
+  const validateOne = async (): Promise<boolean> => {
+    pendingValidationItems += 1;
+    if (pendingValidationItems < maxItems) return isCurrent();
+    pendingValidationItems = 0;
+    await yieldControl();
+    return isCurrent();
+  };
+
+  const discoveredFilePaths: string[] = [];
+  const discoveredPaths = new Set<string>();
+  if (snapshot.discoveredFilePaths === undefined) {
+    for (const file of progress.files) {
+      const repositoryPath = file.path;
+      if (repositoryPath.length === 0) throw new RangeError("Global understanding discovered file path must not be empty.");
+      if (discoveredPaths.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
+      discoveredPaths.add(repositoryPath);
+      discoveredFilePaths.push(repositoryPath);
+      if (!await validateOne()) return undefined;
+    }
+  } else {
+    for (const repositoryPath of snapshot.discoveredFilePaths) {
+      if (repositoryPath.length === 0) throw new RangeError("Global understanding discovered file path must not be empty.");
+      if (discoveredPaths.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
+      discoveredPaths.add(repositoryPath);
+      discoveredFilePaths.push(repositoryPath);
+      if (!await validateOne()) return undefined;
+    }
+    for (const file of progress.files) {
+      if (!discoveredPaths.has(file.path)) throw new RangeError(`Global understanding progress path was not discovered: ${file.path}`);
+      if (!await validateOne()) return undefined;
+    }
+    if (discoveredFilePaths.length !== openedFileCount + unopenedFileCount) {
+      throw new RangeError("Global understanding discovered file count must match opened and unopened counts.");
+    }
+  }
+
   const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
   const targets = snapshot.fileOpenTargets ?? [];
-  for (let index = 0; index < targets.length; index += 1) {
-    const target = targets[index]!;
+  for (const target of targets) {
     if (openTargetsByPath.has(target.repositoryPath)) throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
     openTargetsByPath.set(target.repositoryPath, target);
     accountWork?.({ kind: "validated-open-target", count: 1, stageFileCount: 1 });
-    if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
+    if (!await validateOne()) return undefined;
   }
-  if (snapshot.fileOpenTargets !== undefined && targets.length !== discoveredFilePaths.length) throw new RangeError("Global understanding open target count must match displayed file count.");
-  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, discoveredFilePaths, openTargetsByPath, folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true };
+  if (snapshot.fileOpenTargets !== undefined && targets.length !== discoveredFilePaths.length) {
+    throw new RangeError("Global understanding open target count must match displayed file count.");
+  }
+  return {
+    progress,
+    openedFileCount,
+    unopenedFileCount,
+    excludedFileCount: snapshot.excludedFileCount,
+    prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
+    discoveredFilePaths,
+    openTargetsByPath,
+    folders: snapshot.folders ?? [],
+    repositoryPartial: snapshot.repositoryPartial === true
+  };
 };
 
 const createTreeModel = (

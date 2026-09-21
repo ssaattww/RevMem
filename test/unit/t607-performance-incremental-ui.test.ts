@@ -140,6 +140,51 @@ test("T607 accounts for 10,000-file projection work without a model prefix doubl
   assert.ok(accounts.every((entry) => entry.count <= 128), "each accounted operation remains within the deterministic work budget");
 });
 
+test("I124-R003 bounds path-only validation before the first scheduler yield", async () => {
+  const rawPaths = Array.from({ length: 10_000 }, (_, index) => `src/path-only-${index}.ts`);
+  let yielded = false;
+  let pathReadsBeforeFirstYield = 0;
+  let firstYieldPathReads = -1;
+  const discoveredFilePaths = new Proxy(rawPaths, {
+    get(target, property, receiver) {
+      if (!yielded && typeof property === "string" && /^\d+$/u.test(property)) {
+        pathReadsBeforeFirstYield += 1;
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const pathOnlySnapshot: GlobalUnderstandingTreeSnapshot = {
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: 0,
+      progress: 1,
+      files: []
+    },
+    discoveredFilePaths,
+    openedFileCount: 0,
+    unopenedFileCount: rawPaths.length,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  };
+
+  const model = await createGlobalUnderstandingTreeModelIncrementally(pathOnlySnapshot, {
+    maxFilesPerStage: 128,
+    yieldControl: () => {
+      if (!yielded) {
+        yielded = true;
+        firstYieldPathReads = pathReadsBeforeFirstYield;
+      }
+    }
+  });
+
+  assert.equal(model?.files.length, 10_000);
+  assert.ok(firstYieldPathReads >= 0, "path-only validation yields before projection completes");
+  assert.ok(
+    firstYieldPathReads <= 128,
+    `first scheduler yield must happen within the 128-item budget, observed ${firstYieldPathReads} path reads`
+  );
+});
+
 test("T607 never publishes a stale Tree stage after its generation is invalidated", async () => {
   let current = true;
   const published: number[] = [];
