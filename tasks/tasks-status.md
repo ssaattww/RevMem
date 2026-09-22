@@ -4,11 +4,11 @@
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
-- 現在のタスク: I124-IFR-002-RECORD-SYNC。normal fix verification R3 `beb997fd929219599d46f0894d1944a91580db05` でnormal-review required findingsは全件closed、verdictは `pass_with_held`。独立限定closureではI124-IFR-001はclosed、I124-IFR-002はこのtrackingのstale状態だけがnot closed。
+- 現在のタスク: I124-IFR-002-RECORD-SYNC-VERIFY。normal fix verification R3 `beb997fd929219599d46f0894d1944a91580db05` でnormal-review required findingsは全件closed、verdictは `pass_with_held`。I124-IFR-002のrecord-only syncは実施済みで、同じnormal reviewerによる限定確認待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
 - technical implementation HEAD: `cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8`。normal closure record HEAD: `beb997fd929219599d46f0894d1944a91580db05`。独立closure record parent: `f193f9e2539aea4d7bcd77f65b1ae4c97bf1bfa1`。
 - I124-IFR-001 / High: **normal closed / independent closed**。stopped body access=0、running→stopped後のprior row/progress/open target保持、source/public STOP runtime regressionとoriginal independent probeを確認済み。
-- I124-IFR-002 / Low: **record-only sync実施中**。normal closure後も残っていた「normal closure待ち / verdict fail」の古いtrackingを削除し、現在状態へ同期する。製品コード・test・design・workflow・configurationは変更しない。
+- I124-IFR-002 / Low: **record-only sync実施済み / normal限定確認待ち**。normal closure後も残っていた「normal closure待ち / verdict fail」の古いtrackingを削除し、現在状態へ同期済み。製品コード・test・design・workflow・configurationは変更していない。
 - I124-IFR-003 / High: **normal closed / issuing independent reviewer closure待ち**。
 - I124-IFR-004 / Medium: **normal closed / issuing independent reviewer closure待ち**。
 - I124-IFR-005 / Medium: **normal closed / issuing independent reviewer closure待ち**。
