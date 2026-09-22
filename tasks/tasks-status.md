@@ -2,29 +2,33 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
-## Issue #124 Global Understanding View改善（R3対応 2026-09-22）
+## Issue #124 Global Understanding View改善（独立review follow-up 2026-09-22）
 
-- 現在のタスク: I124-REVIEW-FOLLOWUP-R3。normal reviewでR001/R002/R003はclosed。残件R004のTDD修正・focused/static検証完了、同じnormal reviewerによるfix verification待ち。CI確認はユーザー指示により後回しで、待機条件にしない。
+- 現在のタスク: I124-INDEPENDENT-FOLLOWUP。独立final reviewのrequired finding IFR-001〜005をTDDで対応し、local full gateまで完了。同じnormal reviewerのfix verification待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
-- 最新review-record HEAD: `700d9b40b06c7789d19cab22648088069a169213`。
-- R3 fix technical HEAD: `8db0cafedadcce6db1ef9de5b0aa111de60721ef`。
-- R004 TDD: validation残余16 + projection128でall-work最大144のRedを確認し、validation残余があるphase境界でyieldすることで全interval <=128へGreen化。
-- focused: R003/R004 + 既存bounded-stage 4/4 Green、`npm run test:t610` 78/78 Green。
-- performance回帰: `npm run test:t607` 86/89。失敗3件はclean `origin/main`でも再現済みの既知baseline failureのみ。
-- static gate: build、lint、contracts typecheck、architecture正負はいずれもGreen。
-- default local gate: unit 863/0、Git 35/0、GitHub 48/48、T502 11/11までGreen。Extension Host開始後にFA780 RDCがofflineとなり、local terminal exitは取得できなかったため成功へ丸めない。
-- technical HEAD CI #4615 run `35662709435`: attempt 1はT606内T604 child-process lease timing testでfailure、diagnostics artifact `10667981517`。same-SHA failed-job retryではT610までsuccessしExtension Hostへ進行した。
-- report: `reports/issue-124-global-understanding-view-review-followup-r3-20260922.md`。
-- handoff: `handoffs/issue-124-global-understanding-view-review-followup-r3-20260922.yaml`。
-- normal review verdictは実装担当では変更しない。CIは未待機・未確認を成功扱いしない。将来確認する場合だけPR current HEADと完全一致するrunを使う。mergeしない。
+- 独立review record HEAD: `da5f97ee02b8f2179a3fe894c5cf58aed7aac2b8`。technical implementation HEAD: `67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c`。
+- IFR-001 / High: stopped sibling refreshで消えていた既知file row/progress/open targetを保持し、停止scope本文は再計算しないfixtureをRed→Green。
+- IFR-003 / High: scope accept直後にcurrent lifecycleをpublishし、別siblingがrunning中でもcompleted siblingをactiveとして公開するfixtureをRed→Green。
+- IFR-004 / Medium: PR非diff path-only rowは表示を維持しつつopen target/commandを持たないsparse target契約へ変更。T505 26/26 Green。
+- IFR-005 / Medium: repository sortとsource canonicalize/union/sort/open-target projectionを128-item schedulerへ移動。10,000-file actual source workload Green。
+- IFR-002 / Low: task ledgerとPR bodyを本follow-upのtechnical HEAD、local test count、review statusへ同期する。旧final HEAD/75-of-75/旧CIをcurrent stateとして表示しない。
+- focused: repository enumeration 8/8、T505 26/26、T610 81/81、Global performance focused 5/5 Green。
+- performance回帰: `npm run test:t607` 88/91。失敗3件はPR baseでも再現済みの既知baseline failureのみ。
+- static gate: build、lint、contracts typecheck、architecture正負Green。
+- default local gate: `npm test` exit 0。unit 864/0/2 skip、Git 35/0/3 skip、GitHub 48/48、T502 11/11、Extension Host success。
+- ユーザー指示により今回の完了条件はlocal validation。CI完走待ちは行わず、current-head CI successを主張しない。
+- report: `reports/issue-124-global-understanding-view-independent-followup-20260922.md`。
+- handoff: `handoffs/issue-124-global-understanding-view-independent-followup-20260922.yaml`。
+- mergeは行わない。
 
 | 単位 | 状態 | 変更範囲 | 終了条件 |
 | --- | --- | --- | --- |
-| I124-R001 | closed by normal review | failed lifecycle publication | closed状態を維持する |
-| I124-R002 | closed by normal review | retained snapshot root isolation | closed状態を維持する |
-| I124-R003 | closed by normal review | incremental validation budget | closed状態を維持する |
-| I124-R004 | R3実装・検証完了 / fix verification待ち | validation残余budgetをprojection前にflushし、all-work fixtureへ修正 | 全隣接scheduler yield間のvalidation+projection work <=128 |
-| I124-FINAL | normal fix verification待ち | R3 report/handoff/tracking、同一reviewer closure。CIはユーザー指示で後回し | R004 closure後に最終状態を確定する |
+| I124-IFR-001 | 実装・local検証完了 / normal fix verification待ち | stopped scopeの既知row/progress/target保持 | stop→sibling refresh後も保持、stopped scope body readなし |
+| I124-IFR-002 | 記録同期済み / normal fix verification待ち | task ledgerとPR summary | actual HEAD/count/review statusを表示し旧情報をcurrent扱いしない |
+| I124-IFR-003 | 実装・local検証完了 / normal fix verification待ち | accept直後のlifecycle publish | active/running sibling transitionをcurrent generationで公開 |
+| I124-IFR-004 | 実装・local検証完了 / normal fix verification待ち | PR path-only sparse open target | non-diff rowを表示しつつfailing open commandを付けない |
+| I124-IFR-005 | 実装・local検証完了 / normal fix verification待ち | source path publication bounded scheduler | 10,000-path actual source workの全yield区間 <=128 |
+| I124-FINAL | normal fix verification待ち | IFR-001〜005 closure後に独立review finding/delta限定closure | normal closure + independent closure。CIはユーザー指示で後回し |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
