@@ -1,0 +1,161 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: normal_review_followup
+  generated_at: 2026-09-22T21:01:19+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-NORMAL-FIX-FOLLOWUP-IFR
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+
+target:
+  normal_review_record_head: c120c7e46f7ca732113598672df52c0ce63260db
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  commit_range: c120c7e46f7ca732113598672df52c0ce63260db..cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  source_state: clean_after_technical_push
+  ownership: current_task
+
+development_policy:
+  method: TDD
+  completion_gate: local_validation
+  ci_wait: deferred_by_user
+
+verification:
+  capability: local_execution_available
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  focused:
+    t505: 26/26
+    t610: 86/86
+    performance: 6/6
+    t607: 89/92
+    t607_note: exactly three known baseline failures; new regression cells pass
+  static:
+    build: pass
+    lint: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: expected_11_matched
+  default_gate:
+    command: npm test
+    exit_code: 0
+    unit: 864_pass_0_fail_2_skip
+    git: 35_pass_0_fail_3_skip
+    github: 48_pass_0_fail
+    t502: 11_pass_0_fail
+    extension_host: success
+  ci:
+    required_for_completion: false
+    state: deferred_by_user
+    policy_if_checked_later: use_only_run_whose_head_sha_equals_then_current_pr_head
+
+findings:
+  - id: I124-IFR-001
+    severity: high
+    status: addressed_pending_normal_fix_verification
+    required_action: zero stopped-scope body access and retain prior row/progress/target when running transitions to stopped
+    production_path:
+      - candidate predicate reaches the production open-document reader before body materialization
+      - only folders accepted by the current generation replace prior snapshot evidence
+    red_evidence:
+      - existing reader API could not express pre-body candidate filtering
+      - after adding candidate filtering, mid-refresh stop reproduced final paths containing only two/a.ts
+    green_evidence:
+      - stopped scope has zero getText/lineAt body access
+      - source-level running-to-stopped retains one/a.ts progress and target
+      - actual public STOP runtime composition retains one/a.ts and its target
+    commit: 7156ede7da38ea746eccacdb401cac8fe7bdc485
+
+  - id: I124-IFR-002
+    severity: low
+    status: pending_final_sync_after_normal_closure
+    required_action: final task and PR metadata sync only after product normal verification closes
+    note: implementation worker must not claim this finding closed before the same normal reviewer passes the product findings
+
+  - id: I124-IFR-003
+    severity: high
+    status: addressed_required_fixture_added_pending_normal_fix_verification
+    required_action: commit actual source plus actual VS Code runtime/provider spinner regression
+    green_evidence:
+      - active sibling state active with folder icon
+      - only still-running sibling has loading~spin
+    commit: 7156ede7da38ea746eccacdb401cac8fe7bdc485
+
+  - id: I124-IFR-004
+    severity: medium
+    status: addressed_required_fixture_added_pending_normal_fix_verification
+    required_action: commit actual PR source plus runtime/provider non-diff path-only regression
+    green_evidence:
+      - changed row has pull-request-head target and open command
+      - unchanged row remains visible with no target and no command
+    commit: 7156ede7da38ea746eccacdb401cac8fe7bdc485
+
+  - id: I124-IFR-005
+    severity: medium
+    status: addressed_required_fixture_added_pending_normal_fix_verification
+    required_action: commit actual-source source-path cancellation regression proving stale projection is not published
+    green_evidence:
+      - abort occurs at source-path-canonicalize
+      - AbortError returned
+      - no publication contains discovered or progress files after stale work begins
+      - existing 10000-path budget fixture remains green
+    commit: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+
+implementation:
+  outcome: completed_pending_normal_fix_verification
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  commits:
+    - sha: 7156ede7da38ea746eccacdb401cac8fe7bdc485
+      purpose: IFR001 production fixes and IFR001/003/004 actual composition regressions
+    - sha: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+      purpose: IFR005 source-path stale-publication regression
+
+review:
+  mode: normal_fix_verification_required
+  verdict: pending
+  reviewer_continuity: return_to_same_normal_reviewer
+  closure_scope:
+    - I124-IFR-001
+    - I124-IFR-002
+    - I124-IFR-003
+    - I124-IFR-004
+    - I124-IFR-005
+  independent_closure:
+    blocked_until_normal_pass: true
+    ifr001_ifr002: return_to_original_independent_reviewer
+    ifr003_ifr005: return_to_their_issuing_independent_reviewer
+
+report:
+  report_type: implementation_followup
+  outcome: created
+  path: reports/issue-124-global-understanding-view-normal-fix-followup-ifr-20260922.md
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  target_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  summary: re-verify I124-IFR-001 through I124-IFR-005 against the implementation delta
+  instructions:
+    - preserve all finding IDs and severities
+    - verify stopped body access before materialization and running-to-stopped retained evidence
+    - verify committed actual source/runtime spinner fixture
+    - verify committed actual PR non-diff runtime fixture
+    - verify committed source-path stale-publication fixture
+    - leave IFR002 final sync pending until product findings pass normal verification
+    - do not merge
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-normal-fix-followup-ifr-20260922.yaml
+  transport_note: technical commits were pushed with RDC; administrative report/tracking commit follows

@@ -1,0 +1,306 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-09-21T21:40:42+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-REVIEW-FOLLOWUP
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  reviewed_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  commit_range: 81d7d078cf8ecf4f7c3dc6464c487138e88d65d2..b4436d5a864b7133c78750e5dcece447d54f6c0e
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  source_state: clean
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124'
+  dependencies:
+    - name: node
+      status: available
+      evidence: v24.20.0
+    - name: npm
+      status: available
+      evidence: npm.cmd local gates completed
+  evidence:
+    - review record HEAD 81d7d078 was present before fixes
+    - three logical fix commits were pushed separately
+    - technical HEAD b4436d5 was locally validated before administrative records
+verification:
+  capability: local_execution_available
+  technical_head: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  administrative_parent: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  capability_evidence:
+    - I124-R001 Red then Green actual source plus runtime provider
+    - I124-R002 Red 0 of 129 then Green 129 of 129 during running
+    - I124-R003 Red 10128 pre-yield accesses then Green within 128-item budget
+    - npm run test:t610 passed 77 of 77
+    - default npm test completed with exit code 0
+    - static gates passed
+  commit:
+    state: commit_pending
+    review_target_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  push:
+    state: pushed
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  ci_wait:
+    state: ci_wait_pending
+    required_for: final_administrative_head
+  final_publication:
+    sequence: administrative_record_commit_then_push_then_exact_head_ci_then_pr_comment
+    pr_action: update
+authoritative_requirements:
+  - source: review
+    reference: PR #125 initial review / I124-R001
+    summary: failed scope remains visible with warning and start action
+  - source: review
+    reference: PR #125 initial review / I124-R002
+    summary: known file rows remain visible during running generation
+  - source: review
+    reference: PR #125 initial review / I124-R003
+    summary: path-only validation is cooperative within maxFilesPerStage
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: TDD, diagnostic artifact workflow, small commits, RDC git, exact-head CI, report and PR comment, no merge
+development_policy:
+  method: TDD
+  testing_order: Red before each behavioral fix, focused Green, static and full local gate
+  governing_source: project instructions
+validation_plan:
+  commands:
+    - npm run test:t610
+    - focused I124-R003 plus existing bounded-stage tests
+    - npm run test:t607
+    - npm run build
+    - npm run lint
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm test
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - result metadata
+    - CI failure artifact if remote CI fails
+write_boundary:
+  allowed:
+    - path_or_operation: Issue #124 production and regression tests
+      reason: required normal-review fixes
+    - path_or_operation: follow-up report, tracking and handoff
+      reason: required evidence synchronization
+    - path_or_operation: PR #125 comment
+      reason: concise fix summary
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: unrelated findings or baseline T607 failures
+      reason: outside current review-fix scope
+scope:
+  - I124-R001 failed lifecycle publication
+  - I124-R002 running lifecycle file retention
+  - I124-R003 cooperative path-only validation
+  - tests and evidence records
+non_goals:
+  - changing FolderUnderstandingScopeController state semantics
+  - fixing three existing Windows T607 baseline failures
+  - changing PR Progress
+  - changing repository-wide content scan policy
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: failed publication and exact owner/revision lifecycle snapshot retention
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: preserve published failure progress and bound incremental validation
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: actual-composition R001 and R002 regressions
+    - path: test/unit/t607-performance-incremental-ui.test.ts
+      purpose: 10000 path-only validation budget regression
+findings:
+  - id: I124-R001
+    severity: high
+    origin: introduced_by_change
+    status: addressed_pending_fix_verification
+    required_action: publish failed current-generation folder state and retain restart action
+    production_path:
+      - T505GlobalUnderstandingSource.recalculate failure paths publish current lifecycle snapshot after folderScopes.fail
+      - GlobalUnderstandingRefreshController retains host state after a current progress publication
+    actual_composition_fixture: I124-R001 keeps the actual failed folder row visible and restartable after source failure
+    red_evidence: actual provider returned no failed src row
+    green_evidence: failed src row remains with warning icon and start command
+    commit: f46df7e5245f13ee514d89a861d6d3bb9ae94fd9
+  - id: I124-R002
+    severity: high
+    origin: introduced_by_change
+    status: addressed_pending_fix_verification
+    required_action: retain known file rows while next generation is running
+    production_path:
+      - exact owner/revision lastSnapshotByEvidenceKey stores only successful final snapshots
+      - lifecycleSnapshot overlays current folder lifecycle while preserving known file projection
+      - revision switch discards prior snapshot with prior evidence
+    actual_composition_fixture: I124-R002 keeps known file rows while the actual source publishes a running generation
+    red_evidence: running provider file count dropped from 129 to 0
+    green_evidence: running provider retains 129 files with spinner and stop action
+    commit: 12908695a094394bb4e754541290dc99aed5a9e2
+  - id: I124-R003
+    severity: medium
+    origin: introduced_by_change
+    status: addressed_pending_fix_verification
+    required_action: keep discovered-path validation within the incremental item budget
+    production_path:
+      - validateTreeSnapshotIncrementally uses one shared validation counter
+      - discovered paths, progress membership and open targets yield every maxItems
+      - generation currentness is checked at each validation yield
+    actual_composition_fixture: I124-R003 bounds path-only validation before the first scheduler yield
+    red_evidence: first scheduler yield occurred after 10128 path accesses
+    green_evidence: first scheduler yield occurs within maxFilesPerStage 128
+    commit: b4436d5a864b7133c78750e5dcece447d54f6c0e
+tests:
+  - name: I124-R001 actual composition
+    phase: red_green
+    result: passed_after_fix
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: failed/warning/start row visible after source failure
+  - name: I124-R002 actual composition
+    phase: red_green
+    result: passed_after_fix
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: 129 known files remain visible during running
+  - name: I124-R003 path-only budget
+    phase: red_green
+    result: passed_after_fix
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: first yield within 128 path accesses
+  - name: T610 focused gate
+    phase: regression
+    result: passed
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: 77 of 77
+  - name: default npm test
+    phase: regression
+    result: passed
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: exit code 0; unit 863/0, Git 35/0, GitHub 48/48, T502 11/11, Extension Host succeeded
+  - name: T607 performance suite
+    phase: regression
+    result: baseline_failures_only
+    head_sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+    evidence: 85 of 88; same three failures previously reproduced on clean origin/main
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed_pending_fix_verification
+  final_head: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  commits:
+    - sha: f46df7e5245f13ee514d89a861d6d3bb9ae94fd9
+      purpose: I124-R001
+    - sha: 12908695a094394bb4e754541290dc99aed5a9e2
+      purpose: I124-R002
+    - sha: b4436d5a864b7133c78750e5dcece447d54f6c0e
+      purpose: I124-R003
+review:
+  mode: fix_verification
+  reviewed_head: 4e6ddb45966ec96e7b5e16834f44af7e5858979d
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - initial review report identifies the same normal review chat
+  verdict: pending_fix_verification
+  required_coverage:
+    - criterion: finding closure I124-R001
+      disposition: pending_reviewer_verification
+      evidence: implementation report completeness matrix
+    - criterion: finding closure I124-R002
+      disposition: pending_reviewer_verification
+      evidence: implementation report completeness matrix
+    - criterion: finding closure I124-R003
+      disposition: pending_reviewer_verification
+      evidence: implementation report completeness matrix
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: same_normal_reviewer_required
+    closure_scope:
+      - I124-R001
+      - I124-R002
+      - I124-R003
+    completeness_matrix: []
+  validation_assessment:
+    - item: local required gate
+      result: supported
+      evidence: npm test exit code 0 on technical HEAD
+    - item: focused findings
+      result: supported
+      evidence: all three Red to Green fixtures pass
+    - item: exact-head CI
+      result: pending
+      evidence: administrative record commit not created yet
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - I124-R001 through I124-R003 implemented with TDD
+    - normal review verdict remains pending same-reviewer fix verification
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-review-followup-20260921.md
+  reviewed_head: b4436d5a864b7133c78750e5dcece447d54f6c0e
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - required-action production-path actual-composition focused-evidence matrix included
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: same normal reviewer verifies only I124-R001 through I124-R003 and the current-head CI delta
+  instructions:
+    - preserve finding IDs and severities
+    - compare fixes against the original required actions
+    - use only PR current HEAD exact-match CI
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-review-followup-20260921.md
+    - reports/issue-124-global-understanding-view-review-20260921.md
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-review-followup-20260921.yaml
+  packet_url: null
+  transport_note: commit and push with RDC, verify exact-head CI, then comment on PR #125 with GitHub connector

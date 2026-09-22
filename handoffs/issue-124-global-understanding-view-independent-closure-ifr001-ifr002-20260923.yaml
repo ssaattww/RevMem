@@ -1,0 +1,154 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: independent_final_closure
+  generated_at: 2026-09-23T05:37:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-INDEPENDENT-CLOSURE-IFR001-IFR002
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  initial_independent_reviewed_head: 8bfd513f09f5b249ad8b047d878f48930157a50a
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  current_head: beb997fd929219599d46f0894d1944a91580db05
+  reviewed_head: beb997fd929219599d46f0894d1944a91580db05
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-pr125-independent-final-closure-20260923'
+  repository: ssaattww/RevMem
+  branch: detached
+  head_sha: beb997fd929219599d46f0894d1944a91580db05
+  source_state: clean
+  ownership: current_task
+verification:
+  capability: local_execution_available
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  administrative_parent: beb997fd929219599d46f0894d1944a91580db05
+  commit:
+    state: commit_pending
+  push:
+    state: push_pending
+  ci_wait:
+    state: ci_wait_completed
+  capability_evidence:
+    - compile:test passed
+    - IFR-001 stopped-body regression passed
+    - IFR-001 mid-refresh stop retention regression passed
+    - IFR-001 public STOP runtime regression passed
+    - original independent two-sibling probe now passes
+    - npm run test:t610 passed 86/86
+ci:
+  required: true
+  workflow: CI
+  run_id: 35779557504
+  head_sha: beb997fd929219599d46f0894d1944a91580db05
+  conclusion: success
+  artifacts:
+    - id: 10717073650
+      name: review-range-user-validation-0.1.55-pre+beb997f
+      head_sha: beb997fd929219599d46f0894d1944a91580db05
+review:
+  mode: independent_final_closure
+  reviewed_head: beb997fd929219599d46f0894d1944a91580db05
+  reviewer:
+    identity: ChatGPT current independent-review chat
+    role: independent_final_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current independent-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: false
+      evidence:
+        - same chat that issued I124-IFR-001 and I124-IFR-002
+  verdict: fail
+  independent_closure:
+    initial_independent_reviewed_head: 8bfd513f09f5b249ad8b047d878f48930157a50a
+    closure_reviewed_heads:
+      - 64b7f060e02926495cb3f98a06df886638640430
+      - beb997fd929219599d46f0894d1944a91580db05
+    reviewer_continuity: same independent reviewer/chat
+    closure_scope:
+      - I124-IFR-001
+      - I124-IFR-002
+      - exact-head CI delta
+    completeness_matrix:
+      - finding_id: I124-IFR-001
+        required_action: retain stopped-scope row/progress/open target, prevent stopped-body materialization, preserve mid-refresh stop evidence
+        production_path: candidate-aware open-document reader plus accepted-generation retention
+        actual_composition_fixture: stopped-body, mid-refresh stop, and public STOP runtime regressions
+        focused_evidence: exact regressions Green; original independent probe Green; T610 86/86
+      - finding_id: I124-IFR-002
+        required_action: synchronize task ledger and live PR metadata after normal fix verification
+        production_path: tasks/tasks-status.md plus live PR body
+        actual_composition_fixture: committed ledger versus live PR/current HEAD state comparison
+        focused_evidence: PR body current; task ledger still says normal IFR-002 closure pending
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: false
+    validation_status: not_applicable
+    validation_evidence:
+      - verdict is fail because I124-IFR-002 remains open
+findings:
+  - id: I124-IFR-002
+    severity: low
+    origin: coverage_miss
+    location: tasks/tasks-status.md Issue #124 section
+    description: task ledger remains at pre-normal-R3 state after normal closure completed
+    impact: repository tracking contradicts live PR body and completed normal verdict
+    evidence: ledger says IFR-002 normal closure pending / normal verdict fail; PR body and normal R3 report say all normal findings closed / pass_with_held
+    required_action: record-only final sync after normal R3, then same normal reviewer verification and same independent reviewer closure
+held:
+  - item: I124-IFR-003 through I124-IFR-005 independent closure
+    reason: issued by a different independent reviewer
+    owner: issuing independent reviewer
+    remaining_risk: overall PR independent final closure remains incomplete until those findings are closed
+    verdict_impact: outside this reviewer's finding continuity
+  - item: T607 known baseline failures 3
+    reason: reproduced on PR base in prior review
+    owner: repository maintenance
+    remaining_risk: local performance suite has known failures
+    verdict_impact: non-blocking for I124-IFR-001/002 closure
+report:
+  report_type: independent_final_review_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-independent-closure-ifr001-ifr002-20260923.md
+  reviewed_head: beb997fd929219599d46f0894d1944a91580db05
+  attestation_head: null
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: record_only
+  summary: synchronize Issue #124 task ledger to completed normal closure, then verify and return IFR-002 only
+  instructions:
+    - update only record metadata needed to remove obsolete normal-closure-pending state
+    - keep product tests design workflow and configuration untouched
+    - update live PR body to the publication HEAD/state as needed
+    - use only exact-current-HEAD CI evidence
+    - return the record-only delta to the same normal reviewer
+    - after normal verification return only IFR-002 and CI delta to this independent reviewer
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-independent-closure-ifr001-ifr002-20260923.md
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-r3-20260923.md
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-independent-closure-ifr001-ifr002-20260923.yaml
+  packet_url: null
+  transport_note: failing closure record; no passing report attestation

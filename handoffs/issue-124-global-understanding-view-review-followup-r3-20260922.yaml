@@ -1,0 +1,242 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-09-22
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-REVIEW-FOLLOWUP-R3
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  technical_head: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+  previous_review_record_head: 700d9b40b06c7789d19cab22648088069a169213
+  commit_range: 700d9b40b06c7789d19cab22648088069a169213..8db0cafedadcce6db1ef9de5b0aa111de60721ef
+
+execution_environment:
+  implementation_kind: connected_computer
+  implementation_tool: Remote Desktop Commander
+  machine_id: FA780
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  implementation_head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+  implementation_source_state: clean_after_push
+  record_publication:
+    tool: GitHub connector
+    reason: FA780 became offline during the final local Extension Host phase
+  evidence:
+    - R004 implementation commit was created and pushed with RDC before disconnect
+    - CI workflow already preserves stdout stderr result metadata and failure diagnostics artifact
+
+verification:
+  capability: local_execution_then_remote_fallback
+  technical_head: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+  capability_evidence:
+    - R004 all-work Red reproduced 144 work items with budget 128
+    - focused R003/R004 plus existing bounded-stage tests passed 4/4 after fix
+    - npm run test:t610 passed 78/78
+    - npm run test:t607 passed 86/89 with only three known baseline failures
+    - static build lint contracts and architecture gates passed
+    - default npm test unit 863/0, Git 35/0, GitHub 48/48, T502 11/11 confirmed before RDC disconnect
+    - local Extension Host terminal result was not observed after RDC disconnect
+  final_publication:
+    sequence: record commits via GitHub connector then PR comment
+    pr_action: update
+    ci_wait: deferred_by_user
+
+authoritative_requirements:
+  - source: normal_review
+    reference: I124-R004 / Medium
+    summary: all validation plus projection work between adjacent scheduler yields must stay within maxFilesPerStage
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: TDD, diagnostic artifacts, small logical commits, exact-head CI, detailed report, PR comment, no merge
+
+development_policy:
+  method: TDD
+  testing_order: Red first, focused Green, regression and static/default gate
+
+scope:
+  - I124-R004 phase-boundary scheduler budget
+  - all-work regression fixture
+  - report tracking handoff
+non_goals:
+  - I124-R001
+  - I124-R002
+  - I124-R003
+  - known T607 baseline failures
+  - merge
+
+findings:
+  - id: I124-R001
+    severity: high
+    status: closed_by_normal_review
+  - id: I124-R002
+    severity: high
+    status: closed_by_normal_review
+  - id: I124-R003
+    severity: medium
+    status: closed_by_normal_review
+  - id: I124-R004
+    severity: medium
+    status: addressed_pending_fix_verification
+    required_action: keep validation plus projection work between every adjacent scheduler yield within maxFilesPerStage
+    production_path:
+      - validateTreeSnapshotIncrementally flushes residual validation budget at the phase boundary
+      - phase-boundary yield occurs only when pendingValidationItems is nonzero
+      - isCurrent is checked immediately after the boundary yield
+      - projection starts from a fresh scheduler interval
+    actual_composition_fixture: I124-R004 bounds validation and projection work between every scheduler yield
+    red_evidence: maximum 144 validation/projection work items with maxFilesPerStage 128
+    green_evidence: all measured adjacent intervals stay within 128
+    commit: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+
+tests:
+  - name: I124-R004 all-work budget
+    phase: red
+    result: failed
+    head_sha: 700d9b40b06c7789d19cab22648088069a169213
+    evidence: maximum interval 144 > 128
+  - name: I124-R004 all-work budget
+    phase: green
+    result: passed
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    evidence: maximum interval <= 128
+  - name: focused bounded Global Tree
+    phase: regression
+    result: passed
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    evidence: 4/4
+  - name: T610 focused gate
+    phase: regression
+    result: passed
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    evidence: 78/78
+  - name: T607 performance suite
+    phase: regression
+    result: baseline_failures_only
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    evidence: 86/89; same three Windows baseline failures
+  - name: default npm test local
+    phase: regression
+    result: partial_terminal_unavailable
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    evidence: unit 863/0, Git 35/0, GitHub 48/48, T502 11/11; RDC disconnected after Extension Host phase started
+
+ci:
+  required: false
+  completion_gate: false
+  state: deferred_by_user
+  workflow: CI
+  technical_head_run:
+    run_id: 35662709435
+    head_sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+    attempt_1:
+      conclusion: failure
+      failing_step: T606 failure policy and diagnostics tests
+      failing_test: T604 uses an owned OS child-process lease and releases it for a successor
+      actual: acquired
+      expected: StorageRootLockTimeoutError
+      failure_diagnostics_artifact_id: 10667981517
+    retry:
+      state: requested
+      evidence: same run id failed jobs rerun requested through GitHub connector
+  final_current_head:
+    state: deferred_by_user
+    run_id: null
+    head_sha: unknown
+    conclusion: unknown
+    artifacts: []
+    note: user explicitly requested no CI waiting when local validation is sufficient
+
+implementation:
+  outcome: completed_pending_fix_verification
+  final_technical_head: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+  commits:
+    - sha: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+      purpose: flush residual validation budget before projection
+
+review:
+  mode: fix_verification
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - initial and all prior fix verification rounds use the same normal-review chat
+  verdict: pending_fix_verification
+  required_coverage:
+    - criterion: I124-R004 closure
+      disposition: pending_reviewer_verification
+      evidence: all-work fixture Red 144 to Green <=128
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: same_normal_reviewer_required
+    closure_scope:
+      - I124-R004
+    completeness_matrix: []
+  validation_assessment:
+    - item: required action
+      result: implemented
+      evidence: phase-boundary residual-budget yield
+    - item: all-work fixture
+      result: supported
+      evidence: combined validation and projection counter passes
+    - item: final exact-head CI
+      result: deferred_by_user
+      evidence: user requested no CI wait; do not convert to success
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-review-followup-r3-20260922.md
+  reviewed_head: 8db0cafedadcce6db1ef9de5b0aa111de60721ef
+  attestation_head: null
+  pr_comments: []
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: same normal reviewer verifies I124-R004 only
+  instructions:
+    - preserve I124-R004 Medium severity
+    - retain R001 R002 R003 as closed
+    - verify phase-boundary budget flush and all-work fixture
+    - CI is not a blocking condition for this handoff per user instruction
+    - if CI is checked later, use only PR current HEAD exact-match CI
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-fix-verification-r2-20260922.md
+    - reports/issue-124-global-understanding-view-review-followup-r3-20260922.md
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-review-followup-r3-20260922.yaml
+  packet_url: null
+  transport_note: implementation pushed by RDC; record publication falls back to GitHub connector while RDC is offline; CI wait deferred by user

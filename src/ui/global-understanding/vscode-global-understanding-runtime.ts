@@ -185,32 +185,41 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
           vscode.TreeItemCollapsibleState.None
         );
         item.description = node.description;
-        item.tooltip = [
-          node.path,
-          `状態: ${node.state}`,
-          `確認済み非空行: ${node.reviewedNonEmptyLineCount}`,
-          `対象非空行: ${node.totalNonEmptyLineCount}`
-        ].join("\n");
+        item.tooltip = node.state === "uncollected"
+          ? [node.path, "状態: 未収集", "理解率: 未計算"].join("\n")
+          : [
+              node.path,
+              `状態: ${node.state}`,
+              `確認済み非空行: ${node.reviewedNonEmptyLineCount}`,
+              `対象非空行: ${node.totalNonEmptyLineCount}`
+            ].join("\n");
         item.iconPath = new vscode.ThemeIcon(
           node.state === "current" ? "pass" : node.state === "stale" ? "warning" : "circle-outline"
         );
         item.contextValue = "reviewRange.globalUnderstandingFile";
-        item.command = {
-          command: OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
-          title: "Global理解率のファイルを開く",
-          arguments: [node]
-        };
+        if (node.openTarget !== undefined) {
+          item.command = {
+            command: OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
+            title: "Global理解率のファイルを開く",
+            arguments: [node]
+          };
+        }
         return item;
       }
       case "folder": {
         const hasChildren = this.model?.folders?.some((candidate) => folderParent(candidate.path) === node.path) === true;
         const item = new vscode.TreeItem(node.label, hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         item.description = node.description;
-        item.tooltip = `状態: ${node.state}\n${node.partial ? "部分集計" : "完全集計"}`;
-        item.iconPath = new vscode.ThemeIcon(node.state === "stopped" ? "debug-pause" : node.partial ? "warning" : "folder");
+        const actionTitle = node.action === "start" ? "開始" : node.action === "stop" ? "停止" : "再開";
+        item.tooltip = `状態: ${node.state}\n操作: ${actionTitle}\n${node.partial ? "部分集計" : "完全集計"}`;
+        item.iconPath = new vscode.ThemeIcon(
+          node.state === "running" ? "loading~spin" :
+          node.state === "stopped" ? "debug-pause" :
+          node.state === "failed" || node.partial ? "warning" : "folder"
+        );
         item.contextValue = `reviewRange.globalUnderstandingFolder.${node.action}`;
         const command = node.action === "start" ? START_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : node.action === "stop" ? STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID : RESUME_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID;
-        item.command = { command, title: "Global Understanding folder action", arguments: [node] };
+        item.command = { command, title: actionTitle, arguments: [node] };
         return item;
       }
       case "diagnostics": {

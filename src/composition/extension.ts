@@ -50,8 +50,8 @@ import {
 } from "../application/review-context/projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "../ui/global-understanding/global-understanding-ui-model";
 import { OperationCancelledError, type OperationFeedbackContext, type OperationLogEntry } from "../application/operation-feedback/index";
-import type { T505GlobalUnderstandingOwner } from "./global-understanding/global-understanding-source";
 import { createT305GlobalUnderstandingSource } from "./global-understanding/global-understanding-composition";
+import { createGlobalUnderstandingOpenDocumentReader } from "./global-understanding/global-understanding-open-document-reader";
 import {
   registerT405ReviewContextsRuntime,
   type RegisteredT405ReviewContextsRuntime,
@@ -232,40 +232,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   const selection = new CurrentContextCandidateSelection();
   const exclusionPolicy = getActiveReviewFileExclusionPolicyService();
-  const readOpenDocuments = (owner: Readonly<T505GlobalUnderstandingOwner>) =>
-    vscode.workspace.textDocuments.flatMap((document) => {
-      if (document.isClosed || !FILESYSTEM_SCHEMES.has(document.uri.scheme)) return [];
-      const relativePath = path.relative(owner.repositoryRoot, document.uri.fsPath);
-      if (
-        relativePath.length === 0 ||
-        path.isAbsolute(relativePath) ||
-        relativePath === ".." ||
-        relativePath.startsWith(`..${path.sep}`)
-      ) return [];
-      const repositoryPath = relativePath.split(path.sep).join("/");
-      const content = document.getText();
-      const contentHash = stableHash.digest(content);
-      const version = document.version;
-      const nonEmptyLines: number[] = [];
-      for (let line = 0; line < document.lineCount; line += 1) {
-        if (document.lineAt(line).text.trim().length > 0) nonEmptyLines.push(line);
-      }
-      return [{
-        path: repositoryPath,
-        revisionId: owner.currentRevisionId,
-        lineCount: document.lineCount,
-        nonEmptyLines,
-        contentHash,
-        cacheKey: `vscode:${document.uri.toString(true)}:${version}:${contentHash}`,
-        validateCurrent: async () => {
-          if (
-            document.isClosed ||
-            document.version !== version ||
-            stableHash.digest(document.getText()) !== contentHash
-          ) throw new Error(`Open document changed during Global recalculation: ${repositoryPath}`);
-        }
-      }];
-    });
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => vscode.workspace.textDocuments,
+    filesystemSchemes: FILESYSTEM_SCHEMES,
+    stableHash
+  });
   const globalSource = createT305GlobalUnderstandingSource({
     storageUris: {
       globalStorageUri: context.globalStorageUri,

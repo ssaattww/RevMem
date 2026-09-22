@@ -35,8 +35,14 @@ export interface T505GlobalUnderstandingSourceDependencies {
   readonly storageUris: ReviewStateStorageUris;
   /** Policy applied before any file or directory evidence is read. */
   readonly exclusionPolicy: T505GlobalUnderstandingExclusionPolicy;
-  /** Reads already-open working-tree evidence for the selected owner. */
-  readonly readOpenDocuments?: (owner: Readonly<T505GlobalUnderstandingOwner>) => readonly LoadedGlobalUnderstandingFile[];
+  /**
+   * Reads already-open working-tree evidence for the selected owner.
+   * The candidate predicate must be applied before materializing document bodies.
+   */
+  readonly readOpenDocuments?: (
+    owner: Readonly<T505GlobalUnderstandingOwner>,
+    isCandidatePath?: (repositoryPath: string) => boolean
+  ) => readonly LoadedGlobalUnderstandingFile[];
   /** Reads immutable pull-request HEAD evidence for the supplied candidate paths. */
   readonly readPullRequestHeadFiles?: (
     owner: Readonly<T505GlobalUnderstandingOwner>,
@@ -75,11 +81,11 @@ const emptyGlobalState = (repositoryId: string, currentRevisionId: string): Repo
   updatedAt: new Date(0).toISOString()
 });
 
-const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner): string =>
-  JSON.stringify(owner.target);
+const ownerIdentityKey = (owner: T505GlobalUnderstandingOwner, scopeRoot: string): string =>
+  JSON.stringify([owner.target, scopeRoot]);
 
-const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner): string =>
-  `${ownerIdentityKey(owner)}\0${owner.currentRevisionId}`;
+const ownerEvidenceKey = (owner: T505GlobalUnderstandingOwner, scopeRoot: string): string =>
+  `${ownerIdentityKey(owner, scopeRoot)}\0${owner.currentRevisionId}`;
 const resourceIdentity = (uri: ResourceUri): string =>
   [uri.scheme, uri.authority, uri.path, uri.query ?? "", uri.fragment ?? ""].join("\0");
 
@@ -103,6 +109,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   private readonly openedEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly pullRequestEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly activeEvidenceKeyByOwner = new Map<string, string>();
+  private readonly lastSnapshotByEvidenceKey = new Map<string, GlobalUnderstandingTreeSnapshot>();
   private currentContext: CurrentContextUiSnapshot | undefined;
   private readonly folderScopes: FolderUnderstandingScopeController | undefined;
 
@@ -130,16 +137,57 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const scopeRoot = this.scopeRoot(owner);
     if (scopeRoot === undefined) return undefined;
     await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot);
-    this.activateEvidenceRevision(owner);
+    const evidenceKey = this.activateEvidenceRevision(owner);
+    let sourcePathPending = 0;
+    const sourcePathStep = async (kind: string, checkCurrent: () => void = assertCurrent): Promise<void> => {
+      this.dependencies.accountWorkBatch?.({ kind, count: 1 });
+      sourcePathPending += 1;
+      if (sourcePathPending < 128) return;
+      sourcePathPending = 0;
+      await this.yieldControl();
+      checkCurrent();
+      this.requireActiveEvidenceKey(owner);
+    };
+    const flushSourcePath = async (checkCurrent: () => void = assertCurrent): Promise<void> => {
+      if (sourcePathPending === 0) return;
+      sourcePathPending = 0;
+      await this.yieldControl();
+      checkCurrent();
+      this.requireActiveEvidenceKey(owner);
+    };
+    const sortSourcePaths = async (values: string[], checkCurrent: () => void = assertCurrent): Promise<string[]> => {
+      if (values.length < 2) return values;
+      let source = values;
+      let target = new Array<string>(values.length);
+      for (let width = 1; width < source.length; width *= 2) {
+        for (let left = 0; left < source.length; left += width * 2) {
+          const middle = Math.min(left + width, source.length);
+          const right = Math.min(left + width * 2, source.length);
+          let first = left;
+          let second = middle;
+          for (let output = left; output < right; output += 1) {
+            if (first < middle && (second >= right || source[first]! <= source[second]!)) {
+              target[output] = source[first++]!;
+            } else {
+              target[output] = source[second++]!;
+            }
+            await sourcePathStep("source-path-sort", checkCurrent);
+          }
+        }
+        const previous = source; source = target; target = previous;
+      }
+      await flushSourcePath(checkCurrent);
+      return source;
+    };
     const activeFolders = this.folderScopes?.activeFolders(owner.target.repositoryId, scopeRoot) ?? [""];
-    if (activeFolders.length === 0 && this.folderScopes !== undefined) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (activeFolders.length === 0 && this.folderScopes !== undefined) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const persisted = await this.repository.loadGlobal(owner.target);
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
+    const previousSnapshot = this.lastSnapshotByEvidenceKey.get(evidenceKey);
     const files: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
-    const openTargets: GlobalUnderstandingFileOpenTarget[] = [];
-    let openedFileCount = 0;
-    let unopenedFileCount = 0;
+    const discoveredFilePaths = new Set<string>();
+    const acceptedFolders = new Set<string>();
     let excludedFileCount = 0;
     let prunedExcludedDirectoryCount = 0;
     const scopeWork: Array<{
@@ -161,7 +209,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (scopeSignal?.aborted === true) throw new DOMException("Folder understanding scope was superseded.", "AbortError");
       };
       try {
-        await publishProgress?.(this.emptySnapshot(this.folderScopes, owner, scopeRoot));
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
         assertScopeCurrent();
         const enumerator = new NodeRepositoryFilePathEnumerator(this.dependencies.exclusionPolicy, {
           maxEntriesPerStage: 128, yieldControl: this.yieldControl,
@@ -172,19 +220,26 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           : await enumerator.enumerateDirectFolders(owner.repositoryRoot, [folder], scopeSignal);
         assertScopeCurrent();
         for (const child of pathEnumeration.directDirectories ?? []) {
+          await sourcePathStep("source-path-candidate", assertScopeCurrent);
           this.folderScopes?.discoverInactive(owner.target.repositoryId, scopeRoot, child);
         }
-        const candidatePaths = new Set(pathEnumeration.includedPaths.map((value) => this.canonicalEvidencePath(value)));
+        const candidatePaths = new Set<string>();
+        for (const value of pathEnumeration.includedPaths) {
+          await sourcePathStep("source-path-canonicalize", assertScopeCurrent);
+          candidatePaths.add(this.canonicalEvidencePath(value));
+        }
+        await flushSourcePath(assertScopeCurrent);
         scopeWork.push({ folder, generation, scopeSignal, pathEnumeration, candidatePaths });
       } catch (error) {
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
     }
-    if (scopeWork.length === 0) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (scopeWork.length === 0) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const sharedCapture = await (async (): Promise<Readonly<{
       pullRequestHeadPaths: ReadonlySet<string>;
       evidenceByPath: ReadonlyMap<string, LoadedGlobalUnderstandingFile>;
@@ -194,13 +249,29 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         assertCurrent();
         const currentScopeWork = scopeWork.filter((scope) => scope.scopeSignal?.aborted !== true);
         if (currentScopeWork.length === 0) return undefined;
-        const ownerCandidatePaths = new Set(currentScopeWork.flatMap((scope) => [...scope.candidatePaths]));
+        const ownerCandidatePaths = new Set<string>();
+        for (const scope of currentScopeWork) {
+          for (const repositoryPath of scope.candidatePaths) {
+            await sourcePathStep("source-path-owner-candidate");
+            ownerCandidatePaths.add(repositoryPath);
+          }
+        }
+        await flushSourcePath();
         const captureSignals = [signal, ...currentScopeWork.map((scope) => scope.scopeSignal)]
           .filter((candidate): candidate is AbortSignal => candidate !== undefined);
         const captureSignal = captureSignals.length === 0 ? undefined : AbortSignal.any(captureSignals);
         try {
           const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, ownerCandidatePaths, captureSignal);
-          const captureCandidatePaths = new Set([...ownerCandidatePaths, ...pullRequestHeadPaths]);
+          const captureCandidatePaths = new Set<string>();
+          for (const repositoryPath of ownerCandidatePaths) {
+            await sourcePathStep("source-path-capture-candidate");
+            captureCandidatePaths.add(repositoryPath);
+          }
+          for (const repositoryPath of pullRequestHeadPaths) {
+            await sourcePathStep("source-path-capture-candidate");
+            captureCandidatePaths.add(repositoryPath);
+          }
+          await flushSourcePath();
           const evidenceByPath = await this.captureOpenedDocuments(owner, captureCandidatePaths, captureSignal);
           const globalState = persisted?.currentRevisionId === owner.currentRevisionId
             ? await this.projectGlobalStatePaths(persisted, captureCandidatePaths, captureSignal)
@@ -215,11 +286,12 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
               this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, scope.folder, scope.generation);
             }
           }
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
     })();
-    if (sharedCapture === undefined) return this.emptySnapshot(this.folderScopes, owner, scopeRoot);
+    if (sharedCapture === undefined) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const { pullRequestHeadPaths, evidenceByPath, globalState } = sharedCapture;
     assertCurrent();
     for (const { folder, generation, scopeSignal, pathEnumeration, candidatePaths } of scopeWork) {
@@ -232,17 +304,25 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         const belongsDirectlyToFolder = (repositoryPath: string): boolean =>
           this.folderScopes === undefined ||
           (repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "") === folder;
-        const availablePaths = new Set(
-          [...candidatePaths, ...pullRequestHeadPaths].filter(belongsDirectlyToFolder)
-        );
+        const availablePaths = new Set<string>();
+        for (const repositoryPath of candidatePaths) {
+          await sourcePathStep("source-path-available", assertScopeCurrent);
+          if (belongsDirectlyToFolder(repositoryPath)) availablePaths.add(repositoryPath);
+        }
+        for (const repositoryPath of pullRequestHeadPaths) {
+          await sourcePathStep("source-path-available", assertScopeCurrent);
+          if (belongsDirectlyToFolder(repositoryPath)) availablePaths.add(repositoryPath);
+        }
+        await flushSourcePath(assertScopeCurrent);
         const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
         const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
         for (const [repositoryPath, evidence] of evidenceByPath) {
-          assertScopeCurrent();
+          await sourcePathStep("source-path-evidence-index", assertScopeCurrent);
           if (!availablePaths.has(repositoryPath)) continue;
           openedByPath.set(repositoryPath, evidence);
           included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
         }
+        await flushSourcePath(assertScopeCurrent);
         const source: GlobalUnderstandingFileSource = { load: async (repositoryPath, revisionId) => {
           assertScopeCurrent();
           const evidence = openedByPath.get(repositoryPath);
@@ -258,29 +338,96 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         });
         assertScopeCurrent();
         this.requireActiveEvidenceKey(owner);
-        const direct = result.progress.files.filter((file) => belongsDirectlyToFolder(file.path));
-        const reviewed = direct.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
-        const total = direct.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
+        const direct: typeof result.progress.files[number][] = [];
+        let reviewed = 0;
+        let total = 0;
+        for (const file of result.progress.files) {
+          await sourcePathStep("source-path-progress", assertScopeCurrent);
+          if (!belongsDirectlyToFolder(file.path)) continue;
+          direct.push(file);
+          reviewed += file.reviewedNonEmptyLineCount;
+          total += file.totalNonEmptyLineCount;
+        }
+        await flushSourcePath(assertScopeCurrent);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
-        files.push(...direct);
-        openTargets.push(...direct.map((file) => this.createFileOpenTarget(owner, file.path)));
-        openedFileCount += openedByPath.size;
-        unopenedFileCount += Math.max(0, availablePaths.size - openedByPath.size);
+        acceptedFolders.add(folder);
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+        assertCurrent();
+        this.requireActiveEvidenceKey(owner);
+        for (const file of direct) {
+          await sourcePathStep("source-path-progress-collect", assertScopeCurrent);
+          files.push(file);
+        }
+        for (const repositoryPath of availablePaths) {
+          await sourcePathStep("source-path-discovered", assertScopeCurrent);
+          discoveredFilePaths.add(repositoryPath);
+        }
+        await flushSourcePath(assertScopeCurrent);
         excludedFileCount += pathEnumeration.excluded.length;
         prunedExcludedDirectoryCount += pathEnumeration.excludedDirectories.length;
       } catch (error) {
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
           throw error;
         }
       }
     }
     assertCurrent();
-    const reviewed = files.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
-    const total = files.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
+    const directFolderOf = (repositoryPath: string): string =>
+      repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "";
+    const progressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
+    for (const file of files) {
+      await sourcePathStep("source-path-progress-index");
+      progressByPath.set(file.path, file);
+    }
+    const previousProgressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
+    for (const file of previousSnapshot?.progress.files ?? []) {
+      await sourcePathStep("source-path-previous-progress");
+      previousProgressByPath.set(file.path, file);
+    }
+    const previousTargetByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+    for (const target of previousSnapshot?.fileOpenTargets ?? []) {
+      await sourcePathStep("source-path-previous-target");
+      previousTargetByPath.set(target.repositoryPath, target);
+    }
+    for (const repositoryPath of previousSnapshot?.discoveredFilePaths ?? []) {
+      await sourcePathStep("source-path-retained");
+      if (acceptedFolders.has(directFolderOf(repositoryPath))) continue;
+      discoveredFilePaths.add(repositoryPath);
+      const previousProgress = previousProgressByPath.get(repositoryPath);
+      if (previousProgress !== undefined) progressByPath.set(repositoryPath, previousProgress);
+    }
+    await flushSourcePath();
+    const finalFiles: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
+    let reviewed = 0;
+    let total = 0;
+    for (const file of progressByPath.values()) {
+      await sourcePathStep("source-path-final-progress");
+      finalFiles.push(file);
+      reviewed += file.reviewedNonEmptyLineCount;
+      total += file.totalNonEmptyLineCount;
+    }
+    const displayedFilePaths: string[] = [];
+    for (const repositoryPath of discoveredFilePaths) {
+      await sourcePathStep("source-path-display-candidate");
+      displayedFilePaths.push(repositoryPath);
+    }
+    await flushSourcePath();
+    const sortedDisplayedFilePaths = await sortSourcePaths(displayedFilePaths);
     const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
-    fileOpenTargets.push(...openTargets);
+    for (const repositoryPath of sortedDisplayedFilePaths) {
+      await sourcePathStep("source-path-open-target");
+      const directFolder = directFolderOf(repositoryPath);
+      const previousTarget = !acceptedFolders.has(directFolder) ? previousTargetByPath.get(repositoryPath) : undefined;
+      if (previousTarget !== undefined) {
+        fileOpenTargets.push(previousTarget);
+      } else if (owner.target.kind !== "pull-request" || pullRequestHeadPaths.has(repositoryPath)) {
+        fileOpenTargets.push(this.createFileOpenTarget(owner, repositoryPath));
+      }
+    }
+    await flushSourcePath();
     const folders = this.folderScopes?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path,
       state: folder.state,
@@ -289,16 +436,19 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       partial: !folder.total.complete
     }));
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
-    return {
-      progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files },
+    const snapshot: GlobalUnderstandingTreeSnapshot = {
+      progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: finalFiles },
+      discoveredFilePaths: sortedDisplayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
-      openedFileCount,
-      unopenedFileCount,
+      openedFileCount: finalFiles.length,
+      unopenedFileCount: Math.max(0, sortedDisplayedFilePaths.length - finalFiles.length),
       excludedFileCount,
       prunedExcludedDirectoryCount,
       ...(folders === undefined ? {} : { folders }),
       ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
+    this.lastSnapshotByEvidenceKey.set(this.requireActiveEvidenceKey(owner), snapshot);
+    return snapshot;
   }
 
   /**
@@ -382,12 +532,37 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (owner !== undefined) { const scopeRoot = this.scopeRoot(owner); if (scopeRoot !== undefined) { await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot); await this.folderScopes?.resume(owner.target.repositoryId, scopeRoot, folderPath); } }
   }
 
-  private emptySnapshot(controller?: FolderUnderstandingScopeController, owner?: T505GlobalUnderstandingOwner, scopeRoot?: string): GlobalUnderstandingTreeSnapshot {
-    const folders = controller === undefined || owner === undefined || scopeRoot === undefined ? undefined : controller.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
+  private lifecycleSnapshot(
+    controller: FolderUnderstandingScopeController | undefined,
+    owner: T505GlobalUnderstandingOwner,
+    scopeRoot: string,
+    evidenceKey: string
+  ): GlobalUnderstandingTreeSnapshot {
+    const folders = controller?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
       totalNonEmptyLineCount: folder.total.total, partial: !folder.total.complete
     }));
-    return { progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] }, openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0, ...(folders === undefined ? {} : { folders }), ...(folders?.some((folder) => folder.partial) === true ? { repositoryPartial: true } : {}) };
+    const previous = this.lastSnapshotByEvidenceKey.get(evidenceKey);
+    const repositoryPartial = folders?.some((folder) => folder.partial) === true;
+    if (previous === undefined) {
+      return {
+        progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] },
+        openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0,
+        ...(folders === undefined ? {} : { folders }),
+        ...(repositoryPartial ? { repositoryPartial: true } : {})
+      };
+    }
+    return {
+      progress: previous.progress,
+      ...(previous.discoveredFilePaths === undefined ? {} : { discoveredFilePaths: previous.discoveredFilePaths }),
+      ...(previous.fileOpenTargets === undefined ? {} : { fileOpenTargets: previous.fileOpenTargets }),
+      openedFileCount: previous.openedFileCount,
+      unopenedFileCount: previous.unopenedFileCount,
+      excludedFileCount: previous.excludedFileCount,
+      prunedExcludedDirectoryCount: previous.prunedExcludedDirectoryCount,
+      ...(folders === undefined ? {} : { folders }),
+      ...(repositoryPartial ? { repositoryPartial: true } : {})
+    };
   }
 
   private createFileOpenTarget(
@@ -420,20 +595,25 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   }
 
   private activateEvidenceRevision(owner: T505GlobalUnderstandingOwner): string {
-    const identityKey = ownerIdentityKey(owner);
-    const nextEvidenceKey = ownerEvidenceKey(owner);
+    const scopeRoot = this.scopeRoot(owner);
+    if (scopeRoot === undefined) throw new Error("Global repository root identity is unavailable");
+    const identityKey = ownerIdentityKey(owner, scopeRoot);
+    const nextEvidenceKey = ownerEvidenceKey(owner, scopeRoot);
     const previousEvidenceKey = this.activeEvidenceKeyByOwner.get(identityKey);
     if (previousEvidenceKey !== undefined && previousEvidenceKey !== nextEvidenceKey) {
       this.openedEvidenceByOwner.delete(previousEvidenceKey);
       this.pullRequestEvidenceByOwner.delete(previousEvidenceKey);
+      this.lastSnapshotByEvidenceKey.delete(previousEvidenceKey);
     }
     this.activeEvidenceKeyByOwner.set(identityKey, nextEvidenceKey);
     return nextEvidenceKey;
   }
 
   private requireActiveEvidenceKey(owner: T505GlobalUnderstandingOwner): string {
-    const identityKey = ownerIdentityKey(owner);
-    const expectedEvidenceKey = ownerEvidenceKey(owner);
+    const scopeRoot = this.scopeRoot(owner);
+    if (scopeRoot === undefined) throw new Error("Global repository root identity is unavailable");
+    const identityKey = ownerIdentityKey(owner, scopeRoot);
+    const expectedEvidenceKey = ownerEvidenceKey(owner, scopeRoot);
     if (this.activeEvidenceKeyByOwner.get(identityKey) !== expectedEvidenceKey) {
       throw new Error("Global owner revision changed during recalculation");
     }
@@ -537,7 +717,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const retained = new Map(this.retainedOpenedEvidence(owner));
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
     let pending = 0;
-    for (const snapshot of this.dependencies.readOpenDocuments?.(owner) ?? []) {
+    const isCandidatePath = (repositoryPath: string): boolean =>
+      candidatePaths.has(this.canonicalEvidencePath(repositoryPath));
+    for (const snapshot of this.dependencies.readOpenDocuments?.(owner, isCandidatePath) ?? []) {
       if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
       if (++pending >= 128) { pending = 0; await this.yieldControl(); }
       const canonicalPath = this.canonicalEvidencePath(snapshot.path);

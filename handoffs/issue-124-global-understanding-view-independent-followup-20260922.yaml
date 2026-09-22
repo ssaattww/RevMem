@@ -1,0 +1,191 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: independent_review_followup
+  generated_at: 2026-09-22T12:47:54+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-INDEPENDENT-FOLLOWUP
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+
+target:
+  independent_review_record_head: da5f97ee02b8f2179a3fe894c5cf58aed7aac2b8
+  technical_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  commit_range: da5f97ee02b8f2179a3fe894c5cf58aed7aac2b8..67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  source_state: clean_before_record_write
+  ownership: current_task
+
+development_policy:
+  method: TDD
+  completion_gate: local_validation
+  ci_wait: deferred_by_user
+
+authoritative_requirements:
+  - source: independent_review
+    reference: I124-IFR-001
+    summary: stopped sibling retains known path/progress/open target without stopped-scope body reads
+  - source: independent_review
+    reference: I124-IFR-002
+    summary: task ledger and PR metadata must reflect current implementation/review state
+  - source: independent_review
+    reference: I124-IFR-003
+    summary: accepted sibling publishes active while another sibling remains running
+  - source: independent_review
+    reference: I124-IFR-004
+    summary: unchanged PR path-only row must be validly openable or explicitly non-openable
+  - source: independent_review
+    reference: I124-IFR-005
+    summary: source candidate/sort/projection work must be generation-aware and bounded
+
+verification:
+  capability: local_execution_available
+  technical_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  capability_evidence:
+    - all five required findings reproduced before implementation or record synchronization
+    - repository enumeration 8/8 pass
+    - test:t505 26/26 pass
+    - test:t610 81/81 pass
+    - performance focused 5/5 pass
+    - test:t607 88/91 with only three known baseline failures
+    - build lint contracts architecture positive and negative pass
+    - npm test exit code 0 through Extension Host
+  ci:
+    required_for_completion: false
+    state: deferred_by_user
+    policy_if_checked_later: use only run whose head_sha equals then-current PR HEAD
+
+findings:
+  - id: I124-IFR-001
+    severity: high
+    status: addressed_pending_normal_fix_verification
+    required_action: retain stopped-scope known file rows and open targets without body re-read
+    production_path:
+      - final owner snapshot starts with current active-scope results
+      - previous snapshot paths/progress/targets whose direct folder is not active are retained
+      - stopped scope is not included in activeFolders and therefore is not enumerated/recalculated
+    actual_composition_fixture: I124-IFR-001 retains stopped sibling file rows and targets without recalculating that scope
+    red_evidence: stopped one/a.ts disappeared after refreshing active sibling
+    green_evidence: one/a.ts row progress and target retained; only active sibling loaded-line work occurs
+    commit: ca4523a24c6fc620aa61cd6748fada1fcb9eca19
+
+  - id: I124-IFR-002
+    severity: low
+    status: addressed_pending_normal_fix_verification
+    required_action: synchronize task ledger and PR summary to actual implementation and review state
+    production_path:
+      - tasks/tasks-status.md administrative synchronization
+      - PR body updated through GitHub connector after record commit
+    actual_composition_fixture: not_applicable_record_only
+    green_evidence: obsolete 4e6ddb/75-of-75/old-CI claims removed from PR body and tracking
+
+  - id: I124-IFR-003
+    severity: high
+    status: addressed_pending_normal_fix_verification
+    required_action: publish active lifecycle after each accepted scope while a sibling remains running
+    production_path:
+      - publish lifecycleSnapshot immediately after FolderUnderstandingScopeController.accept
+      - re-check cancellation/current owner evidence after publication
+    actual_composition_fixture: I124-IFR-003 publishes an accepted sibling as active while another sibling remains running
+    red_evidence: no one-active/two-running publication
+    green_evidence: intermediate publication contains one=active and two=running
+    commit: ca4523a24c6fc620aa61cd6748fada1fcb9eca19
+
+  - id: I124-IFR-004
+    severity: medium
+    status: addressed_pending_normal_fix_verification
+    required_action: provide valid exact-HEAD open target or no open command for path-only PR row
+    production_path:
+      - source emits PR open target only for immutable HEAD evidence paths
+      - Tree snapshot accepts sparse targets
+      - Tree item only receives open command when target exists
+    actual_composition_fixture: Issue #59 PR source plus sparse-open-target Global UI model fixture
+    red_evidence: unchanged untouched.ts had failing pull-request-head target and sparse targets were rejected
+    green_evidence: unchanged row visible with no open target/command
+    commit: 88142e7494a9547620e7b30553bc8c7daa8ab6a6
+
+  - id: I124-IFR-005
+    severity: medium
+    status: addressed_pending_normal_fix_verification
+    required_action: bound source candidate canonicalization sorting and target projection
+    production_path:
+      - repository enumeration final sort is cooperative and abort-aware
+      - source path canonicalization union indexing retention sorting and target projection use a 128-item scheduler
+      - each scheduler yield checks cancellation and exact owner/root/revision evidence
+    actual_composition_fixture: I124-IFR-005 bounds actual source path enumeration canonicalization sorting and target projection
+    red_evidence: repository/source full-array work was outside bounded accounting
+    green_evidence: 10000-file actual source workload stays within 128 work per adjacent yield interval
+    commit: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+
+tests:
+  - name: repository enumeration focused
+    result: passed
+    evidence: 8/8
+  - name: T505 focused
+    result: passed
+    evidence: 26/26
+  - name: T610 focused
+    result: passed
+    evidence: 81/81
+  - name: Global performance focused
+    result: passed
+    evidence: 5/5 including IFR005
+  - name: T607 performance suite
+    result: baseline_failures_only
+    evidence: 88/91; same three failures reproduced on base before this follow-up
+  - name: default npm test
+    result: passed
+    evidence: exit 0; unit 864/0/2 skip, Git 35/0/3 skip, GitHub 48/48, T502 11/11, Extension Host success
+
+implementation:
+  outcome: completed_pending_normal_fix_verification
+  technical_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  commits:
+    - sha: 88142e7494a9547620e7b30553bc8c7daa8ab6a6
+      purpose: I124-IFR-004
+    - sha: ca4523a24c6fc620aa61cd6748fada1fcb9eca19
+      purpose: I124-IFR-001 and I124-IFR-003
+    - sha: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+      purpose: I124-IFR-005
+
+review:
+  mode: normal_fix_verification_required
+  verdict: pending
+  closure_scope:
+    - I124-IFR-001
+    - I124-IFR-002
+    - I124-IFR-003
+    - I124-IFR-004
+    - I124-IFR-005
+  next_after_normal_closure: same independent reviewer finding-and-delta-only closure
+
+report:
+  report_type: implementation_report
+  outcome: created
+  path: reports/issue-124-global-understanding-view-independent-followup-20260922.md
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: verify IFR001 through IFR005 with existing independent finding IDs and severities
+  instructions:
+    - preserve finding IDs and severities
+    - verify the actual production fixtures and local evidence
+    - retain local validation as this round's completion gate per user instruction
+    - do not merge
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-independent-followup-20260922.yaml
+  transport_note: implementation commits pushed via RDC; administrative record commit follows local full gate

@@ -19,7 +19,7 @@ export interface RepositoryFilePathEnumerationResult {
 export interface NodeRepositoryFilePathEnumeratorOptions {
   readonly maxEntriesPerStage?: number;
   readonly yieldControl?: () => void | Promise<void>;
-  readonly accountWorkBatch?: (entry: Readonly<{ kind: "repository-entry"; count: number }>) => void;
+  readonly accountWorkBatch?: (entry: Readonly<{ kind: "repository-entry" | "repository-sort"; count: number }>) => void;
 }
 
 interface GitIgnoreRule {
@@ -127,10 +127,10 @@ export class NodeRepositoryFilePathEnumerator {
       excludedDirectories,
       signal, undefined, budget
     );
-    this.flushBudget(budget);
-    includedPaths.sort(compareRepositoryPaths);
-    excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
-    excludedDirectories.sort((left, right) => compareRepositoryPaths(left.path, right.path));
+    await this.flushBudget(budget, signal);
+    await this.cooperativeSort(includedPaths, compareRepositoryPaths, signal);
+    await this.cooperativeSort(excluded, (left, right) => compareRepositoryPaths(left.path, right.path), signal);
+    await this.cooperativeSort(excludedDirectories, (left, right) => compareRepositoryPaths(left.path, right.path), signal);
     return { includedPaths, excluded, excludedDirectories };
   }
 
@@ -188,10 +188,17 @@ export class NodeRepositoryFilePathEnumerator {
         else if (entry.isDirectory()) directDirectories.push(repositoryPath);
       }
     }
-    includedPaths.sort(compareRepositoryPaths);
-    excluded.sort((left, right) => compareRepositoryPaths(left.path, right.path));
-    excludedDirectories.sort((left, right) => compareRepositoryPaths(left.path, right.path));
-    return { includedPaths, directDirectories: directDirectories.sort(compareRepositoryPaths), excluded, excludedDirectories };
+    if (pending > 0) {
+      this.accountWorkBatch?.({ kind: "repository-entry", count: pending });
+      pending = 0;
+      await this.yieldControl();
+      throwIfAborted(signal);
+    }
+    await this.cooperativeSort(includedPaths, compareRepositoryPaths, signal);
+    await this.cooperativeSort(directDirectories, compareRepositoryPaths, signal);
+    await this.cooperativeSort(excluded, (left, right) => compareRepositoryPaths(left.path, right.path), signal);
+    await this.cooperativeSort(excludedDirectories, (left, right) => compareRepositoryPaths(left.path, right.path), signal);
+    return { includedPaths, directDirectories, excluded, excludedDirectories };
   }
 
   /** Recursively discovers folders only beneath an explicitly selected scope. */
@@ -209,7 +216,7 @@ export class NodeRepositoryFilePathEnumerator {
     const excludedDirectories: ExcludedRepositoryDirectory[] = [];
     const budget = { pending: 0 };
     await this.walk(repositoryRoot, root, await this.readRootGitIgnore(repositoryRoot, signal), includedPaths, excluded, excludedDirectories, signal, shouldPruneFolder, budget);
-    this.flushBudget(budget);
+    await this.flushBudget(budget, signal);
     throwIfAborted(signal);
     const folders = new Set<string>([normalized]);
     for (const entry of [...includedPaths, ...excluded.map((item) => item.path), ...excludedDirectories.map((item) => item.path)]) {
@@ -296,10 +303,61 @@ export class NodeRepositoryFilePathEnumerator {
     }
   }
 
-  /** Accounts for a final partial operation-wide stage, including pruned entries. */
-  private flushBudget(budget: { pending: number }): void {
+  /** Accounts for and yields after a final partial operation-wide stage, including pruned entries. */
+  private async flushBudget(budget: { pending: number }, signal?: AbortSignal): Promise<void> {
     if (budget.pending === 0) return;
     this.accountWorkBatch?.({ kind: "repository-entry", count: budget.pending });
     budget.pending = 0;
+    await this.yieldControl();
+    throwIfAborted(signal);
+  }
+
+  private async cooperativeSort<T>(
+    values: T[],
+    compare: (left: T, right: T) => number,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (values.length < 2) return;
+    let source = values;
+    let target = new Array<T>(values.length);
+    let pending = 0;
+    const step = async (): Promise<void> => {
+      pending += 1;
+      if (pending < this.maxEntriesPerStage) return;
+      this.accountWorkBatch?.({ kind: "repository-sort", count: pending });
+      pending = 0;
+      await this.yieldControl();
+      throwIfAborted(signal);
+    };
+    for (let width = 1; width < source.length; width *= 2) {
+      for (let left = 0; left < source.length; left += width * 2) {
+        const middle = Math.min(left + width, source.length);
+        const right = Math.min(left + width * 2, source.length);
+        let first = left;
+        let second = middle;
+        for (let output = left; output < right; output += 1) {
+          if (first < middle && (second >= right || compare(source[first]!, source[second]!) <= 0)) {
+            target[output] = source[first++]!;
+          } else {
+            target[output] = source[second++]!;
+          }
+          await step();
+        }
+      }
+      const previous = source;
+      source = target;
+      target = previous;
+    }
+    if (source !== values) {
+      for (let index = 0; index < source.length; index += 1) {
+        values[index] = source[index]!;
+        await step();
+      }
+    }
+    if (pending > 0) {
+      this.accountWorkBatch?.({ kind: "repository-sort", count: pending });
+      await this.yieldControl();
+      throwIfAborted(signal);
+    }
   }
 }

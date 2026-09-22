@@ -1,0 +1,263 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_followup
+  generated_at: 2026-09-22T05:55:32+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-REVIEW-FOLLOWUP-R2
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  reviewed_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  commit_range: c139eefa6c39670f2516e786ba7bf1f8bdb4de2f..5358788110bd907f0ec54f7e14c67ee2b5b7888e
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  source_state: clean
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124'
+
+  dependencies:
+    - name: node
+      status: available
+      evidence: v24.20.0
+    - name: npm
+      status: available
+      evidence: focused, static and default gates executed
+  evidence:
+    - worktree matched review-record HEAD c139eefa before edits
+    - CI workflow retains stdout stderr result metadata and failure artifact
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - R002 cross-root Red then Green
+    - R004 all-yield budget Red then Green
+    - npm run test:t610 passed 78/78
+    - npm run test:t607 86/89 with only known baseline failures
+    - static gates passed
+    - npm test exited 0 through Extension Host
+  technical_head: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  administrative_parent: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  commit:
+    state: commit_pending
+    review_target_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  push:
+    state: pushed
+    head_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+
+authoritative_requirements:
+  - source: review
+    reference: I124-R002 / High
+    summary: isolate retained running snapshot by canonical repository root and revision
+  - source: review
+    reference: I124-R004 / Medium
+    summary: bound progressByPath preparation across all scheduler intervals
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: TDD, small commits, RDC git, GitHub connector, exact-head CI, report and PR comment, no merge
+development_policy:
+  method: TDD
+  testing_order: Red before each fix, focused Green, broader regression and full local gate
+  governing_source: project instructions
+validation_plan:
+  commands:
+    - npm run test:t610
+    - focused R003/R004 bounded-stage tests
+    - npm run test:t607
+    - npm run build
+    - npm run lint
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm test
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - result metadata
+    - CI failure diagnostic artifact
+scope:
+  - I124-R002 root isolation
+  - I124-R004 cooperative progress preparation
+  - regression tests and evidence records
+non_goals:
+  - I124-R001 or I124-R003 changes
+  - unrelated T607 baseline failures
+  - merge
+
+findings:
+  - id: I124-R001
+    severity: high
+    status: closed_by_normal_review
+  - id: I124-R002
+    severity: high
+    status: addressed_pending_fix_verification
+    required_action: include canonical root identity in retained snapshot key
+    production_path:
+      - ownerIdentityKey uses target plus scopeRoot
+      - ownerEvidenceKey adds currentRevisionId
+      - opened PR and retained snapshot evidence share the root-aware key
+    actual_composition_fixture: I124-R002 isolates retained running files across same-revision repository roots
+    red_evidence: root B running publication reused root A src/a.ts
+    green_evidence: root B running publication has no root A row or open target
+    commit: 655b7dd8bf001e096eb884c3a612b053f2b005b3
+  - id: I124-R003
+    severity: medium
+    status: closed_by_normal_review
+  - id: I124-R004
+    severity: medium
+    status: addressed_pending_fix_verification
+    required_action: make progressByPath preparation cooperative under maxFilesPerStage
+    production_path:
+      - ValidatedTreeSnapshot carries progressByPath
+      - incremental validation constructs the map inside the existing bounded membership loop
+      - later unbounded progress.files scan is removed
+    actual_composition_fixture: I124-R004 bounds current-evidence preparation between every scheduler yield
+    red_evidence: maximum 10016 progress-file accesses between yields
+    green_evidence: all scheduler intervals stay within 128 accesses
+    commit: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+
+tests:
+  - name: I124-R002 cross-root actual composition
+    phase: red
+    result: failed
+    head_sha: c139eefa6c39670f2516e786ba7bf1f8bdb4de2f
+    evidence: root B reused root A discovered path
+  - name: I124-R002 cross-root actual composition
+    phase: green
+    result: passed
+    head_sha: 655b7dd8bf001e096eb884c3a612b053f2b005b3
+    evidence: root isolation restored
+  - name: I124-R004 all-yield budget
+    phase: red
+    result: failed
+    head_sha: 655b7dd8bf001e096eb884c3a612b053f2b005b3
+    evidence: maximum 10016 accesses
+  - name: I124-R004 all-yield budget
+    phase: green
+    result: passed
+    head_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+    evidence: maximum access interval <=128
+  - name: T610 focused gate
+    phase: regression
+    result: passed
+    head_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+    evidence: 78/78
+  - name: default npm test
+    phase: regression
+    result: passed
+    head_sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+    evidence: exit 0; unit 863/0, Git 35/0, GitHub 48/48, T502 11/11, Extension Host success
+
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed_pending_fix_verification
+  final_head: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  commits:
+    - sha: 655b7dd8bf001e096eb884c3a612b053f2b005b3
+      purpose: I124-R002 root isolation
+    - sha: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+      purpose: I124-R004 bounded progress preparation
+review:
+  mode: fix_verification
+  reviewed_head: 94fceee9ab1e587b034131cb25bd3484e10dfdb6
+  verdict: pending_fix_verification
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - initial review and prior fix verification were performed by the same normal-review chat
+
+  required_coverage:
+    - criterion: I124-R002 closure
+      disposition: pending_reviewer_verification
+      evidence: cross-root Red to Green fixture
+    - criterion: I124-R004 closure
+      disposition: pending_reviewer_verification
+      evidence: all-yield 10000-file budget Red to Green
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: same_normal_reviewer_required
+    closure_scope:
+      - I124-R002
+      - I124-R004
+    completeness_matrix: []
+  validation_assessment:
+    - item: local full gate
+      result: supported
+      evidence: npm test exit 0 on technical HEAD
+    - item: exact-head CI
+      result: pending
+      evidence: administrative record commit not yet created
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-review-followup-r2-20260922.md
+  reviewed_head: 5358788110bd907f0ec54f7e14c67ee2b5b7888e
+  attestation_head: null
+  pr_comments: []
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: same normal reviewer verifies I124-R002 and I124-R004 only
+  instructions:
+    - preserve finding IDs and severities
+    - retain R001 and R003 as closed
+    - compare fixes against required actions and sibling cases
+    - use only PR current HEAD exact-match CI
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-fix-verification-20260921.md
+    - reports/issue-124-global-understanding-view-review-followup-r2-20260922.md
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-review-followup-r2-20260922.yaml
+  packet_url: null
+  transport_note: push through RDC, verify exact-head CI, then comment on PR #125 with GitHub connector

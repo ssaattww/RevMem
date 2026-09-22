@@ -52,6 +52,60 @@ test("Global Understanding model keeps repository, file, file-count, and exclusi
   });
 });
 
+test("Global Understanding model retains discovered files without content evidence as uncollected", () => {
+  const model = createGlobalUnderstandingTreeModel({
+    progress: {
+      reviewedNonEmptyLineCount: 1,
+      totalNonEmptyLineCount: 2,
+      progress: 0.5,
+      files: [
+        { path: "src/opened.ts", state: "current", reviewedNonEmptyLineCount: 1, totalNonEmptyLineCount: 2, progress: 0.5 }
+      ]
+    },
+    discoveredFilePaths: ["src/unopened.ts", "src/opened.ts"],
+    openedFileCount: 1,
+    unopenedFileCount: 1,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  } as GlobalUnderstandingTreeSnapshot);
+
+  assert.deepEqual(model.files.map((file) => ({
+    path: file.path,
+    description: file.description,
+    state: file.state
+  })), [
+    { path: "src/opened.ts", description: "50% (1/2)", state: "current" },
+    { path: "src/unopened.ts", description: "未収集", state: "uncollected" }
+  ]);
+});
+
+test("Global Understanding model accepts sparse open targets for non-openable path-only rows", () => {
+  const model = createGlobalUnderstandingTreeModel({
+    progress: {
+      reviewedNonEmptyLineCount: 1,
+      totalNonEmptyLineCount: 1,
+      progress: 1,
+      files: [{ path: "changed.ts", state: "current", reviewedNonEmptyLineCount: 1, totalNonEmptyLineCount: 1, progress: 1 }]
+    },
+    discoveredFilePaths: ["changed.ts", "unchanged.ts"],
+    fileOpenTargets: [{
+      kind: "pull-request-head",
+      repositoryId: "repo",
+      contextId: "pr",
+      revisionId: "head",
+      repositoryPath: "changed.ts",
+      fileSystemPathSemantics: "posix"
+    }],
+    openedFileCount: 1,
+    unopenedFileCount: 1,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  });
+
+  assert.equal(model.files.find((file) => file.path === "changed.ts")?.openTarget?.kind, "pull-request-head");
+  assert.equal(model.files.find((file) => file.path === "unchanged.ts")?.openTarget, undefined);
+});
+
 test("Status Bar co-displays Global progress, opened counts, and exclusion diagnostics", () => {
   assert.deepEqual(formatGlobalUnderstandingStatusBar(snapshot()), {
     text: "$(book) Global: 38% (3/8)",

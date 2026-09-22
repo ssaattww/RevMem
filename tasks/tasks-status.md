@@ -2,6 +2,32 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
+
+- 現在のタスク: I124-IFR-002-RECORD-SYNC-VERIFY。normal fix verification R3 `beb997fd929219599d46f0894d1944a91580db05` でnormal-review required findingsは全件closed、verdictは `pass_with_held`。I124-IFR-002のrecord-only syncは実施済みで、同じnormal reviewerによる限定確認待ち。
+- branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
+- technical implementation HEAD: `cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8`。normal closure record HEAD: `beb997fd929219599d46f0894d1944a91580db05`。独立closure record parent: `f193f9e2539aea4d7bcd77f65b1ae4c97bf1bfa1`。
+- I124-IFR-001 / High: **normal closed / independent closed**。stopped body access=0、running→stopped後のprior row/progress/open target保持、source/public STOP runtime regressionとoriginal independent probeを確認済み。
+- I124-IFR-002 / Low: **record-only sync実施済み / normal限定確認待ち**。normal closure後も残っていた「normal closure待ち / verdict fail」の古いtrackingを削除し、現在状態へ同期済み。製品コード・test・design・workflow・configurationは変更していない。
+- I124-IFR-003 / High: **normal closed / issuing independent reviewer closure待ち**。
+- I124-IFR-004 / Medium: **normal closed / issuing independent reviewer closure待ち**。
+- I124-IFR-005 / Medium: **normal closed / issuing independent reviewer closure待ち**。
+- product evidence: T505 26/26、T610 86/86、Global performance focused 6/6、`npm run test:t607` 89/92（既知baseline 3件のみ）、build/lint/contracts/architecture正負Green、default `npm test` exit 0。
+- current parent `f193f9e...` のexact-head CIは run `35781572088` / CI #4662 **success**。artifact `review-range-user-validation-0.1.55-pre+f193f9e` / id `10718995339`、artifact head SHA一致。
+- 今回はユーザーの明示的な今回限りの指示により、元のIFR-001/002 independent reviewer chatがrecord-only syncを実装する例外運用。これにより同chatはI124-IFR-002のterminal independent closureを行わず、same normal reviewerのrecord-only確認後は別independent reviewerへIFR-002/CI-delta限定closureを引き継ぐ。
+- TDD: record-only metadata syncのためnot applicable。
+- report: `reports/issue-124-global-understanding-view-ifr002-record-sync-exception-20260923.md`。
+- mergeは行わない。
+
+| 単位 | 状態 | 変更範囲 | 次の条件 |
+| --- | --- | --- | --- |
+| I124-IFR-001 | normal closed / independent closed | candidate-aware body filter + accepted-generation retention | 完了 |
+| I124-IFR-002 | record-only sync実施 / normal限定確認待ち | task ledger + PR summaryのみ | same normal reviewer確認後、別independent reviewerでIFR-002/CI-delta限定closure |
+| I124-IFR-003 | normal closed / independent limited closure待ち | actual source + runtime/provider spinner | 発行元independent reviewerで限定closure |
+| I124-IFR-004 | normal closed / independent limited closure待ち | actual PR source + runtime/provider | 発行元independent reviewerで限定closure |
+| I124-IFR-005 | normal closed / independent limited closure待ち | source-path abort stale-publication fence | 発行元independent reviewerで限定closure |
+| I124-FINAL | independent limited closure待ち | IFR-002 record sync + IFR-003〜005 closure | 全independent finding closure後に利用者がmerge判断 |
+
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
 - 現在のタスク: I116-FINAL（P3保守）。PR #115はsquash merge d86f2da0cfc5d19cac14e90ffbf5c5a85fd08c9a、最終PR CI34042269971成功、artifact9992115923照合済み、remote/local reviewブランチ削除済み。

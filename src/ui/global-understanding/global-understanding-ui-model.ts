@@ -29,9 +29,11 @@ export type GlobalUnderstandingFileOpenTarget =
 
 /** Immutable source snapshot consumed by the Global understanding presentation. */
 export interface GlobalUnderstandingTreeSnapshot {
-  /** Repository progress for the selected owner and revision. */
+  /** Repository progress for files whose current content evidence is available. */
   readonly progress: RepositoryGlobalUnderstandingProgress;
-  /** Open targets aligned with the progress files when available. */
+  /** Path-only discovered files, including files whose content has not been collected. */
+  readonly discoveredFilePaths?: readonly string[];
+  /** Sparse open targets for displayed files that have a valid immutable/current open route. */
   readonly fileOpenTargets?: readonly GlobalUnderstandingFileOpenTarget[];
   /** Count of files with captured content evidence. */
   readonly openedFileCount?: number;
@@ -77,10 +79,10 @@ export interface GlobalUnderstandingFileNode {
   readonly path: string;
   readonly label: string;
   readonly description: string;
-  readonly state: GlobalUnderstandingFileProgress["state"];
-  readonly reviewedNonEmptyLineCount: number;
-  readonly totalNonEmptyLineCount: number;
-  readonly progress: number;
+  readonly state: GlobalUnderstandingFileProgress["state"] | "uncollected";
+  readonly reviewedNonEmptyLineCount?: number;
+  readonly totalNonEmptyLineCount?: number;
+  readonly progress?: number;
   readonly openTarget?: GlobalUnderstandingFileOpenTarget;
 }
 
@@ -211,6 +213,21 @@ const fileNode = (
   });
 };
 
+const uncollectedFileNode = (
+  repositoryPath: string,
+  openTarget: GlobalUnderstandingFileOpenTarget | undefined
+): GlobalUnderstandingFileNode => {
+  if (repositoryPath.length === 0) throw new RangeError("Global understanding file path must not be empty.");
+  return Object.freeze({
+    kind: "file" as const,
+    path: repositoryPath,
+    label: repositoryPath,
+    description: "未収集",
+    state: "uncollected" as const,
+    ...(openTarget === undefined ? {} : { openTarget: freezeOpenTarget(openTarget) })
+  });
+};
+
 const folderNode = (folder: GlobalUnderstandingFolderSnapshot): GlobalUnderstandingFolderNode => {
   const action = folder.state === "stopped" ? "resume" : folder.state === "running" || folder.state === "active" ? "stop" : "start";
   return Object.freeze({ ...folder, kind: "folder" as const, label: folder.path.length === 0 ? "リポジトリroot" : folder.path,
@@ -223,10 +240,33 @@ interface ValidatedTreeSnapshot {
   readonly unopenedFileCount: number;
   readonly excludedFileCount: number;
   readonly prunedExcludedDirectoryCount: number;
+  readonly discoveredFilePaths: readonly string[];
+  readonly progressByPath: ReadonlyMap<string, GlobalUnderstandingFileProgress>;
   readonly openTargetsByPath: ReadonlyMap<string, GlobalUnderstandingFileOpenTarget>;
   readonly folders: readonly GlobalUnderstandingFolderSnapshot[];
   readonly repositoryPartial: boolean;
 }
+
+const validateDiscoveredFilePaths = (
+  snapshot: GlobalUnderstandingTreeSnapshot,
+  openedFileCount: number,
+  unopenedFileCount: number
+): readonly string[] => {
+  const paths = snapshot.discoveredFilePaths ?? snapshot.progress.files.map((file) => file.path);
+  const seen = new Set<string>();
+  for (const repositoryPath of paths) {
+    if (repositoryPath.length === 0) throw new RangeError("Global understanding discovered file path must not be empty.");
+    if (seen.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
+    seen.add(repositoryPath);
+  }
+  for (const file of snapshot.progress.files) {
+    if (!seen.has(file.path)) throw new RangeError(`Global understanding progress path was not discovered: ${file.path}`);
+  }
+  if (snapshot.discoveredFilePaths !== undefined && paths.length !== openedFileCount + unopenedFileCount) {
+    throw new RangeError("Global understanding discovered file count must match opened and unopened counts.");
+  }
+  return paths;
+};
 
 const validateTreeSnapshot = (
   snapshot: GlobalUnderstandingTreeSnapshot
@@ -242,15 +282,22 @@ const validateTreeSnapshot = (
   if (openedFileCount !== progress.files.length) {
     throw new RangeError("openedFileCount must match Global progress file count.");
   }
+  const discoveredFilePaths = validateDiscoveredFilePaths(snapshot, openedFileCount, unopenedFileCount);
+  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
+  for (const file of progress.files) {
+    if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
+    progressByPath.set(file.path, file);
+  }
   const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+  const discoveredPathSet = new Set(discoveredFilePaths);
   for (const target of snapshot.fileOpenTargets ?? []) {
+    if (!discoveredPathSet.has(target.repositoryPath)) {
+      throw new RangeError(`Global understanding open target path was not discovered: ${target.repositoryPath}`);
+    }
     if (openTargetsByPath.has(target.repositoryPath)) {
       throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
     }
     openTargetsByPath.set(target.repositoryPath, target);
-  }
-  if (snapshot.fileOpenTargets !== undefined && snapshot.fileOpenTargets.length !== progress.files.length) {
-    throw new RangeError("Global understanding open target count must match file progress count.");
   }
   return {
     progress,
@@ -258,6 +305,8 @@ const validateTreeSnapshot = (
     unopenedFileCount,
     excludedFileCount: snapshot.excludedFileCount,
     prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
+    discoveredFilePaths,
+    progressByPath,
     openTargetsByPath,
     folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true
   };
@@ -277,17 +326,76 @@ const validateTreeSnapshotIncrementally = async (
   requireCount(openedFileCount, "openedFileCount"); requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount"); requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
   if (openedFileCount !== progress.files.length) throw new RangeError("openedFileCount must match Global progress file count.");
+
+  let pendingValidationItems = 0;
+  const validateOne = async (): Promise<boolean> => {
+    pendingValidationItems += 1;
+    if (pendingValidationItems < maxItems) return isCurrent();
+    pendingValidationItems = 0;
+    await yieldControl();
+    return isCurrent();
+  };
+
+  const discoveredFilePaths: string[] = [];
+  const discoveredPaths = new Set<string>();
+  const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
+  if (snapshot.discoveredFilePaths === undefined) {
+    for (const file of progress.files) {
+      const repositoryPath = file.path;
+      if (repositoryPath.length === 0) throw new RangeError("Global understanding discovered file path must not be empty.");
+      if (discoveredPaths.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
+      discoveredPaths.add(repositoryPath);
+      discoveredFilePaths.push(repositoryPath);
+      progressByPath.set(repositoryPath, file);
+      if (!await validateOne()) return undefined;
+    }
+  } else {
+    for (const repositoryPath of snapshot.discoveredFilePaths) {
+      if (repositoryPath.length === 0) throw new RangeError("Global understanding discovered file path must not be empty.");
+      if (discoveredPaths.has(repositoryPath)) throw new RangeError(`duplicate Global understanding discovered path: ${repositoryPath}`);
+      discoveredPaths.add(repositoryPath);
+      discoveredFilePaths.push(repositoryPath);
+      if (!await validateOne()) return undefined;
+    }
+    for (const file of progress.files) {
+      if (!discoveredPaths.has(file.path)) throw new RangeError(`Global understanding progress path was not discovered: ${file.path}`);
+      if (progressByPath.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
+      progressByPath.set(file.path, file);
+      if (!await validateOne()) return undefined;
+    }
+    if (discoveredFilePaths.length !== openedFileCount + unopenedFileCount) {
+      throw new RangeError("Global understanding discovered file count must match opened and unopened counts.");
+    }
+  }
+
   const openTargetsByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
   const targets = snapshot.fileOpenTargets ?? [];
-  for (let index = 0; index < targets.length; index += 1) {
-    const target = targets[index]!;
+  for (const target of targets) {
+    if (!discoveredPaths.has(target.repositoryPath)) {
+      throw new RangeError(`Global understanding open target path was not discovered: ${target.repositoryPath}`);
+    }
     if (openTargetsByPath.has(target.repositoryPath)) throw new RangeError(`duplicate Global understanding open target: ${target.repositoryPath}`);
     openTargetsByPath.set(target.repositoryPath, target);
     accountWork?.({ kind: "validated-open-target", count: 1, stageFileCount: 1 });
-    if ((index + 1) % maxItems === 0) { await yieldControl(); if (!isCurrent()) return undefined; }
+    if (!await validateOne()) return undefined;
   }
-  if (snapshot.fileOpenTargets !== undefined && targets.length !== progress.files.length) throw new RangeError("Global understanding open target count must match file progress count.");
-  return { progress, openedFileCount, unopenedFileCount, excludedFileCount: snapshot.excludedFileCount, prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount, openTargetsByPath, folders: snapshot.folders ?? [], repositoryPartial: snapshot.repositoryPartial === true };
+  if (pendingValidationItems > 0) {
+    pendingValidationItems = 0;
+    await yieldControl();
+    if (!isCurrent()) return undefined;
+  }
+  return {
+    progress,
+    openedFileCount,
+    unopenedFileCount,
+    excludedFileCount: snapshot.excludedFileCount,
+    prunedExcludedDirectoryCount: snapshot.prunedExcludedDirectoryCount,
+    discoveredFilePaths,
+    progressByPath,
+    openTargetsByPath,
+    folders: snapshot.folders ?? [],
+    repositoryPartial: snapshot.repositoryPartial === true
+  };
 };
 
 const createTreeModel = (
@@ -353,18 +461,13 @@ const cooperativeSortFileNodes = async (
 
 export const createGlobalUnderstandingTreeModel = (snapshot: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeModel => {
   const validated = validateTreeSnapshot(snapshot);
-  const files = validated.progress.files.map((file) => {
-    const target = validated.openTargetsByPath.get(file.path);
-    if (snapshot.fileOpenTargets !== undefined && target === undefined) {
-      throw new RangeError(`Global understanding open target is missing: ${file.path}`);
-    }
-    return fileNode(file, target);
+  const files = validated.discoveredFilePaths.map((repositoryPath) => {
+    const target = validated.openTargetsByPath.get(repositoryPath);
+    const progress = validated.progressByPath.get(repositoryPath);
+    return progress === undefined
+      ? uncollectedFileNode(repositoryPath, target)
+      : fileNode(progress, target);
   }).sort((left, right) => compareCodeUnits(left.path, right.path));
-  const paths = new Set<string>();
-  for (const file of files) {
-    if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
-    paths.add(file.path);
-  }
   return createTreeModel(validated, files);
 };
 
@@ -384,19 +487,16 @@ export const createGlobalUnderstandingTreeModelIncrementally = async (
   const validated = await validateTreeSnapshotIncrementally(snapshot, options.maxFilesPerStage, options.yieldControl, isCurrent, options.accountWork);
   if (validated === undefined) return undefined;
   const built: GlobalUnderstandingFileNode[] = [];
-  const paths = new Set<string>();
-  for (let index = 0; index < validated.progress.files.length; index += 1) {
+  for (let index = 0; index < validated.discoveredFilePaths.length; index += 1) {
     if (!isCurrent()) return undefined;
-    const file = validated.progress.files[index]!;
-    const target = validated.openTargetsByPath.get(file.path);
-    if (snapshot.fileOpenTargets !== undefined && target === undefined) {
-      throw new RangeError(`Global understanding open target is missing: ${file.path}`);
-    }
-    if (paths.has(file.path)) throw new RangeError(`duplicate Global understanding path: ${file.path}`);
-    paths.add(file.path);
-    built.push(fileNode(file, target));
+    const repositoryPath = validated.discoveredFilePaths[index]!;
+    const target = validated.openTargetsByPath.get(repositoryPath);
+    const progress = validated.progressByPath.get(repositoryPath);
+    built.push(progress === undefined
+      ? uncollectedFileNode(repositoryPath, target)
+      : fileNode(progress, target));
     options.accountWork?.({ kind: "built-file-node", count: 1, stageFileCount: 1 });
-    if ((index + 1) % options.maxFilesPerStage === 0 && index + 1 < validated.progress.files.length) {
+    if ((index + 1) % options.maxFilesPerStage === 0 && index + 1 < validated.discoveredFilePaths.length) {
       await options.yieldControl();
     }
   }
@@ -529,6 +629,7 @@ export class GlobalUnderstandingRefreshController {
   public clear(): void { this.invalidate(); this.host.clear(); }
   public async refresh(signal?: AbortSignal): Promise<GlobalUnderstandingTreeSnapshot | undefined> {
     const currentGeneration = ++this.generation;
+    let publishedProgress = false;
     try {
       const snapshot = (await runWithBoundedRetry(
         () => this.source.recalculate(signal, async (progress) => {
@@ -537,6 +638,7 @@ export class GlobalUnderstandingRefreshController {
             progress,
             () => currentGeneration === this.generation && signal?.aborted !== true
           );
+          publishedProgress = true;
         }),
         { maxAttempts: 3, signal },
       )).value;
@@ -556,7 +658,7 @@ export class GlobalUnderstandingRefreshController {
       return snapshot;
     } catch (error) {
       if (currentGeneration !== this.generation) return undefined;
-      this.host.clear();
+      if (!publishedProgress) this.host.clear();
       throw error;
     }
   }

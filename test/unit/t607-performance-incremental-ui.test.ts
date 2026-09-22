@@ -140,6 +140,212 @@ test("T607 accounts for 10,000-file projection work without a model prefix doubl
   assert.ok(accounts.every((entry) => entry.count <= 128), "each accounted operation remains within the deterministic work budget");
 });
 
+test("I124-R003 bounds path-only validation before the first scheduler yield", async () => {
+  const rawPaths = Array.from({ length: 10_000 }, (_, index) => `src/path-only-${index}.ts`);
+  let yielded = false;
+  let pathReadsBeforeFirstYield = 0;
+  let firstYieldPathReads = -1;
+  const discoveredFilePaths = new Proxy(rawPaths, {
+    get(target, property, receiver) {
+      if (!yielded && typeof property === "string" && /^\d+$/u.test(property)) {
+        pathReadsBeforeFirstYield += 1;
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const pathOnlySnapshot: GlobalUnderstandingTreeSnapshot = {
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: 0,
+      progress: 1,
+      files: []
+    },
+    discoveredFilePaths,
+    openedFileCount: 0,
+    unopenedFileCount: rawPaths.length,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  };
+
+  const model = await createGlobalUnderstandingTreeModelIncrementally(pathOnlySnapshot, {
+    maxFilesPerStage: 128,
+    yieldControl: () => {
+      if (!yielded) {
+        yielded = true;
+        firstYieldPathReads = pathReadsBeforeFirstYield;
+      }
+    }
+  });
+
+  assert.equal(model?.files.length, 10_000);
+  assert.ok(firstYieldPathReads >= 0, "path-only validation yields before projection completes");
+  assert.ok(
+    firstYieldPathReads <= 128,
+    `first scheduler yield must happen within the 128-item budget, observed ${firstYieldPathReads} path reads`
+  );
+});
+
+test("I124-R004 bounds validation and projection work between every scheduler yield", async () => {
+  const rawFiles = Array.from({ length: 10_000 }, (_, index) => ({
+    path: `src/current-${index}.ts`,
+    state: "current" as const,
+    reviewedNonEmptyLineCount: 0,
+    totalNonEmptyLineCount: 1,
+    progress: 0
+  }));
+  let workSinceYield = 0;
+  let maximumWorkBetweenYields = 0;
+  const progressFiles = new Proxy(rawFiles, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && /^\d+$/u.test(property)) workSinceYield += 1;
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const currentEvidenceSnapshot: GlobalUnderstandingTreeSnapshot = {
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: rawFiles.length,
+      progress: 0,
+      files: progressFiles
+    },
+    openedFileCount: rawFiles.length,
+    unopenedFileCount: 0,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  };
+
+  const checkpoint = (): void => {
+    maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+    workSinceYield = 0;
+  };
+  const model = await createGlobalUnderstandingTreeModelIncrementally(currentEvidenceSnapshot, {
+    maxFilesPerStage: 128,
+    yieldControl: checkpoint,
+    accountWork: (entry) => {
+      if (entry.kind === "built-file-node") workSinceYield += entry.count;
+    }
+  });
+  checkpoint();
+
+  assert.equal(model?.files.length, 10_000);
+  assert.ok(
+    maximumWorkBetweenYields <= 128,
+    `all scheduler intervals must stay within the 128-item budget, observed ${maximumWorkBetweenYields} validation/projection work items`
+  );
+});
+
+test("I124-IFR-005 bounds actual source path enumeration, canonicalization, sorting, and target projection", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-ifr005-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  for (let start = 0; start < 10_000; start += 250) {
+    await Promise.all(Array.from({ length: Math.min(250, 10_000 - start) }, (_, offset) =>
+      writeFile(path.join(repositoryRoot, `f-${String(start + offset).padStart(5, "0")}.ts`), "", "utf8")
+    ));
+  }
+
+  let workSinceYield = 0;
+  let maximumWorkBetweenYields = 0;
+  let repositorySortWork = 0;
+  let sourcePathWork = 0;
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    fileSystemPathSemantics: "posix",
+    accountWorkBatch: (entry) => {
+      if (entry.kind.startsWith("repository-") || entry.kind.startsWith("source-path-")) {
+        workSinceYield += entry.count;
+      }
+      if (entry.kind === "repository-sort") repositorySortWork += entry.count;
+      if (entry.kind.startsWith("source-path-")) sourcePathWork += entry.count;
+    },
+    yieldControl: () => {
+      maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+      workSinceYield = 0;
+    }
+  });
+  source.setContext({
+    context: {
+      kind: "branch",
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: "ifr005",
+      selection: { kind: "branch", repositoryId: "repo-ifr005", repositoryRoot, branchRef: "refs/heads/main" }
+    },
+    progress: undefined
+  });
+
+  const snapshot = await source.recalculate();
+  maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+
+  assert.equal(snapshot?.discoveredFilePaths?.length, 10_000);
+  assert.ok(repositorySortWork >= 10_000, "actual enumerator sorting is included in the deterministic work accounting");
+  assert.ok(sourcePathWork >= 30_000, "source canonicalization, displayed-path sorting, and open-target projection are accounted");
+  assert.ok(
+    maximumWorkBetweenYields <= 128,
+    `all source path work between scheduler yields must stay within 128 items, observed ${maximumWorkBetweenYields}`
+  );
+});
+
+test("actual Global source abort during path canonicalization never publishes a stale file projection", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-source-path-cancel-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  for (let start = 0; start < 10_000; start += 250) {
+    await Promise.all(Array.from({ length: Math.min(250, 10_000 - start) }, (_, offset) =>
+      writeFile(path.join(repositoryRoot, `f-${String(start + offset).padStart(5, "0")}.ts`), "", "utf8")
+    ));
+  }
+
+  const cancellation = new AbortController();
+  let abortedAtKind: string | undefined;
+  const publications: Array<{ discovered: number; files: number }> = [];
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    fileSystemPathSemantics: "posix",
+    accountWorkBatch: (entry) => {
+      if (abortedAtKind === undefined && entry.kind === "source-path-canonicalize") {
+        abortedAtKind = entry.kind;
+        cancellation.abort();
+      }
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({
+    context: {
+      kind: "branch",
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: "source-path-cancel",
+      selection: { kind: "branch", repositoryId: "repo-source-path-cancel", repositoryRoot, branchRef: "refs/heads/main" }
+    },
+    progress: undefined
+  });
+
+  await assert.rejects(
+    () => source.recalculate(cancellation.signal, (value) => {
+      publications.push({
+        discovered: value.discoveredFilePaths?.length ?? 0,
+        files: value.progress.files.length
+      });
+    }),
+    (error: unknown) => error instanceof DOMException && error.name === "AbortError"
+  );
+
+  assert.equal(abortedAtKind, "source-path-canonicalize");
+  assert.ok(publications.length >= 1, "the current lifecycle may publish before path work starts");
+  assert.equal(
+    publications.some((value) => value.discovered > 0 || value.files > 0),
+    false,
+    "aborted source-path work must never publish a stale file projection"
+  );
+});
+
 test("T607 never publishes a stale Tree stage after its generation is invalidated", async () => {
   let current = true;
   const published: number[] = [];

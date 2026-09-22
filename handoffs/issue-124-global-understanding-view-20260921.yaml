@@ -1,0 +1,261 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-21T17:15:50+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-FINAL
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: c3931612700d683cdea1c05ab30fc6e79008592a
+  reviewed_head: null
+  commit_range: eb8dc52f1c329a5768c263a8773289c9865f5dd4..c3931612700d683cdea1c05ab30fc6e79008592a
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+  source_state: clean
+  source_fingerprint: eb8dc52f1c329a5768c263a8773289c9865f5dd4..c3931612700d683cdea1c05ab30fc6e79008592a
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124'
+  dependencies:
+    - name: node
+      status: available
+      evidence: v24.20.0
+    - name: npm
+      status: available
+      evidence: npm.cmd used; dependencies restored with npm ci
+  evidence:
+    - dedicated worktree created from origin/main
+    - implementation commit c393161 pushed to origin
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - focused Red observed before implementation
+    - focused Green 57/57
+    - test:t610 Green 75/75
+    - static gates Green
+    - default npm test Green through VS Code Extension Host, exit code 0
+    - test:t607 84/87; same 3 failures reproduced on clean origin/main
+  technical_head: c3931612700d683cdea1c05ab30fc6e79008592a
+  administrative_parent: c3931612700d683cdea1c05ab30fc6e79008592a
+  commit:
+    state: commit_pending
+    review_target_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+  push:
+    state: pushed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instructions
+    summary: TDD, diagnostic artifacts, small commits, RDC git, GitHub connector PR/CI, exact-head CI only, report and PR comment, no merge
+  - source: issue
+    reference: Issue #124
+    summary: running spinner, action-result labels, path-only file list with unknown denominator not guessed
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 11.3 and 16.5
+    summary: folder-scope content boundaries, state/action contract, no repository-wide content scan
+development_policy:
+  method: TDD
+  testing_order: Red before implementation, then focused Green, static gates and broader regression
+  governing_source: project instructions and repository design
+validation_plan:
+  commands:
+    - npm run build
+    - npm run lint
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run test:t610
+    - npm run test:t607
+  required_failure_diagnostics:
+    - test-output stdout
+    - test-output stderr
+    - combined command logs
+    - failure context artifact
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - edit_configuration
+  - write_handoff
+  - write_report
+  - create_branch
+  - commit
+  - push
+  - create_pr
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: issue-124 dedicated worktree
+      reason: requested implementation
+    - path_or_operation: PR #125 metadata/comment
+      reason: requested publication and summary
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: unrelated worktrees
+      reason: other tasks own them
+scope:
+  - Global Understanding file-list projection
+  - Global Understanding folder row spinner and action presentation
+  - related tests, design, tracking, report and handoff
+non_goals:
+  - repository-wide file body scan
+  - unrelated T607 baseline failures
+  - PR Progress behavior changes
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: publish path-only discovered files without adding content reads
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: retain uncollected rows and incremental projection
+    - path: src/ui/global-understanding/vscode-global-understanding-runtime.ts
+      purpose: render spinner, unknown state and action labels
+    - path: package.json
+      purpose: action titles and icons
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: uncollected row regression
+    - path: test/unit/t505-global-understanding-source.test.ts
+      purpose: path-only source regression
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: spinner and action regression
+    - path: doc/design/vscode-review-range-tracker-design.md
+      purpose: path-only UI contract
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: diagnostic artifact contract
+    - path: tasks/tasks-status.md
+      purpose: task tracking
+  intentionally_untouched:
+    - path_or_area: folder scope state machine
+      reason: existing semantics already satisfy requested transition contract
+    - path_or_area: workflow
+      reason: required diagnostics already exist
+commands:
+  - command: focused compile plus three unit suites
+    purpose: TDD Red
+    exit_code: 1
+    result: failed
+    head_sha: eb8dc52f1c329a5768c263a8773289c9865f5dd4
+    evidence: 4 intended failures, 53 passes
+    execution_environment: null
+    source_fingerprint: null
+  - command: npm run test:t610
+    purpose: focused regression
+    exit_code: 0
+    result: passed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+    evidence: 75/75
+    execution_environment: null
+    source_fingerprint: null
+  - command: npm run test:t607
+    purpose: incremental/performance regression
+    exit_code: 1
+    result: failed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+    evidence: 84/87; same 3 failures reproduce on clean origin/main
+    execution_environment: null
+    source_fingerprint: null
+tests:
+  - name: Issue #124 focused Red
+    phase: red
+    result: failed
+    head_sha: eb8dc52f1c329a5768c263a8773289c9865f5dd4
+    evidence: intended 4 failures
+  - name: Issue #124 focused Green
+    phase: green
+    result: passed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+    evidence: 57/57
+  - name: T610 focused gate
+    phase: regression
+    result: passed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+    evidence: 75/75
+  - name: default npm test
+    phase: regression
+    result: passed
+    head_sha: c3931612700d683cdea1c05ab30fc6e79008592a
+    evidence: exit code 0 through VS Code Extension Host
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: c3931612700d683cdea1c05ab30fc6e79008592a
+  commits:
+    - sha: c3931612700d683cdea1c05ab30fc6e79008592a
+      purpose: implement Global Understanding folder/file presentation improvements
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: local T607 output
+      summary: 3 baseline failures reproduced identically on clean origin/main
+  blocked_items: []
+  summary:
+    - running folder displays spinner
+    - actions display start/stop/resume outcome
+    - discovered uncollected files remain visible without content scan
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths:
+    - reports/issue-124-global-understanding-view-implementation-20260921.md
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation work only; no independent review performed

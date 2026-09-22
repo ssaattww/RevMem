@@ -1,0 +1,341 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-22T06:13:35+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-FIX-VERIFICATION-R2
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: 69d177952549bf797abcf393678334a7bf216c03
+  reviewed_head: 69d177952549bf797abcf393678334a7bf216c03
+  commit_range: c139eefa6c39670f2516e786ba7bf1f8bdb4de2f..69d177952549bf797abcf393678334a7bf216c03
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 69d177952549bf797abcf393678334a7bf216c03
+  source_state: clean
+  source_fingerprint: c139eefa6c39670f2516e786ba7bf1f8bdb4de2f..69d177952549bf797abcf393678334a7bf216c03
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue124\handoffs'
+  dependencies:
+    - name: node
+      status: available
+      evidence: current-head local validation executed
+    - name: npm
+      status: available
+      evidence: test:t610 and test:t607 executed
+  evidence:
+    - same normal-review chat as initial review and prior fix verification
+    - worktree HEAD matched PR current HEAD before review writes
+    - validation logs were written outside reviewed source
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - npm run test:t610 passed 78/78
+    - focused T607 R003/R004 plus existing bounded tests passed 4/4
+    - npm run test:t607 86/89 with only known baseline failures
+    - R004 all-work review probe measured 144 work between yields with budget 128
+  technical_head: 69d177952549bf797abcf393678334a7bf216c03
+  administrative_parent: 69d177952549bf797abcf393678334a7bf216c03
+  commit:
+    state: commit_pending
+    review_target_sha: 69d177952549bf797abcf393678334a7bf216c03
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_completed
+    required_for: reviewed_current_head
+  final_publication:
+    sequence: review_record_commit_then_push_then_exact_head_ci_then_pr_comment
+    pr_action: update
+
+authoritative_requirements:
+  - source: previous_review
+    reference: I124-R002 / High
+    summary: retained running snapshot must be isolated by exact canonical root and revision
+  - source: previous_review
+    reference: I124-R004 / Medium
+    summary: all adjacent scheduler-yield intervals must remain within maxFilesPerStage
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 16.5, 19.1
+    summary: owner/root isolation and deterministic bounded-stage projection
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: exact-head CI, detailed report, PR comment, no merge
+
+development_policy:
+  method: TDD
+  testing_order: Red before fix, focused Green, broader regression
+validation_plan:
+  commands:
+    - npm run test:t610
+    - focused T607 R003/R004 plus existing bounded-stage tests
+    - npm run test:t607
+    - all-work R004 review probe
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - exit status
+    - review probe log
+    - exact-head CI artifact on remote failure
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35654398828
+  head_sha: 69d177952549bf797abcf393678334a7bf216c03
+  conclusion: success
+  artifacts:
+    - id: 10663826855
+      name: review-range-user-validation-0.1.55-pre+69d1779
+      head_sha: 69d177952549bf797abcf393678334a7bf216c03
+
+review:
+  mode: fix_verification
+  reviewed_head: 69d177952549bf797abcf393678334a7bf216c03
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - initial review and both fix-verification rounds are in the same normal-review chat
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: I124-R004 exceeds bounded scheduler interval at phase boundary
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: I124-R002 cross-root same-revision fixture passes
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: fix diff limited to R002/R004 plus reports tracking handoff
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: source model tests and root identity inspected
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_no_finding
+      evidence: no workflow change and exact-head CI passed
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: closed R001 behavior remains covered
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no credential or secret exposure change
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: R004 fixture counts progress.files only and misses projection work
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: exact-head CI run 35654398828 success
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: follow-up report claims all-yield <=128 beyond the fixture's measured scope
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: validation-to-projection phase boundary exceeds configured budget
+
+  validation_assessment:
+    - item: npm run test:t610
+      result: supported
+      evidence: 78/78
+    - item: focused R003/R004 plus bounded tests
+      result: supported
+      evidence: 4/4
+    - item: npm run test:t607
+      result: failed
+      evidence: 86/89 with same three known baseline failures
+    - item: I124-R002 cross-root isolation
+      result: supported
+      evidence: production T305 cross-root fixture passes
+    - item: I124-R004 all-work adjacent-yield budget
+      result: failed
+      evidence: review probe measured maximum 144 with maxFilesPerStage 128
+    - item: exact-head CI
+      result: supported
+      evidence: run 35654398828 success and artifact head_sha match
+
+  finding_completeness_matrix:
+    - finding_id: I124-R002
+      required_action: isolate retained snapshot by exact canonical root and revision
+      production_path: root-aware ownerIdentityKey and ownerEvidenceKey
+      actual_composition_fixture: I124-R002 isolates retained running files across same-revision repository roots
+      focused_evidence: test:t610 78/78 and fixture pass
+      disposition: closed
+    - finding_id: I124-R004
+      required_action: keep all adjacent scheduler-yield work within maxFilesPerStage
+      production_path: progressByPath now built in incremental validation, but residual budget is not carried into projection
+      actual_composition_fixture: current implementation fixture measures only progress.files accesses
+      focused_evidence: external all-work probe measures 144 > 128
+      disposition: not_closed
+
+  findings:
+    - id: I124-R001
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: prior review scope
+      description: failed row visibility
+      impact: resolved
+      evidence: prior closure retained
+      required_action: none
+    - id: I124-R002
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: src/composition/global-understanding/global-understanding-source.ts
+      description: retained snapshot root isolation
+      impact: resolved
+      evidence: same-revision different-root actual composition fixture passes
+      required_action: none
+    - id: I124-R003
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: prior review scope
+      description: path-only first-yield validation budget
+      impact: resolved
+      evidence: prior closure retained and focused test passes
+      required_action: none
+    - id: I124-R004
+      severity: medium
+      origin: introduced_by_change
+      status: not_closed
+      location: src/ui/global-understanding/global-understanding-ui-model.ts
+      description: validation residual work plus next projection stage exceeds one configured scheduler interval
+      impact: deterministic bounded-stage contract remains violated at phase boundary
+      evidence: all-work current-head probe measured 144 with maxFilesPerStage 128
+      required_action: carry residual budget across phases or yield at boundary and verify all adjacent intervals <= budget
+
+  severity_reclassifications: []
+  held: []
+  unexplored:
+    - actual installed VSIX manual visual smoke test
+  remaining_risks:
+    - R004 phase-boundary scheduling work exceeds configured budget
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - I124-R001 closed
+    - I124-R002 closed
+    - I124-R003 closed
+    - I124-R004 not closed
+
+held: []
+unexplored:
+  - area: manual installed-VSIX visual smoke test
+    blocker: not required to establish R004
+    remaining_risk: visual rendering not manually exercised
+    verdict_impact: none
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-fix-verification-r2-20260922.md
+  reviewed_head: 69d177952549bf797abcf393678334a7bf216c03
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - verdict fail
+    - R002 closed
+    - R004 not closed
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "2026-09"
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 69d177952549bf797abcf393678334a7bf216c03
+      base: eb8dc52f1c329a5768c263a8773289c9865f5dd4
+      commit_range: c139eefa6c39670f2516e786ba7bf1f8bdb4de2f..69d177952549bf797abcf393678334a7bf216c03
+      reviewer_identity: ChatGPT current normal-review chat
+      reviewer_continuity: same normal reviewer
+      findings:
+        - I124-R001 High closed
+        - I124-R002 High closed
+        - I124-R003 Medium closed
+        - I124-R004 Medium not_closed
+      held: []
+      validation_assessment:
+        - T610 78/78 pass
+        - focused T607 4/4 pass
+        - T607 86/89 known baseline failures
+        - R004 all-work probe 144 > 128
+        - exact-head CI success
+      verdict: fail
+      next_action: implementation fix for I124-R004 only
+      report_attestation_allowed: false
+
+extensions:
+  - namespace: review_evidence_paths
+    payload:
+      t610: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-r2-20260922\test-t610.log'
+      t607: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-r2-20260922\test-t607.log'
+      r004_all_work: 'C:\Users\donabe\Project\RevMem-pr125-fixverify-r2-20260922\r004-all-work-budget-probe.log'
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: fix
+  summary: fix I124-R004 only, then return to this same normal-review chat
+  instructions:
+    - preserve I124-R004 Medium severity
+    - carry residual budget across validation and projection or yield at phase boundary
+    - change the fixture to count validation and projection work in one counter
+    - prove every adjacent scheduler-yield interval is <= maxFilesPerStage
+    - provide required-action production-path actual-composition-fixture focused-evidence matrix
+    - verify only new PR current HEAD exact-match CI
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-fix-verification-r2-20260922.md
+    - reports/issue-124-global-understanding-view-fix-verification-20260921.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-fix-verification-r2-20260922.yaml
+  packet_url: null
+  transport_note: persist review records only; implementation remains a separate pass

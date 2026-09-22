@@ -103,6 +103,25 @@ test("T505 source keeps unopened file contents out of the line denominator while
       progress: 1,
       files: []
     },
+    discoveredFilePaths: ["binary.dat", "src/a.ts"],
+    fileOpenTargets: [
+      {
+        kind: "working-tree",
+        repositoryId,
+        contextId: `global-understanding:${repositoryId}`,
+        revisionId,
+        repositoryPath: "binary.dat",
+        filePath: path.join(repositoryRoot, "binary.dat")
+      },
+      {
+        kind: "working-tree",
+        repositoryId,
+        contextId: `global-understanding:${repositoryId}`,
+        revisionId,
+        repositoryPath: "src/a.ts",
+        filePath: path.join(repositoryRoot, "src", "a.ts")
+      }
+    ],
     openedFileCount: 0,
     unopenedFileCount: 2,
     excludedFileCount: 0,
@@ -224,6 +243,11 @@ test("Issue #59 uses only previously opened files for Global line progress and r
   };
   assert.equal(whileOpenCounts?.openedFileCount, 1);
   assert.equal(whileOpenCounts?.unopenedFileCount, 1);
+  assert.deepEqual(
+    (whileOpen as typeof whileOpen & { discoveredFilePaths?: readonly string[] } | undefined)?.discoveredFilePaths,
+    ["opened.ts", "unopened.ts"],
+    "path-only discovery keeps unopened files visible without adding line evidence"
+  );
 
   open = false;
   const afterClose = await source.recalculate();
@@ -236,6 +260,10 @@ test("Issue #59 uses only previously opened files for Global line progress and r
   };
   assert.equal(afterCloseCounts?.openedFileCount, 1);
   assert.equal(afterCloseCounts?.unopenedFileCount, 1);
+  assert.deepEqual(
+    (afterClose as typeof afterClose & { discoveredFilePaths?: readonly string[] } | undefined)?.discoveredFilePaths,
+    ["opened.ts", "unopened.ts"]
+  );
 });
 
 test("Issue #59 PR full HEAD scan is promoted to opened Global evidence", async (t) => {
@@ -344,4 +372,10 @@ test("Issue #59 PR full HEAD scan is promoted to opened Global evidence", async 
   assert.deepEqual(current?.progress.files.map((file) => file.path), ["pr.ts"]);
   assert.equal(current?.openedFileCount, 1);
   assert.equal(current?.unopenedFileCount, 1);
+  assert.deepEqual(current?.discoveredFilePaths, ["pr.ts", "untouched.ts"]);
+  assert.deepEqual(
+    current?.fileOpenTargets?.map((target) => target.repositoryPath),
+    ["pr.ts"],
+    "path-only PR rows outside the immutable diff remain visible but are explicitly non-openable"
+  );
 });

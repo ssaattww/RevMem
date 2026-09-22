@@ -952,6 +952,8 @@ Review ContextsのVS Code Tree row identityは表示labelではなく`contextId`
 
 初期treeはrepository全体をcompleteとして表示しない。file openで発見したfolderへのancestor chain、明示開始したfolder、開始scopeのdirect child folderだけを表示し、未開始nodeを`inactive`として表示できる。inactive sibling folderを表示するためのdirectory entry取得は許可するが、そのdescendant file本文を読まない。root scopeはroot直下fileを開くかroot rowで明示開始した場合だけ内容を計算する。
 
+開始済みscopeでpath列挙済みのdirect fileは、content evidenceが未収集でもfile rowに残す。content evidenceがないfileは分母を推測せず`未収集`かつ`未計算`として表示し、百分率を表示しない。この表示のためにfile本文を追加読込してはならない。
+
 `running`はspinner、`stopped`は視認性を高めたlabelと`再開`action、`failed`はgenericな失敗表示と`開始`actionを持つ。停止済みまたはinherited停止により未計算のchildを含むparentは`partial`を明示し、complete ratioを表示しない。partial nodeのcountは「現在把握済み」としてlabel付けし、未知のinactive/stopped/incomplete childを分母ゼロまたは既知分母だけへ読み替えない。selection、file open、action targetはrepository root identity、canonical scope path、current generationへ束縛し、stale nodeまたは別multi-root nodeのactionを拒否する。
 
 除外file数は開始済みscopeの列挙結果の`excluded.length`だけを表示し、`excludedDirectories.length`を加算しない。pruneした除外directory数は別の診断項目として表示する。PR Progressとは別sectionで表示する。
