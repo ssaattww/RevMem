@@ -1,0 +1,436 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-22T17:51:59+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-NORMAL-FIX-VERIFICATION-IFR
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+target:
+  current_head: 64b7f060e02926495cb3f98a06df886638640430
+  reviewed_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  commit_range: da5f97ee02b8f2179a3fe894c5cf58aed7aac2b8..67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 64b7f060e02926495cb3f98a06df886638640430
+  source_state: clean
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue124\handoffs'
+  dependencies:
+    - name: node
+      status: available
+      evidence: compile and focused suites executed
+    - name: npm
+      status: available
+      evidence: test:t505 and test:t610 executed
+  evidence:
+    - local HEAD, origin branch, and PR current HEAD matched at freeze
+    - technical fixes end at 67c73c4
+    - post-technical delta to 64b7f06 is report/handoff/tracking only
+    - external review probes are stored outside the worktree
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - compile:test pass
+    - test:t505 26/26 pass
+    - test:t610 81/81 pass
+    - performance focused 5/5 pass
+    - IFR001 stopped-body negative probe reproduced body access
+    - IFR001 mid-refresh-stop negative probe reproduced row loss
+    - IFR003 runtime spinner probe passed
+    - IFR004 PR non-diff runtime probe passed
+    - IFR005 source-path cancellation probe passed
+  technical_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  administrative_parent: 64b7f060e02926495cb3f98a06df886638640430
+  commit:
+    state: commit_pending
+    review_target_sha: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_completed
+    required_for: reviewed_current_head
+  final_publication:
+    sequence: review_record_commit_then_push_then_exact_head_check_then_pr_comment
+    pr_action: update
+
+authoritative_requirements:
+  - source: independent_review
+    reference: I124-IFR-001 / High
+    summary: retain stopped/non-active same-owner rows and targets without stopped-scope body reads
+  - source: independent_review
+    reference: I124-IFR-002 / Low
+    summary: final ledger and PR metadata must match actual reviewed/final HEAD and CI after normal verification
+  - source: independent_review
+    reference: I124-IFR-003 / High
+    summary: publish accepted sibling active while longer sibling stays running and cover actual runtime spinner
+  - source: independent_review
+    reference: I124-IFR-004 / Medium
+    summary: PR non-diff path-only row must be valid-open or explicitly non-openable with actual composition coverage
+  - source: independent_review
+    reference: I124-IFR-005 / Medium
+    summary: source path publication must be bounded and stale source-path work cannot publish
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: same normal reviewer fix verification, exact-head CI discipline, no merge
+
+development_policy:
+  method: TDD
+  testing_order: Red before each implementation fix, then focused Green and regression
+  governing_source: project instructions
+validation_plan:
+  commands:
+    - npm run compile:test
+    - npm run test:t505
+    - npm run test:t610
+    - focused R003 R004 IFR005 performance tests
+    - reviewer actual-composition probes
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - exit status
+    - exact-head CI artifact on remote failure
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35703038775
+  head_sha: 64b7f060e02926495cb3f98a06df886638640430
+  conclusion: success
+  artifacts:
+    - id: 10683970529
+      name: review-range-user-validation-0.1.55-pre+64b7f06
+      head_sha: 64b7f060e02926495cb3f98a06df886638640430
+
+review:
+  mode: fix_verification
+  reviewed_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - this chat performed Issue 124 normal review and prior normal fix-verification rounds
+
+  verdict: fail
+
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: IFR001 body-read and running-to-stopped row-retention contracts remain violated
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: stopping a scope during a running generation drops its retained row
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: technical changes stay in independent findings and focused tests
+    - criterion: changed files and direct dependencies
+      disposition: checked_finding
+      evidence: extension open-document adapter is a direct dependency of IFR001 source filtering
+    - criterion: API data configuration workflow compatibility
+      disposition: checked_finding
+      evidence: IFR003 through IFR005 behavior improved but required regression-composition cells are incomplete
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: source-path abort is fenced in reviewer probe
+    - criterion: security and secret handling
+      disposition: checked_no_finding
+      evidence: no credential change and no filesystem-wide body scan was introduced
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: focused suites miss IFR001 failures and required IFR003-005 composition/stale fixtures
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: exact-head CI 35703038775 success
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_finding
+      evidence: IFR002 final sync is pending and PR body current-head CI line is stale
+    - criterion: regression and maintainability risk
+      disposition: checked_finding
+      evidence: incomplete composition regressions permit focused Green while product defect remains
+
+  validation_assessment:
+    - item: compile:test
+      result: supported
+      evidence: exit 0
+    - item: test:t505
+      result: supported
+      evidence: 26/26
+    - item: test:t610
+      result: supported
+      evidence: 81/81
+    - item: source/UI performance focused
+      result: supported
+      evidence: 5/5
+    - item: IFR001 stopped-scope body read
+      result: failed
+      evidence: stopped one and active two were both read once after stop
+    - item: IFR001 mid-refresh stop retention
+      result: failed
+      evidence: one/a.ts disappeared after running-to-stopped transition while two completed
+    - item: IFR003 actual runtime spinner
+      result: supported
+      evidence: active sibling icon folder, running sibling icon loading~spin
+    - item: IFR004 PR non-diff row runtime behavior
+      result: supported
+      evidence: unchanged row visible with no target or open command
+    - item: IFR005 source-path cancellation
+      result: supported
+      evidence: AbortError at source-path-canonicalize and no stale file projection
+    - item: exact-head CI
+      result: supported
+      evidence: run 35703038775 success, artifact SHA matches current HEAD
+
+  finding_completeness_matrix:
+    - finding_id: I124-IFR-001
+      required_action: retain stopped/non-active rows and targets with zero stopped-scope body read, including running-to-stopped lifecycle
+      production_path: prior snapshot retention plus candidate-aware open-document evidence
+      actual_composition_fixture: existing committed fixture covers pre-refresh stop only and misses production body access; reviewer probes fail
+      focused_evidence: test:t610 81/81 does not detect body read or mid-refresh row loss
+      disposition: not_closed
+    - finding_id: I124-IFR-002
+      required_action: final metadata sync after product normal verification
+      production_path: task ledger and GitHub PR body
+      actual_composition_fixture: compare committed ledger and current PR metadata
+      focused_evidence: current CI now success but PR body says current run unconfirmed; normal verification is not complete
+      disposition: not_closed
+    - finding_id: I124-IFR-003
+      required_action: publish accept transition and add actual source/runtime spinner regression
+      production_path: post-accept lifecycle publication
+      actual_composition_fixture: committed source-only fixture; reviewer actual runtime probe passes
+      focused_evidence: production state/icon behavior is correct
+      disposition: not_closed_required_fixture_incomplete
+    - finding_id: I124-IFR-004
+      required_action: non-diff PR row valid-open or non-openable plus actual composition regression
+      production_path: sparse exact-HEAD target plus conditional command
+      actual_composition_fixture: committed source/UI unit fixtures are separate; reviewer actual runtime probe passes
+      focused_evidence: production row has no target/command
+      disposition: not_closed_required_fixture_incomplete
+    - finding_id: I124-IFR-005
+      required_action: bounded source-path work plus stale-work non-publication regression
+      production_path: repository and source cooperative schedulers
+      actual_composition_fixture: committed 10k fixture checks budget only; reviewer cancellation probe passes
+      focused_evidence: 5/5 focused Green and source-path abort fencing observed
+      disposition: not_closed_required_fixture_incomplete
+
+  findings:
+    - id: I124-IFR-001
+      severity: high
+      origin: introduced_by_change
+      status: not_closed
+      location:
+        - src/composition/global-understanding/global-understanding-source.ts
+        - src/composition/extension.ts
+      description: stopped-scope body is still eagerly read and a scope stopped during current refresh loses prior row/target
+      impact: violates no-stopped-body-read closure condition and running-to-stopped file-list retention
+      evidence:
+        - bodyReadDeltaAfterStop one=1 two=1
+        - mid-refresh after paths only two/a.ts while one state is stopped
+      required_action: filter open documents before body access and retain prior evidence based on current lifecycle rather than initial active set
+
+    - id: I124-IFR-002
+      severity: low
+      origin: workflow_record_inconsistency
+      status: not_closed
+      location:
+        - tasks/tasks-status.md
+        - PR #125 body
+      description: final normal-verification metadata sync is not yet possible and current-head CI text is stale
+      impact: later worker can consume obsolete review/CI state
+      evidence: normal verification remains pending and PR body says current matching CI unconfirmed although run 35703038775 succeeded
+      required_action: sync after product findings close
+
+    - id: I124-IFR-003
+      severity: high
+      origin: introduced_by_change
+      status: not_closed
+      location:
+        - src/composition/global-understanding/global-understanding-source.ts
+        - test/unit/t610-folder-understanding.test.ts
+      description: production behavior is corrected but required actual source/runtime regression fixture is absent
+      impact: spinner composition can regress without the independent review's required test cell
+      evidence: reviewer runtime probe passes but repository fixture stops at source snapshot
+      required_action: commit actual source plus runtime/provider spinner fixture
+
+    - id: I124-IFR-004
+      severity: medium
+      origin: introduced_by_change
+      status: not_closed
+      location:
+        - src/composition/global-understanding/global-understanding-source.ts
+        - src/ui/global-understanding/vscode-global-understanding-runtime.ts
+        - test/unit/t505-global-understanding-source.test.ts
+        - test/unit/global-understanding-ui.test.ts
+      description: production behavior is corrected but required actual composition regression is split across unit fixtures
+      impact: source-to-provider command composition can regress without one end-to-end cell
+      evidence: reviewer actual runtime probe shows unchanged row target/command absent
+      required_action: commit one actual source/runtime/provider non-diff path-only regression
+    - id: I124-IFR-005
+      severity: medium
+      origin: introduced_by_change
+      status: not_closed
+      location:
+        - src/adapters/repository-files/node-repository-file-path-enumerator.ts
+        - src/composition/global-understanding/global-understanding-source.ts
+        - test/unit/t607-performance-incremental-ui.test.ts
+      description: bounded work production behavior is corrected but committed IFR005 fixture does not verify stale source-path work cannot publish
+      impact: stale-publication fence is not protected at the newly introduced source-path scheduler phase
+      evidence: reviewer source-path cancellation probe passes but repository fixture has no cancellation assertion
+      required_action: add actual source-path-stage cancellation/supersession regression to IFR005 closure coverage
+
+  severity_reclassifications: []
+
+  held:
+    - item: three known T607 baseline failures
+      reason: reproduced on PR base and unrelated to Issue 124 findings
+      owner: repository maintenance / separate task
+      remaining_risk: local performance suite is not fully green on the known environment
+      verdict_impact: non-blocking
+
+  unexplored:
+    - area: installed VSIX manual visual smoke test
+      blocker: not required for reproduced findings
+      remaining_risk: manual visual interaction not exercised
+      verdict_impact: none
+
+  remaining_risks:
+    - running-to-stopped row retention remains broken
+    - stopped open documents are still eagerly read
+    - IFR003 through IFR005 required regression composition is incomplete
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+
+  summary:
+    - normal fix verification failed
+    - IFR001 and IFR002 remain substantively open
+    - IFR003 through IFR005 production behavior appears fixed but required regression fixtures are incomplete
+    - independent formal closure must not start yet
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-20260922.md
+  reviewed_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - verdict fail
+    - IFR001 through IFR005 not formally closed
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "2026-09"
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 67c73c4ddd34fb1fb26720c16a840fa1b5bc8c6c
+      current_pr_head: 64b7f060e02926495cb3f98a06df886638640430
+      reviewer_identity: ChatGPT current normal-review chat
+      reviewer_continuity: same normal reviewer
+      findings:
+        - I124-IFR-001 High not_closed
+        - I124-IFR-002 Low not_closed
+        - I124-IFR-003 High not_closed_required_fixture_incomplete
+        - I124-IFR-004 Medium not_closed_required_fixture_incomplete
+        - I124-IFR-005 Medium not_closed_required_fixture_incomplete
+      held:
+        - three known T607 baseline failures
+      validation_assessment:
+        - compile:test pass
+        - T505 26/26
+        - T610 81/81
+        - performance focused 5/5
+        - IFR001 body-read probe failed closure
+        - IFR001 mid-refresh stop probe failed closure
+        - IFR003 runtime behavior pass
+        - IFR004 runtime behavior pass
+        - IFR005 source-path cancellation pass
+        - exact-head CI success
+      verdict: fail
+      next_action: implementation fixes and regression completion, then same normal reviewer
+      report_attestation_allowed: false
+
+extensions:
+  - namespace: review_evidence_paths
+    payload:
+      compile: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\compile-test.log'
+      t505: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\test-t505.log'
+      t610: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\test-t610.log'
+      performance_focused: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\performance-focused.log'
+      ifr001_body_read: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\ifr001-stopped-body-read-probe.log'
+      ifr001_mid_refresh_stop: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\ifr001-mid-refresh-stop-probe.log'
+      ifr003_runtime_spinner: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\ifr003-runtime-spinner-probe.log'
+      ifr004_pr_nondiff_runtime: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\ifr004-pr-nondiff-runtime-probe.log'
+      ifr005_source_cancel: 'C:\Users\donabe\Project\RevMem-pr125-normal-fixverify-ifr-20260922\ifr005-source-cancel-probe.log'
+
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: fix
+  summary: complete IFR001 through IFR005 normal fix-verification requirements before independent closure
+  instructions:
+    - preserve all finding IDs and severities
+    - fix IFR001 stopped body read before candidate filtering
+    - fix IFR001 running-to-stopped retained row/target loss
+    - add exact committed actual source/runtime regression required by IFR003
+    - add exact committed actual source/runtime non-diff PR regression required by IFR004
+    - add source-path-stage stale publication regression required by IFR005
+    - after product normal closure, synchronize IFR002 task ledger and PR metadata
+    - provide required action production path actual fixture focused evidence matrix for every finding
+    - return to this same normal reviewer
+    - only then return each finding to its issuing independent reviewer
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-20260922.md
+    - reports/issue-124-global-understanding-view-independent-final-review-20260922.md
+    - reports/issue-124-global-understanding-view-independent-final-review-additional-20260922.md
+  requested_authorized_actions:
+    - read_repository
+    - edit_code
+    - edit_tests
+    - write_handoff
+    - write_report
+    - commit
+    - push
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-normal-fix-verification-ifr-20260922.yaml
+  packet_url: null
+  transport_note: persist normal-review record only; implementation remains a separate pass
