@@ -4,7 +4,7 @@ Review Range Tracker は、VS Code 上で「どの行まで確認したか」を
 
 確認済み状態は現在の PR / branch / workspace などの **Context** と、repository 全体で共有する **Global** の両方へ保存されます。VS Code 1.125.0 以上が必要です。
 
-## できること
+## 現状できること
 
 - 選択した行、カーソル行、ファイル全体を確認済み / 未確認にできます。
 - 確認済み行をエディタ上でグレー表示し、ガターや Overview Ruler にも表示できます。
@@ -31,7 +31,7 @@ flowchart LR
     R --> P
 ```
 
-## インストール
+## インストール方法
 
 Marketplace ではなく VSIX で配布しています。
 
@@ -47,7 +47,7 @@ code --install-extension review-range-tracker-<version>.vsix
 
 更新時も、新しい VSIX を再インストールしてください。
 
-## 基本的な使い方
+## 使い方
 
 1. VS Code で対象ファイルを開きます。
 2. 確認した行を選択するか、対象行にカーソルを置きます。
@@ -65,7 +65,7 @@ code --install-extension review-range-tracker-<version>.vsix
 | **Current Context** | 現在選択されている PR / branch / workspace context を表示します。再計算や context の選び直しもここから行えます。 |
 | **PR Progress** | 選択中 PR の変更ファイルと確認進捗を表示します。ファイルから PR diff を開くほか、working tree 上の実ファイルを開くこともできます。 |
 | **Global Understanding** | repository / folder 単位の理解状況を表示します。folder scope は開始・停止・再開できます。 |
-| **Review Contexts** | 現在の PR / branch、保存済み open / closed / merged PR、workspace context を管理します。PR 再検出、GitHub 再接続、cache 更新、layer 切替、diff 表示などを行えます。 |
+| **Review Contexts** | 現在の PR / branch、保存済み open / closed / merged PR、workspace context を管理します。GitHub PR の再検出、GitHub 再接続、cache 更新、layer 切替、diff 表示などを行えます。 |
 
 ## 確認済み状態の考え方
 
@@ -94,7 +94,7 @@ workspace 外のファイルは external-file context として保存します�
 
 Current Context で PR context を選択すると、その選択が通常エディタの確認操作と装飾へ反映されます。Review Contexts では保存済み PR の管理や PR diff の表示を行えます。
 
-PR Progress は repository 全体ではなく、対象 PR に含まれる変更ファイルだけを集計します。ファイルを開くと、RevMem が管理する canonical PR diff を表示し、通常エディタと同じ確認状態を共有します。
+PR Progress は repository 全体ではなく、対象 PR に含まれる変更ファイルだけを集計します。ファイルを開くと、RevMem が管理する canonical PR diff を diff editor で表示し、通常エディタと同じ確認状態を共有します。
 
 ### PR diff の選択単位
 
