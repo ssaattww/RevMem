@@ -284,9 +284,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const reviewed = files.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
     const total = files.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
     const displayedFilePaths = [...discoveredFilePaths].sort((left, right) => left === right ? 0 : left < right ? -1 : 1);
-    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = displayedFilePaths.map((repositoryPath) =>
-      this.createFileOpenTarget(owner, repositoryPath)
-    );
+    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = displayedFilePaths
+      .filter((repositoryPath) => owner.target.kind !== "pull-request" || pullRequestHeadPaths.has(repositoryPath))
+      .map((repositoryPath) => this.createFileOpenTarget(owner, repositoryPath));
     const folders = this.folderScopes?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path,
       state: folder.state,

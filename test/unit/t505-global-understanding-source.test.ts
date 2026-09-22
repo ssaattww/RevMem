@@ -372,4 +372,10 @@ test("Issue #59 PR full HEAD scan is promoted to opened Global evidence", async 
   assert.deepEqual(current?.progress.files.map((file) => file.path), ["pr.ts"]);
   assert.equal(current?.openedFileCount, 1);
   assert.equal(current?.unopenedFileCount, 1);
+  assert.deepEqual(current?.discoveredFilePaths, ["pr.ts", "untouched.ts"]);
+  assert.deepEqual(
+    current?.fileOpenTargets?.map((target) => target.repositoryPath),
+    ["pr.ts"],
+    "path-only PR rows outside the immutable diff remain visible but are explicitly non-openable"
+  );
 });

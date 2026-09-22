@@ -197,11 +197,13 @@ implements vscode.TreeDataProvider<GlobalUnderstandingViewNode>, vscode.Disposab
           node.state === "current" ? "pass" : node.state === "stale" ? "warning" : "circle-outline"
         );
         item.contextValue = "reviewRange.globalUnderstandingFile";
-        item.command = {
-          command: OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
-          title: "Global理解率のファイルを開く",
-          arguments: [node]
-        };
+        if (node.openTarget !== undefined) {
+          item.command = {
+            command: OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID,
+            title: "Global理解率のファイルを開く",
+            arguments: [node]
+          };
+        }
         return item;
       }
       case "folder": {
