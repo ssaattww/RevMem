@@ -1,0 +1,388 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-23T05:18:02+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-NORMAL-FIX-VERIFICATION-IFR-R3
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+
+target:
+  current_head: 67b34f3a6c64ab2181558b0feca571410dd41347
+  reviewed_head: 67b34f3a6c64ab2181558b0feca571410dd41347
+  commit_range: b157496afb25141e24170209d224e8d7c01a5300..67b34f3a6c64ab2181558b0feca571410dd41347
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: 67b34f3a6c64ab2181558b0feca571410dd41347
+  source_state: clean
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue124\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue124\handoffs'
+  dependencies:
+    - name: git
+      status: available
+      evidence: local HEAD and origin branch matched reviewed current HEAD
+    - name: node
+      status: available
+      evidence: js-yaml record validation executed
+    - name: GitHub connector
+      status: available
+      evidence: PR body, exact-head CI and artifacts fetched
+  evidence:
+    - same normal reviewer as previous Issue 124 normal review rounds
+    - reviewed delta is record-only
+    - exact current-head CI succeeded
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - git diff --check passed
+    - changed-path audit found exactly three record-only paths
+    - final-sync handoff YAML parsed successfully
+    - current-head CI #4658 succeeded
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  administrative_parent: b157496afb25141e24170209d224e8d7c01a5300
+  commit:
+    state: commit_pending
+    review_target_sha: 67b34f3a6c64ab2181558b0feca571410dd41347
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_completed
+    required_for: reviewed_current_head
+  final_publication:
+    sequence: review-record commit then push then PR comment
+    pr_action: update
+
+authoritative_requirements:
+  - source: independent_review
+    reference: I124-IFR-002 / Low
+    summary: synchronize final task ledger and PR metadata after normal product closure
+  - source: normal_review
+    reference: PR comment 5776315606
+    summary: IFR001/003/004/005 closed; IFR002 final sync was the only remaining normal finding
+  - source: project_instruction
+    reference: exact-head CI
+    summary: only matching current-head workflow run may be used
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: report, handoff, PR comment, no merge
+
+development_policy:
+  method: TDD
+  testing_order: not_applicable_for_record_only_closure
+  governing_source: RevMem project instructions
+
+validation_plan:
+  commands:
+    - git diff --check b157496..67b34f3
+    - changed-path audit
+    - js-yaml parse final-sync handoff
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - exit status
+    - CI failure diagnostics artifact if remote CI fails
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35731302592
+  head_sha: 67b34f3a6c64ab2181558b0feca571410dd41347
+  conclusion: success
+  artifacts:
+    - id: 10696260016
+      name: review-range-user-validation-0.1.55-pre+67b34f3
+      purpose: exact-head user validation artifact
+
+review:
+  mode: fix_verification
+  reviewed_head: 67b34f3a6c64ab2181558b0feca571410dd41347
+  reviewer:
+    identity: ChatGPT current normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: ChatGPT current normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: false
+      evidence:
+        - same normal reviewer handled the Issue 124 initial review and all normal fix-verification rounds
+  verdict: pass_with_held
+
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: metadata represents normal product closure and next independent-limited-closure stage
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: no obsolete old current HEAD, test-count, or CI summary remains
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: record delta changes exactly tasks status, final sync report, final sync handoff
+    - criterion: changed files and direct dependencies
+      disposition: checked_no_finding
+      evidence: no production or test dependency changed
+    - criterion: API data configuration workflow compatibility
+      disposition: not_applicable
+      evidence: record-only delta
+    - criterion: error handling and failure diagnostics
+      disposition: checked_no_finding
+      evidence: CI diagnostic workflow unchanged and exact-head CI succeeded
+    - criterion: security and secret handling
+      disposition: not_applicable
+      evidence: record-only delta
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: record-only validation plus retained normal R2 product evidence
+    - criterion: current-head CI evidence
+      disposition: checked_no_finding
+      evidence: exact-head run 35731302592 success and artifact SHA match
+    - criterion: report tracking and documentation accuracy
+      disposition: checked_no_finding
+      evidence: committed ledger and live PR body match reviewed current HEAD and review state
+    - criterion: regression and maintainability risk
+      disposition: checked_no_finding
+      evidence: no executable change
+
+  validation_assessment:
+    - item: record-only diff scope
+      result: supported
+      evidence: exactly three allowed paths changed
+    - item: git diff --check
+      result: supported
+      evidence: exit 0
+    - item: final-sync handoff YAML
+      result: supported
+      evidence: js-yaml parse pass
+    - item: live PR metadata
+      result: supported
+      evidence: PR body names 67b34f3 and exact-head CI #4658
+    - item: exact-head CI
+      result: supported
+      evidence: run 35731302592 success, artifact 10696260016 head SHA match
+
+  finding_completeness_matrix:
+    - finding_id: I124-IFR-002
+      required_action: synchronize final task ledger and PR metadata after normal product closure
+      production_path: tasks/tasks-status.md and GitHub PR #125 body
+      actual_composition_fixture: committed ledger and live PR metadata comparison against exact current HEAD
+      focused_evidence: record-only diff/YAML validation plus exact-head CI #4658
+      disposition: closed
+
+  findings:
+    - id: I124-R001
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: prior normal review
+      description: failed scope row visibility
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-R002
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: prior normal review
+      description: retained snapshot root isolation
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-R003
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: prior normal review
+      description: path-only validation budget
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-R004
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: prior normal review
+      description: validation/projection budget boundary
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-IFR-001
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: prior normal fix verification R2
+      description: stopped body read and running-to-stopped retention
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-IFR-002
+      severity: low
+      origin: unknown
+      status: closed
+      location: tasks/tasks-status.md and PR #125 body
+      description: final normal-review metadata synchronization
+      impact: resolved
+      evidence: ledger and live PR metadata align with reviewed current HEAD 67b34f3; exact-head CI #4658 success
+      required_action: none
+    - id: I124-IFR-003
+      severity: high
+      origin: introduced_by_change
+      status: closed
+      location: prior normal fix verification R2
+      description: active/running sibling spinner transition
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-IFR-004
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: prior normal fix verification R2
+      description: PR non-diff path-only row open behavior
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+    - id: I124-IFR-005
+      severity: medium
+      origin: introduced_by_change
+      status: closed
+      location: prior normal fix verification R2
+      description: source-path bounded scheduling and stale publication
+      impact: resolved
+      evidence: prior normal closure
+      required_action: none
+
+  severity_reclassifications: []
+
+  held:
+    - item: three known T607 baseline failures
+      reason: reproduced on PR base and unrelated to Issue 124
+      owner: repository maintenance / separate task
+      remaining_risk: local T607 suite remains three failures in the known baseline environment
+      verdict_impact: non-blocking
+
+  unexplored:
+    - area: installed VSIX manual visual smoke test
+      blocker: not required for record-only IFR002 closure
+      remaining_risk: manual visual interaction not exercised
+      verdict_impact: none
+
+  remaining_risks:
+    - independent limited closure is still required from the issuing independent reviewer chats
+
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+
+  summary:
+    - all normal-review findings are closed
+    - normal verdict pass_with_held
+    - next step is independent finding/CI-delta limited closure
+
+held:
+  - item: three known T607 baseline failures
+    reason: pre-existing on PR base
+    owner: repository maintenance / separate task
+    remaining_risk: local performance suite is not fully green in the known baseline environment
+    verdict_impact: none
+
+unexplored:
+  - area: installed VSIX manual visual smoke test
+    blocker: not required
+    remaining_risk: visual-only behavior not manually checked
+    verdict_impact: none
+
+remaining_risks:
+  - independent limited closure remains
+
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-r3-20260923.md
+  reviewed_head: 67b34f3a6c64ab2181558b0feca571410dd41347
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - I124-IFR-002 closed
+    - all normal findings closed
+    - pass_with_held
+
+source_payloads:
+  - source_skill: review-worker
+    output_contract_version: "2026-09"
+    content_type: application/yaml
+    payload:
+      review_mode: fix_verification
+      reviewed_implementation_head: 67b34f3a6c64ab2181558b0feca571410dd41347
+      reviewer_identity: ChatGPT current normal-review chat
+      reviewer_continuity: same normal reviewer
+      closure_scope:
+        - I124-IFR-002
+      findings:
+        - I124-IFR-002 Low closed
+      held:
+        - three known T607 baseline failures
+      validation_assessment:
+        - record-only diff check passed
+        - changed-path audit passed
+        - handoff YAML parse passed
+        - exact-head CI #4658 success
+      verdict: pass_with_held
+      next_action: independent limited closure
+      report_attestation_allowed: false
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_closure
+  summary: normal review is complete; return carried independent findings to their issuing independent reviewer chats for finding/CI-delta-limited closure
+  instructions:
+    - do not start a new exhaustive independent review
+    - IFR001 and IFR002 return to the original independent reviewer
+    - IFR003 through IFR005 return to the independent reviewer that issued them
+    - use only exact current-head CI evidence for each closure target
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-r3-20260923.md
+    - reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+    - reports/issue-124-global-understanding-view-independent-final-review-20260922.md
+    - reports/issue-124-global-understanding-view-independent-final-review-additional-20260922.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-normal-fix-verification-ifr-r3-20260923.yaml
+  packet_url: null
+  transport_note: normal review closure record; independent limited closure remains
