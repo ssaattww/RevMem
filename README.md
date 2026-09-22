@@ -65,7 +65,7 @@ code --install-extension review-range-tracker-<version>.vsix
 | **Current Context** | 現在選択されている PR / branch / workspace context を表示します。再計算や context の選び直しもここから行えます。 |
 | **PR Progress** | 選択中 PR の変更ファイルと確認進捗を表示します。ファイルから PR diff を開くほか、working tree 上の実ファイルを開くこともできます。 |
 | **Global Understanding** | repository / folder 単位の理解状況を表示します。folder scope は開始・停止・再開できます。 |
-| **Review Contexts** | 現在の PR / branch、保存済み open / closed / merged PR、workspace context を管理します。GitHub PR の再検出、GitHub 再接続、cache 更新、layer 切替、diff 表示などを行えます。 |
+| **Review Contexts** | 現在の PR / branch、保存済み open / closed / merged PR、workspace context を管理します。GitHub PR の再検出、GitHub 再接続、cache 更新、PR layerの設定切替、diff 表示などを行えます。レイヤーの表示への反映には[制限](#レイヤーの切り替え)があります。 |
 
 ## 確認済み状態の考え方
 
@@ -76,7 +76,36 @@ code --install-extension review-range-tracker-<version>.vsix
 - **Context**: 「この PR / branch / workspace で確認した」という状態です。
 - **Global**: 「この repository で既に理解済み」という横断的な状態です。
 
-通常エディタでは Context と Global の両方を使って装飾します。表示上の Global layer は `reviewRange.showGlobalReviewed` で切り替えられます。
+通常エディタでは、現在の Context の確認済み表示に、Global の確認済み表示を重ねられます。
+
+### レイヤーの切り替え
+
+ここでいう**レイヤー**は、確認済みの行をグレー表示するときに使う情報のまとまりです。
+「今回の Context で確認した行」と「Global に記録されている確認済みの行」を分けて考えます。
+**レイヤーをOFFにすることと、確認済みを解除することは別の操作です。**
+
+| 種類 | 操作する場所 | 切り替わるもの |
+| --- | --- | --- |
+| **Globalレイヤー** | Global Understanding のタイトル欄、またはコマンドパレットの **Review Range: Global確認済みレイヤーを切り替え** | 通常エディタへGlobalの確認済み表示を重ねるかどうか。設定 `reviewRange.showGlobalReviewed` と同じ切り替えです。 |
+| **PRレイヤー** | Review Contexts のPR項目で **PR layerを切り替え** | そのPRのON/OFF設定と、一覧の `Layer: ON` / `Layer: OFF` 表示。**現在は行のグレー表示への反映が未対応です。** |
+
+#### GlobalをOFFにすると、何が変わるか
+
+たとえば、通常エディタで開いたファイルの1〜5行目がGlobalでは確認済みで、現在のブランチでは2〜3行目だけが確認済みだとします。ファイルの内容と保存済み状態が一致している場合、表示は次のようになります。
+
+| 行 | GlobalがON | GlobalがOFF |
+| --- | --- | --- |
+| 1行目・4〜5行目（Globalだけで確認済み） | グレー表示 | グレー表示しない |
+| 2〜3行目（現在のContextでも確認済み） | グレー表示 | グレー表示のまま |
+
+GlobalをOFFにすると、他の作業で確認した範囲を重ねず、現在のContextでの確認状況に集中できます。現在のContextでも確認済みの行は、GlobalをOFFにしてもグレーのままです。
+切り替え自体は確認済み範囲を削除せず、PR進捗やGlobal理解率の集計対象・計算方法も変更しません。再びONにすると、その時点で有効なGlobalの確認済み表示を重ねます。
+なお、現在のPRでまだ確認していない変更行は、GlobalがONでも、Globalの情報だけを理由に確認済み表示にはなりません。
+
+#### PRレイヤーの現在の制限
+
+PRレイヤーはPRごとの表示設定ですが、現在の実装は設定の保存と一覧表示の更新までです。通常エディタやPR diffの行表示には接続されていないため、**OFFにしても、そのPRの確認済み行を非表示にはできません。** 明示的な設定がない場合は、openのPRがON、closed・mergedのPRがOFFになり、手動で切り替えた設定は保存されます。
+どちらの切り替えも、Current Contextで確認操作の対象を選び直す操作や、Global Understandingのフォルダー収集を停止する操作とは別です。
 
 ### ファイルが変わった場合
 
