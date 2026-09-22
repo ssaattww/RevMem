@@ -8,6 +8,7 @@
 - base HEAD: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`
 - README initial implementation commit: `a9c2be643b7c5d163090e91e4181b8f4a23f0fc6`
 - README contract compatibility fix commit: `e4f10193e3799d975d8337be8ddd5e85f7d84cd5`
+- user-facing README test contract fix commit: `545abbf749ed960f15a2a8521363392f48645e66`
 - PR: #127
 - verification capability: `local_execution_available`
 - execution environment: FA780 / PowerShell / Remote Desktop Commander
@@ -107,6 +108,8 @@ Mermaidを2点追加した。
 
 修正後に `npm run compile:test` と `node --test test-dist/test/unit/release-vsix-contract.test.js` を実行し、8/8 passのGreenを確認した。
 
+次のexact-head CIではT405のREADME contractが内部タスクID `T406` の記載を要求して失敗した。READMEの可読性向上と内部タスクID分離の目的に反するため、READMEへ `T406` を戻さず、`test/unit/t405-review-followup.test.ts` の契約を実際の利用者向け記載 `GitHub PR の再検出` へ変更した。変更後のT405 focused suiteは20/20 passだった。
+
 ## 検証
 
 ### 構文・差分
@@ -132,6 +135,17 @@ Mermaidを2点追加した。
 - result: 8 tests / 8 pass / 0 fail
 
 失敗runは旧HEADに紐づくため、修正push後の最終CI判定には再利用しない。
+
+### T405 README contract focused test
+
+- Red: exact-head CI run `35785039101` / CI #4675、HEAD `ed2ff7b0730b8b30251b64ef9f4b2a0cb2426bb8`
+- failure: `t405-review-followup.test.js` がREADME内の内部タスクID `T406` を要求
+- diagnostic artifact: `ci-failure-diagnostics-35785039101-1` / artifact id `10718993986`
+- contract correction: `T406` の文字列要求を利用者向けの `GitHub PR の再検出` 記載確認へ変更
+- Green: `npm run compile:test` + `node --test test-dist/test/unit/t405-review-followup.test.js`
+- result: 20 tests / 20 pass / 0 fail
+
+この失敗runも旧HEADに紐づくため、最終CI判定には再利用しない。
 
 ### Markdown tooling
 
