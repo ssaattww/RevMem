@@ -1,0 +1,404 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_follow_up
+  generated_at: 2026-09-22T21:32:02+09:00
+
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #124 / PR #125"
+task_id: I124-IFR-002-FINAL-SYNC
+branch: fix/issue-124-global-understanding-view
+base_ref: main
+
+target:
+  current_head: unknown
+  reviewed_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  commit_range: b157496afb25141e24170209d224e8d7c01a5300..publication_commit_pending
+
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+  repository: ssaattww/RevMem
+  branch: fix/issue-124-global-understanding-view
+  head_sha: b157496afb25141e24170209d224e8d7c01a5300
+  source_state: dirty
+  source_fingerprint: record-only metadata delta
+  ownership: current_task
+  writable_paths:
+    - tasks/tasks-status.md
+    - reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+    - handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml
+    - GitHub PR #125 body/comment
+  dependencies:
+    - name: git
+      status: available
+      evidence: fetch/status/rev-parse succeeded on FA780
+    - name: GitHub connector
+      status: available
+      evidence: Issue/PR/comments/CI evidence fetched
+  evidence:
+    - local branch matched origin at b157496afb25141e24170209d224e8d7c01a5300 before edits
+    - normal fix verification R2 closed IFR001/003/004/005
+    - only IFR002 final metadata synchronization remains
+    - CI diagnostic artifact workflow already exists
+
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - previous product validation is retained from normal fix verification R2
+    - current change contains record metadata only
+  technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+  administrative_parent: b157496afb25141e24170209d224e8d7c01a5300
+  commit:
+    state: commit_pending
+    review_target_sha: null
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: not_required
+    required_for: not_required
+  final_publication:
+    sequence: not_applicable
+    pr_action: update
+
+authoritative_requirements:
+  - source: review
+    reference: I124-IFR-002 / Low
+    summary: synchronize final task ledger and PR metadata after normal product closure
+  - source: review
+    reference: PR #125 comment 5776315606
+    summary: IFR001/003/004/005 are closed; only IFR002 record sync remains
+  - source: project_instruction
+    reference: RevMem workflow
+    summary: report and handoff required, Git operations via RDC, PR updates via GitHub connector, no merge
+  - source: project_instruction
+    reference: exact-head CI rule
+    summary: use only workflow runs whose head SHA equals current PR HEAD
+
+development_policy:
+  method: TDD
+  testing_order: not_applicable_for_record_only_metadata_sync
+  governing_source: RevMem project instructions
+
+validation_plan:
+  commands:
+    - git diff --check
+    - changed-path audit
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - exit status
+    - CI failure diagnostics artifact when CI fails
+
+blocked: []
+
+authorized_actions:
+  - read_repository
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+
+scope:
+  - update Issue 124 task ledger to normal product closure state
+  - add detailed metadata-sync report and handoff
+  - update PR 125 body after publication
+  - post concise PR summary
+non_goals:
+  - production source changes
+  - test fixture changes
+  - design changes
+  - workflow or configuration changes
+  - changing the normal review verdict
+  - merge
+
+write_boundary:
+  allowed:
+    - path_or_operation: tasks/tasks-status.md
+      reason: IFR002 canonical ledger sync
+    - path_or_operation: reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+      reason: required detailed report
+    - path_or_operation: handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml
+      reason: required transportable handoff
+    - path_or_operation: GitHub PR #125 body/comment
+      reason: IFR002 remote metadata sync
+  forbidden:
+    - path_or_operation: source/test/design/workflow/configuration
+      reason: outside record-only IFR002 scope
+    - path_or_operation: merge
+      reason: reserved for user
+
+files:
+  changed:
+    - path: tasks/tasks-status.md
+      purpose: record normal closure of IFR001/003/004/005 and IFR002 sync state
+    - path: reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+      purpose: detailed implementation record
+    - path: handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml
+      purpose: next-review handoff
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: verify failure-diagnostic artifact collection
+    - path: reports/issue-124-global-understanding-view-normal-fix-verification-ifr-r2-20260922.md
+      purpose: authoritative finding dispositions
+  intentionally_untouched:
+    - path_or_area: tasks/phases-status.md
+      reason: no Issue 124 current-state row and no phase-position change
+    - path_or_area: src test doc/design .github/workflows
+      reason: IFR002 is record-only
+
+commands:
+  - command: git diff --check
+    purpose: record-only diff validation
+    exit_code: 0
+    result: passed
+    head_sha: b157496afb25141e24170209d224e8d7c01a5300
+    evidence: RevMem-pr125-ifr002-sync-evidence-20260922/diff-check-current.stdout.log
+    execution_environment: null
+    source_fingerprint: record-only metadata delta
+  - command: changed-path audit
+    purpose: enforce record-only scope
+    exit_code: 0
+    result: passed
+    head_sha: b157496afb25141e24170209d224e8d7c01a5300
+    evidence: exactly tasks/tasks-status.md plus the IFR002 report and handoff
+    execution_environment: null
+    source_fingerprint: record-only metadata delta
+  - command: js-yaml parse handoff packet
+    purpose: validate handoff YAML syntax
+    exit_code: 0
+    result: passed
+    head_sha: b157496afb25141e24170209d224e8d7c01a5300
+    evidence: RevMem-pr125-ifr002-sync-evidence-20260922/yaml-js.stdout.log
+    execution_environment: null
+    source_fingerprint: record-only metadata delta
+
+tests:
+  - name: product tests
+    phase: not_applicable
+    result: not_run
+    head_sha: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+    evidence: no product/test/config/workflow delta; prior R2 evidence retained
+
+ci:
+  required: true
+  workflow: CI
+  run_id: 35726182548
+  head_sha: b157496afb25141e24170209d224e8d7c01a5300
+  conclusion: success
+  artifacts:
+    - id: 10692528906
+      name: review-range-user-validation-0.1.55-pre+b157496
+      purpose: administrative-parent exact-head evidence
+implementation:
+  outcome: completed
+  final_head: unknown
+  commits: []
+  addressed_findings:
+    - id: I124-IFR-002
+      reviewed_head: b157496afb25141e24170209d224e8d7c01a5300
+      disposition: partial
+      evidence: task ledger sync prepared; PR body update occurs after publication so it can name actual new HEAD
+  failure_diagnostics:
+    - type: artifact
+      location: .github/workflows/ci.yml
+      summary: failure workflow captures test-output, stdout/stderr logs, generated files and relevant source/test/tool inputs
+  blocked_items: []
+  summary:
+    - IFR001/003/004/005 remain normal-closed
+    - IFR002 repository metadata sync prepared
+    - PR metadata update remains a post-push external action
+    - no product behavior changed
+
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: "same normal reviewer that produced comment 5776315606"
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - next step is same normal reviewer IFR002-only fix verification
+
+findings:
+  - id: I124-IFR-002
+    severity: low
+    origin: unknown
+    location: tasks/tasks-status.md and PR #125 body
+    description: final normal-review terminal metadata was stale after product findings closed
+    impact: repository and PR could advertise obsolete re-verification pending state
+    evidence: normal fix verification R2 records origin as workflow_record_inconsistency; typed handoff enum has no equivalent value
+    required_action: synchronize final ledger and PR metadata, then obtain same-reviewer closure
+
+held:
+  - item: three known T607 baseline failures
+    reason: reproduced on PR base and unrelated to Issue 124 metadata sync
+    owner: repository maintenance / separate task
+    remaining_risk: local T607 suite has three known environment-baseline failures
+    verdict_impact: none
+
+unexplored:
+  - area: installed VSIX manual visual smoke test
+    blocker: not required for record-only IFR002 closure
+    remaining_risk: manual visual interaction is not part of this metadata-only delta
+    verdict_impact: none
+
+unknown:
+  - field_or_fact: publication commit SHA
+    reason: not available until record-only commit is created
+  - field_or_fact: matching workflow run for publication HEAD
+    reason: must be checked after push and may not exist yet
+
+not_applicable:
+  - field_or_area: TDD Red/Green cycle
+    reason: current scope changes record metadata only and does not alter behavior
+  - field_or_area: independent final report attestation
+    reason: current step is normal-review finding follow-up
+
+remaining_risks:
+  - IFR002 is not closed until the same normal reviewer verifies the final record delta
+  - independent limited closures have not yet been completed
+
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - record-only final metadata sync
+
+source_payloads:
+  - source_skill: implementation-worker
+    output_contract_version: "2026-09"
+    content_type: application/yaml
+    payload:
+      mode: review_follow_up
+      accepted_scope:
+        - synchronize I124-IFR-002 final task ledger metadata
+        - persist detailed implementation report and handoff
+        - update PR #125 metadata after publication
+      non_goals:
+        - production source changes
+        - test fixture changes
+        - design or workflow changes
+        - normal review verdict changes
+        - merge
+      requirements:
+        - preserve I124-IFR-002 Low identity and severity
+        - reflect normal closure of I124-IFR-001/003/004/005
+        - use only current-HEAD-matching workflow runs as CI evidence
+      changed_files:
+        - tasks/tasks-status.md
+        - reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+        - handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml
+      intentionally_untouched:
+        - tasks/phases-status.md
+        - src
+        - test
+        - doc/design
+        - .github/workflows
+      validation:
+        - command: git diff --check
+          result: passed
+        - command: changed-path audit
+          result: passed
+        - command: js-yaml parse handoff packet
+          result: passed
+      failure_diagnostics:
+        - CI workflow already captures stdout stderr test-output generated files and relevant source/test/tool inputs on failure
+      verification_capability: local_execution_available
+      execution_environment:
+        kind: connected_computer
+        tool: Remote Desktop Commander
+        machine_id: FA780
+        working_directory: 'C:\Users\donabe\Project\RevMem-issue124'
+      technical_head: cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8
+      administrative_parent: b157496afb25141e24170209d224e8d7c01a5300
+      review_target_commit: commit_pending
+      push_state: push_pending
+      ci_state: post-push current-HEAD check pending
+      final_head: unknown
+      blocked_items: []
+      unknowns:
+        - publication commit SHA
+        - matching current-HEAD workflow run after push
+      remaining_risks:
+        - same normal reviewer must close IFR002
+        - independent limited closure remains after normal closure
+      next_required_action: same normal reviewer IFR002-only fix verification
+
+extensions:
+  - namespace: prior_review_origin
+    payload:
+      finding_id: I124-IFR-002
+      source_origin: workflow_record_inconsistency
+      typed_projection_origin: unknown
+      reason: chat-handoff-manager origin enum has no workflow_record_inconsistency value
+
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: verify I124-IFR-002 final metadata synchronization only
+  instructions:
+    - resolve the actual current PR HEAD after publication
+    - verify tasks/tasks-status.md no longer advertises obsolete normal re-verification pending state
+    - verify PR #125 body names the actual current HEAD
+    - accept CI evidence only when run head SHA exactly matches that current HEAD
+    - preserve I124-IFR-002 Low severity
+    - after closure route each finding to its issuing independent reviewer for limited closure
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-124-global-understanding-view-normal-fix-verification-ifr-r2-20260922.md
+    - reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md
+  requested_authorized_actions:
+    - read_repository
+    - comment_pr
+
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml
+  packet_url: null
+  transport_note: final publication HEAD and exact-head CI are intentionally resolved from GitHub after this packet's commit

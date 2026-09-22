@@ -4,31 +4,29 @@
 
 ## Issue #124 Global Understanding View改善（normal review follow-up 2026-09-22）
 
-- 現在のタスク: I124-NORMAL-FIX-FOLLOWUP-IFR。normal fix verification `c120c7e46f7ca732113598672df52c0ce63260db` でnot closedとなったIFR-001〜005への実装・required regression fixture追加を完了し、同じnormal reviewerによる再verification待ち。
+- 現在のタスク: I124-IFR-002-FINAL-SYNC。normal fix verification R2でI124-IFR-001/003/004/005はclosedし、残件I124-IFR-002のfinal metadata syncだけを実施中。同じnormal reviewerによるIFR-002限定closure待ち。
 - branch: `fix/issue-124-global-understanding-view`。base: `eb8dc52f1c329a5768c263a8773289c9865f5dd4`。
-- normal review record HEAD: `c120c7e46f7ca732113598672df52c0ce63260db`。technical implementation HEAD: `cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8`。
-- IFR-001 / High: candidate-aware production open-document readerを追加し、stopped/non-candidateを`getText()/lineAt()`前に除外。refresh中running→stoppedでもcurrent generationでacceptされなかったscopeのprior row/progress/open targetを保持。source-level・actual public STOP runtime fixtureともGreen。
-- IFR-003 / High: actual T305 source + actual VS Code runtime/provider fixtureを追加し、active siblingは`folder`、running siblingだけ`loading~spin`を固定。
-- IFR-004 / Medium: actual PR source + runtime/provider fixtureを追加し、非diff path-only rowはvisibleだがtarget/commandなしを固定。
-- IFR-005 / Medium: actual 10,000-file sourceを`source-path-canonicalize`中にabortするfixtureを追加し、初期lifecycle以外のstale file projectionがpublishされないことを固定。
-- IFR-002 / Low: **final syncは未完**。product findingsがnormal reviewerでclosedした後にtask/PR metadataを最終同期する。
-- focused: T505 26/26、T610 86/86、Global performance focused 6/6 Green。
-- performance回帰: `npm run test:t607` 89/92。失敗3件はPR baseでも再現済みの既知baseline failureのみ。今回追加fixtureは全Green。
-- static gate: build、lint、contracts typecheck、architecture正負Green。
-- default local gate: `npm test` exit 0。unit 864/0/2 skip、Git 35/0/3 skip、GitHub 48/48、T502 11/11、Extension Host全phase success。
-- ユーザー指示により今回の完了条件はlocal validation。CI完走待ちは行わず、別SHAのrunをcurrent-head evidenceとして代用しない。
-- report: `reports/issue-124-global-understanding-view-normal-fix-followup-ifr-20260922.md`。
-- handoff: `handoffs/issue-124-global-understanding-view-normal-fix-followup-ifr-20260922.yaml`。
-- normal review verdictは実装担当では変更しない。mergeしない。
+- technical implementation HEAD: `cd0f2a288e762d8d2406e78a6ca3bacea03bbdc8`。normal fix verification R2 record HEAD / administrative parent: `b157496afb25141e24170209d224e8d7c01a5300`。
+- IFR-001 / High: **normal closed**。stopped body access=0、running→stopped後のprior row/progress/open target保持、source/public STOP runtime regressionをnormal reviewerが確認済み。independent limited closure待ち。
+- IFR-003 / High: **normal closed**。actual T305 source + VS Code runtime/provider regressionでactive sibling=`folder`、running siblingのみ`loading~spin`を確認済み。independent limited closure待ち。
+- IFR-004 / Medium: **normal closed**。actual PR source + runtime/provider regressionで非diff path-only rowはvisible、target/commandなしを確認済み。independent limited closure待ち。
+- IFR-005 / Medium: **normal closed**。10,000-file source budget + `source-path-canonicalize` abort regressionでstale file projectionなしを確認済み。independent limited closure待ち。
+- IFR-002 / Low: **final metadata syncを実施**。このtracking更新と、publication後のPR body更新でnormal product closure状態へ同期する。製品コード・test・design・workflow変更なし。
+- prior implementation evidence: T505 26/26、T610 86/86、Global performance focused 6/6、`npm run test:t607` 89/92（既知baseline 3件のみ）、build/lint/contracts/architecture正負Green、default `npm test` exit 0。
+- administrative parent `b157496...` のexact-head CIは run `35726182548` / CI #4656 **success**。artifact `review-range-user-validation-0.1.55-pre+b157496` / id `10692528906`、artifact head SHA一致。
+- 今回はrecord-only syncのためTDDはnot applicable。publication後の新HEADにCI runが存在する場合だけそのrunをPR metadataへ記録し、存在しなければCI未実施として扱う。
+- report: `reports/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.md`。
+- handoff: `handoffs/issue-124-global-understanding-view-ifr002-final-metadata-sync-20260922.yaml`。
+- normal review verdictはIFR-002を同じnormal reviewerがcloseするまでfailのまま。closure後は各findingを発行したindependent reviewerへ限定closure。mergeしない。
 
-| 単位 | 状態 | 変更範囲 | 再verification条件 |
+| 単位 | 状態 | 変更範囲 | 次の条件 |
 | --- | --- | --- | --- |
-| I124-IFR-001 | 実装・required fixture完了 / normal再verification待ち | candidate-aware body filter + current-generation accepted scope retention | stopped body access=0、running→stopped後もprior row/progress/target保持、actual STOP runtime Green |
-| I124-IFR-002 | normal closure後のfinal sync待ち | task ledgerとPR summary | IFR-001/003/004/005 normal closure後にactual final stateへ同期 |
-| I124-IFR-003 | required fixture完了 / normal再verification待ち | actual source + runtime/provider spinner | active側spinnerなし、running側だけloading~spin |
-| I124-IFR-004 | required fixture完了 / normal再verification待ち | actual PR source + runtime/provider | unchanged path-only row visible、targetなし、commandなし |
-| I124-IFR-005 | required fixture完了 / normal再verification待ち | source-path abort stale-publication fence | source-path canonicalize abortでstale file projectionなし |
-| I124-FINAL | normal再verification待ち | normal closure後にIFR-002 final sync、その後各independent reviewer限定closure | normal closure + final metadata sync + independent closure |
+| I124-IFR-001 | normal closed / independent limited closure待ち | candidate-aware body filter + current-generation accepted scope retention | 発行元independent reviewerで限定closure |
+| I124-IFR-002 | final metadata sync実施 / normal限定closure待ち | task ledger + PR summaryのみ | 同じnormal reviewerがrecord deltaを確認してclose |
+| I124-IFR-003 | normal closed / independent limited closure待ち | actual source + runtime/provider spinner | 発行元independent reviewerで限定closure |
+| I124-IFR-004 | normal closed / independent limited closure待ち | actual PR source + runtime/provider | 発行元independent reviewerで限定closure |
+| I124-IFR-005 | normal closed / independent limited closure待ち | source-path abort stale-publication fence | 発行元independent reviewerで限定closure |
+| I124-FINAL | IFR-002 normal closure待ち | normal metadata closure後にindependent limited closure | IFR-002 close + independent closure、mergeは別途利用者判断 |
 
 ## Issue #116 Current Context / PR進捗更新の遅延（2026-09-07）
 
