@@ -1,86 +1,167 @@
 # Review Range Tracker
 
-VS Code で、確認済みにした行範囲を context ごとに記録・表示する拡張機能です。動作には **VS Code 1.125.0 以上**が必要です。
+Review Range Tracker は、VS Code 上で「どの行まで確認したか」を記録し、コードレビューやコード理解の進捗を見えるようにする拡張機能です。
 
-## 現状できること
+確認済み状態は現在の PR / branch / workspace などの **Context** と、repository 全体で共有する **Global** の両方へ保存されます。VS Code 1.125.0 以上が必要です。
 
-現在配布している VSIX から利用できる機能は次のとおりです。
+## できること
 
-- カーソル行、単一選択、複数選択の行を確認済みにしたり、確認済みを解除したりできます。重複・隣接する選択範囲はまとめて扱います。
-- ファイル全体を確認済みにする、または全解除する操作があります。どちらも実行前に確認ダイアログを表示します。
-- 確認操作と解除操作は、現在の context と repository 単位の Global 状態へ atomic に反映されます。
-- 確認済み行をテーマ対応のグレー背景で表示します。ガターアイコンと Overview Ruler の表示は設定で切り替えられます。
-- hover で現在の context、確認日時、Global 状態を確認できます。
-- Git working tree 内のファイルは、workspace 内外を問わず branch または detached HEAD の context として扱います。
-- Git の HEAD や branch が変化した場合は、commit 間の差分から未変更行を保守的に引き継ぎます。一意な rename・move は同じファイルとして追従し、変更行、曖昧な対応、取得できない証拠は未確認にします。
-- Git 管理外の workspace ファイルは、圧縮 snapshot と行差分を使って再起動後も確認済み範囲を追従します。snapshot の欠損、破損、期限切れ、曖昧な対応では未確認にします。
-- Git 管理外で workspace 外のファイルは external-file context として保存します。
-- UNC 共有上のファイルも、VS Code から開ける場合は server authority を含む URI で識別します。
-- 状態は owner に応じた VS Code 拡張保存領域に保存され、VS Code を再起動した後も復元されます。
-- 確認・解除、context 作成、Git revision mapping の履歴を JSON Lines 形式で保存します。
-- Activity Bar の **Review Range** から **Current Context** View を開き、現在の PR、branch、または workspace context を確認できます。
-- Current Context View と Status Bar は同じ context を表示します。View の操作から再計算や候補選択を行うと、通常エディタの確認操作と装飾にも選択結果が反映されます。保存済み PR が現在の repository/HEAD に一致する場合は PR context を候補として扱います。
-- **Review Contexts** View では、現在の PR/branch、保存済み open・closed・merged PR、workspace context を並列表示できます。PR の再検出、GitHub 再接続、cache 更新、PR layer 切替、表示だけの削除、進捗確認、PR diff の表示を行えます。
-- Review Contexts から開く PR diff は通常の review diff と同じ canonical virtual document を使用し、original・modified 両側の確認・解除操作と永続状態を共有します。
+- 選択した行、カーソル行、ファイル全体を確認済み / 未確認にできます。
+- 確認済み行をエディタ上でグレー表示し、ガターや Overview Ruler にも表示できます。
+- PR の変更行について、ファイルごとの確認進捗を **PR Progress** で確認できます。
+- repository やフォルダーの理解状況を **Global Understanding** で確認できます。
+- PR / branch / workspace ごとの確認状態を **Review Contexts** で切り替えて管理できます。
+- Git の HEAD 変更やファイル編集後も、変更されていない行は可能な範囲で確認済み状態を引き継ぎます。
+- Git 管理外のファイルや Remote / UNC 上のファイルにも対応します。
 
-現在の実装では、diff editor の仮想文書・両側操作、GitHub PR 検出、PR 差分取得、PR context の永続管理と revision 更新、PR 進捗計算、PR Progress Tree、Review Contexts、Global 理解率計算、失敗分類・bounded retry・privacy-safe Output 診断が production runtime へ接続されています。T607（PR #80）の attestation HEAD `6b5cad916eda37eec7e241b34751c93667c66bc2` は exact `pull_request` CI run `32447060823` / job `96668498820` で全Node/focused/Git/Mock stageをT607まで通過後、最終VS Code Extension Hostのrestart decoration assertion 1件で失敗し、無効かつ再利用不可になりました。test modeはqueued visible-editor eventを含むbounded decoration generationのidle drainをawaitしてからrestored stateを検査します。T607 suite 80/80、build、compile、static gatesはpassです。local focused VS Hostはprerequisiteのmark command timeoutでrestore phase未到達、新しいattestationとexact-head CIはpending/held、Markdown wording toolingはrepository wiring不在のためunsupportedです。
+### 全体像
 
-## インストール方法
+```mermaid
+flowchart LR
+    E["通常エディタ / PR diff"] --> C["確認済みにする / 解除する"]
+    C --> CTX["Current Context の確認状態"]
+    C --> G["Global の確認状態"]
 
-この拡張機能は Marketplace ではなく VSIX で配布します。
+    CTX --> D["エディタ装飾"]
+    G --> D
+    CTX --> P["PR Progress"]
+    G --> U["Global Understanding"]
 
-1. GitHub Releases の最新 Release から、その version に対応する `review-range-tracker-<version>.vsix` をダウンロードします。初回 Release の例は `0.0.1-pre` と `review-range-tracker-0.0.1-pre.vsix` です。
-2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選んでダウンロードしたファイルを指定します。
+    R["Review Contexts"] --> CTX
+    R --> P
+```
 
-pull request の検証では、PR の current HEAD と `head_sha` が一致する成功済み CI run の `review-range-user-validation-<version>` artifact を使用します。`<version>` は分岐元 main の公開版と PR HEAD の先頭7桁を組み合わせた値です（例: `0.1.52-pre+abcdef0`）。artifact には `review-range-tracker-<version>.vsix`、同じ版名の tracked source ZIP、解決元の版・分岐点・HEAD を記録した `version.json` を含めます。VSIX 内部の版番号も同じ値です。VSIX をダウンロードして、上記と同じ手順でインストールしてください。解決規則とソース配置は [source layout / CI VSIX design](doc/design/source-layout-and-ci-vsix-version.md) を参照してください。
+## インストール
 
-CLI を使う場合は、次を実行します。
+Marketplace ではなく VSIX で配布しています。
+
+1. GitHub Releases から最新 Release の `review-range-tracker-<version>.vsix` をダウンロードします。
+2. VS Code の拡張機能ビューで `...` を開き、**VSIX からのインストール...** を選びます。
+3. ダウンロードした VSIX を指定します。
+
+CLI からインストールする場合は次を実行します。
 
 ```powershell
 code --install-extension review-range-tracker-<version>.vsix
 ```
 
-更新時も、新しい Release asset をダウンロードして再インストールしてください。
+更新時も、新しい VSIX を再インストールしてください。
 
-## 使い方
+## 基本的な使い方
 
-1. ローカル、Remote、または UNC 上の通常ファイルをエディタで開きます。workspace folder を開いていない場合や、その外側のファイルでも利用できます。
-2. 対象行を選択するか、対象行にカーソルを置きます。
-3. 右クリックメニューまたはコマンドパレットで、`Review Range: 選択範囲を確認済みにする` または `Review Range: 選択範囲の確認済みを解除する` を実行します。
-4. ファイル全体を対象にするには、`Review Range: ファイル全体を確認済みにする` または `Review Range: ファイル全体の確認済みを解除する` を実行し、確認ダイアログを承認します。
-5. 現在の context は、Activity Bar の **Review Range** にある **Current Context** View または Status Bar で確認します。候補を選び直す場合は View の選択操作、最新状態を取り直す場合は再計算操作を使います。
-6. PR context の一覧・進捗・layer・cache・diff を操作する場合は **Review Contexts** View を使います。現在の branch に対応する PR を取り直す場合は `PRを再検出`、認証状態を含めて接続し直す場合は `GitHubへ再接続` を使います。
+1. VS Code で対象ファイルを開きます。
+2. 確認した行を選択するか、対象行にカーソルを置きます。
+3. 右クリックメニューまたはコマンドパレットから **Review Range: 選択範囲を確認済みにする** を実行します。
+4. 解除する場合は **Review Range: 選択範囲の確認済みを解除する** を実行します。
+5. ファイル全体を対象にする場合は、ファイル全体の確認 / 解除コマンドを使用します。実行前に確認ダイアログが表示されます。
+6. Activity Bar の **Review Range** から、Context、PR 進捗、Global 理解率を確認します。
 
-Git working tree 内では、ファイルの親ディレクトリから repository root を検出します。Git 管理下かどうかを先に判定し、workspace membership は非 Git 時の保存先選択にだけ使用します。
+複数 selection がある場合はまとめて処理され、重複・隣接する範囲は正規化されます。
 
-## 現在の制限
+## 4つの View
 
-以下のタスク ID は [`tasks/tasks-status.md`](tasks/tasks-status.md) の定義を指します。複数タスクを記載している項目は、最後のタスクまで完了した時点を解消条件とします。
+| View | 役割 |
+| --- | --- |
+| **Current Context** | 現在選択されている PR / branch / workspace context を表示します。再計算や context の選び直しもここから行えます。 |
+| **PR Progress** | 選択中 PR の変更ファイルと確認進捗を表示します。ファイルから PR diff を開くほか、working tree 上の実ファイルを開くこともできます。 |
+| **Global Understanding** | repository / folder 単位の理解状況を表示します。folder scope は開始・停止・再開できます。 |
+| **Review Contexts** | 現在の PR / branch、保存済み open / closed / merged PR、workspace context を管理します。PR 再検出、GitHub 再接続、cache 更新、layer 切替、diff 表示などを行えます。 |
 
-- 確認・解除の4コマンドは、通常エディタと canonical PR diff で使用できます。選択中の保存済み PR context は通常エディタの確認操作と装飾にも反映されます。GitHub 未認証・401/403/404/429・network 断・patch 欠落・複数 PR 候補・closed PR の統合試験は T406で完了し、PR #71からmerge commit `96057f9e`でmainへ統合済みです。untitled editorでは実行できません。**untitled editor対応は初期版の現行タスク範囲外で、解消予定タスクはありません。**
-- Activity Bar、Current Context View、Status Bar、PR Progress Tree、Global Understanding View、Review Contexts View は runtime へ接続済みです。通常エディタの変更追従は、選択中の保存済み PR を含む context と owner-wide Global に同期し、再起動後も復元します。GitHub PR の障害系・複数候補・closed PR の統合受け入れは T406で完了し、PR #71からmainへ統合済みです。
-- Git、GitHub、storage の失敗は確認済み表示を成功扱いしません。再試行はnetwork、rate-limit、Git timeoutの一時的な read/refresh 障害だけに最大3回で適用され、Git non-zero/corruption/safe.directory、認証、validation、stale、永続保存失敗は再試行しません。失敗時は Review Range Output に単一行のredacted診断を残し、Current Context、PR Progress、Global、Review Contexts は不確実な結果を採用しません。
-- 履歴は保存しますが、閲覧・検索・export 用の UI は未実装です。**履歴UIは初期版の現行タスク範囲外で、解消予定タスクはありません。`T603`はschema migrationと破損回復、`T604`は複数window競合とatomic history appendを扱いますが、履歴UIは追加しません。**
-- multi-root workspaceでは最長一致する URI root にdocumentを所属させ、rootごとに非Git state、history、snapshot、lock、cleanupを分離します。Remote SSH、Dev Containers、Codespaces相当のremote authorityもidentityへ含め、Git・file操作はworkspace側Extension Hostで実行します。Remoteサービス自体を起動するnetwork E2Eと初期版全体の最終受け入れは`T608`の対象です。
-- `reviewRange.exclude` は PR 進捗と Global 理解率で共有する除外 policy の設定です。対応UIの接続は、GitHub PR進捗が`T404`〜`T406`、Global理解率が`T505`と`T506`の完了で揃います。**除外対象のファイルでも通常エディタでは確認済みにでき、確認済み表示と状態保存も行われますが、そのファイルはPR進捗とGlobal理解率の集計対象から除外されます。**
-- UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。**これはVS Codeのセキュリティ制約であり、解消予定タスクはありません。**
+## 確認済み状態の考え方
+
+### Context と Global
+
+確認操作は、現在の Context と repository 単位の Global 状態へ一緒に反映されます。
+
+- **Context**: 「この PR / branch / workspace で確認した」という状態です。
+- **Global**: 「この repository で既に理解済み」という横断的な状態です。
+
+通常エディタでは Context と Global の両方を使って装飾します。表示上の Global layer は `reviewRange.showGlobalReviewed` で切り替えられます。
+
+### ファイルが変わった場合
+
+Git 管理下では、branch や HEAD が変わったときに commit 間の差分を使って確認済み範囲を移します。
+
+- 変更されていない行は可能な範囲で引き継ぎます。
+- 一意に判定できる rename / move は同じファイルとして追従します。
+- 変更行や対応が曖昧な行は、確認済みとは扱いません。
+
+Git 管理外の workspace ファイルでは、圧縮 snapshot と行差分を使って再起動後も追従します。snapshot が利用できない場合や対応が曖昧な場合は、保守的に未確認へ戻します。
+
+workspace 外のファイルは external-file context として保存します。Remote workspace や UNC では authority を含む URI を使って識別します。
+
+## PR をレビューする
+
+Current Context で PR context を選択すると、その選択が通常エディタの確認操作と装飾へ反映されます。Review Contexts では保存済み PR の管理や PR diff の表示を行えます。
+
+PR Progress は repository 全体ではなく、対象 PR に含まれる変更ファイルだけを集計します。ファイルを開くと、RevMem が管理する canonical PR diff を表示し、通常エディタと同じ確認状態を共有します。
+
+### PR diff の選択単位
+
+`reviewRange.prDiffSelectionMode` で、PR diff 上の確認単位を切り替えられます。
+
+| 値 | 動作 |
+| --- | --- |
+| `side` | 既定値。選択した original / modified 側だけを確認対象にします。 |
+| `block` | 選択した変更行が属する変更ブロック全体を対象にし、存在する original / modified 両側へ展開します。 |
+
+```mermaid
+flowchart LR
+    S["PR diff で変更行を選択"] --> M{"prDiffSelectionMode"}
+    M -->|"side"| A["選択した側だけ"]
+    M -->|"block"| B["変更ブロック全体"]
+    B --> O["original 側"]
+    B --> N["modified 側"]
+```
+
+`block` は RevMem が管理する PR diff の選択操作にだけ適用されます。通常エディタ、任意の VS Code diff、ファイル全体の確認 / 解除には適用されません。
+
+## Global Understanding
+
+Global Understanding は、repository や folder の「どこまで理解済みか」を確認するための View です。
+
+folder ごとに scope を開始・停止・再開できます。停止した scope は自動では再開しません。より深い folder scope を、開いたファイルに応じて自動開始したい場合は `reviewRange.globalUnderstanding.autoStartDescendants` を有効にします。
+
+PR Progress と Global Understanding は同じ除外設定 `reviewRange.exclude` を使用します。
+
+除外対象のファイルでも、通常エディタでは確認済みにして状態を保存できます。ただし、PR Progress と Global Understanding の集計には含まれません。
+
+## 保存と履歴
+
+確認状態は対象に応じた VS Code の拡張保存領域へ保存され、VS Code の再起動後も復元されます。
+
+確認 / 解除、context 作成、Git revision mapping などの履歴は JSON Lines 形式で保存します。現在、履歴を閲覧・検索・export する専用 UI はありません。
 
 ## 設定
 
-VS Code の設定で次の項目を変更できます。
-
 | 設定 | 既定値 | 内容 |
 | --- | --- | --- |
-| `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタの装飾へ重ねて表示します。 |
-| `reviewRange.ignoreWhitespaceChanges` | `false` | `true` のとき、通常エディタの空白のみの編集では確認済み範囲を無効化しません。 |
-| `reviewRange.ignoreEolChanges` | `false` | `true` のとき、通常エディタの改行コードのみの編集では確認済み範囲を無効化しません。 |
+| `reviewRange.prDiffSelectionMode` | `side` | PR diff の確認単位を `side` / `block` から選びます。 |
+| `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタへ重ねて表示します。 |
+| `reviewRange.ignoreWhitespaceChanges` | `false` | 空白だけの編集を確認済み範囲の追従で無視します。 |
+| `reviewRange.ignoreEolChanges` | `false` | 改行コードだけの編集を確認済み範囲の追従で無視します。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
-| `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
+| `reviewRange.globalUnderstanding.autoStartDescendants` | `false` | 開いたファイルより深い Global Understanding scope を自動開始します。停止済み scope は再開しません。 |
+| `reviewRange.diagnostics.detailed` | `false` | 再計算理由、処理内訳、対象ファイル名 / path などの詳細診断を Output と進捗 tooltip に表示します。 |
+| `reviewRange.exclude` | `**/.git/**`, `**/node_modules/**`, `**/bin/**`, `**/obj/**`, `**/dist/**`, `**/build/**` | PR Progress と Global Understanding の集計対象から除外する glob 配列です。 |
+| `reviewRange.maxSnapshotFileSizeBytes` | `5242880` | Git 管理外ファイルの 1 snapshot で許可する圧縮後の最大 byte 数です。 |
+
+`reviewRange.diagnostics.detailed` を有効にするとファイル名や path が診断へ出るため、機密情報を含む repository では出力内容に注意してください。
+
+## 現在の制限
+
+- untitled editor は確認対象にできません。
+- 履歴は保存されますが、専用の履歴 UI はありません。
+- binary、無効な文字 encoding、`.git` 配下、`reviewRange.exclude` の対象などは PR Progress / Global Understanding の集計対象外です。
+- UNC access は VS Code の `security.restrictUNCAccess` と `security.allowedUNCHosts` に従います。拡張機能から制限を迂回しません。
+- Git / GitHub / storage の取得や保存に失敗した場合、不確実な結果を確認済みとして採用しません。
+
+実装中タスクや既知課題の詳細は [tasks/tasks-status.md](tasks/tasks-status.md) を参照してください。
 
 ## 開発・検証
 
-Node.js 24 を使用します。依存関係を導入した後、次のコマンドで標準検証を実行できます。
+開発には Node.js 24 を使用します。
 
 ```powershell
 npm ci
@@ -93,9 +174,26 @@ npm run test:unit
 npm test
 ```
 
-VSIX を作成するには次を実行します。
+VSIX をローカルで作成する場合は次を実行します。
 
 ```powershell
 npm run package -- --pre-release --out artifacts/review-range-tracker-0.0.1-pre.vsix
 ```
 
+pull request の検証では、PR の current HEAD と `head_sha` が一致する成功済み CI run の `review-range-user-validation-<version>` artifact を使用します。
+
+artifact には次が含まれます。
+
+- `review-range-tracker-<version>.vsix`
+- 同じ version の tracked source ZIP
+- version の解決元、分岐点、HEAD を記録した `version.json`
+
+CI 用 version は、分岐元 main の公開版と PR HEAD の先頭 7 桁を組み合わせます。詳しい規則は [source layout / CI VSIX design](doc/design/source-layout-and-ci-vsix-version.md) を参照してください。
+
+## 詳細仕様
+
+- [VS Code Review Range Tracker 設計](doc/design/vscode-review-range-tracker-design.md)
+- [PR diff の確認単位切替](Design/pr-diff-selection-mode.md)
+- [Operation diagnostics / refresh scheduling](doc/design/operation-diagnostics-and-refresh-scheduling.md)
+- [Source layout / CI VSIX version](doc/design/source-layout-and-ci-vsix-version.md)
+- [タスク状況](tasks/tasks-status.md)
