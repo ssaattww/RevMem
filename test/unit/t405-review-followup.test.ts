@@ -255,5 +255,5 @@ test("R405-6/R405-9 remove the dead closed-layer setting and document connected 
   );
   assert.doesNotMatch(readme, /Global Understanding ViewとReview Contexts Viewも未接続/u);
   assert.match(readme, /Review Contexts/u);
-  assert.match(readme, /T406/u);
+  assert.match(readme, /GitHub PR の再検出/u);
 });
