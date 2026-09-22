@@ -132,6 +132,47 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     if (scopeRoot === undefined) return undefined;
     await this.folderScopes?.restore(owner.target.repositoryId, scopeRoot);
     const evidenceKey = this.activateEvidenceRevision(owner);
+    let sourcePathPending = 0;
+    const sourcePathStep = async (kind: string, checkCurrent: () => void = assertCurrent): Promise<void> => {
+      this.dependencies.accountWorkBatch?.({ kind, count: 1 });
+      sourcePathPending += 1;
+      if (sourcePathPending < 128) return;
+      sourcePathPending = 0;
+      await this.yieldControl();
+      checkCurrent();
+      this.requireActiveEvidenceKey(owner);
+    };
+    const flushSourcePath = async (checkCurrent: () => void = assertCurrent): Promise<void> => {
+      if (sourcePathPending === 0) return;
+      sourcePathPending = 0;
+      await this.yieldControl();
+      checkCurrent();
+      this.requireActiveEvidenceKey(owner);
+    };
+    const sortSourcePaths = async (values: string[], checkCurrent: () => void = assertCurrent): Promise<string[]> => {
+      if (values.length < 2) return values;
+      let source = values;
+      let target = new Array<string>(values.length);
+      for (let width = 1; width < source.length; width *= 2) {
+        for (let left = 0; left < source.length; left += width * 2) {
+          const middle = Math.min(left + width, source.length);
+          const right = Math.min(left + width * 2, source.length);
+          let first = left;
+          let second = middle;
+          for (let output = left; output < right; output += 1) {
+            if (first < middle && (second >= right || source[first]! <= source[second]!)) {
+              target[output] = source[first++]!;
+            } else {
+              target[output] = source[second++]!;
+            }
+            await sourcePathStep("source-path-sort", checkCurrent);
+          }
+        }
+        const previous = source; source = target; target = previous;
+      }
+      await flushSourcePath(checkCurrent);
+      return source;
+    };
     const activeFolders = this.folderScopes?.activeFolders(owner.target.repositoryId, scopeRoot) ?? [""];
     if (activeFolders.length === 0 && this.folderScopes !== undefined) return this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey);
     const persisted = await this.repository.loadGlobal(owner.target);
@@ -172,9 +213,15 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           : await enumerator.enumerateDirectFolders(owner.repositoryRoot, [folder], scopeSignal);
         assertScopeCurrent();
         for (const child of pathEnumeration.directDirectories ?? []) {
+          await sourcePathStep("source-path-candidate", assertScopeCurrent);
           this.folderScopes?.discoverInactive(owner.target.repositoryId, scopeRoot, child);
         }
-        const candidatePaths = new Set(pathEnumeration.includedPaths.map((value) => this.canonicalEvidencePath(value)));
+        const candidatePaths = new Set<string>();
+        for (const value of pathEnumeration.includedPaths) {
+          await sourcePathStep("source-path-canonicalize", assertScopeCurrent);
+          candidatePaths.add(this.canonicalEvidencePath(value));
+        }
+        await flushSourcePath(assertScopeCurrent);
         scopeWork.push({ folder, generation, scopeSignal, pathEnumeration, candidatePaths });
       } catch (error) {
         if (signal?.aborted === true) throw error;
@@ -195,13 +242,29 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         assertCurrent();
         const currentScopeWork = scopeWork.filter((scope) => scope.scopeSignal?.aborted !== true);
         if (currentScopeWork.length === 0) return undefined;
-        const ownerCandidatePaths = new Set(currentScopeWork.flatMap((scope) => [...scope.candidatePaths]));
+        const ownerCandidatePaths = new Set<string>();
+        for (const scope of currentScopeWork) {
+          for (const repositoryPath of scope.candidatePaths) {
+            await sourcePathStep("source-path-owner-candidate");
+            ownerCandidatePaths.add(repositoryPath);
+          }
+        }
+        await flushSourcePath();
         const captureSignals = [signal, ...currentScopeWork.map((scope) => scope.scopeSignal)]
           .filter((candidate): candidate is AbortSignal => candidate !== undefined);
         const captureSignal = captureSignals.length === 0 ? undefined : AbortSignal.any(captureSignals);
         try {
           const pullRequestHeadPaths = await this.capturePullRequestHeadFiles(owner, ownerCandidatePaths, captureSignal);
-          const captureCandidatePaths = new Set([...ownerCandidatePaths, ...pullRequestHeadPaths]);
+          const captureCandidatePaths = new Set<string>();
+          for (const repositoryPath of ownerCandidatePaths) {
+            await sourcePathStep("source-path-capture-candidate");
+            captureCandidatePaths.add(repositoryPath);
+          }
+          for (const repositoryPath of pullRequestHeadPaths) {
+            await sourcePathStep("source-path-capture-candidate");
+            captureCandidatePaths.add(repositoryPath);
+          }
+          await flushSourcePath();
           const evidenceByPath = await this.captureOpenedDocuments(owner, captureCandidatePaths, captureSignal);
           const globalState = persisted?.currentRevisionId === owner.currentRevisionId
             ? await this.projectGlobalStatePaths(persisted, captureCandidatePaths, captureSignal)
@@ -234,17 +297,25 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         const belongsDirectlyToFolder = (repositoryPath: string): boolean =>
           this.folderScopes === undefined ||
           (repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "") === folder;
-        const availablePaths = new Set(
-          [...candidatePaths, ...pullRequestHeadPaths].filter(belongsDirectlyToFolder)
-        );
+        const availablePaths = new Set<string>();
+        for (const repositoryPath of candidatePaths) {
+          await sourcePathStep("source-path-available", assertScopeCurrent);
+          if (belongsDirectlyToFolder(repositoryPath)) availablePaths.add(repositoryPath);
+        }
+        for (const repositoryPath of pullRequestHeadPaths) {
+          await sourcePathStep("source-path-available", assertScopeCurrent);
+          if (belongsDirectlyToFolder(repositoryPath)) availablePaths.add(repositoryPath);
+        }
+        await flushSourcePath(assertScopeCurrent);
         const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
         const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
         for (const [repositoryPath, evidence] of evidenceByPath) {
-          assertScopeCurrent();
+          await sourcePathStep("source-path-evidence-index", assertScopeCurrent);
           if (!availablePaths.has(repositoryPath)) continue;
           openedByPath.set(repositoryPath, evidence);
           included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
         }
+        await flushSourcePath(assertScopeCurrent);
         const source: GlobalUnderstandingFileSource = { load: async (repositoryPath, revisionId) => {
           assertScopeCurrent();
           const evidence = openedByPath.get(repositoryPath);
@@ -260,15 +331,30 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         });
         assertScopeCurrent();
         this.requireActiveEvidenceKey(owner);
-        const direct = result.progress.files.filter((file) => belongsDirectlyToFolder(file.path));
-        const reviewed = direct.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
-        const total = direct.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
+        const direct: typeof result.progress.files[number][] = [];
+        let reviewed = 0;
+        let total = 0;
+        for (const file of result.progress.files) {
+          await sourcePathStep("source-path-progress", assertScopeCurrent);
+          if (!belongsDirectlyToFolder(file.path)) continue;
+          direct.push(file);
+          reviewed += file.reviewedNonEmptyLineCount;
+          total += file.totalNonEmptyLineCount;
+        }
+        await flushSourcePath(assertScopeCurrent);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
         await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
         assertCurrent();
         this.requireActiveEvidenceKey(owner);
-        files.push(...direct);
-        for (const repositoryPath of availablePaths) discoveredFilePaths.add(repositoryPath);
+        for (const file of direct) {
+          await sourcePathStep("source-path-progress-collect", assertScopeCurrent);
+          files.push(file);
+        }
+        for (const repositoryPath of availablePaths) {
+          await sourcePathStep("source-path-discovered", assertScopeCurrent);
+          discoveredFilePaths.add(repositoryPath);
+        }
+        await flushSourcePath(assertScopeCurrent);
         excludedFileCount += pathEnumeration.excluded.length;
         prunedExcludedDirectoryCount += pathEnumeration.excludedDirectories.length;
       } catch (error) {
@@ -284,21 +370,48 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const activeFolderSet = new Set(activeFolders);
     const directFolderOf = (repositoryPath: string): string =>
       repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "";
-    const progressByPath = new Map(files.map((file) => [file.path, file] as const));
-    const previousProgressByPath = new Map(previousSnapshot?.progress.files.map((file) => [file.path, file] as const) ?? []);
-    const previousTargetByPath = new Map(previousSnapshot?.fileOpenTargets?.map((target) => [target.repositoryPath, target] as const) ?? []);
+    const progressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
+    for (const file of files) {
+      await sourcePathStep("source-path-progress-index");
+      progressByPath.set(file.path, file);
+    }
+    const previousProgressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
+    for (const file of previousSnapshot?.progress.files ?? []) {
+      await sourcePathStep("source-path-previous-progress");
+      previousProgressByPath.set(file.path, file);
+    }
+    const previousTargetByPath = new Map<string, GlobalUnderstandingFileOpenTarget>();
+    for (const target of previousSnapshot?.fileOpenTargets ?? []) {
+      await sourcePathStep("source-path-previous-target");
+      previousTargetByPath.set(target.repositoryPath, target);
+    }
     for (const repositoryPath of previousSnapshot?.discoveredFilePaths ?? []) {
+      await sourcePathStep("source-path-retained");
       if (activeFolderSet.has(directFolderOf(repositoryPath))) continue;
       discoveredFilePaths.add(repositoryPath);
       const previousProgress = previousProgressByPath.get(repositoryPath);
       if (previousProgress !== undefined) progressByPath.set(repositoryPath, previousProgress);
     }
-    const finalFiles = [...progressByPath.values()];
-    const reviewed = finalFiles.reduce((sum, file) => sum + file.reviewedNonEmptyLineCount, 0);
-    const total = finalFiles.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
-    const displayedFilePaths = [...discoveredFilePaths].sort((left, right) => left === right ? 0 : left < right ? -1 : 1);
+    await flushSourcePath();
+    const finalFiles: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
+    let reviewed = 0;
+    let total = 0;
+    for (const file of progressByPath.values()) {
+      await sourcePathStep("source-path-final-progress");
+      finalFiles.push(file);
+      reviewed += file.reviewedNonEmptyLineCount;
+      total += file.totalNonEmptyLineCount;
+    }
+    const displayedFilePaths: string[] = [];
+    for (const repositoryPath of discoveredFilePaths) {
+      await sourcePathStep("source-path-display-candidate");
+      displayedFilePaths.push(repositoryPath);
+    }
+    await flushSourcePath();
+    const sortedDisplayedFilePaths = await sortSourcePaths(displayedFilePaths);
     const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
-    for (const repositoryPath of displayedFilePaths) {
+    for (const repositoryPath of sortedDisplayedFilePaths) {
+      await sourcePathStep("source-path-open-target");
       const directFolder = directFolderOf(repositoryPath);
       const previousTarget = !activeFolderSet.has(directFolder) ? previousTargetByPath.get(repositoryPath) : undefined;
       if (previousTarget !== undefined) {
@@ -307,6 +420,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         fileOpenTargets.push(this.createFileOpenTarget(owner, repositoryPath));
       }
     }
+    await flushSourcePath();
     const folders = this.folderScopes?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path,
       state: folder.state,
@@ -317,10 +431,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
     const snapshot: GlobalUnderstandingTreeSnapshot = {
       progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: finalFiles },
-      discoveredFilePaths: displayedFilePaths,
+      discoveredFilePaths: sortedDisplayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
       openedFileCount: finalFiles.length,
-      unopenedFileCount: Math.max(0, displayedFilePaths.length - finalFiles.length),
+      unopenedFileCount: Math.max(0, sortedDisplayedFilePaths.length - finalFiles.length),
       excludedFileCount,
       prunedExcludedDirectoryCount,
       ...(folders === undefined ? {} : { folders }),

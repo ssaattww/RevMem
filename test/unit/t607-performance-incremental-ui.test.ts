@@ -234,6 +234,61 @@ test("I124-R004 bounds validation and projection work between every scheduler yi
   );
 });
 
+test("I124-IFR-005 bounds actual source path enumeration, canonicalization, sorting, and target projection", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-ifr005-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  for (let start = 0; start < 10_000; start += 250) {
+    await Promise.all(Array.from({ length: Math.min(250, 10_000 - start) }, (_, offset) =>
+      writeFile(path.join(repositoryRoot, `f-${String(start + offset).padStart(5, "0")}.ts`), "", "utf8")
+    ));
+  }
+
+  let workSinceYield = 0;
+  let maximumWorkBetweenYields = 0;
+  let repositorySortWork = 0;
+  let sourcePathWork = 0;
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    fileSystemPathSemantics: "posix",
+    accountWorkBatch: (entry) => {
+      if (entry.kind.startsWith("repository-") || entry.kind.startsWith("source-path-")) {
+        workSinceYield += entry.count;
+      }
+      if (entry.kind === "repository-sort") repositorySortWork += entry.count;
+      if (entry.kind.startsWith("source-path-")) sourcePathWork += entry.count;
+    },
+    yieldControl: () => {
+      maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+      workSinceYield = 0;
+    }
+  });
+  source.setContext({
+    context: {
+      kind: "branch",
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: "ifr005",
+      selection: { kind: "branch", repositoryId: "repo-ifr005", repositoryRoot, branchRef: "refs/heads/main" }
+    },
+    progress: undefined
+  });
+
+  const snapshot = await source.recalculate();
+  maximumWorkBetweenYields = Math.max(maximumWorkBetweenYields, workSinceYield);
+
+  assert.equal(snapshot?.discoveredFilePaths?.length, 10_000);
+  assert.ok(repositorySortWork >= 10_000, "actual enumerator sorting is included in the deterministic work accounting");
+  assert.ok(sourcePathWork >= 30_000, "source canonicalization, displayed-path sorting, and open-target projection are accounted");
+  assert.ok(
+    maximumWorkBetweenYields <= 128,
+    `all source path work between scheduler yields must stay within 128 items, observed ${maximumWorkBetweenYields}`
+  );
+});
+
 test("T607 never publishes a stale Tree stage after its generation is invalidated", async () => {
   let current = true;
   const published: number[] = [];
