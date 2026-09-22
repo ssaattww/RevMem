@@ -137,10 +137,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const persisted = await this.repository.loadGlobal(owner.target);
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
+    const previousSnapshot = this.lastSnapshotByEvidenceKey.get(evidenceKey);
     const files: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
     const discoveredFilePaths = new Set<string>();
-    let openedFileCount = 0;
-    let unopenedFileCount = 0;
     let excludedFileCount = 0;
     let prunedExcludedDirectoryCount = 0;
     const scopeWork: Array<{
@@ -265,10 +264,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         const reviewed = direct.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
         const total = direct.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+        assertCurrent();
+        this.requireActiveEvidenceKey(owner);
         files.push(...direct);
         for (const repositoryPath of availablePaths) discoveredFilePaths.add(repositoryPath);
-        openedFileCount += openedByPath.size;
-        unopenedFileCount += Math.max(0, availablePaths.size - openedByPath.size);
         excludedFileCount += pathEnumeration.excluded.length;
         prunedExcludedDirectoryCount += pathEnumeration.excludedDirectories.length;
       } catch (error) {
@@ -281,12 +281,32 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
     }
     assertCurrent();
-    const reviewed = files.reduce((total, file) => total + file.reviewedNonEmptyLineCount, 0);
-    const total = files.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
+    const activeFolderSet = new Set(activeFolders);
+    const directFolderOf = (repositoryPath: string): string =>
+      repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "";
+    const progressByPath = new Map(files.map((file) => [file.path, file] as const));
+    const previousProgressByPath = new Map(previousSnapshot?.progress.files.map((file) => [file.path, file] as const) ?? []);
+    const previousTargetByPath = new Map(previousSnapshot?.fileOpenTargets?.map((target) => [target.repositoryPath, target] as const) ?? []);
+    for (const repositoryPath of previousSnapshot?.discoveredFilePaths ?? []) {
+      if (activeFolderSet.has(directFolderOf(repositoryPath))) continue;
+      discoveredFilePaths.add(repositoryPath);
+      const previousProgress = previousProgressByPath.get(repositoryPath);
+      if (previousProgress !== undefined) progressByPath.set(repositoryPath, previousProgress);
+    }
+    const finalFiles = [...progressByPath.values()];
+    const reviewed = finalFiles.reduce((sum, file) => sum + file.reviewedNonEmptyLineCount, 0);
+    const total = finalFiles.reduce((sum, file) => sum + file.totalNonEmptyLineCount, 0);
     const displayedFilePaths = [...discoveredFilePaths].sort((left, right) => left === right ? 0 : left < right ? -1 : 1);
-    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = displayedFilePaths
-      .filter((repositoryPath) => owner.target.kind !== "pull-request" || pullRequestHeadPaths.has(repositoryPath))
-      .map((repositoryPath) => this.createFileOpenTarget(owner, repositoryPath));
+    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
+    for (const repositoryPath of displayedFilePaths) {
+      const directFolder = directFolderOf(repositoryPath);
+      const previousTarget = !activeFolderSet.has(directFolder) ? previousTargetByPath.get(repositoryPath) : undefined;
+      if (previousTarget !== undefined) {
+        fileOpenTargets.push(previousTarget);
+      } else if (owner.target.kind !== "pull-request" || pullRequestHeadPaths.has(repositoryPath)) {
+        fileOpenTargets.push(this.createFileOpenTarget(owner, repositoryPath));
+      }
+    }
     const folders = this.folderScopes?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path,
       state: folder.state,
@@ -296,11 +316,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }));
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
     const snapshot: GlobalUnderstandingTreeSnapshot = {
-      progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files },
+      progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: finalFiles },
       discoveredFilePaths: displayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
-      openedFileCount,
-      unopenedFileCount,
+      openedFileCount: finalFiles.length,
+      unopenedFileCount: Math.max(0, displayedFilePaths.length - finalFiles.length),
       excludedFileCount,
       prunedExcludedDirectoryCount,
       ...(folders === undefined ? {} : { folders }),

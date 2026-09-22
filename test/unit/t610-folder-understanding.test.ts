@@ -533,6 +533,78 @@ test("T610-NR-008 captures owner evidence once and projects each active folder w
   assert.equal(snapshot?.repositoryPartial, true, "a discovered inactive child keeps repository summary and status partial");
 });
 
+test("I124-IFR-001 retains stopped sibling file rows and targets without recalculating that scope", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-ifr001-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  let afterStop = false;
+  let loadedLineWorkAfterStop = 0;
+  const lines = Array.from({ length: 128 }, (_, index) => index);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["one", "two"].map((folder) => ({
+      path: `${folder}/a.ts`, revisionId: "ifr001", lineCount: 128,
+      nonEmptyLines: lines, contentHash: folder, cacheKey: folder
+    })),
+    accountWorkBatch: (entry) => {
+      if (afterStop && entry.kind === "copied-loaded-non-empty-line") loadedLineWorkAfterStop += entry.count;
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "ifr001", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+  const before = await source.recalculate();
+  assert.deepEqual(before?.discoveredFilePaths, ["one/a.ts", "two/a.ts"]);
+  const previousTarget = before?.fileOpenTargets?.find((target) => target.repositoryPath === "one/a.ts");
+  assert.ok(previousTarget);
+
+  await source.stopFolder("one");
+  afterStop = true;
+  const after = await source.recalculate();
+
+  assert.equal(after?.folders?.find((folder) => folder.path === "one")?.state, "stopped");
+  assert.deepEqual(after?.discoveredFilePaths, ["one/a.ts", "two/a.ts"]);
+  assert.deepEqual(after?.progress.files.map((file) => file.path).sort(), ["one/a.ts", "two/a.ts"]);
+  assert.deepEqual(after?.fileOpenTargets?.find((target) => target.repositoryPath === "one/a.ts"), previousTarget);
+  assert.equal(loadedLineWorkAfterStop, 128, "only the still-active sibling is recalculated after stopping one");
+});
+
+test("I124-IFR-003 publishes an accepted sibling as active while another sibling remains running", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-ifr003-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["one", "two"].map((folder) => ({
+      path: `${folder}/a.ts`, revisionId: "ifr003", lineCount: 2,
+      nonEmptyLines: [0], contentHash: folder, cacheKey: folder
+    })),
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "ifr003", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+  await source.recalculate(undefined, (snapshot) => { published.push(snapshot); });
+
+  const transition = published.find((snapshot) =>
+    snapshot.folders?.find((folder) => folder.path === "one")?.state === "active" &&
+    snapshot.folders?.find((folder) => folder.path === "two")?.state === "running"
+  );
+  assert.ok(transition, "accepted first sibling is published active before the longer sibling finishes");
+});
+
 test("T610-NR-007 marks every current scope failed when owner-shared capture fails", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-shared-failure-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
