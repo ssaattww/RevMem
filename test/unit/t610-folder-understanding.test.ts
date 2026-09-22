@@ -14,6 +14,33 @@ const loadWithVscode = <T>(moduleName: string, vscode: object): T => {
   const loaded = runtimeRequire(modulePath) as T; loader._load = original; return loaded;
 };
 
+const globalRuntimeHarness = () => {
+  const commands = new Map<string, (...args: unknown[]) => unknown>();
+  let provider: {
+    getChildren(node?: unknown): readonly { readonly kind: string; readonly path?: string; readonly state?: string; readonly openTarget?: unknown }[];
+    getTreeItem(node: unknown): { readonly iconPath?: unknown; readonly command?: unknown; readonly tooltip?: unknown };
+  } | undefined;
+  const disposable = { dispose(): void {} };
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class { public description: unknown; public tooltip: unknown; public iconPath: unknown; public contextValue: unknown; public command: unknown; public constructor(...args: unknown[]) { void args; } },
+    ThemeIcon: class { public constructor(public readonly id: string) {} },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    StatusBarAlignment: { Left: 1 },
+    window: {
+      createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
+      createOutputChannel: () => ({ appendLine(): void {}, show(): void {}, dispose(): void {} }),
+      createTreeView: (_id: string, options: { treeDataProvider: typeof provider }) => {
+        provider = options.treeDataProvider;
+        return { onDidChangeSelection: () => disposable, reveal: async () => undefined, dispose(): void {} };
+      }
+    },
+    commands: { registerCommand: (id: string, callback: (...args: unknown[]) => unknown) => { commands.set(id, callback); return disposable; } },
+    workspace: { onDidChangeConfiguration: () => disposable }
+  };
+  return { vscode, commands, provider: () => provider! };
+};
+
 import {
   FolderUnderstandingScopeController
 } from "../../src/application/global-understanding/folder-understanding-scope-controller";
@@ -21,6 +48,7 @@ import { ReviewFileExclusionPolicyService } from "../../src/application/file-exc
 import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-composition";
+import { createGlobalUnderstandingOpenDocumentReader } from "../../src/composition/global-understanding/global-understanding-open-document-reader";
 import { T505GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-source";
 import type { GlobalUnderstandingTreeSnapshot } from "../../src/ui/global-understanding/global-understanding-ui-model";
 import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/operation-feedback";
@@ -533,6 +561,186 @@ test("T610-NR-008 captures owner evidence once and projects each active folder w
   assert.equal(snapshot?.repositoryPartial, true, "a discovered inactive child keeps repository summary and status partial");
 });
 
+test("stopped sibling open-document bodies are filtered before Global evidence materialization", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-stopped-body-filter-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  const bodyAccesses = new Map<string, number>([["one", 0], ["two", 0]]);
+  const documents = ["one", "two"].map((folder) => ({
+    isClosed: false,
+    uri: {
+      scheme: "file",
+      fsPath: path.join(root, folder, "a.ts"),
+      toString: () => `file:///${folder}/a.ts`
+    },
+    version: 1,
+    lineCount: 2,
+    getText: () => {
+      bodyAccesses.set(folder, (bodyAccesses.get(folder) ?? 0) + 1);
+      return `${folder}\n`;
+    },
+    lineAt: (line: number) => {
+      bodyAccesses.set(folder, (bodyAccesses.get(folder) ?? 0) + 1);
+      return { text: line === 0 ? folder : "" };
+    }
+  }));
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => documents,
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments,
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "body-filter", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+  await source.recalculate();
+
+  await source.stopFolder("one");
+  bodyAccesses.set("one", 0); bodyAccesses.set("two", 0);
+  const after = await source.recalculate();
+
+  assert.equal(after?.folders?.find((folder) => folder.path === "one")?.state, "stopped");
+  assert.equal(bodyAccesses.get("one"), 0, "a stopped non-candidate document must be rejected before getText/lineAt");
+  assert.ok((bodyAccesses.get("two") ?? 0) > 0, "the still-active candidate remains materialized");
+});
+
+test("a sibling stopped from its running publication retains prior file evidence after the refresh completes", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-mid-refresh-stop-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["one", "two"].map((folder) => ({
+      path: `${folder}/a.ts`, revisionId: "mid-stop", lineCount: 2,
+      nonEmptyLines: [0], contentHash: folder, cacheKey: folder
+    })),
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "mid-stop", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+  const before = await source.recalculate();
+  const previousTarget = before?.fileOpenTargets?.find((target) => target.repositoryPath === "one/a.ts");
+  assert.ok(previousTarget);
+
+  let stopped = false;
+  const after = await source.recalculate(undefined, async (snapshot) => {
+    if (stopped) return;
+    if (snapshot.folders?.find((folder) => folder.path === "one")?.state !== "running") return;
+    stopped = true;
+    await source.stopFolder("one");
+  });
+
+  assert.equal(stopped, true);
+  assert.equal(after?.folders?.find((folder) => folder.path === "one")?.state, "stopped");
+  assert.deepEqual(after?.discoveredFilePaths, ["one/a.ts", "two/a.ts"]);
+  assert.deepEqual(after?.progress.files.map((file) => file.path).sort(), ["one/a.ts", "two/a.ts"]);
+  assert.deepEqual(after?.fileOpenTargets?.find((target) => target.repositoryPath === "one/a.ts"), previousTarget);
+});
+
+test("actual Global runtime stop command retains a running sibling file row and open target", async (t) => {
+  setActiveOperationFeedback(undefined);
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-running-stop-runtime-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  const harness = globalRuntimeHarness();
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", harness.vscode
+  );
+  let blockYield = false;
+  let releaseYield: (() => void) | undefined;
+  let reachedYield: (() => void) | undefined;
+  let blockedYield = Promise.resolve();
+  const armYieldBlock = (): void => {
+    blockYield = true;
+    blockedYield = new Promise<void>((resolve) => { reachedYield = resolve; });
+  };
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["one", "two"].map((folder) => ({
+      path: `${folder}/a.ts`, revisionId: "runtime-stop", lineCount: 2,
+      nonEmptyLines: [0], contentHash: folder, cacheKey: folder
+    })),
+    yieldControl: async () => {
+      if (!blockYield) return;
+      blockYield = false;
+      reachedYield?.();
+      await new Promise<void>((resolve) => { releaseYield = resolve; });
+    }
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "runtime-stop", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source,
+    readGlobalLayerEnabled: () => false,
+    writeGlobalLayerEnabled: async () => undefined,
+    refreshDecorations: async () => undefined,
+    openFile: async () => undefined,
+    reportError: async () => undefined
+  });
+  await registered.refresh();
+  const initialProvider = harness.provider();
+  const initialFilesGroup = initialProvider.getChildren().find((node) => node.kind === "files-group");
+  assert.ok(initialFilesGroup);
+  const initialOne = initialProvider.getChildren(initialFilesGroup).find((node) => node.kind === "file" && node.path === "one/a.ts");
+  assert.ok(initialOne?.openTarget);
+  const previousTarget = initialOne.openTarget;
+
+  armYieldBlock();
+  const inFlight = registered.refresh();
+  await blockedYield;
+  const provider = harness.provider();
+  const rootFolder = provider.getChildren().find((node) => node.kind === "folder" && node.path === "");
+  assert.ok(rootFolder);
+  const runningOne = provider.getChildren(rootFolder).find((node) => node.kind === "folder" && node.path === "one");
+  assert.equal(runningOne?.state, "running");
+  assert.equal((provider.getTreeItem(runningOne!).command as { title?: string } | undefined)?.title, "停止");
+
+  await harness.commands.get(runtime.STOP_GLOBAL_UNDERSTANDING_FOLDER_COMMAND_ID)!(runningOne);
+  releaseYield?.();
+  await assert.rejects(
+    inFlight,
+    (error: unknown) => error instanceof OperationCancelledError,
+    "the superseded running refresh terminates as typed cancellation"
+  );
+
+  const finalProvider = harness.provider();
+  const finalRoot = finalProvider.getChildren().find((node) => node.kind === "folder" && node.path === "");
+  assert.ok(finalRoot);
+  assert.equal(finalProvider.getChildren(finalRoot).find((node) => node.kind === "folder" && node.path === "one")?.state, "stopped");
+  const finalFilesGroup = finalProvider.getChildren().find((node) => node.kind === "files-group");
+  assert.ok(finalFilesGroup);
+  const finalRows = finalProvider.getChildren(finalFilesGroup);
+  const finalOne = finalRows.find((node) => node.kind === "file" && node.path === "one/a.ts");
+  assert.ok(finalOne);
+  assert.deepEqual(finalOne.openTarget, previousTarget);
+  assert.ok(finalRows.some((node) => node.kind === "file" && node.path === "two/a.ts"));
+
+  registered.dispose();
+  setActiveOperationFeedback(undefined);
+});
+
 test("I124-IFR-001 retains stopped sibling file rows and targets without recalculating that scope", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-i124-ifr001-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -603,6 +811,134 @@ test("I124-IFR-003 publishes an accepted sibling as active while another sibling
     snapshot.folders?.find((folder) => folder.path === "two")?.state === "running"
   );
   assert.ok(transition, "accepted first sibling is published active before the longer sibling finishes");
+});
+
+test("actual Global runtime shows a spinner only on the sibling that is still running", async (t) => {
+  setActiveOperationFeedback(undefined);
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-sibling-spinner-runtime-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await Promise.all(["one", "two"].map(async (folder) => {
+    await mkdir(path.join(root, folder), { recursive: true });
+    await writeFile(path.join(root, folder, "a.ts"), `${folder}\n`, "utf8");
+  }));
+  const harness = globalRuntimeHarness();
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", harness.vscode
+  );
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => ["one", "two"].map((folder) => ({
+      path: `${folder}/a.ts`, revisionId: "spinner-runtime", lineCount: 2,
+      nonEmptyLines: [0], contentHash: folder, cacheKey: folder
+    })),
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "spinner-runtime", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(path.join(root, "one", "a.ts"));
+  await source.observeFileOpen(path.join(root, "two", "a.ts"));
+
+  const observed: Array<{ oneState?: string; oneIcon?: string; twoState?: string; twoIcon?: string }> = [];
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source,
+    readGlobalLayerEnabled: () => false,
+    writeGlobalLayerEnabled: async () => undefined,
+    refreshDecorations: async () => undefined,
+    openFile: async () => undefined,
+    reportError: async () => undefined,
+    onPresentationPublishedForTest: () => {
+      const provider = harness.provider();
+      const rootFolder = provider.getChildren().find((node) => node.kind === "folder" && node.path === "");
+      if (rootFolder === undefined) return;
+      const one = provider.getChildren(rootFolder).find((node) => node.kind === "folder" && node.path === "one");
+      const two = provider.getChildren(rootFolder).find((node) => node.kind === "folder" && node.path === "two");
+      observed.push({
+        oneState: one?.state,
+        oneIcon: one === undefined ? undefined : (provider.getTreeItem(one).iconPath as { id?: string } | undefined)?.id,
+        twoState: two?.state,
+        twoIcon: two === undefined ? undefined : (provider.getTreeItem(two).iconPath as { id?: string } | undefined)?.id
+      });
+    }
+  });
+  await registered.refresh();
+
+  assert.ok(observed.some((entry) =>
+    entry.oneState === "active" && entry.oneIcon === "folder" &&
+    entry.twoState === "running" && entry.twoIcon === "loading~spin"
+  ));
+  registered.dispose();
+  setActiveOperationFeedback(undefined);
+});
+
+test("actual PR Global composition keeps an unchanged path-only row visible without an open command", async (t) => {
+  setActiveOperationFeedback(undefined);
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-pr-path-only-runtime-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, "changed.ts"), "changed\n", "utf8");
+  await writeFile(path.join(root, "unchanged.ts"), "unchanged\n", "utf8");
+  const harness = globalRuntimeHarness();
+  const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>(
+    "../../src/ui/global-understanding/vscode-global-understanding-runtime.js", harness.vscode
+  );
+  const revisionId = "b".repeat(40);
+  const contextId = "github-pr:repo#124";
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    readPullRequestHeadFiles: async (_owner, candidatePaths) => {
+      assert.equal(candidatePaths.has("changed.ts"), true);
+      assert.equal(candidatePaths.has("unchanged.ts"), true);
+      return [{ path: "changed.ts", revisionId, content: "changed\n" }];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({
+    context: {
+      kind: "pull-request",
+      label: "#124",
+      detail: "PR path-only runtime",
+      baseRevision: "a".repeat(40),
+      headRevision: revisionId,
+      selection: {
+        kind: "pull-request",
+        repositoryId: "repo",
+        repositoryRoot: root,
+        contextId,
+        pullRequestNumber: 124,
+        headRevision: revisionId
+      }
+    },
+    progress: undefined
+  });
+  await source.observeFileOpen(path.join(root, "changed.ts"));
+
+  const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
+    source,
+    readGlobalLayerEnabled: () => false,
+    writeGlobalLayerEnabled: async () => undefined,
+    refreshDecorations: async () => undefined,
+    openFile: async () => undefined,
+    reportError: async () => undefined
+  });
+  await registered.refresh();
+
+  const provider = harness.provider();
+  const filesGroup = provider.getChildren().find((node) => node.kind === "files-group");
+  assert.ok(filesGroup);
+  const rows = provider.getChildren(filesGroup);
+  const changed = rows.find((node) => node.kind === "file" && node.path === "changed.ts");
+  const unchanged = rows.find((node) => node.kind === "file" && node.path === "unchanged.ts");
+  assert.ok(changed); assert.ok(unchanged);
+  assert.equal((changed.openTarget as { kind?: string } | undefined)?.kind, "pull-request-head");
+  assert.equal(unchanged.openTarget, undefined);
+  assert.equal((provider.getTreeItem(changed).command as { title?: string } | undefined)?.title, "Global理解率のファイルを開く");
+  assert.equal(provider.getTreeItem(unchanged).command, undefined);
+
+  registered.dispose();
+  setActiveOperationFeedback(undefined);
 });
 
 test("T610-NR-007 marks every current scope failed when owner-shared capture fails", async (t) => {

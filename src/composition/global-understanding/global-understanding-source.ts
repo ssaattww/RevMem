@@ -35,8 +35,14 @@ export interface T505GlobalUnderstandingSourceDependencies {
   readonly storageUris: ReviewStateStorageUris;
   /** Policy applied before any file or directory evidence is read. */
   readonly exclusionPolicy: T505GlobalUnderstandingExclusionPolicy;
-  /** Reads already-open working-tree evidence for the selected owner. */
-  readonly readOpenDocuments?: (owner: Readonly<T505GlobalUnderstandingOwner>) => readonly LoadedGlobalUnderstandingFile[];
+  /**
+   * Reads already-open working-tree evidence for the selected owner.
+   * The candidate predicate must be applied before materializing document bodies.
+   */
+  readonly readOpenDocuments?: (
+    owner: Readonly<T505GlobalUnderstandingOwner>,
+    isCandidatePath?: (repositoryPath: string) => boolean
+  ) => readonly LoadedGlobalUnderstandingFile[];
   /** Reads immutable pull-request HEAD evidence for the supplied candidate paths. */
   readonly readPullRequestHeadFiles?: (
     owner: Readonly<T505GlobalUnderstandingOwner>,
@@ -181,6 +187,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const previousSnapshot = this.lastSnapshotByEvidenceKey.get(evidenceKey);
     const files: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
     const discoveredFilePaths = new Set<string>();
+    const acceptedFolders = new Set<string>();
     let excludedFileCount = 0;
     let prunedExcludedDirectoryCount = 0;
     const scopeWork: Array<{
@@ -343,6 +350,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         }
         await flushSourcePath(assertScopeCurrent);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
+        acceptedFolders.add(folder);
         await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
         assertCurrent();
         this.requireActiveEvidenceKey(owner);
@@ -367,7 +375,6 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       }
     }
     assertCurrent();
-    const activeFolderSet = new Set(activeFolders);
     const directFolderOf = (repositoryPath: string): string =>
       repositoryPath.includes("/") ? repositoryPath.slice(0, repositoryPath.lastIndexOf("/")) : "";
     const progressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
@@ -387,7 +394,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }
     for (const repositoryPath of previousSnapshot?.discoveredFilePaths ?? []) {
       await sourcePathStep("source-path-retained");
-      if (activeFolderSet.has(directFolderOf(repositoryPath))) continue;
+      if (acceptedFolders.has(directFolderOf(repositoryPath))) continue;
       discoveredFilePaths.add(repositoryPath);
       const previousProgress = previousProgressByPath.get(repositoryPath);
       if (previousProgress !== undefined) progressByPath.set(repositoryPath, previousProgress);
@@ -413,7 +420,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     for (const repositoryPath of sortedDisplayedFilePaths) {
       await sourcePathStep("source-path-open-target");
       const directFolder = directFolderOf(repositoryPath);
-      const previousTarget = !activeFolderSet.has(directFolder) ? previousTargetByPath.get(repositoryPath) : undefined;
+      const previousTarget = !acceptedFolders.has(directFolder) ? previousTargetByPath.get(repositoryPath) : undefined;
       if (previousTarget !== undefined) {
         fileOpenTargets.push(previousTarget);
       } else if (owner.target.kind !== "pull-request" || pullRequestHeadPaths.has(repositoryPath)) {
@@ -710,7 +717,9 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     const retained = new Map(this.retainedOpenedEvidence(owner));
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
     let pending = 0;
-    for (const snapshot of this.dependencies.readOpenDocuments?.(owner) ?? []) {
+    const isCandidatePath = (repositoryPath: string): boolean =>
+      candidatePaths.has(this.canonicalEvidencePath(repositoryPath));
+    for (const snapshot of this.dependencies.readOpenDocuments?.(owner, isCandidatePath) ?? []) {
       if (signal?.aborted) throw new DOMException("Global understanding refresh was superseded.", "AbortError");
       if (++pending >= 128) { pending = 0; await this.yieldControl(); }
       const canonicalPath = this.canonicalEvidencePath(snapshot.path);
