@@ -289,6 +289,63 @@ test("I124-IFR-005 bounds actual source path enumeration, canonicalization, sort
   );
 });
 
+test("actual Global source abort during path canonicalization never publishes a stale file projection", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-source-path-cancel-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  for (let start = 0; start < 10_000; start += 250) {
+    await Promise.all(Array.from({ length: Math.min(250, 10_000 - start) }, (_, offset) =>
+      writeFile(path.join(repositoryRoot, `f-${String(start + offset).padStart(5, "0")}.ts`), "", "utf8")
+    ));
+  }
+
+  const cancellation = new AbortController();
+  let abortedAtKind: string | undefined;
+  const publications: Array<{ discovered: number; files: number }> = [];
+  const source = new T505GlobalUnderstandingSource({
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    fileSystemPathSemantics: "posix",
+    accountWorkBatch: (entry) => {
+      if (abortedAtKind === undefined && entry.kind === "source-path-canonicalize") {
+        abortedAtKind = entry.kind;
+        cancellation.abort();
+      }
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({
+    context: {
+      kind: "branch",
+      label: "main",
+      detail: repositoryRoot,
+      headRevision: "source-path-cancel",
+      selection: { kind: "branch", repositoryId: "repo-source-path-cancel", repositoryRoot, branchRef: "refs/heads/main" }
+    },
+    progress: undefined
+  });
+
+  await assert.rejects(
+    () => source.recalculate(cancellation.signal, (value) => {
+      publications.push({
+        discovered: value.discoveredFilePaths?.length ?? 0,
+        files: value.progress.files.length
+      });
+    }),
+    (error: unknown) => error instanceof DOMException && error.name === "AbortError"
+  );
+
+  assert.equal(abortedAtKind, "source-path-canonicalize");
+  assert.ok(publications.length >= 1, "the current lifecycle may publish before path work starts");
+  assert.equal(
+    publications.some((value) => value.discovered > 0 || value.files > 0),
+    false,
+    "aborted source-path work must never publish a stale file projection"
+  );
+});
+
 test("T607 never publishes a stale Tree stage after its generation is invalidated", async () => {
   let current = true;
   const published: number[] = [];
