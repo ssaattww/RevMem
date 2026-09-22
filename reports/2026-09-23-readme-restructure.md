@@ -6,7 +6,8 @@
 - branch: `docs/readme-restructure-20260923`
 - base: `main`
 - base HEAD: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`
-- README implementation commit: `a9c2be643b7c5d163090e91e4181b8f4a23f0fc6`
+- README initial implementation commit: `a9c2be643b7c5d163090e91e4181b8f4a23f0fc6`
+- README contract compatibility fix commit: `e4f10193e3799d975d8337be8ddd5e85f7d84cd5`
 - PR: #127
 - verification capability: `local_execution_available`
 - execution environment: FA780 / PowerShell / Remote Desktop Commander
@@ -56,10 +57,10 @@ CI失敗時には `Collect failure context` でenvironment、git status、生成
 新READMEでは次の順序へ再構成した。
 
 1. 製品の目的
-2. できること
+2. 現状できること
 3. 全体像
-4. インストール
-5. 基本的な使い方
+4. インストール方法
+5. 使い方
 6. 4つのView
 7. Context / Globalの仕組み
 8. PRレビュー
@@ -98,9 +99,13 @@ Mermaidを2点追加した。
 
 実装中タスクや既知課題は `tasks/tasks-status.md`、詳細な仕様は各design文書へ誘導する形に整理した。
 
-## TDD
+## TDD / contract regression
 
-documentation-onlyの変更であり、製品挙動の実装変更ではないためTDDはnot applicableとした。
+当初のdocumentation-only再構成は製品挙動の実装変更ではないためTDD対象外とした。
+
+最初のexact-head CIでREADME contract testの回帰が判明した後は、その失敗をRedとして扱った。`test/unit/release-vsix-contract.test.ts` を確認し、既存契約の見出し6件と `diff editor` / `GitHub PR` の明示記載を把握した上でREADMEだけを修正した。
+
+修正後に `npm run compile:test` と `node --test test-dist/test/unit/release-vsix-contract.test.js` を実行し、8/8 passのGreenを確認した。
 
 ## 検証
 
@@ -117,6 +122,16 @@ documentation-onlyの変更であり、製品挙動の実装変更ではない�
 - `doc/design/operation-diagnostics-and-refresh-scheduling.md`
 - `doc/design/source-layout-and-ci-vsix-version.md`
 - `tasks/tasks-status.md`
+
+### README contract focused test
+
+- Red: exact-head CI run `35784546717` / CI #4671、HEAD `cca8b2b3d745e22e49759d0c41b6b1ff96746b80`
+- failure: `release-vsix-contract.test.js` が既存README見出し契約を検出
+- diagnostic artifact: `ci-failure-diagnostics-35784546717-1` / artifact id `10719552894`
+- Green: `npm run compile:test` + `node --test test-dist/test/unit/release-vsix-contract.test.js`
+- result: 8 tests / 8 pass / 0 fail
+
+失敗runは旧HEADに紐づくため、修正push後の最終CI判定には再利用しない。
 
 ### Markdown tooling
 
