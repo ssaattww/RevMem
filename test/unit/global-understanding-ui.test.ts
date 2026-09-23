@@ -79,6 +79,29 @@ test("Global Understanding model retains discovered files without content eviden
   ]);
 });
 
+test("Issue #128 Global Understanding accepts collected line progress for unopened files", () => {
+  const model = createGlobalUnderstandingTreeModel({
+    progress: {
+      reviewedNonEmptyLineCount: 0,
+      totalNonEmptyLineCount: 2,
+      progress: 0,
+      files: [
+        { path: "src/unopened.ts", state: "current", reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 2, progress: 0 }
+      ]
+    },
+    discoveredFilePaths: ["src/unopened.ts"],
+    openedFileCount: 0,
+    unopenedFileCount: 1,
+    excludedFileCount: 0,
+    prunedExcludedDirectoryCount: 0
+  });
+
+  assert.equal(model.files[0]?.path, "src/unopened.ts");
+  assert.equal(model.files[0]?.description, "0% (0/2)");
+  assert.equal(model.diagnostics.openedFileCount, 0);
+  assert.equal(model.diagnostics.unopenedFileCount, 1);
+});
+
 test("Global Understanding model accepts sparse open targets for non-openable path-only rows", () => {
   const model = createGlobalUnderstandingTreeModel({
     progress: {

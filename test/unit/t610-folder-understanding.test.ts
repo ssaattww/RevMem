@@ -1225,6 +1225,78 @@ test("T610-NR-008 retries owner-shared capture without a stopped scope or post-s
   assert.equal(snapshot?.folders?.find((folder) => folder.path === "two")?.state, "active");
 });
 
+test("Issue #128 explicit folder start loads unopened filesystem files recursively", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-explicit-folder-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(repositoryRoot, "root.txt"), "root one\n\nroot two\n", "utf8"),
+    writeFile(path.join(repositoryRoot, "child", "nested.txt"), "child one\nchild two\n\nchild three\n", "utf8")
+  ]);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+
+  const beforeStart = await source.recalculate();
+  assert.equal(beforeStart?.progress.totalNonEmptyLineCount, 0, "ordinary refresh does not scan unopened repository content");
+  assert.deepEqual(beforeStart?.discoveredFilePaths ?? [], []);
+
+  await source.startFolder("");
+  const snapshot = await source.recalculate();
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 5);
+  assert.deepEqual(snapshot?.progress.files
+    .map((file) => [file.path, file.totalNonEmptyLineCount] as const)
+    .sort(([left], [right]) => left.localeCompare(right)), [
+    ["child/nested.txt", 3],
+    ["root.txt", 2]
+  ]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["child/nested.txt", "root.txt"]);
+  assert.equal(snapshot?.openedFileCount, 0, "filesystem collection must not pretend the documents were opened in VS Code");
+  assert.equal(snapshot?.unopenedFileCount, 2);
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "")?.totalNonEmptyLineCount, 5);
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "child")?.totalNonEmptyLineCount, 3);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("Issue #128 preserves discovered file counts when unopened content loading fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-partial-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root one\nroot two\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), Buffer.from([0xff, 0xfe, 0xfd]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-partial", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(
+    () => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }),
+    /not valid UTF-8/u
+  );
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.deepEqual(last.discoveredFilePaths, ["child/bad.txt", "root.txt"]);
+  assert.equal(last.openedFileCount, 0);
+  assert.equal(last.unopenedFileCount, 2);
+  assert.equal(last.repositoryPartial, true);
+  assert.equal(last.folders?.find((folder) => folder.path === "child")?.state, "failed");
+  assert.doesNotMatch((await import("../../src/ui/global-understanding/global-understanding-ui-model.js")).formatGlobalUnderstandingStatusBar(last).text, /%/u);
+});
+
 test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-host-partial-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));

@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { NodeSha256StableHash } from "../../adapters/crypto/index";
+import { NodeGlobalUnderstandingFileSource } from "../../adapters/repository-files/node-global-understanding-file-source";
 import { NodeRepositoryFilePathEnumerator } from "../../adapters/repository-files/node-repository-file-path-enumerator";
 import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "../../adapters/state-repository/index";
 import type { ReviewFileExclusionPolicyService } from "../../application/file-exclusion/review-file-exclusion-policy-service";
@@ -110,6 +111,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
   private readonly pullRequestEvidenceByOwner = new Map<string, Map<string, LoadedGlobalUnderstandingFile>>();
   private readonly activeEvidenceKeyByOwner = new Map<string, string>();
   private readonly lastSnapshotByEvidenceKey = new Map<string, GlobalUnderstandingTreeSnapshot>();
+  private readonly countedAsOpenedPathsByEvidenceKey = new Map<string, Set<string>>();
   private currentContext: CurrentContextUiSnapshot | undefined;
   private readonly folderScopes: FolderUnderstandingScopeController | undefined;
 
@@ -185,8 +187,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     assertCurrent();
     this.requireActiveEvidenceKey(owner);
     const previousSnapshot = this.lastSnapshotByEvidenceKey.get(evidenceKey);
+    const countedAsOpenedPaths = new Set(this.countedAsOpenedPathsByEvidenceKey.get(evidenceKey) ?? []);
     const files: GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [];
     const discoveredFilePaths = new Set<string>();
+    const provisionalDiscoveredFilePaths = new Set<string>();
     const acceptedFolders = new Set<string>();
     let excludedFileCount = 0;
     let prunedExcludedDirectoryCount = 0;
@@ -226,15 +230,18 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         const candidatePaths = new Set<string>();
         for (const value of pathEnumeration.includedPaths) {
           await sourcePathStep("source-path-canonicalize", assertScopeCurrent);
-          candidatePaths.add(this.canonicalEvidencePath(value));
+          const canonicalPath = this.canonicalEvidencePath(value);
+          candidatePaths.add(canonicalPath);
+          provisionalDiscoveredFilePaths.add(canonicalPath);
         }
         await flushSourcePath(assertScopeCurrent);
         scopeWork.push({ folder, generation, scopeSignal, pathEnumeration, candidatePaths });
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
       } catch (error) {
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
           throw error;
         }
       }
@@ -286,7 +293,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
               this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, scope.folder, scope.generation);
             }
           }
-          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
           throw error;
         }
       }
@@ -314,25 +321,45 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           if (belongsDirectlyToFolder(repositoryPath)) availablePaths.add(repositoryPath);
         }
         await flushSourcePath(assertScopeCurrent);
-        const openedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
+        const loadedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
+        const countedAsOpenedForFolder = new Set<string>();
         const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
         for (const [repositoryPath, evidence] of evidenceByPath) {
           await sourcePathStep("source-path-evidence-index", assertScopeCurrent);
           if (!availablePaths.has(repositoryPath)) continue;
-          openedByPath.set(repositoryPath, evidence);
+          loadedByPath.set(repositoryPath, evidence);
+          countedAsOpenedForFolder.add(repositoryPath);
           included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
         }
         await flushSourcePath(assertScopeCurrent);
+        if (this.folderScopes !== undefined) {
+          const fileSource = new NodeGlobalUnderstandingFileSource(owner.repositoryRoot, this.pathSemantics);
+          for (const repositoryPath of availablePaths) {
+            await sourcePathStep("source-path-unopened-evidence", assertScopeCurrent);
+            if (loadedByPath.has(repositoryPath)) continue;
+            const evidence = await fileSource.load(repositoryPath, owner.currentRevisionId, {
+              maxWorkBytes: 64 * 1024,
+              yieldControl: this.yieldControl,
+              signal: scopeSignal
+            });
+            assertScopeCurrent();
+            loadedByPath.set(repositoryPath, evidence);
+            included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+          }
+          await flushSourcePath(assertScopeCurrent);
+        }
         const source: GlobalUnderstandingFileSource = { load: async (repositoryPath, revisionId) => {
           assertScopeCurrent();
-          const evidence = openedByPath.get(repositoryPath);
-          if (evidence === undefined) throw new Error(`Opened Global evidence is unavailable: ${repositoryPath}`);
-          if (evidence.revisionId !== revisionId) throw new Error(`Opened document revision does not match current owner revision: ${repositoryPath}`);
-          return this.copyOpenedEvidence(evidence, repositoryPath, scopeSignal, "copied-loaded-non-empty-line");
+          const evidence = loadedByPath.get(repositoryPath);
+          if (evidence === undefined) throw new Error(`Global evidence is unavailable: ${repositoryPath}`);
+          if (evidence.revisionId !== revisionId) throw new Error(`Global evidence revision does not match current owner revision: ${repositoryPath}`);
+          return evidence.validateCurrent === undefined
+            ? this.copyOpenedEvidence(evidence, repositoryPath, scopeSignal, "copied-loaded-non-empty-line")
+            : evidence;
         } };
         const recalculator = new GlobalUnderstandingBackgroundRecalculator({ source, cache: this.cache, yieldControl: this.yieldControl, accountWorkBatch: this.dependencies.accountWorkBatch });
         const result = await recalculator.recalculate({
-          globalState, included, openFilePaths: [...openedByPath.keys()],
+          globalState, included, openFilePaths: [...countedAsOpenedForFolder],
           configurationKey: `exclusion-policy:${this.dependencies.exclusionPolicy.getRevision()}`,
           signal: scopeSignal
         });
@@ -351,7 +378,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         await flushSourcePath(assertScopeCurrent);
         if (!this.folderScopes?.accept(owner.target.repositoryId, scopeRoot, folder, generation, { reviewed, total }) && this.folderScopes !== undefined) continue;
         acceptedFolders.add(folder);
-        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+        for (const repositoryPath of [...countedAsOpenedPaths]) {
+          if (belongsDirectlyToFolder(repositoryPath)) countedAsOpenedPaths.delete(repositoryPath);
+        }
+        for (const repositoryPath of countedAsOpenedForFolder) countedAsOpenedPaths.add(repositoryPath);
+        await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
         assertCurrent();
         this.requireActiveEvidenceKey(owner);
         for (const file of direct) {
@@ -369,7 +400,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
           throw error;
         }
       }
@@ -440,14 +471,19 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       progress: { reviewedNonEmptyLineCount: reviewed, totalNonEmptyLineCount: total, progress: total === 0 ? 1 : reviewed / total, files: finalFiles },
       discoveredFilePaths: sortedDisplayedFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
-      openedFileCount: finalFiles.length,
-      unopenedFileCount: Math.max(0, sortedDisplayedFilePaths.length - finalFiles.length),
+      openedFileCount: sortedDisplayedFilePaths.filter((repositoryPath) => countedAsOpenedPaths.has(repositoryPath)).length,
+      unopenedFileCount: sortedDisplayedFilePaths.filter((repositoryPath) => !countedAsOpenedPaths.has(repositoryPath)).length,
       excludedFileCount,
       prunedExcludedDirectoryCount,
       ...(folders === undefined ? {} : { folders }),
       ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
-    this.lastSnapshotByEvidenceKey.set(this.requireActiveEvidenceKey(owner), snapshot);
+    const activeEvidenceKey = this.requireActiveEvidenceKey(owner);
+    this.lastSnapshotByEvidenceKey.set(activeEvidenceKey, snapshot);
+    this.countedAsOpenedPathsByEvidenceKey.set(
+      activeEvidenceKey,
+      new Set(sortedDisplayedFilePaths.filter((repositoryPath) => countedAsOpenedPaths.has(repositoryPath)))
+    );
     return snapshot;
   }
 
@@ -536,7 +572,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     controller: FolderUnderstandingScopeController | undefined,
     owner: T505GlobalUnderstandingOwner,
     scopeRoot: string,
-    evidenceKey: string
+    evidenceKey: string,
+    provisionalDiscoveredFilePaths?: ReadonlySet<string>
   ): GlobalUnderstandingTreeSnapshot {
     const folders = controller?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
@@ -544,22 +581,61 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     }));
     const previous = this.lastSnapshotByEvidenceKey.get(evidenceKey);
     const repositoryPartial = folders?.some((folder) => folder.partial) === true;
-    if (previous === undefined) {
+    if (provisionalDiscoveredFilePaths === undefined || provisionalDiscoveredFilePaths.size === 0) {
+      if (previous === undefined) {
+        return {
+          progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] },
+          openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0,
+          ...(folders === undefined ? {} : { folders }),
+          ...(repositoryPartial ? { repositoryPartial: true } : {})
+        };
+      }
       return {
-        progress: { reviewedNonEmptyLineCount: 0, totalNonEmptyLineCount: 0, progress: 1, files: [] },
-        openedFileCount: 0, unopenedFileCount: 0, excludedFileCount: 0, prunedExcludedDirectoryCount: 0,
+        progress: previous.progress,
+        ...(previous.discoveredFilePaths === undefined ? {} : { discoveredFilePaths: previous.discoveredFilePaths }),
+        ...(previous.fileOpenTargets === undefined ? {} : { fileOpenTargets: previous.fileOpenTargets }),
+        openedFileCount: previous.openedFileCount,
+        unopenedFileCount: previous.unopenedFileCount,
+        excludedFileCount: previous.excludedFileCount,
+        prunedExcludedDirectoryCount: previous.prunedExcludedDirectoryCount,
         ...(folders === undefined ? {} : { folders }),
         ...(repositoryPartial ? { repositoryPartial: true } : {})
       };
     }
+
+    const discovered = new Set(previous?.discoveredFilePaths ?? previous?.progress.files.map((file) => file.path) ?? []);
+    for (const repositoryPath of provisionalDiscoveredFilePaths) discovered.add(repositoryPath);
+    const discoveredFilePaths = [...discovered].sort();
+    const discoveredSet = new Set(discoveredFilePaths);
+    const previousFiles = (previous?.progress.files ?? []).filter((file) => discoveredSet.has(file.path));
+    let reviewedNonEmptyLineCount = 0;
+    let totalNonEmptyLineCount = 0;
+    for (const file of previousFiles) {
+      reviewedNonEmptyLineCount += file.reviewedNonEmptyLineCount;
+      totalNonEmptyLineCount += file.totalNonEmptyLineCount;
+    }
+    const openedPaths = this.countedAsOpenedPathsByEvidenceKey.get(evidenceKey) ?? new Set<string>();
+    const openedFileCount = discoveredFilePaths.filter((repositoryPath) => openedPaths.has(repositoryPath)).length;
+    const previousTargets = new Map((previous?.fileOpenTargets ?? []).map((target) => [target.repositoryPath, target] as const));
+    const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
+    for (const repositoryPath of discoveredFilePaths) {
+      const previousTarget = previousTargets.get(repositoryPath);
+      if (previousTarget !== undefined) fileOpenTargets.push(previousTarget);
+      else if (owner.target.kind !== "pull-request") fileOpenTargets.push(this.createFileOpenTarget(owner, repositoryPath));
+    }
     return {
-      progress: previous.progress,
-      ...(previous.discoveredFilePaths === undefined ? {} : { discoveredFilePaths: previous.discoveredFilePaths }),
-      ...(previous.fileOpenTargets === undefined ? {} : { fileOpenTargets: previous.fileOpenTargets }),
-      openedFileCount: previous.openedFileCount,
-      unopenedFileCount: previous.unopenedFileCount,
-      excludedFileCount: previous.excludedFileCount,
-      prunedExcludedDirectoryCount: previous.prunedExcludedDirectoryCount,
+      progress: {
+        reviewedNonEmptyLineCount,
+        totalNonEmptyLineCount,
+        progress: totalNonEmptyLineCount === 0 ? 1 : reviewedNonEmptyLineCount / totalNonEmptyLineCount,
+        files: previousFiles
+      },
+      discoveredFilePaths,
+      ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
+      openedFileCount,
+      unopenedFileCount: discoveredFilePaths.length - openedFileCount,
+      excludedFileCount: previous?.excludedFileCount ?? 0,
+      prunedExcludedDirectoryCount: previous?.prunedExcludedDirectoryCount ?? 0,
       ...(folders === undefined ? {} : { folders }),
       ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
@@ -604,6 +680,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       this.openedEvidenceByOwner.delete(previousEvidenceKey);
       this.pullRequestEvidenceByOwner.delete(previousEvidenceKey);
       this.lastSnapshotByEvidenceKey.delete(previousEvidenceKey);
+      this.countedAsOpenedPathsByEvidenceKey.delete(previousEvidenceKey);
     }
     this.activeEvidenceKeyByOwner.set(identityKey, nextEvidenceKey);
     return nextEvidenceKey;

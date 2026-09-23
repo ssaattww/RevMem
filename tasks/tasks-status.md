@@ -4,19 +4,20 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I128-IMPL-001（P6 / T610保守）。文書未オープン状態の明示folder startでsubtree本文を読み、既存line-reviewable policyに従って非空行数を集計するRedを先に固定する。
+- 現在のタスク: I128-IMPL-003（P6 / T610保守）。privacy boundaryを維持しつつ、失敗stage・error name/code・failure category・scope/operation・関連件数をOutputへ構造化記録する。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
 - CI失敗診断: `.github/workflows/ci.yml` の `Upload failure diagnostics` が `test-output/`、stdout/stderr log、生成物、source/testをartifact保存するため追加変更不要。
-- 設計判断: repository-wide自動scanを復活させず、既存の「folder rowの明示開始は選択folderとsubtreeを計算する」契約へ実装を一致させる。新規契約が必要と判明した場合だけ設計書を更新する。
+- 設計判断: repository-wide自動scanを復活させず、既存の「folder rowの明示開始は選択folderとsubtreeを計算する」契約へ実装を一致させる。設計書11.3/16.5に実読込したline-reviewable fileを分母へ入れる契約が既にあるため、I128-IMPL-001で設計変更は不要と確認済み。
+- I128-IMPL-001: **完了**。未オープン実filesystem fixtureでRed（0 != 5）を確認後、active folderだけ既存Node file sourceで補完し、opened/unopened件数をline progress row数から分離。focused 1/1、UI契約1/1、`npm run test:t610` 88/88 Green。
 - mergeは行わない。
 
 | 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
 | --- | --- | --- | --- | --- | --- |
-| I128-IMPL-001 | 実装開始 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
-| I128-IMPL-002 | 待機 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | failure注入でdiscovered 2件を保持し、未確定scopeを `100% (0/0)` completeにしない |
-| I128-IMPL-003 | 待機 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | source本文・secretを出さず、一般失敗が `details were redacted` だけにならないRed→Greenを確認する |
+| I128-IMPL-001 | 完了 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
+| I128-IMPL-002 | 完了 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | invalid UTF-8失敗注入でRed（discoveredFilePaths undefined）→Green、2件保持・repository partial・failed scope・status非%を確認。T610 89/89 Green |
+| I128-IMPL-003 | 実装開始 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | source本文・secretを出さず、一般失敗が `details were redacted` だけにならないRed→Greenを確認する |
 | I128-FINAL | 待機 | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-IMPL-001〜003 | required local gateとexact-head CI evidenceを保存し、PRへ簡易reportを投稿する |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
