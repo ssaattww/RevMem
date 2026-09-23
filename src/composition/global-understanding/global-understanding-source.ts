@@ -818,6 +818,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     candidatePaths: ReadonlySet<string>,
     signal?: AbortSignal
   ): Promise<ReadonlyMap<string, LoadedGlobalUnderstandingFile>> {
+    if (owner.target.kind === "pull-request") {
+      const immutable = this.pullRequestEvidenceByOwner.get(this.requireActiveEvidenceKey(owner)) ?? new Map<string, LoadedGlobalUnderstandingFile>();
+      return new Map([...immutable].filter(([repositoryPath]) => candidatePaths.has(repositoryPath)));
+    }
     const retained = new Map(this.retainedOpenedEvidence(owner));
     const current = new Map<string, LoadedGlobalUnderstandingFile>();
     let pending = 0;
