@@ -2,6 +2,23 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
+
+- 現在のタスク: I128-IMPL-001（P6 / T610保守）。文書未オープン状態の明示folder startでsubtree本文を読み、既存line-reviewable policyに従って非空行数を集計するRedを先に固定する。
+- branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
+- 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
+- TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
+- CI失敗診断: `.github/workflows/ci.yml` の `Upload failure diagnostics` が `test-output/`、stdout/stderr log、生成物、source/testをartifact保存するため追加変更不要。
+- 設計判断: repository-wide自動scanを復活させず、既存の「folder rowの明示開始は選択folderとsubtreeを計算する」契約へ実装を一致させる。新規契約が必要と判明した場合だけ設計書を更新する。
+- mergeは行わない。
+
+| 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| I128-IMPL-001 | 実装開始 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
+| I128-IMPL-002 | 待機 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | failure注入でdiscovered 2件を保持し、未確定scopeを `100% (0/0)` completeにしない |
+| I128-IMPL-003 | 待機 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | source本文・secretを出さず、一般失敗が `details were redacted` だけにならないRed→Greenを確認する |
+| I128-FINAL | 待機 | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-IMPL-001〜003 | required local gateとexact-head CI evidenceを保存し、PRへ簡易reportを投稿する |
+
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
 - 現在のタスク: I124-IFR-002-RECORD-SYNC-VERIFY。normal fix verification R3 `beb997fd929219599d46f0894d1944a91580db05` でnormal-review required findingsは全件closed、verdictは `pass_with_held`。I124-IFR-002のrecord-only syncは実施済みで、同じnormal reviewerによる限定確認待ち。
