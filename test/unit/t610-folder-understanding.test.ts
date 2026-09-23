@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { rmSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1270,12 +1271,15 @@ test("Issue #128 preserves discovered file counts when unopened content loading 
   const repositoryRoot = path.join(fixture, "repository");
   await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
   await writeFile(path.join(repositoryRoot, "root.txt"), "root one\nroot two\n", "utf8");
-  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), Buffer.from([0xff, 0xfe, 0xfd]));
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
   const source = createT305GlobalUnderstandingSource({
     globalStoragePath: path.join(fixture, "storage"),
     storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
     exclusionPolicy: new ReviewFileExclusionPolicyService(),
-    readOpenDocuments: () => [],
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return [];
+    },
     yieldControl: () => undefined
   });
   source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-partial", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
@@ -1284,7 +1288,7 @@ test("Issue #128 preserves discovered file counts when unopened content loading 
 
   await assert.rejects(
     () => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }),
-    /not valid UTF-8/u
+    /ENOENT/u
   );
 
   const last = published.at(-1);
@@ -1303,12 +1307,15 @@ test("Issue #128 emits structured privacy-safe diagnostics for folder content fa
   const repositoryRoot = path.join(fixture, "private-repository");
   await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
   await writeFile(path.join(repositoryRoot, "root.txt"), "root\n", "utf8");
-  await writeFile(path.join(repositoryRoot, "child", "secret-private.txt"), Buffer.from([0xff, 0xfe]));
+  await writeFile(path.join(repositoryRoot, "child", "secret-private.txt"), "will disappear\n", "utf8");
   const source = createT305GlobalUnderstandingSource({
     globalStoragePath: path.join(fixture, "storage"),
     storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
     exclusionPolicy: new ReviewFileExclusionPolicyService(),
-    readOpenDocuments: () => [],
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "secret-private.txt"), { force: true });
+      return [];
+    },
     yieldControl: () => undefined
   });
   source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-diagnostic", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
@@ -1324,8 +1331,9 @@ test("Issue #128 emits structured privacy-safe diagnostics for folder content fa
   const message = output.at(-1) ?? "";
   assert.match(message, /GLOBAL_UNDERSTANDING_FAILURE/u);
   assert.match(message, /stage=content-read/u);
-  assert.match(message, /error=TypeError/u);
-  assert.match(message, /category=validation/u);
+  assert.match(message, /error=Error/u);
+  assert.match(message, /code=ENOENT/u);
+  assert.match(message, /category=permanent/u);
   assert.match(message, /scope=folder/u);
   assert.match(message, /discovered=2/u);
   assert.match(message, /processed=0/u);

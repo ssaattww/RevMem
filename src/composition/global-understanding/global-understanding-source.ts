@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { NodeSha256StableHash } from "../../adapters/crypto/index";
-import { NodeGlobalUnderstandingFileSource } from "../../adapters/repository-files/node-global-understanding-file-source";
+import { NodeGlobalUnderstandingFileExcludedError, NodeGlobalUnderstandingFileSource } from "../../adapters/repository-files/node-global-understanding-file-source";
 import { NodeRepositoryFilePathEnumerator } from "../../adapters/repository-files/node-repository-file-path-enumerator";
 import { FileSystemReviewStateRepository, type ReviewStateRepositoryTarget, type ReviewStateStorageUris } from "../../adapters/state-repository/index";
 import type { ReviewFileExclusionPolicyService } from "../../application/file-exclusion/review-file-exclusion-policy-service";
@@ -334,6 +334,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         await flushSourcePath(assertScopeCurrent);
         const loadedByPath = new Map<string, LoadedGlobalUnderstandingFile>();
         const countedAsOpenedForFolder = new Set<string>();
+        const dynamicallyExcludedPaths = new Set<string>();
         const included: Array<{ readonly path: string; readonly nonEmptyLineCount: number }> = [];
         for (const [repositoryPath, evidence] of evidenceByPath) {
           await sourcePathStep("source-path-evidence-index", assertScopeCurrent);
@@ -344,20 +345,27 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           scopeProcessedFileCount += 1;
         }
         await flushSourcePath(assertScopeCurrent);
-        if (this.folderScopes !== undefined) {
+        if (this.folderScopes !== undefined && owner.target.kind !== "pull-request") {
           scopeFailureStage = "content-read";
           const fileSource = new NodeGlobalUnderstandingFileSource(owner.repositoryRoot, this.pathSemantics);
-          for (const repositoryPath of availablePaths) {
+          for (const repositoryPath of [...availablePaths]) {
             await sourcePathStep("source-path-unopened-evidence", assertScopeCurrent);
             if (loadedByPath.has(repositoryPath)) continue;
-            const evidence = await fileSource.load(repositoryPath, owner.currentRevisionId, {
-              maxWorkBytes: 64 * 1024,
-              yieldControl: this.yieldControl,
-              signal: scopeSignal
-            });
-            assertScopeCurrent();
-            loadedByPath.set(repositoryPath, evidence);
-            included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+            try {
+              const evidence = await fileSource.load(repositoryPath, owner.currentRevisionId, {
+                maxWorkBytes: 64 * 1024,
+                yieldControl: this.yieldControl,
+                signal: scopeSignal
+              });
+              assertScopeCurrent();
+              loadedByPath.set(repositoryPath, evidence);
+              included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+            } catch (error) {
+              if (!(error instanceof NodeGlobalUnderstandingFileExcludedError)) throw error;
+              availablePaths.delete(repositoryPath);
+              provisionalDiscoveredFilePaths.delete(repositoryPath);
+              dynamicallyExcludedPaths.add(repositoryPath);
+            }
             scopeProcessedFileCount += 1;
           }
           await flushSourcePath(assertScopeCurrent);
@@ -409,7 +417,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           discoveredFilePaths.add(repositoryPath);
         }
         await flushSourcePath(assertScopeCurrent);
-        excludedFileCount += pathEnumeration.excluded.length;
+        excludedFileCount += pathEnumeration.excluded.length + dynamicallyExcludedPaths.size;
         prunedExcludedDirectoryCount += pathEnumeration.excludedDirectories.length;
       } catch (error) {
         if (signal?.aborted === true) throw error;

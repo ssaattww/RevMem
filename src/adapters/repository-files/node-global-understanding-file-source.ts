@@ -11,6 +11,22 @@ import type {
 } from "../../application/global-understanding/index";
 import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
+import { isRepositoryFileBinaryContent } from "./node-repository-file-enumerator";
+
+/** Content-level exclusion discovered only after path-only enumeration. */
+export type NodeGlobalUnderstandingFileExclusionReason =
+  | { readonly kind: "binary" }
+  | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" };
+
+/** Signals that a path-only candidate is not line-reviewable and must be counted as excluded. */
+export class NodeGlobalUnderstandingFileExcludedError extends Error {
+  public constructor(public readonly reason: NodeGlobalUnderstandingFileExclusionReason) {
+    super(reason.kind === "binary"
+      ? "Included repository file content is binary."
+      : "Included repository file content is not valid UTF-8.");
+    this.name = "NodeGlobalUnderstandingFileExcludedError";
+  }
+}
 
 const DEFAULT_MAX_WORK_BYTES = 64 * 1024;
 const NON_WHITESPACE = /\S/u;
@@ -64,6 +80,9 @@ const analyzeContent = async (
   content: Buffer,
   options: GlobalUnderstandingFileLoadOptions
 ): Promise<AnalyzedContent> => {
+  if (isRepositoryFileBinaryContent(content)) {
+    throw new NodeGlobalUnderstandingFileExcludedError({ kind: "binary" });
+  }
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const hash = createHash("sha256");
   const nonEmptyLines: number[] = [];
@@ -102,7 +121,7 @@ const analyzeContent = async (
     try {
       consumeDecoded(decoder.decode(chunk, { stream: end < content.length }));
     } catch {
-      throw new TypeError("Included repository file content is not valid UTF-8.");
+      throw new NodeGlobalUnderstandingFileExcludedError({ kind: "invalid-encoding", encoding: "utf-8" });
     }
     if (end < content.length) await options.yieldControl();
   }
