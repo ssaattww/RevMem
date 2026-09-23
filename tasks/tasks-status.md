@@ -4,7 +4,7 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I128-FINAL（P6 / T610保守）。focused/full local validation、詳細report、PR同期、current HEADと一致するpull_request CI確認を行う。
+- 現在のタスク: I128-FINAL（P6 / T610保守、実装完了・PR review待ち）。technical HEAD `3ffc3ad401c7d51b45bf66774ecad519d856ce1d` のfull local gateはGreen。詳細report/handoffを最終candidateへ含め、push後のexact-head pull_request CIはPRコメントへ外部同期する。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。

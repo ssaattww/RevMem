@@ -1,0 +1,308 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-23T22:53:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  current_head: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  reviewed_head: null
+  commit_range: df1501358be6ad0e6e03989ddc9e08f67a6e1996..3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+  repository: ssaattww/RevMem
+  branch: fix/issue-128-global-understanding-folder-scan
+  head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  source_state: dirty
+  source_fingerprint: "technical source clean at 3ffc3ad401c7d51b45bf66774ecad519d856ce1d; only tracking/report/handoff metadata pending"
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue128'
+  dependencies:
+    - name: node
+      status: available
+      evidence: v24.20.0
+    - name: npm
+      status: available
+      evidence: 11.19.0 via npm.cmd
+  evidence:
+    - dedicated Issue #128 worktree from origin/main df1501358be6ad0e6e03989ddc9e08f67a6e1996
+    - PR #129 remote HEAD matches technical HEAD 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - FA780 executes node/npm test and build commands locally
+    - repository CI workflow already uploads test-output stdout/stderr and failure context
+  technical_head: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  administrative_parent: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  commit:
+    state: commit_pending
+    review_target_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  push:
+    state: push_pending
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  ci_wait:
+    state: ci_wait_pending
+    required_for: route_verification
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: user_instruction
+    reference: project instructions
+    summary: TDD, diagnostic artifact workflow, small commits, RDC git, GitHub connector PR/comment/CI, exact-head CI only, detailed report, no merge
+  - source: issue
+    reference: Issue #128
+    summary: recursively collect unopened explicit-folder text lines, retain discovered counts on failure, expose privacy-safe diagnostics
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 11.3 and 16.5
+    summary: explicit folder subtree calculation remains distinct from repository-wide automatic content scan
+development_policy:
+  method: TDD
+  testing_order: Red before implementation, then focused Green, regressions and full local gate
+  governing_source: project instructions and tasks/phases-status.md
+validation_plan:
+  commands:
+    - npm run build
+    - npm run typecheck:contracts
+    - npm run validate:architecture
+    - npm run validate:architecture:negative
+    - npm run lint
+    - npm test
+  required_failure_diagnostics:
+    - test-output/issue128 standard output
+    - test-output/issue128 standard error
+    - .github/workflows/ci.yml failure diagnostic artifact
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: Issue #128 dedicated worktree
+      reason: requested implementation and final metadata
+    - path_or_operation: PR #129 metadata/comment
+      reason: required implementation publication
+  forbidden:
+    - path_or_operation: merge
+      reason: user performs merge
+    - path_or_operation: unrelated worktrees
+      reason: owned by other tasks
+scope:
+  - explicit folder start unopened filesystem evidence
+  - discovered path retention and partial failure state
+  - privacy-safe structured failure diagnostics
+non_goals:
+  - repository-wide automatic content scan
+  - unrelated Issue or PR changes
+  - merge
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: unopened filesystem loading, provisional discovery retention, safe diagnostic metadata
+    - path: src/ui/global-understanding/global-understanding-ui-model.ts
+      purpose: decouple progress rows from actual VS Code opened file count
+    - path: src/application/operation-feedback/operation-feedback.ts
+      purpose: safe structured Global Understanding failure projection
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: explicit-folder, partial-failure and diagnostic regressions
+    - path: test/unit/global-understanding-ui.test.ts
+      purpose: unopened collected line-progress UI contract
+    - path: tasks/tasks-status.md
+      purpose: Issue #128 progress tracking
+    - path: tasks/phases-status.md
+      purpose: P6 Issue #128 tracking
+    - path: reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+      purpose: detailed implementation report
+  inspected:
+    - path: .github/workflows/ci.yml
+      purpose: required failure artifact confirmation
+  intentionally_untouched:
+    - path_or_area: ordinary refresh and simple file-open repository-wide scan policy
+      reason: Issue #128 explicitly forbids restoring unlimited repository-wide body scanning
+    - path_or_area: other worktrees
+      reason: separate task ownership
+commands:
+  - command: Issue #128 invalid UTF-8 focused Red
+    purpose: prove discovery count disappears on downstream body-read failure
+    exit_code: 1
+    result: failed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: before Green implementation, discoveredFilePaths was undefined; retained stdout/stderr under test-output/issue128
+    execution_environment: FA780
+    source_fingerprint: pre-Green dirty Issue #128 source
+  - command: npm run test:t610
+    purpose: focused folder regression
+    exit_code: 0
+    result: passed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: tracking/report records 90/90
+    execution_environment: FA780
+    source_fingerprint: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  - command: npm run test:t606
+    purpose: failure-policy regression
+    exit_code: 0
+    result: passed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: tracking/report records 223 pass / 2 skip / 0 fail
+    execution_environment: FA780
+    source_fingerprint: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+tests:
+  - name: explicit folder unopened filesystem evidence
+    phase: green
+    result: passed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: root 2 lines + child 3 lines = 5, opened 0, unopened 2
+  - name: downstream body-read discovery retention
+    phase: red
+    result: failed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: intended Red observed with discoveredFilePaths undefined before fix
+  - name: downstream body-read discovery retention
+    phase: green
+    result: passed
+    head_sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+    evidence: discovered 2, partial true, failed child, no percentage status
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: unknown
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+  commits:
+    - sha: af71e1f9571380853c4753537620e1b04c9cf38d
+      purpose: track Issue #128
+    - sha: cea770bc6107a20d4e8c846ec7ddcb93ac20d7e2
+      purpose: collect explicit folder evidence and retain discovered paths
+    - sha: 3ffc3ad401c7d51b45bf66774ecad519d856ce1d
+      purpose: expose privacy-safe structured failure diagnostics
+  addressed_findings: []
+  failure_diagnostics:
+    - type: test_result
+      location: test-output/issue128
+      summary: Red and focused validation stdout/stderr retained
+  blocked_items: []
+  summary:
+    - explicit folder start now reads unopened eligible text files only inside active scopes
+    - discovery survives downstream content failure and aggregate remains partial
+    - Output exposes safe stage/category/count metadata without raw path/source text
+review:
+  mode: not_applicable
+  reviewed_head: unknown
+  reviewer:
+    identity: unknown
+    role: not_applicable
+    continuity:
+      previous_reviewer_identity: null
+      changed: false
+      reason: null
+    independence:
+      implemented_change: unknown
+      implemented_review_fix: unknown
+      served_as_normal_reviewer: unknown
+      inherited_conversation: unknown
+      evidence: []
+  verdict: not_applicable
+  required_coverage: []
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix: []
+  validation_assessment: []
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - implementation chat did not issue a review verdict
+report:
+  report_type: implementation_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+  reviewed_head: null
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - detailed implementation evidence persisted before review
+findings: []
+held: []
+unexplored: []
+unknown:
+  - field_or_fact: final metadata commit SHA and exact-head pull_request CI
+    reason: handoff is written before the final metadata commit and CI trigger
+not_applicable:
+  - field_or_area: merge
+    reason: explicitly reserved for the user
+remaining_risks:
+  - final candidate local gate and matching exact-head pull_request CI remain to be externally synchronized after this packet is committed
+source_payloads:
+  - source_skill: work-context-manager
+    output_contract_version: current uploaded skill
+    content_type: text/plain
+    payload: "Issue #128 on ssaattww/RevMem; FA780 dedicated worktree; local execution available; TDD and exact-head CI required; no merge."
+  - source_skill: implementation-worker
+    output_contract_version: current uploaded skill
+    content_type: text/plain
+    payload: "I128-IMPL-001 through I128-IMPL-003 completed at technical HEAD 3ffc3ad401c7d51b45bf66774ecad519d856ce1d; focused and broader validation recorded in report."
+  - source_skill: report-writer
+    output_contract_version: current uploaded skill
+    content_type: text/markdown
+    payload: "Detailed implementation report persisted at reports/issue-128-global-understanding-folder-scan-implementation-20260923.md."
+extensions:
+  - namespace: revmem
+    payload: "CI evidence is valid only when PR #129 current HEAD SHA equals workflow run head_sha; never substitute another SHA."
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: initial_review
+  summary: review PR #129 after final metadata publication and exact-head CI synchronization
+  instructions:
+    - re-resolve PR #129 current HEAD and worktree identity before review
+    - treat implementation report and PR comment as evidence, not as a review verdict
+    - do not merge
+  required_attachments_or_references:
+    - Issue #128
+    - PR #129
+    - reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-global-understanding-folder-scan-implementation-20260923.yaml
+  packet_url: null
+  transport_note: next chat must re-resolve permissions, source identity, final HEAD and matching CI evidence
