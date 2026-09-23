@@ -4,13 +4,13 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I128-NR-001/002/003（P6 / T610保守、PR #129 normal review指摘対応）。review record/current PR HEAD `95471dc843d25a73e202f568974b2757128206ec` で指摘されたbinary/invalid-encoding分類、PR immutable evidence境界、I128-IMPL-001 TDD証跡精度を修正する。
+- 現在のタスク: I128-FINAL（P6 / T610保守、PR #129 normal review指摘対応完了・fix verification待ち）。I128-NR-001/002はtest-only Red `d7481d143b6d3daa090764582f0a59291e5fd9f0` → fix HEAD `1895d4101a78604acd843263c06bd8bd1732376f` でGreen。I128-NR-003はoriginal Red chronologyをunverifiedへ訂正し、retrospective baseline reproductionを別証拠として記録する。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
 - CI失敗診断: `.github/workflows/ci.yml` の `Upload failure diagnostics` が `test-output/`、stdout/stderr log、生成物、source/testをartifact保存するため追加変更不要。
 - 設計判断: repository-wide自動scanを復活させず、既存の「folder rowの明示開始は選択folderとsubtreeを計算する」契約へ実装を一致させる。設計書11.3/16.5に実読込したline-reviewable fileを分母へ入れる契約が既にあるため、I128-IMPL-001で設計変更は不要と確認済み。
-- I128-IMPL-001: **完了**。未オープン実filesystem fixtureでRed（0 != 5）を確認後、active folderだけ既存Node file sourceで補完し、opened/unopened件数をline progress row数から分離。focused 1/1、UI契約1/1、`npm run test:t610` 88/88 Green。
+- I128-IMPL-001: **製品実装完了 / original TDD Red chronologyはunverified**。実装後のGreenと回帰は確認済み。2026-09-24にpre-implementation HEAD `af71e1f9571380853c4753537620e1b04c9cf38d`へ同等testだけを一時適用したretrospective reproductionで `0 != 5` を確認したが、これは当時のRed-before-Green実行証明として扱わない。
 - I128-IMPL-002: **完了**。invalid UTF-8失敗注入でdiscovered path消失のRedを確認し、本文失敗前に判明したpath/file countをpartial lifecycle snapshotへ保持。T610 89/89 Green。
 - I128-IMPL-003: **完了**。元例外の型・messageを変えずWeakMapでsafe diagnostic metadataを関連付け、Outputへstage/operation/scope/error name/allowlist code/category/discovered/processedを出力。raw path/sourceは非出力。focused 4/4、T610 90/90、T606 223 pass / 2 skip / 0 fail。
 - mergeは行わない。
@@ -20,10 +20,10 @@
 | I128-IMPL-001 | 完了 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
 | I128-IMPL-002 | 完了 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | invalid UTF-8失敗注入でRed（discoveredFilePaths undefined）→Green、2件保持・repository partial・failed scope・status非%を確認。T610 89/89 Green |
 | I128-IMPL-003 | 完了 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | Red=`details were redacted`のみ→Green。raw errorを保持したままsafe metadataをOutputへ投影し、EACCES allowlistとpath非露出を回帰で確認 |
-| I128-NR-001 | Red作成前 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | NUL binary / invalid UTF-8のactual composition fixtureをtest-only commitでRed保存後、両方がexcluded・total 0・scope completeとなる |
-| I128-NR-002 | Red作成前 | S | pull-request ownerではimmutable PR HEAD evidenceがないpathをworking-tree本文から補完しない | I128-NR-001 | actual PR composition fixtureをtest-only commitでRed保存後、local-only/unchanged pathはuncollectedのままprogress/denominatorへ入らない |
-| I128-NR-003 | 証跡訂正中 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | 過去Redを捏造せずreport/trackingを訂正し、NR-001/002では実際のRed-before-Greenを保存する |
-| I128-FINAL | 指摘対応後待機 | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-NR-001〜003 | normal fix verification用matrix・required local gate・exact-head CI evidenceを保存し、PRへ簡易reportを投稿する |
+| I128-NR-001 | 実装・local検証完了 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | Red commit `d7481d1` でbinary `1 != 0` / invalid UTF-8例外を確認。fix `1895d41` で両方excluded・total 0・scope complete、T610 94/94 Green |
+| I128-NR-002 | 実装・local検証完了 | S | pull-request ownerではimmutable PR HEAD evidenceがないpathをworking-tree本文から補完しない | I128-NR-001 | Red commit `d7481d1` で `3 != 1`。fix `1895d41` でlocal-only/unchanged pathはuncollectedのままprogress/denominatorへ入らない |
+| I128-NR-003 | 記録訂正完了 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | original chronologyはunverifiedと明記。baseline `af71e1f` + test patch hash `9aa84344...` で後日 `0 != 5` を再現し、NR-001/002はtest-only Red commitとCI failure artifactでTDD証跡を保存 |
+| I128-FINAL | fix verification待ち | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-NR-001〜003 | fix HEAD `1895d41` full local gate Green。report/handoff metadata commit後、そのcurrent HEADと一致するpull_request CIを確認しPRへ簡易reportを投稿する |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 

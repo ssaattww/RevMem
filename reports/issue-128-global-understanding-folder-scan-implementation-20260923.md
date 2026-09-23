@@ -40,7 +40,7 @@ Global Understanding の明示 folder start で、未オープン file の本文
 - `root.txt=2`、`child/nested.txt=3` の fixture で total 5 行を確認した。
 - ordinary refresh の開始前は total 0 / discovered 0 のままで、repository-wide本文scanは行わない。
 
-注記: PR作成後、この専用worktreeに I128-IMPL-001 の未commit変更が追加で現れたため、上書きせず差分を確認して引き継いだ。tracking には Red `0 != 5` の記録があり、このchatではその後のGreenと回帰を直接再確認した。
+訂正（2026-09-24）: I128-IMPL-001 の original Red-before-Green chronology は、このimplementation chatが直接観測した証拠も、当時保存された失敗artifactも確認できないため **unverified** とする。trackingに存在した `0 != 5` の記録だけをTDD実行証明として扱わない。2026-09-24にpre-implementation HEAD `af71e1f9571380853c4753537620e1b04c9cf38d`へ同等のregression testだけを一時適用し、`0 != 5` をretrospectiveに再現したが、これは当時のRed-before-Green時系列を証明するものではない。
 
 ### I128-IMPL-002: discovery retention
 
@@ -94,5 +94,5 @@ Global Understanding の明示 folder start で、未オープン file の本文
 
 ## Remaining risks
 
-- I128-IMPL-001 のRed実行は、このchatが直接観測したものではなく、同worktreeへ追加されたtracking/evidenceを引き継いだ。Greenと全回帰はこのchatで直接確認した。
+- I128-IMPL-001 の original TDD Red chronology は unverified。2026-09-24のbaseline再現は元実装の不具合再現証拠であり、当時のTDD順序の証明ではない。
 - exact-head CIはreport生成時点では未実施。最終結果はPRコメントへ外部同期する。

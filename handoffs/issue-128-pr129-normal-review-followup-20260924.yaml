@@ -1,0 +1,87 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-24T07:16:30+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  reviewed_normal_head: 95471dc843d25a73e202f568974b2757128206ec
+  red_test_head: d7481d143b6d3daa090764582f0a59291e5fd9f0
+  fix_head: 1895d4101a78604acd843263c06bd8bd1732376f
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+verification:
+  capability: local_execution_available
+  red_ci:
+    head_sha: d7481d143b6d3daa090764582f0a59291e5fd9f0
+    run_id: 35924811150
+    run_number: 4694
+    conclusion: failure
+    failed_step: T610 folder Global Understanding tests
+    artifact_id: 10779260305
+  green_local:
+    head_sha: 1895d4101a78604acd843263c06bd8bd1732376f
+    focused: 5/5
+    t610: 94/94
+    t503_t504_related: 23/23
+    t606: 223_pass_2_skip_0_fail
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    npm_test: pass
+findings:
+  - id: I128-NR-001
+    severity: High
+    state: implementation_complete
+    red_evidence: "binary 1 != 0; invalid UTF-8 threw instead of exclusion"
+    fix: "shared NUL-binary classification and typed dynamic exclusions"
+  - id: I128-NR-002
+    severity: High
+    state: implementation_complete
+    red_evidence: "PR total 3 != immutable expected 1"
+    fix: "filesystem fallback disabled for pull-request owners"
+  - id: I128-NR-003
+    severity: Medium
+    state: record_correction_complete
+    fix: "original I128-IMPL-001 Red chronology explicitly marked unverified"
+retrospective_evidence:
+  purpose: "reproduce original product defect without claiming original TDD chronology"
+  base_head: af71e1f9571380853c4753537620e1b04c9cf38d
+  temporary_test_patch_hash: 9aa843440c36c5f20516efbb21a5e58479db5801
+  compile: pass
+  focused_test: fail
+  observed: "actual 0 / expected 5"
+  chronology_claim: unverified
+reports:
+  - reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+  - reports/issue-128-pr129-normal-review-followup-20260924.md
+write_boundary:
+  forbidden:
+    - merge
+    - unrelated worktrees
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: "same normal reviewer verifies I128-NR-001/002/003 only"
+  instructions:
+    - re-resolve PR #129 current HEAD
+    - verify required-action / production-path / actual-fixture / focused-evidence matrix
+    - treat I128-IMPL-001 original Red chronology as unverified
+    - distinguish retrospective baseline reproduction from original TDD evidence
+    - verify only CI whose head SHA matches current PR HEAD
+    - do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-normal-review-followup-20260924.yaml
