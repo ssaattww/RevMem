@@ -30,7 +30,7 @@ verification:
   green:
     candidate_head: 851a79f63c654b8c1c75b830a43a290e0ade2888
     focused_nr002: 3/3
-    focused_with_pr68: 4/4
+    focused_with_pr68: 5/5
     t610: 96/96
     build: pass
     contracts: pass
