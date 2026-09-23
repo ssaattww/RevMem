@@ -1,0 +1,134 @@
+version: 3
+kind: review_handoff
+created_at: 2026-09-23T23:24:03.1698122+09:00
+repository:
+  full_name: ssaattww/RevMem
+  issue: 128
+  pull_request: 129
+target:
+  branch: fix/issue-128-global-understanding-folder-scan
+  base_ref: main
+  base_sha: df1501358be6ad0e6e03989ddc9e08f67a6e1996
+  reviewed_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+  commit_range: df1501358be6ad0e6e03989ddc9e08f67a6e1996..255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+review:
+  mode: initial_review
+  reviewer:
+    role: normal_reviewer
+    identity: ChatGPT normal-review chat
+    served_as_normal_reviewer: true
+    served_as_implementer: false
+  verdict: fail
+  reviewed_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+  findings:
+    - id: I128-NR-001
+      severity: high
+      origin: normal_review
+      location: src/composition/global-understanding/global-understanding-source.ts:349-360
+      description: explicit-folder filesystem fallback bypasses established binary/encoding classification
+      impact: valid-UTF8 binary content can enter the Global denominator and dynamic exclusions are not counted
+      required_action: use the established content classification/exclusion contract and add actual composition regressions for binary and authoritative invalid-encoding behavior
+      evidence:
+        - existing NodeRepositoryFileEnumerator excludes NUL binary payload.bin
+        - PR129 composition counts the same payload.bin as one non-empty line and excludedFileCount=0
+        - C:\Users\donabe\Project\RevMem-review-evidence\issue128-255d824\binary-contract-output.json
+        - sha256:637A97304E0A49E402EC08AE207C901A2CD3D1C6166D67B043C1B88D2A8DFF4A
+    - id: I128-NR-002
+      severity: high
+      origin: normal_review
+      location: src/composition/global-understanding/global-understanding-source.ts:349-360
+      description: pull-request owner falls back to mutable working-tree content when immutable PR HEAD evidence is absent
+      impact: unchanged/local-only working-tree content can corrupt PR-context Global totals and revision provenance
+      required_action: forbid working-tree fallback for PR owners and preserve missing immutable content as path-only/uncollected; add actual PR composition regression
+      evidence:
+        - immutable provider returns changed.ts=1 line while working tree contains unchanged.ts=2 lines
+        - PR129 composition reports total=3 and a progress row for unchanged.ts
+        - C:\Users\donabe\Project\RevMem-review-evidence\issue128-255d824\pr-immutable-boundary-output.json
+        - sha256:E95483C0656DF5F4C0C40D3DCB187C139B4C839840A62BFD23393A6B282E0835
+    - id: I128-NR-003
+      severity: medium
+      origin: normal_review
+      location: reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+      description: I128-IMPL-001 Red-before-Green sequence is not demonstrated by persisted evidence
+      impact: required TDD acceptance is not auditable and the implementation report relies on inherited tracking rather than direct Red evidence
+      required_action: reference an existing source-bound pre-implementation Red artifact if one exists; otherwise correct the record, and preserve Red evidence before fixing NR-001/002
+      evidence:
+        - test-output/issue128/red-test.stdout.log says pass 2 fail 0
+        - implementation report says implementing chat did not directly observe the I128-IMPL-001 Red
+        - I128-IMPL-002 does have a concrete failing artifact, showing the expected evidence form
+  coverage:
+    requirement_design: checked_finding
+    correctness_edge_cases: checked_finding
+    scope_discipline: checked_finding
+    direct_dependency_impact: checked_finding
+    api_data_compatibility: checked_finding
+    error_handling_diagnostics: checked_no_finding
+    security_secret_handling: checked_finding
+    tests_validation: checked_finding
+    current_head_ci: checked_no_finding
+    report_tracking_accuracy: checked_finding
+    regression_maintainability: checked_finding
+    workflow_failure_artifact: checked_no_finding
+  held: []
+  unexplored:
+    - manual VS Code UI interaction not required to prove the composed data-path findings
+verification:
+  capability: local_execution_available
+  execution_environment:
+    device: FA780
+    os: Windows
+    shell: PowerShell
+    access: Remote Desktop Commander
+  commit:
+    state: committed
+    reviewed_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+  push:
+    state: pushed
+  ci_wait:
+    state: ci_wait_completed
+    exact_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+    run_id: 35870419230
+    run_number: 4689
+    conclusion: success
+    artifact_id: 10755445684
+    artifact_name: review-range-user-validation-0.1.56-pre+255d824
+  failure_diagnostics:
+    workflow_present: true
+    includes_test_output: true
+    includes_stdout: true
+    includes_stderr: true
+report:
+  report_type: review_report
+  path: reports/issue-128-pr129-normal-review-20260923.md
+  persistence_mode: repository_file
+  reviewed_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+  attestation_head: null
+next_action:
+  type: implementation
+  summary: fix I128-NR-001 and I128-NR-002 with TDD, correct I128-NR-003 evidence/report state, then return to this normal reviewer for finding-limited fix verification
+  required_matrix:
+    - finding_id: I128-NR-001
+      required_action: binary/encoding classification and exclusion accounting
+      production_path: required
+      actual_composition_fixture: required
+      focused_evidence: required
+    - finding_id: I128-NR-002
+      required_action: PR immutable evidence boundary
+      production_path: required
+      actual_composition_fixture: required
+      focused_evidence: required
+    - finding_id: I128-NR-003
+      required_action: evidence/report correction and TDD Red evidence for follow-up fixes
+      production_path: not_applicable
+      actual_composition_fixture: not_applicable
+      focused_evidence: required
+permissions:
+  allowed:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+  merge: forbidden
