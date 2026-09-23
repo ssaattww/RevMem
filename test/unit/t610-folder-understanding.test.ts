@@ -1363,6 +1363,83 @@ test("Issue #128 preserves allowlisted error codes without exposing dependency p
   assert.doesNotMatch(message, /secret\.txt|private-repository/u);
 });
 
+test("I128-NR-001 excludes NUL binary content from explicit-folder filesystem evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr001-binary-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "payload.bin"), Buffer.from([0x00, 0x41, 0x0a]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [], yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "nr001-binary", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 0);
+  assert.deepEqual(snapshot?.progress.files, []);
+  assert.deepEqual(snapshot?.discoveredFilePaths ?? [], []);
+  assert.equal(snapshot?.excludedFileCount, 1);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("I128-NR-001 excludes invalid UTF-8 from explicit-folder filesystem evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr001-encoding-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [], yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "nr001-encoding", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 0);
+  assert.deepEqual(snapshot?.progress.files, []);
+  assert.deepEqual(snapshot?.discoveredFilePaths ?? [], []);
+  assert.equal(snapshot?.excludedFileCount, 1);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("I128-NR-002 keeps PR path-only files out of immutable PR line evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-pr-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "working tree changed\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "unchanged.ts"), "local one\nlocal two\n", "utf8");
+  const revisionId = "d".repeat(40);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [],
+    readPullRequestHeadFiles: async (_owner, candidatePaths) => {
+      assert.deepEqual([...candidatePaths].sort(), ["changed.ts", "unchanged.ts"]);
+      return [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "immutable boundary", baseRevision: "c".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => file.path), ["changed.ts"]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts", "unchanged.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 1);
+  assert.deepEqual(snapshot?.fileOpenTargets?.map((target) => target.repositoryPath), ["changed.ts"]);
+});
+
 test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-host-partial-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
