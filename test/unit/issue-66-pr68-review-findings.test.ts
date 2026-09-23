@@ -335,6 +335,10 @@ test("PR68-R002 pre-fix mixed-case Windows Global state remains current after up
       contentHash: sha256(CONTENT_A),
       cacheKey: `r002:${sha256(CONTENT_A)}`,
     }],
+    readPullRequestHeadFiles: async (_owner, candidatePaths) => {
+      assert.equal(candidatePaths.has(CANONICAL_PATH_A), true);
+      return [{ path: RAW_PATH_A, revisionId: B, content: CONTENT_A }];
+    },
     fileSystemPathSemantics: "windows",
     yieldControl: () => undefined,
   });
