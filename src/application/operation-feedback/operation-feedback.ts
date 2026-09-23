@@ -47,6 +47,20 @@ export interface OperationFeedbackHost {
 }
 
 /** Safe structured diagnostic variants accepted by the Output boundary. */
+export type GlobalUnderstandingFailureStage = "path-discovery" | "owner-capture" | "scope-processing" | "content-read" | "calculation";
+
+export interface GlobalUnderstandingFailureDiagnostic {
+  readonly code: "GLOBAL_UNDERSTANDING_FAILURE";
+  readonly stage: GlobalUnderstandingFailureStage;
+  readonly operation: "folder-scope-refresh";
+  readonly scope: "repository-root" | "folder";
+  readonly errorName: string;
+  readonly errorCode?: string;
+  readonly category: OperationFailureCategory;
+  readonly discoveredFileCount: number;
+  readonly processedFileCount: number;
+}
+
 export type OperationDiagnostic = {
   readonly code: "PR_PROGRESS_UNAVAILABLE";
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
@@ -241,6 +255,9 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
 ]);
 
 const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication"]);
+const SAFE_GLOBAL_UNDERSTANDING_STAGES = new Set<GlobalUnderstandingFailureStage>(["path-discovery", "owner-capture", "scope-processing", "content-read", "calculation"]);
+const SAFE_GLOBAL_UNDERSTANDING_SCOPES = new Set(["repository-root", "folder"]);
+const SAFE_OPERATION_FAILURE_CATEGORIES = new Set<OperationFailureCategory>(["retryable", "permanent", "stale", "authentication", "validation"]);
 
 const validatePrProgressAttempts = (
   attempts: readonly PullRequestDiffAcquisitionAttempt[]
@@ -286,6 +303,7 @@ export class OperationDiagnosticError extends Error {
         code: diagnostic.code,
         reason: validateGitHubPullRequestDetectionReason(diagnostic.reason),
       });
+
   }
 }
 
@@ -325,6 +343,7 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
     return { kind: "stale" };
   }
   if (error instanceof OperationDiagnosticError) {
+
     if (error.diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
       switch (error.diagnostic.reason) {
         case "authentication": return { kind: "authentication" };
@@ -350,6 +369,41 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
     return { kind: "retryable", code };
   }
   return code === undefined ? { kind: "permanent" } : { kind: "permanent", code };
+};
+
+const globalUnderstandingFailureDiagnostics = new WeakMap<object, GlobalUnderstandingFailureDiagnostic>();
+
+/** Attaches one bounded source-content-free Global Understanding diagnostic without replacing the original error. */
+export const attachGlobalUnderstandingFailureDiagnostic = (
+  error: unknown,
+  context: Readonly<{
+    stage: GlobalUnderstandingFailureStage;
+    operation: "folder-scope-refresh";
+    scope: "repository-root" | "folder";
+    discoveredFileCount: number;
+    processedFileCount: number;
+  }>
+): unknown => {
+  const identity = (typeof error === "object" && error !== null) || typeof error === "function" ? error as object : undefined;
+  if (identity === undefined) return error;
+  if (!SAFE_GLOBAL_UNDERSTANDING_STAGES.has(context.stage)) throw new TypeError("Global Understanding diagnostic stage is not allowlisted");
+  if (context.operation !== "folder-scope-refresh") throw new TypeError("Global Understanding diagnostic operation is not allowlisted");
+  if (!SAFE_GLOBAL_UNDERSTANDING_SCOPES.has(context.scope)) throw new TypeError("Global Understanding diagnostic scope is not allowlisted");
+  const classification = classifyOperationFailure(error);
+  if (!SAFE_OPERATION_FAILURE_CATEGORIES.has(classification.kind)) throw new TypeError("Global Understanding diagnostic failure category is not allowlisted");
+  const diagnostic: GlobalUnderstandingFailureDiagnostic = Object.freeze({
+    code: "GLOBAL_UNDERSTANDING_FAILURE",
+    stage: context.stage,
+    operation: context.operation,
+    scope: context.scope,
+    errorName: error instanceof Error ? safeErrorName(error) : "Error",
+    ...(classification.code === undefined ? {} : { errorCode: classification.code }),
+    category: classification.kind,
+    discoveredFileCount: validateOperationProgressCount(context.discoveredFileCount, "Global Understanding discovered file count"),
+    processedFileCount: validateOperationProgressCount(context.processedFileCount, "Global Understanding processed file count"),
+  });
+  globalUnderstandingFailureDiagnostics.set(identity, diagnostic);
+  return error;
 };
 
 const retryAttemptsByError = new WeakMap<object, readonly OperationRetryAttempt[]>();
@@ -402,6 +456,17 @@ export const runWithBoundedRetry = async <T>(
   throw new Error("unreachable retry state");
 };
 
+const formatGlobalUnderstandingFailureDiagnostic = (diagnostic: GlobalUnderstandingFailureDiagnostic): string =>
+  diagnostic.code +
+  " stage=" + diagnostic.stage +
+  "; operation=" + diagnostic.operation +
+  "; scope=" + diagnostic.scope +
+  "; error=" + diagnostic.errorName +
+  "; code=" + (diagnostic.errorCode ?? "none") +
+  "; category=" + diagnostic.category +
+  "; discovered=" + String(diagnostic.discoveredFileCount) +
+  "; processed=" + String(diagnostic.processedFileCount);
+
 const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
   if (diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
     return `${diagnostic.code} reason=${diagnostic.reason}`;
@@ -414,6 +479,9 @@ const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
 };
 
 const sanitizedFailureMessage = (error: unknown): string => {
+  const identity = errorIdentity(error);
+  const globalDiagnostic = identity === undefined ? undefined : globalUnderstandingFailureDiagnostics.get(identity);
+  if (globalDiagnostic !== undefined) return formatGlobalUnderstandingFailureDiagnostic(globalDiagnostic);
   if (error instanceof OperationDiagnosticError) {
     return formatOperationDiagnostic(error.diagnostic);
   }

@@ -10,6 +10,7 @@ import {
   readRegisteredPullRequestGlobalHeadFiles,
   type PullRequestGlobalHeadFile,
 } from "../../application/global-understanding/pull-request-global-head-file-registry";
+import { attachGlobalUnderstandingFailureDiagnostic, type GlobalUnderstandingFailureStage } from "../../application/operation-feedback/operation-feedback";
 import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import { type FileSystemPathSemantics, type ResourceUri, WorkspaceIdentityService } from "../../application/workspace-identity/index";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState } from "../../core/contracts/index";
@@ -242,7 +243,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
           await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
-          throw error;
+          throw attachGlobalUnderstandingFailureDiagnostic(error, {
+            stage: "path-discovery", operation: "folder-scope-refresh",
+            scope: folder.length === 0 ? "repository-root" : "folder",
+            discoveredFileCount: provisionalDiscoveredFilePaths.size, processedFileCount: 0
+          });
         }
       }
     }
@@ -294,7 +299,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
             }
           }
           await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
-          throw error;
+          throw attachGlobalUnderstandingFailureDiagnostic(error, {
+            stage: "owner-capture", operation: "folder-scope-refresh",
+            scope: currentScopeWork.some((scope) => scope.folder.length === 0) ? "repository-root" : "folder",
+            discoveredFileCount: provisionalDiscoveredFilePaths.size, processedFileCount: 0
+          });
         }
       }
     })();
@@ -306,6 +315,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         assertCurrent();
         if (scopeSignal?.aborted === true) throw new DOMException("Folder understanding scope was superseded.", "AbortError");
       };
+      let scopeFailureStage: GlobalUnderstandingFailureStage = "scope-processing";
+      let scopeProcessedFileCount = 0;
       try {
         assertScopeCurrent();
         const belongsDirectlyToFolder = (repositoryPath: string): boolean =>
@@ -330,9 +341,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
           loadedByPath.set(repositoryPath, evidence);
           countedAsOpenedForFolder.add(repositoryPath);
           included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+          scopeProcessedFileCount += 1;
         }
         await flushSourcePath(assertScopeCurrent);
         if (this.folderScopes !== undefined) {
+          scopeFailureStage = "content-read";
           const fileSource = new NodeGlobalUnderstandingFileSource(owner.repositoryRoot, this.pathSemantics);
           for (const repositoryPath of availablePaths) {
             await sourcePathStep("source-path-unopened-evidence", assertScopeCurrent);
@@ -345,9 +358,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
             assertScopeCurrent();
             loadedByPath.set(repositoryPath, evidence);
             included.push({ path: repositoryPath, nonEmptyLineCount: evidence.nonEmptyLines.length });
+            scopeProcessedFileCount += 1;
           }
           await flushSourcePath(assertScopeCurrent);
         }
+        scopeFailureStage = "calculation";
         const source: GlobalUnderstandingFileSource = { load: async (repositoryPath, revisionId) => {
           assertScopeCurrent();
           const evidence = loadedByPath.get(repositoryPath);
@@ -401,7 +416,11 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
           await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
-          throw error;
+          throw attachGlobalUnderstandingFailureDiagnostic(error, {
+            stage: scopeFailureStage, operation: "folder-scope-refresh",
+            scope: folder.length === 0 ? "repository-root" : "folder",
+            discoveredFileCount: provisionalDiscoveredFilePaths.size, processedFileCount: scopeProcessedFileCount
+          });
         }
       }
     }

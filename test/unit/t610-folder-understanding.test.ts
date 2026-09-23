@@ -1297,6 +1297,72 @@ test("Issue #128 preserves discovered file counts when unopened content loading 
   assert.doesNotMatch((await import("../../src/ui/global-understanding/global-understanding-ui-model.js")).formatGlobalUnderstandingStatusBar(last).text, /%/u);
 });
 
+test("Issue #128 emits structured privacy-safe diagnostics for folder content failures", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-diagnostic-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "private-repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "secret-private.txt"), Buffer.from([0xff, 0xfe]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-diagnostic", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const output: string[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined, revealLog: () => undefined,
+    appendLog: (entry) => { if (entry.event === "failed") output.push(entry.message ?? ""); }
+  });
+
+  await assert.rejects(() => feedback.run("Global理解率を再計算", () => source.recalculate()));
+
+  const message = output.at(-1) ?? "";
+  assert.match(message, /GLOBAL_UNDERSTANDING_FAILURE/u);
+  assert.match(message, /stage=content-read/u);
+  assert.match(message, /error=TypeError/u);
+  assert.match(message, /category=validation/u);
+  assert.match(message, /scope=folder/u);
+  assert.match(message, /discovered=2/u);
+  assert.match(message, /processed=0/u);
+  assert.doesNotMatch(message, /secret-private|private-repository/u);
+  assert.doesNotMatch(message, /details were redacted/u);
+});
+
+test("Issue #128 preserves allowlisted error codes without exposing dependency paths", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-code-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "private-repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "a.txt"), "a\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => { throw Object.assign(new Error("C:\\private\\secret.txt"), { code: "EACCES" }); },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-code", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const output: string[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined, revealLog: () => undefined,
+    appendLog: (entry) => { if (entry.event === "failed") output.push(entry.message ?? ""); }
+  });
+
+  await assert.rejects(() => feedback.run("Global理解率を再計算", () => source.recalculate()), /secret\.txt/u);
+
+  const message = output.at(-1) ?? "";
+  assert.match(message, /stage=owner-capture/u);
+  assert.match(message, /code=EACCES/u);
+  assert.match(message, /category=permanent/u);
+  assert.doesNotMatch(message, /secret\.txt|private-repository/u);
+});
+
 test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-host-partial-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
