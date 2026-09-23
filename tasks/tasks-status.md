@@ -4,7 +4,7 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I128-NR-002-R2（P6 / T610保守、PR #129 normal fix verification再指摘対応）。review record/current PR HEAD `dac3ede4528692fc70fc03216a4d4792fe7bd54a` で残存したproduction open-document reader→PR Global経路を、actual composition Red-firstで修正する。I128-NR-001/003はclosed済み。
+- 現在のタスク: I128-NR-002-R2（P6 / T610保守、実装・local検証完了 / same normal reviewer限定確認待ち）。review record `dac3ede4528692fc70fc03216a4d4792fe7bd54a` で残存したproduction open-document reader→PR Global経路を、Red-only `556d0a38b5f46018a052bbc102d9024a3e65eb7c` → source fix `f9e87e04f6a398aedb030d15aa078347a81d6c8c` → product/test candidate `851a79f63c654b8c1c75b830a43a290e0ade2888` で修正・検証済み。I128-NR-001/003はclosed済み。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
@@ -21,9 +21,9 @@
 | I128-IMPL-002 | 完了 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | invalid UTF-8失敗注入でRed（discoveredFilePaths undefined）→Green、2件保持・repository partial・failed scope・status非%を確認。T610 89/89 Green |
 | I128-IMPL-003 | 完了 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | Red=`details were redacted`のみ→Green。raw errorを保持したままsafe metadataをOutputへ投影し、EACCES allowlistとpath非露出を回帰で確認 |
 | I128-NR-001 | 実装・local検証完了 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | Red commit `d7481d1` でbinary `1 != 0` / invalid UTF-8例外を確認。fix `1895d41` で両方excluded・total 0・scope complete、T610 94/94 Green |
-| I128-NR-002 | R2 Red作成前 | S | pull-request ownerではfilesystem fallbackだけでなくworking-tree open-document evidenceもPR line evidenceへ昇格・上書きしない | I128-NR-001 closed | actual production `createGlobalUnderstandingOpenDocumentReader` compositionで、local-only open pathとsame-path local editの2ケースをtest-only commitでRed保存後、immutable PR HEADだけがdenominatorへ入る |
+| I128-NR-002 | R2実装・local検証完了 / reviewer限定確認待ち | S | pull-request ownerではfilesystem fallbackだけでなくworking-tree open-document evidenceもPR line evidenceへ昇格・上書きしない | I128-NR-001 closed | production reader 2ケースをRed-only `556d0a3` で `3 != 1` / `2 != 1` と確認。source fix `f9e87e0` でPR ownerはimmutable evidence mapのみ使用。PR68 legacy fixtureはassertionを維持したままimmutable providerへ更新し、candidate `851a79f` でfocused 4/4、T610 96/96、full local gate Green |
 | I128-NR-003 | 記録訂正完了 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | original chronologyはunverifiedと明記。baseline `af71e1f` + test patch hash `9aa84344...` で後日 `0 != 5` を再現し、NR-001/002はtest-only Red commitとCI failure artifactでTDD証跡を保存 |
-| I128-FINAL | fix verification待ち | S | focused/full local validation、詳細report、PR更新、same normal reviewer fix verification | I128-NR-001〜003 | fix HEAD `1895d41` full local gate Green。2026-09-24ユーザー指示によりlocal test実施済みのため最終CI待機は不要。PRへ簡易reportを投稿しsame normal reviewerの限定確認へ渡す |
+| I128-FINAL | NR-002限定fix verification待ち | S | focused/full local validation、詳細report、PR更新、same normal reviewer fix verification | I128-NR-001/003 closed、NR-002 R2 | product/test candidate `851a79f` でfocused 4/4、T610 96/96、build/contracts/architecture正負/lint/npm test Green。2026-09-24ユーザー指示により最終CI待機不要。PRへ簡易reportを投稿しsame normal reviewerのNR-002限定確認へ渡す |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
