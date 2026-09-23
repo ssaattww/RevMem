@@ -1,0 +1,351 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-24T08:12:26.8543230+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  current_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  previous_reviewed_head: 255d8247fe7d9d97b8f9656f7ae2a4c6049be5b2
+  previous_review_record_head: 95471dc843d25a73e202f568974b2757128206ec
+  red_test_head: d7481d143b6d3daa090764582f0a59291e5fd9f0
+  product_fix_head: 1895d4101a78604acd843263c06bd8bd1732376f
+  commit_range: 95471dc843d25a73e202f568974b2757128206ec..f398e68f17bc1805574876bec6fc445d0ba8bc4f
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+  repository: ssaattww/RevMem
+  branch: fix/issue-128-global-understanding-folder-scan
+  head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  source_state: clean
+  source_fingerprint: "tracked HEAD f398e68; 1895d41..f398e68 changes only report/handoff/tracking"
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue128\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue128\handoffs'
+  dependencies:
+    - name: node
+      status: available
+      evidence: Node.js v24.20.0 used by reviewer probes
+    - name: npm
+      status: available
+      evidence: build and compile:test executed locally
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - FA780 executed current-source build, compile:test, focused tests, and reviewer composition probes
+    - exact current-head GitHub Actions evidence is available
+  technical_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  administrative_parent: null
+  commit:
+    state: committed
+    review_target_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  push:
+    state: pushed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  ci_wait:
+    state: ci_wait_completed
+    required_for: route_verification
+  final_publication:
+    sequence: not_applicable
+    pr_action: update
+authoritative_requirements:
+  - source: report
+    reference: reports/issue-128-pr129-normal-review-20260923.md
+    summary: preserve I128-NR-001 High, I128-NR-002 High, I128-NR-003 Medium and verify their required actions
+  - source: design
+    reference: doc/design/vscode-review-range-tracker-design.md 11.3 / 16.5 / 18
+    summary: PR Global evidence is immutable PR-snapshot evidence; binary and invalid UTF-8 are excluded from denominator
+  - source: user_instruction
+    reference: 2026-09-24 local-test policy
+    summary: do not require waiting for final CI after local validation; if CI is cited, use only matching head SHA
+development_policy:
+  method: TDD
+  testing_order: Red before production fix for review findings
+  governing_source: RevMem project instructions
+validation_plan:
+  commands:
+    - npm run build
+    - npm run compile:test
+    - focused I128-NR-001/002 tests
+    - reviewer actual production open-document PR-boundary probes
+  required_failure_diagnostics:
+    - stdout
+    - stderr
+    - Red CI failure artifact
+authorized_actions:
+  - read_repository
+  - write_report
+  - write_handoff
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: normal fix-verification report and handoff
+      reason: project-required review persistence
+    - path_or_operation: PR metadata/comment
+      reason: concise review publication
+  forbidden:
+    - path_or_operation: product/test/design/workflow/tracking implementation changes
+      reason: reviewer must not implement findings
+    - path_or_operation: merge
+      reason: user performs merge
+scope:
+  - I128-NR-001 closure
+  - I128-NR-002 closure
+  - I128-NR-003 closure
+non_goals:
+  - new exhaustive review
+  - unrelated cleanup
+  - merge
+files:
+  changed: []
+  inspected:
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: I128-NR-001 typed exclusion
+    - path: src/adapters/repository-files/node-repository-file-enumerator.ts
+      purpose: shared binary classification
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: dynamic exclusion and PR filesystem fallback fence
+    - path: src/composition/global-understanding/global-understanding-open-document-reader.ts
+      purpose: I128-NR-002 remaining working-tree evidence path
+    - path: src/composition/extension.ts
+      purpose: production open-document reader wiring
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: supplied finding regressions
+    - path: tasks/tasks-status.md
+      purpose: I128-NR-003 correction
+    - path: reports/issue-128-global-understanding-folder-scan-implementation-20260923.md
+      purpose: I128-NR-003 correction
+commands:
+  - command: npm run build
+    purpose: bind reviewer production probes to current source
+    exit_code: 0
+    result: passed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: C:\Users\donabe\Project\RevMem-review-evidence\issue128-f398e68\build.stdout.log
+  - command: npm run compile:test
+    purpose: compile current focused regression tests
+    exit_code: 0
+    result: passed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: C:\Users\donabe\Project\RevMem-review-evidence\issue128-f398e68\compile-test.stdout.log
+  - command: node --test --test-name-pattern=I128-NR-00[12] test-dist/test/unit/t610-folder-understanding.test.js
+    purpose: supplied finding-focused regression tests
+    exit_code: 0
+    result: passed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: C:\Users\donabe\Project\RevMem-review-evidence\issue128-f398e68\focused.stdout.log
+  - command: reviewer production open-document PR boundary probe
+    purpose: verify local-only opened file remains uncollected in PR context
+    exit_code: 1
+    result: failed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: "actual total 3, expected immutable total 1"
+  - command: reviewer same-path open-document override probe
+    purpose: verify working-tree open document cannot replace immutable PR HEAD content
+    exit_code: 1
+    result: failed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: "actual total 2, expected immutable total 1"
+tests:
+  - name: I128-NR-001 supplied binary and invalid-encoding regressions
+    phase: verification
+    result: passed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: focused tests 2/2 and prior binary-contract recheck total 0/excluded 1
+  - name: I128-NR-002 supplied path-only fixture
+    phase: verification
+    result: passed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: fixture uses readOpenDocuments empty and verifies filesystem fallback fence
+  - name: I128-NR-002 actual production open-document path
+    phase: verification
+    result: failed
+    head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+    evidence: local-only opened file enters PR denominator; same-path opened file overrides immutable evidence
+ci:
+  required: true
+  workflow: CI
+  run_id: 35926303223
+  head_sha: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  conclusion: success
+  artifacts:
+    - id: 10778932970
+      name: review-range-user-validation-0.1.56-pre+f398e68
+      purpose: exact current-head user-validation artifact
+implementation:
+  outcome: partial
+  final_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  commits:
+    - sha: d7481d143b6d3daa090764582f0a59291e5fd9f0
+      purpose: Red-only tests for NR-001/002
+    - sha: 1895d4101a78604acd843263c06bd8bd1732376f
+      purpose: product fix for NR-001/002
+  addressed_findings:
+    - id: I128-NR-001
+      reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+      disposition: addressed
+      evidence: typed binary/invalid-encoding exclusions; actual binary recheck total 0/excluded 1
+    - id: I128-NR-002
+      reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+      disposition: partial
+      evidence: direct filesystem fallback fixed, but production open-document working-tree evidence still enters PR denominator
+    - id: I128-NR-003
+      reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+      disposition: addressed
+      evidence: original chronology explicitly unverified; retrospective evidence separately labeled
+review:
+  mode: fix_verification
+  reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  reviewer:
+    identity: same ChatGPT normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same ChatGPT normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - this chat issued I128-NR-001/002/003 in the initial normal review
+  verdict: fail
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_finding
+      evidence: I128-NR-002 remains incomplete
+    - criterion: correctness and edge cases
+      disposition: checked_finding
+      evidence: actual open-document production cases fail 3!=1 and 2!=1
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: fix diff stays within Issue #128 findings
+    - criterion: direct dependency impact
+      disposition: checked_finding
+      evidence: global-understanding-open-document-reader production dependency bypasses the new PR fallback fence
+    - criterion: tests and validation adequacy
+      disposition: checked_finding
+      evidence: supplied NR-002 test sets readOpenDocuments to empty
+    - criterion: current-head CI
+      disposition: checked_no_finding
+      evidence: exact f398e68 run 35926303223 success
+    - criterion: report and tracking accuracy
+      disposition: checked_no_finding
+      evidence: NR-003 corrections are explicit and honest
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix:
+      - finding_id: I128-NR-001
+        required_action: binary/encoding exclusion parity
+        production_path: NodeGlobalUnderstandingFileSource typed exclusion -> T505 dynamic exclusion
+        actual_composition_fixture: NUL binary + invalid UTF-8 explicit root start
+        focused_evidence: closed; reviewer recheck and supplied tests pass
+      - finding_id: I128-NR-002
+        required_action: immutable PR HEAD must be sole authoritative PR line evidence
+        production_path: direct filesystem fallback fenced, but createGlobalUnderstandingOpenDocumentReader -> captureOpenedDocuments remains
+        actual_composition_fixture: supplied fixture incomplete; reviewer production fixture fails
+        focused_evidence: not closed; total 3!=1 and 2!=1
+      - finding_id: I128-NR-003
+        required_action: mark original Red chronology unverified
+        production_path: tracking/report only
+        actual_composition_fixture: retrospective reproduction separately labeled
+        focused_evidence: closed
+  validation_assessment:
+    - item: I128-NR-001
+      result: supported
+      evidence: required action satisfied
+    - item: I128-NR-002
+      result: failed
+      evidence: actual production open-document path still mixes working-tree content into PR evidence
+    - item: I128-NR-003
+      result: supported
+      evidence: evidence record corrected without retroactive TDD claim
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - NR-001 closed
+    - NR-002 remains open as High
+    - NR-003 closed
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-128-pr129-normal-fix-verification-20260924.md
+  reviewed_head: f398e68f17bc1805574876bec6fc445d0ba8bc4f
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - finding-limited fix verification persisted
+findings:
+  - id: I128-NR-002
+    severity: high
+    origin: introduced_by_change
+    location: src/composition/global-understanding/global-understanding-open-document-reader.ts and src/composition/global-understanding/global-understanding-source.ts:captureOpenedDocuments
+    description: PR context still accepts mutable working-tree open-document evidence and labels it with PR HEAD revision
+    impact: local-only/open files enter PR denominator and open local edits can override immutable PR HEAD evidence
+    evidence: reviewer production probes actual total 3 vs expected 1 and total 2 vs expected 1
+    required_action: fence working-tree open-document evidence for PR owners or otherwise keep immutable PR HEAD evidence authoritative; add Red-first actual composition regressions for both cases
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: explicitly reserved for user
+remaining_risks:
+  - PR Global denominator remains mutable when working-tree documents are open
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: review_followup
+  summary: fix only I128-NR-002 and return to same normal reviewer
+  instructions:
+    - add Red-first actual production composition test for local-only opened working-tree file in PR context
+    - add Red-first actual production composition test proving local open edit cannot override immutable PR HEAD content
+    - implement PR-owner authority boundary without reopening NR-001/003
+    - run focused and route-appropriate validation
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-128-pr129-normal-fix-verification-20260924.md
+    - I128-NR-002
+  requested_authorized_actions:
+    - edit_code
+    - edit_tests
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-normal-fix-verification-20260924.yaml
+  packet_url: null
+  transport_note: receiving chat must re-resolve current PR HEAD and FA780 worktree before modifying source
