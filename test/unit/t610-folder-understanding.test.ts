@@ -1448,6 +1448,87 @@ test("I128-NR-002 keeps PR path-only files out of immutable PR line evidence", a
   assert.deepEqual(snapshot?.fileOpenTargets?.map((target) => target.repositoryPath), ["changed.ts"]);
 });
 
+test("I128-NR-002-R2 ignores a local-only production open document in PR line evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-open-local-only-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "working changed\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "local-only.ts"), "local one\nlocal two", "utf8");
+  const revisionId = "e".repeat(40);
+  const localContent = "local one\nlocal two";
+  const localLines = localContent.split(/\r\n|\r|\n/u);
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "local-only.ts"), toString: () => "file:///local-only.ts" },
+      version: 1,
+      lineCount: localLines.length,
+      getText: () => localContent,
+      lineAt: (line) => ({ text: localLines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments,
+    readPullRequestHeadFiles: async () => [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "open local-only boundary", baseRevision: "d".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => file.path), ["changed.ts"]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts", "local-only.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 1);
+});
+
+test("I128-NR-002-R2 keeps immutable PR HEAD authoritative over a same-path production open document", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-open-same-path-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "local one\nlocal two", "utf8");
+  const revisionId = "f".repeat(40);
+  const localContent = "local one\nlocal two";
+  const localLines = localContent.split(/\r\n|\r|\n/u);
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "changed.ts"), toString: () => "file:///changed.ts" },
+      version: 7,
+      lineCount: localLines.length,
+      getText: () => localContent,
+      lineAt: (line) => ({ text: localLines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments,
+    readPullRequestHeadFiles: async () => [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "same-path immutable boundary", baseRevision: "e".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => [file.path, file.totalNonEmptyLineCount]), [["changed.ts", 1]]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 0);
+});
+
 test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-t610-host-partial-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
