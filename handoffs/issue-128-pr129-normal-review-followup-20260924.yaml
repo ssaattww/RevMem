@@ -80,7 +80,8 @@ next_action:
     - verify required-action / production-path / actual-fixture / focused-evidence matrix
     - treat I128-IMPL-001 original Red chronology as unverified
     - distinguish retrospective baseline reproduction from original TDD evidence
-    - verify only CI whose head SHA matches current PR HEAD
+    - local full gate on fix HEAD 1895d4101a78604acd843263c06bd8bd1732376f is the required verification evidence for this cycle per user instruction
+    - do not wait for final CI completion; if any CI evidence is referenced, accept only a run whose head SHA matches the referenced PR HEAD
     - do not merge
 transport:
   method: repository_file

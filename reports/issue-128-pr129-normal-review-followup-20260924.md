@@ -101,16 +101,15 @@ Red evidence CI:
 - failure diagnostics artifact id 10779260305
 - artifact workflow head SHA matches d7481d1
 
-Final exact-head CI:
-- pending metadata commit at report creation time
-- only a run whose head SHA equals the then-current PR #129 HEAD is valid
-- no prior SHA run will be substituted
+Final verification policy:
+- 2026-09-24 user instruction: local tests were executed, so final CI completion wait is not required for this fix cycle.
+- fix HEAD 1895d4101a78604acd843263c06bd8bd1732376f passed the full local gate including npm test / Extension Host.
+- metadata-only follow-up commits do not change product source or tests; the local gate is not rerun solely for report/tracking changes.
+- if CI is mentioned later, only a run whose head SHA exactly matches the referenced PR HEAD may be used; no prior SHA is substituted.
 
 ## Remaining work
 
-- commit/push this report, corrected tracking, and handoff
-- rerun exact final-head local gate
-- verify current PR HEAD and matching pull_request CI
+- commit/push the user-policy correction to this report, tracking, and handoff
 - post concise PR follow-up comment
 - request same normal reviewer finding-limited fix verification
 - do not merge

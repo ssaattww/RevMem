@@ -23,7 +23,7 @@
 | I128-NR-001 | 実装・local検証完了 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | Red commit `d7481d1` でbinary `1 != 0` / invalid UTF-8例外を確認。fix `1895d41` で両方excluded・total 0・scope complete、T610 94/94 Green |
 | I128-NR-002 | 実装・local検証完了 | S | pull-request ownerではimmutable PR HEAD evidenceがないpathをworking-tree本文から補完しない | I128-NR-001 | Red commit `d7481d1` で `3 != 1`。fix `1895d41` でlocal-only/unchanged pathはuncollectedのままprogress/denominatorへ入らない |
 | I128-NR-003 | 記録訂正完了 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | original chronologyはunverifiedと明記。baseline `af71e1f` + test patch hash `9aa84344...` で後日 `0 != 5` を再現し、NR-001/002はtest-only Red commitとCI failure artifactでTDD証跡を保存 |
-| I128-FINAL | fix verification待ち | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-NR-001〜003 | fix HEAD `1895d41` full local gate Green。report/handoff metadata commit後、そのcurrent HEADと一致するpull_request CIを確認しPRへ簡易reportを投稿する |
+| I128-FINAL | fix verification待ち | S | focused/full local validation、詳細report、PR更新、same normal reviewer fix verification | I128-NR-001〜003 | fix HEAD `1895d41` full local gate Green。2026-09-24ユーザー指示によりlocal test実施済みのため最終CI待機は不要。PRへ簡易reportを投稿しsame normal reviewerの限定確認へ渡す |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
