@@ -4,7 +4,7 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I128-FINAL（P6 / T610保守、実装完了・PR review待ち）。technical HEAD `3ffc3ad401c7d51b45bf66774ecad519d856ce1d` のfull local gateはGreen。詳細report/handoffを最終candidateへ含め、push後のexact-head pull_request CIはPRコメントへ外部同期する。
+- 現在のタスク: I128-NR-001/002/003（P6 / T610保守、PR #129 normal review指摘対応）。review record/current PR HEAD `95471dc843d25a73e202f568974b2757128206ec` で指摘されたbinary/invalid-encoding分類、PR immutable evidence境界、I128-IMPL-001 TDD証跡精度を修正する。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
@@ -20,7 +20,10 @@
 | I128-IMPL-001 | 完了 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
 | I128-IMPL-002 | 完了 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | invalid UTF-8失敗注入でRed（discoveredFilePaths undefined）→Green、2件保持・repository partial・failed scope・status非%を確認。T610 89/89 Green |
 | I128-IMPL-003 | 完了 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | Red=`details were redacted`のみ→Green。raw errorを保持したままsafe metadataをOutputへ投影し、EACCES allowlistとpath非露出を回帰で確認 |
-| I128-FINAL | 実行中 | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-IMPL-001〜003 | required local gateとexact-head CI evidenceを保存し、PRへ簡易reportを投稿する |
+| I128-NR-001 | Red作成前 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | NUL binary / invalid UTF-8のactual composition fixtureをtest-only commitでRed保存後、両方がexcluded・total 0・scope completeとなる |
+| I128-NR-002 | Red作成前 | S | pull-request ownerではimmutable PR HEAD evidenceがないpathをworking-tree本文から補完しない | I128-NR-001 | actual PR composition fixtureをtest-only commitでRed保存後、local-only/unchanged pathはuncollectedのままprogress/denominatorへ入らない |
+| I128-NR-003 | 証跡訂正中 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | 過去Redを捏造せずreport/trackingを訂正し、NR-001/002では実際のRed-before-Greenを保存する |
+| I128-FINAL | 指摘対応後待機 | S | focused/full local validation、詳細report、PR更新、current HEADと一致するpull_request CI確認 | I128-NR-001〜003 | normal fix verification用matrix・required local gate・exact-head CI evidenceを保存し、PRへ簡易reportを投稿する |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
