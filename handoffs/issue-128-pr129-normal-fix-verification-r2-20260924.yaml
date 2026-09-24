@@ -1,0 +1,283 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: fix_verification
+  generated_at: 2026-09-24T09:17:30+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  current_head_at_review: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  reviewed_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  previous_review_record_head: dac3ede4528692fc70fc03216a4d4792fe7bd54a
+  red_test_head: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+  source_fix_head: f9e87e04f6a398aedb030d15aa078347a81d6c8c
+  product_test_candidate: 851a79f63c654b8c1c75b830a43a290e0ade2888
+  commit_range: dac3ede4528692fc70fc03216a4d4792fe7bd54a..c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+  repository: ssaattww/RevMem
+  branch: fix/issue-128-global-understanding-folder-scan
+  head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  source_state: clean
+  source_fingerprint: "851a79f..c1074d8 changes only report/handoff/task tracking"
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-issue128\reports'
+    - 'C:\Users\donabe\Project\RevMem-issue128\handoffs'
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - current HEAD built and compiled on FA780
+    - same reviewer reran both previous production composition probes against current build
+    - exact current-head CI and artifact are available
+  technical_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  administrative_parent: null
+  commit:
+    state: committed
+    review_target_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  push:
+    state: pushed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  ci_wait:
+    state: ci_wait_completed
+    required_for: route_verification
+  red_ci:
+    head_sha: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+    run_id: 35933857093
+    run_number: 4707
+    conclusion: failure
+    failed_step: T610 folder Global Understanding tests
+    artifact_id: 10781914311
+  current_ci:
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    run_id: 35934712641
+    run_number: 4715
+    conclusion: success
+    artifact_id: 10783070927
+    artifact_name: review-range-user-validation-0.1.56-pre+c1074d8
+development_policy:
+  method: TDD
+  testing_order: Red before production fix
+  governing_source: RevMem project instructions
+scope:
+  - I128-NR-002 only
+non_goals:
+  - reopen I128-NR-001
+  - reopen I128-NR-003
+  - exhaustive new normal review
+  - merge
+files:
+  changed: []
+  inspected:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: PR owner immutable evidence authority
+    - path: src/composition/global-understanding/global-understanding-open-document-reader.ts
+      purpose: production working-tree open-document source
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: actual production open-reader Red/Green regressions
+    - path: test/unit/issue-66-pr68-review-findings.test.ts
+      purpose: mixed-case Windows regression compatibility
+    - path: reports/issue-128-pr129-nr002-r2-followup-20260924.md
+      purpose: implementation follow-up evidence
+    - path: handoffs/issue-128-pr129-nr002-r2-followup-20260924.yaml
+      purpose: implementation handoff evidence
+commands:
+  - command: npm run build
+    purpose: bind reviewer probes to current source
+    exit_code: 0
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: C:\Users\donabe\Project\RevMem-review-evidence\issue128-c1074d8\build.stdout.log
+  - command: npm run compile:test
+    purpose: compile current regressions
+    exit_code: 0
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: C:\Users\donabe\Project\RevMem-review-evidence\issue128-c1074d8\compile-test.stdout.log
+  - command: node --test --test-name-pattern=I128-NR-002 test-dist/test/unit/t610-folder-understanding.test.js
+    purpose: finding-focused regressions
+    exit_code: 0
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: 3/3 pass
+  - command: previous reviewer local-only production composition probe
+    purpose: prove local-only open document remains path-only in PR context
+    exit_code: 0
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: total 1; progress changed.ts only
+  - command: previous reviewer same-path production composition probe
+    purpose: prove working-tree edit cannot replace immutable PR HEAD content
+    exit_code: 0
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: total 1; changed.ts denominator 1
+tests:
+  - name: I128-NR-002 local-only production open document
+    phase: red
+    result: failed
+    head_sha: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+    evidence: actual 3 / expected 1
+  - name: I128-NR-002 same-path production open document
+    phase: red
+    result: failed
+    head_sha: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+    evidence: actual 2 / expected 1
+  - name: I128-NR-002 focused current
+    phase: verification
+    result: passed
+    head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+    evidence: 3/3 pass
+ci:
+  required: true
+  workflow: CI
+  run_id: 35934712641
+  head_sha: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  conclusion: success
+  artifacts:
+    - id: 10783070927
+      name: review-range-user-validation-0.1.56-pre+c1074d8
+      purpose: exact current-head user-validation artifact
+implementation:
+  outcome: completed
+  final_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  commits:
+    - sha: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+      purpose: Red-only actual production open-reader regressions
+    - sha: f9e87e04f6a398aedb030d15aa078347a81d6c8c
+      purpose: enforce immutable PR evidence authority
+    - sha: 851a79f63c654b8c1c75b830a43a290e0ade2888
+      purpose: align legacy PR68 fixture with immutable evidence contract
+  addressed_findings:
+    - id: I128-NR-002
+      reviewed_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+      disposition: addressed
+      evidence: both actual production composition probes now pass; exact-head CI succeeds
+review:
+  mode: fix_verification
+  reviewed_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  reviewer:
+    identity: same ChatGPT normal-review chat
+    role: normal_reviewer
+    continuity:
+      previous_reviewer_identity: same ChatGPT normal-review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: true
+      inherited_conversation: true
+      evidence:
+        - this chat issued and re-verified I128-NR-002
+  verdict: pass
+  required_coverage:
+    - criterion: requirement and design conformance
+      disposition: checked_no_finding
+      evidence: PR evidence remains immutable in both production composition cases
+    - criterion: correctness and edge cases
+      disposition: checked_no_finding
+      evidence: local-only and same-path cases both pass
+    - criterion: scope discipline
+      disposition: checked_no_finding
+      evidence: source fix is PR-owner-only and product/test candidate isolates regression fixture change
+    - criterion: direct dependency impact
+      disposition: checked_no_finding
+      evidence: actual createGlobalUnderstandingOpenDocumentReader path exercised
+    - criterion: API/data/compatibility
+      disposition: checked_no_finding
+      evidence: PR68 mixed-case regression kept with immutable provider
+    - criterion: tests and validation adequacy
+      disposition: checked_no_finding
+      evidence: actual production reader tests added Red-first and current focused tests pass
+    - criterion: current-head CI
+      disposition: checked_no_finding
+      evidence: exact c1074d8 run 35934712641 success and artifact matches
+    - criterion: report/tracking accuracy
+      disposition: checked_no_finding
+      evidence: implementation follow-up accurately records Red/fix/candidate and full local gate
+  independent_closure:
+    initial_independent_reviewed_head: null
+    closure_reviewed_heads: []
+    reviewer_continuity: null
+    closure_scope: []
+    completeness_matrix:
+      - finding_id: I128-NR-002
+        required_action: immutable PR HEAD must remain sole authoritative PR line evidence
+        production_path: captureOpenedDocuments PR-owner early return using pullRequestEvidenceByOwner
+        actual_composition_fixture: production open reader local-only and same-path cases
+        focused_evidence: Red 3!=1 and 2!=1 at 556d0a3; reviewer current probes total 1 and 1
+  validation_assessment:
+    - item: I128-NR-002
+      result: supported
+      evidence: all required matrix cells satisfied
+  reserved_report_paths: []
+  report_attestation:
+    allowed: not_applicable
+    reviewed_implementation_head: null
+    allowed_paths: []
+    required_first_parent: null
+    maximum_commits_after_reviewed_head: null
+    forbidden_path_classes: []
+    no_later_commits_required: not_applicable
+    validation_status: not_applicable
+    validation_evidence: []
+  summary:
+    - I128-NR-002 closed
+    - all normal-review findings are closed
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-128-pr129-normal-fix-verification-r2-20260924.md
+  reviewed_head: c1074d8b0e18c30b6e10b09d48f1e23cb94806ca
+  attestation_head: null
+  pr_comments: []
+  summary:
+    - I128-NR-002 closure verification persisted
+findings: []
+held: []
+unexplored: []
+unknown: []
+not_applicable:
+  - field_or_area: merge
+    reason: explicitly reserved for user
+remaining_risks:
+  - independent final review has not yet been performed
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_final_review
+  summary: start one fresh independent-final-review chat against the latest committed implementation state after re-resolving the branch
+  instructions:
+    - use a fresh chat that did not implement or perform normal review
+    - re-resolve current PR HEAD and all normal-review closure evidence
+    - freeze the implementation HEAD according to the local route
+    - perform one exhaustive independent final review
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-128-pr129-normal-fix-verification-r2-20260924.md
+    - handoffs/issue-128-pr129-normal-fix-verification-r2-20260924.yaml
+  requested_authorized_actions:
+    - read_repository
+    - write_report
+    - write_handoff
+    - commit
+    - push
+    - update_pr
+    - comment_pr
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-normal-fix-verification-r2-20260924.yaml
+  packet_url: null
+  transport_note: receiving independent chat must re-resolve current source identity and permissions; normal-review verdict applies to c1074d8 technical target
