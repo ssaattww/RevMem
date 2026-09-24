@@ -31,7 +31,7 @@ Lを超える見込みになった場合は再分解する。
 | P3 | 保守対応中 | diff editorとPR進捗 | T300〜T306、Issue #112 | P2 | T300〜T306はmainへ統合済み。PR #113でstale decoration、mutation後projection、working-tree node、URI identity、language判定のrelease blockerを修正中 |
 | P4 | 保守対応中 | GitHub PR連携 | T401〜T406、USR90-002 | P3 | T401〜T406はmainへ統合済み。PR #91のUSR90-002でprivate repositoryのPR候補検出を修正中 |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
-| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。T608は未着手 |
+| P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610、Issue #128 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。Issue #128で明示folder startの未オープン本文集計・partial保持・失敗診断を保守対応中。T608は未着手 |
 
 ## 現在位置（2026-09-07）
 

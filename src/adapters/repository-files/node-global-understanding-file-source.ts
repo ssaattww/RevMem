@@ -11,6 +11,22 @@ import type {
 } from "../../application/global-understanding/index";
 import { requireCanonicalRepositoryRelativePath } from "../../application/repository-path/index";
 import type { FileSystemPathSemantics } from "../../application/workspace-identity/index";
+import { isRepositoryFileBinaryContent } from "./node-repository-file-enumerator";
+
+/** Content-level exclusion discovered only after path-only enumeration. */
+export type NodeGlobalUnderstandingFileExclusionReason =
+  | { readonly kind: "binary" }
+  | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" };
+
+/** Signals that a path-only candidate is not line-reviewable and must be counted as excluded. */
+export class NodeGlobalUnderstandingFileExcludedError extends Error {
+  public constructor(public readonly reason: NodeGlobalUnderstandingFileExclusionReason) {
+    super(reason.kind === "binary"
+      ? "Included repository file content is binary."
+      : "Included repository file content is not valid UTF-8.");
+    this.name = "NodeGlobalUnderstandingFileExcludedError";
+  }
+}
 
 const DEFAULT_MAX_WORK_BYTES = 64 * 1024;
 const NON_WHITESPACE = /\S/u;
@@ -21,6 +37,12 @@ const requireNonEmptyString = (value: string, label: string): void => {
 
 const defaultYieldControl = (): Promise<void> =>
   new Promise((resolve) => setImmediate(resolve));
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted === true) {
+    throw new DOMException("Global understanding file load was superseded.", "AbortError");
+  }
+};
 
 const resolveLoadOptions = (
   options: GlobalUnderstandingFileLoadOptions | undefined
@@ -64,6 +86,10 @@ const analyzeContent = async (
   content: Buffer,
   options: GlobalUnderstandingFileLoadOptions
 ): Promise<AnalyzedContent> => {
+  throwIfAborted(options.signal);
+  if (isRepositoryFileBinaryContent(content)) {
+    throw new NodeGlobalUnderstandingFileExcludedError({ kind: "binary" });
+  }
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const hash = createHash("sha256");
   const nonEmptyLines: number[] = [];
@@ -96,17 +122,22 @@ const analyzeContent = async (
   };
 
   for (let offset = 0; offset < content.length; offset += options.maxWorkBytes) {
+    throwIfAborted(options.signal);
     const end = Math.min(content.length, offset + options.maxWorkBytes);
     const chunk = content.subarray(offset, end);
     hash.update(chunk);
     try {
       consumeDecoded(decoder.decode(chunk, { stream: end < content.length }));
     } catch {
-      throw new TypeError("Included repository file content is not valid UTF-8.");
+      throw new NodeGlobalUnderstandingFileExcludedError({ kind: "invalid-encoding", encoding: "utf-8" });
     }
-    if (end < content.length) await options.yieldControl();
+    if (end < content.length) {
+      await options.yieldControl();
+      throwIfAborted(options.signal);
+    }
   }
 
+  throwIfAborted(options.signal);
   if (pendingCarriageReturn) completeLine();
   if (currentLineNonEmpty) nonEmptyLines.push(lineIndex);
   return {
@@ -145,14 +176,27 @@ implements GlobalUnderstandingFileSource {
       this.pathSemantics
     );
     const absolutePath = path.join(this.repositoryRoot, ...canonicalPath.split("/"));
+    throwIfAborted(loadOptions.signal);
     const before = await lstat(absolutePath);
+    throwIfAborted(loadOptions.signal);
     if (before.isSymbolicLink() || !before.isFile()) {
       throw new TypeError(`Included repository path is not a regular file: ${canonicalPath}`);
     }
 
     const content = await readFile(absolutePath);
+    throwIfAborted(loadOptions.signal);
     assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
-    const analyzed = await analyzeContent(content, loadOptions);
+    let analyzed: AnalyzedContent;
+    try {
+      analyzed = await analyzeContent(content, loadOptions);
+    } catch (error) {
+      if (error instanceof NodeGlobalUnderstandingFileExcludedError) {
+        throwIfAborted(loadOptions.signal);
+        assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
+      }
+      throw error;
+    }
+    throwIfAborted(loadOptions.signal);
     assertStableRegularFile(before, await lstat(absolutePath), canonicalPath);
 
     return {

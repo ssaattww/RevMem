@@ -1,0 +1,102 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-24T08:38:00+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-NR-002-R2
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  normal_fix_verification_record_head: dac3ede4528692fc70fc03216a4d4792fe7bd54a
+  red_test_head: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+  source_fix_head: f9e87e04f6a398aedb030d15aa078347a81d6c8c
+  product_test_candidate: 851a79f63c654b8c1c75b830a43a290e0ade2888
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+verification:
+  capability: local_execution_available
+  red:
+    head_sha: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+    cases:
+      - "local-only open document: actual 3 / expected 1"
+      - "same-path local edit: actual 2 / expected 1"
+  green:
+    candidate_head: 851a79f63c654b8c1c75b830a43a290e0ade2888
+    focused_nr002: 3/3
+    focused_with_pr68: 5/5
+    t610: 96/96
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    npm_test: pass
+    extension_host: pass
+  ci_wait:
+    required: false
+    reason: "2026-09-24 user instruction: local tests completed, so final CI completion wait is unnecessary"
+findings:
+  - id: I128-NR-001
+    state: closed_by_normal_reviewer
+  - id: I128-NR-002
+    state: implementation_complete_reviewer_verification_pending
+    severity: High
+    production_fix: "PR owner captureOpenedDocuments returns immutable PR evidence only and does not invoke working-tree open-document evidence"
+    red_evidence_head: 556d0a38b5f46018a052bbc102d9024a3e65eb7c
+    green_candidate_head: 851a79f63c654b8c1c75b830a43a290e0ade2888
+  - id: I128-NR-003
+    state: closed_by_normal_reviewer
+scope:
+  - I128-NR-002 remaining production open-document evidence leak only
+non_goals:
+  - I128-NR-001
+  - I128-NR-003
+  - merge
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: enforce immutable PR evidence authority in captureOpenedDocuments
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: Red/Green actual production open-reader regressions
+    - path: test/unit/issue-66-pr68-review-findings.test.ts
+      purpose: retain mixed-case Windows path regression using authoritative PR HEAD evidence
+    - path: tasks/tasks-status.md
+      purpose: progress synchronization
+    - path: reports/issue-128-pr129-nr002-r2-followup-20260924.md
+      purpose: detailed follow-up report
+tests:
+  - name: local-only production open document
+    red: "3 != 1"
+    green: pass
+  - name: same-path production open document
+    red: "2 != 1"
+    green: pass
+  - name: PR68 mixed-case Windows Global regression
+    assertion_changed: false
+    fixture_change: "added immutable readPullRequestHeadFiles provider"
+    green: pass
+report:
+  paths:
+    - reports/issue-128-pr129-nr002-r2-followup-20260924.md
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: "same normal reviewer verifies I128-NR-002 only"
+  instructions:
+    - re-resolve PR #129 current HEAD
+    - verify only I128-NR-002 required action and CI delta if desired
+    - exercise production createGlobalUnderstandingOpenDocumentReader cases
+    - use local full gate on product/test candidate as formal verification evidence
+    - do not require waiting for final CI completion per user instruction
+    - do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-nr002-r2-followup-20260924.yaml

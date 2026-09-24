@@ -279,8 +279,8 @@ const validateTreeSnapshot = (
   requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount");
   requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
-  if (openedFileCount !== progress.files.length) {
-    throw new RangeError("openedFileCount must match Global progress file count.");
+  if (openedFileCount > progress.files.length) {
+    throw new RangeError("openedFileCount must not exceed Global progress file count.");
   }
   const discoveredFilePaths = validateDiscoveredFilePaths(snapshot, openedFileCount, unopenedFileCount);
   const progressByPath = new Map<string, GlobalUnderstandingFileProgress>();
@@ -325,7 +325,7 @@ const validateTreeSnapshotIncrementally = async (
   const unopenedFileCount = snapshot.unopenedFileCount ?? 0;
   requireCount(openedFileCount, "openedFileCount"); requireCount(unopenedFileCount, "unopenedFileCount");
   requireCount(snapshot.excludedFileCount, "excludedFileCount"); requireCount(snapshot.prunedExcludedDirectoryCount, "prunedExcludedDirectoryCount");
-  if (openedFileCount !== progress.files.length) throw new RangeError("openedFileCount must match Global progress file count.");
+  if (openedFileCount > progress.files.length) throw new RangeError("openedFileCount must not exceed Global progress file count.");
 
   let pendingValidationItems = 0;
   const validateOne = async (): Promise<boolean> => {

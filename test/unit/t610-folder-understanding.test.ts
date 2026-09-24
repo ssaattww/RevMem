@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { rmSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1223,6 +1224,392 @@ test("T610-NR-008 retries owner-shared capture without a stopped scope or post-s
   assert.deepEqual(snapshot?.progress.files.map((file) => file.path), ["two/a.ts"], "the live sibling completes without stale stopped-scope publication");
   assert.equal(snapshot?.folders?.find((folder) => folder.path === "one")?.state, "stopped");
   assert.equal(snapshot?.folders?.find((folder) => folder.path === "two")?.state, "active");
+});
+
+test("Issue #128 explicit folder start loads unopened filesystem files recursively", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-explicit-folder-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(repositoryRoot, "root.txt"), "root one\n\nroot two\n", "utf8"),
+    writeFile(path.join(repositoryRoot, "child", "nested.txt"), "child one\nchild two\n\nchild three\n", "utf8")
+  ]);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => [],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+
+  const beforeStart = await source.recalculate();
+  assert.equal(beforeStart?.progress.totalNonEmptyLineCount, 0, "ordinary refresh does not scan unopened repository content");
+  assert.deepEqual(beforeStart?.discoveredFilePaths ?? [], []);
+
+  await source.startFolder("");
+  const snapshot = await source.recalculate();
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 5);
+  assert.deepEqual(snapshot?.progress.files
+    .map((file) => [file.path, file.totalNonEmptyLineCount] as const)
+    .sort(([left], [right]) => left.localeCompare(right)), [
+    ["child/nested.txt", 3],
+    ["root.txt", 2]
+  ]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["child/nested.txt", "root.txt"]);
+  assert.equal(snapshot?.openedFileCount, 0, "filesystem collection must not pretend the documents were opened in VS Code");
+  assert.equal(snapshot?.unopenedFileCount, 2);
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "")?.totalNonEmptyLineCount, 5);
+  assert.equal(snapshot?.folders?.find((folder) => folder.path === "child")?.totalNonEmptyLineCount, 3);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("Issue #128 preserves discovered file counts when unopened content loading fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-partial-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root one\nroot two\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return [];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-partial", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(
+    () => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }),
+    /ENOENT/u
+  );
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.deepEqual(last.discoveredFilePaths, ["child/bad.txt", "root.txt"]);
+  assert.equal(last.openedFileCount, 0);
+  assert.equal(last.unopenedFileCount, 2);
+  assert.equal(last.repositoryPartial, true);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2, "successful root evidence remains in the partial repository denominator");
+  assert.deepEqual(last.progress.files.map((file) => [file.path, file.totalNonEmptyLineCount]), [["root.txt", 2]]);
+  assert.equal(last.folders?.find((folder) => folder.path === "")?.totalNonEmptyLineCount, 2);
+  assert.equal(last.folders?.find((folder) => folder.path === "child")?.state, "failed");
+  const partialModel = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
+  assert.match(partialModel.formatGlobalUnderstandingStatusBar(last).text, /partial \(0\/2\)/u);
+  assert.equal(partialModel.createGlobalUnderstandingTreeModel(last).files.find((file) => file.path === "root.txt")?.description, "0% (0/2)");
+});
+
+test("I129-IFR-001 R2 retains opened classification when a later sibling scope fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr001-opened-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  const rootContent = "root one\nroot two\n";
+  await writeFile(path.join(repositoryRoot, "root.txt"), rootContent, "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
+  const lines = rootContent.split(/\r\n|\r|\n/u);
+  const productionReader = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "root.txt"), toString: () => "file:///root.txt" },
+      version: 1,
+      lineCount: lines.length,
+      getText: () => rootContent,
+      lineAt: (line) => ({ text: lines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: (owner, isCandidatePath) => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return productionReader(owner, isCandidatePath);
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "ifr001-opened", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(() => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }), /ENOENT/u);
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2);
+  assert.equal(last.openedFileCount, 1);
+  assert.equal(last.unopenedFileCount, 1);
+  assert.deepEqual(last.progress.files.map((file) => file.path), ["root.txt"]);
+});
+
+test("I129-IFR-001 R2 retains exclusion metadata when a later sibling scope fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr001-excluded-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await mkdir(path.join(repositoryRoot, "node_modules", "pkg"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root one\nroot two\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "payload.bin"), Buffer.from([0x00, 0x41, 0x0a]));
+  await writeFile(path.join(repositoryRoot, "node_modules", "pkg", "ignored.js"), "ignored\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return [];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "ifr001-excluded", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(() => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }), /ENOENT/u);
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2);
+  assert.deepEqual([last.excludedFileCount, last.prunedExcludedDirectoryCount], [1, 1]);
+  assert.deepEqual(last.progress.files.map((file) => file.path), ["root.txt"]);
+});
+
+test("Issue #128 emits structured privacy-safe diagnostics for folder content failures", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-diagnostic-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "private-repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "secret-private.txt"), "will disappear\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "secret-private.txt"), { force: true });
+      return [];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-diagnostic", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const output: string[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined, revealLog: () => undefined,
+    appendLog: (entry) => { if (entry.event === "failed") output.push(entry.message ?? ""); }
+  });
+
+  await assert.rejects(() => feedback.run("Global理解率を再計算", () => source.recalculate()));
+
+  const message = output.at(-1) ?? "";
+  assert.match(message, /GLOBAL_UNDERSTANDING_FAILURE/u);
+  assert.match(message, /stage=content-read/u);
+  assert.match(message, /error=Error/u);
+  assert.match(message, /code=ENOENT/u);
+  assert.match(message, /category=permanent/u);
+  assert.match(message, /scope=folder/u);
+  assert.match(message, /discovered=2/u);
+  assert.match(message, /processed=0/u);
+  assert.doesNotMatch(message, /secret-private|private-repository/u);
+  assert.doesNotMatch(message, /details were redacted/u);
+});
+
+test("Issue #128 preserves allowlisted error codes without exposing dependency paths", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-code-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "private-repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "a.txt"), "a\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => { throw Object.assign(new Error("C:\\private\\secret.txt"), { code: "EACCES" }); },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "issue128-code", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const output: string[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined, revealLog: () => undefined,
+    appendLog: (entry) => { if (entry.event === "failed") output.push(entry.message ?? ""); }
+  });
+
+  await assert.rejects(() => feedback.run("Global理解率を再計算", () => source.recalculate()), /secret\.txt/u);
+
+  const message = output.at(-1) ?? "";
+  assert.match(message, /stage=owner-capture/u);
+  assert.match(message, /code=EACCES/u);
+  assert.match(message, /category=permanent/u);
+  assert.doesNotMatch(message, /secret\.txt|private-repository/u);
+});
+
+test("I128-NR-001 excludes NUL binary content from explicit-folder filesystem evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr001-binary-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "payload.bin"), Buffer.from([0x00, 0x41, 0x0a]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [], yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "nr001-binary", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 0);
+  assert.deepEqual(snapshot?.progress.files, []);
+  assert.deepEqual(snapshot?.discoveredFilePaths ?? [], []);
+  assert.equal(snapshot?.excludedFileCount, 1);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("I128-NR-001 excludes invalid UTF-8 from explicit-folder filesystem evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr001-encoding-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd]));
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [], yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "nr001-encoding", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 0);
+  assert.deepEqual(snapshot?.progress.files, []);
+  assert.deepEqual(snapshot?.discoveredFilePaths ?? [], []);
+  assert.equal(snapshot?.excludedFileCount, 1);
+  assert.equal(snapshot?.repositoryPartial, undefined);
+});
+
+test("I128-NR-002 keeps PR path-only files out of immutable PR line evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-pr-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "working tree changed\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "unchanged.ts"), "local one\nlocal two\n", "utf8");
+  const revisionId = "d".repeat(40);
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments: () => [],
+    readPullRequestHeadFiles: async (_owner, candidatePaths) => {
+      assert.deepEqual([...candidatePaths].sort(), ["changed.ts", "unchanged.ts"]);
+      return [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "immutable boundary", baseRevision: "c".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => file.path), ["changed.ts"]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts", "unchanged.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 1);
+  assert.deepEqual(snapshot?.fileOpenTargets?.map((target) => target.repositoryPath), ["changed.ts"]);
+});
+
+test("I128-NR-002-R2 ignores a local-only production open document in PR line evidence", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-open-local-only-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "working changed\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "local-only.ts"), "local one\nlocal two", "utf8");
+  const revisionId = "e".repeat(40);
+  const localContent = "local one\nlocal two";
+  const localLines = localContent.split(/\r\n|\r|\n/u);
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "local-only.ts"), toString: () => "file:///local-only.ts" },
+      version: 1,
+      lineCount: localLines.length,
+      getText: () => localContent,
+      lineAt: (line) => ({ text: localLines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments,
+    readPullRequestHeadFiles: async () => [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "open local-only boundary", baseRevision: "d".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => file.path), ["changed.ts"]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts", "local-only.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 1);
+});
+
+test("I128-NR-002-R2 keeps immutable PR HEAD authoritative over a same-path production open document", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i128-nr002-open-same-path-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(repositoryRoot, { recursive: true });
+  await writeFile(path.join(repositoryRoot, "changed.ts"), "local one\nlocal two", "utf8");
+  const revisionId = "f".repeat(40);
+  const localContent = "local one\nlocal two";
+  const localLines = localContent.split(/\r\n|\r|\n/u);
+  const readOpenDocuments = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "changed.ts"), toString: () => "file:///changed.ts" },
+      version: 7,
+      lineCount: localLines.length,
+      getText: () => localContent,
+      lineAt: (line) => ({ text: localLines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(), readOpenDocuments,
+    readPullRequestHeadFiles: async () => [{ path: "changed.ts", revisionId, content: "immutable pr head\n" }],
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "pull-request", label: "#129", detail: "same-path immutable boundary", baseRevision: "e".repeat(40), headRevision: revisionId, selection: { kind: "pull-request", repositoryId: "repo", repositoryRoot, contextId: "github-pr:repo#129", pullRequestNumber: 129, headRevision: revisionId } }, progress: undefined });
+  await source.startFolder("");
+
+  const snapshot = await source.recalculate();
+
+  assert.equal(snapshot?.progress.totalNonEmptyLineCount, 1);
+  assert.deepEqual(snapshot?.progress.files.map((file) => [file.path, file.totalNonEmptyLineCount]), [["changed.ts", 1]]);
+  assert.deepEqual(snapshot?.discoveredFilePaths, ["changed.ts"]);
+  assert.equal(snapshot?.openedFileCount, 1);
+  assert.equal(snapshot?.unopenedFileCount, 0);
 });
 
 test("T610-R15 presents the Host hierarchy as complete until a newly discovered child is inactive", async (t) => {

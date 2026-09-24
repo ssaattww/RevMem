@@ -1,0 +1,93 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-24T12:32:30+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I129-IFR-001-R2
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  independent_closure_reviewed_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  independent_closure_record_head: 50132abaccce82c5eb63ef8831930109acc0fc70
+  red_test_head: 4fa17efe7f88983a7f36da8476f0f634d017ad85
+  fix_head: 2a0369301c140d758a3fdba2d6a07aca080b617d
+verification:
+  capability: local_execution_available
+  red:
+    head_sha: 4fa17efe7f88983a7f36da8476f0f634d017ad85
+    cases:
+      - "opened root then child ENOENT: openedFileCount 0 / expected 1"
+      - "binary exclusion + pruned directory then child ENOENT: [excluded, pruned] [0,0] / expected [1,1]"
+  green:
+    head_sha: 2a0369301c140d758a3fdba2d6a07aca080b617d
+    focused: 3/3
+    t610: 98/98
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    npm_test: pass
+    unit_phase: 865_pass_2_skip_0_fail
+    extension_host: pass
+  ci_wait:
+    required: false
+    reason: "2026-09-24 user instruction: successful local tests are sufficient; do not wait for final CI completion"
+findings:
+  - id: I129-IFR-001
+    severity: High
+    state: r2_implementation_complete_independent_closure_pending
+    fix: "failure-time lifecycle snapshot receives accepted current-generation progress and metadata"
+  - id: I129-IFR-002
+    state: independent_closed
+  - id: I129-IFR-003
+    state: independent_closed
+  - id: I129-IFR-004
+    state: independent_closed
+scope:
+  - I129-IFR-001 metadata retention only
+non_goals:
+  - reopen I129-IFR-002 through I129-IFR-004
+  - unrelated work
+  - merge
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: pass current accepted metadata into failure-time partial lifecycle snapshot
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: opened and exclusion metadata regressions
+    - path: tasks/tasks-status.md
+      purpose: R2 tracking
+    - path: reports/issue-128-pr129-ifr001-r2-followup-20260924.md
+      purpose: detailed report
+tests:
+  - name: opened classification after sibling failure
+    red: "0 != 1"
+    green: "opened 1 / unopened 1"
+  - name: exclusion metadata after sibling failure
+    red: "[0,0] != [1,1]"
+    green: "excluded 1 / pruned 1"
+  - name: existing partial line evidence
+    green: "repository partial 0/2 and root row 0/2"
+report:
+  paths:
+    - reports/issue-128-pr129-ifr001-r2-followup-20260924.md
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_fix_verification
+  summary: "same independent reviewer verifies I129-IFR-001 only"
+  instructions:
+    - re-resolve PR #129 current HEAD
+    - verify opened/unopened classification is retained after later sibling failure
+    - verify excluded file and pruned directory counts are retained after later sibling failure
+    - verify existing partial line evidence remains 0/2 with root row 0/2
+    - treat I129-IFR-002 through I129-IFR-004 as already closed unless this delta changes their paths
+    - use successful local full gate as formal evidence; do not wait for final CI completion
+    - if CI is referenced, require exact matching head SHA
+    - do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-ifr001-r2-followup-20260924.yaml

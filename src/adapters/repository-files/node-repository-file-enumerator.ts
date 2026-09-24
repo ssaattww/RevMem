@@ -129,7 +129,9 @@ const matchingGitIgnoreRule = (
   return match?.negated === true ? undefined : match;
 };
 
-const isBinary = (content: Buffer): boolean => content.subarray(0, Math.min(content.length, 8192)).includes(0);
+/** Matches the repository enumeration contract for NUL-based binary classification. */
+export const isRepositoryFileBinaryContent = (content: Buffer): boolean =>
+  content.subarray(0, Math.min(content.length, 8192)).includes(0);
 const decodeUtf8 = (content: Buffer): string => new TextDecoder("utf-8", { fatal: true }).decode(content);
 const compareRepositoryPaths = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
@@ -159,7 +161,7 @@ export class NodeRepositoryFileEnumerator {
     for (const repositoryPath of walked.files.sort(compareRepositoryPaths)) {
       const absolutePath = path.join(repositoryRoot, ...repositoryPath.split("/"));
       const content = await readFile(absolutePath);
-      const binary = isBinary(content);
+      const binary = isRepositoryFileBinaryContent(content);
       let decoded: string | undefined;
       if (!binary) {
         try {

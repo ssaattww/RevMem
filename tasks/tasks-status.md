@@ -2,6 +2,33 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
+
+- 現在のタスク: I128-FINAL（P6 / T610保守、I129-IFR-001 R2実装・local検証完了 / same independent reviewer限定closure待ち）。Red-only `4fa17efe7f88983a7f36da8476f0f634d017ad85` でopened count `0 != 1`、excluded/pruned `[0,0] != [1,1]` を確認し、fix `2a0369301c140d758a3fdba2d6a07aca080b617d` でGreen。I129-IFR-002〜004はindependent closed済み。
+- branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
+- 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
+- TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
+- CI失敗診断: `.github/workflows/ci.yml` の `Upload failure diagnostics` が `test-output/`、stdout/stderr log、生成物、source/testをartifact保存するため追加変更不要。
+- 設計判断: repository-wide自動scanを復活させず、既存の「folder rowの明示開始は選択folderとsubtreeを計算する」契約へ実装を一致させる。設計書11.3/16.5に実読込したline-reviewable fileを分母へ入れる契約が既にあるため、I128-IMPL-001で設計変更は不要と確認済み。
+- I128-IMPL-001: **製品実装完了 / original TDD Red chronologyはunverified**。実装後のGreenと回帰は確認済み。2026-09-24にpre-implementation HEAD `af71e1f9571380853c4753537620e1b04c9cf38d`へ同等testだけを一時適用したretrospective reproductionで `0 != 5` を確認したが、これは当時のRed-before-Green実行証明として扱わない。
+- I128-IMPL-002: **完了**。invalid UTF-8失敗注入でdiscovered path消失のRedを確認し、本文失敗前に判明したpath/file countをpartial lifecycle snapshotへ保持。T610 89/89 Green。
+- I128-IMPL-003: **完了**。元例外の型・messageを変えずWeakMapでsafe diagnostic metadataを関連付け、Outputへstage/operation/scope/error name/allowlist code/category/discovered/processedを出力。raw path/sourceは非出力。focused 4/4、T610 90/90、T606 223 pass / 2 skip / 0 fail。
+- mergeは行わない。
+
+| 単位 | 状態 | 目安 | 変更範囲 | 依存 | 検証・終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| I128-IMPL-001 | 完了 | M | explicit folder startでsubtree対象fileを再帰列挙し、未オープンfile本文を読み、line-reviewable判定後の非空行数をfolder/repository totalへ反映する | T610 | 文書0件openのroot/nested fixtureでRed→Green、2行+3行=5行、ordinary refresh/file openで無制限repository-wide本文scanを行わない |
+| I128-IMPL-002 | 完了 | S | discovery済みpath/file countとcontent/line evidenceを分離し、後段失敗でも既知件数を保持してfailed/incompleteをpartial aggregateとして扱う | I128-IMPL-001 | invalid UTF-8失敗注入でRed（discoveredFilePaths undefined）→Green、2件保持・repository partial・failed scope・status非%を確認。T610 89/89 Green |
+| I128-IMPL-003 | 完了 | S | privacy boundaryを維持しつつstage、error name、allowlist code、failure category、scope/operation、関連件数をOutputへ構造化記録する | I128-IMPL-002 | Red=`details were redacted`のみ→Green。raw errorを保持したままsafe metadataをOutputへ投影し、EACCES allowlistとpath非露出を回帰で確認 |
+| I128-NR-001 | 実装・local検証完了 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | Red commit `d7481d1` でbinary `1 != 0` / invalid UTF-8例外を確認。fix `1895d41` で両方excluded・total 0・scope complete、T610 94/94 Green |
+| I128-NR-002 | normal review closed | S | pull-request ownerではfilesystem fallbackだけでなくworking-tree open-document evidenceもPR line evidenceへ昇格・上書きしない | I128-NR-001 closed | normal fix verification R2でclosed。production reader 2ケースはimmutable PR total 1を維持し、normal review findings I128-NR-001〜003は全件closed |
+| I128-NR-003 | 記録訂正完了 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | original chronologyはunverifiedと明記。baseline `af71e1f` + test patch hash `9aa84344...` で後日 `0 != 5` を再現し、NR-001/002はtest-only Red commitとCI failure artifactでTDD証跡を保存 |
+| I128-FINAL | I129-IFR-001限定closure待ち | S | normal review closure後の独立final review対応 | I129-IFR-002〜004 closed、I129-IFR-001 R2実装完了 | fix `2a03693` でfocused 3/3、T610 98/98、build/contracts/architecture正負/lint/npm test Green。same independent reviewerへI129-IFR-001とCI deltaだけの限定closureを依頼する |
+| I129-IFR-001 | R2実装・local検証完了 / independent限定closure待ち | M | sibling scope後段失敗時もcurrent-generation成功scopeのline evidenceに加えopened/unopened分類・excluded file count・pruned directory count等metadataをpartial snapshotへ保持 | independent closure review | Red `4fa17ef`: opened 0!=1、excluded/pruned [0,0]!=[1,1]。fix `2a03693`: opened 1/unopened 1、excluded 1/pruned 1、既存partial 0/2/root row 0/2維持。T610 98/98、full local gate Green |
+| I129-IFR-002 | independent closed | S | Node Global file loaderがAbortSignalをbounded content analysis中に確認し、abort後の追加chunk処理を停止 | independent closure review | closed。first-yield abortはAbortError、追加yieldなし |
+| I129-IFR-003 | independent closed | S | binary/invalid-encoding exclusion確定前にもpost-analysis file stability validationを必須化 | independent closure review | closed。stale invalid-encoding exclusionを採用せずfile-changed error |
+| I129-IFR-004 | independent closed | S | normal review全件closedとindependent findings対応中のcurrent stateへ台帳同期 | independent closure review | closed。normal-review待ちの古い表記は解消済み |
+
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）
 
 - 現在のタスク: I124-IFR-002-RECORD-SYNC-VERIFY。normal fix verification R3 `beb997fd929219599d46f0894d1944a91580db05` でnormal-review required findingsは全件closed、verdictは `pass_with_held`。I124-IFR-002のrecord-only syncは実施済みで、同じnormal reviewerによる限定確認待ち。
