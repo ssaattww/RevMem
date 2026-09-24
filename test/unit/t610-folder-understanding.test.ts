@@ -1297,8 +1297,13 @@ test("Issue #128 preserves discovered file counts when unopened content loading 
   assert.equal(last.openedFileCount, 0);
   assert.equal(last.unopenedFileCount, 2);
   assert.equal(last.repositoryPartial, true);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2, "successful root evidence remains in the partial repository denominator");
+  assert.deepEqual(last.progress.files.map((file) => [file.path, file.totalNonEmptyLineCount]), [["root.txt", 2]]);
+  assert.equal(last.folders?.find((folder) => folder.path === "")?.totalNonEmptyLineCount, 2);
   assert.equal(last.folders?.find((folder) => folder.path === "child")?.state, "failed");
-  assert.doesNotMatch((await import("../../src/ui/global-understanding/global-understanding-ui-model.js")).formatGlobalUnderstandingStatusBar(last).text, /%/u);
+  const partialModel = await import("../../src/ui/global-understanding/global-understanding-ui-model.js");
+  assert.match(partialModel.formatGlobalUnderstandingStatusBar(last).text, /partial \(0\/2\)/u);
+  assert.equal(partialModel.createGlobalUnderstandingTreeModel(last).files.find((file) => file.path === "root.txt")?.description, "0% (0/2)");
 });
 
 test("Issue #128 emits structured privacy-safe diagnostics for folder content failures", async (t) => {

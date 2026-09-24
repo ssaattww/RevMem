@@ -61,6 +61,44 @@ test("T504-R2-P1 rejects a file changed during cooperative content analysis", as
   assert.equal(changed, true);
 });
 
+test("I129-IFR-002 aborts bounded filesystem analysis after the first cancelled yield", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr002-abort-"));
+  await writeFile(path.join(root, "large.ts"), Buffer.alloc(256 * 1024, 0x61));
+  const source = new NodeGlobalUnderstandingFileSource(root, "posix");
+  const controller = new AbortController();
+  let yields = 0;
+
+  await assert.rejects(source.load("large.ts", revision, {
+    maxWorkBytes: 1024,
+    signal: controller.signal,
+    yieldControl: async () => {
+      yields += 1;
+      if (yields === 1) controller.abort();
+    }
+  }), (error: unknown) => error instanceof Error && error.name === "AbortError");
+
+  assert.equal(yields, 1, "no additional content chunks run after cancellation");
+});
+
+test("I129-IFR-003 validates file stability before accepting invalid-encoding exclusion", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr003-stability-"));
+  const filePath = path.join(root, "changing.ts");
+  await writeFile(filePath, Buffer.from([0x61, 0x61, 0x61, 0x61, 0xc3, 0x28, 0x62, 0x62]));
+  const source = new NodeGlobalUnderstandingFileSource(root, "posix");
+  let changed = false;
+
+  await assert.rejects(source.load("changing.ts", revision, {
+    maxWorkBytes: 4,
+    yieldControl: async () => {
+      if (changed) return;
+      changed = true;
+      await writeFile(filePath, "valid replacement\n", "utf8");
+    }
+  }), /changed while reading or analyzing/u);
+
+  assert.equal(changed, true);
+});
+
 test("T504-R2-P2 yields during post-load evidence and interval calculation for one final file", async () => {
   const lineCount = 256;
   const nonEmptyLines = Array.from({ length: lineCount }, (_, index) => index);
