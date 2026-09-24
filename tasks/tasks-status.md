@@ -4,7 +4,7 @@
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
-- 現在のタスク: I129-IFR-001〜004（P6 / T610保守、PR #129 independent final review指摘対応）。reviewed implementation HEAD `8d09587e27396027ad808c312ab46e826ebddb19` で新規4件が発見されたため、成功済みscope evidence保持、file-loader cancellation/stability、task tracking同期をRed-firstで修正する。normal review I128-NR-001〜003は全件closed済み。
+- 現在のタスク: I128-FINAL（P6 / T610保守、PR #129 independent findings対応完了・same independent reviewer限定closure待ち）。I129-IFR-001〜003はRed-only `3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d` から製品fix `84592ff` / `3e4d9ad` でGreen、I129-IFR-004は `4387d09` でtracking同期済み。normal review I128-NR-001〜003は全件closed済み。
 - branch: `fix/issue-128-global-understanding-folder-scan`。base: `df1501358be6ad0e6e03989ddc9e08f67a6e1996`。
 - 要求根拠: Issue #128。明示開始したfolder subtreeの未オープンfile本文・行数が集計されず `100% (0/0)` になり、後段失敗でdiscovery済みfile件数も消え、一般errorのOutputが `details were redacted` のみになる問題を修正する。
 - TDD: `tasks/phases-status.md` の計画前提とIssue #128受け入れ条件に従い、未オープン実filesystem fixture・失敗注入・diagnostic contractのRedを先に確認してから実装する。
@@ -23,10 +23,10 @@
 | I128-NR-001 | 実装・local検証完了 | S | explicit-folder filesystem evidenceに既存binary/invalid UTF-8分類を適用し、動的除外をdenominatorへ入れずexcluded file countへ反映する | I128-IMPL-001 | Red commit `d7481d1` でbinary `1 != 0` / invalid UTF-8例外を確認。fix `1895d41` で両方excluded・total 0・scope complete、T610 94/94 Green |
 | I128-NR-002 | normal review closed | S | pull-request ownerではfilesystem fallbackだけでなくworking-tree open-document evidenceもPR line evidenceへ昇格・上書きしない | I128-NR-001 closed | normal fix verification R2でclosed。production reader 2ケースはimmutable PR total 1を維持し、normal review findings I128-NR-001〜003は全件closed |
 | I128-NR-003 | 記録訂正完了 | S | I128-IMPL-001のRed-before-Greenを未検証として正確に記録し、pre-implementation baseでのretrospective reproductionは時系列証明と区別して保存する | normal review | original chronologyはunverifiedと明記。baseline `af71e1f` + test patch hash `9aa84344...` で後日 `0 != 5` を再現し、NR-001/002はtest-only Red commitとCI failure artifactでTDD証跡を保存 |
-| I128-FINAL | independent findings対応中 | S | normal review closure後の独立final review対応 | I128-NR-001〜003 closed | independent review HEAD `8d09587e` でfail。I129-IFR-001〜004を閉じてfresh independent closureへ戻す |
-| I129-IFR-001 | Red作成前 | M | sibling scope後段失敗時もcurrent-generation成功scopeのprogress/file row/known line countをpartial snapshotへ保持 | independent review | root成功2行 + child ENOENTでrepository partial 0/2、root row current 0/2、child failedをRed→Green |
-| I129-IFR-002 | Red作成前 | S | Node Global file loaderがAbortSignalをbounded content analysis中に確認し、abort後の追加chunk処理を停止 | independent review | first yield abort後に追加yieldなし、AbortError rejectをRed→Green |
-| I129-IFR-003 | Red作成前 | S | binary/invalid-encoding exclusion確定前にもpost-analysis file stability validationを必須化 | independent review | invalid→valid変更中のstale exclusionを採用せずfile-changed errorへするRed→Green |
+| I128-FINAL | independent finding-limited closure待ち | S | normal review closure後の独立final review対応 | I128-NR-001〜003 closed、I129-IFR-001〜004実装完了 | candidate `4387d09` でfocused 3/3、T610 96/96、T504 related 17/17、build/contracts/architecture正負/lint/npm test Green。same independent reviewerへ4finding限定closureを依頼する |
+| I129-IFR-001 | 実装・local検証完了 | M | sibling scope後段失敗時もcurrent-generation成功scopeのprogress/file row/known line countをpartial snapshotへ保持 | independent review | Red `3b29d2b`: repository total 0 != 2。fix `84592ff`: partial 0/2、root row 0/2、child failed。T610 96/96 Green |
+| I129-IFR-002 | 実装・local検証完了 | S | Node Global file loaderがAbortSignalをbounded content analysis中に確認し、abort後の追加chunk処理を停止 | independent review | Red `3b29d2b`: cancellation後もfulfilled。fix `3e4d9ad`: first yield abort後追加yieldなし・AbortError reject。T504 related Green |
+| I129-IFR-003 | 実装・local検証完了 | S | binary/invalid-encoding exclusion確定前にもpost-analysis file stability validationを必須化 | independent review | Red `3b29d2b`: stale invalid-encoding exclusion。fix `3e4d9ad`: exclusion前stability validationでfile-changed error。T504 related Green |
 | I129-IFR-004 | 対応完了 | S | normal review全件closedとindependent findings対応中のcurrent stateへ台帳同期 | independent review | I128-NR-002をnormal review closedへ更新し、I128-FINALをindependent findings対応中へ同期済み |
 
 ## Issue #124 Global Understanding View改善（record-only final sync 2026-09-23）

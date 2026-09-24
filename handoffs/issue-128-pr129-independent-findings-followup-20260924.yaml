@@ -1,0 +1,128 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-24T10:44:42+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  independent_reviewed_head: 8d09587e27396027ad808c312ab46e826ebddb19
+  independent_report_head: 2f2c568a72a54cb9c62704b8c49a9703eb66a720
+  red_test_head: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+  ifr001_fix_head: 84592ff896f7ed6ca3c2234e2f1e9772acc74e9b
+  ifr002_003_fix_head: 3e4d9ad2a7f3ce5115adc25dd77ce856f5d7efb4
+  local_candidate_head: 4387d09767d5874f3c25848f1f18e78012f0af20
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+verification:
+  capability: local_execution_available
+  red:
+    head_sha: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    cases:
+      - "I129-IFR-001: repository total 0 / expected 2 after root success then child ENOENT"
+      - "I129-IFR-002: load fulfilled after AbortSignal cancellation"
+      - "I129-IFR-003: stale invalid-encoding exclusion won over file-change detection"
+  green:
+    candidate_head: 4387d09767d5874f3c25848f1f18e78012f0af20
+    finding_focused: 3/3
+    t610: 96/96
+    t504_related: 17/17
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    npm_test: pass
+    extension_host: pass
+  ci_wait:
+    required: false
+    reason: "2026-09-24 user instruction: local tests completed, so final CI completion wait is unnecessary"
+findings:
+  - id: I129-IFR-001
+    severity: High
+    state: implementation_complete_reviewer_verification_pending
+    fix: "merge current-generation accepted file progress into failure-time partial lifecycle snapshot"
+    red_evidence_head: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    fix_head: 84592ff896f7ed6ca3c2234e2f1e9772acc74e9b
+  - id: I129-IFR-002
+    severity: Medium
+    state: implementation_complete_reviewer_verification_pending
+    fix: "check AbortSignal before/after bounded filesystem and analysis stages"
+    red_evidence_head: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    fix_head: 3e4d9ad2a7f3ce5115adc25dd77ce856f5d7efb4
+  - id: I129-IFR-003
+    severity: Medium
+    state: implementation_complete_reviewer_verification_pending
+    fix: "run file stability validation before accepting binary/invalid-encoding exclusion"
+    red_evidence_head: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    fix_head: 3e4d9ad2a7f3ce5115adc25dd77ce856f5d7efb4
+  - id: I129-IFR-004
+    severity: Low
+    state: implementation_complete_reviewer_verification_pending
+    fix: "synchronize task ledger to normal-review-closed and independent-finding closure state"
+    fix_head: 4387d09767d5874f3c25848f1f18e78012f0af20
+scope:
+  - I129-IFR-001 through I129-IFR-004 only
+non_goals:
+  - reopen normal review findings I128-NR-001 through I128-NR-003
+  - repository-wide automatic body scan
+  - merge
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: retain current-generation successful progress in failure-time partial snapshot
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: cancellation and exclusion stability fences
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: partial publication regression
+    - path: test/unit/t504-review-followup-r2.test.ts
+      purpose: cancellation and stale-exclusion regressions
+    - path: tasks/tasks-status.md
+      purpose: independent finding and normal closure state synchronization
+reports:
+  - reports/issue-128-pr129-independent-final-review-20260924.md
+  - reports/issue-128-pr129-independent-findings-followup-20260924.md
+tests:
+  - name: I129-IFR-001 root success then child failure
+    red: "repository total 0 != 2"
+    green: "partial 0/2 with root.txt 0/2 and child failed"
+  - name: I129-IFR-002 first-yield cancellation
+    red: "load fulfilled"
+    green: "AbortError, one yield only"
+  - name: I129-IFR-003 invalid-to-valid race
+    red: "invalid-encoding exclusion"
+    green: "changed while reading or analyzing"
+commits:
+  - sha: 45fdff7fe17a8a8a82e0010e5249e37426b8c359
+    purpose: track independent findings
+  - sha: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    purpose: Red-only independent finding regressions
+  - sha: 84592ff896f7ed6ca3c2234e2f1e9772acc74e9b
+    purpose: partial evidence retention
+  - sha: 3e4d9ad2a7f3ce5115adc25dd77ce856f5d7efb4
+    purpose: cancellation and exclusion stability fences
+  - sha: 4387d09767d5874f3c25848f1f18e78012f0af20
+    purpose: tracking synchronization
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: independent_fix_verification
+  summary: "same independent reviewer verifies I129-IFR-001 through I129-IFR-004 only"
+  instructions:
+    - re-resolve PR #129 current HEAD before review
+    - verify required-action / production-path / focused-evidence matrix for the four independent findings
+    - use the local full gate as formal validation evidence per user instruction
+    - do not wait for final CI completion
+    - if any CI is cited, require exact head SHA match for the referenced PR HEAD
+    - do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-independent-findings-followup-20260924.yaml
