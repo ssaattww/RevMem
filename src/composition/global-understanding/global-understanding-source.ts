@@ -423,7 +423,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths));
+          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths, files));
           throw attachGlobalUnderstandingFailureDiagnostic(error, {
             stage: scopeFailureStage, operation: "folder-scope-refresh",
             scope: folder.length === 0 ? "repository-root" : "folder",
@@ -600,7 +600,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     owner: T505GlobalUnderstandingOwner,
     scopeRoot: string,
     evidenceKey: string,
-    provisionalDiscoveredFilePaths?: ReadonlySet<string>
+    provisionalDiscoveredFilePaths?: ReadonlySet<string>,
+    currentProgressFiles: readonly GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = []
   ): GlobalUnderstandingTreeSnapshot {
     const folders = controller?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
@@ -634,10 +635,17 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     for (const repositoryPath of provisionalDiscoveredFilePaths) discovered.add(repositoryPath);
     const discoveredFilePaths = [...discovered].sort();
     const discoveredSet = new Set(discoveredFilePaths);
-    const previousFiles = (previous?.progress.files ?? []).filter((file) => discoveredSet.has(file.path));
+    const progressByPath = new Map<string, GlobalUnderstandingTreeSnapshot["progress"]["files"][number]>();
+    for (const file of previous?.progress.files ?? []) {
+      if (discoveredSet.has(file.path)) progressByPath.set(file.path, file);
+    }
+    for (const file of currentProgressFiles) {
+      if (discoveredSet.has(file.path)) progressByPath.set(file.path, file);
+    }
+    const progressFiles = [...progressByPath.values()];
     let reviewedNonEmptyLineCount = 0;
     let totalNonEmptyLineCount = 0;
-    for (const file of previousFiles) {
+    for (const file of progressFiles) {
       reviewedNonEmptyLineCount += file.reviewedNonEmptyLineCount;
       totalNonEmptyLineCount += file.totalNonEmptyLineCount;
     }
@@ -655,7 +663,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         reviewedNonEmptyLineCount,
         totalNonEmptyLineCount,
         progress: totalNonEmptyLineCount === 0 ? 1 : reviewedNonEmptyLineCount / totalNonEmptyLineCount,
-        files: previousFiles
+        files: progressFiles
       },
       discoveredFilePaths,
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
