@@ -1306,6 +1306,84 @@ test("Issue #128 preserves discovered file counts when unopened content loading 
   assert.equal(partialModel.createGlobalUnderstandingTreeModel(last).files.find((file) => file.path === "root.txt")?.description, "0% (0/2)");
 });
 
+test("I129-IFR-001 R2 retains opened classification when a later sibling scope fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr001-opened-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  const rootContent = "root one\nroot two\n";
+  await writeFile(path.join(repositoryRoot, "root.txt"), rootContent, "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
+  const lines = rootContent.split(/\r\n|\r|\n/u);
+  const productionReader = createGlobalUnderstandingOpenDocumentReader({
+    readDocuments: () => [{
+      isClosed: false,
+      uri: { scheme: "file", fsPath: path.join(repositoryRoot, "root.txt"), toString: () => "file:///root.txt" },
+      version: 1,
+      lineCount: lines.length,
+      getText: () => rootContent,
+      lineAt: (line) => ({ text: lines[line] ?? "" })
+    }],
+    filesystemSchemes: new Set(["file"]),
+    stableHash: { digest: (value) => value }
+  });
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: (owner, isCandidatePath) => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return productionReader(owner, isCandidatePath);
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "ifr001-opened", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(() => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }), /ENOENT/u);
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2);
+  assert.equal(last.openedFileCount, 1);
+  assert.equal(last.unopenedFileCount, 1);
+  assert.deepEqual(last.progress.files.map((file) => file.path), ["root.txt"]);
+});
+
+test("I129-IFR-001 R2 retains exclusion metadata when a later sibling scope fails", async (t) => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "review-range-i129-ifr001-excluded-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = path.join(fixture, "repository");
+  await mkdir(path.join(repositoryRoot, "child"), { recursive: true });
+  await mkdir(path.join(repositoryRoot, "node_modules", "pkg"), { recursive: true });
+  await writeFile(path.join(repositoryRoot, "root.txt"), "root one\nroot two\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "payload.bin"), Buffer.from([0x00, 0x41, 0x0a]));
+  await writeFile(path.join(repositoryRoot, "node_modules", "pkg", "ignored.js"), "ignored\n", "utf8");
+  await writeFile(path.join(repositoryRoot, "child", "bad.txt"), "will disappear\n", "utf8");
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(fixture, "storage"),
+    storageUris: { globalStorageUri: { fsPath: path.join(fixture, "storage") }, storageUri: { fsPath: fixture } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => {
+      rmSync(path.join(repositoryRoot, "child", "bad.txt"), { force: true });
+      return [];
+    },
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "ifr001-excluded", selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.startFolder("");
+  const published: GlobalUnderstandingTreeSnapshot[] = [];
+
+  await assert.rejects(() => source.recalculate(undefined, (snapshot) => { published.push(snapshot); }), /ENOENT/u);
+
+  const last = published.at(-1);
+  assert.ok(last);
+  assert.equal(last.progress.totalNonEmptyLineCount, 2);
+  assert.deepEqual([last.excludedFileCount, last.prunedExcludedDirectoryCount], [1, 1]);
+  assert.deepEqual(last.progress.files.map((file) => file.path), ["root.txt"]);
+});
+
 test("Issue #128 emits structured privacy-safe diagnostics for folder content failures", async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "review-range-issue128-diagnostic-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
