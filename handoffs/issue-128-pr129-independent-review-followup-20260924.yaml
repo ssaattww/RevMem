@@ -1,0 +1,119 @@
+schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: implementation
+  generated_at: 2026-09-24T10:46:05+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  independent_reviewed_head: 8d09587e27396027ad808c312ab46e826ebddb19
+  review_record_head: 2f2c568a72a54cb9c62704b8c49a9703eb66a720
+  red_test_head: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+  ifr001_fix_head: 84592ff896f7ed6ca3c2234e2f1e9772acc74e9b
+  ifr002_ifr003_fix_head: 3e4d9ad2a7f3ce5115adc25dd77ce856f5d7efb4
+  validated_candidate: 4387d09767d5874f3c25848f1f18e78012f0af20
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+verification:
+  capability: local_execution_available
+  red:
+    head_sha: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    cases:
+      - "IFR-001 repository total 0 / expected 2 after sibling ENOENT"
+      - "IFR-002 file load fulfilled after first-yield abort"
+      - "IFR-003 stale invalid-encoding exclusion after file changed to valid UTF-8"
+  green:
+    candidate_head: 4387d09767d5874f3c25848f1f18e78012f0af20
+    focused_ifr001_003: 3/3
+    t610: 96/96
+    t504_related: 17/17
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    npm_test: pass
+    unit_phase: 865_pass_2_skip_0_fail
+    extension_host: pass
+  ci_wait:
+    required: false
+    reason: "2026-09-24 user instruction: successful local tests are sufficient; do not wait for final CI completion"
+findings:
+  - id: I129-IFR-001
+    severity: High
+    state: implementation_complete_independent_closure_pending
+    fix: "merge current-generation accepted file progress into partial lifecycle snapshots"
+  - id: I129-IFR-002
+    severity: Medium
+    state: implementation_complete_independent_closure_pending
+    fix: "check AbortSignal before/after bounded file work and after cooperative yields"
+  - id: I129-IFR-003
+    severity: Medium
+    state: implementation_complete_independent_closure_pending
+    fix: "run stability validation before accepting binary/invalid-encoding exclusions"
+  - id: I129-IFR-004
+    severity: Low
+    state: record_correction_complete_independent_closure_pending
+    fix: "synchronize normal-review closure and independent-finding state in task ledger"
+scope:
+  - PR #129 independent review findings I129-IFR-001 through I129-IFR-004 only
+non_goals:
+  - reopening normal-review findings I128-NR-001 through I128-NR-003
+  - unrelated repository work
+  - merge
+files:
+  changed:
+    - path: src/composition/global-understanding/global-understanding-source.ts
+      purpose: retain accepted current-generation progress in partial failure publication
+    - path: src/adapters/repository-files/node-global-understanding-file-source.ts
+      purpose: cancellation fences and exclusion stability validation
+    - path: test/unit/t610-folder-understanding.test.ts
+      purpose: sibling-failure known-line evidence regression
+    - path: test/unit/t504-review-followup-r2.test.ts
+      purpose: cancellation and stale-exclusion regressions
+    - path: tasks/tasks-status.md
+      purpose: independent finding and normal closure synchronization
+    - path: reports/issue-128-pr129-independent-review-followup-20260924.md
+      purpose: detailed implementation evidence
+tests:
+  - name: I129-IFR-001 partial sibling failure
+    red: "repository total 0 != 2"
+    green: "partial 0/2 with root row 0/2 and child failed"
+  - name: I129-IFR-002 first-yield cancellation
+    red: "load fulfilled after abort"
+    green: "AbortError after first yield; no additional yield"
+  - name: I129-IFR-003 exclusion stability
+    red: "stale invalid-encoding exclusion"
+    green: "file-changed error before exclusion acceptance"
+report:
+  paths:
+    - reports/issue-128-pr129-independent-review-followup-20260924.md
+write_boundary:
+  forbidden:
+    - merge
+    - unrelated worktrees
+next_action:
+  type: review
+  target_skill: chat-review-worker
+  mode: fix_verification
+  summary: "same independent reviewer verifies I129-IFR-001 through I129-IFR-004 only"
+  instructions:
+    - re-resolve PR #129 current HEAD and confirm metadata-only commits after validated candidate do not alter source/test
+    - verify IFR-001 root-success plus child-ENOENT partial publication keeps repository/root file line evidence
+    - verify IFR-002 first-yield abort stops bounded file analysis promptly
+    - verify IFR-003 exclusion cannot bypass post-analysis file stability validation
+    - verify IFR-004 task ledger reflects normal review closed and independent closure pending
+    - use successful local full gate as formal verification evidence; do not wait for final CI completion
+    - if CI evidence is referenced, accept only exact matching head SHA
+    - do not merge
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-independent-review-followup-20260924.yaml
