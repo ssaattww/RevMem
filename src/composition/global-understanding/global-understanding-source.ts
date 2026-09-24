@@ -423,7 +423,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
         if (signal?.aborted === true) throw error;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           this.folderScopes?.fail(owner.target.repositoryId, scopeRoot, folder, generation);
-          await publishProgress?.(this.lifecycleSnapshot(this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths, files));
+          await publishProgress?.(this.lifecycleSnapshot(
+            this.folderScopes, owner, scopeRoot, evidenceKey, provisionalDiscoveredFilePaths, files,
+            countedAsOpenedPaths, excludedFileCount, prunedExcludedDirectoryCount
+          ));
           throw attachGlobalUnderstandingFailureDiagnostic(error, {
             stage: scopeFailureStage, operation: "folder-scope-refresh",
             scope: folder.length === 0 ? "repository-root" : "folder",
@@ -601,7 +604,10 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
     scopeRoot: string,
     evidenceKey: string,
     provisionalDiscoveredFilePaths?: ReadonlySet<string>,
-    currentProgressFiles: readonly GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = []
+    currentProgressFiles: readonly GlobalUnderstandingTreeSnapshot["progress"]["files"][number][] = [],
+    currentOpenedPaths?: ReadonlySet<string>,
+    currentExcludedFileCount?: number,
+    currentPrunedExcludedDirectoryCount?: number
   ): GlobalUnderstandingTreeSnapshot {
     const folders = controller?.snapshots(owner.target.repositoryId, scopeRoot).map((folder) => ({
       path: folder.path, state: folder.state, reviewedNonEmptyLineCount: folder.total.reviewed,
@@ -649,7 +655,7 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       reviewedNonEmptyLineCount += file.reviewedNonEmptyLineCount;
       totalNonEmptyLineCount += file.totalNonEmptyLineCount;
     }
-    const openedPaths = this.countedAsOpenedPathsByEvidenceKey.get(evidenceKey) ?? new Set<string>();
+    const openedPaths = currentOpenedPaths ?? this.countedAsOpenedPathsByEvidenceKey.get(evidenceKey) ?? new Set<string>();
     const openedFileCount = discoveredFilePaths.filter((repositoryPath) => openedPaths.has(repositoryPath)).length;
     const previousTargets = new Map((previous?.fileOpenTargets ?? []).map((target) => [target.repositoryPath, target] as const));
     const fileOpenTargets: GlobalUnderstandingFileOpenTarget[] = [];
@@ -669,8 +675,8 @@ export class T505GlobalUnderstandingSource implements GlobalUnderstandingRuntime
       ...(fileOpenTargets.length === 0 ? {} : { fileOpenTargets }),
       openedFileCount,
       unopenedFileCount: discoveredFilePaths.length - openedFileCount,
-      excludedFileCount: previous?.excludedFileCount ?? 0,
-      prunedExcludedDirectoryCount: previous?.prunedExcludedDirectoryCount ?? 0,
+      excludedFileCount: currentExcludedFileCount ?? previous?.excludedFileCount ?? 0,
+      prunedExcludedDirectoryCount: currentPrunedExcludedDirectoryCount ?? previous?.prunedExcludedDirectoryCount ?? 0,
       ...(folders === undefined ? {} : { folders }),
       ...(repositoryPartial ? { repositoryPartial: true } : {})
     };
