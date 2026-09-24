@@ -1,0 +1,145 @@
+schema_version: 3
+producer:
+  skill: chat-review-worker
+  mode: independent_final_closure
+  generated_at: 2026-09-24T11:13:22+09:00
+repository: ssaattww/RevMem
+issue_or_pr: "Issue #128 / PR #129"
+task_id: I128-FINAL
+branch: fix/issue-128-global-understanding-folder-scan
+base_ref: main
+target:
+  current_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  reviewed_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  initial_independent_reviewed_head: 8d09587e27396027ad808c312ab46e826ebddb19
+  independent_report_head: 2f2c568a72a54cb9c62704b8c49a9703eb66a720
+  commit_range: 2f2c568a72a54cb9c62704b8c49a9703eb66a720..893ab7d94368ab0366d5afaf4898206c5cf28d27
+execution_environment:
+  kind: connected_computer
+  tool: Remote Desktop Commander
+  machine_id: FA780
+  connection: available
+  os: Windows
+  shell: PowerShell
+  working_directory: 'C:\Users\donabe\Project\RevMem-issue128'
+  repository: ssaattww/RevMem
+  branch: fix/issue-128-global-understanding-folder-scan
+  head_sha: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  source_state: clean
+  ownership: current_task
+verification:
+  capability: local_execution_available
+  technical_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  full_local_equivalence_gate:
+    state: passed
+    candidate_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  local:
+    build: pass
+    contracts: pass
+    architecture_positive: pass
+    architecture_negative: pass
+    lint: pass
+    compile_test: pass
+    finding_focused: 3/3
+    t504_related: 17/17
+    t610: 96/96
+    npm_test: pass
+    extension_host: pass
+    evidence_directory: 'C:\Users\donabe\Project\RevMem-pr129-independent-closure-20260924'
+  red_ci:
+    head_sha: 3b29d2b5d3d7261adfa0c42e2a2a6f8064e86c9d
+    run_id: 35943690694
+    run_number: 4723
+    conclusion: failure
+    artifact_id: 10785009533
+  current_ci:
+    head_sha: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+    run_id: 35944645058
+    run_number: 4735
+    conclusion: success
+    artifact_id: 10786506311
+    artifact_name: review-range-user-validation-0.1.56-pre+893ab7d
+review:
+  mode: independent_final_closure
+  reviewed_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  reviewer:
+    identity: same ChatGPT independent final review chat
+    role: independent_final_reviewer
+    continuity:
+      previous_reviewer_identity: same ChatGPT independent final review chat
+      changed: false
+      reason: null
+    independence:
+      implemented_change: false
+      implemented_review_fix: false
+      served_as_normal_reviewer: false
+      inherited_conversation: true
+  verdict: fail
+  independent_closure:
+    initial_independent_reviewed_head: 8d09587e27396027ad808c312ab46e826ebddb19
+    closure_reviewed_heads:
+      - 893ab7d94368ab0366d5afaf4898206c5cf28d27
+    reviewer_continuity: same independent reviewer
+    closure_scope:
+      - finding_or_ci_delta: I129-IFR-001
+      - finding_or_ci_delta: I129-IFR-002
+      - finding_or_ci_delta: I129-IFR-003
+      - finding_or_ci_delta: I129-IFR-004
+      - finding_or_ci_delta: exact-head CI delta
+  report_attestation:
+    allowed: false
+    reviewed_implementation_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+    validation_status: not_applicable
+findings:
+  - id: I129-IFR-001
+    severity: high
+    state: not_closed
+    origin: introduced_by_change
+    location: src/composition/global-understanding/global-understanding-source.ts failure-time lifecycleSnapshot publication
+    description: line progress is retained, but accepted current-generation opened/unopened and exclusion metadata still disappear when a later sibling scope fails
+    evidence: opened root probe reports openedFileCount 0 instead of 1; binary root probe reports excludedFileCount 0 instead of 1 after root success and child ENOENT
+    required_action: retain all accepted current-generation snapshot metadata in failure-time partial publication and add opened/excluded sibling regressions
+  - id: I129-IFR-002
+    severity: medium
+    state: closed
+    evidence: first-yield abort returns AbortError with one yield; focused/T504/current-head CI pass
+  - id: I129-IFR-003
+    severity: medium
+    state: closed
+    evidence: invalid-to-valid race returns changed-file rejection; focused/T504/current-head CI pass
+  - id: I129-IFR-004
+    severity: low
+    state: closed
+    evidence: current task ledger records normal review closed and independent closure state
+held: []
+unexplored: []
+unknown: []
+remaining_risks:
+  - I129-IFR-001 remains blocking
+report:
+  report_type: verification_report
+  outcome: created
+  persistence_mode: repository_file
+  paths:
+    - reports/issue-128-pr129-independent-closure-20260924.md
+  reviewed_head: 893ab7d94368ab0366d5afaf4898206c5cf28d27
+  attestation_head: null
+next_action:
+  type: implementation
+  target_skill: chat-implementation-worker
+  mode: implementation
+  summary: fix I129-IFR-001 residual metadata retention only
+  instructions:
+    - add Red regressions for openedFileCount retention and excludedFileCount retention after successful root scope followed by child failure
+    - retain accepted current-generation opened/unopened and exclusion metadata in failure-time partial snapshot
+    - run focused, T610, relevant Global, and full local validation
+    - return to this same independent reviewer for I129-IFR-001 and CI-delta-only closure
+    - do not merge
+  required_attachments_or_references:
+    - reports/issue-128-pr129-independent-final-review-20260924.md
+    - reports/issue-128-pr129-independent-closure-20260924.md
+transport:
+  method: repository_file
+  packet_path: handoffs/issue-128-pr129-independent-closure-20260924.yaml
+  packet_url: null
+  transport_note: preserve same independent reviewer continuity for next closure round
