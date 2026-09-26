@@ -6,7 +6,7 @@ import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/inde
 import { createOwnerProductFixture } from "../support/t405-owner-product-fixture.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
 
-test("Issue #123 advances PR Progress to the fetched tracking revision while local HEAD stays stale", async () => {
+test("PR Progress advances to the fetched tracking revision while local HEAD stays stale", async () => {
   const fixture = await createOwnerProductFixture([52]);
   try {
     fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "open" });
@@ -40,7 +40,7 @@ test("Issue #123 advances PR Progress to the fetched tracking revision while loc
   }
 });
 
-test("Issue #123 resolves only the identity remote upstream as a PR synchronization target", async () => {
+test("PR synchronization resolves only the identity remote upstream as its tracking target", async () => {
   const repository = await createTemporaryGitRepository();
   try {
     await repository.runGit(["remote", "add", "origin", "https://github.com/ssaattww/revmem.git"]);
