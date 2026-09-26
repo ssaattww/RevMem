@@ -3,8 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { gitCurrentContextSnapshot } from "../../src/composition/current-context/git-context-inspection.js";
 import type { CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
-import { createOwnerProductFixture, OWNER_ID } from "../support/t405-owner-product-fixture.js";
+import { createOwnerProductFixture, OWNER_FILE, OWNER_ID } from "../support/t405-owner-product-fixture.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
 
 test("PR Progress advances to the fetched tracking revision while local HEAD stays stale", async () => {
@@ -66,6 +67,44 @@ test("PR tracking synchronization remains available with dirty working-tree chan
     assert.match(await repository.runGit(["status", "--short"]), /^M fixture\.txt$/mu);
   } finally {
     await repository.cleanup();
+  }
+});
+
+test("PR Progress keeps tracking the fetched PR revision with a dirty local checkout", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "open" });
+    await fixture.git("checkout", "main");
+    await fixture.git("reset", "--hard", fixture.B);
+    await fixture.git("update-ref", "refs/remotes/origin/main", fixture.C);
+    await fixture.git("config", "branch.main.remote", "origin");
+    await fixture.git("config", "branch.main.merge", "refs/heads/main");
+    const sourcePath = fixture.repositoryRoot + "/" + OWNER_FILE;
+    const dirtyContent = "keep\nlocal working-tree change\nstable";
+    await writeFile(sourcePath, dirtyContent, "utf8");
+    assert.equal(await fixture.git("status", "--short"), "M " + OWNER_FILE);
+
+    const adapter = createNodeLocalGitAdapter();
+    const inspection = await adapter.inspectRepository(fixture.repositoryRoot);
+    assert.equal(inspection.kind, "repository");
+    if (inspection.kind !== "repository") throw new Error("fixture must remain a Git repository");
+    const trackingRevision = await adapter.resolveIdentityRemoteTrackingRevision(inspection.repository);
+    assert.equal(trackingRevision, fixture.C);
+
+    const candidates = await fixture.runtime.augmentCurrentContextCandidates([
+      gitCurrentContextSnapshot(inspection.repository, trackingRevision),
+    ]);
+    const current = candidates.find((candidate) => candidate.context.selection?.kind === "pull-request");
+    assert.ok(current, "dirty working-tree state must not suppress the persisted PR candidate");
+    assert.equal(current.context.headRevision, fixture.C);
+    const saved = await fixture.load(52);
+    assert.equal(saved?.contextState.pullRequest?.headSha, fixture.C);
+    assert.equal(saved?.globalState.currentRevisionId, fixture.C);
+    assert.equal(await fixture.git("rev-parse", "HEAD"), fixture.B);
+    assert.equal(await readFile(sourcePath, "utf8"), dirtyContent);
+    assert.equal(await fixture.git("status", "--short"), "M " + OWNER_FILE);
+  } finally {
+    await fixture.dispose();
   }
 });
 
