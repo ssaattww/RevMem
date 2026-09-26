@@ -6,10 +6,10 @@
 
 - Current task: I123-REVIEW (P4 maintenance).
 - Branch: `fix/issue-123-pr-progress-stale-local`; base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`.
-- Technical/test HEAD: `948de7d9532de51ae956e4d3df6d0f29435297b8`, pushed and equal to the branch upstream.
+- Technical/test HEAD: `b75defb2d297f75d1750f451b493ab5e766c87f2`, pushed and equal to the branch upstream.
 - Requirement: when local branch HEAD is stale but the same identity-remote tracking branch has advanced, PR Progress must refresh to the verified PR HEAD.
 - Design: local HEAD remains branch/editor ownership. Only a locally available upstream commit on the identity remote, with local HEAD as its ancestor, may become the PR synchronization revision. No implicit fetch/pull/checkout/reset/merge.
-- Dirty working tree follow-up: when local HEAD is stale and tracked files have uncommitted changes, fetched identity-remote tracking still drives PR synchronization; local HEAD and file contents remain untouched. Adapter regression added at `f359575f1f6de7f2d441957ec921eb95cc7dd9c6`; production-composition regression added at `948de7d9532de51ae956e4d3df6d0f29435297b8`. Both were Green on the existing product implementation, so no additional product-code change was required.
+- Dirty working tree follow-up: when local HEAD is stale and tracked files have uncommitted changes, fetched identity-remote tracking still drives PR synchronization; local HEAD and file contents remain untouched. Adapter regression added at `f359575f1f6de7f2d441957ec921eb95cc7dd9c6`; production-composition regression added at `b75defb2d297f75d1750f451b493ab5e766c87f2`. Both were Green on the existing product implementation, so no additional product-code change was required.
 - TDD Red: `a2a51b2...` reproduced 0 pass / 2 fail: stale PR Progress and missing tracking-revision resolver.
 - Green: #123 focused 4/4 including dirty working-tree production-composition coverage; direct dependency matrix 50/50; Git integration 35 pass / 0 fail / 3 platform skips.
 - Static validation: compile:test, build, lint, contracts, architecture positive/negative, and diff-check Green.

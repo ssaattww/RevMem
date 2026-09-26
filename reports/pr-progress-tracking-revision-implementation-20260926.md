@@ -5,7 +5,7 @@
 - Repository: ssaattww/RevMem
 - Branch: fix/issue-123-pr-progress-stale-local
 - Base: c307868fef33e2e24a3a7a24e4cc54403f77ef93
-- Technical HEAD: cd02ee477a49fd76f63d66311c52c28614334c31
+- Technical/test HEAD: b75defb2d297f75d1750f451b493ab5e766c87f2
 - Verification capability: local_execution_available
 - Push state: pushed
 - CI wait state: not started
@@ -14,6 +14,8 @@
 ## Purpose and scope
 
 Issue #123 reports that PR Progress can stay stale when the local checkout is older than the fetched identity-remote tracking branch. The implementation keeps local HEAD authoritative for branch/editor ownership while allowing a verified fetched upstream commit to act as a separate PR synchronization revision.
+
+Tracked or indexed uncommitted working-tree changes do not block the fetched tracking revision from driving PR synchronization, and synchronization does not modify local HEAD or working-tree contents.
 
 The extension does not fetch, pull, checkout, reset, or merge automatically. Missing upstream, foreign remote, missing tracking object, local-ahead, and diverged cases fail closed to existing local-HEAD behavior.
 
@@ -41,8 +43,8 @@ Red was reproduced on a2a51b28d46f8582ee1c4b957dff669de46a51df:
 - LocalGitAdapter did not expose the identity-remote tracking revision resolver.
 - Result: 0 pass / 2 fail.
 
-Green on cd02ee477a49fd76f63d66311c52c28614334c31:
-- pr-progress-remote-tracking-revision: 2 pass / 0 fail.
+Green on b75defb2d297f75d1750f451b493ab5e766c87f2:
+- pr-progress-remote-tracking-revision: 4 pass / 0 fail, including stale local HEAD + dirty working-tree production-composition coverage.
 - Direct dependency matrix: 50 pass / 0 fail.
 - Git integration: 35 pass / 0 fail / 3 platform skips.
 
