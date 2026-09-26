@@ -47,6 +47,7 @@ Green on b75defb2d297f75d1750f451b493ab5e766c87f2:
 - pr-progress-remote-tracking-revision: 4 pass / 0 fail, including stale local HEAD + dirty working-tree production-composition coverage.
 - Direct dependency matrix: 50 pass / 0 fail.
 - Git integration: 35 pass / 0 fail / 3 platform skips.
+- Full unit gate: 869 pass / 0 fail / 2 skips.
 
 ## Validation
 
