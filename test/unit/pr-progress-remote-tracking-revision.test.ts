@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
@@ -37,6 +38,34 @@ test("PR Progress advances to the fetched tracking revision while local HEAD sta
     assert.equal(local[0]!.context.headRevision, fixture.B, "branch/editor ownership must stay on local HEAD");
   } finally {
     await fixture.dispose();
+  }
+});
+
+test("PR tracking synchronization remains available with dirty working-tree changes", async () => {
+  const repository = await createTemporaryGitRepository();
+  try {
+    await repository.runGit(["remote", "add", "origin", "https://github.com/ssaattww/revmem.git"]);
+    await repository.runGit(["update-ref", "refs/remotes/origin/main", repository.headCommit]);
+    await repository.runGit(["reset", "--hard", repository.baseCommit]);
+    await repository.runGit(["config", "branch.main.remote", "origin"]);
+    await repository.runGit(["config", "branch.main.merge", "refs/heads/main"]);
+
+    const dirtyContent = "base\nlocal working-tree change\n";
+    const fixturePath = repository.path + "/fixture.txt";
+    await writeFile(fixturePath, dirtyContent, "utf8");
+    assert.match(await repository.runGit(["status", "--short"]), /^M fixture\.txt$/mu);
+
+    const adapter = createNodeLocalGitAdapter();
+    const inspection = await adapter.inspectRepository(repository.path);
+    assert.equal(inspection.kind, "repository");
+    if (inspection.kind !== "repository") throw new Error("fixture must remain a Git repository");
+
+    assert.equal(await adapter.resolveIdentityRemoteTrackingRevision(inspection.repository), repository.headCommit);
+    assert.equal(await repository.runGit(["rev-parse", "HEAD"]), repository.baseCommit);
+    assert.equal(await readFile(fixturePath, "utf8"), dirtyContent);
+    assert.match(await repository.runGit(["status", "--short"]), /^M fixture\.txt$/mu);
+  } finally {
+    await repository.cleanup();
   }
 });
 
