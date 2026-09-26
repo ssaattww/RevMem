@@ -866,6 +866,10 @@ PRが解決されていない場合はbranchまたはworkspace contextを表示�
 
 PR再検出でGitHub障害、候補0件、または候補選択取消となった場合は、repositoryとimmutable HEADごとに明示したbranch/no-PR選択を表示設定として保存する。この選択は同じHEADの保存済みopen PRが1件だけ存在しても自動推測を抑止し、通常editorの確認操作と装飾はbranch contextへ戻す。成功したPR選択は同じrepository/HEADのbranch/no-PR選択を置換する。表示設定はReview State、review history、PR metadata、Global stateを変更しない。
 
+Current Contextのbranch候補では、通常editorとbranch review-stateのownershipを表す`HEAD`と、GitHub PRのrevision同期対象を分離する。attached branchにupstreamが設定され、そのupstream remoteがRepository IDのidentity remoteと一致し、かつupstream commitをlocal Git objectとして解決できる場合、そのimmutable commitをPR synchronization targetとする。ここで暗黙の`git fetch`は行わない。upstreamがない、identity remoteと異なる、またはcommitがlocal objectとして解決できない場合は、PR synchronization targetもlocal `HEAD`とする。
+
+保存済みopen PRのheadとPR synchronization targetが異なる場合、GitHub lifecycleで取得したPR headがそのtargetと完全一致するときだけ、Current Context / Review Contexts refreshはrepository-owner単位のatomic revision mappingを実行してPR ContextとGlobalをtargetへ進めてよい。GitHub PR headがtargetと異なる場合はrevisionを進めず、既存のimmutable PR stateを保持する。tracking targetへPR Contextを進めてもworking tree、branch selection、通常editor ownershipのlocal `HEAD`は変更しない。したがってlocal checkoutがtracking branchより古くても、fetch済みtracking revisionに対するPR Progressは更新できる一方、未取得remote revisionを推測しない。
+
 ### 16.3 PR Progress View
 
 分類:

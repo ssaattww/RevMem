@@ -39,6 +39,8 @@ Lを超える見込みになった場合は再分解する。
 - P3保守: Issue #116のCurrent Context / PR進捗更新遅延の設計を完了し、generation内Git inspection共有とPR準備結果再利用を実装しfocused 20/20と通常reviewの指摘closureを確認。最終full gate、独立レビュー、PR提出を行う。
 - 設計/レビューsol high、実装terra high。100人の利用で月1回以上の頻度基準で対応を絞る。
 
+- P4保守: Issue #123で、local HEADより同一identity remoteのtracking branchが先行している場合のPR Context / PR Progress revision同期を対応中。local editor ownershipはlocal HEADのまま、fetch済みtracking revisionだけをPR synchronization targetとして扱う。
+
 ## 過去の現在位置（2026-09-06）
 
 - P0保守: PR #115 source配置・CI VSIX版の通常レビューを完了（NR001/ADM001 closed）。full gateと独立レビュー待ち。設計・レビューsol high、実装terra high。独立レビューと最終CI成功後、ユーザー指示によりsquash mergeとブランチ削除を行う。

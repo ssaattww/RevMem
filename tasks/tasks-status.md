@@ -2,6 +2,22 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #123 origin先行時のPR Progress更新（2026-09-26）
+
+- 現在のタスク: I123-IMPL-001（P4保守）。
+- branch: `fix/issue-123-pr-progress-stale-local`。base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`。
+- 要求根拠: Issue #123。local branch HEADが古く、同一identity remoteのtracking branchが先行している場合にPR Progressが新しいPR HEADへ更新されない問題を修正する。
+- 原因: Current Context / PR検出・owner synchronizationがlocal repository HEADだけをPR head identityとして使用し、fetch済みのtracking branch revisionを区別していない。
+- 設計方針: local HEADはbranch/editor ownershipとして維持する。identity remoteと一致するupstreamのcommitがlocal objectとして解決できる場合だけ、そのimmutable revisionをPR synchronization targetとする。暗黙の`git fetch`は行わず、upstream不在・別remote・revision未取得では従来どおりlocal HEADへfallbackする。
+- TDD: `local HEAD=B / tracking HEAD=C / persisted PR=B / GitHub PR=C`をproduction compositionで先にRed確認し、PR Context・PR Progress・owner GlobalがCへatomicに進む一方、branch/editorのlocal HEADはBのままを固定する。
+- CI失敗診断: `.github/workflows/ci.yml` の既存failure diagnostics artifactが`test-output/`、stdout/stderr、生成物・診断logを保存するため追加変更不要。
+- mergeは行わない。
+
+| 単位 | 状態 | 規模 | 変更範囲 | 依存 | 終了条件 |
+| --- | --- | --- | --- | --- | --- |
+| I123-IMPL-001 | 実装準備中 | M | Local Git tracking revision取得、Current ContextのPR synchronization target分離、tracking先行時のowner synchronizationとPR Progress更新 | T401〜T405 | Red→Green、upstream不在/別remote fallback、local HEAD非変更、focused/full local gate、exact-head CI |
+| I123-FINAL | 未着手 | S | report、PR要約、exact-head CI確認 | I123-IMPL-001 | detailed report保存、PR comment、PR current HEADとCI run head SHA一致 |
+
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
 - 現在のタスク: I128-FINAL（P6 / T610保守、I129-IFR-001 R2実装・local検証完了 / same independent reviewer限定closure待ち）。Red-only `4fa17efe7f88983a7f36da8476f0f634d017ad85` でopened count `0 != 1`、excluded/pruned `[0,0] != [1,1]` を確認し、fix `2a0369301c140d758a3fdba2d6a07aca080b617d` でGreen。I129-IFR-002〜004はindependent closed済み。
