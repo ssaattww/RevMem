@@ -866,6 +866,8 @@ attached branchでは、branch/editor ownershipを現在のlocal `HEAD`に固定
 
 tracking revisionを使用してもworking tree、branch selection、normal editor ownershipはlocal `HEAD`のままである。Current ContextのPR候補、PR Progress、immutable diff runtimeだけが検証済みPR revisionを参照できる。Current Context準備結果はlocal branch identityとlocal `HEAD`に加え、採用したPR synchronization target revisionへも束縛し、いずれかが変わったgenerationでは再利用しない。
 
+working treeまたはindexに未commit変更が存在しても、それだけを理由にPR synchronization targetをlocal `HEAD`へ戻してはならない。tracking revision判定はGit ref/object/ancestryだけに基づき、同期処理はworking tree、index、branch refを変更しない。
+
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
 PR再検出でGitHub障害、候補0件、または候補選択取消となった場合は、repositoryとimmutable HEADごとに明示したbranch/no-PR選択を表示設定として保存する。この選択は同じHEADの保存済みopen PRが1件だけ存在しても自動推測を抑止し、通常editorの確認操作と装飾はbranch contextへ戻す。成功したPR選択は同じrepository/HEADのbranch/no-PR選択を置換する。表示設定はReview State、review history、PR metadata、Global stateを変更しない。

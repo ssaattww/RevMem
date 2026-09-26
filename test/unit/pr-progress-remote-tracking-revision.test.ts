@@ -42,6 +42,43 @@ test("PR Progress advances to the fetched tracking revision while local HEAD sta
   }
 });
 
+test("PR Progress advances from a dirty stale checkout without changing local work", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    await fixture.git("update-ref", "refs/remotes/origin/main", fixture.C);
+    await fixture.git("config", "branch.main.remote", "origin");
+    await fixture.git("config", "branch.main.merge", "refs/heads/main");
+    const dirtyPath = fixture.repositoryRoot + "/" + OWNER_FILE;
+    const dirtyContent = "keep\nlocal dirty\nstable";
+    await writeFile(dirtyPath, dirtyContent, "utf8");
+    assert.equal(await fixture.git("status", "--short"), "M " + OWNER_FILE);
+
+    fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "open" });
+    const adapter = createNodeLocalGitAdapter();
+    const inspection = await adapter.inspectRepository(fixture.repositoryRoot);
+    assert.equal(inspection.kind, "repository");
+    if (inspection.kind !== "repository") throw new Error("fixture must remain a Git repository");
+    const synchronizationRevision = await adapter.resolveIdentityRemoteTrackingRevision(inspection.repository);
+    assert.equal(synchronizationRevision, fixture.C);
+
+    const local = [gitCurrentContextSnapshot(inspection.repository, synchronizationRevision)];
+    const candidates = await fixture.runtime.augmentCurrentContextCandidates(local);
+    const current = candidates.find((candidate) => candidate.context.selection?.kind === "pull-request");
+    assert.ok(current, "the persisted PR must remain the current PR candidate");
+    assert.equal(current.context.headRevision, fixture.C);
+
+    const saved = await fixture.load(52);
+    assert.equal(saved?.contextState.pullRequest?.headSha, fixture.C);
+    assert.equal(saved?.globalState.currentRevisionId, fixture.C);
+    assert.equal(await fixture.git("rev-parse", "HEAD"), fixture.B);
+    assert.equal(await readFile(dirtyPath, "utf8"), dirtyContent);
+    assert.equal(await fixture.git("status", "--short"), "M " + OWNER_FILE);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("PR tracking synchronization remains available with dirty working-tree changes", async () => {
   const repository = await createTemporaryGitRepository();
   try {
