@@ -15,10 +15,10 @@ test("PR Progress advances to the fetched tracking revision while local HEAD sta
         kind: "branch" as const,
         label: "main",
         headRevision: fixture.B,
-        ...({ pullRequestHeadRevision: fixture.C } as Record<string, string>),
+        ...({ pullRequestSynchronizationRevision: fixture.C } as Record<string, string>),
         selection: {
           kind: "branch" as const,
-          repositoryId: "github.com/ssaattw/revmem",
+          repositoryId: "github.com/ssaattww/revmem",
           repositoryRoot: fixture.repositoryRoot,
           branchRef: "refs/heads/main",
         },
