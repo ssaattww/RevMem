@@ -226,7 +226,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   await git("checkout", "--detach", B);
   await start();
   return {
-    A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened,
+    A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened, git,
     acquisitionCalls,
     resetAcquisitionCalls: () => {
       acquisitionCalls.lifecycle = 0;
