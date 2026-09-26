@@ -64,6 +64,17 @@ test("PR synchronization resolves only the identity remote upstream as its track
     }
     assert.equal(await resolver.call(adapter, inspection.repository), repository.headCommit);
 
+    await repository.runGit(["reset", "--hard", repository.headCommit]);
+    await repository.runGit(["update-ref", "refs/remotes/origin/main", repository.baseCommit]);
+    const localAheadInspection = await adapter.inspectRepository(repository.path);
+    assert.equal(localAheadInspection.kind, "repository");
+    if (localAheadInspection.kind !== "repository") throw new Error("fixture must remain a Git repository");
+    assert.equal(
+      await resolver.call(adapter, localAheadInspection.repository),
+      undefined,
+      "a tracking revision behind local HEAD must not regress PR synchronization",
+    );
+
     await repository.runGit(["config", "branch.main.remote", "upstream"]);
     assert.equal(
       await resolver.call(adapter, inspection.repository),
