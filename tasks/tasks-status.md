@@ -2,21 +2,26 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
-## Issue #123 origin先行時のPR Progress更新（2026-09-26）
+## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
 
-- 現在のタスク: I123-IMPL-001（P4保守）。
-- branch: `fix/issue-123-pr-progress-stale-local`。base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`。
-- 要求根拠: Issue #123。local branch HEADが古く、同一identity remoteのtracking branchが先行している場合にPR Progressが新しいPR HEADへ更新されない問題を修正する。
-- 原因: Current Context / PR検出・owner synchronizationがlocal repository HEADだけをPR head identityとして使用し、fetch済みのtracking branch revisionを区別していない。
-- 設計方針: local HEADはbranch/editor ownershipとして維持する。identity remoteと一致するupstreamのcommitがlocal objectとして解決でき、local HEADがそのcommitの祖先である場合だけ、そのimmutable revisionをPR synchronization targetとする。暗黙の`git fetch`は行わず、upstream不在・別remote・revision未取得・tracking側behind/divergedでは従来どおりlocal HEADへfallbackする。
-- TDD: `local HEAD=B / tracking HEAD=C / persisted PR=B / GitHub PR=C`をproduction compositionで先にRed確認し、PR Context・PR Progress・owner GlobalがCへatomicに進む一方、branch/editorのlocal HEADはBのままを固定する。
-- CI失敗診断: `.github/workflows/ci.yml` の既存failure diagnostics artifactが`test-output/`、stdout/stderr、生成物・診断logを保存するため追加変更不要。
-- mergeは行わない。
+- Current task: I123-REVIEW (P4 maintenance).
+- Branch: `fix/issue-123-pr-progress-stale-local`; base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`.
+- Technical HEAD: `cd02ee477a49fd76f63d66311c52c28614334c31`, pushed and equal to the branch upstream.
+- Requirement: when local branch HEAD is stale but the same identity-remote tracking branch has advanced, PR Progress must refresh to the verified PR HEAD.
+- Design: local HEAD remains branch/editor ownership. Only a locally available upstream commit on the identity remote, with local HEAD as its ancestor, may become the PR synchronization revision. No implicit fetch/pull/checkout/reset/merge.
+- TDD Red: `a2a51b2...` reproduced 0 pass / 2 fail: stale PR Progress and missing tracking-revision resolver.
+- Green: #123 focused 2/2; direct dependency matrix 50/50; Git integration 35 pass / 0 fail / 3 platform skips.
+- Static validation: compile:test, build, lint, contracts, architecture positive/negative, and diff-check Green.
+- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`.
+- CI failure diagnostics: existing workflow already uploads test-output plus stdout/stderr and diagnostic evidence; no workflow edit required.
+- CI wait state: not started. No CI run is accepted until its head SHA exactly matches the then-current PR HEAD.
+- Merge is left to the user.
 
-| 単位 | 状態 | 規模 | 変更範囲 | 依存 | 終了条件 |
-| --- | --- | --- | --- | --- | --- |
-| I123-IMPL-001 | 実装準備中 | M | Local Git tracking revision取得、Current ContextのPR synchronization target分離、tracking先行時のowner synchronizationとPR Progress更新 | T401〜T405 | Red→Green、upstream不在/別remote fallback、local HEAD非変更、focused/full local gate、exact-head CI |
-| I123-FINAL | 未着手 | S | report、PR要約、exact-head CI確認 | I123-IMPL-001 | detailed report保存、PR comment、PR current HEADとCI run head SHA一致 |
+| Unit | State | Size | Scope | Exit condition |
+| --- | --- | --- | --- | --- |
+| I123-IMPL-001 | complete / local Green | M | Local Git tracking revision, Current Context synchronization identity, owner PR/Global mapping, PR Progress refresh | Red->Green and direct regressions Green; normal review pending |
+| I123-REVIEW | in progress | S | Normal review and required finding closure | One reviewer checks requirements, production path, edge cases and validation; required findings closed |
+| I123-FINAL | pending | S | Full local gate, independent final review, report attestation, PR publication, exact-head CI | Independent verdict passes and current PR HEAD equals required CI run head SHA |
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
