@@ -8,7 +8,7 @@
 - branch: `fix/issue-123-pr-progress-stale-local`。base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`。
 - 要求根拠: Issue #123。local branch HEADが古く、同一identity remoteのtracking branchが先行している場合にPR Progressが新しいPR HEADへ更新されない問題を修正する。
 - 原因: Current Context / PR検出・owner synchronizationがlocal repository HEADだけをPR head identityとして使用し、fetch済みのtracking branch revisionを区別していない。
-- 設計方針: local HEADはbranch/editor ownershipとして維持する。identity remoteと一致するupstreamのcommitがlocal objectとして解決できる場合だけ、そのimmutable revisionをPR synchronization targetとする。暗黙の`git fetch`は行わず、upstream不在・別remote・revision未取得では従来どおりlocal HEADへfallbackする。
+- 設計方針: local HEADはbranch/editor ownershipとして維持する。identity remoteと一致するupstreamのcommitがlocal objectとして解決でき、local HEADがそのcommitの祖先である場合だけ、そのimmutable revisionをPR synchronization targetとする。暗黙の`git fetch`は行わず、upstream不在・別remote・revision未取得・tracking側behind/divergedでは従来どおりlocal HEADへfallbackする。
 - TDD: `local HEAD=B / tracking HEAD=C / persisted PR=B / GitHub PR=C`をproduction compositionで先にRed確認し、PR Context・PR Progress・owner GlobalがCへatomicに進む一方、branch/editorのlocal HEADはBのままを固定する。
 - CI失敗診断: `.github/workflows/ci.yml` の既存failure diagnostics artifactが`test-output/`、stdout/stderr、生成物・診断logを保存するため追加変更不要。
 - mergeは行わない。
