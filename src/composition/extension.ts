@@ -374,7 +374,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
       inspectRepository
     })) {
-      const snapshot = gitCurrentContextSnapshot(candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0]);
+      const repository = candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0];
+      const pullRequestSynchronizationRevision = await git.resolveIdentityRemoteTrackingRevision(repository, signal);
+      if (signal?.aborted === true) return [];
+      const snapshot = gitCurrentContextSnapshot(repository, pullRequestSynchronizationRevision);
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {

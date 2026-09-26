@@ -13,6 +13,8 @@ export interface CurrentContextDescriptor {
   readonly detail?: string;
   readonly baseRevision?: string;
   readonly headRevision?: string;
+  /** Immutable fetched revision used only for PR synchronization; editor ownership remains on headRevision. */
+  readonly pullRequestSynchronizationRevision?: string;
   /** Runtime identity shared with commands and editor decoration reads. */
   readonly selection?: SelectedReviewContext;
 }
