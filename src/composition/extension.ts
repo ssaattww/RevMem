@@ -1156,6 +1156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             contextId: testPullRequestRuntimeTarget.contextId
           }),
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
+      getLocalCurrentContextCandidatesForTest: () => enumerateLocalContexts(),
       /** Test-mode T610 drain for non-blocking activation startup Global work. */
       drainStartupGlobalUnderstandingForTest: () => testStartupGlobalUnderstanding,
       /** Test-mode T610 drain for the registered document-open lifecycle. */

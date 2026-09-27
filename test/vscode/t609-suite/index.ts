@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import path from "node:path";
 
 import * as vscode from "vscode";
+
+import type { CurrentContextUiSnapshot } from "../../../src/ui/current-context/index";
 
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
@@ -10,6 +13,7 @@ assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T
 
 interface T609ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
+  getLocalCurrentContextCandidatesForTest(): Promise<readonly CurrentContextUiSnapshot[]>;
   drainDocumentReviewEdits(): Promise<void>;
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
@@ -83,6 +87,47 @@ const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<V
 
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);
+
+const runGit = (cwd: string, args: readonly string[]): Promise<string> => new Promise((resolve, reject) => {
+  execFile("git", [...args], { cwd, windowsHide: true }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+});
+
+const assertTrackingRevisionSurvivesVisibleEditor = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi,
+): Promise<void> => {
+  const root = folder.uri.fsPath;
+  const localHead = await runGit(root, ["rev-parse", "HEAD"]);
+  const tree = await runGit(root, ["rev-parse", "HEAD^{tree}"]);
+  const trackingHead = await runGit(root, ["commit-tree", tree, "-p", localHead, "-m", "T609 tracking-ahead fixture"]);
+  await runGit(root, ["remote", "add", "origin", "https://github.com/ssaattww/RevMem.git"]);
+  await runGit(root, ["config", "branch.main.remote", "origin"]);
+  await runGit(root, ["config", "branch.main.merge", "refs/heads/main"]);
+  await runGit(root, ["update-ref", "refs/remotes/origin/main", trackingHead]);
+
+  const document = await vscode.workspace.openTextDocument(fixtureUri(folder, "utf8-bom.txt"));
+  await vscode.window.showTextDocument(document, { preview: false });
+  assert.ok(
+    vscode.window.visibleTextEditors.some((editor) => editor.document.uri.toString(true) === document.uri.toString(true)),
+    "the regression requires an eligible visible Git editor",
+  );
+  const candidates = await api.getLocalCurrentContextCandidatesForTest();
+  const branch = candidates.find((candidate) =>
+    candidate.context.kind === "branch" && candidate.context.selection?.kind === "branch"
+  );
+  assert.ok(branch?.context.kind === "branch", "the actual Current Context composition must enumerate the Git branch");
+  assert.ok(branch.context.headRevision, "the visible Git branch must retain local HEAD ownership");
+  assert.equal(branch.context.headRevision, localHead, "visible-editor ownership stays on local HEAD");
+  assert.equal(
+    branch.context.pullRequestSynchronizationRevision,
+    trackingHead,
+    "the verified identity-remote tracking revision must survive visible-editor enumeration",
+  );
+  await runGit(root, ["update-ref", "-d", "refs/remotes/origin/main"]);
+  await runGit(root, ["config", "--unset-all", "branch.main.remote"]).catch(() => "");
+  await runGit(root, ["config", "--unset-all", "branch.main.merge"]).catch(() => "");
+  await runGit(root, ["remote", "remove", "origin"]).catch(() => "");
+};
 
 const closeAllEditors = async (): Promise<void> => {
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -332,6 +377,8 @@ export async function run(): Promise<void> {
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+    await within("visible-editor tracking revision", assertTrackingRevisionSurvivesVisibleEditor(folder, api));
+    await within("close tracking regression editor", closeAllEditors());
     await assertActualUriBoundaries(folder, api);
     await assertMixedEncodingFixture(folder, api);
     await assertLiveEncodingTransition(folder, api);
