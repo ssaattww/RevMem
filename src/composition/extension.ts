@@ -418,7 +418,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       const inspection = await inspectRepository(editorPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);
-        contexts.set(currentContextSelectionKey(snapshot), snapshot);
+        const selectionKey = currentContextSelectionKey(snapshot);
+        // Visible editors can revisit a repository already enumerated above. Preserve
+        // that earlier candidate because it may carry the verified tracking revision.
+        if (!contexts.has(selectionKey)) contexts.set(selectionKey, snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
