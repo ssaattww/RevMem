@@ -10,7 +10,7 @@
 - Follow-up start HEAD: `79e5a6edd3834a93f827fba84fa6cb0245e4b426`
 - Technical Green HEAD: `1231d64a70e50c7fa24e0bb184a0141a2671923b`
 - Merge: not performed
-- Review disposition: implementation and local verification complete; normal-review closure remains pending
+- Review disposition: implementation and local verification complete; normal-review fix verification remains pending
 
 ## Failure-diagnostic workflow check
 
@@ -95,7 +95,7 @@ This report and task/handoff metadata are administrative follow-up only.
 
 ## CI status and exact-head rule
 
-No older workflow run is admissible after a HEAD update. Only a workflow run whose `headSha` exactly equals the then-current PR #130 HEAD may be used as CI evidence. Exact-head CI is checked after the final documentation/tracking push because that push changes the PR HEAD.
+On technical Green HEAD `1231d64a70e50c7fa24e0bb184a0141a2671923b`, pull_request run `36352116242` and push run `36352114252` both completed successfully, and each run reports that exact `headSha`. No older workflow run is admissible after a HEAD update. The final documentation/tracking commit will change the PR HEAD, so its own exact-head CI must be checked after publication.
 
 ## Remaining lifecycle work
 

@@ -4,24 +4,25 @@
 
 ## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
 
-- Current task: I123-REVIEW (P4 maintenance).
+- Current task: I123-REVIEW (I123-NR-001 implementation complete; normal fix verification pending).
 - Branch: `fix/issue-123-pr-progress-stale-local`; base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`.
-- Technical/test HEAD: `b75defb2d297f75d1750f451b493ab5e766c87f2`, pushed and equal to the branch upstream.
+- Technical/test HEAD: `1231d64a70e50c7fa24e0bb184a0141a2671923b`, pushed and equal to the branch upstream.
 - Requirement: when local branch HEAD is stale but the same identity-remote tracking branch has advanced, PR Progress must refresh to the verified PR HEAD.
 - Design: local HEAD remains branch/editor ownership. Only a locally available upstream commit on the identity remote, with local HEAD as its ancestor, may become the PR synchronization revision. No implicit fetch/pull/checkout/reset/merge.
 - Dirty working tree follow-up: when local HEAD is stale and tracked files have uncommitted changes, fetched identity-remote tracking still drives PR synchronization; local HEAD and file contents remain untouched. Adapter regression added at `f359575f1f6de7f2d441957ec921eb95cc7dd9c6`; production-composition regression added at `b75defb2d297f75d1750f451b493ab5e766c87f2`. Both were Green on the existing product implementation, so no additional product-code change was required.
 - TDD Red: `a2a51b2...` reproduced 0 pass / 2 fail: stale PR Progress and missing tracking-revision resolver.
-- Green: #123 focused 4/4 including dirty working-tree production-composition coverage; direct dependency matrix 50/50; Git integration 35 pass / 0 fail / 3 platform skips.
+- Green after I123-NR-001 fix: #123 focused 4/4; i116 20/20; t405 84/84; t609 81/81; T609 Extension Host single-root/prepare/restart-reopen all succeeded.
 - Static validation: compile:test, build, lint, contracts, architecture positive/negative, and diff-check Green.
-- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`.
+- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`. Review-follow-up report: `reports/pr-progress-tracking-revision-review-followup-20260928.md`.
 - CI failure diagnostics: existing workflow already uploads test-output plus stdout/stderr and diagnostic evidence; no workflow edit required.
-- CI wait state: not started. No CI run is accepted until its head SHA exactly matches the then-current PR HEAD.
+- I123-NR-001 / High: implementation complete. The visible-editor duplicate candidate no longer overwrites the earlier tracking-aware Current Context snapshot; normal fix verification remains pending.
+- CI evidence on technical HEAD `1231d64a70e50c7fa24e0bb184a0141a2671923b`: pull_request run 36352116242 and push run 36352114252 both succeeded with exact matching head SHA. Any later administrative documentation/tracking commit requires a new exact-head run.
 - Merge is left to the user.
 
 | Unit | State | Size | Scope | Exit condition |
 | --- | --- | --- | --- | --- |
 | I123-IMPL-001 | complete / local Green | M | Local Git tracking revision, Current Context synchronization identity, owner PR/Global mapping, PR Progress refresh | Red->Green and direct regressions Green; normal review pending |
-| I123-REVIEW | in progress | S | Normal review and required finding closure | One reviewer checks requirements, production path, edge cases and validation; required findings closed |
+| I123-REVIEW | finding implementation complete / normal fix verification pending | S | Normal review and required finding closure | Same normal-review role verifies I123-NR-001 on the updated technical HEAD |
 | I123-FINAL | pending | S | Full local gate, independent final review, report attestation, PR publication, exact-head CI | Independent verdict passes and current PR HEAD equals required CI run head SHA |
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
