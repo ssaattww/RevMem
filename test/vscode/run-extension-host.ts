@@ -52,6 +52,18 @@ const initializeGitRepository = async (root: string): Promise<void> => {
   await execFileAsync("git", ["commit", "-m", "T609 fixture"], { cwd: root, windowsHide: true });
 };
 
+const prepareT609TrackingAhead = async (root: string): Promise<void> => {
+  const runGit = async (args: readonly string[]): Promise<string> =>
+    (await execFileAsync("git", [...args], { cwd: root, windowsHide: true })).stdout.trim();
+  const localHead = await runGit(["rev-parse", "HEAD"]);
+  const tree = await runGit(["rev-parse", "HEAD^{tree}"]);
+  const trackingHead = await runGit(["commit-tree", tree, "-p", localHead, "-m", "T609 tracking-ahead fixture"]);
+  await runGit(["remote", "add", "origin", "https://github.com/ssaattww/RevMem.git"]);
+  await runGit(["config", "branch.main.remote", "origin"]);
+  await runGit(["config", "branch.main.merge", "refs/heads/main"]);
+  await runGit(["update-ref", "refs/remotes/origin/main", trackingHead]);
+};
+
 const prepareT609Fixture = async (root: string): Promise<void> => {
   await mkdir(join(root, ".vscode"), { recursive: true });
   await Promise.all([
@@ -68,6 +80,7 @@ const prepareT609Fixture = async (root: string): Promise<void> => {
     writeFile(join(root, "eol.txt"), "eol fixture\n", "utf8")
   ]);
   await initializeGitRepository(root);
+  await prepareT609TrackingAhead(root);
 };
 
 /** Advances the persisted Host fixture so the next Extension Host maps actual Git transitions. */

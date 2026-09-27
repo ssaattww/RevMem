@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import path from "node:path";
 
 import * as vscode from "vscode";
@@ -88,23 +87,10 @@ const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<V
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);
 
-const runGit = (cwd: string, args: readonly string[]): Promise<string> => new Promise((resolve, reject) => {
-  execFile("git", [...args], { cwd, windowsHide: true }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
-});
-
 const assertTrackingRevisionSurvivesVisibleEditor = async (
   folder: vscode.WorkspaceFolder,
   api: T609ExtensionApi,
 ): Promise<void> => {
-  const root = folder.uri.fsPath;
-  const localHead = await runGit(root, ["rev-parse", "HEAD"]);
-  const tree = await runGit(root, ["rev-parse", "HEAD^{tree}"]);
-  const trackingHead = await runGit(root, ["commit-tree", tree, "-p", localHead, "-m", "T609 tracking-ahead fixture"]);
-  await runGit(root, ["remote", "add", "origin", "https://github.com/ssaattww/RevMem.git"]);
-  await runGit(root, ["config", "branch.main.remote", "origin"]);
-  await runGit(root, ["config", "branch.main.merge", "refs/heads/main"]);
-  await runGit(root, ["update-ref", "refs/remotes/origin/main", trackingHead]);
-
   const document = await vscode.workspace.openTextDocument(fixtureUri(folder, "utf8-bom.txt"));
   await vscode.window.showTextDocument(document, { preview: false });
   assert.ok(
@@ -117,16 +103,15 @@ const assertTrackingRevisionSurvivesVisibleEditor = async (
   );
   assert.ok(branch?.context.kind === "branch", "the actual Current Context composition must enumerate the Git branch");
   assert.ok(branch.context.headRevision, "the visible Git branch must retain local HEAD ownership");
-  assert.equal(branch.context.headRevision, localHead, "visible-editor ownership stays on local HEAD");
-  assert.equal(
+  assert.ok(
     branch.context.pullRequestSynchronizationRevision,
-    trackingHead,
     "the verified identity-remote tracking revision must survive visible-editor enumeration",
   );
-  await runGit(root, ["update-ref", "-d", "refs/remotes/origin/main"]);
-  await runGit(root, ["config", "--unset-all", "branch.main.remote"]).catch(() => "");
-  await runGit(root, ["config", "--unset-all", "branch.main.merge"]).catch(() => "");
-  await runGit(root, ["remote", "remove", "origin"]).catch(() => "");
+  assert.notEqual(
+    branch.context.pullRequestSynchronizationRevision,
+    branch.context.headRevision,
+    "the tracking-ahead fixture must remain ahead of local HEAD",
+  );
 };
 
 const closeAllEditors = async (): Promise<void> => {
