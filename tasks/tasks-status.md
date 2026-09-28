@@ -4,7 +4,7 @@
 
 ## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
 
-- Current task: I123-REVIEW (I123-NR-001 implementation complete; normal fix verification pending).
+- Current task: I123-FINAL (normal fix verification passed; I123-NR-001 closed; independent final review pending).
 - Branch: `fix/issue-123-pr-progress-stale-local`; base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`.
 - Technical/test HEAD: `1231d64a70e50c7fa24e0bb184a0141a2671923b`, pushed and equal to the branch upstream.
 - Requirement: when local branch HEAD is stale but the same identity-remote tracking branch has advanced, PR Progress must refresh to the verified PR HEAD.
@@ -13,16 +13,16 @@
 - TDD Red: `a2a51b2...` reproduced 0 pass / 2 fail: stale PR Progress and missing tracking-revision resolver.
 - Green after I123-NR-001 fix: #123 focused 4/4; i116 20/20; t405 84/84; t609 81/81; T609 Extension Host single-root/prepare/restart-reopen all succeeded.
 - Static validation: compile:test, build, lint, contracts, architecture positive/negative, and diff-check Green.
-- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`. Review-follow-up report: `reports/pr-progress-tracking-revision-review-followup-20260928.md`.
+- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`. Review-follow-up report: `reports/pr-progress-tracking-revision-review-followup-20260928.md`. Normal fix-verification report: `reports/pr-progress-tracking-revision-normal-fix-verification-20260928.md`.
 - CI failure diagnostics: existing workflow already uploads test-output plus stdout/stderr and diagnostic evidence; no workflow edit required.
-- I123-NR-001 / High: implementation complete. The visible-editor duplicate candidate no longer overwrites the earlier tracking-aware Current Context snapshot; normal fix verification remains pending.
+- I123-NR-001 / High: closed by normal fix verification. The visible-editor duplicate candidate no longer overwrites the earlier tracking-aware Current Context snapshot; no new required finding was identified.
 - CI evidence on technical HEAD `1231d64a70e50c7fa24e0bb184a0141a2671923b`: pull_request run 36352116242 and push run 36352114252 both succeeded with exact matching head SHA. Any later administrative documentation/tracking commit requires a new exact-head run.
 - Merge is left to the user.
 
 | Unit | State | Size | Scope | Exit condition |
 | --- | --- | --- | --- | --- |
-| I123-IMPL-001 | complete / local Green | M | Local Git tracking revision, Current Context synchronization identity, owner PR/Global mapping, PR Progress refresh | Red->Green and direct regressions Green; normal review pending |
-| I123-REVIEW | finding implementation complete / normal fix verification pending | S | Normal review and required finding closure | Same normal-review role verifies I123-NR-001 on the updated technical HEAD |
+| I123-IMPL-001 | complete / normal review closed | M | Local Git tracking revision, Current Context synchronization identity, owner PR/Global mapping, PR Progress refresh | Red->Green, direct regressions Green, and I123-NR-001 closed |
+| I123-REVIEW | complete / pass | S | Normal review and required finding closure | I123-NR-001 closed; no new required finding; final report published |
 | I123-FINAL | pending | S | Full local gate, independent final review, report attestation, PR publication, exact-head CI | Independent verdict passes and current PR HEAD equals required CI run head SHA |
 
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
