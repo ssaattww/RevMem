@@ -3,6 +3,8 @@ import path from "node:path";
 
 import * as vscode from "vscode";
 
+import type { CurrentContextUiSnapshot } from "../../../src/ui/current-context/index";
+
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
 const isSingleRoot = phase === "single-root";
@@ -10,6 +12,7 @@ assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T
 
 interface T609ExtensionApi {
   drainCurrentContextStartupForTest(): Promise<void>;
+  getLocalCurrentContextCandidatesForTest(): Promise<readonly CurrentContextUiSnapshot[]>;
   drainDocumentReviewEdits(): Promise<void>;
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
@@ -83,6 +86,33 @@ const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<V
 
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);
+
+const assertTrackingRevisionSurvivesVisibleEditor = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi,
+): Promise<void> => {
+  const document = await vscode.workspace.openTextDocument(fixtureUri(folder, "utf8-bom.txt"));
+  await vscode.window.showTextDocument(document, { preview: false });
+  assert.ok(
+    vscode.window.visibleTextEditors.some((editor) => editor.document.uri.toString(true) === document.uri.toString(true)),
+    "the regression requires an eligible visible Git editor",
+  );
+  const candidates = await api.getLocalCurrentContextCandidatesForTest();
+  const branch = candidates.find((candidate) =>
+    candidate.context.kind === "branch" && candidate.context.selection?.kind === "branch"
+  );
+  assert.ok(branch?.context.kind === "branch", "the actual Current Context composition must enumerate the Git branch");
+  assert.ok(branch.context.headRevision, "the visible Git branch must retain local HEAD ownership");
+  assert.ok(
+    branch.context.pullRequestSynchronizationRevision,
+    "the verified identity-remote tracking revision must survive visible-editor enumeration",
+  );
+  assert.notEqual(
+    branch.context.pullRequestSynchronizationRevision,
+    branch.context.headRevision,
+    "the tracking-ahead fixture must remain ahead of local HEAD",
+  );
+};
 
 const closeAllEditors = async (): Promise<void> => {
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -332,6 +362,8 @@ export async function run(): Promise<void> {
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+    await within("visible-editor tracking revision", assertTrackingRevisionSurvivesVisibleEditor(folder, api));
+    await within("close tracking regression editor", closeAllEditors());
     await assertActualUriBoundaries(folder, api);
     await assertMixedEncodingFixture(folder, api);
     await assertLiveEncodingTransition(folder, api);

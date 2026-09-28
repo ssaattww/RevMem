@@ -2,6 +2,29 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
+
+- Current task: I123-FINAL (normal fix verification passed; I123-NR-001 closed; independent final review pending).
+- Branch: `fix/issue-123-pr-progress-stale-local`; base: `c307868fef33e2e24a3a7a24e4cc54403f77ef93`.
+- Technical/test HEAD: `1231d64a70e50c7fa24e0bb184a0141a2671923b`, pushed and equal to the branch upstream.
+- Requirement: when local branch HEAD is stale but the same identity-remote tracking branch has advanced, PR Progress must refresh to the verified PR HEAD.
+- Design: local HEAD remains branch/editor ownership. Only a locally available upstream commit on the identity remote, with local HEAD as its ancestor, may become the PR synchronization revision. No implicit fetch/pull/checkout/reset/merge.
+- Dirty working tree follow-up: when local HEAD is stale and tracked files have uncommitted changes, fetched identity-remote tracking still drives PR synchronization; local HEAD and file contents remain untouched. Adapter regression added at `f359575f1f6de7f2d441957ec921eb95cc7dd9c6`; production-composition regression added at `b75defb2d297f75d1750f451b493ab5e766c87f2`. Both were Green on the existing product implementation, so no additional product-code change was required.
+- TDD Red: `a2a51b2...` reproduced 0 pass / 2 fail: stale PR Progress and missing tracking-revision resolver.
+- Green after I123-NR-001 fix: #123 focused 4/4; i116 20/20; t405 84/84; t609 81/81; T609 Extension Host single-root/prepare/restart-reopen all succeeded.
+- Static validation: compile:test, build, lint, contracts, architecture positive/negative, and diff-check Green.
+- Implementation report: `reports/pr-progress-tracking-revision-implementation-20260926.md`. Review-follow-up report: `reports/pr-progress-tracking-revision-review-followup-20260928.md`. Normal fix-verification report: `reports/pr-progress-tracking-revision-normal-fix-verification-20260928.md`.
+- CI failure diagnostics: existing workflow already uploads test-output plus stdout/stderr and diagnostic evidence; no workflow edit required.
+- I123-NR-001 / High: closed by normal fix verification. The visible-editor duplicate candidate no longer overwrites the earlier tracking-aware Current Context snapshot; no new required finding was identified.
+- CI evidence on technical HEAD `1231d64a70e50c7fa24e0bb184a0141a2671923b`: pull_request run 36352116242 and push run 36352114252 both succeeded with exact matching head SHA. Any later administrative documentation/tracking commit requires a new exact-head run.
+- Merge is left to the user.
+
+| Unit | State | Size | Scope | Exit condition |
+| --- | --- | --- | --- | --- |
+| I123-IMPL-001 | complete / normal review closed | M | Local Git tracking revision, Current Context synchronization identity, owner PR/Global mapping, PR Progress refresh | Red->Green, direct regressions Green, and I123-NR-001 closed |
+| I123-REVIEW | complete / pass | S | Normal review and required finding closure | I123-NR-001 closed; no new required finding; final report published |
+| I123-FINAL | pending | S | Full local gate, independent final review, report attestation, PR publication, exact-head CI | Independent verdict passes and current PR HEAD equals required CI run head SHA |
+
 ## Issue #128 Global Understanding 明示folder集計・失敗診断（2026-09-23）
 
 - 現在のタスク: I128-FINAL（P6 / T610保守、I129-IFR-001 R2実装・local検証完了 / same independent reviewer限定closure待ち）。Red-only `4fa17efe7f88983a7f36da8476f0f634d017ad85` でopened count `0 != 1`、excluded/pruned `[0,0] != [1,1]` を確認し、fix `2a0369301c140d758a3fdba2d6a07aca080b617d` でGreen。I129-IFR-002〜004はindependent closed済み。

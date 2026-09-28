@@ -184,6 +184,7 @@ interface LocalRepositoryOwner {
   readonly repositoryId: string;
   readonly repositoryRoot: string;
   readonly headRevision: string;
+  readonly pullRequestSynchronizationRevision: string;
   readonly branchRef?: string;
   readonly snapshot: CurrentContextUiSnapshot;
 }
@@ -293,6 +294,7 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
       repositoryId: selection.repositoryId,
       repositoryRoot: selection.repositoryRoot,
       headRevision,
+      pullRequestSynchronizationRevision: snapshot.context.pullRequestSynchronizationRevision ?? headRevision,
       branchRef: selection.branchRef,
       snapshot,
     };
@@ -302,6 +304,7 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
       repositoryId: selection.repositoryId,
       repositoryRoot: selection.repositoryRoot,
       headRevision: selection.headRevision,
+      pullRequestSynchronizationRevision: selection.headRevision,
       snapshot,
     };
   }
@@ -391,6 +394,18 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     this.roots.set(repositoryId, roots);
   }
 
+  private async synchronizeTrackingTarget(
+    owner: LocalRepositoryOwner,
+    persisted: readonly ReviewContextState[],
+    signal?: AbortSignal,
+    feedbackContext?: OperationFeedbackContext,
+  ): Promise<readonly ReviewContextState[]> {
+    if (owner.pullRequestSynchronizationRevision === owner.headRevision) return persisted;
+    const completed = await this.synchronizeRepository(owner, persisted, signal, feedbackContext);
+    if (!completed) return persisted;
+    return this.repository.listRepositoryContexts(owner.repositoryId);
+  }
+
   public async load(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
@@ -445,12 +460,15 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         const preparedForOwner = acceptedPreparation !== undefined &&
           acceptedPreparation.owner.repositoryId === owner.repositoryId &&
           acceptedPreparation.owner.repositoryRoot === owner.repositoryRoot &&
-          acceptedPreparation.owner.headRevision === owner.headRevision
+          acceptedPreparation.owner.headRevision === owner.headRevision &&
+          acceptedPreparation.owner.pullRequestSynchronizationRevision === owner.pullRequestSynchronizationRevision
           ? acceptedPreparation
           : undefined;
         const synchronized = preparedForOwner === undefined
           ? await (async () => {
-              const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+              let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
+              assertCurrent();
+              persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext);
               assertCurrent();
               return this.readSynchronizedRepository(
                 owner,
@@ -481,7 +499,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         const currentPullRequest = findCurrentPullRequestContext(
           synchronized,
           owner.repositoryId,
-          owner.headRevision,
+          owner.pullRequestSynchronizationRevision,
           preferredContextId,
           this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
         );
@@ -572,7 +590,9 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
-      const persisted = await this.repository.listRepositoryContexts(owner.repositoryId);
+      let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
+      assertCurrent();
+      persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext);
       assertCurrent();
       const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
       assertCurrent();
@@ -583,7 +603,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const pullRequest = findCurrentPullRequestContext(
         synchronized,
         owner.repositoryId,
-        owner.headRevision,
+        owner.pullRequestSynchronizationRevision,
         preferredContextId,
         this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
       );
@@ -1074,7 +1094,7 @@ export function registerT405ReviewContextsRuntime(
     }
 
     const result = await synchronizePullRequestOwner(
-      { repositoryId: owner.repositoryId, headRevision: owner.headRevision },
+      { repositoryId: owner.repositoryId, headRevision: owner.pullRequestSynchronizationRevision },
       {
         repository: {
           loadRepositorySnapshot: (repositoryId) => {
@@ -1235,6 +1255,8 @@ export function registerT405ReviewContextsRuntime(
     }
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
+    const pullRequestSynchronizationRevision = await options.git.resolveIdentityRemoteTrackingRevision(local, signal) ?? local.head;
+    assertDetectionCurrent();
     const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
     assertDetectionCurrent();
     let synchronizationCompleted = false;
@@ -1243,6 +1265,8 @@ export function registerT405ReviewContextsRuntime(
         repositoryId: local.repositoryId,
         repositoryRoot: local.rootPath,
         headRevision: local.head,
+        pullRequestSynchronizationRevision,
+        ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
         snapshot: {
           context: { kind: "branch", label: "active", headRevision: local.head },
           progress: undefined,
@@ -1263,7 +1287,7 @@ export function registerT405ReviewContextsRuntime(
         return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
       },
     });
-    let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, local.head);
+    let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, pullRequestSynchronizationRevision);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1274,7 +1298,7 @@ export function registerT405ReviewContextsRuntime(
       const reselectedToken = await auth.getAccessToken(identity.host, signal, true, true);
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
-        search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, local.head);
+        search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, pullRequestSynchronizationRevision);
         assertDetectionCurrent();
       }
     }
@@ -1297,6 +1321,8 @@ export function registerT405ReviewContextsRuntime(
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
             headRevision: local.head,
+            pullRequestSynchronizationRevision,
+            ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
               context: { kind: "branch", label: "active", headRevision: local.head },
               progress: undefined,
@@ -1325,6 +1351,8 @@ export function registerT405ReviewContextsRuntime(
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
             headRevision: local.head,
+            pullRequestSynchronizationRevision,
+            ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
               context: { kind: "branch", label: "active", headRevision: local.head },
               progress: undefined,
@@ -1340,7 +1368,7 @@ export function registerT405ReviewContextsRuntime(
           repositoryId: local.repositoryId,
           rootPath: local.rootPath,
           branch: local.branch,
-          head: local.head,
+          head: pullRequestSynchronizationRevision,
         });
         const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
         const preparedGlobal = await currentGlobalForNewPullRequest(
@@ -1388,7 +1416,8 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<void> => {
-    if (signal?.aborted === true) throw new DOMException("Current Context selection was superseded.", "AbortError");
+    const isSelectionAborted = (): boolean => signal?.aborted === true;
+    if (isSelectionAborted()) throw new DOMException("Current Context selection was superseded.", "AbortError");
     let local: LocalGitRepository;
     try {
       local = await inspectActiveRepository();
@@ -1399,11 +1428,13 @@ export function registerT405ReviewContextsRuntime(
     if (local.head === undefined || local.remote === undefined) return;
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) return;
+    const pullRequestSynchronizationRevision = await options.git.resolveIdentityRemoteTrackingRevision(local, signal) ?? local.head;
+    if (isSelectionAborted()) throw new DOMException("Current Context selection was superseded.", "AbortError");
     const persisted = await repository.listRepositoryContexts(local.repositoryId);
-  const current = findCurrentPullRequestContext(
+    const current = findCurrentPullRequestContext(
       persisted,
       local.repositoryId,
-      local.head,
+      pullRequestSynchronizationRevision,
       currentPullRequestSelection.read(local.repositoryId, local.head),
       currentPullRequestSelection.prefersBranch(local.repositoryId, local.head),
     );

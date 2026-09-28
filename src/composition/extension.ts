@@ -374,7 +374,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
       inspectRepository
     })) {
-      const snapshot = gitCurrentContextSnapshot(candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0]);
+      const repository = candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0];
+      const pullRequestSynchronizationRevision = await git.resolveIdentityRemoteTrackingRevision(repository, signal);
+      if (signal?.aborted === true) return [];
+      const snapshot = gitCurrentContextSnapshot(repository, pullRequestSynchronizationRevision);
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -415,7 +418,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       const inspection = await inspectRepository(editorPath);
       if (inspection.kind === "repository") {
         const snapshot = gitCurrentContextSnapshot(inspection.repository);
-        contexts.set(currentContextSelectionKey(snapshot), snapshot);
+        const selectionKey = currentContextSelectionKey(snapshot);
+        // Visible editors can revisit a repository already enumerated above. Preserve
+        // that earlier candidate because it may carry the verified tracking revision.
+        if (!contexts.has(selectionKey)) contexts.set(selectionKey, snapshot);
       } else {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
@@ -1153,6 +1159,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             contextId: testPullRequestRuntimeTarget.contextId
           }),
       drainCurrentContextStartupForTest: () => currentContextRuntime.startupRefresh,
+      getLocalCurrentContextCandidatesForTest: () => enumerateLocalContexts(),
       /** Test-mode T610 drain for non-blocking activation startup Global work. */
       drainStartupGlobalUnderstandingForTest: () => testStartupGlobalUnderstanding,
       /** Test-mode T610 drain for the registered document-open lifecycle. */

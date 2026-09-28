@@ -1,0 +1,160 @@
+﻿schema_version: 3
+producer:
+  skill: chat-implementation-worker
+  mode: review_follow_up
+  generated_at: 2026-09-28T07:30:07+09:00
+repository: ssaattww/RevMem
+issue_or_pr: 'Issue #123 / PR #130'
+task_id: I123-REVIEW
+branch: fix/issue-123-pr-progress-stale-local
+base_ref: main
+target:
+  current_head: cd4803cb0c895ec00643f74bcd2e70abb0979956
+  reviewed_head: eb52a6fe071c1b19ee42941863a5fb930ddd1809
+  commit_range: 79e5a6edd3834a93f827fba84fa6cb0245e4b426..1231d64a70e50c7fa24e0bb184a0141a2671923b
+execution_environment:
+  kind: connected_computer
+  tool: RemoteDesktopMCP
+  machine_id: local
+  connection: available
+  os: Windows
+  shell: cmd.exe
+  working_directory: 'C:\Users\donabe\Project\RevMem-pr130-fix'
+  repository: ssaattww/RevMem
+  branch: fix/issue-123-pr-progress-stale-local
+  head_sha: cd4803cb0c895ec00643f74bcd2e70abb0979956
+  source_state: clean
+  source_fingerprint: null
+  ownership: current_task
+  writable_paths:
+    - 'C:\Users\donabe\Project\RevMem-pr130-fix'
+  dependencies:
+    - name: git
+      status: available
+      evidence: local commits and pushes succeeded
+    - name: gh
+      status: available
+      evidence: PR and workflow queries succeeded
+    - name: npm
+      status: available
+      evidence: focused and Extension Host validation succeeded
+verification:
+  capability: local_execution_available
+  capability_evidence:
+    - npm validation executed on connected computer
+  technical_head: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+  administrative_parent: cd4803cb0c895ec00643f74bcd2e70abb0979956
+  commit:
+    state: commit_pending
+    review_target_sha: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+  push:
+    state: push_pending
+    head_sha: unknown
+  ci_wait:
+    state: ci_wait_pending
+    required_for: merge_gate
+  final_publication:
+    sequence: final_push_then_authorized_pr_create_or_update_then_exact_head_pull_request_ci_wait
+    pr_action: update
+authoritative_requirements:
+  - source: issue
+    reference: '#123'
+    summary: stale local HEAD must not keep PR Progress stale when verified identity-remote tracking is ahead
+  - source: pr
+    reference: 'PR #130 normal review I123-NR-001'
+    summary: visible-editor enumeration must preserve the verified PR synchronization revision
+development_policy:
+  method: TDD
+  testing_order: regression Red before product fix, then focused Green
+  governing_source: RevMem project instruction
+validation_plan:
+  commands:
+    - npm run test:t609
+    - npm run test:t609:extension-host
+    - npm run test:i116
+    - npm run test:t405
+  required_failure_diagnostics:
+    - .github/workflows/ci.yml uploads test-output including stdout/stderr on failure
+blocked: []
+authorized_actions:
+  - read_repository
+  - edit_code
+  - edit_tests
+  - edit_documentation
+  - write_handoff
+  - write_report
+  - commit
+  - push
+  - update_pr
+  - comment_pr
+write_boundary:
+  allowed:
+    - path_or_operation: PR #130 review-follow-up scope
+      reason: user requested finding response
+  forbidden:
+    - path_or_operation: merge
+      reason: user owns merge
+    - path_or_operation: unrelated worktrees
+      reason: preserve other task ownership
+scope:
+  - address I123-NR-001
+non_goals:
+  - unrelated cleanup
+files:
+  changed:
+    - path: src/composition/extension.ts
+      purpose: preserve richer tracking-aware Current Context candidate
+    - path: test/vscode/t609-suite/index.ts
+      purpose: actual visible-editor regression
+    - path: test/vscode/run-extension-host.ts
+      purpose: prepare tracking-ahead Git fixture in runner
+    - path: reports/pr-progress-tracking-revision-review-followup-20260928.md
+      purpose: implementation evidence
+    - path: tasks/tasks-status.md
+      purpose: synchronize review-follow-up state
+  intentionally_untouched:
+    - path_or_area: merge
+      reason: user-owned action
+tests:
+  - name: I123-NR-001 visible-editor actual composition
+    phase: red
+    result: failed
+    head_sha: db4e10112c365426d12e7c6779322437fd3e3553
+    evidence: synchronization revision was undefined before fix
+  - name: npm run test:t609
+    phase: verification
+    result: passed
+    head_sha: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+    evidence: 81 pass / 0 fail
+  - name: npm run test:t609:extension-host
+    phase: verification
+    result: passed
+    head_sha: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+    evidence: single-root, prepare, restart-reopen succeeded
+ci:
+  required: true
+  workflow: CI
+  run_id: null
+  head_sha: unknown
+  conclusion: in_progress
+  artifacts: []
+implementation:
+  outcome: completed
+  final_head: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+  commits:
+    - sha: db4e10112c365426d12e7c6779322437fd3e3553
+      purpose: add visible-editor regression
+    - sha: 805e8110a6e2d5a443d98a6b48146b7f93e221c6
+      purpose: preserve PR tracking revision
+    - sha: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+      purpose: move tracking-ahead fixture preparation to runner
+  addressed_findings:
+    - id: I123-NR-001
+      reviewed_head: eb52a6fe071c1b19ee42941863a5fb930ddd1809
+      disposition: addressed
+      evidence: actual Extension Host regression reproduces Red and passes after fix
+review:
+  mode: fix_verification
+  reviewed_head: 1231d64a70e50c7fa24e0bb184a0141a2671923b
+  verdict: not_applicable
+  summary:

@@ -13,6 +13,7 @@ import {
   type GitCommandResult,
   type LocalGitBranchState,
   type LocalGitRemote,
+  type LocalGitRepository,
   type LocalGitRepositoryInspection
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
@@ -225,6 +226,46 @@ export class LocalGitAdapter {
         ...(head === undefined ? {} : { head })
       }
     };
+  }
+
+  /** Resolves the fetched identity-remote upstream when local HEAD is its ancestor. */
+  public async resolveIdentityRemoteTrackingRevision(
+    repository: LocalGitRepository,
+    signal?: AbortSignal
+  ): Promise<string | undefined> {
+    if (repository.branch.kind !== "branch" || repository.remote === undefined || repository.head === undefined) {
+      return undefined;
+    }
+    const upstreamInvocation: GitCommandInvocation = {
+      cwd: repository.rootPath,
+      argumentsList: ["for-each-ref", "--format=%(upstream:remotename)%00%(upstream)", repository.branch.fullRef]
+    };
+    const upstreamResult = await this.commandExecutor.execute(upstreamInvocation, undefined, signal);
+    this.requireSuccess(upstreamInvocation, upstreamResult);
+    const fields = upstreamResult.stdout.replace(/\r?\n$/u, "").split("\0");
+    const upstreamRemote = fields[0] ?? "";
+    const upstreamRef = fields[1] ?? "";
+    if (upstreamRemote !== repository.remote.name || !upstreamRef.startsWith(`refs/remotes/${repository.remote.name}/`)) {
+      return undefined;
+    }
+
+    const revisionInvocation: GitCommandInvocation = {
+      cwd: repository.rootPath,
+      argumentsList: ["rev-parse", "--verify", "--quiet", `${upstreamRef}^{commit}`]
+    };
+    const revisionResult = await this.commandExecutor.execute(revisionInvocation, undefined, signal);
+    if (isMissingObjectExit(revisionResult)) return undefined;
+    this.requireSuccess(revisionInvocation, revisionResult);
+    const trackingRevision = firstOutputLine(revisionResult.stdout, "identity remote tracking commit");
+
+    const ancestryInvocation: GitCommandInvocation = {
+      cwd: repository.rootPath,
+      argumentsList: ["merge-base", "--is-ancestor", repository.head, trackingRevision]
+    };
+    const ancestryResult = await this.commandExecutor.execute(ancestryInvocation, undefined, signal);
+    if (ancestryResult.exitCode === 1) return undefined;
+    this.requireSuccess(ancestryInvocation, ancestryResult);
+    return trackingRevision;
   }
 
   /**

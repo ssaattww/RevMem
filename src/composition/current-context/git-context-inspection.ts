@@ -30,7 +30,8 @@ export const isNonGitCurrentContextWorkspace = async (
 
 /** Projects a resolved Git repository into the Current Context candidate consumed by the runtime. */
 export const gitCurrentContextSnapshot = (
-  repository: LocalGitRepository
+  repository: LocalGitRepository,
+  pullRequestSynchronizationRevision?: string
 ): CurrentContextUiSnapshot => ({
   context: {
     kind: "branch",
@@ -41,6 +42,9 @@ export const gitCurrentContextSnapshot = (
         : repository.head.slice(0, 12),
     detail: repository.rootPath,
     headRevision: repository.head,
+    ...(repository.branch.kind === "branch" && pullRequestSynchronizationRevision !== undefined
+      ? { pullRequestSynchronizationRevision }
+      : {}),
     selection: repository.branch.kind === "branch"
       ? {
           kind: "branch",

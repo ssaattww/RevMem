@@ -862,9 +862,19 @@ Current Context候補をPR情報で補完するときは、local候補snapshot�
 
 準備結果はlocal候補identity、repository ID、HEAD、context ID、base SHA、head SHA、original diff ID、およびrefresh generationへ束縛する。いずれかが一致しない場合、別generationである場合、またはCurrent Contextがunresolved、cancel、stale、failureになった場合はReview Contexts Treeへ使用せず、PR Progressも開始せずに準備結果を破棄する。取得中にexact immutable requestをkeyとして保存済みのcache entryと、検証済みimmutable snapshotのdiff runtime登録は削除またはrollbackを要求しない。後続処理は受理した選択と登録済みruntimeの`contextId + baseSha + headSha + originalDiffId`が完全一致する場合だけそのruntimeを選択し、不一致ならPR Progressを開始しない。独立したReview Contexts更新、次のactive editor event、明示再計算、retryは新しい取得を行う。したがって、この共有は長寿命cache、時間基準TTL、GitHub再検出省略、またはrevision変更の推測を導入しない。
 
+attached branchでは、branch/editor ownershipを現在のlocal `HEAD`に固定する一方、PR revisionの検出・同期targetはidentity remoteのconfigured upstream tracking revisionを利用できる。利用条件は、現在branchのupstream remote名がrepository identityに採用したremote名と一致し、そのremote-tracking refがlocal Git object store内のexact commitへ解決できることとする。GitHub lifecycleまたはPR searchが返すhead SHAがそのtracking revisionと完全一致した場合だけ、PR Contextとowner-wide Globalを既存revision mapping contractでそのrevisionへ進める。upstream未設定、identity remote不一致、tracking ref未取得、commit object未解決ではlocal `HEAD`へfail closedし、detached HEADは常にlocal `HEAD`を用いる。この判定のためにextensionが`fetch`、`pull`、`checkout`を自動実行してはならない。
+
+tracking revisionを使用してもworking tree、branch selection、normal editor ownershipはlocal `HEAD`のままである。Current ContextのPR候補、PR Progress、immutable diff runtimeだけが検証済みPR revisionを参照できる。Current Context準備結果はlocal branch identityとlocal `HEAD`に加え、採用したPR synchronization target revisionへも束縛し、いずれかが変わったgenerationでは再利用しない。
+
+working treeまたはindexに未commit変更が存在しても、それだけを理由にPR synchronization targetをlocal `HEAD`へ戻してはならない。tracking revision判定はGit ref/object/ancestryだけに基づき、同期処理はworking tree、index、branch refを変更しない。
+
 PRが解決されていない場合はbranchまたはworkspace contextを表示し、GitHub障害中でもローカル確認操作を停止しない。
 
 PR再検出でGitHub障害、候補0件、または候補選択取消となった場合は、repositoryとimmutable HEADごとに明示したbranch/no-PR選択を表示設定として保存する。この選択は同じHEADの保存済みopen PRが1件だけ存在しても自動推測を抑止し、通常editorの確認操作と装飾はbranch contextへ戻す。成功したPR選択は同じrepository/HEADのbranch/no-PR選択を置換する。表示設定はReview State、review history、PR metadata、Global stateを変更しない。
+
+Current Contextのbranch候補では、通常editorとbranch review-stateのownershipを表す`HEAD`と、GitHub PRのrevision同期対象を分離する。attached branchにupstreamが設定され、そのupstream remoteがRepository IDのidentity remoteと一致し、upstream commitをlocal Git objectとして解決でき、かつlocal `HEAD`がそのupstream commitの祖先である場合だけ、そのimmutable commitをPR synchronization targetとする。ここで暗黙の`git fetch`は行わない。upstreamがない、identity remoteと異なる、commitがlocal objectとして解決できない、またはupstreamがlocal `HEAD`より後方・分岐している場合は、PR synchronization targetもlocal `HEAD`とする。
+
+保存済みopen PRのheadとPR synchronization targetが異なる場合、GitHub lifecycleで取得したPR headがそのtargetと完全一致するときだけ、Current Context / Review Contexts refreshはrepository-owner単位のatomic revision mappingを実行してPR ContextとGlobalをtargetへ進めてよい。GitHub PR headがtargetと異なる場合はrevisionを進めず、既存のimmutable PR stateを保持する。tracking targetへPR Contextを進めてもworking tree、branch selection、通常editor ownershipのlocal `HEAD`は変更しない。したがってlocal checkoutがtracking branchより古くても、fetch済みtracking revisionに対するPR Progressは更新できる一方、未取得remote revisionを推測しない。
 
 ### 16.3 PR Progress View
 
