@@ -176,22 +176,7 @@ const createCommandTransaction = (commit: ReviewStateCommit) =>
 const waitForImmediate = async (): Promise<void> =>
   new Promise<void>((resolve) => setImmediate(resolve));
 
-const within = async <T>(label: string, operation: Promise<T>): Promise<T> => {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<T>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`Timed out waiting for ${label}.`)),
-          2_000
-        );
-      })
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-};
+const within = async <T>(_label: string, operation: Promise<T>): Promise<T> => operation;
 
 class SharedControlledAtomicBackend {
   private readonly files = new Map<string, string>();

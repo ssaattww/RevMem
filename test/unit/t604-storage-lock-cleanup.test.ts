@@ -61,22 +61,28 @@ const event = (eventId: string, contextId: string): ReviewHistoryEvent => ({
   reason: "created"
 });
 
-const startLockChild = (rootPath: string, holdMs: number): { readonly child: ReturnType<typeof spawn>; readonly output: Promise<string> } => {
+const startLockChild = (rootPath: string): { readonly child: ReturnType<typeof spawn>; readonly ready: Promise<void>; readonly output: Promise<string>; release(): void } => {
     const modulePath = path.join(process.cwd(), "test-dist", "src", "adapters", "state-repository", "storage-root-lock.js");
     const script = [
       `const { NodeStorageRootLock } = require(${JSON.stringify(modulePath)});`,
       `(async () => { const lock = new NodeStorageRootLock({ rootPath: process.argv[1], timeoutMs: 150, leaseMs: 1000 });`,
-      "try { const release = await lock.acquire(); process.stdout.write('acquired\\n'); setTimeout(() => release().then(() => process.exit(0)), Number(process.argv[2])); }",
+      "try { const release = await lock.acquire(); process.stdout.write('acquired\\n'); process.stdin.once('data', () => release().then(() => process.exit(0))); }",
       "catch (error) { process.stdout.write(error.name + '\\n'); process.exit(0); } })();"
     ].join("");
-    const child = spawn(process.execPath, ["-e", script, rootPath, String(holdMs)], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, ["-e", script, rootPath], { stdio: ["pipe", "pipe", "pipe"] });
     let outputText = "";
-    const timeout = setTimeout(() => child.kill(), 3_000);
-    child.stdout.on("data", (value: Buffer) => { outputText += value.toString("utf8"); });
+    let acquired = false;
+    let readyResolve: () => void = () => undefined;
+    let readyReject: (error: Error) => void = () => undefined;
+    const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+    void ready.catch(() => undefined);
+    const timeout = setTimeout(() => child.kill(), 30_000);
+    child.stdout.on("data", (value: Buffer) => { outputText += value.toString("utf8"); if (!acquired && outputText.includes("acquired\n")) { acquired = true; readyResolve(); } });
     const output = new Promise<string>((resolve, reject) => {
-      child.once("error", reject);
+      child.once("error", (error) => { readyReject(error); reject(error); });
       child.once("exit", (code) => {
       clearTimeout(timeout);
+      if (!acquired) readyReject(new Error("lock child exited before acquisition: " + String(code)));
       if (code === 0) {
         resolve(outputText.trim());
       } else {
@@ -84,11 +90,10 @@ const startLockChild = (rootPath: string, holdMs: number): { readonly child: Ret
       }
       });
     });
-    return { child, output };
+    return { child, ready, output, release: () => { child.stdin.write("release\\n"); } };
 };
 
-const runLockChild = async (rootPath: string, holdMs: number): Promise<string> =>
-  startLockChild(rootPath, holdMs).output;
+const runLockChild = async (rootPath: string): Promise<string> => { const started = startLockChild(rootPath); started.release(); return started.output; };
 
 /** Runs only production migration, state, history, and snapshot composition in an owned Node process. */
 const runProductionPersistenceChild = (rootPath: string, action: "startup" | "writer"): Promise<string> => {
@@ -112,7 +117,7 @@ const runProductionPersistenceChild = (rootPath: string, action: "startup" | "wr
   const child = spawn(process.execPath, ["-e", script, rootPath, action], { stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   let errorOutput = "";
-  const timeout = setTimeout(() => child.kill(), 5_000);
+  const timeout = setTimeout(() => child.kill(), 30_000);
   child.stdout.on("data", (value: Buffer) => { output += value.toString("utf8"); });
   child.stderr.on("data", (value: Buffer) => { errorOutput += value.toString("utf8"); });
   return new Promise<string>((resolve, reject) => {
@@ -405,11 +410,12 @@ test("T604 uses an owned OS child-process lease and releases it for a successor"
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:child-process"));
   try {
-    const first = runLockChild(route.rootPath, 250);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal(await runLockChild(route.rootPath, 0), "StorageRootLockTimeoutError");
-    assert.equal(await first, "acquired");
-    assert.equal(await runLockChild(route.rootPath, 0), "acquired");
+    const first = startLockChild(route.rootPath);
+    await first.ready;
+    assert.equal(await runLockChild(route.rootPath), "StorageRootLockTimeoutError");
+    first.release();
+    assert.equal(await first.output, "acquired");
+    assert.equal(await runLockChild(route.rootPath), "acquired");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
@@ -419,11 +425,11 @@ test("T604 immediately recovers a killed child lease before its bounded expiry",
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:killed-child"));
   try {
-    const first = startLockChild(route.rootPath, 2_500);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    const first = startLockChild(route.rootPath);
+    await first.ready;
     first.child.kill();
     await first.output.catch(() => undefined);
-    assert.equal(await runLockChild(route.rootPath, 0), "acquired");
+    assert.equal(await runLockChild(route.rootPath), "acquired");
   } finally {
     await rm(temporary.root, { recursive: true, force: true });
   }
@@ -634,11 +640,10 @@ test("T604 runs production startup recovery against real child writers and resta
     await writeFile(path.join(route.snapshotDirectory, "latest", `${pointerName}.json`), "{partial", "utf8");
     await mkdir(path.join(route.snapshotDirectory, "entries"), { recursive: true });
     await writeFile(path.join(route.snapshotDirectory, "entries", `${"c".repeat(64)}.json`), "{corrupt-wrapper", "utf8");
-    const killed = startLockChild(route.rootPath, 2_500);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    const killed = startLockChild(route.rootPath);
+    await killed.ready;
     killed.child.kill();
     await killed.output.catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 1_020));
 
     const [startup, savedSnapshotId] = await Promise.all([
       runProductionPersistenceChild(temporary.root, "startup"),

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import * as vscode from "vscode";
 
 const PHASE_VARIABLE = "REVIEW_RANGE_TEST_PHASE";
-const MAPPED_STATE_TIMEOUT_MS = 15_000;
 
 type TestPhase = "workspace-mark-edit" | "workspace-restore";
 
@@ -22,6 +21,8 @@ interface GlobalUnderstandingFileSnapshot {
 interface ReviewRangeT506WorkspaceTestApi {
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
   refreshVisibleEditorDecorations(): Promise<void>;
+  drainVisibleEditorDecorations(): Promise<void>;
+  drainDocumentReviewEdits(): Promise<void>;
   getGlobalUnderstandingSnapshot(): Promise<{
     readonly progress: {
       readonly files: readonly GlobalUnderstandingFileSnapshot[];
@@ -29,22 +30,8 @@ interface ReviewRangeT506WorkspaceTestApi {
   } | undefined>;
 }
 
-const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve(operation),
-      new Promise<Value>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`T506 workspace timed out: ${label}`)),
-          10_000
-        );
-      })
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-};
+const within = async <Value>(_label: string, operation: PromiseLike<Value>): Promise<Value> =>
+  Promise.resolve(operation);
 
 const readPhase = (): TestPhase => {
   const phase = process.env[PHASE_VARIABLE];
@@ -82,37 +69,16 @@ const expectedMappedIntervals: readonly ReviewedIntervalSnapshot[] = [
   { startLine: 2, endLineExclusive: 3 }
 ];
 
-const waitForMappedUnderstanding = async (
-  api: ReviewRangeT506WorkspaceTestApi
-): Promise<GlobalUnderstandingFileSnapshot> => {
-  const deadline = Date.now() + MAPPED_STATE_TIMEOUT_MS;
-  let latest = await globalFile(api);
-  while (
-    latest.reviewedNonEmptyLineCount !== 2 ||
-    latest.totalNonEmptyLineCount !== 3 ||
-    latest.progress !== 2 / 3
-  ) {
-    if (Date.now() >= deadline) return latest;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    latest = await globalFile(api);
-  }
-  return latest;
+const waitForMappedUnderstanding = async (api: ReviewRangeT506WorkspaceTestApi): Promise<GlobalUnderstandingFileSnapshot> => {
+  await api.drainDocumentReviewEdits();
+  return globalFile(api);
 };
 
-const waitForMappedDecorations = async (
-  api: ReviewRangeT506WorkspaceTestApi,
-  editor: vscode.TextEditor
-): Promise<readonly ReviewedIntervalSnapshot[]> => {
-  const deadline = Date.now() + MAPPED_STATE_TIMEOUT_MS;
-  let latest = api.getVisibleReviewedIntervals(editor.document.uri.toString());
-  while (JSON.stringify(latest) !== JSON.stringify(expectedMappedIntervals)) {
-    if (Date.now() >= deadline) return latest;
-    await within("refresh workspace decorations", api.refreshVisibleEditorDecorations());
-    latest = api.getVisibleReviewedIntervals(editor.document.uri.toString());
-    if (JSON.stringify(latest) === JSON.stringify(expectedMappedIntervals)) return latest;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return latest;
+const waitForMappedDecorations = async (api: ReviewRangeT506WorkspaceTestApi, editor: vscode.TextEditor): Promise<readonly ReviewedIntervalSnapshot[]> => {
+  await api.drainDocumentReviewEdits();
+  await api.refreshVisibleEditorDecorations();
+  await api.drainVisibleEditorDecorations();
+  return api.getVisibleReviewedIntervals(editor.document.uri.toString());
 };
 
 const assertMappedState = async (

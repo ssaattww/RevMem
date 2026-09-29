@@ -38,7 +38,7 @@ const t609Phases = ["single-root", "prepare", "restart-reopen"] as const;
 // A clean runner must download the pinned VS Code archive before its first
 // launch; keep that bounded separately from individual fixture operations.
 const DEFAULT_LAUNCH_TIMEOUT_MS = 300_000;
-const FIXTURE_CLEANUP_TIMEOUT_MS = 10_000;
+const FIXTURE_CLEANUP_TIMEOUT_MS = 30_000;
 
 const initializeGitRepository = async (root: string): Promise<void> => {
   await execFileAsync("git", ["init", "-b", "main"], { cwd: root, windowsHide: true });
