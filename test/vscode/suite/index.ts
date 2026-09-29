@@ -50,7 +50,6 @@ const expectedThemeColors = new Map([
 ]);
 
 const TEST_PHASE_ENVIRONMENT_VARIABLE = "REVIEW_RANGE_TEST_PHASE";
-const TEST_OPERATION_TIMEOUT_MS = 10_000;
 type TestPhase =
   | "confirm"
   | "restore-confirmed-and-unmark"
