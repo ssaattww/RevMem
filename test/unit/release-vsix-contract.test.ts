@@ -169,3 +169,15 @@ test("VSIX packaging excludes generated release artifacts", () => {
   assert.match(ignore, /^artifacts\/\*\*$/m);
   assert.match(ignore, /^\*\.vsix$/m);
 });
+
+test("release workflow preserves failure diagnostics as artifacts", () => {
+  const workflow = readProjectFile(".github/workflows/release-vsix.yml");
+
+  assert.match(workflow, /name: Prepare diagnostic output[\s\S]*?mkdir -p test-output\/ci/);
+  assert.match(workflow, /node tools\/run-ci-command\.mjs test-unit npm run test:unit/);
+  assert.match(workflow, /node tools\/run-ci-command\.mjs test-git npm run test:git/);
+  assert.match(workflow, /node tools\/run-ci-command\.mjs test-github npm run test:github/);
+  assert.match(workflow, /node tools\/run-ci-command\.mjs test-vscode xvfb-run -a npm run test:vscode/);
+  assert.match(workflow, /name: Collect failure context[\s\S]*?if: failure\(\)/);
+  assert.match(workflow, /name: Upload failure diagnostics[\s\S]*?if: failure\(\)[\s\S]*?actions\/upload-artifact@v4[\s\S]*?test-output\//);
+});
