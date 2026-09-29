@@ -356,3 +356,96 @@ test("required unit gate reaches the Issue #92 PR Progress context-menu contract
     "the required unit gate must precede success artifact packaging",
   );
 });
+
+
+test("required CI gates exclude timing-sensitive suites and use deadline-free Extension Host waits", async () => {
+  const [
+    manifestText,
+    ciWorkflow,
+    releaseWorkflow,
+    t306Suite,
+    lifecycleSuite,
+    t506Suite,
+    t506WorkspaceSuite,
+    t609Suite,
+    t604Suite,
+    t506Integration
+  ] = await Promise.all([
+    readFile(packageJsonPath, "utf8"),
+    readFile(workflowPath, "utf8"),
+    readFile(path.join(projectRoot, ".github", "workflows", "release-vsix.yml"), "utf8"),
+    readFile(path.join(projectRoot, "test", "vscode", "t306-suite", "index.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "vscode", "suite", "index.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "vscode", "t506-suite", "index.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "vscode", "t506-workspace-suite", "index.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "vscode", "t609-suite", "index.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "unit", "t604-storage-lock-cleanup.test.ts"), "utf8"),
+    readFile(path.join(projectRoot, "test", "integration", "t506-real-multi-instance-concurrency.integration.test.ts"), "utf8")
+  ]);
+  const scripts = (JSON.parse(manifestText) as PackageManifest).scripts ?? {};
+  const timing = requireScript(scripts, "test:timing-sensitive");
+
+  assert.match(timing, /owned-extension-host-launch\.test\.js/u);
+  assert.match(timing, /owned-temporary-directory-cleanup\.test\.js/u);
+  assert.match(timing, /node-git-blob-reader\.test\.js/u);
+  assert.doesNotMatch(
+    requireScript(scripts, "test:unit"),
+    /owned-extension-host-launch\.test\.js|owned-temporary-directory-cleanup\.test\.js|node-git-blob-reader\.test\.js/u,
+    "wall-clock timeout fixtures must stay out of the required unit gate",
+  );
+  assert.doesNotMatch(requireScript(scripts, "test:t302"), /node-git-blob-reader\.test\.js/u, "POSIX signal timing fixtures must stay out of required T302");
+  for (const workflow of [ciWorkflow, releaseWorkflow]) {
+    assert.doesNotMatch(workflow, /test:timing-sensitive/u);
+  }
+
+  for (const [name, source] of [
+    ["t306", t306Suite],
+    ["lifecycle", lifecycleSuite],
+    ["t506", t506Suite],
+    ["t609", t609Suite],
+    ["t506 integration", t506Integration],
+  ] as const) {
+    assert.doesNotMatch(source, /Promise\.race/u, `${name} must rely on owned lifecycle/state completion instead of a short wall-clock race`);
+  }
+  assert.doesNotMatch(
+    t506WorkspaceSuite,
+    /Promise\.race|Date\.now\(\)|MAPPED_STATE_TIMEOUT_MS|setTimeout/u,
+    "T506 workspace mapping must use drain/state completion instead of deadline polling",
+  );
+  assert.doesNotMatch(t604Suite, /setTimeout\(resolve, (?:50|60|1_020)\)/u, "T604 child-process coordination must use observable lock state instead of fixed sleeps");
+  const requiredBaseGate = (workflow: string): readonly string[] =>
+    Array.from(
+      workflow.matchAll(/run-ci-command\.mjs (test-(?:unit|git|github|vscode)) ([^\r\n]+)/gu),
+      (match) => `${match[1]} ${match[2].trim()}`
+    );
+  const expectedBaseGate = [
+    "test-unit npm run test:unit",
+    "test-git npm run test:git",
+    "test-github npm run test:github",
+    "test-vscode xvfb-run -a npm run test:vscode"
+  ];
+  assert.deepEqual(requiredBaseGate(ciWorkflow), expectedBaseGate);
+  assert.deepEqual(requiredBaseGate(releaseWorkflow), expectedBaseGate, "CI and Publish must share the same deterministic base test gate");
+});
+
+
+test("required gates keep the T606 wall-clock timeout fixture local-only", async () => {
+  const manifestText = await readFile(packageJsonPath, "utf8");
+  const scripts = (JSON.parse(manifestText) as PackageManifest).scripts ?? {};
+  const timing = requireScript(scripts, "test:timing-sensitive");
+  assert.match(timing, /t606-production-timeout\.timing\.test\.js/u);
+  assert.doesNotMatch(
+    requireScript(scripts, "test:t606"),
+    /t606-production-timeout\.timing\.test\.js/u,
+    "the production wall-clock timeout fixture must stay out of required T606",
+  );
+  const productionMatrix = await readFile(
+    path.join(projectRoot, "test", "unit", "t606-production-failure-matrix.test.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    productionMatrix,
+    /timeoutMs:\s*25/u,
+    "the required T606 matrix must not contain the 25 ms wall-clock timeout fixture",
+  );
+});

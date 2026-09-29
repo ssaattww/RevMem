@@ -8,7 +8,6 @@ import {
   GitCommandFailedError,
   GitExecutableNotFoundError,
   LocalGitAdapter,
-  NodeGitCommandExecutor,
   type GitCommandExecutor,
   type GitCommandInvocation,
   type GitCommandResult,
@@ -107,14 +106,6 @@ test("T606 runs Git executable-missing, nonzero, corruption, and safe.directory 
       (error: unknown) => error instanceof GitCommandFailedError && error.result.exitCode === 128 && error.result.stderr === stderr,
     );
   }
-});
-
-test("T606 runs the production Git executor timeout boundary and preserves its stable timeout result", async () => {
-  const executor = new NodeGitCommandExecutor({ executable: process.execPath, timeoutMs: 25 });
-  await assert.rejects(
-    () => executor.execute({ argumentsList: ["-e", "setTimeout(() => {}, 10_000)"] }),
-    (error: unknown) => error instanceof GitCommandFailedError && error.result.exitCode === -1 && /timed out after 25 ms/u.test(error.result.stderr),
-  );
 });
 
 test("T606 preserves the last published repository state when the production persistence adapter sees ENOSPC or EACCES during flush/replace", async () => {

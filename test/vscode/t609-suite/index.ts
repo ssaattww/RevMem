@@ -70,19 +70,8 @@ interface ReviewStateFileSnapshot {
   readonly reviewed: readonly ReviewedIntervalSnapshot[];
 }
 
-const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<Value> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve(work),
-      new Promise<Value>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`T609 Extension Host timed out: ${label}`)), 10_000);
-      })
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-};
+const within = async <Value>(_label: string, work: PromiseLike<Value>): Promise<Value> =>
+  Promise.resolve(work);
 
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);

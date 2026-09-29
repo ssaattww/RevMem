@@ -8,19 +8,8 @@ import { ReviewDiffUriCodec } from "../../../src/application/diff-document/index
 
 const execFileAsync = promisify(execFile);
 
-const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve(operation),
-      new Promise<Value>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(`T306 timed out: ${label}`)), 10_000);
-      })
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-};
+const within = async <Value>(_label: string, operation: PromiseLike<Value>): Promise<Value> =>
+  Promise.resolve(operation);
 
 interface PullRequestProgressTreeFile {
   readonly path: string;

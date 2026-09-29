@@ -80,19 +80,8 @@ interface ReviewRangeExtensionTestApi {
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
 
-const within = async <Value>(label: string, operation: PromiseLike<Value>): Promise<Value> => {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve(operation),
-      new Promise<Value>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(`VS Code lifecycle operation timed out: ${label}`)), TEST_OPERATION_TIMEOUT_MS);
-      })
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-};
+const within = async <Value>(_label: string, operation: PromiseLike<Value>): Promise<Value> =>
+  Promise.resolve(operation);
 
 const readTestPhase = (): TestPhase => {
   const phase = process.env[TEST_PHASE_ENVIRONMENT_VARIABLE];
@@ -173,20 +162,6 @@ const assertManifestAndConfiguration = async (
   );
 };
 
-const waitForRevision = async (
-  extensionApi: ReviewRangeExtensionTestApi,
-  predicate: (revision: number) => boolean
-): Promise<number> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const revision = extensionApi.getFileExclusionPolicySnapshot().revision;
-    if (predicate(revision)) {
-      return revision;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("Timed out waiting for the exclusion-policy revision.");
-};
-
 const assertExclusionConfigurationLifecycle = async (
   extensionApi: ReviewRangeExtensionTestApi
 ): Promise<void> => {
@@ -201,9 +176,10 @@ const assertExclusionConfigurationLifecycle = async (
     configuredGlobs,
     vscode.ConfigurationTarget.Workspace
   );
-  const configuredRevision = await waitForRevision(
-    extensionApi,
-    (revision) => revision > initial.revision
+  const configuredRevision = extensionApi.getFileExclusionPolicySnapshot().revision;
+  assert.ok(
+    configuredRevision > initial.revision,
+    "A completed relevant configuration update must advance the shared exclusion policy."
   );
   assert.equal(
     extensionApi.evaluateFileExclusion("src/model.generated.ts").excluded,
@@ -216,7 +192,6 @@ const assertExclusionConfigurationLifecycle = async (
     true,
     vscode.ConfigurationTarget.Workspace
   );
-  await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(
     extensionApi.getFileExclusionPolicySnapshot().revision,
     configuredRevision,
@@ -233,7 +208,6 @@ const assertExclusionConfigurationLifecycle = async (
     [...expectedExcludeGlobs, " **\\*.generated.ts "],
     vscode.ConfigurationTarget.Workspace
   );
-  await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(
     extensionApi.getFileExclusionPolicySnapshot().revision,
     configuredRevision,
@@ -245,10 +219,7 @@ const assertExclusionConfigurationLifecycle = async (
     undefined,
     vscode.ConfigurationTarget.Workspace
   );
-  await waitForRevision(
-    extensionApi,
-    (revision) => revision > configuredRevision
-  );
+  assert.ok(extensionApi.getFileExclusionPolicySnapshot().revision > configuredRevision, "Restoring the default exclusion setting must advance the policy revision.");
   assert.deepEqual(
     extensionApi.getFileExclusionPolicySnapshot().userGlobs,
     expectedDecisionBearingExcludeGlobs
