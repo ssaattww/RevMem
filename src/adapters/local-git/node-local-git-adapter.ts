@@ -51,9 +51,12 @@ const requireRoot = (value: string): string => {
   return value;
 };
 
-const normalizeInspectionStartPath = async (startPath: string): Promise<string> => {
+export const normalizeInspectionStartPath = async (
+  startPath: string,
+  statPath: (path: string) => Promise<{ isDirectory(): boolean }> = stat
+): Promise<string> => {
   try {
-    const details = await stat(startPath);
+    const details = await statPath(startPath);
     return details.isDirectory() ? startPath : gitInspectionStartPath(startPath);
   } catch (error) {
     if (

@@ -10,6 +10,7 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
+import { normalizeInspectionStartPath } from "../../src/adapters/local-git/node-local-git-adapter";
 import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 const repositoryRoot = path.resolve("workspace", "repository");
@@ -87,6 +88,48 @@ class RecordingGitCommandExecutor implements GitCommandExecutor {
 const createMetadataAdapter = (
   executor: GitCommandExecutor
 ): LocalGitAdapter => new LocalGitAdapter(executor, unreachableGitBlobReader);
+
+test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
+  const startPath = path.resolve("restricted-repository");
+  const denied = Object.assign(new Error("access denied"), {
+    code: "EACCES",
+    syscall: "stat",
+    path: startPath
+  });
+  let inspectedPath: string | undefined;
+
+  await assert.rejects(
+    normalizeInspectionStartPath(startPath, async (candidate) => {
+      inspectedPath = candidate;
+      throw denied;
+    }),
+    (error: unknown) => error === denied
+  );
+  assert.equal(inspectedPath, startPath);
+});
+
+test("Node local Git path normalization retains only an exact candidate stat ENOENT", async () => {
+  const startPath = path.resolve("missing-repository");
+  const missing = Object.assign(new Error("missing"), {
+    code: "ENOENT",
+    syscall: "stat",
+    path: startPath
+  });
+  assert.equal(
+    await normalizeInspectionStartPath(startPath, async () => { throw missing; }),
+    startPath
+  );
+
+  const unrelated = Object.assign(new Error("different path"), {
+    code: "ENOENT",
+    syscall: "stat",
+    path: `${startPath}-other`
+  });
+  await assert.rejects(
+    normalizeInspectionStartPath(startPath, async () => { throw unrelated; }),
+    (error: unknown) => error === unrelated
+  );
+});
 
 const queueRepositoryInspection = (
   executor: RecordingGitCommandExecutor,

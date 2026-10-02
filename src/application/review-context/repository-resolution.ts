@@ -104,6 +104,13 @@ const sameFilesystemPath = (left: string, right: string): boolean => {
 const isAtOrBelow = (candidate: string, boundary: string): boolean =>
   sameFilesystemPath(candidate, boundary) || isStrictAncestor(boundary, candidate);
 
+// Git may report the physical target root for a symlinked known-root path.
+// A strict parent/child mismatch is a different nested root; disjoint paths can
+// be aliases after inspection has proven that Git resolves the candidate.
+const isKnownRootInspection = (candidate: string, repositoryRoot: string): boolean =>
+  sameFilesystemPath(candidate, repositoryRoot) ||
+  (!isAtOrBelow(candidate, repositoryRoot) && !isAtOrBelow(repositoryRoot, candidate));
+
 const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
   if (typeof error !== "object" || error === null) return false;
   const value = error as { readonly code?: unknown; readonly syscall?: unknown; readonly path?: unknown };
@@ -180,7 +187,7 @@ export const resolveCurrentContextRepositories = async (
         : await inspectCandidate(path);
       if (inspection === undefined) continue;
       if (source === "known-root" && inspection.kind === "repository" &&
-        !sameFilesystemPath(path, inspection.repository.rootPath)) continue;
+        !isKnownRootInspection(path, inspection.repository.rootPath)) continue;
       if ((source === "active-document" || source === "opened-document") &&
         inspection.kind === "repository" && documentIsOutsideBoundary(path, inspection.repository.rootPath)) continue;
       if (inspection.kind !== "repository" || roots.has(inspection.repository.rootPath)) {

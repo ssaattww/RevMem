@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -450,26 +450,29 @@ test("a workspace subdirectory does not become a repository ownership boundary",
   }
 });
 
-test("a real inaccessible path remains a filesystem permission error through the Node Git adapter", async (t) => {
-  if (process.platform !== "win32") {
-    t.skip("the protected Windows filesystem path is unavailable on this platform");
-    return;
-  }
-
-  const deniedPath = "C:\\Windows\\System32\\config\\SAM";
+test("a known repository root reached through a directory link remains a known-root candidate", async () => {
+  const repository = await createTemporaryGitRepository();
+  const aliasPath = `${repository.path}-alias`;
   const adapter = createNodeLocalGitAdapter();
+
   try {
-    await stat(deniedPath);
-    t.skip("this runner can stat the protected path");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "EACCES" && code !== "EPERM") throw error;
-    await assert.rejects(adapter.inspectRepository(deniedPath), (inspectionError: unknown) => {
-      const inspectionCode = (inspectionError as NodeJS.ErrnoException).code;
-      assert.ok(inspectionCode === "EACCES" || inspectionCode === "EPERM");
-      assert.equal((inspectionError as NodeJS.ErrnoException).syscall, "stat");
-      assert.equal((inspectionError as NodeJS.ErrnoException).path, deniedPath);
-      return true;
+    await symlink(repository.path, aliasPath, process.platform === "win32" ? "junction" : "dir");
+    const inspected = await adapter.inspectRepository(aliasPath);
+    assert.equal(inspected.kind, "repository");
+    if (inspected.kind !== "repository") return;
+
+    const result = await resolveCurrentContextRepositories({
+      openedDocumentPaths: [],
+      knownRootPaths: [aliasPath],
+      workspaceFolderPaths: [],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
     });
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[inspected.repository.rootPath, "known-root"]]
+    );
+  } finally {
+    await rm(aliasPath, { force: true, recursive: true });
+    await repository.cleanup();
   }
 });
