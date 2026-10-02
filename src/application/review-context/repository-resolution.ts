@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /** Current Context候補化に必要な最小のGit repository観測結果。 */
 export type RepositoryResolutionInspection =
   | {
@@ -77,6 +79,38 @@ export const workspaceUriToFilesystemPath = (
 const nonEmpty = (path: string | undefined): path is string =>
   path !== undefined && path.length > 0 && !path.includes("\0");
 
+const filesystemPath = (value: string): typeof path.posix =>
+  value.startsWith("/")
+    ? path.posix
+    : /^[A-Za-z]:[\\/]/u.test(value) || value.startsWith("\\\\")
+      ? path.win32
+      : path.posix;
+
+const isStrictAncestor = (ancestor: string, descendant: string): boolean => {
+  const semantics = filesystemPath(ancestor);
+  const relative = semantics.relative(semantics.resolve(ancestor), semantics.resolve(descendant));
+  return relative.length > 0 && relative !== ".." && !relative.startsWith(`..${semantics.sep}`) && !semantics.isAbsolute(relative);
+};
+
+const sameFilesystemPath = (left: string, right: string): boolean => {
+  const semantics = filesystemPath(left);
+  const resolvedLeft = semantics.resolve(left);
+  const resolvedRight = semantics.resolve(right);
+  return semantics === path.win32
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
+};
+
+const isAtOrBelow = (candidate: string, boundary: string): boolean =>
+  sameFilesystemPath(candidate, boundary) || isStrictAncestor(boundary, candidate);
+
+const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
+  if (typeof error !== "object" || error === null) return false;
+  const value = error as { readonly code?: unknown; readonly syscall?: unknown; readonly path?: unknown };
+  return value.code === "ENOENT" && value.syscall === "stat" &&
+    typeof value.path === "string" && filesystemPath(candidate).resolve(value.path) === filesystemPath(candidate).resolve(candidate);
+};
+
 /**
  * Collects validated repositories without relying on an active Git editor.
  *
@@ -118,10 +152,48 @@ export const resolveCurrentContextRepositories = async (
     });
     return pending;
   };
+  const boundaries = [...input.knownRootPaths, ...input.workspaceFolderPaths]
+    .filter(nonEmpty);
+  const documentIsOutsideBoundary = (documentPath: string, repositoryRoot: string): boolean => {
+    const matchingBoundaries = boundaries.filter((boundary) => isAtOrBelow(documentPath, boundary));
+    const deepestBoundaries = matchingBoundaries.filter((boundary) =>
+      !matchingBoundaries.some((other) => isStrictAncestor(boundary, other)));
+    return deepestBoundaries.some((boundary) => isStrictAncestor(repositoryRoot, boundary));
+  };
+  const inspectCandidate = async (candidate: string): Promise<RepositoryResolutionInspection | undefined> => {
+    try {
+      return await inspect(candidate);
+    } catch (error) {
+      if (isCandidateStatEnoent(error, candidate)) return undefined;
+      throw error;
+    }
+  };
+  const inspectDocument = async (candidate: string): Promise<RepositoryResolutionInspection | undefined> => {
+    const semantics = filesystemPath(candidate);
+    let startPath = candidate;
+    while (true) {
+      try {
+        return await inspect(startPath);
+      } catch (error) {
+        if (!isCandidateStatEnoent(error, startPath)) throw error;
+        const parent = semantics.dirname(startPath);
+        if (parent === startPath) return undefined;
+        startPath = parent;
+      }
+    }
+  };
   for (const [source, paths] of ordered) {
     for (const path of paths) {
       if (!nonEmpty(path)) continue;
-      const inspection = await inspect(path);
+      const isDocument = source === "active-document" || source === "opened-document";
+      const inspection = isDocument
+        ? await inspectDocument(path)
+        : await inspectCandidate(path);
+      if (inspection === undefined) continue;
+      if (source === "known-root" && inspection.kind === "repository" &&
+        !sameFilesystemPath(path, inspection.repository.rootPath)) continue;
+      if ((source === "active-document" || source === "opened-document") &&
+        inspection.kind === "repository" && documentIsOutsideBoundary(path, inspection.repository.rootPath)) continue;
       if (inspection.kind !== "repository" || roots.has(inspection.repository.rootPath)) {
         continue;
       }

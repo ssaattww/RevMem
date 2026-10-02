@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
-import { createTemporaryGitRepository } from "../support/temporary-git-repository";
+import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
+import { createTemporaryGitRepository, type TemporaryGitRepository } from "../support/temporary-git-repository";
 
 test("real Git inspection resolves a nested path, branch ref, HEAD, and root identity", async () => {
   const repository = await createTemporaryGitRepository();
@@ -226,5 +227,172 @@ test("real Git revision diff streams output larger than the legacy 4 MiB buffer"
     assert.match(diff, /^diff --git /u);
   } finally {
     await repository.cleanup();
+  }
+});
+
+type NestedGitFixture = {
+  readonly rootPath: string;
+  readonly documentPath: string;
+};
+
+const createNestedGitFixture = async (
+  outer: TemporaryGitRepository,
+  relativePath: string
+): Promise<NestedGitFixture> => {
+  await outer.runGit(["init", "--initial-branch=main", relativePath]);
+  await outer.runGit(["-C", relativePath, "config", "user.name", "Review Range Test"]);
+  await outer.runGit(["-C", relativePath, "config", "user.email", "review-range-test@example.invalid"]);
+  const rootPath = path.join(outer.path, relativePath);
+  const documentPath = path.join(rootPath, "nested-fixture.txt");
+  await writeFile(documentPath, "nested repository fixture\n", "utf8");
+  await outer.runGit(["-C", relativePath, "add", "nested-fixture.txt"]);
+  await outer.runGit(["-C", relativePath, "commit", "--message", "nested fixture"]);
+  return { rootPath, documentPath };
+};
+
+test("repository resolution normalizes a deleted document to its surviving parent directory", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+  const documentDirectory = path.join(repository.path, "src", "nested");
+  const documentPath = path.join(documentDirectory, "deleted.txt");
+
+  try {
+    await mkdir(documentDirectory, { recursive: true });
+    await writeFile(documentPath, "temporary document\n", "utf8");
+    await rm(documentPath);
+
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: documentPath,
+      openedDocumentPaths: [],
+      knownRootPaths: [],
+      workspaceFolderPaths: [repository.path],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[repository.path, "active-document"]]
+    );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("a deleted nested Git marker does not assign its document to the outer repository", async () => {
+  const outer = await createTemporaryGitRepository();
+  const nested = await createNestedGitFixture(outer, "nested");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(path.join(nested.rootPath, ".git"), { force: true, recursive: true });
+
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: nested.documentPath,
+      openedDocumentPaths: [],
+      knownRootPaths: [nested.rootPath],
+      workspaceFolderPaths: [outer.path],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[outer.path, "workspace-folder"]],
+      "the explicit outer workspace stays listed, but the document is not its owner evidence"
+    );
+  } finally {
+    await outer.cleanup();
+  }
+});
+
+test("a removed nested repository skips only its missing candidates and preserves other roots", async () => {
+  const outer = await createTemporaryGitRepository();
+  const unrelated = await createTemporaryGitRepository();
+  const nested = await createNestedGitFixture(outer, "nested-gone");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(nested.rootPath, { force: true, recursive: true });
+
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: nested.documentPath,
+      openedDocumentPaths: [path.join(nested.rootPath, "opened.txt")],
+      knownRootPaths: [nested.rootPath],
+      workspaceFolderPaths: [outer.path, unrelated.path],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [
+        [outer.path, "workspace-folder"],
+        [unrelated.path, "workspace-folder"]
+      ]
+    );
+  } finally {
+    await Promise.all([outer.cleanup(), unrelated.cleanup()]);
+  }
+});
+
+test("a stale ancestor boundary does not hide a live deeper repository", async () => {
+  const outer = await createTemporaryGitRepository();
+  const staleParent = await createNestedGitFixture(outer, "stale-parent");
+  const liveChild = await createNestedGitFixture(outer, "stale-parent/live-child");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(path.join(staleParent.rootPath, ".git"), { force: true, recursive: true });
+
+    for (const knownRootPaths of [
+      [staleParent.rootPath, liveChild.rootPath],
+      [liveChild.rootPath, staleParent.rootPath]
+    ]) {
+      const result = await resolveCurrentContextRepositories({
+        activeDocumentPath: liveChild.documentPath,
+        openedDocumentPaths: [],
+        knownRootPaths,
+        workspaceFolderPaths: [outer.path],
+        inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+      });
+
+      assert.deepEqual(
+        result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+        [
+          [liveChild.rootPath, "active-document"],
+          [outer.path, "workspace-folder"]
+        ]
+      );
+    }
+  } finally {
+    await outer.cleanup();
+  }
+});
+
+test("a stale nested known root does not hide a valid explicit outer known root in either order", async () => {
+  const outer = await createTemporaryGitRepository();
+  const nested = await createNestedGitFixture(outer, "nested-known-root");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(path.join(nested.rootPath, ".git"), { force: true, recursive: true });
+
+    for (const knownRootPaths of [
+      [nested.rootPath, outer.path],
+      [outer.path, nested.rootPath]
+    ]) {
+      const result = await resolveCurrentContextRepositories({
+        activeDocumentPath: nested.documentPath,
+        openedDocumentPaths: [],
+        knownRootPaths,
+        workspaceFolderPaths: [],
+        inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+      });
+
+      assert.deepEqual(
+        result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+        [[outer.path, "known-root"]]
+      );
+    }
+  } finally {
+    await outer.cleanup();
   }
 });
