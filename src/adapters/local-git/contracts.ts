@@ -128,6 +128,10 @@ export interface LocalGitRepositoryInspectionSuccess {
   readonly kind: "repository";
   /** Resolved local repository information. */
   readonly repository: LocalGitRepository;
+  /** Canonical inspection start directory when the Node adapter resolved it. */
+  readonly canonicalInspectionStartPath?: string;
+  /** Canonical Git root directory when the Node adapter resolved it. */
+  readonly canonicalRepositoryRootPath?: string;
 }
 
 /** Complete outcome of local Git discovery. */
