@@ -55,8 +55,17 @@ const normalizeInspectionStartPath = async (startPath: string): Promise<string> 
   try {
     const details = await stat(startPath);
     return details.isDirectory() ? startPath : gitInspectionStartPath(startPath);
-  } catch {
-    return startPath;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error && error.code === "ENOENT" &&
+      "syscall" in error && error.syscall === "stat" &&
+      "path" in error && error.path === startPath
+    ) {
+      return startPath;
+    }
+    throw error;
   }
 };
 

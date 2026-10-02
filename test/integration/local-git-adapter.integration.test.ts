@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -394,5 +394,82 @@ test("a stale nested known root does not hide a valid explicit outer known root 
     }
   } finally {
     await outer.cleanup();
+  }
+});
+
+test("a fully removed nested repository without a known root does not climb to its live outer repository", async () => {
+  const outer = await createTemporaryGitRepository();
+  const nested = await createNestedGitFixture(outer, "missing-parent/missing-child/nested");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(path.join(outer.path, "missing-parent"), { force: true, recursive: true });
+
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: nested.documentPath,
+      openedDocumentPaths: [path.join(outer.path, "fixture.txt")],
+      knownRootPaths: [],
+      workspaceFolderPaths: [],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[outer.path, "opened-document"]],
+      "the missing document must be skipped after its immediate parent fails, leaving the outer repo to its own document evidence"
+    );
+  } finally {
+    await outer.cleanup();
+  }
+});
+
+test("a workspace subdirectory does not become a repository ownership boundary", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+  const workspaceSubdirectory = path.join(repository.path, "src", "nested");
+  const documentPath = path.join(workspaceSubdirectory, "live.txt");
+
+  try {
+    await mkdir(workspaceSubdirectory, { recursive: true });
+    await writeFile(documentPath, "live document\n", "utf8");
+
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: documentPath,
+      openedDocumentPaths: [],
+      knownRootPaths: [],
+      workspaceFolderPaths: [workspaceSubdirectory],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[repository.path, "active-document"]]
+    );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("a real inaccessible path remains a filesystem permission error through the Node Git adapter", async (t) => {
+  if (process.platform !== "win32") {
+    t.skip("the protected Windows filesystem path is unavailable on this platform");
+    return;
+  }
+
+  const deniedPath = "C:\\Windows\\System32\\config\\SAM";
+  const adapter = createNodeLocalGitAdapter();
+  try {
+    await stat(deniedPath);
+    t.skip("this runner can stat the protected path");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EACCES" && code !== "EPERM") throw error;
+    await assert.rejects(adapter.inspectRepository(deniedPath), (inspectionError: unknown) => {
+      const inspectionCode = (inspectionError as NodeJS.ErrnoException).code;
+      assert.ok(inspectionCode === "EACCES" || inspectionCode === "EPERM");
+      assert.equal((inspectionError as NodeJS.ErrnoException).syscall, "stat");
+      assert.equal((inspectionError as NodeJS.ErrnoException).path, deniedPath);
+      return true;
+    });
   }
 });

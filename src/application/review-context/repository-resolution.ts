@@ -108,7 +108,7 @@ const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
   if (typeof error !== "object" || error === null) return false;
   const value = error as { readonly code?: unknown; readonly syscall?: unknown; readonly path?: unknown };
   return value.code === "ENOENT" && value.syscall === "stat" &&
-    typeof value.path === "string" && filesystemPath(candidate).resolve(value.path) === filesystemPath(candidate).resolve(candidate);
+    typeof value.path === "string" && sameFilesystemPath(candidate, value.path);
 };
 
 /**
@@ -152,8 +152,7 @@ export const resolveCurrentContextRepositories = async (
     });
     return pending;
   };
-  const boundaries = [...input.knownRootPaths, ...input.workspaceFolderPaths]
-    .filter(nonEmpty);
+  const boundaries = input.knownRootPaths.filter(nonEmpty);
   const documentIsOutsideBoundary = (documentPath: string, repositoryRoot: string): boolean => {
     const matchingBoundaries = boundaries.filter((boundary) => isAtOrBelow(documentPath, boundary));
     const deepestBoundaries = matchingBoundaries.filter((boundary) =>
@@ -170,17 +169,7 @@ export const resolveCurrentContextRepositories = async (
   };
   const inspectDocument = async (candidate: string): Promise<RepositoryResolutionInspection | undefined> => {
     const semantics = filesystemPath(candidate);
-    let startPath = candidate;
-    while (true) {
-      try {
-        return await inspect(startPath);
-      } catch (error) {
-        if (!isCandidateStatEnoent(error, startPath)) throw error;
-        const parent = semantics.dirname(startPath);
-        if (parent === startPath) return undefined;
-        startPath = parent;
-      }
-    }
+    return inspectCandidate(semantics.dirname(candidate));
   };
   for (const [source, paths] of ordered) {
     for (const path of paths) {

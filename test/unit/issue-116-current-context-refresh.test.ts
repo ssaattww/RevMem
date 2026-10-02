@@ -35,13 +35,13 @@ test("Issue #116 shares duplicate start paths and a returned canonical root with
   };
 
   const first = await resolveCurrentContextRepositories(input);
-  assert.deepEqual(inspected, ["/workspace/repository/src/example.ts"]);
+  assert.deepEqual(inspected, ["/workspace/repository/src"]);
   assert.equal(first.length, 1);
 
   await resolveCurrentContextRepositories(input);
   assert.deepEqual(
     inspected,
-    ["/workspace/repository/src/example.ts", "/workspace/repository/src/example.ts"],
+    ["/workspace/repository/src", "/workspace/repository/src"],
     "a later Current Context generation must inspect again",
   );
 });
@@ -59,8 +59,8 @@ test("Issue #116 does not infer an unexamined descendant from another returned r
     },
   });
   assert.deepEqual(inspected, [
-    "/workspace/repository/src/active.ts",
-    "/workspace/repository/other/opened.ts",
+    "/workspace/repository/src",
+    "/workspace/repository/other",
   ]);
 });
 

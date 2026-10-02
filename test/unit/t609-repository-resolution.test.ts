@@ -16,25 +16,25 @@ const repository = (rootPath: string, repositoryId = rootPath): RepositoryResolu
 test("T609 resolves a Git workspace without an active Git editor in deterministic source order", async () => {
   const inspected: string[] = [];
   const result = await resolveCurrentContextRepositories({
-    activeDocumentPath: "/workspace/readme.txt",
-    openedDocumentPaths: ["/workspace/opened.ts"],
+    activeDocumentPath: "/workspace/active/readme.txt",
+    openedDocumentPaths: ["/workspace/opened/opened.ts"],
     knownRootPaths: ["/workspace/known"],
     workspaceFolderPaths: ["/workspace"],
     inspectRepository: async (path) => {
       inspected.push(path);
-      return path === "/workspace/readme.txt"
-          ? { kind: "not-repository" }
-          : path === "/workspace/opened.ts"
-            ? repository("/workspace/opened-repository")
-            : path === "/workspace/known"
-              ? repository("/workspace/known")
+      return path === "/workspace/active"
+        ? { kind: "not-repository" }
+        : path === "/workspace/opened"
+          ? repository("/workspace/opened-repository")
+          : path === "/workspace/known"
+            ? repository("/workspace/known")
             : repository("/workspace/folder-repository");
     }
   });
 
   assert.deepEqual(inspected, [
-    "/workspace/readme.txt",
-    "/workspace/opened.ts",
+    "/workspace/active",
+    "/workspace/opened",
     "/workspace/known",
     "/workspace"
   ]);
@@ -108,6 +108,39 @@ test("T609 skips only a candidate-specific stat ENOENT and propagates other fail
   }), (error: unknown) => error === unrelatedMissing);
 });
 
+test("T609 compares Windows candidate stat paths without case or separator sensitivity", async () => {
+  const missing = "C:\\Workspace\\Missing-Root";
+  const enoent = Object.assign(new Error("missing"), {
+    code: "ENOENT",
+    syscall: "stat",
+    path: "c:/workspace/missing-root"
+  });
+  const result = await resolveCurrentContextRepositories({
+    activeDocumentPath: undefined,
+    openedDocumentPaths: [],
+    knownRootPaths: [missing, "D:\\workspace\\repository"],
+    workspaceFolderPaths: [],
+    inspectRepository: async (candidate) => {
+      if (candidate === missing) throw enoent;
+      return repository(candidate);
+    }
+  });
+  assert.deepEqual(result.map(({ repository: resolved, source }) => [resolved.rootPath, source]), [
+    ["D:\\workspace\\repository", "known-root"]
+  ]);
+});
+
+test("T609 rethrows non-Error rejection values unchanged", async () => {
+  const thrown = "unexpected inspector rejection";
+  await assert.rejects(resolveCurrentContextRepositories({
+    activeDocumentPath: undefined,
+    openedDocumentPaths: [],
+    knownRootPaths: ["/workspace/repository"],
+    workspaceFolderPaths: [],
+    inspectRepository: async () => { throw thrown; }
+  }), (error: unknown) => error === thrown);
+});
+
 test("T609 does not accept a stale known-root inspection that resolves to its parent", async () => {
   const result = await resolveCurrentContextRepositories({
     activeDocumentPath: undefined,
@@ -123,8 +156,8 @@ test("T609 applies the deepest known boundary separately to each document", asyn
   const result = await resolveCurrentContextRepositories({
     activeDocumentPath: "C:\\workspace\\nested\\gone.txt",
     openedDocumentPaths: ["C:\\workspace\\outer.txt"],
-    knownRootPaths: [],
-    workspaceFolderPaths: ["C:\\workspace", "C:\\workspace\\nested"],
+    knownRootPaths: ["C:\\workspace", "C:\\workspace\\nested"],
+    workspaceFolderPaths: [],
     inspectRepository: async () => repository("C:\\workspace")
   });
   assert.deepEqual(result.map(({ repository: resolved, source }) => [resolved.rootPath, source]), [
