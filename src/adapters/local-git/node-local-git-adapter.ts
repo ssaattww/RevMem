@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 
 import type { GitRevisionMappingSource } from "../../application/review-context/index";
 import {
@@ -72,6 +72,26 @@ export const normalizeInspectionStartPath = async (
   }
 };
 
+export const resolveCanonicalInspectionIdentity = async (
+  inspectionStartPath: string,
+  repositoryRootPath: string,
+  realpathPath: (path: string) => Promise<string> = realpath
+): Promise<{
+  readonly canonicalInspectionStartPath: string;
+  readonly canonicalRepositoryRootPath: string;
+} | undefined> => {
+  try {
+    const [canonicalInspectionStartPath, canonicalRepositoryRootPath] = await Promise.all([
+      realpathPath(inspectionStartPath),
+      realpathPath(repositoryRootPath)
+    ]);
+    return { canonicalInspectionStartPath, canonicalRepositoryRootPath };
+  } catch {
+    // Missing canonical identity is fail-closed for aliases; exact path matching remains available.
+    return undefined;
+  }
+};
+
 class NodeLocalGitAdapter extends LocalGitAdapter
 implements GitRevisionMappingSource {
   public constructor(
@@ -86,7 +106,19 @@ implements GitRevisionMappingSource {
   public override async inspectRepository(
     startPath: string
   ): Promise<LocalGitRepositoryInspection> {
-    return super.inspectRepository(await normalizeInspectionStartPath(startPath));
+    const inspectionStartPath = await normalizeInspectionStartPath(startPath);
+    const inspection = await super.inspectRepository(inspectionStartPath);
+    if (inspection.kind !== "repository") return inspection;
+    const identity = await resolveCanonicalInspectionIdentity(
+      inspectionStartPath,
+      inspection.repository.rootPath
+    );
+    return identity === undefined
+      ? inspection
+      : {
+        ...inspection,
+        ...identity
+      };
   }
 
   /** Returns one complete zero-context repository diff without constructing a shell command string. */

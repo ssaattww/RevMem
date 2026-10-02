@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -460,6 +460,11 @@ test("a known repository root reached through a directory link remains a known-r
     const inspected = await adapter.inspectRepository(aliasPath);
     assert.equal(inspected.kind, "repository");
     if (inspected.kind !== "repository") return;
+    assert.ok("canonicalInspectionStartPath" in inspected);
+    assert.ok("canonicalRepositoryRootPath" in inspected);
+    assert.equal(inspected.canonicalInspectionStartPath, await realpath(aliasPath));
+    assert.equal(inspected.canonicalRepositoryRootPath, await realpath(repository.path));
+    assert.equal(inspected.canonicalInspectionStartPath, inspected.canonicalRepositoryRootPath);
 
     const result = await resolveCurrentContextRepositories({
       openedDocumentPaths: [],
@@ -474,5 +479,78 @@ test("a known repository root reached through a directory link remains a known-r
   } finally {
     await rm(aliasPath, { force: true, recursive: true });
     await repository.cleanup();
+  }
+});
+
+test("unrelated real Git repositories keep distinct canonical identities", async () => {
+  const first = await createTemporaryGitRepository();
+  const second = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    const firstInspection = await adapter.inspectRepository(first.path);
+    const secondInspection = await adapter.inspectRepository(second.path);
+    assert.equal(firstInspection.kind, "repository");
+    assert.equal(secondInspection.kind, "repository");
+    if (firstInspection.kind !== "repository" || secondInspection.kind !== "repository") return;
+
+    assert.ok("canonicalRepositoryRootPath" in firstInspection);
+    assert.ok("canonicalRepositoryRootPath" in secondInspection);
+    assert.notEqual(firstInspection.canonicalRepositoryRootPath, secondInspection.canonicalRepositoryRootPath);
+
+    const result = await resolveCurrentContextRepositories({
+      openedDocumentPaths: [],
+      knownRootPaths: [first.path],
+      workspaceFolderPaths: [second.path],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+    assert.deepEqual(
+      result.map(({ repository: resolved, source }) => [resolved.rootPath, source]),
+      [[firstInspection.repository.rootPath, "known-root"], [secondInspection.repository.rootPath, "workspace-folder"]]
+    );
+
+    const unrelatedAlias = await resolveCurrentContextRepositories({
+      openedDocumentPaths: [],
+      knownRootPaths: [first.path],
+      workspaceFolderPaths: [],
+      inspectRepository: async (startPath) => {
+        assert.equal(startPath, first.path);
+        return {
+          ...firstInspection,
+          repository: secondInspection.repository,
+          canonicalRepositoryRootPath: secondInspection.canonicalRepositoryRootPath
+        };
+      }
+    });
+    assert.deepEqual(unrelatedAlias, []);
+  } finally {
+    await Promise.all([first.cleanup(), second.cleanup()]);
+  }
+});
+
+test("a nested known root whose Git marker is gone cannot alias its outer repository", async () => {
+  const outer = await createTemporaryGitRepository();
+  const nested = await createNestedGitFixture(outer, "nested-known-root");
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await rm(path.join(nested.rootPath, ".git"), { force: true, recursive: true });
+    const inspected = await adapter.inspectRepository(nested.rootPath);
+    assert.equal(inspected.kind, "repository");
+    if (inspected.kind !== "repository") return;
+    assert.equal(inspected.repository.rootPath, outer.path);
+    assert.ok("canonicalInspectionStartPath" in inspected);
+    assert.ok("canonicalRepositoryRootPath" in inspected);
+    assert.notEqual(inspected.canonicalInspectionStartPath, inspected.canonicalRepositoryRootPath);
+
+    const result = await resolveCurrentContextRepositories({
+      openedDocumentPaths: [],
+      knownRootPaths: [nested.rootPath],
+      workspaceFolderPaths: [],
+      inspectRepository: (startPath) => adapter.inspectRepository(startPath)
+    });
+    assert.deepEqual(result, []);
+  } finally {
+    await outer.cleanup();
   }
 });

@@ -34,7 +34,7 @@ known rootとworkspace folderはそのpath自体をinspectionし、ENOENTなら�
 
 document inspectionのroot RがBの厳密な祖先なら、そのdocument由来candidateだけを抑止する。RがBと同じ、またはB内側のrootならdocument由来candidateを維持する。known boundaryがなければ別の所有根拠を推測しない。したがってnested treeと全中間directoryが消失しknown rootもない場合、active documentはskipされ、外側repositoryが別document等から解決されるならそのsourceで列挙される。
 
-known-root candidateはinspection結果のrootがknown root path自身と一致する場合に加え、root pathとknown pathがOS path component関係で親子でない場合もdirectory-link alias候補としてinventoryに加える。known pathが返却rootのstrict descendantまたはancestorなら、stale nested/outer pathの別root誤認を避けるためknown-root sourceからは加えない。workspace-folderは列挙候補であり、そのsubdirectoryがGit rootより内側でもworkspace-folderをowner boundaryには使わない。候補は既存source順に重複排除し、sourceは最初の有効なinventory evidenceを示す。
+known-root candidateはinspection結果のrootがknown root path自身と一致する場合にinventoryに加える。Node adapterが実pathのrealpathで得たinspection start directoryとGit返却rootのcanonical identityがともに存在して一致する場合に限り、directory-link aliasも加える。realpath失敗またはidentityがないadapterでは既存のpath一致に戻し、ancestor/descendantの別rootを採用しない。workspace-folderは列挙候補であり、そのsubdirectoryがGit rootより内側でもworkspace-folderをowner boundaryには使わない。候補は既存source順に重複排除し、sourceは最初の有効なinventory evidenceを示す。
 
 ## 回帰検証
 
@@ -47,7 +47,8 @@ known-root candidateはinspection結果のrootがknown root path自身と一致�
 5. known-root順を入れ替え、stale nested rootと有効outer rootを両方指定: outer rootはknown-root sourceで一件。
 6. stale ancestor下にlive child nested repository: root childはactive-document sourceで維持。
 7. unitでWindows drive pathのcase/separator差を同一候補として扱い、異なるpathをrejectすること、Error以外のreject値を元のまま伝播することを確認。
-8. Windows上のprotected pathで実際のstatがEACCES/EPERMならNode local adapterから同じfilesystem errorがrejectされることを確認。ACLは変更しない。対象pathをstatできる実行環境ではskip。
+8. Node adapterのstat境界を注入し、EACCESは同じerrorのまま伝播し、候補自身へのstat ENOENTだけ保持し、別pathのENOENTは伝播することを確認する。OSの保護pathへアクセスせず、ACLを変更しない。
+9. 実directory link/junctionのrealpath identity一致時だけknown-root aliasを採用し、2つの独立した実Git rootのidentity不一致とnested .git消失後のouter root解決は拒否する。identity不在時のdisjoint pathは拒否し、絶対path一致とWindows case差の従来判定は維持する。
 
 ## 実行順と現在の結果
 

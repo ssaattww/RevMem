@@ -10,7 +10,10 @@ import {
   type GitCommandInvocation,
   type GitCommandResult
 } from "../../src/adapters/local-git/index";
-import { normalizeInspectionStartPath } from "../../src/adapters/local-git/node-local-git-adapter";
+import {
+  normalizeInspectionStartPath,
+  resolveCanonicalInspectionIdentity
+} from "../../src/adapters/local-git/node-local-git-adapter";
 import { unreachableGitBlobReader } from "../support/unreachable-git-blob-reader";
 
 const repositoryRoot = path.resolve("workspace", "repository");
@@ -129,6 +132,25 @@ test("Node local Git path normalization retains only an exact candidate stat ENO
     normalizeInspectionStartPath(startPath, async () => { throw unrelated; }),
     (error: unknown) => error === unrelated
   );
+});
+
+test("Node local Git path identity is unavailable when either realpath lookup fails", async () => {
+  const denied = Object.assign(new Error("access denied"), {
+    code: "EACCES",
+    syscall: "realpath",
+    path: path.resolve("restricted-repository")
+  });
+  let calls = 0;
+  const identity = await resolveCanonicalInspectionIdentity(
+    path.resolve("known-root-alias"),
+    path.resolve("repository-root"),
+    async () => {
+      calls += 1;
+      if (calls === 2) throw denied;
+      return path.resolve("physical-path");
+    }
+  );
+  assert.equal(identity, undefined);
 });
 
 const queueRepositoryInspection = (

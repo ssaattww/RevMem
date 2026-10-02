@@ -8,6 +8,8 @@ export type RepositoryResolutionInspection =
         readonly rootPath: string;
         readonly repositoryId: string;
       };
+      readonly canonicalInspectionStartPath?: string;
+      readonly canonicalRepositoryRootPath?: string;
     }
   | { readonly kind: "not-repository" }
   | { readonly kind: "git-unavailable" };
@@ -104,12 +106,18 @@ const sameFilesystemPath = (left: string, right: string): boolean => {
 const isAtOrBelow = (candidate: string, boundary: string): boolean =>
   sameFilesystemPath(candidate, boundary) || isStrictAncestor(boundary, candidate);
 
-// Git may report the physical target root for a symlinked known-root path.
-// A strict parent/child mismatch is a different nested root; disjoint paths can
-// be aliases after inspection has proven that Git resolves the candidate.
-const isKnownRootInspection = (candidate: string, repositoryRoot: string): boolean =>
-  sameFilesystemPath(candidate, repositoryRoot) ||
-  (!isAtOrBelow(candidate, repositoryRoot) && !isAtOrBelow(repositoryRoot, candidate));
+const isKnownRootInspection = (
+  candidate: string,
+  inspection: Extract<RepositoryResolutionInspection, { readonly kind: "repository" }>
+): boolean => {
+  if (sameFilesystemPath(candidate, inspection.repository.rootPath)) return true;
+  return nonEmpty(inspection.canonicalInspectionStartPath) &&
+    nonEmpty(inspection.canonicalRepositoryRootPath) &&
+    sameFilesystemPath(
+      inspection.canonicalInspectionStartPath,
+      inspection.canonicalRepositoryRootPath
+    );
+};
 
 const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
   if (typeof error !== "object" || error === null) return false;
@@ -187,7 +195,7 @@ export const resolveCurrentContextRepositories = async (
         : await inspectCandidate(path);
       if (inspection === undefined) continue;
       if (source === "known-root" && inspection.kind === "repository" &&
-        !isKnownRootInspection(path, inspection.repository.rootPath)) continue;
+        !isKnownRootInspection(path, inspection)) continue;
       if ((source === "active-document" || source === "opened-document") &&
         inspection.kind === "repository" && documentIsOutsideBoundary(path, inspection.repository.rootPath)) continue;
       if (inspection.kind !== "repository" || roots.has(inspection.repository.rootPath)) {

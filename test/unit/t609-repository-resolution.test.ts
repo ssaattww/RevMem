@@ -60,6 +60,66 @@ test("T609 deduplicates a repository and fails closed for unsafe candidates", as
   assert.equal(result[0]?.repository.rootPath, "/repo");
 });
 
+test("T609 does not accept a disjoint known-root inspection without canonical identity", async () => {
+  const result = await resolveCurrentContextRepositories({
+    activeDocumentPath: undefined,
+    openedDocumentPaths: [],
+    knownRootPaths: ["/workspace/known-alias"],
+    workspaceFolderPaths: [],
+    inspectRepository: async () => repository("/other/repository")
+  });
+  assert.deepEqual(result, []);
+});
+
+test("T609 accepts a disjoint known-root alias only when canonical identities match", async () => {
+  const matchingIdentity = {
+    kind: "repository" as const,
+    repository: { rootPath: "/physical/repository", repositoryId: "physical-repository" },
+    canonicalInspectionStartPath: "/physical/repository",
+    canonicalRepositoryRootPath: "/physical/repository"
+  };
+  const mismatchedIdentity = {
+    ...matchingIdentity,
+    canonicalRepositoryRootPath: "/other/physical-repository"
+  };
+  const input = {
+    activeDocumentPath: undefined,
+    openedDocumentPaths: [],
+    knownRootPaths: ["/workspace/repository-alias"],
+    workspaceFolderPaths: [],
+    inspectRepository: async () => matchingIdentity
+  };
+
+  const accepted = await resolveCurrentContextRepositories(input);
+  assert.deepEqual(accepted.map(({ repository: resolved, source }) => [resolved.rootPath, source]), [
+    ["/physical/repository", "known-root"]
+  ]);
+
+  const rejected = await resolveCurrentContextRepositories({
+    ...input,
+    inspectRepository: async () => mismatchedIdentity
+  });
+  assert.deepEqual(rejected, []);
+});
+
+test("T609 keeps strict known-root matching for absolute and Windows case-varied paths", async () => {
+  for (const [candidate, rootPath] of [
+    ["/workspace/repository", "/workspace/repository"],
+    ["C:\\Workspace\\Repository", "c:/workspace/repository"]
+  ]) {
+    const result = await resolveCurrentContextRepositories({
+      activeDocumentPath: undefined,
+      openedDocumentPaths: [],
+      knownRootPaths: [candidate],
+      workspaceFolderPaths: [],
+      inspectRepository: async () => repository(rootPath)
+    });
+    assert.deepEqual(result.map(({ repository: resolved, source }) => [resolved.rootPath, source]), [
+      [rootPath, "known-root"]
+    ]);
+  }
+});
+
 test("T609 skips only a candidate-specific stat ENOENT and propagates other failures", async () => {
   const missing = path.resolve("missing-known-root");
   const enoent = Object.assign(new Error("missing"), {
