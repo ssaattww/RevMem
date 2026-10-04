@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -23,9 +23,11 @@ import {
   type ReviewStateRepositoryTarget,
   type ReviewStateTransactionLike
 } from "../../src/adapters/state-repository/index";
+import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import { WorkspaceReviewStateSessionProvider } from "../../src/adapters/workspace-review-state/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
 import { markReviewedRanges } from "../../src/core/review-state/index";
+import { createTemporaryGitRepository } from "../support/temporary-git-repository";
 
 const oldRevision = "0123456789abcdef0123456789abcdef01234567";
 const newRevision = "89abcdef0123456789abcdef0123456789abcdef";
@@ -327,7 +329,7 @@ const descriptor = (
 const createProvider = (
   stableHash: NodeSha256StableHash,
   repository: DocumentReviewStateRepository,
-  inspector: MutableGitInspector,
+  inspector: DocumentGitInspector,
   source: RevisionSource,
   gitStateObserver?: (rootPath: string, head: string | undefined) => void,
   historyRecorder?: ReviewHistoryRecorder
@@ -356,6 +358,55 @@ const createProvider = (
     ...(historyRecorder === undefined ? {} : { historyRecorder })
   });
 };
+
+test("T609 read-only document provider recovers when the actual Git inspection cwd was deleted", async () => {
+  const fixture = await createTemporaryGitRepository();
+  const stableHash = new NodeSha256StableHash();
+  const repository = new MemoryRepository();
+  const source = new RevisionSource();
+  const deletedParent = path.join(fixture.path, "removed", "nested");
+  await mkdir(deletedParent, { recursive: true });
+  await rm(path.join(fixture.path, "removed"), { recursive: true, force: false });
+  const provider = createProvider(stableHash, repository, createNodeLocalGitAdapter(), source);
+  const missingDocument: DocumentEditorReviewDescriptor = {
+    ...descriptor("src/missing.ts", stableHash.digest("missing"), 1),
+    documentUri: { scheme: "file", authority: "", path: path.join(deletedParent, "missing.ts") },
+    documentFsPath: path.join(deletedParent, "missing.ts"),
+    fileSystemPathSemantics: process.platform === "win32" ? "windows" : "posix"
+  };
+
+  try {
+    assert.equal(await provider.loadForDecoration(missingDocument), undefined);
+  } finally {
+    provider.dispose();
+    await fixture.cleanup();
+  }
+});
+
+test("T609 document decoration recovery propagates noncandidate stat failures", async () => {
+  const cases = [
+    Object.assign(new Error("different directory is missing"), { code: "ENOENT", syscall: "stat", path: "/repo/other" }),
+    Object.assign(new Error("different syscall failed"), { code: "ENOENT", syscall: "access", path: "/repo/src" }),
+    Object.assign(new Error("permission denied"), { code: "EACCES", syscall: "stat", path: "/repo/src" })
+  ];
+  for (const failure of cases) {
+    const stableHash = new NodeSha256StableHash();
+    const provider = createProvider(
+      stableHash,
+      new MemoryRepository(),
+      { inspectRepository: async () => { throw failure; } },
+      new RevisionSource()
+    );
+    try {
+      await assert.rejects(
+        provider.loadForDecoration(descriptor("src/missing.ts", stableHash.digest("missing"), 1)),
+        (error: unknown) => error === failure
+      );
+    } finally {
+      provider.dispose();
+    }
+  }
+});
 
 const withOneTargetSnapshotLayer = (
   commit: ReviewStateCommit,

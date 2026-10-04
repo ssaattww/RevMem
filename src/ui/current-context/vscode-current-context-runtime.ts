@@ -22,7 +22,6 @@ export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
-  shouldTraceForTest?(): boolean;
   recompute(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
@@ -106,13 +105,7 @@ export const registerCurrentContextRuntime = (
     ...dependentRefresher
   });
   let currentCancellation: AbortController | undefined;
-  const traceRefresh = (stage: string): void => {
-    if (source.shouldTraceForTest?.() === true && vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
-      console.info(`T609 Current Context command stage: ${stage}`);
-    }
-  };
   const runRefresh = async (options?: CurrentContextRecomputeOptions): Promise<void> => {
-    traceRefresh("command entered");
     currentCancellation?.abort();
     const cancellation = new AbortController();
     currentCancellation = cancellation;
@@ -121,13 +114,10 @@ export const registerCurrentContextRuntime = (
     } catch (error) {
       if (currentCancellation === cancellation) {
         controller.failClosed();
-        traceRefresh("failure presentation started");
         await reportRefreshError(formatOperationFailureForUser(error));
-        traceRefresh("failure presentation completed");
       }
     } finally {
       if (currentCancellation === cancellation) currentCancellation = undefined;
-      traceRefresh("command settled");
     }
   };
   const runSelection = async (): Promise<void> => {
