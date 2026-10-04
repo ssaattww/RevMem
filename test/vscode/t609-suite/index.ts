@@ -121,6 +121,11 @@ const closeAllEditors = async (): Promise<void> => {
   assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
 };
 
+const selectFirstCurrentContextCandidateForTest = (api: T609ExtensionApi): void => {
+  const select = api.setCurrentContextSelectionForTest;
+  select("first");
+};
+
 const assertDeletedActiveDocumentRecovery = async (
   folder: vscode.WorkspaceFolder,
   api: T609ExtensionApi
@@ -147,6 +152,7 @@ const assertDeletedActiveDocumentRecovery = async (
     await repository.checkout("t609-enoent-recovery");
     console.info("T609 ENOENT Host recovery: branch checkout completed");
     assert.equal(deletedDocument.isClosed, false, "Git checkout must leave the removed tab open");
+    selectFirstCurrentContextCandidateForTest(api);
     await vscode.commands.executeCommand("reviewRange.refreshContext");
     console.info("T609 ENOENT Host recovery: Current Context refresh completed");
     const selected = api.getCurrentContextCancellationSnapshotForTest().selectedContext;
