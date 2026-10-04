@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type {
   LocalGitAdapter,
   LocalGitRepository,
@@ -94,29 +96,25 @@ export const resolveMissingRepositoryFallback = (input: {
   if (input.selectedRepositoryRoot === undefined) return undefined;
 
   const editorPath = input.activeDocumentPath;
-  const selectedRelative = editorPath === undefined
-    ? undefined
-    : path.relative(path.resolve(input.selectedRepositoryRoot), path.resolve(editorPath));
-  const withinSelectedRoot = selectedRelative === undefined || selectedRelative.length === 0 ||
+  if (editorPath === undefined) return undefined;
+  const selectedRelative = path.relative(path.resolve(input.selectedRepositoryRoot), path.resolve(editorPath));
+  const withinSelectedRoot = selectedRelative.length === 0 ||
     (selectedRelative !== ".." && !selectedRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(selectedRelative));
   if (!withinSelectedRoot) return undefined;
 
   const retained = matchingRoot(input.selectedRepositoryRoot);
   if (retained !== undefined) return retained;
-  if (editorPath !== undefined) {
-    const belongsToSurvivingRepository = input.candidates.some((candidate) => {
-      const root = candidate.context.selection?.kind === "pull-request"
-        ? candidate.context.selection.repositoryRoot
-        : candidate.context.kind === "branch"
-          ? candidate.context.detail
-          : undefined;
-      if (root === undefined) return false;
-      const relative = path.relative(path.resolve(root), path.resolve(editorPath));
-      return relative.length === 0 || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-    });
-    if (belongsToSurvivingRepository) return { kind: "unresolved" };
-    if (input.candidates.length === 1) return input.candidates[0];
-  }
-  return { kind: "unresolved" };
+  const belongsToSurvivingRepository = input.candidates.some((candidate) => {
+    const root = candidate.context.selection?.kind === "pull-request"
+      ? candidate.context.selection.repositoryRoot
+      : candidate.context.kind === "branch"
+        ? candidate.context.detail
+        : undefined;
+    if (root === undefined) return false;
+    const relative = path.relative(path.resolve(root), path.resolve(editorPath));
+    return relative.length === 0 || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  });
+  if (belongsToSurvivingRepository) return { kind: "unresolved" };
+  if (input.candidates.length === 1) return input.candidates[0];
+  return undefined;
 };
-import path from "node:path";

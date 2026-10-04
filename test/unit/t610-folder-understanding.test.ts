@@ -447,6 +447,32 @@ test("T610 rejects a deleted repository root instead of publishing an empty fold
     error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT");
 });
 
+test("T610 rechecks repository-root existence when a folder disappears during enumeration", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-root-race-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const missingScope = path.join(root, "fixtures");
+  await mkdir(missingScope, { recursive: true });
+  let removedRoot = false;
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    yieldControl: () => undefined,
+    readDirectory: async (directory) => {
+      if (directory === missingScope) {
+        await rm(root, { recursive: true });
+        removedRoot = true;
+        throw Object.assign(new Error("scope disappeared with repository root"), {
+          code: "ENOENT", syscall: "scandir", path: directory
+        });
+      }
+      const { readdir: read } = await import("node:fs/promises");
+      return read(directory, { withFileTypes: true });
+    }
+  });
+
+  await assert.rejects(enumerator.enumerateDirectFolders(root, ["fixtures"]), (error: unknown) =>
+    error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT");
+  assert.equal(removedRoot, true);
+});
+
 test("T610 source publishes surviving folder evidence while an open document belongs to a deleted scope", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-source-"));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -20,6 +20,7 @@ export interface RepositoryFilePathEnumerationResult {
 export interface NodeRepositoryFilePathEnumeratorOptions {
   readonly maxEntriesPerStage?: number;
   readonly yieldControl?: () => void | Promise<void>;
+  readonly readDirectory?: (directory: string) => Promise<Dirent[]>;
   readonly accountWorkBatch?: (entry: Readonly<{ kind: "repository-entry" | "repository-sort"; count: number }>) => void;
 }
 
@@ -123,11 +124,13 @@ const matchingGitIgnoreRule = (
 export class NodeRepositoryFilePathEnumerator {
   private readonly maxEntriesPerStage: number;
   private readonly yieldControl: () => void | Promise<void>;
+  private readonly readDirectory: (directory: string) => Promise<Dirent[]>;
   private readonly accountWorkBatch: NodeRepositoryFilePathEnumeratorOptions["accountWorkBatch"];
   public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy, options: NodeRepositoryFilePathEnumeratorOptions = {}) {
     this.maxEntriesPerStage = options.maxEntriesPerStage ?? 128;
     if (!Number.isSafeInteger(this.maxEntriesPerStage) || this.maxEntriesPerStage <= 0) throw new RangeError("maxEntriesPerStage must be a positive integer.");
     this.yieldControl = options.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    this.readDirectory = options.readDirectory ?? (async (directory) => readdir(directory, { withFileTypes: true }));
     this.accountWorkBatch = options.accountWorkBatch;
   }
 
@@ -183,10 +186,14 @@ export class NodeRepositoryFilePathEnumerator {
         : path.join(repositoryRoot, ...folder.split("/"));
       let entries: Dirent[];
       try {
-        entries = await readdir(directory, { withFileTypes: true });
+        entries = await this.readDirectory(directory);
       } catch (error) {
         throwIfAborted(signal);
-        if (isMissingRepositoryFolderError(error, directory, repositoryRoot)) continue;
+        if (isMissingRepositoryFolderError(error, directory, repositoryRoot)) {
+          await stat(repositoryRoot);
+          throwIfAborted(signal);
+          continue;
+        }
         throw error;
       }
       throwIfAborted(signal);

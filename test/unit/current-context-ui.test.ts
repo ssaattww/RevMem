@@ -405,6 +405,19 @@ test("deleted owner fallback selects one independent survivor but keeps a nested
     selectedRepositoryRoot: "/workspace-a/nested",
     activeDocumentPath: "/workspace-a/nested/deleted.ts"
   }), { kind: "unresolved" });
+  const other: CurrentContextUiSnapshot = {
+    context: { kind: "branch", label: "other", detail: "/workspace-c", selection: { kind: "branch", repositoryId: "c", repositoryRoot: "/workspace-c", branchRef: "refs/heads/main" } },
+    progress: undefined
+  };
+  assert.equal(resolveMissingRepositoryFallback({
+    candidates: [survivor, other],
+    selectedRepositoryRoot: "/workspace-a"
+  }), undefined, "an ownerless manual refresh must retain the existing multi-root picker flow");
+  assert.equal(resolveMissingRepositoryFallback({
+    candidates: [survivor, other],
+    selectedRepositoryRoot: "/workspace-a",
+    activeDocumentPath: "/workspace-a/deleted.ts"
+  }), undefined, "multiple independent survivors must defer to explicit selection");
 });
 
 test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {

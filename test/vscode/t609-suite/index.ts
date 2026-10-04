@@ -125,6 +125,7 @@ const assertDeletedActiveDocumentRecovery = async (
   folder: vscode.WorkspaceFolder,
   api: T609ExtensionApi
 ): Promise<void> => {
+  console.info("T609 ENOENT Host recovery: begin");
   const deletedRelative = "fixtures/branch-switch-disappears.ts";
   const liveRelative = "apps/web/src/app.ts";
   const deletedUri = fixtureUri(folder, deletedRelative);
@@ -138,12 +139,16 @@ const assertDeletedActiveDocumentRecovery = async (
   await vscode.workspace.openTextDocument(liveUri);
   await vscode.window.showTextDocument(deletedDocument, { preview: false });
   assert.equal(vscode.window.activeTextEditor?.document.uri.toString(true), deletedUri.toString(true));
+  console.info("T609 ENOENT Host recovery: active deleted-path document opened");
   await api.drainGlobalUnderstandingFileOpenForTest();
+  console.info("T609 ENOENT Host recovery: initial Global drain completed");
   try {
     assert.equal(deletedDocument.isClosed, false, "the deleted tab must remain open during refresh");
     await repository.checkout("t609-enoent-recovery");
+    console.info("T609 ENOENT Host recovery: branch checkout completed");
     assert.equal(deletedDocument.isClosed, false, "Git checkout must leave the removed tab open");
     await vscode.commands.executeCommand("reviewRange.refreshContext");
+    console.info("T609 ENOENT Host recovery: Current Context refresh completed");
     const selected = api.getCurrentContextCancellationSnapshotForTest().selectedContext;
     assert.ok(selected, "Current Context must remain available after a deleted active document refresh");
     assert.equal(
@@ -154,8 +159,10 @@ const assertDeletedActiveDocumentRecovery = async (
     const global = await api.getGlobalUnderstandingSnapshot();
     assert.deepEqual(global?.progress.files.map((file) => file.path), [liveRelative]);
   } finally {
+    console.info("T609 ENOENT Host recovery: cleanup begins");
     await closeAllEditors();
     await repository.checkout("main");
+    console.info("T609 ENOENT Host recovery: cleanup completed");
   }
 };
 
