@@ -168,6 +168,18 @@ test("T609 skips only a candidate-specific stat ENOENT and propagates other fail
   }), (error: unknown) => error === unrelatedMissing);
 });
 
+test("T609 propagates structured non-Error ENOENT rejection values unchanged", async () => {
+  const missing = path.resolve("missing-known-root");
+  const thrown = { code: "ENOENT", syscall: "stat", path: missing };
+  await assert.rejects(resolveCurrentContextRepositories({
+    activeDocumentPath: undefined,
+    openedDocumentPaths: [],
+    knownRootPaths: [missing],
+    workspaceFolderPaths: [],
+    inspectRepository: async () => { throw thrown; }
+  }), (error: unknown) => error === thrown);
+});
+
 test("T609 compares Windows candidate stat paths without case or separator sensitivity", async () => {
   const missing = "C:\\Workspace\\Missing-Root";
   const enoent = Object.assign(new Error("missing"), {

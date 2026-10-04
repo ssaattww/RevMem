@@ -352,6 +352,22 @@ test("a stale candidate resolution cannot clear a newer explicit selection", asy
   );
 });
 
+test("Current Context does not select an outer candidate when the active document owner is unresolved", async () => {
+  const outer = branchSnapshot("outer", "refs/heads/main");
+  let selectionRequests = 0;
+  const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+    enumerateCandidates: async () => [outer],
+    resolveFallback: async () => ({ kind: "unresolved" }),
+    requestSelection: async () => {
+      selectionRequests += 1;
+      return outer;
+    }
+  });
+
+  assert.deepEqual(await composition.recompute(undefined, undefined, { allowInteraction: true }), { kind: "unresolved" });
+  assert.equal(selectionRequests, 0);
+});
+
 test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {
   const repository = await createTemporaryGitRepository();
   const git = createNodeLocalGitAdapter();
@@ -361,8 +377,8 @@ test("production Git candidate and fallback composition keep a normal file on br
   try {
     assert.equal(await isNonGitCurrentContextWorkspace(git, repository.path), false);
     const branchInspection = await inspectCurrentContextDocument(git, documentFsPath);
-    assert.equal(branchInspection.kind, "repository");
-    if (branchInspection.kind !== "repository") {
+    assert.equal(branchInspection?.kind, "repository");
+    if (branchInspection?.kind !== "repository") {
       throw new Error("The temporary Git file must resolve to its repository.");
     }
     const branch = gitCurrentContextSnapshot(branchInspection.repository);
@@ -397,8 +413,8 @@ test("production Git candidate and fallback composition keep a normal file on br
     await coordinator.refresh();
     await repository.runGit(["checkout", "--detach", repository.headCommit]);
     const detachedInspection = await inspectCurrentContextDocument(git, documentFsPath);
-    assert.equal(detachedInspection.kind, "repository");
-    if (detachedInspection.kind !== "repository") {
+    assert.equal(detachedInspection?.kind, "repository");
+    if (detachedInspection?.kind !== "repository") {
       throw new Error("The detached temporary Git file must resolve to its repository.");
     }
     const detached = gitCurrentContextSnapshot(detachedInspection.repository);
@@ -419,6 +435,35 @@ test("production Git candidate and fallback composition keep a normal file on br
   } finally {
     await repository.cleanup();
   }
+});
+
+test("Current Context document and workspace inspection skip only their own stat ENOENT", async () => {
+  const documentPath = path.resolve("missing", "fixtures", "deleted.ts");
+  const documentDirectory = path.dirname(documentPath);
+  const documentEnoent = Object.assign(new Error("missing document directory"), {
+    code: "ENOENT", syscall: "stat", path: documentDirectory
+  });
+  const calls: string[] = [];
+  const git = {
+    inspectRepository: async (candidate: string) => {
+      calls.push(candidate);
+      throw documentEnoent;
+    }
+  };
+
+  assert.equal(await inspectCurrentContextDocument(git, documentPath), undefined);
+  assert.deepEqual(calls, [documentDirectory]);
+  assert.equal(await isNonGitCurrentContextWorkspace(git, documentDirectory), false);
+
+  const denied = Object.assign(new Error("denied"), {
+    code: "EACCES", syscall: "stat", path: documentDirectory
+  });
+  await assert.rejects(inspectCurrentContextDocument({
+    inspectRepository: async () => { throw denied; }
+  }, documentPath), (error: unknown) => error === denied);
+  await assert.rejects(isNonGitCurrentContextWorkspace({
+    inspectRepository: async () => { throw denied; }
+  }, documentDirectory), (error: unknown) => error === denied);
 });
 
 test("Git-unavailable workspace fallback keeps the production candidate Tree Status and runtime selection aligned", async () => {

@@ -4,21 +4,35 @@ import type {
   LocalGitRepositoryInspection
 } from "../../adapters/local-git/index";
 import { gitInspectionStartPath } from "../../adapters/local-git/index";
+import { isCandidateStatEnoent } from "../../application/review-context/repository-resolution";
 import type { CurrentContextUiSnapshot } from "../../ui/current-context/index";
 
 /** Inspects a filesystem-backed editor from its parent directory. */
-export const inspectCurrentContextDocument = (
+export const inspectCurrentContextDocument = async (
   git: Pick<LocalGitAdapter, "inspectRepository">,
   documentFsPath: string
-): Promise<LocalGitRepositoryInspection> =>
-  git.inspectRepository(gitInspectionStartPath(documentFsPath));
+): Promise<LocalGitRepositoryInspection | undefined> => {
+  const inspectionStartPath = gitInspectionStartPath(documentFsPath);
+  try {
+    return await git.inspectRepository(inspectionStartPath);
+  } catch (error) {
+    if (isCandidateStatEnoent(error, inspectionStartPath)) return undefined;
+    throw error;
+  }
+};
 
 /** Applies the three-state Git inspection policy for workspace fallback candidates. */
 export const isNonGitCurrentContextWorkspace = async (
   git: Pick<LocalGitAdapter, "inspectRepository">,
   workspaceFsPath: string
 ): Promise<boolean> => {
-  const inspection = await git.inspectRepository(workspaceFsPath);
+  let inspection: LocalGitRepositoryInspection;
+  try {
+    inspection = await git.inspectRepository(workspaceFsPath);
+  } catch (error) {
+    if (isCandidateStatEnoent(error, workspaceFsPath)) return false;
+    throw error;
+  }
   switch (inspection.kind) {
     case "repository":
       return false;

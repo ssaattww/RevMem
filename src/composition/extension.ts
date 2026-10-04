@@ -27,6 +27,7 @@ import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
+  type CurrentContextNonDestructiveOutcome,
   type CurrentContextUiSnapshot
 } from "../ui/current-context/index";
 import {
@@ -116,7 +117,7 @@ export interface PullRequestReviewRuntimeTestFixture {
 export interface T305CurrentContextRuntimeCompositionPorts {
   readonly prepareExplicitSelection?: (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly enumerateCandidates: (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext) => Promise<readonly CurrentContextUiSnapshot[]>;
-  readonly resolveFallback: (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal) => Promise<CurrentContextUiSnapshot | undefined>;
+  readonly resolveFallback: (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal) => Promise<CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined>;
   readonly requestSelection: (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal) => Promise<CurrentContextUiSnapshot | undefined>;
 }
 
@@ -354,13 +355,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     inspectionSessions.set(signal, created);
     return created;
   };
+  const activeDocumentRootByGeneration = new WeakMap<AbortSignal, string | undefined>();
+  let activeDocumentRootWithoutSignal: string | undefined;
   const enumerateLocalContexts = async (signal?: AbortSignal): Promise<CurrentContextUiSnapshot[]> => {
     const inspectRepository = inspectForCurrentContextGeneration(signal);
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
       uri: toResourceUri(folder.uri), name: folder.name
     }));
-    for (const candidate of await resolveCurrentContextRepositories({
+    const resolvedRepositories = await resolveCurrentContextRepositories({
       activeDocumentPath: vscode.window.activeTextEditor === undefined
         ? undefined
         : workspaceFilesystemPath(vscode.window.activeTextEditor.document.uri),
@@ -373,7 +376,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         : [],
       workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
       inspectRepository
-    })) {
+    });
+    const activeDocumentRepository = resolvedRepositories.find((candidate) => candidate.source === "active-document");
+    if (signal === undefined) activeDocumentRootWithoutSignal = activeDocumentRepository?.repository.rootPath;
+    else activeDocumentRootByGeneration.set(signal, activeDocumentRepository?.repository.rootPath);
+    for (const candidate of resolvedRepositories) {
       const repository = candidate.repository as Parameters<typeof gitCurrentContextSnapshot>[0];
       const pullRequestSynchronizationRevision = await git.resolveIdentityRemoteTrackingRevision(repository, signal);
       if (signal?.aborted === true) return [];
@@ -408,47 +415,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       };
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
-    for (const editor of vscode.window.visibleTextEditors) {
-      const editorPath = workspaceFilesystemPath(editor.document.uri);
-      if (editorPath === undefined || resolveWorkspaceResourceEligibility({
-        documentUri: toResourceUri(editor.document.uri),
-        workspaceFolders,
-        fileSystemPathSemantics: workspaceSidePathSemantics()
-      })?.relativePath === undefined) continue;
-      const inspection = await inspectRepository(editorPath);
-      if (inspection.kind === "repository") {
-        const snapshot = gitCurrentContextSnapshot(inspection.repository);
-        const selectionKey = currentContextSelectionKey(snapshot);
-        // Visible editors can revisit a repository already enumerated above. Preserve
-        // that earlier candidate because it may carry the verified tracking revision.
-        if (!contexts.has(selectionKey)) contexts.set(selectionKey, snapshot);
-      } else {
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
-        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace({ inspectRepository }, folderPath)))) continue;
-        const snapshot: CurrentContextUiSnapshot = {
-          context: {
-            kind: "workspace",
-            label: folder?.name ?? editor.document.fileName,
-            detail: folderPath ?? editorPath,
-            ...(folder === undefined ? {} : {
-              selection: {
-                kind: "workspace" as const,
-                workspaceFolderUri: {
-                  scheme: folder.uri.scheme,
-                  authority: folder.uri.authority,
-                  path: folder.uri.path,
-                  query: folder.uri.query,
-                  fragment: folder.uri.fragment
-                }
-              }
-            })
-          },
-          progress: undefined
-        };
-        contexts.set(currentContextSelectionKey(snapshot), snapshot);
-      }
-    }
     return [...contexts.values()].sort((left, right) =>
       left.context.kind.localeCompare(right.context.kind) || left.context.label.localeCompare(right.context.label)
     );
@@ -470,36 +436,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return signal?.aborted ? [] : [...augmented];
   };
 
-  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | undefined> => {
+  const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined> => {
     const editor = vscode.window.activeTextEditor;
-    let fallback: CurrentContextUiSnapshot | undefined;
-    const editorPath = editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri);
-    if (editor !== undefined && editorPath !== undefined) {
-      const inspectRepository = inspectForCurrentContextGeneration(signal);
-      const inspection = await inspectRepository(editorPath);
-      if (signal?.aborted === true) return undefined;
-      if (inspection.kind === "repository") {
-        fallback = candidates.find((candidate) =>
-          candidate.context.selection?.kind === "pull-request" &&
-          candidate.context.selection.repositoryRoot === inspection.repository.rootPath
-        ) ?? candidates.find((candidate) =>
-          candidate.context.kind === "branch" && candidate.context.detail === inspection.repository.rootPath
+    if (signal?.aborted === true) return undefined;
+    const repositoryRoot = signal === undefined
+      ? activeDocumentRootWithoutSignal
+      : activeDocumentRootByGeneration.get(signal);
+    if (repositoryRoot !== undefined) {
+      return candidates.find((candidate) =>
+        candidate.context.selection?.kind === "pull-request" &&
+        candidate.context.selection.repositoryRoot === repositoryRoot
+      ) ?? candidates.find((candidate) =>
+        candidate.context.kind === "branch" && candidate.context.detail === repositoryRoot
+      );
+    }
+    const selectedRepositoryRoot = selectedContext?.kind === "branch" || selectedContext?.kind === "detached" || selectedContext?.kind === "pull-request"
+      ? selectedContext.repositoryRoot
+      : undefined;
+    if (selectedRepositoryRoot !== undefined) {
+      const retainedRoot = candidates.find((candidate) =>
+        candidate.context.selection?.kind === "pull-request" &&
+        candidate.context.selection.repositoryRoot === selectedRepositoryRoot
+      ) ?? candidates.find((candidate) =>
+        candidate.context.kind === "branch" && candidate.context.detail === selectedRepositoryRoot
+      );
+      if (retainedRoot !== undefined) return retainedRoot;
+      const editorPath = editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri);
+      if (editorPath !== undefined) {
+        const relative = path.relative(path.resolve(selectedRepositoryRoot), path.resolve(editorPath));
+        const withinSelectedRoot = relative.length === 0 || (
+          relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
         );
-      } else {
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const folderPath = folder === undefined ? undefined : workspaceFilesystemPath(folder.uri);
-        if (folder !== undefined && (folderPath === undefined || !(await isNonGitCurrentContextWorkspace({ inspectRepository }, folderPath)))) return undefined;
-        fallback = candidates.find((candidate) =>
-          candidate.context.kind === "workspace" &&
-          candidate.context.selection?.kind === "workspace" &&
-          folder !== undefined &&
-          candidate.context.selection.workspaceFolderUri.scheme === folder.uri.scheme &&
-          candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
-          candidate.context.selection.workspaceFolderUri.path === folder.uri.path
-        );
+        if (withinSelectedRoot) return { kind: "unresolved" };
       }
     }
-    return fallback;
+    const folder = editor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (folder === undefined) return undefined;
+    return candidates.find((candidate) =>
+      candidate.context.kind === "workspace" &&
+      candidate.context.selection?.kind === "workspace" &&
+      candidate.context.selection.workspaceFolderUri.scheme === folder.uri.scheme &&
+      candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
+      candidate.context.selection.workspaceFolderUri.path === folder.uri.path
+    );
   };
 
   const currentContextComposition = createT305CurrentContextRuntimeComposition(selection, {

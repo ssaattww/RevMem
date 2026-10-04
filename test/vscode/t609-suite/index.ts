@@ -28,6 +28,7 @@ interface T609ExtensionApi {
   getGlobalUnderstandingSnapshot(): Promise<{
     readonly progress: { readonly files: readonly { readonly path: string }[] };
   } | undefined>;
+  drainGlobalUnderstandingFileOpenForTest(): Promise<void>;
   setReviewContextsRepositorySelection(selection: "cancel" | "stale"): void;
   setCurrentContextSelectionForTest(selection: "first" | "cancel" | "stale"): void;
   getCurrentContextCancellationSnapshotForTest(): {
@@ -46,6 +47,18 @@ interface T609ExtensionApi {
   getT405WorkspaceUriPathForTest(uri: vscode.Uri): string | undefined;
   /** Read-only persisted Git state summary for the supplied workspace document. */
   getGitReviewStateSnapshotForTest(document: vscode.TextDocument): Promise<GitReviewStateSnapshot>;
+}
+
+interface VscodeGitRepository {
+  checkout(ref: string): Promise<void>;
+}
+
+interface VscodeGitApi {
+  getRepository(uri: vscode.Uri): VscodeGitRepository | undefined;
+}
+
+interface VscodeGitExtension {
+  getAPI(version: 1): VscodeGitApi;
 }
 
 interface ReviewedIntervalSnapshot {
@@ -106,6 +119,44 @@ const assertTrackingRevisionSurvivesVisibleEditor = async (
 const closeAllEditors = async (): Promise<void> => {
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   assert.equal(vscode.window.activeTextEditor, undefined, "the T609 repository path must start without an active editor");
+};
+
+const assertDeletedActiveDocumentRecovery = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi
+): Promise<void> => {
+  const deletedRelative = "fixtures/branch-switch-disappears.ts";
+  const liveRelative = "apps/web/src/app.ts";
+  const deletedUri = fixtureUri(folder, deletedRelative);
+  const liveUri = fixtureUri(folder, liveRelative);
+  const gitExtension = vscode.extensions.getExtension<VscodeGitExtension>("vscode.git");
+  assert.ok(gitExtension, "the Extension Host fixture must expose VS Code's built-in Git extension");
+  const gitApi = (await gitExtension.activate()).getAPI(1);
+  const repository = gitApi.getRepository(folder.uri);
+  assert.ok(repository, "the built-in Git extension must own the T609 workspace repository");
+  const deletedDocument = await vscode.workspace.openTextDocument(deletedUri);
+  await vscode.workspace.openTextDocument(liveUri);
+  await vscode.window.showTextDocument(deletedDocument, { preview: false });
+  assert.equal(vscode.window.activeTextEditor?.document.uri.toString(true), deletedUri.toString(true));
+  await api.drainGlobalUnderstandingFileOpenForTest();
+  try {
+    assert.equal(deletedDocument.isClosed, false, "the deleted tab must remain open during refresh");
+    await repository.checkout("t609-enoent-recovery");
+    assert.equal(deletedDocument.isClosed, false, "Git checkout must leave the removed tab open");
+    await vscode.commands.executeCommand("reviewRange.refreshContext");
+    const selected = api.getCurrentContextCancellationSnapshotForTest().selectedContext;
+    assert.ok(selected, "Current Context must remain available after a deleted active document refresh");
+    assert.equal(
+      JSON.parse(selected).branchRef,
+      "refs/heads/t609-enoent-recovery",
+      "fallback ownership must come from the validated opened-document/workspace candidate after checkout"
+    );
+    const global = await api.getGlobalUnderstandingSnapshot();
+    assert.deepEqual(global?.progress.files.map((file) => file.path), [liveRelative]);
+  } finally {
+    await closeAllEditors();
+    await repository.checkout("main");
+  }
 };
 
 const closeDocument = async (document: vscode.TextDocument): Promise<void> => {
@@ -356,6 +407,7 @@ export async function run(): Promise<void> {
     await assertActualUriBoundaries(folder, api);
     await assertMixedEncodingFixture(folder, api);
     await assertLiveEncodingTransition(folder, api);
+    await assertDeletedActiveDocumentRecovery(folder, api);
     return;
   }
 
@@ -443,4 +495,19 @@ export async function run(): Promise<void> {
   );
   assert.deepEqual(afterStale.providerProjection, before.providerProjection, "stale selection must retain the accepted provider projection");
   assert.deepEqual(afterStale.authoritativeContextCounts, before.authoritativeContextCounts, "stale selection must not mutate authoritative Review State");
+
+  const removedWorkspaceRoot = path.join(path.dirname(folder.uri.fsPath), "t609-second-root");
+  await closeAllEditors();
+  await vscode.workspace.fs.delete(vscode.Uri.file(removedWorkspaceRoot), { recursive: true, useTrash: false });
+  const survivingCandidates = await api.getLocalCurrentContextCandidatesForTest();
+  assert.ok(
+    survivingCandidates.some((candidate) => candidate.context.detail === folder.uri.fsPath),
+    "a missing workspace root must not prevent a surviving workspace repository from being enumerated"
+  );
+  api.setCurrentContextSelectionForTest("first");
+  await vscode.commands.executeCommand("reviewRange.refreshContext");
+  const selected = api.getCurrentContextCancellationSnapshotForTest().selectedContext;
+  assert.ok(selected, "Current Context must recover to the surviving repository after one workspace root disappears");
+  assert.equal(JSON.parse(selected).repositoryRoot, folder.uri.fsPath);
+  assert.ok(await api.getGlobalUnderstandingSnapshot(), "Global must recalculate for the surviving Current Context owner");
 }

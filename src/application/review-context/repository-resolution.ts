@@ -119,8 +119,8 @@ const isKnownRootInspection = (
     );
 };
 
-const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
-  if (typeof error !== "object" || error === null) return false;
+export const isCandidateStatEnoent = (error: unknown, candidate: string): boolean => {
+  if (!(error instanceof Error)) return false;
   const value = error as { readonly code?: unknown; readonly syscall?: unknown; readonly path?: unknown };
   return value.code === "ENOENT" && value.syscall === "stat" &&
     typeof value.path === "string" && sameFilesystemPath(candidate, value.path);

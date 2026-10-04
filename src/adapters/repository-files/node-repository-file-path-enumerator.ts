@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 
 import type {
@@ -35,6 +36,25 @@ const compareRepositoryPaths = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
 const throwIfAborted = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted === true) throw new DOMException("Repository path enumeration was superseded.", "AbortError");
+};
+
+const sameFilesystemPath = (left: string, right: string): boolean => {
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  return process.platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
+};
+
+export const isMissingRepositoryFolderError = (
+  error: unknown,
+  directory: string,
+  repositoryRoot: string
+): boolean => {
+  if (sameFilesystemPath(directory, repositoryRoot) || !(error instanceof Error)) return false;
+  const value = error as NodeJS.ErrnoException;
+  return value.code === "ENOENT" && value.syscall === "scandir" &&
+    typeof value.path === "string" && sameFilesystemPath(value.path, directory);
 };
 
 const compileGitIgnorePattern = (pattern: string): string => {
@@ -161,7 +181,13 @@ export class NodeRepositoryFilePathEnumerator {
       const directory = folder.length === 0
         ? repositoryRoot
         : path.join(repositoryRoot, ...folder.split("/"));
-      const entries = await readdir(directory, { withFileTypes: true });
+      let entries: Dirent[];
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch (error) {
+        if (isMissingRepositoryFolderError(error, directory, repositoryRoot)) continue;
+        throw error;
+      }
       throwIfAborted(signal);
       for (const entry of entries) {
         throwIfAborted(signal);
