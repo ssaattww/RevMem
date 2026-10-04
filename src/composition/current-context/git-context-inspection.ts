@@ -7,7 +7,15 @@ import type {
 } from "../../adapters/local-git/index";
 import { gitInspectionStartPath } from "../../adapters/local-git/index";
 import { isCandidateStatEnoent } from "../../application/review-context/repository-resolution";
+import type { SelectedReviewContext } from "../../application/review-context/index";
 import type { CurrentContextUiSnapshot } from "../../ui/current-context/index";
+
+/** Returns the repository root explicitly owned by the selected Current Context. */
+export const selectedCurrentContextRepositoryRoot = (
+  selection: SelectedReviewContext | undefined
+): string | undefined => selection !== undefined && selection.kind !== "workspace"
+  ? selection.repositoryRoot
+  : undefined;
 
 /** Inspects a filesystem-backed editor from its parent directory. */
 export const inspectCurrentContextDocument = async (

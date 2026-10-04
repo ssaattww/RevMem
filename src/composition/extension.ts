@@ -33,7 +33,8 @@ import {
 import {
   gitCurrentContextSnapshot,
   isNonGitCurrentContextWorkspace,
-  resolveMissingRepositoryFallback
+  resolveMissingRepositoryFallback,
+  selectedCurrentContextRepositoryRoot
 } from "./current-context/git-context-inspection";
 import { createCurrentContextInspectionSession } from "./current-context/current-context-inspection-session";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-context/repository-resolution";
@@ -372,9 +373,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         !document.isClosed
           ? workspaceFilesystemPath(document.uri)
           : undefined),
-      knownRootPaths: selectedContext?.kind === "branch" || selectedContext?.kind === "detached"
-        ? [selectedContext.repositoryRoot]
-        : [],
+      knownRootPaths: [selectedCurrentContextRepositoryRoot(selectedContext)],
       workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
       inspectRepository
     });
@@ -443,9 +442,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     const activeRepositoryRoot = signal === undefined
       ? activeDocumentRootWithoutSignal
       : activeDocumentRootByGeneration.get(signal);
-    const selectedRepositoryRoot = selectedContext?.kind === "branch" || selectedContext?.kind === "detached" || selectedContext?.kind === "pull-request"
-      ? selectedContext.repositoryRoot
-      : undefined;
+    const selectedRepositoryRoot = selectedCurrentContextRepositoryRoot(selectedContext);
     const folder = editor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(editor.document.uri);
     const activeWorkspaceCandidate = folder === undefined ? undefined : candidates.find((candidate) =>
         candidate.context.kind === "workspace" &&

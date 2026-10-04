@@ -7,8 +7,10 @@ import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace,
-  resolveMissingRepositoryFallback
+  resolveMissingRepositoryFallback,
+  selectedCurrentContextRepositoryRoot
 } from "../../src/composition/current-context/git-context-inspection";
+import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
 import {
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
@@ -418,6 +420,44 @@ test("deleted owner fallback selects one independent survivor but keeps a nested
     selectedRepositoryRoot: "/workspace-a",
     activeDocumentPath: "/workspace-a/deleted.ts"
   }), undefined, "multiple independent survivors must defer to explicit selection");
+});
+
+test("a deleted nested pull-request owner cannot be replaced by its enclosing Git repository", async () => {
+  const selectedPullRequest = {
+    kind: "pull-request" as const,
+    repositoryId: "nested",
+    repositoryRoot: "/workspace/nested",
+    contextId: "pr-context",
+    pullRequestNumber: 134,
+    headRevision: "1111111111111111111111111111111111111111"
+  };
+  const knownRoot = selectedCurrentContextRepositoryRoot(selectedPullRequest);
+  assert.equal(knownRoot, "/workspace/nested");
+
+  const candidates = await resolveCurrentContextRepositories({
+    activeDocumentPath: "/workspace/nested/src/deleted.ts",
+    openedDocumentPaths: [],
+    knownRootPaths: [knownRoot],
+    workspaceFolderPaths: ["/workspace"],
+    inspectRepository: async () => ({
+      kind: "repository",
+      repository: { rootPath: "/workspace", repositoryId: "outer" }
+    })
+  });
+  assert.deepEqual(candidates.map((candidate) => candidate.source), ["workspace-folder"]);
+
+  const outerCandidate = gitCurrentContextSnapshot({
+    rootPath: "/workspace",
+    repositoryId: "outer",
+    gitVersion: "2.44.0",
+    branch: { kind: "branch", fullRef: "refs/heads/main" },
+    head: "2222222222222222222222222222222222222222"
+  });
+  assert.deepEqual(resolveMissingRepositoryFallback({
+    candidates: [outerCandidate],
+    selectedRepositoryRoot: knownRoot,
+    activeDocumentPath: "/workspace/nested/src/deleted.ts"
+  }), { kind: "unresolved" });
 });
 
 test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {
