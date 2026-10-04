@@ -105,7 +105,13 @@ export const registerCurrentContextRuntime = (
     ...dependentRefresher
   });
   let currentCancellation: AbortController | undefined;
+  const traceRefresh = (stage: string): void => {
+    if (context.extensionMode === vscode.ExtensionMode.Test) {
+      console.info(`T609 Current Context command stage: ${stage}`);
+    }
+  };
   const runRefresh = async (options?: CurrentContextRecomputeOptions): Promise<void> => {
+    traceRefresh("command entered");
     currentCancellation?.abort();
     const cancellation = new AbortController();
     currentCancellation = cancellation;
@@ -118,6 +124,7 @@ export const registerCurrentContextRuntime = (
       }
     } finally {
       if (currentCancellation === cancellation) currentCancellation = undefined;
+      traceRefresh("command settled");
     }
   };
   const runSelection = async (): Promise<void> => {

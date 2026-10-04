@@ -359,7 +359,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   };
   const activeDocumentRootByGeneration = new WeakMap<AbortSignal, string | undefined>();
   let activeDocumentRootWithoutSignal: string | undefined;
+  const traceCurrentContextHost = (stage: string): void => {
+    if (context.extensionMode === vscode.ExtensionMode.Test) {
+      console.info(`T609 Current Context refresh stage: ${stage}`);
+    }
+  };
   const enumerateLocalContexts = async (signal?: AbortSignal): Promise<CurrentContextUiSnapshot[]> => {
+    traceCurrentContextHost("local enumeration started");
     const inspectRepository = inspectForCurrentContextGeneration(signal);
     const contexts = new Map<string, CurrentContextUiSnapshot>();
     const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
@@ -377,6 +383,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((folder) => workspaceFilesystemPath(folder.uri)),
       inspectRepository
     });
+    traceCurrentContextHost(`local repositories resolved (${resolvedRepositories.length})`);
     const activeDocumentRepository = resolvedRepositories.find((candidate) => candidate.source === "active-document");
     if (signal === undefined) activeDocumentRootWithoutSignal = activeDocumentRepository?.repository.rootPath;
     else activeDocumentRootByGeneration.set(signal, activeDocumentRepository?.repository.rootPath);
@@ -415,28 +422,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       };
       contexts.set(currentContextSelectionKey(snapshot), snapshot);
     }
-    return [...contexts.values()].sort((left, right) =>
+    const result = [...contexts.values()].sort((left, right) =>
       left.context.kind.localeCompare(right.context.kind) || left.context.label.localeCompare(right.context.label)
     );
+    traceCurrentContextHost(`local enumeration completed (${result.length})`);
+    return result;
   };
 
   const reviewContextsRuntimeRef: { current?: RegisteredT405ReviewContextsRuntime } = {};
   const enumerateContexts = async (signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot[]> => {
+    traceCurrentContextHost("candidate enumeration started");
     if (testCurrentContextStaleAfterPick) {
       testCurrentContextStaleAfterPick = false;
       return [];
     }
     const local = await enumerateLocalContexts(signal);
+    traceCurrentContextHost("local candidates ready");
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     if (reviewContextsRuntime === undefined) return local;
+    traceCurrentContextHost("Review Context augmentation started");
     const augmented = await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext);
+    traceCurrentContextHost(`Review Context augmentation completed (${augmented.length})`);
     // The Current Context owner is authoritative: an aborted composition must
     // never publish candidates returned by an in-flight T405 acquisition.
     return signal?.aborted ? [] : [...augmented];
   };
 
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined> => {
+    traceCurrentContextHost(`fallback resolution started (${candidates.length})`);
     const editor = vscode.window.activeTextEditor;
     if (signal?.aborted === true) return undefined;
     const activeRepositoryRoot = signal === undefined
@@ -451,13 +465,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
         candidate.context.selection.workspaceFolderUri.path === folder.uri.path
       );
-    return resolveMissingRepositoryFallback({
+    const result = resolveMissingRepositoryFallback({
       candidates,
       activeRepositoryRoot,
       selectedRepositoryRoot,
       activeDocumentPath: editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri),
       activeWorkspaceCandidate
     });
+    traceCurrentContextHost(`fallback resolution completed (${result === undefined ? "none" : "context" in result ? result.context.kind : result.kind})`);
+    return result;
   };
 
   const currentContextComposition = createT305CurrentContextRuntimeComposition(selection, {
@@ -470,6 +486,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     enumerateCandidates: enumerateContexts,
     resolveFallback,
     requestSelection: async (available, signal) => {
+      traceCurrentContextHost(`candidate selection requested (${available.length})`);
       testCurrentContextSelectionRequestCount += 1;
       if (context.extensionMode === vscode.ExtensionMode.Test) {
         const testSelection = testCurrentContextSelection;
@@ -784,7 +801,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
-      recompute: (signal, feedbackContext, options) => currentContextComposition.recompute(signal, feedbackContext, options),
+      recompute: async (signal, feedbackContext, options) => {
+        traceCurrentContextHost("composition recompute started");
+        const result = await currentContextComposition.recompute(signal, feedbackContext, options);
+        traceCurrentContextHost("composition recompute completed");
+        return result;
+      },
       acceptRecomputed: (snapshot) => {
         globalRuntime.clear();
         currentContextComposition.acceptRecomputed(snapshot);
@@ -804,21 +826,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       acceptCurrentContextPreparation: (selection) =>
         reviewContextsRuntimeRef.current?.acceptCurrentContextPreparation?.(selection),
       refreshDependents: async () => {
+        traceCurrentContextHost("dependent refresh started");
         testCurrentContextDependentRefreshCount += 1;
         await refreshCurrentContextDependents({
-          refreshPullRequestProgress: refreshPullRequestProgressForSelection,
-          refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
+          refreshPullRequestProgress: async () => {
+            traceCurrentContextHost("PR Progress refresh started");
+            await refreshPullRequestProgressForSelection();
+            traceCurrentContextHost("PR Progress refresh completed");
+          },
+          refreshDecorations: async () => {
+            traceCurrentContextHost("decorations refresh started");
+            await runtimePort.refreshVisibleEditorDecorations();
+            traceCurrentContextHost("decorations refresh completed");
+          },
           refreshGlobal: async () => {
+            traceCurrentContextHost("Global refresh started");
             await Promise.all(vscode.workspace.textDocuments
               .filter((document) => !document.isClosed && FILESYSTEM_SCHEMES.has(document.uri.scheme))
               .map(observeCurrentGlobalUnderstandingDocument));
             await refreshGlobalUnderstandingForMutation({ reason: "current-context-changed", phase: "global-refresh-trigger" });
+            traceCurrentContextHost("Global refresh completed");
           },
           refreshReviewContexts: async () => {
+            traceCurrentContextHost("Review Context refresh started");
             await reviewContextsRuntimeRef.current?.refresh();
+            traceCurrentContextHost("Review Context refresh completed");
           },
           reportPullRequestProgressError
         });
+        traceCurrentContextHost("dependent refresh completed");
       }
     },
     async (error) => {
