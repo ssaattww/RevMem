@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 
@@ -185,6 +185,7 @@ export class NodeRepositoryFilePathEnumerator {
       try {
         entries = await readdir(directory, { withFileTypes: true });
       } catch (error) {
+        throwIfAborted(signal);
         if (isMissingRepositoryFolderError(error, directory, repositoryRoot)) continue;
         throw error;
       }
@@ -254,6 +255,8 @@ export class NodeRepositoryFilePathEnumerator {
   }
 
   private async readRootGitIgnore(repositoryRoot: string, signal?: AbortSignal): Promise<readonly GitIgnoreRule[]> {
+    await stat(repositoryRoot);
+    throwIfAborted(signal);
     try {
       const content = await readFile(path.join(repositoryRoot, ".gitignore"), "utf8");
       throwIfAborted(signal);

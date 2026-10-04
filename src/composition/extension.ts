@@ -32,7 +32,8 @@ import {
 } from "../ui/current-context/index";
 import {
   gitCurrentContextSnapshot,
-  isNonGitCurrentContextWorkspace
+  isNonGitCurrentContextWorkspace,
+  resolveMissingRepositoryFallback
 } from "./current-context/git-context-inspection";
 import { createCurrentContextInspectionSession } from "./current-context/current-context-inspection-session";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-context/repository-resolution";
@@ -439,46 +440,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const resolveFallback = async (candidates: readonly CurrentContextUiSnapshot[], signal?: AbortSignal): Promise<CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined> => {
     const editor = vscode.window.activeTextEditor;
     if (signal?.aborted === true) return undefined;
-    const repositoryRoot = signal === undefined
+    const activeRepositoryRoot = signal === undefined
       ? activeDocumentRootWithoutSignal
       : activeDocumentRootByGeneration.get(signal);
-    if (repositoryRoot !== undefined) {
-      return candidates.find((candidate) =>
-        candidate.context.selection?.kind === "pull-request" &&
-        candidate.context.selection.repositoryRoot === repositoryRoot
-      ) ?? candidates.find((candidate) =>
-        candidate.context.kind === "branch" && candidate.context.detail === repositoryRoot
-      );
-    }
     const selectedRepositoryRoot = selectedContext?.kind === "branch" || selectedContext?.kind === "detached" || selectedContext?.kind === "pull-request"
       ? selectedContext.repositoryRoot
       : undefined;
-    if (selectedRepositoryRoot !== undefined) {
-      const retainedRoot = candidates.find((candidate) =>
-        candidate.context.selection?.kind === "pull-request" &&
-        candidate.context.selection.repositoryRoot === selectedRepositoryRoot
-      ) ?? candidates.find((candidate) =>
-        candidate.context.kind === "branch" && candidate.context.detail === selectedRepositoryRoot
-      );
-      if (retainedRoot !== undefined) return retainedRoot;
-      const editorPath = editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri);
-      if (editorPath !== undefined) {
-        const relative = path.relative(path.resolve(selectedRepositoryRoot), path.resolve(editorPath));
-        const withinSelectedRoot = relative.length === 0 || (
-          relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
-        );
-        if (withinSelectedRoot) return { kind: "unresolved" };
-      }
-    }
     const folder = editor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(editor.document.uri);
-    if (folder === undefined) return undefined;
-    return candidates.find((candidate) =>
-      candidate.context.kind === "workspace" &&
-      candidate.context.selection?.kind === "workspace" &&
-      candidate.context.selection.workspaceFolderUri.scheme === folder.uri.scheme &&
-      candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
-      candidate.context.selection.workspaceFolderUri.path === folder.uri.path
-    );
+    const activeWorkspaceCandidate = folder === undefined ? undefined : candidates.find((candidate) =>
+        candidate.context.kind === "workspace" &&
+        candidate.context.selection?.kind === "workspace" &&
+        candidate.context.selection.workspaceFolderUri.scheme === folder.uri.scheme &&
+        candidate.context.selection.workspaceFolderUri.authority === folder.uri.authority &&
+        candidate.context.selection.workspaceFolderUri.path === folder.uri.path
+      );
+    return resolveMissingRepositoryFallback({
+      candidates,
+      activeRepositoryRoot,
+      selectedRepositoryRoot,
+      activeDocumentPath: editor === undefined ? undefined : workspaceFilesystemPath(editor.document.uri),
+      activeWorkspaceCandidate
+    });
   };
 
   const currentContextComposition = createT305CurrentContextRuntimeComposition(selection, {

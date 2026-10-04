@@ -77,3 +77,46 @@ export const gitCurrentContextSnapshot = (
   },
   progress: undefined
 });
+
+/** Resolves safe Current Context fallbacks after a selected repository disappears or the editor moves. */
+export const resolveMissingRepositoryFallback = (input: {
+  readonly candidates: readonly CurrentContextUiSnapshot[];
+  readonly activeRepositoryRoot?: string;
+  readonly selectedRepositoryRoot?: string;
+  readonly activeDocumentPath?: string;
+  readonly activeWorkspaceCandidate?: CurrentContextUiSnapshot;
+}): CurrentContextUiSnapshot | { readonly kind: "unresolved" } | undefined => {
+  const matchingRoot = (root: string): CurrentContextUiSnapshot | undefined => input.candidates.find((candidate) =>
+    candidate.context.selection?.kind === "pull-request" && candidate.context.selection.repositoryRoot === root
+  ) ?? input.candidates.find((candidate) => candidate.context.kind === "branch" && candidate.context.detail === root);
+  if (input.activeRepositoryRoot !== undefined) return matchingRoot(input.activeRepositoryRoot);
+  if (input.activeWorkspaceCandidate !== undefined) return input.activeWorkspaceCandidate;
+  if (input.selectedRepositoryRoot === undefined) return undefined;
+
+  const editorPath = input.activeDocumentPath;
+  const selectedRelative = editorPath === undefined
+    ? undefined
+    : path.relative(path.resolve(input.selectedRepositoryRoot), path.resolve(editorPath));
+  const withinSelectedRoot = selectedRelative === undefined || selectedRelative.length === 0 ||
+    (selectedRelative !== ".." && !selectedRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(selectedRelative));
+  if (!withinSelectedRoot) return undefined;
+
+  const retained = matchingRoot(input.selectedRepositoryRoot);
+  if (retained !== undefined) return retained;
+  if (editorPath !== undefined) {
+    const belongsToSurvivingRepository = input.candidates.some((candidate) => {
+      const root = candidate.context.selection?.kind === "pull-request"
+        ? candidate.context.selection.repositoryRoot
+        : candidate.context.kind === "branch"
+          ? candidate.context.detail
+          : undefined;
+      if (root === undefined) return false;
+      const relative = path.relative(path.resolve(root), path.resolve(editorPath));
+      return relative.length === 0 || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+    });
+    if (belongsToSurvivingRepository) return { kind: "unresolved" };
+    if (input.candidates.length === 1) return input.candidates[0];
+  }
+  return { kind: "unresolved" };
+};
+import path from "node:path";

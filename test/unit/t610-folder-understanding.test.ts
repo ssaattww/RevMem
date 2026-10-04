@@ -431,6 +431,22 @@ test("T610 skips a missing active folder scope and continues enumerating live si
   assert.deepEqual(result.includedPaths, ["apps/web/src/app.ts"]);
 });
 
+test("T610 rejects a deleted repository root instead of publishing an empty folder snapshot", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-root-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "fixtures"), { recursive: true });
+  await mkdir(path.join(root, "apps", "web", "src"), { recursive: true });
+  await writeFile(path.join(root, "fixtures", "old.ts"), "old\n", "utf8");
+  await writeFile(path.join(root, "apps", "web", "src", "app.ts"), "live\n", "utf8");
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    yieldControl: () => undefined
+  });
+  await rm(root, { recursive: true });
+
+  await assert.rejects(enumerator.enumerateDirectFolders(root, ["fixtures", "apps/web/src"]), (error: unknown) =>
+    error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT");
+});
+
 test("T610 source publishes surviving folder evidence while an open document belongs to a deleted scope", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-source-"));
   t.after(() => rm(root, { recursive: true, force: true }));

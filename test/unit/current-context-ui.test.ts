@@ -6,7 +6,8 @@ import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
-  isNonGitCurrentContextWorkspace
+  isNonGitCurrentContextWorkspace,
+  resolveMissingRepositoryFallback
 } from "../../src/composition/current-context/git-context-inspection";
 import {
   CurrentContextRuntimeCoordinator,
@@ -366,6 +367,44 @@ test("Current Context does not select an outer candidate when the active documen
 
   assert.deepEqual(await composition.recompute(undefined, undefined, { allowInteraction: true }), { kind: "unresolved" });
   assert.equal(selectionRequests, 0);
+});
+
+test("repository fallback prefers the active non-Git workspace over a retained unrelated Git root", () => {
+  const oldRepository = branchSnapshot("old", "refs/heads/main");
+  const workspace: CurrentContextUiSnapshot = {
+    context: {
+      kind: "workspace",
+      label: "workspace B",
+      selection: { kind: "workspace", workspaceFolderUri: { scheme: "file", authority: "", path: "/workspace-b" } }
+    },
+    progress: undefined
+  };
+  assert.equal(resolveMissingRepositoryFallback({
+    candidates: [oldRepository, workspace],
+    selectedRepositoryRoot: "/repo-a",
+    activeDocumentPath: "/workspace-b/readme.md",
+    activeWorkspaceCandidate: workspace
+  }), workspace);
+});
+
+test("deleted owner fallback selects one independent survivor but keeps a nested outer owner unresolved", () => {
+  const survivor: CurrentContextUiSnapshot = {
+    context: { kind: "branch", label: "survivor", detail: "/workspace-b", selection: { kind: "branch", repositoryId: "b", repositoryRoot: "/workspace-b", branchRef: "refs/heads/main" } },
+    progress: undefined
+  };
+  assert.equal(resolveMissingRepositoryFallback({
+    candidates: [survivor],
+    selectedRepositoryRoot: "/workspace-a",
+    activeDocumentPath: "/workspace-a/deleted.ts"
+  }), survivor);
+  assert.deepEqual(resolveMissingRepositoryFallback({
+    candidates: [{
+      context: { kind: "branch", label: "outer", detail: "/workspace-a", selection: { kind: "branch", repositoryId: "a", repositoryRoot: "/workspace-a", branchRef: "refs/heads/main" } },
+      progress: undefined
+    }],
+    selectedRepositoryRoot: "/workspace-a/nested",
+    activeDocumentPath: "/workspace-a/nested/deleted.ts"
+  }), { kind: "unresolved" });
 });
 
 test("production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership", async () => {

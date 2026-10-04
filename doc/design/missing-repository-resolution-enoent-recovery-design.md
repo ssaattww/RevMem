@@ -97,3 +97,5 @@ repository root自身が消えている場合はmissing scopeとして成功扱�
 5. branch `design/repository-resolution-enoent-recovery`でcommit/pushしDraft PR #135を更新する。mergeせず、更新したexact HEADのCI結果を記録する。
 
 依存追加・lockfile変更なし。既存のNode標準test runner、TypeScript、ESLint、Git fixtureを使う。private validation repository、GitHub connector/APIは今回使わない。
+
+追加検証: Global direct-folder enumerationは開始前にrepository rootの存在を検証し、root自体のENOENTを空snapshotとして扱わない。scope単位ENOENTをskipする直前にもAbortSignalを確認する。Current Contextは現在のactive workspace candidateを以前のGit root保持より優先し、消失root内に開いたdocumentでは独立した生存candidateが一つだけなら復帰する一方、nested ownerを含む生存outer repositoryへの誤所属はunresolvedのまま保つ。
