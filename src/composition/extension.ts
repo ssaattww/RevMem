@@ -360,7 +360,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const activeDocumentRootByGeneration = new WeakMap<AbortSignal, string | undefined>();
   let activeDocumentRootWithoutSignal: string | undefined;
   const traceCurrentContextHost = (stage: string): void => {
-    if (context.extensionMode === vscode.ExtensionMode.Test) {
+    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
       console.info(`T609 Current Context refresh stage: ${stage}`);
     }
   };
