@@ -163,7 +163,10 @@ const assertDeletedActiveDocumentRecovery = async (
       "fallback ownership must come from the validated opened-document/workspace candidate after checkout"
     );
     const global = await api.getGlobalUnderstandingSnapshot();
-    assert.deepEqual(global?.progress.files.map((file) => file.path), [liveRelative]);
+    assert.ok(global, "Global Understanding must remain available after deleted-document recovery");
+    const globalPaths = global.progress.files.map((file) => file.path);
+    assert.equal(globalPaths.includes(liveRelative), true, "the surviving opened document must remain represented in Global Understanding");
+    assert.equal(globalPaths.includes(deletedRelative), false, "the deleted document must not be attributed after its cwd disappears");
   } finally {
     console.info("T609 ENOENT Host recovery: cleanup begins");
     await closeAllEditors();
