@@ -176,6 +176,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let selectedContext: SelectedReviewContext | undefined;
   let testCurrentContextSelection: "first" | "cancel" | "stale" | undefined;
   let testCurrentContextSelectionRequestCount = 0;
+  let testCurrentContextTraceEnabled = false;
   let testCurrentContextStaleAfterPick = false;
   let testCurrentContextDependentRefreshCount = 0;
   let testPullRequestRuntimeTarget: { readonly repositoryId: string; readonly contextId: string } | undefined;
@@ -360,7 +361,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const activeDocumentRootByGeneration = new WeakMap<AbortSignal, string | undefined>();
   let activeDocumentRootWithoutSignal: string | undefined;
   const traceCurrentContextHost = (stage: string): void => {
-    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
+    if (testCurrentContextTraceEnabled && vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
       console.info(`T609 Current Context refresh stage: ${stage}`);
     }
   };
@@ -801,6 +802,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const currentContextRuntime = registerCurrentContextRuntime(
     context,
     {
+      shouldTraceForTest: () => testCurrentContextTraceEnabled,
       recompute: async (signal, feedbackContext, options) => {
         traceCurrentContextHost("composition recompute started");
         const result = await currentContextComposition.recompute(signal, feedbackContext, options);
@@ -1266,6 +1268,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       },
       setCurrentContextSelectionForTest: (selection: "first" | "cancel" | "stale") => {
         testCurrentContextSelection = selection;
+      },
+      enableCurrentContextTraceForTest: () => {
+        testCurrentContextTraceEnabled = true;
       },
       getCurrentContextCancellationSnapshotForTest: () => ({
         selectedContext: selectedContext === undefined ? undefined : JSON.stringify(selectedContext),

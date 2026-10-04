@@ -31,6 +31,7 @@ interface T609ExtensionApi {
   drainGlobalUnderstandingFileOpenForTest(): Promise<void>;
   setReviewContextsRepositorySelection(selection: "cancel" | "stale"): void;
   setCurrentContextSelectionForTest(selection: "first" | "cancel" | "stale"): void;
+  enableCurrentContextTraceForTest(): void;
   getCurrentContextCancellationSnapshotForTest(): {
     readonly selectedContext: string | undefined;
     readonly dependentRefreshCount: number;
@@ -152,6 +153,7 @@ const assertDeletedActiveDocumentRecovery = async (
     await repository.checkout("t609-enoent-recovery");
     console.info("T609 ENOENT Host recovery: branch checkout completed");
     assert.equal(deletedDocument.isClosed, false, "Git checkout must leave the removed tab open");
+    api.enableCurrentContextTraceForTest();
     selectFirstCurrentContextCandidateForTest(api);
     await vscode.commands.executeCommand("reviewRange.refreshContext");
     console.info("T609 ENOENT Host recovery: Current Context refresh completed");

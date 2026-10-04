@@ -22,6 +22,7 @@ export const REFRESH_CONTEXT_COMMAND_ID = "reviewRange.refreshContext";
 export const SELECT_CONTEXT_COMMAND_ID = "reviewRange.selectContext";
 
 export interface CurrentContextRuntimeSource {
+  shouldTraceForTest?(): boolean;
   recompute(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
@@ -106,7 +107,7 @@ export const registerCurrentContextRuntime = (
   });
   let currentCancellation: AbortController | undefined;
   const traceRefresh = (stage: string): void => {
-    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
+    if (source.shouldTraceForTest?.() === true && vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
       console.info(`T609 Current Context command stage: ${stage}`);
     }
   };

@@ -701,13 +701,13 @@ export function activate(
   let selectedContext: SelectedReviewContext | undefined;
   let currentPullRequestDiff: Readonly<PullRequestDiffSnapshot> | undefined;
   const reportDecorationError = async (error: unknown): Promise<void> => {
-    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
+    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test && error instanceof Error) {
       console.info(`T609 decoration error presentation started (${error instanceof Error ? error.name : "unknown"})`);
     }
     await vscode.window.showErrorMessage(
       `確認済み装飾を更新できませんでした: ${errorMessage(error)}`
     );
-    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test) {
+    if (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test && error instanceof Error) {
       console.info("T609 decoration error presentation completed");
     }
   };
