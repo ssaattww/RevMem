@@ -66,6 +66,8 @@ const prepareT609TrackingAhead = async (root: string): Promise<void> => {
 
 const prepareT609Fixture = async (root: string): Promise<void> => {
   await mkdir(join(root, ".vscode"), { recursive: true });
+  await mkdir(join(root, "fixtures"), { recursive: true });
+  await mkdir(join(root, "apps", "web", "src"), { recursive: true });
   await Promise.all([
     writeFile(join(root, ".vscode", "settings.json"), `${JSON.stringify({
       "files.encoding": "shift_jis",
@@ -77,9 +79,15 @@ const prepareT609Fixture = async (root: string): Promise<void> => {
     writeFile(join(root, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd])),
     writeFile(join(root, "rename-source.txt"), "rename fixture\n", "utf8"),
     writeFile(join(root, "whitespace.txt"), "whitespace fixture\n", "utf8"),
-    writeFile(join(root, "eol.txt"), "eol fixture\n", "utf8")
+    writeFile(join(root, "eol.txt"), "eol fixture\n", "utf8"),
+    writeFile(join(root, "fixtures", "branch-switch-disappears.ts"), "deleted open document\n", "utf8"),
+    writeFile(join(root, "apps", "web", "src", "app.ts"), "live sibling document\n", "utf8")
   ]);
   await initializeGitRepository(root);
+  await execFileAsync("git", ["switch", "-c", "t609-enoent-recovery"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["rm", "--", "fixtures/branch-switch-disappears.ts"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["commit", "-m", "T609 remove an open fixture"], { cwd: root, windowsHide: true });
+  await execFileAsync("git", ["switch", "main"], { cwd: root, windowsHide: true });
   await prepareT609TrackingAhead(root);
 };
 

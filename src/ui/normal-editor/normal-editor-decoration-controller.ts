@@ -72,7 +72,7 @@ export interface NormalEditorDecorationHost<
   ): DecorationDisposable;
   /** Invalidates work for an editor when its document content changes. */
   onDidChangeDocument?(listener: (editor: Editor) => void | Promise<void>): DecorationDisposable;
-  /** Reports a failed state load after the uncertain editor output has been cleared. */
+  /** Starts a non-blocking report after the uncertain editor output has been cleared. */
   showDecorationError(error: unknown): void | Promise<void>;
 }
 
@@ -205,7 +205,15 @@ export class NormalEditorDecorationController<
         signal: cancellation.signal,
         isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)
       });
-      await this.host.showDecorationError(error);
+      try {
+        void Promise.resolve(this.host.showDecorationError(error)).catch((reportingError: unknown) => {
+          const name = reportingError instanceof Error ? reportingError.name : "unknown";
+          console.error(`Review Range could not present a decoration error (${name}).`);
+        });
+      } catch (reportingError) {
+        const name = reportingError instanceof Error ? reportingError.name : "unknown";
+        console.error(`Review Range could not present a decoration error (${name}).`);
+      }
     }
   }
 

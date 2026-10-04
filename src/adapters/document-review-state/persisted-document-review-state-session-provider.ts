@@ -12,6 +12,7 @@ import {
   type GitRevisionMappingSource,
   type SelectedReviewContext
 } from "../../application/review-context/index";
+import { isCandidateStatEnoent } from "../../application/review-context/repository-resolution";
 import type { StableHash } from "../../application/workspace-identity/index";
 import type {
   RepositoryGlobalState,
@@ -207,10 +208,21 @@ export class DocumentReviewStateSessionProvider {
     selection?: SelectedReviewContext
   ): Promise<DocumentNormalEditorDecorationState | undefined> {
     validateDocumentReviewDescriptor(descriptor);
-    if (selection?.kind === "pull-request") {
-      return this.loadSelectedPullRequest(descriptor, selection);
+    const inspectionStartPath = gitInspectionStartPath(
+      descriptor.documentFsPath,
+      descriptor.fileSystemPathSemantics
+    );
+    try {
+      if (selection?.kind === "pull-request") {
+        return await this.loadSelectedPullRequest(descriptor, selection);
+      }
+      return await this.delegate.loadForDecoration(descriptor, selection);
+    } catch (error) {
+      // A tab can outlive a branch checkout that removed its parent directory.
+      // Read-only decoration has no state to display for that missing cwd.
+      if (isCandidateStatEnoent(error, inspectionStartPath)) return undefined;
+      throw error;
     }
-    return this.delegate.loadForDecoration(descriptor, selection);
   }
 
   public dispose(): void {

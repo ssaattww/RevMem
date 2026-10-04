@@ -1,4 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 
 import type {
@@ -19,6 +20,7 @@ export interface RepositoryFilePathEnumerationResult {
 export interface NodeRepositoryFilePathEnumeratorOptions {
   readonly maxEntriesPerStage?: number;
   readonly yieldControl?: () => void | Promise<void>;
+  readonly readDirectory?: (directory: string) => Promise<Dirent[]>;
   readonly accountWorkBatch?: (entry: Readonly<{ kind: "repository-entry" | "repository-sort"; count: number }>) => void;
 }
 
@@ -35,6 +37,25 @@ const compareRepositoryPaths = (left: string, right: string): number =>
   left === right ? 0 : left < right ? -1 : 1;
 const throwIfAborted = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted === true) throw new DOMException("Repository path enumeration was superseded.", "AbortError");
+};
+
+const sameFilesystemPath = (left: string, right: string): boolean => {
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  return process.platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
+};
+
+export const isMissingRepositoryFolderError = (
+  error: unknown,
+  directory: string,
+  repositoryRoot: string
+): boolean => {
+  if (sameFilesystemPath(directory, repositoryRoot) || !(error instanceof Error)) return false;
+  const value = error as NodeJS.ErrnoException;
+  return value.code === "ENOENT" && value.syscall === "scandir" &&
+    typeof value.path === "string" && sameFilesystemPath(value.path, directory);
 };
 
 const compileGitIgnorePattern = (pattern: string): string => {
@@ -103,11 +124,13 @@ const matchingGitIgnoreRule = (
 export class NodeRepositoryFilePathEnumerator {
   private readonly maxEntriesPerStage: number;
   private readonly yieldControl: () => void | Promise<void>;
+  private readonly readDirectory: (directory: string) => Promise<Dirent[]>;
   private readonly accountWorkBatch: NodeRepositoryFilePathEnumeratorOptions["accountWorkBatch"];
   public constructor(private readonly exclusionPolicy: RepositoryFileExclusionPolicy, options: NodeRepositoryFilePathEnumeratorOptions = {}) {
     this.maxEntriesPerStage = options.maxEntriesPerStage ?? 128;
     if (!Number.isSafeInteger(this.maxEntriesPerStage) || this.maxEntriesPerStage <= 0) throw new RangeError("maxEntriesPerStage must be a positive integer.");
     this.yieldControl = options.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    this.readDirectory = options.readDirectory ?? (async (directory) => readdir(directory, { withFileTypes: true }));
     this.accountWorkBatch = options.accountWorkBatch;
   }
 
@@ -161,7 +184,18 @@ export class NodeRepositoryFilePathEnumerator {
       const directory = folder.length === 0
         ? repositoryRoot
         : path.join(repositoryRoot, ...folder.split("/"));
-      const entries = await readdir(directory, { withFileTypes: true });
+      let entries: Dirent[];
+      try {
+        entries = await this.readDirectory(directory);
+      } catch (error) {
+        throwIfAborted(signal);
+        if (isMissingRepositoryFolderError(error, directory, repositoryRoot)) {
+          await stat(repositoryRoot);
+          throwIfAborted(signal);
+          continue;
+        }
+        throw error;
+      }
       throwIfAborted(signal);
       for (const entry of entries) {
         throwIfAborted(signal);
@@ -228,6 +262,8 @@ export class NodeRepositoryFilePathEnumerator {
   }
 
   private async readRootGitIgnore(repositoryRoot: string, signal?: AbortSignal): Promise<readonly GitIgnoreRule[]> {
+    await stat(repositoryRoot);
+    throwIfAborted(signal);
     try {
       const content = await readFile(path.join(repositoryRoot, ".gitignore"), "utf8");
       throwIfAborted(signal);

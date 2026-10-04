@@ -46,7 +46,7 @@ import {
   FolderUnderstandingScopeController
 } from "../../src/application/global-understanding/folder-understanding-scope-controller";
 import { ReviewFileExclusionPolicyService } from "../../src/application/file-exclusion/review-file-exclusion-policy-service";
-import { NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
+import { isMissingRepositoryFolderError, NodeRepositoryFilePathEnumerator } from "../../src/adapters/repository-files/node-repository-file-path-enumerator";
 import { NodeFolderUnderstandingStoppedStore, FolderUnderstandingStoppedStoreError } from "../../src/adapters/state-repository/node-folder-understanding-stopped-store";
 import { createT305GlobalUnderstandingSource } from "../../src/composition/global-understanding/global-understanding-composition";
 import { createGlobalUnderstandingOpenDocumentReader } from "../../src/composition/global-understanding/global-understanding-open-document-reader";
@@ -413,6 +413,123 @@ test("T610-NR-008 bounds 257 direct entries and prunes a stopped subtree before 
   assert.ok(batches.length >= 2 && batches.every((count) => count <= 128));
   const folders = await enumerator.enumerateSubtreeFolders(root, "active", undefined, (candidate) => candidate === "active/held");
   assert.ok(!folders.some((folder) => folder.startsWith("active/held")), "a stopped subtree is never recursively discovered");
+});
+
+test("T610 skips a missing active folder scope and continues enumerating live sibling scopes", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-scope-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "fixtures"), { recursive: true });
+  await mkdir(path.join(root, "apps", "web", "src"), { recursive: true });
+  await writeFile(path.join(root, "fixtures", "branch-switch-disappears.ts"), "old branch\n", "utf8");
+  await writeFile(path.join(root, "apps", "web", "src", "app.ts"), "new branch\n", "utf8");
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    yieldControl: () => undefined
+  });
+  await rm(path.join(root, "fixtures"), { recursive: true });
+
+  const result = await enumerator.enumerateDirectFolders(root, ["fixtures", "apps/web/src"]);
+  assert.deepEqual(result.includedPaths, ["apps/web/src/app.ts"]);
+});
+
+test("T610 rejects a deleted repository root instead of publishing an empty folder snapshot", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-root-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "fixtures"), { recursive: true });
+  await mkdir(path.join(root, "apps", "web", "src"), { recursive: true });
+  await writeFile(path.join(root, "fixtures", "old.ts"), "old\n", "utf8");
+  await writeFile(path.join(root, "apps", "web", "src", "app.ts"), "live\n", "utf8");
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    yieldControl: () => undefined
+  });
+  await rm(root, { recursive: true });
+
+  await assert.rejects(enumerator.enumerateDirectFolders(root, ["fixtures", "apps/web/src"]), (error: unknown) =>
+    error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT");
+});
+
+test("T610 rechecks repository-root existence when a folder disappears during enumeration", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-root-race-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const missingScope = path.join(root, "fixtures");
+  await mkdir(missingScope, { recursive: true });
+  let removedRoot = false;
+  const enumerator = new NodeRepositoryFilePathEnumerator(new ReviewFileExclusionPolicyService(), {
+    yieldControl: () => undefined,
+    readDirectory: async (directory) => {
+      if (directory === missingScope) {
+        await rm(root, { recursive: true });
+        removedRoot = true;
+        throw Object.assign(new Error("scope disappeared with repository root"), {
+          code: "ENOENT", syscall: "scandir", path: directory
+        });
+      }
+      const { readdir: read } = await import("node:fs/promises");
+      return read(directory, { withFileTypes: true });
+    }
+  });
+
+  await assert.rejects(enumerator.enumerateDirectFolders(root, ["fixtures"]), (error: unknown) =>
+    error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT");
+  assert.equal(removedRoot, true);
+});
+
+test("T610 source publishes surviving folder evidence while an open document belongs to a deleted scope", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-source-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repositoryRoot = path.join(root, "repository");
+  const deletedPath = path.join(repositoryRoot, "fixtures", "branch-switch-disappears.ts");
+  const livePath = path.join(repositoryRoot, "apps", "web", "src", "app.ts");
+  await mkdir(path.dirname(deletedPath), { recursive: true });
+  await mkdir(path.dirname(livePath), { recursive: true });
+  await writeFile(deletedPath, "old branch\n", "utf8");
+  await writeFile(livePath, "new branch\n", "utf8");
+  let openDocuments = [
+    { path: "fixtures/branch-switch-disappears.ts", revisionId: "old", lineCount: 1, nonEmptyLines: [0], contentHash: "deleted", cacheKey: "deleted" },
+    { path: "apps/web/src/app.ts", revisionId: "old", lineCount: 1, nonEmptyLines: [0], contentHash: "live", cacheKey: "live" }
+  ];
+  const source = createT305GlobalUnderstandingSource({
+    globalStoragePath: path.join(root, "global"),
+    storageUris: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") } },
+    exclusionPolicy: new ReviewFileExclusionPolicyService(),
+    readOpenDocuments: () => openDocuments,
+    fileSystemPathSemantics: "posix",
+    yieldControl: () => undefined
+  });
+  source.setContext({ context: { kind: "branch", label: "main", detail: repositoryRoot, headRevision: "old",
+    selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/main" } }, progress: undefined });
+  await source.observeFileOpen(deletedPath);
+  await source.observeFileOpen(livePath);
+  const before = await source.recalculate();
+  assert.deepEqual(before?.progress.files.map((file) => file.path).sort(), [
+    "apps/web/src/app.ts", "fixtures/branch-switch-disappears.ts"
+  ]);
+
+  await rm(path.dirname(deletedPath), { recursive: true });
+  openDocuments = [
+    openDocuments[0]!,
+    { ...openDocuments[1]!, revisionId: "new" }
+  ];
+  source.setContext({ context: { kind: "branch", label: "feature", detail: repositoryRoot, headRevision: "new",
+    selection: { kind: "branch", repositoryId: "repo", repositoryRoot, branchRef: "refs/heads/feature" } }, progress: undefined });
+  const after = await source.recalculate();
+  assert.deepEqual(after?.progress.files.map((file) => file.path), ["apps/web/src/app.ts"]);
+  assert.ok(after?.folders?.some((folder) => folder.path === "fixtures"));
+});
+
+test("T610 missing-scope recovery is limited to a non-root scandir ENOENT for the same directory", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "review-range-t610-enoent-classifier-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "missing");
+  const missing = Object.assign(new Error("missing"), { code: "ENOENT", syscall: "scandir", path: directory });
+  assert.equal(isMissingRepositoryFolderError(missing, directory, root), true);
+  assert.equal(isMissingRepositoryFolderError(missing, root, root), false);
+  assert.equal(isMissingRepositoryFolderError({ ...missing }, directory, root), false);
+  assert.equal(isMissingRepositoryFolderError(Object.assign(new Error("other path"), {
+    code: "ENOENT", syscall: "scandir", path: `${directory}-other`
+  }), directory, root), false);
+  assert.equal(isMissingRepositoryFolderError(Object.assign(new Error("denied"), {
+    code: "EACCES", syscall: "scandir", path: directory
+  }), directory, root), false);
 });
 
 test("T610-R7 never presents a partial repository aggregate as a percentage", async () => {

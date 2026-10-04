@@ -22,6 +22,10 @@ export interface CurrentContextRecomputeOptions {
 
 const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
+const isNonDestructiveOutcome = (value: CurrentContextResolution): value is CurrentContextNonDestructiveOutcome =>
+  value !== undefined && "kind" in value &&
+  (value.kind === "cancelled" || value.kind === "stale" || value.kind === "unresolved");
+
 /** Ports supplied by the T305 composition root without coupling this state machine to VS Code. */
 export interface CurrentContextRuntimeCompositionPort {
   /** Prepares interactive PR candidates only for the user-explicit selection command. */
@@ -30,7 +34,7 @@ export interface CurrentContextRuntimeCompositionPort {
   resolveFallback(
     candidates: readonly CurrentContextUiSnapshot[],
     signal?: AbortSignal,
-  ): Promise<CurrentContextUiSnapshot | undefined>;
+  ): Promise<CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined>;
   requestSelection(
     candidates: readonly CurrentContextUiSnapshot[],
     signal?: AbortSignal,
@@ -59,6 +63,7 @@ export class CurrentContextRuntimeComposition {
     }
     const fallback = await this.port.resolveFallback(candidates, signal);
     if (isAborted(signal)) throw new OperationCancelledError();
+    if (isNonDestructiveOutcome(fallback)) return fallback;
     if (fallback === undefined && candidates.length > 1) {
       if (options?.allowInteraction === false) return { kind: "unresolved" };
       const selected = await this.selection.select(

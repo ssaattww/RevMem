@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 
 import type { GitRevisionMappingSource } from "../../application/review-context/index";
 import {
@@ -51,12 +51,44 @@ const requireRoot = (value: string): string => {
   return value;
 };
 
-const normalizeInspectionStartPath = async (startPath: string): Promise<string> => {
+export const normalizeInspectionStartPath = async (
+  startPath: string,
+  statPath: (path: string) => Promise<{ isDirectory(): boolean }> = stat
+): Promise<string> => {
   try {
-    const details = await stat(startPath);
+    const details = await statPath(startPath);
     return details.isDirectory() ? startPath : gitInspectionStartPath(startPath);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error && error.code === "ENOENT" &&
+      "syscall" in error && error.syscall === "stat" &&
+      "path" in error && error.path === startPath
+    ) {
+      return startPath;
+    }
+    throw error;
+  }
+};
+
+export const resolveCanonicalInspectionIdentity = async (
+  inspectionStartPath: string,
+  repositoryRootPath: string,
+  realpathPath: (path: string) => Promise<string> = realpath
+): Promise<{
+  readonly canonicalInspectionStartPath: string;
+  readonly canonicalRepositoryRootPath: string;
+} | undefined> => {
+  try {
+    const [canonicalInspectionStartPath, canonicalRepositoryRootPath] = await Promise.all([
+      realpathPath(inspectionStartPath),
+      realpathPath(repositoryRootPath)
+    ]);
+    return { canonicalInspectionStartPath, canonicalRepositoryRootPath };
   } catch {
-    return startPath;
+    // Missing canonical identity is fail-closed for aliases; exact path matching remains available.
+    return undefined;
   }
 };
 
@@ -74,7 +106,19 @@ implements GitRevisionMappingSource {
   public override async inspectRepository(
     startPath: string
   ): Promise<LocalGitRepositoryInspection> {
-    return super.inspectRepository(await normalizeInspectionStartPath(startPath));
+    const inspectionStartPath = await normalizeInspectionStartPath(startPath);
+    const inspection = await super.inspectRepository(inspectionStartPath);
+    if (inspection.kind !== "repository") return inspection;
+    const identity = await resolveCanonicalInspectionIdentity(
+      inspectionStartPath,
+      inspection.repository.rootPath
+    );
+    return identity === undefined
+      ? inspection
+      : {
+        ...inspection,
+        ...identity
+      };
   }
 
   /** Returns one complete zero-context repository diff without constructing a shell command string. */

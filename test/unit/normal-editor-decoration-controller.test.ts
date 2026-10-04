@@ -414,6 +414,53 @@ test("controller clears uncertain output and reports decoration load errors", as
   assert.deepEqual(host.errors, [failure]);
 });
 
+test("T609 Current Context dependents finish while a decoration error notification remains open", async () => {
+  const deletedEditor: FakeEditor = { id: "deleted-path" };
+  const liveEditor: FakeEditor = { id: "live-path" };
+  const host = new FakeHost();
+  host.visibleEditors = [deletedEditor, liveEditor];
+  const controller = new NormalEditorDecorationController(host);
+  await controller.start();
+
+  const failure = Object.assign(new Error("deleted working directory"), {
+    code: "ENOENT",
+    syscall: "stat",
+    path: "/repo/deleted"
+  });
+  let releaseNotification!: () => void;
+  let notificationStarted!: () => void;
+  const notificationPending = new Promise<void>((resolve) => { notificationStarted = resolve; });
+  host.models.set(deletedEditor, Promise.reject(failure));
+  host.models.set(liveEditor, [decoration(1, 2)]);
+  host.showDecorationError = (error: unknown): Promise<void> => {
+    host.errors.push(error);
+    notificationStarted();
+    return new Promise<void>((resolve) => { releaseNotification = resolve; });
+  };
+
+  let liveDecorationApplied!: () => void;
+  const liveApplied = new Promise<void>((resolve) => { liveDecorationApplied = resolve; });
+  const setDecorations = host.setDecorations.bind(host);
+  host.setDecorations = (editor, type, values) => {
+    setDecorations(editor, type, values);
+    if (editor === liveEditor && values.length > 0) liveDecorationApplied();
+  };
+  const refresh = controller.refreshVisibleEditors();
+  try {
+    await Promise.all([liveApplied, notificationPending]);
+    const refreshCompleted = await Promise.race([
+      refresh.then(() => true),
+      new Promise<boolean>((resolve) => setImmediate(() => resolve(false)))
+    ]);
+    assert.deepEqual(host.errors, [failure]);
+    assert.equal(refreshCompleted, true, "a pending VS Code error notification must not hold Current Context dependents");
+  } finally {
+    releaseNotification();
+    await refresh;
+    controller.dispose();
+  }
+});
+
 test("controller event handlers refresh visible editors and dispose all resources", async () => {
   const editor: FakeEditor = { id: "normal" };
   const host = new FakeHost();
