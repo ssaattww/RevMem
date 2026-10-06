@@ -682,10 +682,14 @@ export class PullRequestReviewRuntime<Uri> {
   public async activateProgress(
     contextId: string,
     parentFeedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) throw new OperationCancelledError();
     this.progressCancellation?.abort();
     const cancellation = new AbortController();
     this.progressCancellation = cancellation;
+    const abort = (): void => cancellation.abort();
+    signal?.addEventListener("abort", abort, { once: true });
     const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
     this.progress.clear();
@@ -753,6 +757,7 @@ export class PullRequestReviewRuntime<Uri> {
       this.progress.clear();
       throw error;
     } finally {
+      signal?.removeEventListener("abort", abort);
       if (this.progressCancellation === cancellation) this.progressCancellation = undefined;
     }
   }

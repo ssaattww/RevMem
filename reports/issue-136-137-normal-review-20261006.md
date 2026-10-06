@@ -287,3 +287,181 @@ NODE
 - Host/device verification owner: parent task/I136-DEVICE-VERIFY. Host resolver failure is before startup, separate from passing local unit evidence and from real-device reproduction. Re-run those routes when available; no host or UI success is claimed here.
 - Minor editorial observation: `tasks/tasks-status.md` now repeats the Issue #123 heading at lines 22/24. This has no demonstrated runtime effect; cleanup can accompany authorized tracking updates.
 - No remaining tool/access blocker for the normal source review itself. Full host/device acceptance evidence remains held. No push, external message/comment, Issue/PR creation, dependency/environment/auth change, commit, merge or deployment occurred.
+
+
+## Normal-review fix verification R1 — 2026-10-06
+
+### Remaining findings first (original identities and severities retained)
+
+- **I136137-NR-001 — P1 — remains open / partial fix.** The stale branch-failure cleanup at `src/ui/current-context/current-context-runtime-coordinator.ts:102` is now guarded and the original late-failure counterexample is addressed. The required current-generation contract still stops at that cleanup and diagnostic output. `CurrentContextRefreshContext` contains neither caller signal nor an `isCurrent` publication predicate; `src/composition/extension.ts:873` invokes the list provider without linking the owning generation, and the dependent helper (`src/application/review-context/projection-refresh.ts:88`) starts PR work after any resolved list refresh. The real provider can return successfully after suppressing its old publication (`src/ui/review-contexts/vscode-review-contexts-runtime.ts:211`). That old continuation then calls `src/composition/extension.ts:823` against the newly selected global context. Reviewer probe FV-A composes the actual provider, helper, selected-progress helper and PR runtime: generation 2 publishes one accepted binary-file node; generation 1 resumes its suppressed list publication, starts a fresh PR activation, and its failed persisted read clears generation 2's accepted files. Observed activation order `[2,1]`, selected kind `pull-request`, accepted file count `1 -> 0`. The submitted delayed-success fixture explicitly returns before attempting any old publication/activation and cannot detect this case (`test/tooling/issue-136-refresh-coordinator.test.mjs:101`). **Required action:** carry the owning signal/current-generation and immutable identity into dependency acquisition/activation/publication; check it after every awaited prerequisite and before PR activation, cleanup and publication; link provider cancellation to the shared owner. Replace the inert delayed-success fixture with the actual provider/PR-runtime composition and assert no stale PR work starts after newer success. Retain delayed failure/cancel and both-entry/selection sibling coverage. This is continuation of the original finding, not a severity change or new criterion.
+
+- **I136137-NR-003 — P2 — remains open / partial fix.** The new enrichment fallback at `src/ui/current-context/current-context-runtime-composition.ts:19` retains local candidates, and Review Contexts-triggered dependent failure retains a verified branch. The preservation guard at `src/ui/current-context/current-context-runtime-coordinator.ts:101` still applies only to `review-contexts-refresh`. The same enrichment/list failure through the Current Context entry produces a plain failure; `src/ui/current-context/vscode-current-context-runtime.ts:126` calls general `failClosed` and discards the verified branch/selection. FV-B uses the actual Current Context runtime and fallback helper with the same failure: `runtime.refresh()` leaves selected context undefined and zero Current Context tree items; `runtime.refreshFromReviewContexts(...)` retains selected `branch`. **Required action:** preserve the verified local branch plus fixed PR-failure reason through both public entries, while clearing obsolete PR progress and retaining complete clearing for unproven local identity. Add actual T405/current-runtime fixtures for list/lifecycle/snapshot failure after checkout/new HEAD and same-identity reload, for both entries, rather than only a late dependent failure behind a synthetic controller.
+
+- **I136137-NR-006 — P2 — remains open / partial fix.** Resolver provenance and default refresh propagation now exist. Explicit selection overwrites provenance with `("explicit-selection-kept", undefined)` at `src/ui/current-context/current-context-runtime-coordinator.ts:144`; `src/composition/extension.ts:842` consequently reports zero candidates even when the selected snapshot carries a candidate count of two. FV-C confirms count `0` for an explicit snapshot with count `2`. The explicit-selection path also omits the new repository-identity stage and never closes `current-context:started`; its observed stage sequence is only current-context started, selection succeeded, publication succeeded. Acquisition still precedes the synthetic list/registration stages, and hardcoded selection/snapshot ordinal `1` and selected-registration presence do not establish actual repository/context/snapshot registration/publication correspondence for all required states. `treeItems` is inferred from snapshot file count rather than accepted tree evidence. The submitted provenance fixture constructs snapshot metadata directly and reproduces the extension's emission in its callback, so it does not exercise the claimed resolver -> T405 -> accepted selection -> extension path (`test/tooling/issue-136-refresh-coordinator.test.mjs:217`). **Required action:** preserve actual selected-candidate count and decision provenance through explicit and recomputed selections; complete identity/acquisition/registration/progress/publication stages, timing, and safe correspondence from accepted production results. Add actual composition fixtures for explicit multiple candidates, unique, ambiguous, no-match, unregistered/empty/failed snapshot and supersession; observe real emitted records and counts without synthesizing the metadata/emitter in the fixture.
+
+### Addressed findings and closure evidence
+
+| Finding | Original severity | R1 disposition at H2 | Production / actual validation evidence |
+| --- | --- | --- | --- |
+| I136137-NR-002 | P1 | closed | `issue-90-detailed-operation-feedback.ts` drops target before activity/queue/log storage and allowlists queued PR reasons/phases. Production exported feedback tests inject hostile fields in OFF/ON; actual parent-owned `PullRequestReviewRuntime.activateProgress` file-read/queue fixture passes in T405. Earlier Issue #90 expectations now assert redacted targets. Raw paths remain supplied to the compatibility API but are absent from formatted diagnostics and stored detail projections. |
+| I136137-NR-004 | P2 | closed | Base start/progress/handled failure/run terminal carry owner IDs; adapter prioritizes explicit IDs and routes `refresh` to the base safe formatter. FV-D adds reviewer-owned actual exported-feedback composition: four concurrent same-label success/failure/cancel/superseded operations in OFF and ON each have exactly one start and terminal with matching ID, retain refresh generations, and do not disclose raw exception text. |
+| I136137-NR-005 | P2 | closed | Shared projection callback now records parent failure and rethrows after independently refreshing decorations/Global (`extension.ts:889` / `:897`); coordinator records failed publication. Submitted helper/coordinator/feedback fixture passes. FV-E also invokes the actual selected-progress helper and real PR activation with unavailable persisted snapshot through both refresh triggers: exactly one failed owner terminal, no successful terminal, failed tree publication, decorations=1 and Global=1. Existing T606 retry/failure and T405 runtime failure/isolation suites pass. |
+
+- R1 closes the original defect behavior for 002/004/005. The full task remains rejected because 001/003/006 retain required actions. Initial findings/verdict at H1 above remain historical and unchanged. No severity reclassification, finding renumbering, independent-final-review pass, or implementation edit occurred.
+
+### Completeness matrix assessment
+
+- Supplied matrix: `reports/issue-136-137-review-fix-implementation-20261006.md` at H2. It has a row for each original finding, but is **partial / not ready for all-findings closure**: 001's delayed-success fixture omits actual downstream work; 003 omits the sibling Current Context runtime failure; 006 uses fabricated snapshot metadata/emission and lacks required actual state fixtures. The initial assertion that all required production fixtures/evidence exist is not supported. No all-findings closure is accepted. This normal fix-verification pass checks the supplied fixes and sibling defects; it is not an independent-final-review closure round.
+
+| Finding | Required-action cells | Production path | Actual fixture / focused evidence | Readiness |
+| --- | --- | --- | --- | --- |
+| 001 P1 | Stale cleanup guard addressed; shared cancellation, post-prerequisite activation/publication guard and actual delayed-success case remain | Coordinator + extension + helper/provider + PR runtime | Submitted race tests green; FV-A reproduces remaining real PR-tree loss | partial/open |
+| 002 P1 | Target storage/output redaction, safe queued PR detail and hostile value checks addressed | Exported detailed boundary + T405 runtime | T405 activation privacy fixture; OFF/ON queue/detail/failure tests | complete/closed |
+| 003 P2 | Enrichment fallback and Review Contexts late failure addressed; Current Context entry, fixed-reason and actual acquisition siblings remain | Fallback + coordinator + actual current runtime | Submitted helper fixture green; FV-B proves entry asymmetry | partial/open |
+| 004 P2 | IDs and formatter forwarding addressed | Base/exported feedback and formatter | Existing focused tests + FV-D four-outcome concurrent OFF/ON composition | complete/closed |
+| 005 P2 | Parent failure, failed publication, independent dependent completion addressed | Extension failure callback + helper + coordinator + real PR activation | Existing fixture + FV-E both entries; T405/T606 failure regressions | complete/closed |
+| 006 P2 | Resolver and recompute metadata addressed; explicit counts/stage completion and actual state/composition correspondence remain | Resolver -> T405 -> coordinator -> extension | Resolver unit cases green; FV-C explicit count defect; submitted metadata fixture insufficient | partial/open |
+
+### Reviewed identity and bounded coverage
+
+- Mode: normal-review fix verification; reviewer continuity `/root/issue_136_137_review` (same reviewer as H1, no implementation or delegated subreview).
+- Reviewed implementation HEAD H2: `9d434c3b8a396d4cf5c1cd568caa0118904a28e8`. First parent H1: `479e27a9265f01be33ed1a1e6182edd56cdb6e44`. Branch: `issue-136-137-refresh-and-safe-diagnostics`.
+- Fix range: `479e27a9265f01be33ed1a1e6182edd56cdb6e44..9d434c3b8a396d4cf5c1cd568caa0118904a28e8`. Accepted full range: `a479bf5cf2b35f342a8dab90dc886a19d8233520..9d434c3b8a396d4cf5c1cd568caa0118904a28e8`.
+- All 19 fix-changed paths inspected, including reports/tracking and direct helper/runtime/formatter dependencies. Prior canonical design/Issue requirements and Skills remain the authority; no new criteria introduced. Source tree was clean at start, matching H2; after verification the only allowed delta is this appended report. Validation is runtime-local Bash at `/workspace/RevMem`, with the same installed dependencies. `verification_capability=local_execution_available`. No PR/matching CI is available or required for this local-only target; no push/CI wait occurred.
+
+| R1 criterion | Disposition | Evidence |
+| --- | --- | --- |
+| Original requirements/design and fix completeness | checked_finding | 001/003/006 remain; 002/004/005 addressed |
+| Correctness, stale/cancel generations, cross-entry publication | checked_finding | FV-A/FV-B; scope follows original findings |
+| Selection, absent/empty/failed snapshot, diagnostic correspondence | checked_finding | FV-C and actual failure/empty-snapshot activation evidence; incomplete 006 fixtures |
+| Privacy and operation IDs/terminal/error handling | checked_no_finding | Redaction fixtures and FV-D/FV-E; 002/004/005 closure |
+| Changed files/direct dependencies/compatibility | checked_finding | Remaining propagation and trigger/provenance defects; old-shape compatibility typecheck green |
+| Scope/configuration/workflow/dependency effects | checked_no_finding | No dependency/auth/workflow/config changes; target redaction affects all detail-target surfaces and existing suite expectations updated |
+| Tests and completeness evidence | checked_finding | All run suites green; missing composed sibling fixtures identified in matrix |
+| T405/T406 and earlier globalState failure | checked_no_finding | Reviewer-owned exact test-tail executions: 87/87 and 29/29; named T406 production seam passed |
+| Tracking/report accuracy | checked_finding | Matrix overstates actual fixture completeness; no closure verdict claimed by implementation report |
+| Current-HEAD CI | not_applicable | Local-only target, no PR/matching CI |
+| Actual Extension Host | held | Parent-owned earlier version-resolution failure before host startup; not rerun |
+| Physical device/UI reproduction | held | Parent-owned I136-DEVICE-VERIFY; no UI claim from stubs |
+
+- Verdict-blocking unexplored areas: none in this bounded normal fix verification. Held items remain host/device, not a substitute for the open required findings.
+
+### Reviewer commands and evidence at H2
+
+- Identity/diff reads: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `git show --no-patch --format='%H %P' HEAD`; `git diff --stat 479e27a9265f01be33ed1a1e6182edd56cdb6e44 9d434c3b8a396d4cf5c1cd568caa0118904a28e8`; `git diff --name-only` with that range; full `git diff 479e27a 9d434c3 -- src`, `-- test tasks`, and focused follow-up diffs/`cat`/`sed -n`/`nl -ba` to recover truncation and inspect all 19 paths. Both reports, current matrix and tracking entries were read. `rg --files` / `rg -n` inspected actual tree provider, activation/calculation and diagnostic definitions. One exploratory nonexistent `src/ui/pull-request-progress/...` glob was corrected to `src/ui/pr-progress/...`; no validation result was inferred from it.
+- `npm run lint && ./node_modules/.bin/tsc -p tsconfig.test.json --noEmit && git diff --check 479e27a 9d434c3`: exit 0.
+- In-memory emit binding (no generated output writes), exact command:
+
+```sh
+node <<'NODE'
+const ts=require('typescript'),fs=require('node:fs');const config=ts.getParsedCommandLineOfConfigFile('tsconfig.test.json',{},ts.sys);const program=ts.createProgram(config.fileNames,config.options);let checked=0;const mismatches=[];const result=program.emit(undefined,(file,text)=>{if(file.endsWith('.js')){checked++;if(!fs.existsSync(file)||fs.readFileSync(file,'utf8')!==text)mismatches.push(file)}});console.log(JSON.stringify({emitSkipped:result.emitSkipped,checkedJavaScript:checked,mismatches}));if(result.emitSkipped||mismatches.length)process.exitCode=1;
+NODE
+```
+
+- Binding result: exit 0; `emitSkipped=false`, `checkedJavaScript=416`, `mismatches=[]`. Existing emitted code used by all runs matches H2 source. The suite commands below execute exactly the `package.json` Node test tails; compilation is replaced by the prior no-write typecheck/in-memory comparison to respect the report-only write boundary.
+
+```sh
+node <<'NODE'
+const {spawnSync}=require('node:child_process');const scripts=require('./package.json').scripts;
+for(const name of ['test:t405','test:t406','test:t305']){
+ const command=scripts[name].replace(/^npm run compile:test && /,'');console.log('COMMAND '+name+': '+command);
+ const r=spawnSync(command,{shell:true,encoding:'utf8',maxBuffer:8*1024*1024});console.log('EXIT '+r.status);
+ if(r.status!==0)console.log(r.stdout,r.stderr);else console.log(r.stdout.trim().split('\n').slice(-9).join('\n'));
+ if(r.status!==0)process.exitCode=1;
+}
+NODE
+```
+
+- Exit 0 for each: T405 **87/87**, T406 **29/29**, T305 **71/71**. T406 stdout explicitly reports `T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation` as passing. The earlier globalState assertion failure did not reproduce on H2; this is a successful rerun result, not an inferred correction of historical evidence.
+
+```sh
+node <<'NODE'
+const {spawnSync}=require('node:child_process');const scripts=require('./package.json').scripts;for(const name of ['test:t606','test:t609']){const command=scripts[name].replace(/^npm run compile:test && /,'');console.log('COMMAND '+name+': '+command);const r=spawnSync(command,{shell:true,encoding:'utf8',maxBuffer:12*1024*1024});console.log('EXIT '+r.status);if(r.status!==0)console.log(r.stdout,r.stderr);else console.log(r.stdout.trim().split('\n').slice(-9).join('\n'));if(r.status!==0)process.exitCode=1;}
+NODE
+```
+
+- Exit 0 each: T606 **235/235**, T609 **92/92**. No Extension Host command executed.
+
+```sh
+node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs test-dist/test/unit/issue-90-diagnostics-and-cancellation.test.js
+```
+
+- Focused result: exit 0, **18/18**. The separate actual PR runtime privacy fixture is included in the T405 run. Passing synthetic races/provenance tests do not refute the reviewer probes below.
+
+### Exact reviewer probes
+
+All probes are inline, use only existing dependencies and synthetic fixture identities, and write no files. Exit 0 means their assertions confirmed the stated behavior. Runtime/host stubs are local unit composition evidence, not Extension Host/device evidence.
+
+**FV-A — actual provider/shared helper/PR runtime, remaining 001:**
+
+```sh
+node <<'NODE'
+const assert=require('node:assert/strict'),Module=require('node:module');const original=Module._load;Module._load=function(r,...a){return r==='vscode'?{EventEmitter:class{event=()=>({dispose(){}});fire(){}dispose(){}}}:original.call(this,r,...a)};const {ReviewContextsTreeProvider}=require('./test-dist/src/ui/review-contexts/vscode-review-contexts-runtime.js');Module._load=original;
+const {CurrentContextRuntimeCoordinator}=require('./test-dist/src/ui/current-context/current-context-runtime-coordinator.js');const {refreshCurrentContextDependents,refreshSelectedPullRequestProgress}=require('./test-dist/src/application/review-context/projection-refresh.js');const {PullRequestReviewRuntime}=require('./test-dist/src/composition/pull-request/pull-request-review-runtime.js');const {ReviewFileExclusionPolicy}=require('./test-dist/src/core/file-exclusion/index.js');const {REVIEW_RANGE_SCHEMA_VERSION:v}=require('./test-dist/src/core/contracts/index.js');
+(async()=>{const a='a'.repeat(40),b='b'.repeat(40);const persisted={schemaVersion:v,contextState:{schemaVersion:v,contextId:'opaque-pr',kind:'pull-request',repositoryId:'opaque',displayName:'PR',pullRequest:{host:'github.com',owner:'fixture',repository:'fixture',number:52,state:'open',baseSha:a,headSha:b},files:{},createdAt:'2026-10-06T00:00:00Z',updatedAt:'2026-10-06T00:00:00Z'},globalState:{schemaVersion:v,repositoryId:'opaque',currentRevisionId:b,files:{},updatedAt:'2026-10-06T00:00:00Z'}};let failRead=false;const runtime=new PullRequestReviewRuntime({repository:{load:async()=>failRead?undefined:structuredClone(persisted)},requestHistory:async()=>{},diffHost:{parseUri:x=>x,openDiff:async()=>{}},getExclusionPolicy:()=>new ReviewFileExclusionPolicy({userGlobs:[]})});runtime.register({repositoryId:'opaque',repositoryRoot:'/fixture',fileSystemPathSemantics:'posix',snapshot:{contextId:'opaque-pr',baseSha:a,headSha:b,originalDiffId:a+'..'+b,files:[{fileId:'opaque-file',oldPath:'fixture.bin',newPath:'fixture.bin',status:'binary',additions:0,deletions:0,hunks:[]}]},readTextContent:async()=>({kind:'found',content:''})});
+let releaseOld,enteredOld;const gate=new Promise(r=>releaseOld=r),entered=new Promise(r=>enteredOld=r);let publishes=0;const list=new ReviewContextsTreeProvider({load:async()=>[],publishLoaded:async()=>{if(++publishes===1){enteredOld();await gate}return []}});let selected;const starts=[];const coordinator=new CurrentContextRuntimeCoordinator({refresh:async()=>({snapshot:{context:{kind:'branch',label:'old',selection:{kind:'branch'}}},stale:false}),selectContext:async()=>({context:{kind:'pull-request',label:'#52',selection:{kind:'pull-request',contextId:'opaque-pr'}},progress:undefined})},{setSelectedContext:s=>selected=s,refreshDependents:async c=>{let failure;await refreshCurrentContextDependents({refreshReviewContexts:()=>list.refresh(c.feedbackContext),refreshPullRequestProgress:async()=>{starts.push(c.generation);await refreshSelectedPullRequestProgress({contextId:selected.contextId,source:runtime.progress,feedbackContext:c.feedbackContext,activateProgress:(id,ctx)=>runtime.activateProgress(id,ctx),clearProgress:()=>runtime.clearProgress(),setSource:()=>{},refreshTree:()=>{}})},refreshDecorations:async()=>{},refreshGlobal:async()=>{},reportPullRequestProgressError:async e=>{failure=e}});if(failure)throw failure}});
+const old=coordinator.refreshFromReviewContexts();await entered;await coordinator.selectContext();assert.equal(runtime.progress.getEffectiveProgress().files.length,1);failRead=true;releaseOld();await old;assert.equal(runtime.progress.getEffectiveProgress().files.length,0);assert.equal(selected.kind,'pull-request');console.log('NR-001 ACTUAL PR runtime: stale generation activated after newer success and cleared accepted tree:',JSON.stringify({starts,files:runtime.progress.getEffectiveProgress().files.length,selected:selected.kind}));})().catch(e=>{console.error(e);process.exitCode=1});
+NODE
+```
+
+- FV-A exit 0; output `{"starts":[2,1],"files":0,"selected":"pull-request"}` after asserting one accepted file before releasing the old publication. Before this corrected probe, an exploratory empty-snapshot variant exited 1 because it incorrectly expected `progress.getChildren()` to become `[]` on clear; this provider always retains five root categories. The corrected binary-file fixture observes `getEffectiveProgress().files`, so the failed assertion is a probe-assumption correction, not a product finding. A prior valid empty-snapshot activation command confirmed five categories. A simpler provider/helper probe also confirmed activation order `[2,1]` and a stale-cleared marker; FV-A replaces that marker with actual runtime file-tree evidence.
+
+**FV-B — actual Current Context runtime entry asymmetry, remaining 003:**
+
+```sh
+node <<'NODE'
+const assert=require('node:assert/strict'),Module=require('node:module');const d={dispose(){}};const providers=new Map();const fake={EventEmitter:class{event=()=>d;fire(){}dispose(){}},TreeItem:class{},ThemeIcon:class{},TreeItemCollapsibleState:{None:0},StatusBarAlignment:{Left:1},window:{createTreeView:()=>d,registerTreeDataProvider:(id,p)=>{providers.set(id,p);return d},createStatusBarItem:()=>({show(){},hide(){},dispose(){}}),onDidChangeActiveTextEditor:()=>d},commands:{registerCommand:()=>d}};const load=Module._load;Module._load=function(r,...a){return r==='vscode'?fake:load.call(this,r,...a)};const {registerCurrentContextRuntime}=require('./test-dist/src/ui/current-context/vscode-current-context-runtime.js');Module._load=load;const {augmentCurrentContextCandidatesWithBranchFallback}=require('./test-dist/src/ui/current-context/current-context-runtime-composition.js');
+(async()=>{let fail=false,selected;const branch={context:{kind:'branch',label:'checked-out',headRevision:'verified-new-head',selection:{kind:'branch',repositoryId:'opaque',repositoryRoot:'/fixture',branchRef:'refs/heads/checked-out'}},progress:undefined};const runtime=registerCurrentContextRuntime({subscriptions:[]},{recompute:async()=>{const c=await augmentCurrentContextCandidatesWithBranchFallback([branch],async()=>{if(fail)throw new Error('PR enrichment failed');return [branch]});return c[0]},selectContext:async()=>branch},{setSelectedContext:s=>selected=s,refreshDependents:async()=>{if(fail)throw new Error('PR list failed')},clearPullRequestProgress:()=>{}},()=>{});await runtime.startupRefresh;fail=true;await runtime.refresh();assert.equal(selected,undefined);assert.deepEqual(providers.get('reviewRange.currentContext').getChildren(),[]);console.log('NR-003: Current Context refresh discarded verified branch, selected=',selected);await assert.rejects(()=>runtime.refreshFromReviewContexts({owner:{},id:1}));assert.equal(selected.kind,'branch');console.log('NR-003: same failure via Review Contexts retained branch, selected=',selected.kind)})().catch(e=>{console.error(e);process.exitCode=1});
+NODE
+```
+
+- FV-B exit 0; observed Current Context `selected=undefined`, then same failure through Review Contexts `selected=branch`.
+
+**FV-C — explicit snapshot provenance/count, remaining 006:**
+
+```sh
+node <<'NODE'
+const assert=require('node:assert/strict');const {OperationFeedback}=require('./test-dist/src/application/operation-feedback/index.js');const {CurrentContextRuntimeCoordinator}=require('./test-dist/src/ui/current-context/current-context-runtime-coordinator.js');(async()=>{const logs=[];const f=new OperationFeedback({showBusy(){},clearBusy(){},appendLog:x=>logs.push(x),revealLog(){}});const s={context:{kind:'pull-request',label:'#52',pullRequestCandidateCount:2,selectionReason:'explicit-selection-kept',selection:{kind:'pull-request'}}};let p;const c=new CurrentContextRuntimeCoordinator({selectContext:async()=>s},{refreshDependents:async ctx=>{p=ctx.selectionProvenance();ctx.report('pr-selection','succeeded',{reasonCode:p.reason,counts:{pullRequestCandidates:p.candidateCount??0}})}});await f.run('Current Contextを選択',ctx=>c.selectContext(undefined,ctx));const x=logs.find(x=>x.pullRequestRefresh?.stage==='pr-selection');assert.equal(x.pullRequestRefresh.counts.pullRequestCandidates,0);console.log('NR-006: explicit choice with actual 2 candidates reports',x.pullRequestRefresh.counts);console.log('NR-006: operation stages:',logs.filter(x=>x.pullRequestRefresh).map(x=>x.pullRequestRefresh.stage+':'+x.pullRequestRefresh.status))})().catch(e=>{console.error(e);process.exitCode=1});
+NODE
+```
+
+- FV-C exit 0; count `0` despite accepted snapshot count `2`; stages `current-context:started`, `pr-selection:succeeded`, `tree-publication:succeeded`. This is a coordinator provenance-loss proof with a valid input snapshot, not a claim that the full resolver/T405 fixture is covered.
+
+**FV-D — actual production exported feedback, addressed 004:**
+
+```sh
+node <<'NODE'
+const assert=require('node:assert/strict');const {OperationFeedback,formatOperationLogEntry,OperationCancelledError}=require('./test-dist/src/application/operation-feedback/index.js');
+(async()=>{for(const detailed of [false,true]){const logs=[];const feedback=new OperationFeedback({isDetailedDiagnosticsEnabled:()=>detailed,showBusy(){},clearBusy(){},appendLog:x=>logs.push(x),revealLog(){}});let release;const gate=new Promise(r=>release=r);const work=['success','failure','cancelled','superseded'].map((kind,i)=>feedback.run('Review Contextsを更新',async ctx=>{feedback.reportPullRequestRefresh(ctx,{generation:i+1,trigger:'review-contexts-refresh',stage:'current-context',status:'started'});await gate;if(kind==='failure')throw new Error('synthetic private exception');if(kind==='cancelled')throw new OperationCancelledError();if(kind==='superseded')feedback.reportPullRequestRefresh(ctx,{generation:i+1,trigger:'review-contexts-refresh',stage:'current-context',status:'superseded',reasonCode:'superseded'});}));release();await Promise.allSettled(work);for(let id=1;id<=4;id++){const own=logs.filter(x=>x.operationId===id);assert.equal(own.filter(x=>x.event==='started').length,1);assert.equal(own.filter(x=>['succeeded','failed','cancelled'].includes(x.event)).length,1);assert(own.some(x=>x.event==='refresh'));}const rendered=logs.map(formatOperationLogEntry).join('\n');assert(rendered.includes('generation=4'));assert(!rendered.includes('synthetic private exception'));console.log('NR-004 BOTH MODES concurrency:',JSON.stringify({detailed,terminals:logs.filter(x=>['succeeded','failed','cancelled'].includes(x.event)).map(x=>[x.operationId,x.event])}));}})().catch(e=>{console.error(e);process.exitCode=1});
+NODE
+```
+
+- FV-D exit 0; OFF and ON each yield terminals `[[1,"succeeded"],[2,"failed"],[3,"cancelled"],[4,"cancelled"]]`, matching each start and refresh owner ID.
+
+**FV-E — real PR activation failure through both triggers, addressed 005:**
+
+```sh
+node <<'NODE'
+const assert=require('node:assert/strict');const {OperationFeedback,reportActiveOperationFailure}=require('./test-dist/src/application/operation-feedback/index.js');const {CurrentContextRuntimeCoordinator,CurrentContextUiController}=require('./test-dist/src/ui/current-context/index.js');const {refreshCurrentContextDependents,refreshSelectedPullRequestProgress}=require('./test-dist/src/application/review-context/projection-refresh.js');const {PullRequestReviewRuntime}=require('./test-dist/src/composition/pull-request/pull-request-review-runtime.js');const {ReviewFileExclusionPolicy}=require('./test-dist/src/core/file-exclusion/index.js');
+(async()=>{for(const entry of ['current-context-refresh','review-contexts-refresh']){const logs=[];const f=new OperationFeedback({showBusy(){},clearBusy(){},appendLog:x=>logs.push(x),revealLog(){}});const a='a'.repeat(40),b='b'.repeat(40);const r=new PullRequestReviewRuntime({repository:{load:async()=>undefined},requestHistory:async()=>{},diffHost:{parseUri:x=>x,openDiff:async()=>{}},getExclusionPolicy:()=>new ReviewFileExclusionPolicy({userGlobs:[]})});r.register({repositoryId:'opaque',repositoryRoot:'/fixture',fileSystemPathSemantics:'posix',snapshot:{contextId:'opaque-pr',baseSha:a,headSha:b,originalDiffId:a+'..'+b,files:[]},readTextContent:async()=>({kind:'found',content:''})});const snap={context:{kind:'pull-request',label:'#52',selection:{kind:'pull-request',contextId:'opaque-pr'}},progress:undefined};const controller=new CurrentContextUiController({setCurrentContext(){},setStatusBar(){},clearCurrentContext(){},clearStatusBar(){}},{recompute:async()=>snap,selectContext:async()=>snap});let dec=0,global=0;const c=new CurrentContextRuntimeCoordinator(controller,{refreshDependents:async ctx=>{let failure;await refreshCurrentContextDependents({refreshReviewContexts:async()=>{},refreshPullRequestProgress:async()=>{ctx.report('pr-progress','started');try{await refreshSelectedPullRequestProgress({contextId:'opaque-pr',source:r.progress,feedbackContext:ctx.feedbackContext,activateProgress:(id,p)=>r.activateProgress(id,p),clearProgress:()=>r.clearProgress(),setSource:()=>{},refreshTree:()=>{}})}catch(e){ctx.report('pr-progress','failed',{reasonCode:'refresh-failed'});throw e}},refreshDecorations:async()=>{dec++},refreshGlobal:async()=>{global++},reportPullRequestProgressError:e=>{failure=e;reportActiveOperationFailure('PR進捗を再計算',e,ctx.feedbackContext)}});if(failure){ctx.report('tree-publication','failed',{reasonCode:'refresh-failed'});throw failure}}});await assert.rejects(f.run('Review Contextsを更新',ctx=>c.refresh(undefined,ctx,{allowInteraction:false},entry)),/Persisted pull-request/);assert.equal(logs.filter(x=>x.event==='failed').length,1);assert.equal(logs.filter(x=>x.event==='succeeded').length,0);assert.equal(dec,1);assert.equal(global,1);assert(logs.some(x=>x.pullRequestRefresh?.stage==='tree-publication'&&x.pullRequestRefresh.status==='failed'));console.log('NR-005 actual PR runtime failure:',JSON.stringify({entry,failedTerminals:1,succeededTerminals:0,dec,global}));}})().catch(e=>{console.error(e);process.exitCode=1});
+NODE
+```
+
+- FV-E exit 0; both triggers produce `{failedTerminals:1,succeededTerminals:0,dec:1,global:1}`. The callback uses the same report/rethrow composition now inspected in the extension; the extension itself is not claimed to have run in a host.
+
+### R1 outcome, risks, and next action
+
+- **Verdict: fail at H2 `9d434c3b8a396d4cf5c1cd568caa0118904a28e8`.** Remaining required findings: 001 P1, 003 P2, 006 P2. Closed at H2: 002 P1, 004 P2, 005 P2. Reviewer-owned T405/T406/T305/T606/T609 and focused runs all pass; no broader host/full-equivalence or CI result is claimed.
+- Risks: suppressed old list work can still invalidate a newer accepted PR tree; Current Context refresh still removes a proven branch on PR-only failure; explicit selection and stage/correspondence diagnostics still misdescribe runtime state. Host/device remain held separately.
+- Next action: implementation owner completes the remaining original required-action cells and actual fixtures, updates the matrix accurately, freezes a new target HEAD, then requests same-reviewer fix verification. Retain all original IDs/severities and this H1/H2 history. No push/PR/Issue/merge/deploy/environment/dependency/auth changes are authorized by this report.
+- Allowed persistence: only this append to the pre-existing normal-review report. `report_attestation_allowed=false`; no independent-final-review identity or administrative attestation is inferred. Parent owns further report/tracking persistence.
+
+## R2 reviewer outcome recovery (parent-supplied lifecycle facts, 2026-10-06)
+
+This append restores the outcome facts supplied by parent `/root` during the fresh implementation handoff. The earlier R2 append was accidentally removed during workspace restoration. This is an evidence-source disclosure, not a new review performed by the implementation worker; missing original R2 command outputs are not reconstructed.
+
+- Same reviewer: `/root/issue_136_137_review`; R2 reviewed HEAD: `efe6730b6a3357df48a4ef4eb0725945e8a28f56`. Current workspace remains on H2 `9d434c3b8a396d4cf5c1cd568caa0118904a28e8` plus retained dirty work; no checkout/reset/reflog recovery was performed.
+- R2 outcome: NR-003 (P2) closed after a reviewer-owned actual 12-case matrix: list/lifecycle/snapshot failure × same/new HEAD or branch × Current Context/Review Contexts entries. NR-002 (P1), NR-004 (P2), and NR-005 (P2) retain their prior closed status.
+- NR-001 (P1) remained open: an already-running old PR calculation can publish after owner cancellation or newer explicit selection; both triggers reproduced. The remaining action is to link cancellation through running calculation, preserve newer immutable identity/tree, and fence every late publication/cleanup.
+- NR-006 (P2) remained open: recompute omitted the Current Context terminal and repository-identity start/duration; acquisition/registration/progress/publication correspondence and actual emitted-record cases (unique, ambiguous, no-match, selected-unregistered, empty/failed snapshot, supersession) were incomplete.
+- New implementation evidence is appended to `reports/issue-136-137-r2-regressions-20261006.md`. It applies to its recorded current dirty content and subsequent review-target commit. Closure of NR-001/006 remains with the same reviewer. This implementation worker does not issue a verdict.

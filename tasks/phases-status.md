@@ -40,7 +40,7 @@ Lを超える見込みになった場合は再分解する。
 - 設計/レビューsol high、実装terra high。100人の利用で月1回以上の頻度基準で対応を絞る。
 
 - P4保守: Issue #123で、local HEADより同一identity remoteのtracking branchが先行している場合のPR Context / PR Progress revision同期を対応中。local editor ownershipはlocal HEADのまま、fetch済みtracking revisionだけをPR synchronization targetとして扱う。
-- P4保守: Issues #136/#137の共有generation-fenced refresh coordinatorと秘匿診断を実装。通常review NR-001..006を修正し、T305/T405/T406/T606/T609とfocused lifecycle/privacy suiteがpass。現在は同一reviewerによるfix verification待ち。Extension HostのVS Code version解決と実機UI確認は、ホスト起動前/実機待ちのheld項目として分離する。
+- P4保守: Issues #136/#137の同一normal reviewer R2 outcomeを親提供のlifecycle事実から復元。NR-002/003/004/005はclosed、NR-001/006は新しいreview-target待ち。保持したdirty修正にactual provider/runtime/T405構成のtest-first修正を追加しfocused 25/25がGreen（実行source指紋 `f0e022dc2e061c5b4314cfff558b6dd354198a5441b83defd26f06267cdbc35c`）。broader validation pass、review-target commit準備済み（結果SHAはhandoffに記録）、technical HEAD/parentはH2 `9d434c3b8a396d4cf5c1cd568caa0118904a28e8`。全command/失敗/hashはR2 regressions reportに保持。Extension HostのVS Code version解決と実機UI確認はheld、push/CI/外部公開なし。
 
 ## 過去の現在位置（2026-09-06）
 

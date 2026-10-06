@@ -29,7 +29,8 @@ import {
   CurrentContextRuntimeComposition,
   augmentCurrentContextCandidatesWithBranchFallback,
   type CurrentContextNonDestructiveOutcome,
-  type CurrentContextUiSnapshot
+  type CurrentContextUiSnapshot,
+  type CurrentContextRefreshContext
 } from "../ui/current-context/index";
 import {
   gitCurrentContextSnapshot,
@@ -37,6 +38,7 @@ import {
   resolveMissingRepositoryFallback,
   selectedCurrentContextRepositoryRoot
 } from "./current-context/git-context-inspection";
+import { refreshCurrentContextPullRequestViews } from "./current-context/current-context-pull-request-views";
 import { createCurrentContextInspectionSession } from "./current-context/current-context-inspection-session";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-context/repository-resolution";
 import { resolveT305RepositoryRootUri } from "../application/repository-path/repository-root-uri";
@@ -49,7 +51,6 @@ import {
 } from "../ui/global-understanding/index";
 import {
   refreshAfterDocumentEdit,
-  refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
 } from "../application/review-context/projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "../ui/global-understanding/global-understanding-ui-model";
@@ -595,20 +596,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
-  const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext): Promise<void> => {
+  const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
     const testContextId = context.extensionMode === vscode.ExtensionMode.Test
       ? testPullRequestRuntimeTarget?.contextId
       : undefined;
-    const contextId = testContextId ?? (selectedContext?.kind === "pull-request" &&
-      pullRequestReviewRuntime.hasContext(selectedContext.contextId)
-      ? selectedContext.contextId
+    const contextId = testContextId ?? (selection?.kind === "pull-request" &&
+      pullRequestReviewRuntime.hasContext(selection.contextId)
+      ? selection.contextId
       : undefined);
     await refreshSelectedPullRequestProgress({
       contextId,
+      shouldContinue: () => owner?.isCurrent() ?? true,
       source: pullRequestReviewRuntime.progress,
       feedbackContext,
       activateProgress: (selectedContextId, parentFeedbackContext) =>
-        pullRequestReviewRuntime.activateProgress(selectedContextId, parentFeedbackContext),
+        pullRequestReviewRuntime.activateProgress(selectedContextId, parentFeedbackContext, owner?.signal),
       clearProgress: () => pullRequestReviewRuntime.clearProgress(),
       setSource: (source) => runtimePort.setPullRequestProgressSource(source),
       refreshTree: () => runtimePort.refreshPullRequestProgressTree()
@@ -815,50 +817,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       },
       refreshDependents: async (refreshContext) => {
         testCurrentContextDependentRefreshCount += 1;
-        let pullRequestRefreshFailure: unknown;
-        await refreshCurrentContextDependents({
-          refreshPullRequestProgress: async () => {
-            refreshContext?.report("pr-progress", "started");
-            try {
-              await refreshPullRequestProgressForSelection(refreshContext?.feedbackContext);
-              const selectedPullRequest = selectedContext?.kind === "pull-request" ? selectedContext : undefined;
-              const selectedSnapshot = selectedPullRequest === undefined
-                ? undefined
-                : pullRequestReviewRuntime.snapshotForContext(selectedPullRequest.contextId);
-              const provenance = refreshContext?.selectionProvenance();
-              const selectionReasonCode = provenance?.reason ?? (selectedPullRequest === undefined
-                ? "no-selected-pr"
-                : undefined);
-              const progressReasonCode = selectedPullRequest === undefined
-                ? selectionReasonCode ?? "no-selected-pr"
-                : selectedSnapshot === undefined
-                  ? "snapshot-unavailable"
-                  : selectedSnapshot.files.length === 0
-                    ? "no-pr-files"
-                    : undefined;
-              refreshContext?.report("pr-selection", "succeeded", {
-                ...(selectionReasonCode === undefined ? {} : { reasonCode: selectionReasonCode }),
-                counts: {
-                  pullRequestCandidates: provenance?.candidateCount ?? 0,
-                  registeredPullRequests: selectedSnapshot === undefined ? 0 : 1,
-                  selectedContextOrdinal: selectedPullRequest === undefined ? 0 : 1,
-                  snapshotOrdinal: selectedSnapshot === undefined ? 0 : 1,
-                },
-              });
-              refreshContext?.report("pr-progress", "succeeded", {
-                ...(progressReasonCode === undefined ? {} : { reasonCode: progressReasonCode }),
-                counts: {
-                  ...(selectedSnapshot === undefined ? {} : { snapshotFiles: selectedSnapshot.files.length }),
-                  treeItems: selectedSnapshot?.files.length ?? 0,
-                  selectedContextOrdinal: selectedPullRequest === undefined ? 0 : 1,
-                  snapshotOrdinal: selectedSnapshot === undefined ? 0 : 1,
-                },
-              });
-            } catch (error) {
-              refreshContext?.report("pr-progress", "failed", { reasonCode: "refresh-failed" });
-              throw error;
-            }
-          },
+        const acceptedSelection = selectedContext;
+        await refreshCurrentContextPullRequestViews({
+          selection: acceptedSelection,
+          runtime: pullRequestReviewRuntime,
+          refreshProgress: (owner) => refreshPullRequestProgressForSelection(owner, refreshContext, acceptedSelection),
+          refreshList: (owner) => reviewContextsRuntimeRef.current?.refreshListOnly?.(owner, refreshContext?.signal) ?? Promise.resolve(),
           refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
           refreshGlobal: async () => {
             await Promise.all(vscode.workspace.textDocuments
@@ -866,38 +830,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
               .map(observeCurrentGlobalUnderstandingDocument));
             await refreshGlobalUnderstandingForMutation({ reason: "current-context-changed", phase: "global-refresh-trigger" });
           },
-          refreshReviewContexts: async () => {
-            refreshContext?.report("diff-registration", "started");
-            refreshContext?.report("review-contexts-list", "started");
-            try {
-              await reviewContextsRuntimeRef.current?.refreshListOnly?.(refreshContext?.feedbackContext);
-              refreshContext?.report("review-contexts-list", "succeeded");
-              const selectedPullRequest = selectedContext?.kind === "pull-request" ? selectedContext : undefined;
-              const isRegistered = selectedPullRequest !== undefined &&
-                pullRequestReviewRuntime.hasContext(selectedPullRequest.contextId);
-              const registrationFailed = selectedPullRequest !== undefined && !isRegistered;
-              refreshContext?.report("diff-registration", registrationFailed ? "failed" : "succeeded", {
-                ...(registrationFailed ? { reasonCode: "snapshot-unavailable" } : {}),
-                counts: { registeredPullRequests: isRegistered ? 1 : 0 },
-              });
-            } catch (error) {
-              refreshContext?.report("review-contexts-list", "failed", { reasonCode: "refresh-failed" });
-              refreshContext?.report("diff-registration", "failed", { reasonCode: "refresh-failed" });
-              throw error;
-            }
-          },
-          reportPullRequestProgressError: async (error) => {
-            pullRequestRefreshFailure = error;
-            if (refreshContext?.feedbackContext !== undefined) {
-              reportActiveOperationFailure("PR進捗を再計算", error, refreshContext.feedbackContext);
-            }
-            await reportPullRequestProgressError(error);
-          }
-        });
-        if (pullRequestRefreshFailure !== undefined) {
-          refreshContext?.report("tree-publication", "failed", { reasonCode: "refresh-failed" });
-          throw pullRequestRefreshFailure;
-        }
+          reportProgressError: reportPullRequestProgressError,
+        }, refreshContext);
       }
     },
     async (error) => {

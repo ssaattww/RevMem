@@ -180,10 +180,13 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     return [...this.items];
   }
 
-  public async refresh(feedbackContext?: OperationFeedbackContext): Promise<void> {
+  public async refresh(feedbackContext?: OperationFeedbackContext, signal?: AbortSignal): Promise<void> {
     this.refreshController?.abort();
     const controller = new AbortController();
     this.refreshController = controller;
+    const abort = (): void => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     const generation = ++this.generation;
     try {
       if (feedbackContext !== undefined) {
@@ -196,12 +199,14 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
         () => this.source.load(controller.signal, feedbackContext),
         controller.signal,
       );
+      if (controller.signal.aborted || generation !== this.generation) return;
       if (hasOperationFeedbackFailure(feedbackContext)) {
         if (generation === this.generation) this.clear();
         return;
       }
       if (generation !== this.generation) return;
       const published = await this.source.publishLoaded?.();
+      if (controller.signal.aborted || generation !== this.generation) return;
       // A deferred cache write can change cache status or record a terminal
       // storage failure. Never publish the pre-write projection in either case.
       if (hasOperationFeedbackFailure(feedbackContext)) {
@@ -222,8 +227,11 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       this.changed.fire();
     } catch (error) {
       // An old operation must never erase the newer accepted projection.
-      if (generation === this.generation) this.clear();
+      if (generation === this.generation && !controller.signal.aborted) this.clear();
       throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (this.refreshController === controller) this.refreshController = undefined;
     }
   }
   /** Clears the list when its replacement cannot be proven current. */
@@ -264,7 +272,7 @@ export interface RegisteredReviewContextsRuntime {
   /** Runs the shared Current Context, PR-list, and PR Progress refresh sequence. */
   refresh(): Promise<void>;
   /** Internal projection refresh used by the shared coordinator; never calls the external refresh command. */
-  refreshListOnly?(feedbackContext?: OperationFeedbackContext): Promise<void>;
+  refreshListOnly?(feedbackContext?: OperationFeedbackContext, signal?: AbortSignal): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
   /** Optional Test-only read-only snapshot of the accepted tree projection. */
   getProjectionSnapshotForTest?(): readonly ReviewContextListItem[];
@@ -385,7 +393,7 @@ export function registerReviewContextsRuntime(
         throw new Error("PR Progressの再計算に失敗しました。");
       }
     },
-    refreshListOnly: (feedbackContext) => provider.refresh(feedbackContext),
+    refreshListOnly: (feedbackContext, signal) => provider.refresh(feedbackContext, signal),
     refreshWithErrorBoundary,
     getProjectionSnapshotForTest: () => provider.getChildren(),
     dispose: () => provider.dispose(),

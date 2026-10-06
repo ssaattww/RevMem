@@ -73,7 +73,8 @@ const reviewContextLabel = (
 /** Coordinates refreshes around the canonical PR review runtime. */
 export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<Uri> {
   private acceptedProgressKey: string | undefined;
-  private inFlight: { readonly key: string; readonly promise: Promise<void> } | undefined;
+  private inFlight: { readonly key: string; readonly promise: Promise<void>; readonly signal?: AbortSignal } | undefined;
+  private activationGeneration = 0;
   private suppressTreeClear = false;
   private activeFileProgress: ActiveFileProgress | undefined;
   private readonly clearAcceptedTree: () => void;
@@ -249,16 +250,18 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   public override async activateProgress(
     contextId: string,
     feedbackContext?: Parameters<BasePullRequestReviewRuntime<Uri>["activateProgress"]>[1],
+    signal?: AbortSignal,
   ): Promise<void> {
     const snapshot = this.snapshotForContext(contextId);
     if (snapshot === undefined) {
       queueOperationStartDetails("PR進捗を計算", [{ reason: "missing-pr-snapshot", phase: "progress-input" }]);
-      await super.activateProgress(contextId, feedbackContext);
+      await super.activateProgress(contextId, feedbackContext, signal);
       return;
     }
     const key = snapshotKey(snapshot);
     const existing = this.inFlight;
-    if (existing?.key === key) return existing.promise;
+    if (existing?.key === key && existing.signal === signal) return existing.promise;
+    const generation = ++this.activationGeneration;
     if (existing !== undefined) {
       this.acceptedProgressKey = undefined;
       this.suppressTreeClear = false;
@@ -300,10 +303,10 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       this.suppressTreeClear = preserveAcceptedTree;
       this.activeFileProgress = { key, total: snapshot.files.length, seen: new Set<string>() };
       try {
-        await super.activateProgress(contextId, feedbackContext);
-        this.acceptedProgressKey = key;
+        await super.activateProgress(contextId, feedbackContext, signal);
+        if (generation === this.activationGeneration) this.acceptedProgressKey = key;
       } catch (error) {
-        if (preserveAcceptedTree && this.acceptedProgressKey === key) {
+        if (generation === this.activationGeneration && preserveAcceptedTree && this.acceptedProgressKey === key) {
           this.suppressTreeClear = false;
           this.clearAcceptedTree();
           this.acceptedProgressKey = undefined;
@@ -311,7 +314,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         throw error;
       }
     })();
-    this.inFlight = { key, promise: run };
+    this.inFlight = { key, promise: run, ...(signal === undefined ? {} : { signal }) };
     try {
       await run;
     } finally {
@@ -324,6 +327,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   }
 
   public override clearProgress(): void {
+    this.activationGeneration += 1;
     this.acceptedProgressKey = undefined;
     this.activeFileProgress = undefined;
     this.suppressTreeClear = false;
