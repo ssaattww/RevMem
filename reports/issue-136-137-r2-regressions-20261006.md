@@ -6128,10 +6128,10 @@ test at test-dist/test/unit/t405-composition-regression.test.js:644:17
 ✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (94.304731ms)
   AssertionError [ERR_ASSERTION]: current-context-refresh: retain the initial failure and recovery cause
   + actual - expected
-  
+
   + undefined
   - 'verified-branch-preserved'
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:675:34)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:644:9)
@@ -6164,9 +6164,9 @@ test at test-dist/test/unit/t405-composition-regression.test.js:680:17
 test at test-dist/test/unit/t405-composition-regression.test.js:702:17
 ✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (92.458328ms)
   AssertionError [ERR_ASSERTION]: explicit publication failure must close its started stage
-  
+
   0 !== 1
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:739:30)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:702:9)
@@ -6249,10 +6249,10 @@ test at test-dist/test/unit/t405-composition-regression.test.js:644:17
 ✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (55.532639ms)
   AssertionError [ERR_ASSERTION]: current-context-refresh: retain the initial failure and recovery cause
   + actual - expected
-  
+
   + undefined
   - 'verified-branch-preserved'
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:675:34)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:644:9)
@@ -6269,9 +6269,9 @@ test at test-dist/test/unit/t405-composition-regression.test.js:644:17
 test at test-dist/test/unit/t405-composition-regression.test.js:680:17
 ✖ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (91.865195ms)
   AssertionError [ERR_ASSERTION]: current-context-refresh: rejected acquisition must close started identity
-  
+
   0 !== 1
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:698:34)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:680:9)
@@ -6288,9 +6288,9 @@ test at test-dist/test/unit/t405-composition-regression.test.js:680:17
 test at test-dist/test/unit/t405-composition-regression.test.js:702:17
 ✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (109.073111ms)
   AssertionError [ERR_ASSERTION]: explicit publication failure must close its started stage
-  
+
   0 !== 1
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:739:30)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:702:9)
@@ -6393,7 +6393,7 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:376:1
 ✖ early T405 augmentation failure keeps the verified branch and clears dependent PR state (2.430877ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
   + actual - expected
-  
+
     [
       {
         context: {
@@ -6406,7 +6406,7 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:376:1
             kind: 'branch',
             repositoryId: 'opaque-repo',
             repositoryRoot: '/fixture'
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:388:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -8219,3 +8219,6 @@ stderr (full):
 
 ```text
 ```
+
+
+AUDIT-001 representation correction: the 12 whitespace-only blank lines added after base `5d0320aa037624022494fe877b08e317651b2541` were normalized to empty lines. All existing non-whitespace characters and evidence content are preserved. For exact captured whitespace bytes, use the immutable prior report at commit `08bb2b6cd0eec22c79f64e8e55f684400dbd5e8d` (Git blob `558ba2838721374520bf2f4c6e0bddb5fba1be1a`); a runtime-local byte copy is also retained at `/tmp/i136-r2-evidence/audit-001/report-before.md`. Transcript verbatim-whitespace claims above are subject to this representation correction; no implementation or validation result was changed.
