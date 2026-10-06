@@ -2633,9 +2633,9 @@ stdout (full):
 test at test/tooling/issue-136-refresh-coordinator.test.mjs:103:1
 ✖ R2 NR-001 owning cancellation reaches the actual list provider before publication (19.466103ms)
   AssertionError [ERR_ASSERTION]: owner cancellation must reach deep list acquisition
-  
+
   false !== true
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:121:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
@@ -2650,9 +2650,9 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:103:1
 test at test/tooling/issue-136-refresh-coordinator.test.mjs:126:1
 ✖ R2 NR-001 selected progress helper fences its finally publication after supersession (10.207889ms)
   AssertionError [ERR_ASSERTION]: old completion must not redraw the newer tree
-  
+
   2 !== 1
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:140:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -2668,10 +2668,10 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:143:1
 ✖ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (2.977298ms)
   AssertionError [ERR_ASSERTION]: cancelled owner must not accept a PR snapshot
   + actual - expected
-  
+
   + 'fulfilled'
   - 'rejected'
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:154:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -2717,9 +2717,9 @@ stdout (full):
 test at test/tooling/issue-136-refresh-coordinator.test.mjs:103:1
 ✖ R2 NR-001 owning cancellation reaches the actual list provider before publication (32.443979ms)
   AssertionError [ERR_ASSERTION]: owner cancellation must reach deep list acquisition
-  
+
   false !== true
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:121:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
@@ -2734,9 +2734,9 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:103:1
 test at test/tooling/issue-136-refresh-coordinator.test.mjs:126:1
 ✖ R2 NR-001 selected progress helper fences its finally publication after supersession (53.64989ms)
   AssertionError [ERR_ASSERTION]: old completion must not redraw the newer tree
-  
+
   2 !== 1
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:140:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -2752,10 +2752,10 @@ test at test/tooling/issue-136-refresh-coordinator.test.mjs:143:1
 ✖ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (5.848782ms)
   AssertionError [ERR_ASSERTION]: cancelled owner must not accept a PR snapshot
   + actual - expected
-  
+
   + 'fulfilled'
   - 'rejected'
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:154:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -2929,9 +2929,9 @@ stdout (full):
 test at test/tooling/issue-136-refresh-coordinator.test.mjs:158:1
 ✖ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (22.374913ms)
   AssertionError [ERR_ASSERTION]: obsolete wrapper cleanup must preserve accepted newer snapshot
-  
+
   0 !== 1
-  
+
       at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:172:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
@@ -3169,9 +3169,9 @@ stdout (full):
 test at test-dist/test/unit/t405-composition-regression.test.js:727:17
 ✖ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (450.289663ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
+
   1 !== 0
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:800:42)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:727:9)
@@ -3263,9 +3263,9 @@ stdout (full):
 test at test-dist/test/unit/t405-composition-regression.test.js:727:17
 ✖ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (560.985795ms)
   AssertionError [ERR_ASSERTION]: empty/current-context-refresh accepted tree count
-  
+
   1 !== 0
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:802:42)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:727:9)
@@ -3415,9 +3415,9 @@ stdout (full):
 test at test-dist/test/unit/t405-composition-regression.test.js:727:17
 ✖ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (170.471825ms)
   AssertionError [ERR_ASSERTION]: unique/current-context-refresh final publication uses accepted tree evidence
-  
+
   undefined !== 1
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:817:42)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:727:9)
@@ -4734,7 +4734,7 @@ test at test-dist/test/unit/issue-116-current-context-refresh.test.js:92:25
 ✖ Issue #116 reuses accepted Current Context PR preparation for only the immediately dependent Review Contexts refresh (283.303236ms)
   AssertionError [ERR_ASSERTION]: an independent Review Contexts refresh must acquire fresh state
   + actual - expected
-  
+
     {
   +   diffRuntime: 0,
   +   lifecycle: 0,
@@ -4747,7 +4747,7 @@ test at test-dist/test/unit/issue-116-current-context-refresh.test.js:92:25
   -   progress: 1,
   -   repositoryContexts: 1
     }
-  
+
       at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/issue-116-current-context-refresh.test.js:141:26)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
@@ -5179,49 +5179,49 @@ stdout (full):
 
 ```text
 reports/issue-136-137-r2-regressions-20261006.md:2636: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2638: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2653: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2655: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2671: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2674: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2720: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2722: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2737: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2739: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2755: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2758: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2932: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:2934: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3172: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3174: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3266: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3268: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3418: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:3420: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:4737: trailing whitespace.
-+  
++
 reports/issue-136-137-r2-regressions-20261006.md:4750: trailing whitespace.
-+  
++
 ```
 
 stderr (full):
