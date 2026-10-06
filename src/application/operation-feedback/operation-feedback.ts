@@ -55,6 +55,9 @@ export interface PullRequestRefreshCounts {
   readonly snapshotFiles?: number;
   readonly processedFiles?: number;
   readonly treeItems?: number;
+  /** Anonymous operation-local ordinal used only to correlate selection and snapshot stages. */
+  readonly selectedContextOrdinal?: number;
+  readonly snapshotOrdinal?: number;
 }
 
 /** Allowlisted lifecycle detail for PR Progress refresh. It accepts no free-form text. */
@@ -333,7 +336,7 @@ const SAFE_PULL_REQUEST_REFRESH_REASONS = new Set<PullRequestRefreshReasonCode>(
 ]);
 const SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS = new Set<keyof PullRequestRefreshCounts>([
   "repositories", "pullRequestCandidates", "registeredPullRequests", "snapshotFiles",
-  "processedFiles", "treeItems",
+  "processedFiles", "treeItems", "selectedContextOrdinal", "snapshotOrdinal",
 ]);
 
 const validatePullRequestRefreshDiagnostic = (
@@ -641,7 +644,7 @@ const errorIdentity = (error: unknown): object | undefined =>
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
   private readonly pendingBoundaryDuplicates = new WeakSet<object>();
-  private nextId = 0;
+  protected nextId = 0;
   private readonly reportedStorageLockScopes = new Set<string>();
 
   public constructor(
@@ -661,7 +664,8 @@ export class OperationFeedback {
     this.host.appendLog({
       timestamp: new Date(active.startedAt).toISOString(),
       label: active.label,
-      event: "started"
+      event: "started",
+      operationId: active.id
     });
     this.publishStatus();
 
@@ -673,6 +677,7 @@ export class OperationFeedback {
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "cancelled",
+          operationId: active.id,
           durationMs: Math.max(0, finishedAt - active.startedAt)
         });
       } else if (active.boundaryFailure === undefined) {
@@ -680,6 +685,7 @@ export class OperationFeedback {
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "succeeded",
+          operationId: active.id,
           durationMs: Math.max(0, finishedAt - active.startedAt)
         });
       } else {
@@ -687,7 +693,8 @@ export class OperationFeedback {
           active.label,
           active.boundaryFailure,
           finishedAt,
-          Math.max(0, finishedAt - active.startedAt)
+          Math.max(0, finishedAt - active.startedAt),
+          active.id
         );
       }
       return result;
@@ -697,7 +704,8 @@ export class OperationFeedback {
         active.label,
         error,
         finishedAt,
-        Math.max(0, finishedAt - active.startedAt)
+        Math.max(0, finishedAt - active.startedAt),
+        active.id
       );
       throw error;
     } finally {
@@ -722,6 +730,7 @@ export class OperationFeedback {
       timestamp: new Date(this.now()).toISOString(),
       label: active.label,
       event: "progress",
+      operationId: active.id,
       progress: validated,
     });
     this.publishStatus();
@@ -768,8 +777,9 @@ export class OperationFeedback {
     }
     const timestamp = this.now();
     const normalizedLabel = requireLabel(label);
-    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started" });
-    this.appendFailure(normalizedLabel, error, timestamp);
+    const id = ++this.nextId;
+    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started", operationId: id });
+    this.appendFailure(normalizedLabel, error, timestamp, undefined, id);
   }
 
   /** Returns whether an explicit parent operation already has a terminal handled failure. */
@@ -811,13 +821,14 @@ export class OperationFeedback {
     label: string,
     error: unknown,
     timestamp: number,
-    durationMs: number
+    durationMs: number,
+    operationId: number,
   ): void {
     const identity = errorIdentity(error);
     if (identity !== undefined) {
       this.pendingBoundaryDuplicates.delete(identity);
     }
-    this.appendFailure(label, error, timestamp, durationMs);
+    this.appendFailure(label, error, timestamp, durationMs, operationId);
     if (identity !== undefined) this.pendingBoundaryDuplicates.add(identity);
   }
 
@@ -825,12 +836,14 @@ export class OperationFeedback {
     label: string,
     error: unknown,
     timestamp: number,
-    durationMs?: number
+    durationMs?: number,
+    operationId?: number,
   ): void {
     this.host.appendLog({
       timestamp: new Date(timestamp).toISOString(),
       label,
       event: "failed",
+      ...(operationId === undefined ? {} : { operationId }),
       ...(durationMs === undefined ? {} : { durationMs }),
       ...failureDetails(error)
     });
@@ -863,6 +876,7 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const progress = entry.event === "progress" && entry.progress !== undefined
     ? ` stage=${entry.progress.stage} progress=${entry.progress.completed}${entry.progress.total === undefined ? "" : `/${entry.progress.total}`}`
     : "";
+  const operation = entry.operationId === undefined ? "" : ` op=${entry.operationId}`;
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
   const error = entry.event !== "failed" || entry.message === undefined
     ? ""
@@ -870,12 +884,12 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const refresh = entry.pullRequestRefresh;
   const refreshDetails = refresh === undefined
     ? ""
-    : ` operation=${entry.operationId ?? "unknown"} generation=${refresh.generation}` +
+    : ` generation=${refresh.generation}` +
       ` trigger=${refresh.trigger} stage=${refresh.stage} status=${refresh.status}` +
       (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
       Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
       (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);
-  return boundedSingleLine(`[${entry.timestamp}] ${stage} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${progress}${duration}${refreshDetails}${error}`);
+  return boundedSingleLine(`[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${progress}${duration}${refreshDetails}${error}`);
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;

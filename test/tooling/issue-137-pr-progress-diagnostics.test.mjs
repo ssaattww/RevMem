@@ -34,7 +34,7 @@ test("Issue #137 correlates a safe PR Progress lifecycle without serializing pri
     "a successful refresh stage must not be confused with the owning operation terminal");
 
   const rendered = logs.map(formatOperationLogEntry).join("\n");
-  assert.match(rendered, /operation=1\b/u);
+  assert.match(rendered, /op=1\b/u);
   assert.match(rendered, /generation=8\b/u);
   assert.match(rendered, /trigger=review-contexts-refresh\b/u);
   assert.match(rendered, /stage=pr-selection\b/u);

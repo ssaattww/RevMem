@@ -15,6 +15,22 @@ export interface CurrentContextNonDestructiveOutcome {
 
 export type CurrentContextResolution = CurrentContextUiSnapshot | CurrentContextNonDestructiveOutcome | undefined;
 
+/** Preserves a verified local branch when only optional T405 PR enrichment fails. */
+export const augmentCurrentContextCandidatesWithBranchFallback = async (
+  localCandidates: readonly CurrentContextUiSnapshot[],
+  augment: () => Promise<readonly CurrentContextUiSnapshot[]>,
+  signal?: AbortSignal,
+): Promise<readonly CurrentContextUiSnapshot[]> => {
+  try {
+    return await augment();
+  } catch (error) {
+    if (signal?.aborted === true || !localCandidates.some((candidate) => candidate.context.kind === "branch")) {
+      throw error;
+    }
+    return localCandidates;
+  }
+};
+
 /** Controls whether a recompute was explicitly requested by the user. */
 export interface CurrentContextRecomputeOptions {
   readonly allowInteraction?: boolean;

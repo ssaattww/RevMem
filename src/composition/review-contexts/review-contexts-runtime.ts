@@ -67,6 +67,7 @@ import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
   findCurrentPullRequestContext,
+  resolveCurrentPullRequestContext,
   projectReviewContextsCooperatively,
   type ReviewContextCacheStatus,
   type ReviewContextListItem,
@@ -486,16 +487,16 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           await checkpoint("collected-saved-context");
         }
 
+        const preferredContextId = this.currentPullRequestSelection.read(
+          owner.repositoryId,
+          owner.headRevision,
+        );
         if (owner.branchRef !== undefined) {
           const branch = synchronized.find((context) =>
             context.kind === "branch" && context.branch?.refName === owner.branchRef
           );
           current.push(branch ?? this.syntheticBranch(snapshot, owner.repositoryId, owner.branchRef));
         }
-        const preferredContextId = this.currentPullRequestSelection.read(
-          owner.repositoryId,
-          owner.headRevision,
-        );
         const currentPullRequest = findCurrentPullRequestContext(
           synchronized,
           owner.repositoryId,
@@ -600,13 +601,30 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         owner.repositoryId,
         owner.headRevision,
       );
-      const pullRequest = findCurrentPullRequestContext(
+      const selectionDecision = resolveCurrentPullRequestContext(
         synchronized,
         owner.repositoryId,
         owner.pullRequestSynchronizationRevision,
         preferredContextId,
         this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
       );
+      const localBranch = localCandidates.find((candidate) => {
+        const candidateOwner = localOwner(candidate);
+        return candidateOwner?.repositoryId === owner.repositoryId &&
+          candidateOwner.branchRef === owner.branchRef && candidate.context.kind === "branch";
+      });
+      if (localBranch !== undefined) {
+        const withProvenance: CurrentContextUiSnapshot = {
+          ...localBranch,
+          context: {
+            ...localBranch.context,
+            selectionReason: selectionDecision.reason,
+            pullRequestCandidateCount: selectionDecision.candidateCount,
+          },
+        };
+        candidates.set(this.candidateKey(withProvenance), withProvenance);
+      }
+      const pullRequest = selectionDecision.context;
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
       const progress = await this.progressFor(pullRequest, owner.repositoryRoot, signal, feedbackContext, false);
       assertCurrent();
@@ -618,6 +636,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           detail: pr.title ?? pullRequest.displayName,
           baseRevision: pr.baseSha,
           headRevision: pr.headSha,
+          selectionReason: selectionDecision.reason,
+          pullRequestCandidateCount: selectionDecision.candidateCount,
           selection: {
             kind: "pull-request",
             repositoryId: owner.repositoryId,

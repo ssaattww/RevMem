@@ -26,6 +26,11 @@ export interface CurrentContextRefreshContext {
   readonly generation: number;
   readonly trigger: PullRequestRefreshTrigger;
   readonly feedbackContext?: OperationFeedbackContext;
+  readonly selectionProvenance: () => Readonly<{
+    readonly reason?: PullRequestRefreshReasonCode;
+    readonly candidateCount?: number;
+  }>;
+  setSelectionProvenance(reason: PullRequestRefreshReasonCode | undefined, candidateCount: number | undefined): void;
   readonly report: (
     stage: PullRequestRefreshStage,
     status: PullRequestRefreshStatus,
@@ -74,13 +79,29 @@ export class CurrentContextRuntimeCoordinator {
         return;
       }
       acceptedSnapshot = result.snapshot;
+      context.setSelectionProvenance(
+        result.snapshot?.context.selectionReason,
+        result.snapshot?.context.pullRequestCandidateCount,
+      );
+      context.report("repository-identity", result.snapshot?.context.selection === undefined ? "failed" : "succeeded", {
+        ...(result.snapshot?.context.selection === undefined ? { reasonCode: "identity-changed" } : {}),
+        counts: {
+          repositories: result.snapshot?.context.selection?.kind === "workspace" ? 0 : 1,
+          selectedContextOrdinal: result.snapshot?.context.selection === undefined ? 0 : 1,
+        },
+      });
       this.dependentRefresher.setSelectedContext?.(result.snapshot?.context.selection);
       this.dependentRefresher.acceptCurrentContextPreparation?.(result.snapshot?.context.selection);
       try {
         await this.dependentRefresher.refreshDependents(context);
       } catch (error) {
+        if (context.generation === this.generation && !isSignalAborted(signal)) {
+          context.report("tree-publication", "failed", { reasonCode: "refresh-failed" });
+        }
         if (trigger === "review-contexts-refresh" && acceptedSnapshot?.context.kind === "branch") {
-          await this.dependentRefresher.clearPullRequestProgress?.();
+          if (context.generation === this.generation && !isSignalAborted(signal)) {
+            await this.dependentRefresher.clearPullRequestProgress?.();
+          }
           context.report("review-contexts-list", "failed", { reasonCode: "refresh-failed" });
           throw new CurrentContextBranchRefreshError();
         }
@@ -120,6 +141,7 @@ export class CurrentContextRuntimeCoordinator {
       context.report("current-context", "cancelled", { reasonCode: "identity-changed" });
       return;
     }
+    context.setSelectionProvenance("explicit-selection-kept", undefined);
     this.dependentRefresher.setSelectedContext?.(selection.context.selection);
     this.dependentRefresher.acceptCurrentContextPreparation?.(selection.context.selection);
     await this.dependentRefresher.refreshDependents(context);
@@ -156,19 +178,37 @@ export class CurrentContextRuntimeCoordinator {
     feedbackContext?: OperationFeedbackContext,
   ): CurrentContextRefreshContext {
     const generation = ++this.generation;
+    let selectionReason: PullRequestRefreshReasonCode | undefined;
+    let candidateCount: number | undefined;
+    const stageStartedAt = new Map<PullRequestRefreshStage, number>();
     return {
       generation,
       trigger,
       ...(feedbackContext === undefined ? {} : { feedbackContext }),
+      selectionProvenance: () => ({
+        ...(selectionReason === undefined ? {} : { reason: selectionReason }),
+        ...(candidateCount === undefined ? {} : { candidateCount }),
+      }),
+      setSelectionProvenance: (reason, count) => {
+        selectionReason = reason;
+        candidateCount = count;
+      },
       report: (stage, status, details = {}) => {
         if (generation !== this.generation && status !== "superseded" && status !== "cancelled") return;
+        const now = Date.now();
+        if (status === "started") stageStartedAt.set(stage, now);
+        const startedAt = stageStartedAt.get(stage);
         reportActivePullRequestRefresh(feedbackContext, {
           generation,
           trigger,
           stage,
           status,
+          ...(details.durationMs === undefined && startedAt !== undefined && status !== "started"
+            ? { durationMs: Math.max(0, now - startedAt) }
+            : {}),
           ...details,
         });
+        if (status !== "started") stageStartedAt.delete(stage);
       },
     };
   }

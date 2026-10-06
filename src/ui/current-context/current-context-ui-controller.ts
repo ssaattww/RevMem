@@ -17,6 +17,8 @@ export interface CurrentContextDescriptor {
   readonly pullRequestSynchronizationRevision?: string;
   /** Runtime identity shared with commands and editor decoration reads. */
   readonly selection?: SelectedReviewContext;
+  readonly selectionReason?: "explicit-selection-kept" | "unique-pr-match" | "ambiguous-pr-match" | "no-matching-pr" | "no-selected-pr";
+  readonly pullRequestCandidateCount?: number;
 }
 
 export interface CurrentContextProgress {

@@ -32,6 +32,7 @@ import {
 import { recordPullRequestReviewHistory } from "../../src/composition/pull-request/pull-request-review-history.js";
 import { buildSnapshotFromLocalGitDiff } from "../../src/application/github-pr-diff/pull-request-diff-builders.js";
 import { deriveDocumentLineContract } from "../../src/core/intervals/index.js";
+import { OperationFeedback, formatOperationLogEntry, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -538,6 +539,35 @@ test("R405-5 PR runtime exposes T304 progress for Review Contexts", async () => 
     totalLineCount: 2,
     progress: 0,
   });
+});
+
+test("Issue #137 actual T405 PR activation never emits acquired file paths in detailed Output", async () => {
+  const logs: OperationLogEntry[] = [];
+  const host = {
+    isDetailedDiagnosticsEnabled: () => true,
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: (entry: OperationLogEntry) => logs.push(entry),
+    revealLog: () => undefined,
+  };
+  const feedback = new OperationFeedback(host);
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/private/fixture/repository",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async () => ({ kind: "found", content: "new" }),
+  });
+  await feedback.run("Current Contextを更新", async (context) => runtime.activateProgress(CONTEXT_ID, context));
+  const rendered = logs.map(formatOperationLogEntry).join("\n");
+  assert.match(rendered, /DETAIL op=1 .*reason=pull-request-file/u);
+  assert.doesNotMatch(rendered, /private\/fixture|src\/example\.ts|target=/u);
 });
 
 test("Issue #136 keeps the newest PR Progress refresh when an older read finishes later", async () => {

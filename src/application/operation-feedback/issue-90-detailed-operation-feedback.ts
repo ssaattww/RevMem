@@ -46,12 +46,33 @@ const bounded = (value: string, max: number): string => {
   return normalized.length <= max ? normalized : `${normalized.slice(0, Math.max(0, max - 1))}…`;
 };
 
-const validateDetail = (detail: OperationDiagnosticDetail): OperationDiagnosticDetail => {
-  const reason = bounded(detail.reason, 120);
+const PR_PROGRESS_LABEL = "PR進捗を計算";
+const SAFE_PR_DETAIL_REASONS = new Set([
+  "missing-pr-snapshot", "selected-pull-request", "included", "zero-changed-lines", "zero-denominator", "calculated", "pull-request-file",
+]);
+const SAFE_PR_DETAIL_PHASES = new Set(["read-content", "progress-input", "progress-summary"]);
+
+const validateDetail = (detail: OperationDiagnosticDetail, pullRequest = false): OperationDiagnosticDetail => {
+  const candidateReason = bounded(detail.reason, 120);
+  const reason = pullRequest
+    ? SAFE_PR_DETAIL_REASONS.has(candidateReason)
+      ? candidateReason
+      : candidateReason.startsWith("excluded:")
+        ? "excluded"
+        : "pr-refresh-detail"
+    : candidateReason;
   if (reason.length === 0) throw new TypeError("operation diagnostic reason must not be empty");
-  const target = detail.target === undefined ? undefined : bounded(detail.target, 240);
-  const phase = detail.phase === undefined ? undefined : bounded(detail.phase, 120);
-  return Object.freeze({ reason, ...(target === undefined ? {} : { target }), ...(phase === undefined ? {} : { phase }) });
+  // Target values can contain private repository-relative paths. Keep the API
+  // field compatible while excluding the value from every diagnostic surface.
+  const candidatePhase = detail.phase === undefined ? undefined : bounded(detail.phase, 120);
+  const phase = pullRequest && candidatePhase !== undefined
+    ? candidatePhase.startsWith("progress-file ")
+      ? "progress-file"
+      : SAFE_PR_DETAIL_PHASES.has(candidatePhase)
+        ? candidatePhase
+        : "pr-refresh-detail"
+    : candidatePhase;
+  return Object.freeze({ reason, ...(phase === undefined ? {} : { phase }) });
 };
 
 const detailedEntries = new WeakSet<object>();
@@ -62,7 +83,7 @@ export const queueOperationStartDetails = (
   label: string,
   details: readonly OperationDiagnosticDetail[],
 ): void => {
-  queuedStartDetails.set(label, details.map(validateDetail));
+  queuedStartDetails.set(label, details.map((detail) => validateDetail(detail, label === PR_PROGRESS_LABEL)));
 };
 
 /** Adds opt-in operation identities/path details while preserving default Output formatting. */
@@ -71,7 +92,6 @@ export class OperationFeedback extends BaseOperationFeedback {
   private readonly operationScope: AsyncLocalStorage<number>;
   private readonly detailedHost: DetailedOperationFeedbackHost;
   private readonly nowDetailed: () => number;
-  private nextDetailedId = 0;
 
   public constructor(host: OperationFeedbackHost, now: () => number = () => Date.now()) {
     const detailedHost = host as DetailedOperationFeedbackHost;
@@ -92,7 +112,7 @@ export class OperationFeedback extends BaseOperationFeedback {
       clearBusy: () => host.clearBusy(),
       appendLog: (entry) => {
         const detailed = detailedHost.isDetailedDiagnosticsEnabled?.() === true;
-        const operationId = detailed ? operationScope.getStore() : undefined;
+        const operationId = entry.operationId ?? (detailed ? operationScope.getStore() : undefined);
         const cancelled = entry.event === "failed" && entry.errorName === "OperationCancelledError";
         const mapped: OperationLogEntry = {
           ...entry,
@@ -128,11 +148,11 @@ export class OperationFeedback extends BaseOperationFeedback {
     const startDetail = detail ?? (detailed ? this.detailedHost.takeOperationStartDetail?.(label) : undefined);
     const queued = detailed ? queuedStartDetails.get(label) ?? [] : [];
     queuedStartDetails.delete(label);
-    const id = ++this.nextDetailedId;
+    const id = this.nextId + 1;
     const activity: ActivityState = {
       id,
       label,
-      ...(detailed && startDetail !== undefined ? { detail: validateDetail(startDetail) } : {}),
+      ...(detailed && startDetail !== undefined ? { detail: validateDetail(startDetail, label === PR_PROGRESS_LABEL) } : {}),
     };
     this.activities.push(activity);
     return this.operationScope.run(id, async () => {
@@ -165,7 +185,7 @@ export class OperationFeedback extends BaseOperationFeedback {
       ? this.activities.at(-1)
       : this.activities.find((candidate) => candidate.id === context.id);
     if (activity === undefined) return;
-    const validated = validateDetail(detail);
+    const validated = validateDetail(detail, activity.label === PR_PROGRESS_LABEL);
     activity.detail = validated;
     const entry: OperationLogEntry = {
       timestamp: new Date(this.nowDetailed()).toISOString(),
@@ -205,6 +225,7 @@ export const reportActiveOperationDetail = (
 };
 
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
+  if (entry.event === "refresh") return formatBaseOperationLogEntry(entry as BaseOperationLogEntry);
   if (entry.event !== "detail" && entry.event !== "cancelled" && !detailedEntries.has(entry)) {
     return formatBaseOperationLogEntry(entry as BaseOperationLogEntry);
   }

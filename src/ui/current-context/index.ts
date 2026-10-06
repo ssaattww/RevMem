@@ -23,6 +23,7 @@ export { CurrentContextCandidateSelection } from "./current-context-candidate-se
 
 export {
   CurrentContextRuntimeComposition,
+  augmentCurrentContextCandidatesWithBranchFallback,
   type CurrentContextRuntimeCompositionPort,
   type CurrentContextResolution,
   type CurrentContextNonDestructiveOutcome

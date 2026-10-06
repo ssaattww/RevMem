@@ -6,6 +6,7 @@ import {
   OperationCancelledError,
   OperationFeedback,
   formatOperationLogEntry,
+  queueOperationStartDetails,
   type OperationActivity,
   type OperationDiagnosticDetail,
   type OperationFeedbackContext,
@@ -60,23 +61,23 @@ test("Issue #90 active status enumerates every operation and detailed mode corre
   assert.ok(current);
   assert.equal(current.activeCount, 2);
   assert.deepEqual(current.activities?.map((activity) => ({ id: activity.id, label: activity.label, detail: activity.detail })), [
-    { id: 1, label: "Global理解率を再計算", detail: detail("document-changed", "src/global.ts") },
-    { id: 2, label: "PR進捗を計算", detail: detail("selected-pull-request", "github-pr:repo#90") },
+    { id: 1, label: "Global理解率を再計算", detail: detail("document-changed") },
+    { id: 2, label: "PR進捗を計算", detail: detail("selected-pull-request") },
   ]);
   assert.deepEqual(host.logs.slice(0, 4).map((entry) => ({ event: entry.event, operationId: entry.operationId, detail: entry.detail })), [
     { event: "started", operationId: 1, detail: undefined },
-    { event: "detail", operationId: 1, detail: detail("document-changed", "src/global.ts") },
+    { event: "detail", operationId: 1, detail: detail("document-changed") },
     { event: "started", operationId: 2, detail: undefined },
-    { event: "detail", operationId: 2, detail: detail("selected-pull-request", "github-pr:repo#90") },
+    { event: "detail", operationId: 2, detail: detail("selected-pull-request") },
   ]);
   const statusCountBeforePendingReadDetail = host.statuses.length;
   feedback.reportDetail(detail("pull-request-file", "src/progress.ts", "read-content"), progressContext);
   assert.equal(host.statuses.length, statusCountBeforePendingReadDetail + 1);
-  assert.deepEqual(host.statuses.at(-1)?.activities?.find((activity) => activity.id === progressContext?.id)?.detail, detail("pull-request-file", "src/progress.ts", "read-content"));
+  assert.deepEqual(host.statuses.at(-1)?.activities?.find((activity) => activity.id === progressContext?.id)?.detail, detail("pull-request-file", undefined, "read-content"));
   const detailEntry = host.logs.at(-1);
   assert.equal(detailEntry?.event, "detail");
   assert.equal(detailEntry?.operationId, 2);
-  assert.equal(formatOperationLogEntry(detailEntry!), "[1970-01-01T00:00:01.000Z] DETAIL op=2 PR進捗を計算 reason=pull-request-file phase=read-content target=src/progress.ts");
+  assert.equal(formatOperationLogEntry(detailEntry!), "[1970-01-01T00:00:01.000Z] DETAIL op=2 PR進捗を計算 reason=pull-request-file phase=read-content");
   globalGate.resolve(); progressGate.resolve();
   await Promise.all([global, progress]);
   assert.deepEqual(host.logs.filter((entry) => entry.event === "started").map((entry) => entry.operationId), [1, 2]);
@@ -90,6 +91,59 @@ test("Issue #90 default diagnostics never emit a supplied file target", async ()
   const output = host.logs.map(formatOperationLogEntry).join("\n");
   assert.doesNotMatch(output, /private-owner-file|document-changed/u);
   assert.equal(host.statuses[0]?.activities?.[0]?.detail, undefined);
+});
+
+test("Issue #137 production formatter preserves refresh payloads and hides queued PR file paths", async () => {
+  const hostileValues = [
+    "private-repository-name", "secret-branch-name", "https://private.example/pr/42?token=secret",
+    "deadbeef-private-sha", "/private/repo/source.ts", "source body with token=do-not-log",
+    "diff body with private content", "exception containing /private/repo/source.ts",
+  ];
+  for (const detailed of [false, true]) {
+    const host = new DiagnosticHost(detailed);
+    const feedback = new OperationFeedback(host, () => 4_000);
+    queueOperationStartDetails("PR進捗を計算", [describePullRequestProgressFile({
+      path: hostileValues[4]!, totalLineCount: 3, excluded: false,
+    })]);
+    await feedback.run("Current Contextを更新", async (parentContext) => {
+      assert.equal(parentContext.owner, feedback);
+      await feedback.run("PR進捗を計算", async (context) => {
+        for (const hostile of hostileValues) {
+          feedback.reportDetail({ reason: hostile, target: hostile, phase: hostile }, context);
+        }
+        feedback.reportPullRequestRefresh(context, {
+          generation: 5, trigger: "review-contexts-refresh", stage: "pr-progress",
+          status: "succeeded", counts: { snapshotFiles: 1 },
+        });
+      });
+    });
+    const rendered = host.logs.map(formatOperationLogEntry).join("\n");
+    assert.match(rendered, /REFRESH .*generation=5 .*stage=pr-progress status=succeeded/u);
+    assert.doesNotMatch(rendered, /private-repository|secret-branch|private\.example|deadbeef-private|\/private\/repo|source body|diff body|exception containing|target=/u);
+    for (const hostile of hostileValues) assert.equal(rendered.includes(hostile), false);
+    assert.deepEqual(host.logs.filter((entry) => entry.event === "started").map((entry) => entry.operationId), [1, 2]);
+    await assert.rejects(feedback.run("PR進捗を計算", async () => { throw new Error(hostileValues[7]); }), /exception/u);
+    const withFailure = host.logs.map(formatOperationLogEntry).join("\n");
+    for (const hostile of hostileValues) assert.equal(withFailure.includes(hostile), false);
+  }
+});
+
+test("Issue #137 default lifecycle correlates concurrent same-label refreshes by owner operation id", async () => {
+  const host = new DiagnosticHost(false);
+  const feedback = new OperationFeedback(host, () => 5_000);
+  const gates = [deferred<void>(), deferred<void>()];
+  const operations = gates.map((gate, index) => feedback.run("Review Contextsを更新", async (context) => {
+    feedback.reportPullRequestRefresh(context, {
+      generation: index + 10, trigger: "review-contexts-refresh", stage: "pr-progress", status: "started",
+    });
+    await gate.promise;
+  }));
+  gates.forEach((gate) => gate.resolve());
+  await Promise.all(operations);
+  assert.deepEqual(host.logs.filter((entry) => entry.event === "started").map((entry) => entry.operationId), [1, 2]);
+  assert.deepEqual(host.logs.filter((entry) => entry.event === "refresh").map((entry) => entry.operationId), [1, 2]);
+  assert.deepEqual(host.logs.filter((entry) => entry.event === "succeeded").map((entry) => entry.operationId).sort(), [1, 2]);
+  assert.match(host.logs.map(formatOperationLogEntry).join("\n"), /START op=1 Review Contextsを更新[\s\S]*START op=2 Review Contextsを更新/u);
 });
 
 test("Issue #90 superseded work has a cancellation terminal and does not reveal Output as an error", async () => {

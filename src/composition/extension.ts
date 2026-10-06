@@ -27,6 +27,7 @@ import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
+  augmentCurrentContextCandidatesWithBranchFallback,
   type CurrentContextNonDestructiveOutcome,
   type CurrentContextUiSnapshot
 } from "../ui/current-context/index";
@@ -430,7 +431,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     if (reviewContextsRuntime === undefined) return local;
-    const augmented = await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext);
+    const augmented = await augmentCurrentContextCandidatesWithBranchFallback(
+      local,
+      () => reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext),
+      signal,
+    );
     // The Current Context owner is authoritative: an aborted composition must
     // never publish candidates returned by an in-flight T405 acquisition.
     return signal?.aborted ? [] : [...augmented];
@@ -810,6 +815,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       },
       refreshDependents: async (refreshContext) => {
         testCurrentContextDependentRefreshCount += 1;
+        let pullRequestRefreshFailure: unknown;
         await refreshCurrentContextDependents({
           refreshPullRequestProgress: async () => {
             refreshContext?.report("pr-progress", "started");
@@ -819,19 +825,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
               const selectedSnapshot = selectedPullRequest === undefined
                 ? undefined
                 : pullRequestReviewRuntime.snapshotForContext(selectedPullRequest.contextId);
-              const reasonCode = selectedPullRequest === undefined
+              const provenance = refreshContext?.selectionProvenance();
+              const selectionReasonCode = provenance?.reason ?? (selectedPullRequest === undefined
                 ? "no-selected-pr"
+                : undefined);
+              const progressReasonCode = selectedPullRequest === undefined
+                ? selectionReasonCode ?? "no-selected-pr"
                 : selectedSnapshot === undefined
                   ? "snapshot-unavailable"
                   : selectedSnapshot.files.length === 0
                     ? "no-pr-files"
                     : undefined;
               refreshContext?.report("pr-selection", "succeeded", {
-                ...(reasonCode === undefined ? {} : { reasonCode }),
+                ...(selectionReasonCode === undefined ? {} : { reasonCode: selectionReasonCode }),
+                counts: {
+                  pullRequestCandidates: provenance?.candidateCount ?? 0,
+                  registeredPullRequests: selectedSnapshot === undefined ? 0 : 1,
+                  selectedContextOrdinal: selectedPullRequest === undefined ? 0 : 1,
+                  snapshotOrdinal: selectedSnapshot === undefined ? 0 : 1,
+                },
               });
               refreshContext?.report("pr-progress", "succeeded", {
-                ...(reasonCode === undefined ? {} : { reasonCode }),
-                ...(selectedSnapshot === undefined ? {} : { counts: { snapshotFiles: selectedSnapshot.files.length } }),
+                ...(progressReasonCode === undefined ? {} : { reasonCode: progressReasonCode }),
+                counts: {
+                  ...(selectedSnapshot === undefined ? {} : { snapshotFiles: selectedSnapshot.files.length }),
+                  treeItems: selectedSnapshot?.files.length ?? 0,
+                  selectedContextOrdinal: selectedPullRequest === undefined ? 0 : 1,
+                  snapshotOrdinal: selectedSnapshot === undefined ? 0 : 1,
+                },
               });
             } catch (error) {
               refreshContext?.report("pr-progress", "failed", { reasonCode: "refresh-failed" });
@@ -846,17 +867,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             await refreshGlobalUnderstandingForMutation({ reason: "current-context-changed", phase: "global-refresh-trigger" });
           },
           refreshReviewContexts: async () => {
+            refreshContext?.report("diff-registration", "started");
             refreshContext?.report("review-contexts-list", "started");
             try {
               await reviewContextsRuntimeRef.current?.refreshListOnly?.(refreshContext?.feedbackContext);
               refreshContext?.report("review-contexts-list", "succeeded");
+              const selectedPullRequest = selectedContext?.kind === "pull-request" ? selectedContext : undefined;
+              const isRegistered = selectedPullRequest !== undefined &&
+                pullRequestReviewRuntime.hasContext(selectedPullRequest.contextId);
+              const registrationFailed = selectedPullRequest !== undefined && !isRegistered;
+              refreshContext?.report("diff-registration", registrationFailed ? "failed" : "succeeded", {
+                ...(registrationFailed ? { reasonCode: "snapshot-unavailable" } : {}),
+                counts: { registeredPullRequests: isRegistered ? 1 : 0 },
+              });
             } catch (error) {
               refreshContext?.report("review-contexts-list", "failed", { reasonCode: "refresh-failed" });
+              refreshContext?.report("diff-registration", "failed", { reasonCode: "refresh-failed" });
               throw error;
             }
           },
-          reportPullRequestProgressError
+          reportPullRequestProgressError: async (error) => {
+            pullRequestRefreshFailure = error;
+            if (refreshContext?.feedbackContext !== undefined) {
+              reportActiveOperationFailure("PR進捗を再計算", error, refreshContext.feedbackContext);
+            }
+            await reportPullRequestProgressError(error);
+          }
         });
+        if (pullRequestRefreshFailure !== undefined) {
+          refreshContext?.report("tree-publication", "failed", { reasonCode: "refresh-failed" });
+          throw pullRequestRefreshFailure;
+        }
       }
     },
     async (error) => {
