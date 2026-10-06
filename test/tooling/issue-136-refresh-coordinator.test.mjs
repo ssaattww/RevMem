@@ -385,7 +385,8 @@ test("early T405 augmentation failure keeps the verified branch and clears depen
   const candidate = await augmentCurrentContextCandidatesWithBranchFallback(
     [branch], async () => { throw acquisitionFailure; },
   );
-  assert.deepEqual(candidate, [branch]);
+  assert.deepEqual(candidate, [{ ...branch, context: { ...branch.context, pullRequestAcquisition: "failed-branch-preserved" } }]);
+  assert.equal(branch.context.pullRequestAcquisition, undefined, "fallback must not mutate the verified local candidate");
 
   const applied = [];
   const cleared = [];

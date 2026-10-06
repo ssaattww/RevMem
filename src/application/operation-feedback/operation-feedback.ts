@@ -27,6 +27,7 @@ export type PullRequestRefreshTrigger =
 
 export type PullRequestRefreshStage =
   | "current-context"
+  | "pr-acquisition"
   | "repository-identity"
   | "review-contexts-list"
   | "diff-registration"
@@ -45,6 +46,7 @@ export type PullRequestRefreshReasonCode =
   | "snapshot-unavailable"
   | "no-pr-files"
   | "identity-changed"
+  | "verified-branch-preserved"
   | "refresh-failed"
   | "superseded";
 
@@ -323,7 +325,7 @@ const SAFE_PULL_REQUEST_REFRESH_TRIGGERS = new Set<PullRequestRefreshTrigger>([
   "startup", "active-editor-change", "review-state-change", "retry",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_STAGES = new Set<PullRequestRefreshStage>([
-  "current-context", "repository-identity", "review-contexts-list", "diff-registration",
+  "current-context", "pr-acquisition", "repository-identity", "review-contexts-list", "diff-registration",
   "pr-selection", "pr-progress", "tree-publication",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_STATUSES = new Set<PullRequestRefreshStatus>([
@@ -332,7 +334,7 @@ const SAFE_PULL_REQUEST_REFRESH_STATUSES = new Set<PullRequestRefreshStatus>([
 const SAFE_PULL_REQUEST_REFRESH_REASONS = new Set<PullRequestRefreshReasonCode>([
   "explicit-selection-kept", "unique-pr-match", "ambiguous-pr-match", "no-matching-pr",
   "no-selected-pr", "snapshot-unavailable", "no-pr-files", "identity-changed",
-  "refresh-failed", "superseded",
+  "verified-branch-preserved", "refresh-failed", "superseded",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS = new Set<keyof PullRequestRefreshCounts>([
   "repositories", "pullRequestCandidates", "registeredPullRequests", "snapshotFiles",

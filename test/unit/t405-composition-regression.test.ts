@@ -22,6 +22,7 @@ import { NormalEditorReviewCommandService } from "../../src/application/review-c
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
 import {
+  augmentCurrentContextCandidatesWithBranchFallback,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
   CurrentContextRuntimeCoordinator,
@@ -382,6 +383,9 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       },
     );
 
+    let earlyLifecycleFailures = 0;
+    let earlyAcquisitionInterrupt: (() => Promise<void>) | undefined;
+    const unsafeAcquisitionError = "token=ghp_private /private/customer/source.ts https://private.invalid/pr";
     let lifecycle52: "open" | "closed" | "merged" = "open";
     let lifecycle53: "open" | "closed" | "merged" = "open";
     let refreshTransport: "live" | "offline" = "live";
@@ -418,6 +422,13 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       }
       const lifecycleMatch = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
       if (lifecycleMatch !== null) {
+        const interrupt = earlyAcquisitionInterrupt;
+        earlyAcquisitionInterrupt = undefined;
+        await interrupt?.();
+        if (earlyLifecycleFailures > 0) {
+          earlyLifecycleFailures -= 1;
+          throw new Error(unsafeAcquisitionError);
+        }
         if (refreshTransport === "offline" && lifecycleMatch[1] === "52") {
           throw new Error("offline for cache fallback");
         }
@@ -701,6 +712,180 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       contextId53,
       "same-HEAD redetection must preserve the user-selected PR into normal-editor ownership",
     );
+
+    const assertClosedStages = (entries: readonly OperationLogEntry[]): void => {
+      const records = entries.flatMap((entry) => entry.pullRequestRefresh === undefined ? [] : [{ ...entry.pullRequestRefresh, operationId: entry.operationId }]);
+      for (const started of records.filter((record) => record.status === "started")) {
+        const terminals = records.filter((record) => record.operationId === started.operationId && record.generation === started.generation &&
+          record.stage === started.stage && !["started", "progress"].includes(record.status));
+        assert.equal(terminals.length, 1, `${started.stage} must have exactly one terminal for its owner/generation`);
+        assert.equal(typeof terminals[0]?.durationMs, "number", `${started.stage} must close with duration`);
+      }
+      assert.doesNotMatch(JSON.stringify(entries), /ghp_private|private\.invalid|customer\/source|repositoryRoot|contextId|baseSha|headSha/u);
+    };
+
+    await t.test("R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh"] as const) {
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        let accepted: CurrentContextUiSnapshot | undefined;
+        let listRecovered = false;
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => augmentCurrentContextCandidatesWithBranchFallback([branchSnapshot],
+            () => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner), signal),
+          resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+          requestSelection: async () => undefined,
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          acceptRecomputed: (snapshot) => { accepted = snapshot; composition.acceptRecomputed(snapshot); },
+        });
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+          acceptCurrentContextPreparation: (selection) => current.runtime.acceptCurrentContextPreparation?.(selection),
+          refreshDependents: (owner) => refreshCurrentContextPullRequestViews({
+            selection: accepted?.context.selection, runtime: pullRequestReviewRuntime,
+            refreshList: async (parent) => { await current.runtime.refreshListOnly?.(parent, owner?.signal); listRecovered = true; },
+            refreshProgress: async () => pullRequestReviewRuntime.clearProgress(),
+            refreshDecorations: async () => undefined, refreshGlobal: async () => undefined, reportProgressError() {},
+          }, owner),
+        });
+        earlyLifecycleFailures = 1;
+        await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner, undefined, trigger));
+        assert.equal(earlyLifecycleFailures, 0, "actual lifecycle adapter must consume the early failure");
+        assert.equal(accepted?.context.kind, "branch");
+        assert.equal(listRecovered, true, "later real list acquisition recovers in the same operation");
+        const acquisition = entries.find((entry) => entry.pullRequestRefresh?.stage === "pr-acquisition" && entry.pullRequestRefresh?.status === "failed");
+        assert.equal(acquisition?.pullRequestRefresh?.reasonCode, "verified-branch-preserved", `${trigger}: retain the initial failure and recovery cause`);
+        assert.equal(entries.filter((entry) => entry.event === "succeeded").length, 1);
+        assertClosedStages(entries);
+      }
+    });
+
+    await t.test("R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh", "current-context-selection"] as const) {
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+          resolveFallback: async (available) => available[0], requestSelection: async (available) => available[0],
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+        });
+        let dependents = 0;
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents: async () => { dependents += 1; } });
+        earlyLifecycleFailures = trigger === "current-context-selection" ? 1 : 3;
+        await assert.rejects(feedback.run("Current Contextを更新", (owner) => trigger === "current-context-selection"
+          ? coordinator.selectContext(undefined, owner) : coordinator.refresh(undefined, owner, undefined, trigger)));
+        assert.equal(dependents, 0);
+        assert.equal(entries.filter((entry) => entry.pullRequestRefresh?.stage === "repository-identity" && entry.pullRequestRefresh.status === "failed").length, 1,
+          `${trigger}: rejected acquisition must close started identity`);
+        assertClosedStages(entries);
+      }
+    });
+
+    await t.test("R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh", "current-context-selection"] as const) {
+        for (const interruption of ["cancelled", "superseded"] as const) {
+          const entries: OperationLogEntry[] = [];
+          const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+          const cancellation = new AbortController();
+          let started!: () => void;
+          let release!: () => void;
+          const began = new Promise<void>((resolve) => { started = resolve; });
+          const gate = new Promise<void>((resolve) => { release = resolve; });
+          earlyAcquisitionInterrupt = async () => { started(); await gate; throw new Error(unsafeAcquisitionError); };
+          const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+            enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+            resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+            requestSelection: async (available) => available[0],
+          });
+          const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+            recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+            selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          });
+          const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents: async () => undefined });
+          const old = feedback.run("Current Contextを更新", (owner) => trigger === "current-context-selection"
+            ? coordinator.selectContext(cancellation.signal, owner) : coordinator.refresh(cancellation.signal, owner, undefined, trigger));
+          await began;
+          if (interruption === "cancelled") cancellation.abort();
+          else await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner));
+          release();
+          await old;
+          for (const stage of ["repository-identity", "pr-acquisition", "current-context"] as const) {
+            assert.equal(entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === interruption).length, 1,
+              `${trigger}/${interruption}: acquisition must close ${stage}`);
+          }
+          assertClosedStages(entries);
+        }
+      }
+    });
+
+    await t.test("R3 NR-006 actual explicit-selection PR publication failure closes its started stage once", async () => {
+      for (const interruption of ["failed", "cancelled", "superseded"] as const) {
+        const cancellation = new AbortController();
+        let chooseBranch = false;
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        let accepted: CurrentContextUiSnapshot | undefined;
+        const outcomeRuntime = new PullRequestReviewRuntime<string>({
+          repository: { load: async () => {
+            if (interruption === "cancelled") cancellation.abort();
+            if (interruption === "superseded") {
+              chooseBranch = true;
+              await feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(undefined, owner));
+            }
+            throw new Error(unsafeAcquisitionError);
+          }, commit: (transaction) => stateRepository.commit(transaction) },
+          requestHistory: async () => undefined, diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+          getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+        });
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+          resolveFallback: async (available) => available[0],
+          requestSelection: async (available) => chooseBranch ? available.find((candidate) => candidate.context.kind === "branch") : available.find((candidate) => candidate.context.selection?.kind === "pull-request" && candidate.context.selection.contextId === contextId53),
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          acceptExplicit: (snapshot) => { accepted = snapshot; composition.acceptExplicit(snapshot); },
+        });
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+          acceptCurrentContextPreparation: (selection) => current.runtime.acceptCurrentContextPreparation?.(selection),
+          refreshDependents: async (owner) => {
+            const snapshot = pullRequestReviewRuntime.snapshotForContext(contextId53);
+            assert.ok(snapshot);
+            outcomeRuntime.register({ repositoryId: REPOSITORY_ID, repositoryRoot, fileSystemPathSemantics: "posix", snapshot,
+              readTextContent: async () => ({ kind: "found", content: "" }) });
+            await refreshCurrentContextPullRequestViews({
+              selection: accepted?.context.selection, runtime: outcomeRuntime,
+              refreshList: (parent) => current.runtime.refreshListOnly?.(parent, owner?.signal) ?? Promise.resolve(),
+              refreshProgress: async (parent) => {
+                if (accepted?.context.selection?.kind === "pull-request") await outcomeRuntime.activateProgress(contextId53, parent, owner?.signal);
+                else outcomeRuntime.clearProgress();
+              },
+              refreshDecorations: async () => undefined, refreshGlobal: async () => undefined, reportProgressError() {},
+            }, owner);
+          },
+        });
+        const operation = feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(cancellation.signal, owner));
+        if (interruption === "failed") await assert.rejects(operation); else await operation;
+        assert.equal(accepted?.context.pullRequestCandidateCount, 2, "selection metadata must come from real T405 resolver");
+        for (const stage of ["pr-progress", "tree-publication"] as const) {
+          const terminals = entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && !["started", "progress"].includes(entry.pullRequestRefresh.status));
+          assert.equal(terminals.length, 1, `${stage}/${interruption}: explicit publication must terminate once`);
+          assert.equal(terminals[0]?.pullRequestRefresh?.status, interruption === "failed" ? "failed" : "superseded");
+        }
+        assert.equal(entries.filter((entry) => entry.event === "failed").length, interruption === "failed" ? 1 : 0);
+        if (interruption === "superseded") {
+          assert.equal(accepted?.context.kind, "branch", "new explicit branch must remain accepted");
+          assert.equal(outcomeRuntime.progress.getEffectiveProgress().files.length, 0);
+        }
+        assertClosedStages(entries);
+      }
+    });
 
     await t.test("R2 NR-006 actual T405 recompute closes Current Context and repository identity stages", async () => {
       const entries: OperationLogEntry[] = [];

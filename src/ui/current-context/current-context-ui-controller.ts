@@ -19,6 +19,8 @@ export interface CurrentContextDescriptor {
   readonly selection?: SelectedReviewContext;
   readonly selectionReason?: "explicit-selection-kept" | "unique-pr-match" | "ambiguous-pr-match" | "no-matching-pr" | "no-selected-pr";
   readonly pullRequestCandidateCount?: number;
+  /** Safe acquisition provenance when optional PR enrichment fails but a verified branch survives. */
+  readonly pullRequestAcquisition?: "failed-branch-preserved";
 }
 
 export interface CurrentContextProgress {

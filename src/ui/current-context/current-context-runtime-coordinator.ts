@@ -38,6 +38,8 @@ export interface CurrentContextRefreshContext {
   readonly acceptedIdentity: () => Readonly<{ contextId: string; baseSha?: string; headSha?: string }> | undefined;
   setPublicationCounts(counts: NonNullable<PullRequestRefreshDiagnostic["counts"]>): void;
   readonly publicationCounts: () => NonNullable<PullRequestRefreshDiagnostic["counts"]>;
+  /** Closes every started stage on a rejected or interrupted owner, once per stage. */
+  finishPendingStages(status: "failed" | "cancelled" | "superseded", reasonCode: PullRequestRefreshReasonCode): void;
   readonly report: (
     stage: PullRequestRefreshStage,
     status: PullRequestRefreshStatus,
@@ -76,20 +78,24 @@ export class CurrentContextRuntimeCoordinator {
     const context = this.createRefreshContext(trigger, feedbackContext, signal);
     context.report("current-context", "started");
     context.report("repository-identity", "started");
+    context.report("pr-acquisition", "started");
     let acceptedSnapshot: CurrentContextUiSnapshot | undefined;
     try {
       const result = await this.controller.refresh(context.signal, feedbackContext, options);
       if (signal?.aborted === true || context.generation !== this.generation || result.stale) {
         context.report("current-context", "superseded", { reasonCode: "superseded" });
         context.report("repository-identity", "superseded", { reasonCode: "superseded" });
+        context.report("pr-acquisition", "superseded", { reasonCode: "superseded" });
         return;
       }
       if (result.nonDestructive) {
         context.report("current-context", "cancelled", { reasonCode: "identity-changed" });
         context.report("repository-identity", "cancelled", { reasonCode: "identity-changed" });
+        context.report("pr-acquisition", "cancelled", { reasonCode: "identity-changed" });
         return;
       }
       acceptedSnapshot = result.snapshot;
+      this.reportAcquisitionOutcome(context, acceptedSnapshot);
       context.setAcceptedSnapshot(acceptedSnapshot);
       context.setSelectionProvenance(
         result.snapshot?.context.selectionReason,
@@ -131,9 +137,8 @@ export class CurrentContextRuntimeCoordinator {
       context.report("tree-publication", "succeeded", { counts: context.publicationCounts() });
     } catch (error) {
       const superseded = signal?.aborted === true || context.generation !== this.generation;
-      context.report("current-context", superseded ? "superseded" : "failed", {
-        reasonCode: superseded ? "superseded" : "refresh-failed",
-      });
+      context.finishPendingStages(superseded ? (signal?.aborted ? "cancelled" : "superseded") : "failed",
+        superseded ? "superseded" : "refresh-failed");
       if (!superseded) throw error;
     }
   }
@@ -150,47 +155,58 @@ export class CurrentContextRuntimeCoordinator {
     const context = this.createRefreshContext("current-context-selection", feedbackContext, signal);
     context.report("current-context", "started");
     context.report("repository-identity", "started");
-    const selection = await this.controller.selectContext(context.signal, feedbackContext);
-    if (signal?.aborted === true || context.generation !== this.generation) {
-      context.report("current-context", "superseded", { reasonCode: "superseded" });
-      context.report("repository-identity", "superseded", { reasonCode: "superseded" });
-      return;
+    context.report("pr-acquisition", "started");
+    try {
+      const selection = await this.controller.selectContext(context.signal, feedbackContext);
+      if (signal?.aborted === true || context.generation !== this.generation) {
+        context.report("current-context", "superseded", { reasonCode: "superseded" });
+        context.report("repository-identity", "superseded", { reasonCode: "superseded" });
+        context.report("pr-acquisition", "superseded", { reasonCode: "superseded" });
+        return;
+      }
+      if (selection === undefined) {
+        context.report("current-context", "cancelled", { reasonCode: "identity-changed" });
+        context.report("repository-identity", "cancelled", { reasonCode: "no-selected-pr" });
+        context.report("pr-acquisition", "cancelled", { reasonCode: "no-selected-pr" });
+        return;
+      }
+      this.reportAcquisitionOutcome(context, selection);
+      const descriptor = selection.context;
+      context.setAcceptedSnapshot(selection);
+      context.setSelectionProvenance(
+        descriptor.selectionReason ?? "explicit-selection-kept",
+        descriptor.pullRequestCandidateCount,
+      );
+      context.report("repository-identity", descriptor.selection === undefined ? "failed" : "succeeded", {
+        ...(descriptor.selection === undefined ? { reasonCode: "identity-changed" } : {}),
+        counts: {
+          repositories: descriptor.selection?.kind === "workspace" ? 0 : 1,
+          selectedContextOrdinal: descriptor.selection === undefined ? 0 : 1,
+        },
+      });
+      context.report("current-context", "succeeded", {
+        ...(descriptor.selectionReason === undefined ? {} : { reasonCode: descriptor.selectionReason }),
+        counts: {
+          ...(descriptor.pullRequestCandidateCount === undefined
+            ? {}
+            : { pullRequestCandidates: descriptor.pullRequestCandidateCount }),
+        },
+      });
+      this.dependentRefresher.setSelectedContext?.(selection.context.selection);
+      this.dependentRefresher.acceptCurrentContextPreparation?.(selection.context.selection);
+      context.report("tree-publication", "started");
+      await this.dependentRefresher.refreshDependents(context);
+      if (!context.isCurrent()) {
+        context.report("tree-publication", "superseded", { reasonCode: "superseded" });
+        return;
+      }
+      context.report("tree-publication", "succeeded", { counts: context.publicationCounts() });
+    } catch (error) {
+      const superseded = signal?.aborted === true || context.generation !== this.generation;
+      context.finishPendingStages(superseded ? (signal?.aborted ? "cancelled" : "superseded") : "failed",
+        superseded ? "superseded" : "refresh-failed");
+      if (!superseded) throw error;
     }
-    if (selection === undefined) {
-      context.report("current-context", "cancelled", { reasonCode: "identity-changed" });
-      context.report("repository-identity", "cancelled", { reasonCode: "no-selected-pr" });
-      return;
-    }
-    const descriptor = selection.context;
-    context.setAcceptedSnapshot(selection);
-    context.setSelectionProvenance(
-      descriptor.selectionReason ?? "explicit-selection-kept",
-      descriptor.pullRequestCandidateCount,
-    );
-    context.report("repository-identity", descriptor.selection === undefined ? "failed" : "succeeded", {
-      ...(descriptor.selection === undefined ? { reasonCode: "identity-changed" } : {}),
-      counts: {
-        repositories: descriptor.selection?.kind === "workspace" ? 0 : 1,
-        selectedContextOrdinal: descriptor.selection === undefined ? 0 : 1,
-      },
-    });
-    context.report("current-context", "succeeded", {
-      ...(descriptor.selectionReason === undefined ? {} : { reasonCode: descriptor.selectionReason }),
-      counts: {
-        ...(descriptor.pullRequestCandidateCount === undefined
-          ? {}
-          : { pullRequestCandidates: descriptor.pullRequestCandidateCount }),
-      },
-    });
-    this.dependentRefresher.setSelectedContext?.(selection.context.selection);
-    this.dependentRefresher.acceptCurrentContextPreparation?.(selection.context.selection);
-    context.report("tree-publication", "started");
-    await this.dependentRefresher.refreshDependents(context);
-    if (!context.isCurrent()) {
-      context.report("tree-publication", "superseded", { reasonCode: "superseded" });
-      return;
-    }
-    context.report("tree-publication", "succeeded", { counts: context.publicationCounts() });
   }
 
   /** Clears Current Context and dependent PR state after an unprovable refresh. */
@@ -219,6 +235,13 @@ export class CurrentContextRuntimeCoordinator {
     }
   }
 
+  private reportAcquisitionOutcome(context: CurrentContextRefreshContext, snapshot: CurrentContextUiSnapshot | undefined): void {
+    const preservedBranch = snapshot?.context.pullRequestAcquisition === "failed-branch-preserved";
+    context.report("pr-acquisition", preservedBranch ? "failed" : "succeeded", {
+      ...(preservedBranch ? { reasonCode: "verified-branch-preserved" } : {}),
+    });
+  }
+
   private createRefreshContext(
     trigger: PullRequestRefreshTrigger,
     feedbackContext?: OperationFeedbackContext,
@@ -237,7 +260,8 @@ export class CurrentContextRuntimeCoordinator {
     let acceptedIdentity: Readonly<{ contextId: string; baseSha?: string; headSha?: string }> | undefined;
     let publicationCounts: NonNullable<PullRequestRefreshDiagnostic["counts"]> = {};
     const stageStartedAt = new Map<PullRequestRefreshStage, number>();
-    return {
+    const completedStages = new Set<PullRequestRefreshStage>();
+    const context: CurrentContextRefreshContext = {
       generation,
       trigger,
       isCurrent: () => generation === this.generation && !cancellation.signal.aborted,
@@ -263,10 +287,19 @@ export class CurrentContextRuntimeCoordinator {
       acceptedIdentity: () => acceptedIdentity,
       setPublicationCounts: (counts) => { publicationCounts = { ...counts }; },
       publicationCounts: () => ({ ...publicationCounts }),
+      finishPendingStages: (status, reasonCode) => {
+        for (const stage of [...stageStartedAt.keys()]) {
+          context.report(stage, status, { reasonCode, ...(stage === "tree-publication" ? { counts: context.publicationCounts() } : {}) });
+        }
+      },
       report: (stage, status, details = {}) => {
+        if (completedStages.has(stage)) return;
         if (generation !== this.generation && status !== "superseded" && status !== "cancelled") return;
         const now = Date.now();
-        if (status === "started") stageStartedAt.set(stage, now);
+        if (status === "started") {
+          if (stageStartedAt.has(stage)) return;
+          stageStartedAt.set(stage, now);
+        }
         const startedAt = stageStartedAt.get(stage);
         reportActivePullRequestRefresh(feedbackContext, {
           generation,
@@ -278,9 +311,13 @@ export class CurrentContextRuntimeCoordinator {
             : {}),
           ...details,
         });
-        if (status !== "started") stageStartedAt.delete(stage);
+        if (status !== "started" && status !== "progress") {
+          stageStartedAt.delete(stage);
+          completedStages.add(stage);
+        }
       },
     };
+    return context;
   }
 }
 

@@ -40,7 +40,7 @@ Lを超える見込みになった場合は再分解する。
 - 設計/レビューsol high、実装terra high。100人の利用で月1回以上の頻度基準で対応を絞る。
 
 - P4保守: Issue #123で、local HEADより同一identity remoteのtracking branchが先行している場合のPR Context / PR Progress revision同期を対応中。local editor ownershipはlocal HEADのまま、fetch済みtracking revisionだけをPR synchronization targetとして扱う。
-- P4保守: Issues #136/#137の同一normal reviewer R2 outcomeを親提供のlifecycle事実から復元。NR-002/003/004/005はclosed、NR-001/006は新しいreview-target待ち。保持したdirty修正にactual provider/runtime/T405構成のtest-first修正を追加しfocused 25/25がGreen（実行source指紋 `f0e022dc2e061c5b4314cfff558b6dd354198a5441b83defd26f06267cdbc35c`）。broader validation pass、review-target commit準備済み（結果SHAはhandoffに記録）、technical HEAD/parentはH2 `9d434c3b8a396d4cf5c1cd568caa0118904a28e8`。全command/失敗/hashはR2 regressions reportに保持。Extension HostのVS Code version解決と実機UI確認はheld、push/CI/外部公開なし。
+- P4保守: Issues #136/#137はread-only同一reviewerのchat outcome（親提供、reviewed HEAD `5d0320aa037624022494fe877b08e317651b2541`）でNR-001 closed、NR-002/003/004/005 closedを保持。NR-006残る早期acquisition failure/recovery provenance、identity例外終端、explicit publication失敗終端の3経路をactual production Red→Greenで修正。focused 40/40、関連broader/lint/build/architecture pass、実行input指紋 `b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af`。同HEADをfirst parentにlocal review-target commit_pending、最終SHA/commit後exact-HEAD検証はhandoffへ。全出力/hash/失敗訂正はR2 regressions reportに追記。同reviewer fix verification待ち、host/device/full gate held/unrun、push/CI/外部公開なし。
 
 ## 過去の現在位置（2026-09-06）
 

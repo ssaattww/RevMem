@@ -27,7 +27,9 @@ export const augmentCurrentContextCandidatesWithBranchFallback = async (
     if (signal?.aborted === true || !localCandidates.some((candidate) => candidate.context.kind === "branch")) {
       throw error;
     }
-    return localCandidates;
+    return localCandidates.map((candidate) => candidate.context.kind === "branch" ? {
+      ...candidate, context: { ...candidate.context, pullRequestAcquisition: "failed-branch-preserved" as const },
+    } : candidate);
   }
 };
 

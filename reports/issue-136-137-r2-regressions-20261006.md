@@ -5986,3 +5986,2236 @@ The I116-only fixture-port correction changed the full input fingerprint from `1
 - Applied `git-commit-manager` with purpose `review_target` and the parent/user's explicit delegation of this local commit. Its default parent-owned execution rule does not require a second approval of the already delegated action.
 - Intentionally staged 14 accepted-scope files. All 423 executable inputs in the Git index match the final validated manifest. Source/test/task/normal-report diff-check passes. Verbatim failure-log whitespace in this regression report remains the disclosed archival exception.
 - Narrow canonical tracking changes: `tasks/tasks-status.md` Issues #136/#137 subsection only (current lifecycle/scope and its finding rows); `tasks/phases-status.md` Issue #136/#137 P4 maintenance line only. The unrelated Issue #116 historical phase line is unchanged. Final SHA and post-commit cleanliness are returned externally after the commit exists.
+
+
+## NR-006 remaining three paths — explicit continuation
+
+- Mode: delegated review follow-up / implementation, no review verdict. Accepted scope: early optional PR acquisition failure/recovery provenance, acquisition-exception identity terminal, explicit-selection publication failure terminal. Current Context and Review Contexts triggers, cancellation/supersession and exactly one safe stage terminal are included.
+- Starting HEAD: `5d0320aa037624022494fe877b08e317651b2541`, clean worktree confirmed; branch `issue-136-137-refresh-and-safe-diagnostics`. Preserve all previous commits/evidence; no reset/revert/environment reinitialization. User explicitly authorizes tests, implementation, tracking/report updates and one local review-target commit.
+- Requirements: original NR-006 and Issue #137 allowlisted content-free correlated lifecycle diagnostics; retain closed NR-001/002/003/004/005 behaviors. Skills work-context-manager, implementation-worker, implementation-executor, tdd-executor, report-output-manager/report-writer, progress-sync-manager and git-commit-manager apply under narrow parent-delegated write ownership.
+- Execution: runtime-local Linux/bash `/workspace/RevMem`; existing Node/npm/TypeScript/ESLint/Git, local_execution_available. Each command below records exact HEAD, committed Git tree, source-only fingerprint and whole executable-input fingerprint before/after, stdout/stderr/exit. Full manifests include file hashes; no secrets/environment dump.
+- No new Issue/PR, push, dependency/config/permission/auth changes, merge, external publication, deployment or reviewer invocation. Extension Host/device/CI/full local equivalence gate remain separate held/unrun checks.
+
+
+### NR-006 remaining-path implementation r3-baseline
+
+- UTC: 2026-10-06T18:44:37.558095+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs`
+- Exit: 0; counts={"tests": "15", "pass": "15", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=f0e022dc2e061c5b4314cfff558b6dd354198a5441b83defd26f06267cdbc35c; after=f0e022dc2e061c5b4314cfff558b6dd354198a5441b83defd26f06267cdbc35c.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-baseline.manifest.json.
+
+stdout (full):
+
+```text
+✔ Review Contexts refresh enters the same coordinator and orders selection before dependent PR Progress (3.990052ms)
+✔ R2 NR-001 owning cancellation reaches the actual list provider before publication (14.378261ms)
+✔ R2 NR-001 selected progress helper fences its finally publication after supersession (12.687292ms)
+✔ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (1.494281ms)
+✔ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (5.610591ms)
+✔ R2 NR-001 both entry owners abort running production PR work and retain newer immutable tree (10.516487ms)
+✔ R2 NR-001 a registered BASE change after accepted identity cannot activate or publish that replacement (1.515718ms)
+✔ a superseded branch-list failure cannot clear a newer successful PR tree (0.342558ms)
+✔ R2 NR-001 suppressed old list publication must not reactivate PR progress after newer explicit selection (2.067381ms)
+✔ a superseded cancelled branch refresh cannot clear a newer explicit PR selection (1.02077ms)
+✔ early T405 augmentation failure keeps the verified branch and clears dependent PR state (0.572979ms)
+✔ a failed shared PR projection records a failed publication and one failed owner terminal (0.800356ms)
+✔ resolved selection provenance flows from the Current Context snapshot into refresh records (0.416373ms)
+✔ R2 NR-003 actual Current Context and Review Contexts entries preserve verified branch on identical PR acquisition failure (5.334268ms)
+✔ Issue #137 correlates a safe PR Progress lifecycle without serializing private input values (3.601382ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 250.272364
+```
+
+stderr (full):
+
+```text
+```
+
+
+### NR-006 remaining-path implementation r3-red-compile
+
+- UTC: 2026-10-06T18:45:33.296595+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 2; counts={}; source before=00909518441f7a12c51188cb345e5168c3d726332dfd9a695f530b7d51ad8cf1; after=00909518441f7a12c51188cb345e5168c3d726332dfd9a695f530b7d51ad8cf1.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-red-compile.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+test/unit/t405-composition-regression.test.ts(754,121): error TS18048: 'entry.pullRequestRefresh' is possibly 'undefined'.
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+- `r3-red-compile` is a test-authoring compile failure (TS18048), not behavioral Red. Optional diagnostic narrowing corrected before execution; no production source change.
+
+
+### NR-006 remaining-path implementation r3-red-compile-corrected
+
+- UTC: 2026-10-06T18:45:58.476811+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 0; counts={}; source before=22951bb9faf4b8214a67434d2e6a4a519c93d86c10a489d0612394a3014f2249; after=22951bb9faf4b8214a67434d2e6a4a519c93d86c10a489d0612394a3014f2249.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-red-compile-corrected.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-focused-red
+
+- UTC: 2026-10-06T18:46:20.744337+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test '--test-name-pattern=T406 executes' test-dist/test/unit/t405-composition-regression.test.js`
+- Exit: 1; counts={"tests": "7", "pass": "3", "fail": "4", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=22951bb9faf4b8214a67434d2e6a4a519c93d86c10a489d0612394a3014f2249; after=22951bb9faf4b8214a67434d2e6a4a519c93d86c10a489d0612394a3014f2249.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-focused-red.manifest.json.
+
+stdout (full):
+
+```text
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (94.304731ms)
+  ✖ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (70.193347ms)
+  ✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (92.458328ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (35.375943ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (159.878514ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (1874.048544ms)
+✖ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (6019.608659ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 3
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6203.361276
+
+✖ failing tests:
+
+test at test-dist/test/unit/t405-composition-regression.test.js:644:17
+✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (94.304731ms)
+  AssertionError [ERR_ASSERTION]: current-context-refresh: retain the initial failure and recovery cause
+  + actual - expected
+  
+  + undefined
+  - 'verified-branch-preserved'
+  
+      at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:675:34)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:644:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'verified-branch-preserved',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test-dist/test/unit/t405-composition-regression.test.js:680:17
+✖ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (70.193347ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:695:17)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:680:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test-dist/test/unit/t405-composition-regression.test.js:702:17
+✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (92.458328ms)
+  AssertionError [ERR_ASSERTION]: explicit publication failure must close its started stage
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:739:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:702:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+```
+
+stderr (full):
+
+```text
+```
+
+- `r3-focused-red`: early-failure provenance and explicit-publication missing terminal are valid behavioral Red. Acquisition-exception test initially allowed bounded retry to recover after one network failure, so its missing-rejection assertion is a fixture failure, not the intended identity Red. Corrected to exhaust the production 3-attempt retry before asserting identity closure (explicit selection has one acquisition attempt). No production source edits yet.
+
+
+### NR-006 remaining-path implementation r3-red-retry-compile
+
+- UTC: 2026-10-06T18:46:34.783442+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 0; counts={}; source before=d92a7ebbf129ab714d704f932f4d20802a14391066005b6e0cf3fc76d2ba9c31; after=d92a7ebbf129ab714d704f932f4d20802a14391066005b6e0cf3fc76d2ba9c31.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-red-retry-compile.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-focused-red-corrected
+
+- UTC: 2026-10-06T18:47:01.458290+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test '--test-name-pattern=T406 executes' test-dist/test/unit/t405-composition-regression.test.js`
+- Exit: 1; counts={"tests": "7", "pass": "3", "fail": "4", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=d92a7ebbf129ab714d704f932f4d20802a14391066005b6e0cf3fc76d2ba9c31; after=d92a7ebbf129ab714d704f932f4d20802a14391066005b6e0cf3fc76d2ba9c31.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-focused-red-corrected.manifest.json.
+
+stdout (full):
+
+```text
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (55.532639ms)
+  ✖ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (91.865195ms)
+  ✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (109.073111ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (52.875774ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (175.493533ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (980.944148ms)
+✖ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (4919.692924ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 3
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5097.967125
+
+✖ failing tests:
+
+test at test-dist/test/unit/t405-composition-regression.test.js:644:17
+✖ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (55.532639ms)
+  AssertionError [ERR_ASSERTION]: current-context-refresh: retain the initial failure and recovery cause
+  + actual - expected
+  
+  + undefined
+  - 'verified-branch-preserved'
+  
+      at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:675:34)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:644:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'verified-branch-preserved',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test-dist/test/unit/t405-composition-regression.test.js:680:17
+✖ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (91.865195ms)
+  AssertionError [ERR_ASSERTION]: current-context-refresh: rejected acquisition must close started identity
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:698:34)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:680:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test-dist/test/unit/t405-composition-regression.test.js:702:17
+✖ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (109.073111ms)
+  AssertionError [ERR_ASSERTION]: explicit publication failure must close its started stage
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:739:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (/workspace/RevMem/test-dist/test/unit/t405-composition-regression.test.js:702:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+```
+
+stderr (full):
+
+```text
+```
+
+
+### NR-006 remaining-path implementation r3-green-compile
+
+- UTC: 2026-10-06T18:47:51.907827+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 0; counts={}; source before=4d5a61644a3e351fbba6debd210db5ac7b0947c4e5196c4f097cc2e84bab6fe8; after=4d5a61644a3e351fbba6debd210db5ac7b0947c4e5196c4f097cc2e84bab6fe8.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-green-compile.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-focused-green-attempt
+
+- UTC: 2026-10-06T18:48:16.115338+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs test-dist/test/unit/t405-composition-regression.test.js test-dist/test/unit/issue-116-current-context-refresh.test.js`
+- Exit: 1; counts={"tests": "29", "pass": "28", "fail": "1", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=4d5a61644a3e351fbba6debd210db5ac7b0947c4e5196c4f097cc2e84bab6fe8; after=4d5a61644a3e351fbba6debd210db5ac7b0947c4e5196c4f097cc2e84bab6fe8.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-focused-green-attempt.manifest.json.
+
+stdout (full):
+
+```text
+✔ Issue #116 shares duplicate start paths and a returned canonical root within one Current Context generation (4.214111ms)
+✔ Issue #116 does not infer an unexamined descendant from another returned root (0.410486ms)
+✔ Issue #116 shares active, opened, visible and workspace fallback inspections in one production session (0.687223ms)
+✔ Issue #116 reuses accepted Current Context PR preparation for only the immediately dependent Review Contexts refresh (376.614408ms)
+✔ Issue #116 discards a failed Current Context preparation and a later generation acquires fresh state (172.103893ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (5.17483ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (176.399999ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (109.50126ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (167.202854ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (96.837546ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (28.763188ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (146.319669ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (1045.918103ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (4794.404049ms)
+✔ Review Contexts refresh enters the same coordinator and orders selection before dependent PR Progress (4.176324ms)
+✔ R2 NR-001 owning cancellation reaches the actual list provider before publication (19.836583ms)
+✔ R2 NR-001 selected progress helper fences its finally publication after supersession (11.517487ms)
+✔ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (1.768052ms)
+✔ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (9.098866ms)
+✔ R2 NR-001 both entry owners abort running production PR work and retain newer immutable tree (11.332872ms)
+✔ R2 NR-001 a registered BASE change after accepted identity cannot activate or publish that replacement (2.725578ms)
+✔ a superseded branch-list failure cannot clear a newer successful PR tree (0.627846ms)
+✔ R2 NR-001 suppressed old list publication must not reactivate PR progress after newer explicit selection (3.389252ms)
+✔ a superseded cancelled branch refresh cannot clear a newer explicit PR selection (1.483908ms)
+✖ early T405 augmentation failure keeps the verified branch and clears dependent PR state (2.430877ms)
+✔ a failed shared PR projection records a failed publication and one failed owner terminal (1.534518ms)
+✔ resolved selection provenance flows from the Current Context snapshot into refresh records (0.731879ms)
+✔ R2 NR-003 actual Current Context and Review Contexts entries preserve verified branch on identical PR acquisition failure (10.226756ms)
+✔ Issue #137 correlates a safe PR Progress lifecycle without serializing private input values (4.541102ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 28
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5184.096538
+
+✖ failing tests:
+
+test at test/tooling/issue-136-refresh-coordinator.test.mjs:376:1
+✖ early T405 augmentation failure keeps the verified branch and clears dependent PR state (2.430877ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        context: {
+          headRevision: 'verified-head',
+          kind: 'branch',
+          label: 'checked-out',
+  +       pullRequestAcquisition: 'failed-branch-preserved',
+          selection: {
+            branchRef: 'refs/heads/checked-out',
+            kind: 'branch',
+            repositoryId: 'opaque-repo',
+            repositoryRoot: '/fixture'
+  
+      at TestContext.<anonymous> (file:///workspace/RevMem/test/tooling/issue-136-refresh-coordinator.test.mjs:388:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { context: [Object], progress: undefined } ],
+    expected: [ { context: [Object], progress: undefined } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+```
+
+stderr (full):
+
+```text
+```
+
+- `r3-focused-green-attempt`: new 3 production paths passed; 28/29 overall failed only because old fallback fixture expected no additive safe provenance. Exact expected snapshot updated to include the fixed marker and assert the original branch is not mutated. Additional actual acquisition cancellation/supersession (both entries + explicit selection) and actual PR publication interruption coverage added; this is supplemental Green coverage, not claimed as new Red.
+
+
+### NR-006 remaining-path implementation r3-final-compile
+
+- UTC: 2026-10-06T18:49:40.459631+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 0; counts={}; source before=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66; after=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-final-compile.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-focused-green
+
+- UTC: 2026-10-06T18:50:03.099954+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs test-dist/test/unit/t405-composition-regression.test.js test-dist/test/unit/issue-116-current-context-refresh.test.js test-dist/test/unit/issue-90-diagnostics-and-cancellation.test.js`
+- Exit: 0; counts={"tests": "40", "pass": "40", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66; after=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-focused-green.manifest.json.
+
+stdout (full):
+
+```text
+✔ Issue #116 shares duplicate start paths and a returned canonical root within one Current Context generation (3.647407ms)
+✔ Issue #116 does not infer an unexamined descendant from another returned root (0.523715ms)
+✔ Issue #116 shares active, opened, visible and workspace fallback inspections in one production session (0.465575ms)
+✔ Issue #116 reuses accepted Current Context PR preparation for only the immediately dependent Review Contexts refresh (611.942101ms)
+✔ Issue #116 discards a failed Current Context preparation and a later generation acquires fresh state (217.785449ms)
+✔ Issue #90 manifest exposes opt-in detailed diagnostics with a privacy-safe default (37.974232ms)
+✔ Issue #90 active status enumerates every operation and detailed mode correlates reason, target, and operation id (6.873047ms)
+✔ Issue #90 default diagnostics never emit a supplied file target (1.437447ms)
+✔ Issue #137 production formatter preserves refresh payloads and hides queued PR file paths (6.287378ms)
+✔ Issue #137 default lifecycle correlates concurrent same-label refreshes by owner operation id (1.661596ms)
+✔ Issue #90 superseded work has a cancellation terminal and does not reveal Output as an error (1.001279ms)
+✔ Issue #90 cancellation remains a non-error terminal while detailed diagnostics are OFF (0.625615ms)
+✔ Issue #90 coalescer cancels the pending stale refresh and flushes exactly one latest reason and file (0.792123ms)
+✔ Issue #90 coalescer shares three running requests with the same effective input and supersedes different input (0.492168ms)
+✔ Issue #90 PR Progress diagnostics explain a zero denominator per file and in aggregate (0.977906ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (6.089642ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (264.7649ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (122.409205ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (169.72329ms)
+  ✔ R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once (91.951801ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (303.211218ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (24.089704ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (141.886446ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (930.958119ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (5229.390778ms)
+✔ Review Contexts refresh enters the same coordinator and orders selection before dependent PR Progress (3.308442ms)
+✔ R2 NR-001 owning cancellation reaches the actual list provider before publication (12.259306ms)
+✔ R2 NR-001 selected progress helper fences its finally publication after supersession (13.096294ms)
+✔ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (4.561701ms)
+✔ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (4.744405ms)
+✔ R2 NR-001 both entry owners abort running production PR work and retain newer immutable tree (9.259651ms)
+✔ R2 NR-001 a registered BASE change after accepted identity cannot activate or publish that replacement (1.26954ms)
+✔ a superseded branch-list failure cannot clear a newer successful PR tree (0.611703ms)
+✔ R2 NR-001 suppressed old list publication must not reactivate PR progress after newer explicit selection (2.372548ms)
+✔ a superseded cancelled branch refresh cannot clear a newer explicit PR selection (0.572534ms)
+✔ early T405 augmentation failure keeps the verified branch and clears dependent PR state (0.72317ms)
+✔ a failed shared PR projection records a failed publication and one failed owner terminal (0.78865ms)
+✔ resolved selection provenance flows from the Current Context snapshot into refresh records (0.797987ms)
+✔ R2 NR-003 actual Current Context and Review Contexts entries preserve verified branch on identical PR acquisition failure (6.349229ms)
+✔ Issue #137 correlates a safe PR Progress lifecycle without serializing private input values (4.331601ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5741.722612
+```
+
+stderr (full):
+
+```text
+```
+
+
+### NR-006 remaining-path implementation r3-lint
+
+- UTC: 2026-10-06T18:50:43.415645+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run lint`
+- Exit: 1; counts={}; source before=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66; after=5a9124b1aedd1689180a6d6fe7110af6acf1a133310dc934ace2c2651c064f66.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-lint.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre lint
+> eslint src test --max-warnings=0
+
+
+/workspace/RevMem/test/unit/t405-composition-regression.test.ts
+  830:13  error  'coordinator' is never reassigned. Use 'const' instead  prefer-const
+
+✖ 1 problem (1 error, 0 warnings)
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+- `r3-lint` exit 1: supplemental test forward declaration violated prefer-const. Replaced it with a const coordinator captured lazily by the actual repository load callback; no product change. Compile and focused Green are rerun on the changed test input before broader checks.
+- Parent supplied the read-only same-reviewer chat outcome at reviewed base `5d0320aa037624022494fe877b08e317651b2541`: NR-001 closed, NR-003 closure retained; NR-002/004/005 retain prior R1 closure. There is no persisted report for that review. This implementation report records parent-supplied lifecycle facts without inventing a review report path or issuing a verdict. NR-006 still requires same-reviewer verification of the three addressed paths.
+
+
+### NR-006 remaining-path implementation r3-final-compile-lint-corrected
+
+- UTC: 2026-10-06T18:51:30.214707+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run compile:test`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-final-compile-lint-corrected.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-final-focused-green
+
+- UTC: 2026-10-06T18:51:59.958031+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs test-dist/test/unit/t405-composition-regression.test.js test-dist/test/unit/issue-116-current-context-refresh.test.js test-dist/test/unit/issue-90-diagnostics-and-cancellation.test.js`
+- Exit: 0; counts={"tests": "40", "pass": "40", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-final-focused-green.manifest.json.
+
+stdout (full):
+
+```text
+✔ Issue #116 shares duplicate start paths and a returned canonical root within one Current Context generation (2.549228ms)
+✔ Issue #116 does not infer an unexamined descendant from another returned root (0.983694ms)
+✔ Issue #116 shares active, opened, visible and workspace fallback inspections in one production session (0.522903ms)
+✔ Issue #116 reuses accepted Current Context PR preparation for only the immediately dependent Review Contexts refresh (378.818575ms)
+✔ Issue #116 discards a failed Current Context preparation and a later generation acquires fresh state (180.194657ms)
+✔ Issue #90 manifest exposes opt-in detailed diagnostics with a privacy-safe default (14.054459ms)
+✔ Issue #90 active status enumerates every operation and detailed mode correlates reason, target, and operation id (7.752547ms)
+✔ Issue #90 default diagnostics never emit a supplied file target (1.979772ms)
+✔ Issue #137 production formatter preserves refresh payloads and hides queued PR file paths (3.781232ms)
+✔ Issue #137 default lifecycle correlates concurrent same-label refreshes by owner operation id (1.304446ms)
+✔ Issue #90 superseded work has a cancellation terminal and does not reveal Output as an error (1.000014ms)
+✔ Issue #90 cancellation remains a non-error terminal while detailed diagnostics are OFF (0.860642ms)
+✔ Issue #90 coalescer cancels the pending stale refresh and flushes exactly one latest reason and file (0.540428ms)
+✔ Issue #90 coalescer shares three running requests with the same effective input and supersedes different input (0.770014ms)
+✔ Issue #90 PR Progress diagnostics explain a zero denominator per file and in aggregate (0.64844ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (4.577798ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (158.243514ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (121.098463ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (175.676506ms)
+  ✔ R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once (125.096459ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (417.29459ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (25.996193ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (180.673253ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (1026.241918ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (5419.869271ms)
+✔ Review Contexts refresh enters the same coordinator and orders selection before dependent PR Progress (6.579435ms)
+✔ R2 NR-001 owning cancellation reaches the actual list provider before publication (19.188366ms)
+✔ R2 NR-001 selected progress helper fences its finally publication after supersession (12.389378ms)
+✔ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (1.886531ms)
+✔ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (6.096017ms)
+✔ R2 NR-001 both entry owners abort running production PR work and retain newer immutable tree (12.079711ms)
+✔ R2 NR-001 a registered BASE change after accepted identity cannot activate or publish that replacement (2.577714ms)
+✔ a superseded branch-list failure cannot clear a newer successful PR tree (0.522712ms)
+✔ R2 NR-001 suppressed old list publication must not reactivate PR progress after newer explicit selection (2.427926ms)
+✔ a superseded cancelled branch refresh cannot clear a newer explicit PR selection (0.798151ms)
+✔ early T405 augmentation failure keeps the verified branch and clears dependent PR state (1.030683ms)
+✔ a failed shared PR projection records a failed publication and one failed owner terminal (1.207772ms)
+✔ resolved selection provenance flows from the Current Context snapshot into refresh records (1.116485ms)
+✔ R2 NR-003 actual Current Context and Review Contexts entries preserve verified branch on identical PR acquisition failure (8.583303ms)
+✔ Issue #137 correlates a safe PR Progress lifecycle without serializing private input values (4.126473ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5772.898277
+```
+
+stderr (full):
+
+```text
+```
+
+
+### NR-006 remaining-path implementation r3-lint
+
+- UTC: 2026-10-06T18:52:08.978141+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run lint`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-lint.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre lint
+> eslint src test --max-warnings=0
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-build
+
+- UTC: 2026-10-06T18:52:19.919688+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run build`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-build.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre build
+> npm run compile
+
+
+> review-range-tracker@0.0.1-pre compile
+> tsc -p tsconfig.json
+
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-t305
+
+- UTC: 2026-10-06T18:52:27.519056+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:t305`
+- Exit: 0; counts={"tests": "71", "pass": "71", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-t305.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:t305
+> npm run compile:test && node --test test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/t305-validation-wiring.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ Issue #136 keeps a verified branch and clears old PR Progress when the refreshed PR list fails (5.195916ms)
+✔ pull request, branch, and workspace labels are projected consistently (0.339731ms)
+✔ branch selection identity remains stable when HEAD advances (0.256996ms)
+✔ select applies the authoritative selected snapshot (0.586357ms)
+✔ runtime coordinator refreshes dependents after selected UI is applied (0.630587ms)
+✔ selected context identity is applied to the review runtime before decorations refresh (0.477321ms)
+✔ refresh replaces a disappeared selected branch identity with the authoritative fallback before dependent refresh (1.193012ms)
+✔ production candidate selection resolves accepted Quick Pick, branch replacement, disappearance, and detached identities (3.99151ms)
+✔ T609 background recompute never opens a multi-root Quick Pick while an explicit refresh does (0.907348ms)
+✔ explicit Current Context selection prepares PR candidates before its Quick Pick without changing background refresh (0.479634ms)
+✔ a stale candidate resolution cannot clear a newer explicit selection (0.134176ms)
+✔ Current Context does not select an outer candidate when the active document owner is unresolved (0.224947ms)
+✔ repository fallback prefers the active non-Git workspace over a retained unrelated Git root (0.436561ms)
+✔ deleted owner fallback selects one independent survivor but keeps a nested outer owner unresolved (0.648872ms)
+✔ a deleted nested pull-request owner cannot be replaced by its enclosing Git repository (0.889116ms)
+✔ production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership (177.494923ms)
+✔ Current Context document and workspace inspection skip only their own stat ENOENT (0.680558ms)
+✔ Git-unavailable workspace fallback keeps the production candidate Tree Status and runtime selection aligned (0.782927ms)
+✔ unexpected workspace Git inspection failures propagate instead of becoming a fallback candidate (0.435673ms)
+✔ a Quick Pick choice is not committed when its candidate inventory changes without another controller generation (1.159867ms)
+✔ a stale Quick Pick completion cannot replace the accepted explicit selection (0.96006ms)
+✔ an accepted zero-candidate refresh clears Tree Status runtime and explicit selection before recovery (0.505819ms)
+✔ production composition keeps successful Quick Pick Tree Status command and decoration runtime identity aligned (0.716231ms)
+✔ Git refresh failures are reported instead of escaping fire-and-forget activation and editor events (0.752345ms)
+✔ refresh ignores stale asynchronous snapshots (0.222749ms)
+✔ T606 never retries a Current Context Quick Pick selection after a retryable failure (0.369117ms)
+✔ Global Understanding model keeps repository, file, file-count, and exclusion diagnostics separate (4.305433ms)
+✔ Global Understanding model retains discovered files without content evidence as uncollected (0.591914ms)
+✔ Issue #128 Global Understanding accepts collected line progress for unopened files (0.347821ms)
+✔ Global Understanding model accepts sparse open targets for non-openable path-only rows (0.872642ms)
+✔ Status Bar co-displays Global progress, opened counts, and exclusion diagnostics (0.849652ms)
+✔ Global layer toggle persists the setting before refreshing decoration and Global UI (0.275176ms)
+✔ Global layer toggle does not refresh dependents when persistence fails (0.877016ms)
+✔ Global refresh clears stale presentation when the current recalculation fails (0.890979ms)
+✔ T505-R005 an older failed recalculation is absorbed after a newer Global snapshot is published (0.825028ms)
+✔ T505-R005 rapid document changes invalidate work, cancel the pending timer, and run one latest refresh (2.113649ms)
+✔ snapshot file-size setting is converted to an independent per-snapshot limit (0.426043ms)
+✔ manifest contributes T505 commands and the designed snapshot limit setting (16.482958ms)
+✔ T505-R001 retains immutable open-document evidence after save and close (65.377184ms)
+✔ T505-R001 wires change, save, and close events to Global evidence refresh (1.381672ms)
+✔ T505-R002 keeps individually valid snapshots when only their combined size exceeds the per-snapshot limit (7.768208ms)
+✔ T505-R002 rejects aggregate limits below the per-snapshot limit and never publishes a removed latest snapshot (3.817312ms)
+✔ T505-R003 reuses the shared last-valid exclusion policy after an invalid setting (12.594994ms)
+✔ T505-R004 invalid snapshot settings fall back without throwing and the manifest caps safe integers (1.178161ms)
+✔ T505-R006 focused validation executes the review-finding suite exactly once (1.624584ms)
+✔ T505-R007 follow-up handoff uses the required schema v3 top-level packet and preserves the original payload (1.80492ms)
+✔ T505-R005 requesting a debounced refresh immediately invalidates the in-flight generation (0.746919ms)
+✔ PR69-R001 Global snapshot pins a working-tree open target to the producing owner (10.812952ms)
+✔ PR69-R001 PR Global snapshot pins immutable HEAD identity even when the file is absent locally (10.512641ms)
+✔ PR69-R001 stale Global nodes reject directly while the registered command owns generic error reporting (23.40257ms)
+✔ repository manifest can enumerate every persisted context after restart without deleting or rewriting them (37.431621ms)
+✔ current PR and branch are shown with saved open/closed PR and workspace without duplicate current PR (1.985057ms)
+✔ hidden presentation identity filters current and saved contexts without deleting state (0.371109ms)
+✔ controller hides only the presentation identity and delegates T405 operations without deleting review state (3.949018ms)
+✔ reports start and success while keeping the busy status visible until completion (1.744007ms)
+✔ restores the previous operation status after a nested operation finishes (1.066444ms)
+✔ logs and reveals failures before rethrowing them (0.887562ms)
+✔ records a swallowed diagnostic failure without changing active status (0.258815ms)
+✔ formats one-line Output entries without exposing a stack trace (0.595952ms)
+✔ does not duplicate the same Error when a UI error boundary reports it again (0.304228ms)
+✔ T405 contributes Review Contexts activation, commands, and menus (6.218832ms)
+✔ T405 production entry delegates Review Contexts composition to the T405 runtime boundary (1.259654ms)
+✔ Issue #57 maps an existing owner-wide Global revision before publishing a new PR context (1.624841ms)
+✔ Issue #63 wires streamed Git output, operation status, and Output diagnostics (2.923754ms)
+✔ Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics (1.86731ms)
+✔ R65-005 preserves safe PR progress acquisition attempts and final cause (1.985622ms)
+✔ T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure (4.071927ms)
+✔ T305 preserves every pre-existing unit suite exactly once while adding its focused suites (2.684766ms)
+✔ Issue #84 registers the selected PR runtime before PR Progress refresh (0.52887ms)
+✔ T305 contributes the Review Range activity container, views, and commands (14.406183ms)
+✔ T305 default and focused commands execute the same behavior suites (7.064838ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 400.540446
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-t405
+
+- UTC: 2026-10-06T18:52:40.671055+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:t405`
+- Exit: 0; counts={"tests": "94", "pass": "94", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-t405.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:t405
+> npm run compile:test && node --test test-dist/test/unit/review-contexts-runtime-wiring.test.js test-dist/test/unit/review-contexts-storage.test.js test-dist/test/unit/review-contexts-ui.test.js test-dist/test/unit/t405-github-lifecycle.test.js test-dist/test/unit/t405-pull-request-review-runtime.test.js test-dist/test/unit/t405-review-followup.test.js test-dist/test/unit/t405-revision-evidence.test.js test-dist/test/unit/t405-selected-pr-session.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ T405 contributes Review Contexts activation, commands, and menus (10.574015ms)
+✔ T405 production entry delegates Review Contexts composition to the T405 runtime boundary (7.135874ms)
+✔ Issue #57 maps an existing owner-wide Global revision before publishing a new PR context (2.418964ms)
+✔ Issue #63 wires streamed Git output, operation status, and Output diagnostics (6.826156ms)
+✔ Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics (4.829684ms)
+✔ R65-005 preserves safe PR progress acquisition attempts and final cause (3.756295ms)
+✔ T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure (1.398927ms)
+✔ repository manifest can enumerate every persisted context after restart without deleting or rewriting them (128.976877ms)
+✔ current PR and branch are shown with saved open/closed PR and workspace without duplicate current PR (2.996017ms)
+✔ hidden presentation identity filters current and saved contexts without deleting state (0.246996ms)
+✔ controller hides only the presentation identity and delegates T405 operations without deleting review state (0.69958ms)
+✔ reports start and success while keeping the busy status visible until completion (2.259347ms)
+✔ restores the previous operation status after a nested operation finishes (0.611064ms)
+✔ logs and reveals failures before rethrowing them (1.623674ms)
+✔ records a swallowed diagnostic failure without changing active status (0.636779ms)
+✔ formats one-line Output entries without exposing a stack trace (0.567917ms)
+✔ does not duplicate the same Error when a UI error boundary reports it again (0.743336ms)
+✔ R405-2 lifecycle adapter reports closed and merged PR state by stable PR identity (37.552352ms)
+✔ Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip (2.177576ms)
+✔ Issue #107 remote PR diff keeps the branch point when the base branch advances (2.812636ms)
+✔ Issue #107 private refresh keeps read-only PR progress available across legacy persisted base metadata (4.517774ms)
+✔ R405-1 lifecycle adapter acquires an exact immutable revision comparison for T404 mapping (0.695401ms)
+✔ R405-1 T405 revision update maps B to C, permits layer operation, and survives restart (18.187715ms)
+✔ R405-2 open PR lifecycle transition persists closed/merged saved grouping with layer OFF (2.023275ms)
+✔ lifecycle adapter classifies rate-limit and network failures without substituting another revision (0.732542ms)
+✔ PR runtime command snapshot survives immutable PR A-to-B-to-A store restoration with hashes (50.225631ms)
+✔ R405-3 saved/closed PR opens through the canonical T302 review-range-diff identity (1.178026ms)
+✔ R405-3 Review Contexts canonical original/modified commands persist mark and unmark (22.473931ms)
+✔ PR runtime command fails closed before commit when persisted hashes do not match authoritative HEAD content (2.232246ms)
+✔ PR mutation no-op, cancellation, and failed commit publish neither snapshots nor history (2.993852ms)
+✔ R405-5 PR runtime exposes T304 progress for Review Contexts (4.74389ms)
+✔ Issue #137 actual T405 PR activation never emits acquired file paths in detailed Output (22.932823ms)
+✔ Issue #136 keeps the newest PR Progress refresh when an older read finishes later (4.581048ms)
+✔ R405-3 binary PR changes are not opened as text review diffs (1.35321ms)
+✔ Issue #59 PR full scan reads complete current-side files once and reuses immutable revision caches (1.817324ms)
+✔ PR69-R001 Global PR open uses the exact immutable HEAD document and rejects a superseded head (1.581005ms)
+✔ PR Progress original-side selection projects unchanged lines and retains original-only lines atomically (3.236012ms)
+✔ PR Progress command rejects an old diff URI pair after BASE or HEAD changes (1.596063ms)
+✔ production command routing validates the active immutable diff URI pair before mutation (8.342839ms)
+✔ PR runtime persists mark and unmark for added content without a terminal newline (7.678019ms)
+✔ PR runtime persists mark and unmark for added LF-terminated content (5.149082ms)
+✔ PR runtime persists mark and unmark for deleted content without a terminal newline (3.2976ms)
+✔ PR runtime persists mark and unmark for deleted LF-terminated content (2.409641ms)
+✔ PR runtime persists mark and unmark for replacement with terminal newlines (3.752316ms)
+✔ PR runtime persists mark and unmark for replacement that adds a terminal newline (5.648585ms)
+✔ PR runtime persists mark and unmark for replacement that removes a terminal newline (4.286595ms)
+✔ PR runtime preserves empty existing files and CRLF content through body-derived line contracts (7.690875ms)
+✔ PR runtime treats a terminal display line as outside Git content (1.804809ms)
+✔ PR runtime leaves bare CR display fragments outside one-line Git replacements (4.247675ms)
+✔ PR runtime rejects truncated, mismatched, and inconsistent local Git hunk evidence before mutation (4.689315ms)
+✔ PR runtime hydrates complete legacy-redacted cache hunks and rejects tampered or incomplete evidence (5.337051ms)
+✔ PR runtime block mode links both sides while a later side-mode operation stays on the operated side (5.808127ms)
+✔ PR runtime block mode expands an original replacement selection to modified Context and Global (2.913962ms)
+✔ PR runtime does not read selection mode or open state for an empty selection (0.802081ms)
+✔ PR runtime block mark from original commits when only the target revision Global snapshot changes (3.866784ms)
+✔ PR runtime block unmark from original commits when only the target revision Global snapshot changes (4.747983ms)
+✔ PR runtime block mark from modified commits when only the target revision Global snapshot changes (3.736824ms)
+✔ PR runtime block unmark from modified commits when only the target revision Global snapshot changes (5.904211ms)
+✔ PR runtime rejects a re-registered comparison while a pending state load is resumed (1.586563ms)
+✔ PR runtime rejects old rename URIs and keeps an active command scoped to its PR (2.967164ms)
+✔ PR runtime keeps actual repository state atomic through write and CAS failures, restart, and a history failure (298.96531ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (7.587678ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (199.847364ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (115.663981ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (168.684318ms)
+  ✔ R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once (94.180702ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (345.173588ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (35.218044ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (163.319179ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (974.937185ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (5045.825017ms)
+✔ R60-001 immutable PR HEAD remains authoritative when the working-tree candidate set omits the file (1.385417ms)
+✔ R60-001 Global promotes immutable PR HEAD evidence even when the working tree no longer contains that path (33.549658ms)
+✔ R60-003 superseded owner revisions evict retained Global evidence instead of reviving it later (14.363825ms)
+✔ R60-002 breaking-change policy supersedes rev4 Global semantics with opened-only and immutable-PR rules (0.773668ms)
+✔ PR85-IFR-004 production Review Contexts completion counts stay monotonic across two PRs, retry, and repositories (268.976205ms)
+✔ PR85-NR-003 selected PR Progress reports file counts through the production Tree path on immutable-cache hits (2.374164ms)
+✔ R405-4 presentation hide applies to current PR, branch, and workspace without deleting state (0.37176ms)
+✔ R405-5 Review Contexts projects T304-compatible PR progress (0.225373ms)
+✔ R405-5 progress formatter covers zero, partial, and complete PR states (0.121524ms)
+✔ T405-IFR-2 keeps cache origin, freshness, and last successful update in the View projection (0.153468ms)
+✔ R405-5 Review Contexts Tree renders projected progress to users (2.832552ms)
+✔ R405-7 pull-request Current Context identity is stable across rediscovery and not label-derived (0.282075ms)
+✔ R405-7/R405-8 current PR is inferred only from persisted open state at the local HEAD (0.436161ms)
+✔ R405-7 multiple current-head PRs retain the PR explicitly chosen by redetection (0.215942ms)
+✔ Issue #137 selection provenance distinguishes explicit, unique, ambiguous, and missing matches (0.21437ms)
+✔ T406-R001 explicit branch selection suppresses one saved open PR at the same immutable HEAD (0.091809ms)
+✔ R405-7 redetection persists and reloads explicit current PR identity (5.165738ms)
+✔ R405-6/R405-9 remove the dead closed-layer setting and document connected Review Contexts (1.397462ms)
+✔ R405-1 revision evidence supplies exact diff and old/new text for tracked files (4.649141ms)
+✔ base-only PR transition does not invent a head diff (0.629904ms)
+✔ PR evidence loader supplies unchanged Global-only target evidence to the immutable mapper (7.264283ms)
+✔ R405-7 selected PR owns normal-editor command and decoration sessions without branch initialization (4.927892ms)
+✔ selected PR rejects a foreign repository or stale head without creating state (1.679157ms)
+ℹ tests 94
+ℹ suites 0
+ℹ pass 94
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6103.652291
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-t406
+
+- UTC: 2026-10-06T18:53:01.382991+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:t406`
+- Exit: 0; counts={"tests": "36", "pass": "36", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-t406.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:t406
+> npm run compile:test && node --test test-dist/test/integration/mock-github.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/unit/t405-composition-regression.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ mock GitHub server returns fixtures, records requests, and closes (96.205666ms)
+✔ GitHub remote parser reuses the T202 canonical remote identity for HTTPS, SCP-like SSH, ports, and GitHub.com casing (2.506383ms)
+✔ GitHub adapter searches open pull requests for the exact HEAD and normalizes the branch point with the same token (18.902977ms)
+✔ GitHub adapter follows pagination until an exact HEAD candidate is found (4.786818ms)
+✔ GitHub adapter rejects cross-origin pagination before forwarding authentication (1.098589ms)
+✔ GitHub adapter attempts a public API request without authentication (7.897078ms)
+✔ T406 resolves a public PR unauthenticated and falls back to branch for GitHub failures (48.899842ms)
+✔ GitHub adapter classifies rate-limit and API failures as unavailable (12.671597ms)
+✔ GitHub adapter classifies malformed elements, JSON, shapes, network errors, HTTP errors, and pagination cycles as unavailable (6.771212ms)
+✔ VS Code authentication selects GitHub.com and only the configured Enterprise authority without prompting (1.415649ms)
+✔ an Enterprise token is never forwarded to an unconfigured remote authority (2.426957ms)
+✔ authentication-provider failures fall back to an unauthenticated request (0.592198ms)
+✔ PR resolver auto-selects one candidate and falls back to branch for zero candidates (0.313924ms)
+✔ PR resolver asks for multiple candidates and returns branch when selection is cancelled (0.289171ms)
+✔ GitHub diff adapter fetches exact PR metadata and paginated file records (47.021797ms)
+✔ local Git diff is the first successful acquisition source (2.30394ms)
+✔ GitHub PR files patch is used after local Git is unavailable (0.921151ms)
+✔ T406 missing GitHub patch falls back to exact base and head file contents (1.202026ms)
+✔ an incomplete GitHub patch is rejected and rebuilt from base/head contents (0.694477ms)
+✔ all failed routes return no snapshot and never infer reviewed changes (0.26686ms)
+✔ GitHub patch parser accepts ordinary context lines while preserving changed coordinates (0.430671ms)
+✔ remote metadata from a different comparison is rejected before content reads (0.238472ms)
+✔ local Git adapter passes immutable revisions as separate arguments and classifies missing objects (1.993723ms)
+✔ invalid revision input is rejected before invoking local Git (1.019591ms)
+✔ GitHub raw-content reads bind the exact immutable ref and classify missing files (2.799142ms)
+✔ malformed remote file identity fails closed without reading repository contents (1.094228ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (6.330876ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (142.386614ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (126.24549ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (176.553044ms)
+  ✔ R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once (125.810538ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (365.298876ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (31.362394ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (164.992107ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (949.003975ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (5184.34258ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5575.226463
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-t606
+
+- UTC: 2026-10-06T18:53:26.062043+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:t606`
+- Exit: 0; counts={"tests": "242", "pass": "242", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-t606.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:t606
+> npm run compile:test && node --test test-dist/test/unit/t606-failure-policy-retry-diagnostics.test.js test-dist/test/unit/t606-production-failure-matrix.test.js test-dist/test/unit/t606-r6-production-matrix.test.js test-dist/test/unit/t606-r6-real-composition.test.js test-dist/test/unit/t606-r5-production-activation.test.js test-dist/test/unit/local-git-adapter.test.js test-dist/test/integration/t302-review-followup.integration.test.js test-dist/test/integration/t402-pr-diff-acquisition.test.js test-dist/test/unit/t405-github-lifecycle.test.js test-dist/test/unit/t405-composition-regression.test.js test-dist/test/unit/state-repository.test.js test-dist/test/unit/debounced-review-state-repository.test.js test-dist/test/unit/normal-editor-review-command-registration.test.js test-dist/test/unit/current-context-ui.test.js test-dist/test/unit/vscode-current-context-runtime.test.js test-dist/test/unit/review-contexts-runtime-wiring.test.js test-dist/test/unit/review-contexts-ui.test.js test-dist/test/unit/global-understanding-ui.test.js test-dist/test/unit/t505-global-understanding-source.test.js test-dist/test/unit/github-pull-request-cache.test.js test-dist/test/integration/mock-github.test.js test-dist/test/unit/t604-storage-lock-cleanup.test.js test-dist/test/unit/t605-multi-root-remote-boundaries.test.js test-dist/test/unit/ci-workflow-contract.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ mock GitHub server returns fixtures, records requests, and closes (103.043348ms)
+✔ GitHub remote parser reuses the T202 canonical remote identity for HTTPS, SCP-like SSH, ports, and GitHub.com casing (1.965751ms)
+✔ GitHub adapter searches open pull requests for the exact HEAD and normalizes the branch point with the same token (31.858193ms)
+✔ GitHub adapter follows pagination until an exact HEAD candidate is found (4.915765ms)
+✔ GitHub adapter rejects cross-origin pagination before forwarding authentication (2.104953ms)
+✔ GitHub adapter attempts a public API request without authentication (6.095662ms)
+✔ T406 resolves a public PR unauthenticated and falls back to branch for GitHub failures (25.646939ms)
+✔ GitHub adapter classifies rate-limit and API failures as unavailable (3.513761ms)
+✔ GitHub adapter classifies malformed elements, JSON, shapes, network errors, HTTP errors, and pagination cycles as unavailable (4.305177ms)
+✔ VS Code authentication selects GitHub.com and only the configured Enterprise authority without prompting (1.391203ms)
+✔ an Enterprise token is never forwarded to an unconfigured remote authority (0.747518ms)
+✔ authentication-provider failures fall back to an unauthenticated request (0.522657ms)
+✔ PR resolver auto-selects one candidate and falls back to branch for zero candidates (0.299571ms)
+✔ PR resolver asks for multiple candidates and returns branch when selection is cancelled (0.213908ms)
+✔ review diff URI round-trip preserves filesystem path semantics (51.41985ms)
+✔ review diff URI rejects moving refs and non-canonical repository paths (9.18157ms)
+✔ POSIX review diff URI preserves tab, newline, and backslash filename characters (3.376868ms)
+✔ Windows review diff URI rejects backslash and control characters (0.425007ms)
+✔ fatal revision lookup exit 128 is preserved instead of reported as missing (0.73045ms)
+✔ fatal file lookup exit 128 is preserved instead of reported as missing (6.864921ms)
+✔ moving refs are rejected before immutable Git content lookup (163.37874ms)
+✔ POSIX Git content lookup supports tab, newline, and backslash filenames (119.36706ms)
+✔ POSIX Git content lookup supports a filename made only of a newline (159.741394ms)
+✔ Git content lookup reads UTF-8 text immediately below and above 4 MiB (374.875469ms)
+✔ non-UTF-8 Git blob is rejected deterministically without replacement characters (172.032325ms)
+✔ GitHub diff adapter fetches exact PR metadata and paginated file records (52.850143ms)
+✔ local Git diff is the first successful acquisition source (3.228884ms)
+✔ GitHub PR files patch is used after local Git is unavailable (1.830005ms)
+✔ T406 missing GitHub patch falls back to exact base and head file contents (2.327281ms)
+✔ an incomplete GitHub patch is rejected and rebuilt from base/head contents (1.131711ms)
+✔ all failed routes return no snapshot and never infer reviewed changes (0.507347ms)
+✔ GitHub patch parser accepts ordinary context lines while preserving changed coordinates (0.438848ms)
+✔ remote metadata from a different comparison is rejected before content reads (0.357564ms)
+✔ local Git adapter passes immutable revisions as separate arguments and classifies missing objects (2.152298ms)
+✔ invalid revision input is rejected before invoking local Git (1.948493ms)
+✔ GitHub raw-content reads bind the exact immutable ref and classify missing files (2.643819ms)
+✔ malformed remote file identity fails closed without reading repository contents (0.638623ms)
+✔ unit and focused suites execute the integrated design contract (104.15856ms)
+✔ document line contract coverage is runnable directly and through the required unit suite (4.818968ms)
+✔ unit, npm test, focused CI execute the complete T304 tree contract (4.159163ms)
+✔ temporary Git suite executes the T207 history integration scenario (0.994687ms)
+✔ T502 focused coverage is runnable locally and included in the default unit suite (2.413265ms)
+✔ CI executes positive and negative architecture gates with diagnostic logs (4.926ms)
+✔ CI executes the canonical T502 focused command (2.072083ms)
+✔ T505 focused coverage executes each dedicated suite once and is required by CI (4.993071ms)
+✔ CI diagnostics preserve stdout, stderr, combined logs, and result metadata (1.731063ms)
+✔ T506 integration and Extension Host acceptance are exposed as one required focused CI command (5.538708ms)
+✔ T406 GitHub failure and recovery integration is exposed by package and CI (2.043416ms)
+✔ T605 multi-root and remote workspace boundary coverage is exposed by package and CI (4.192219ms)
+✔ T606 focused failure-policy coverage is exposed by package and CI (1.608803ms)
+✔ T607 performance workloads remain local-only and never gate CI (3.63212ms)
+✔ CI publishes a branch-version-and-HEAD-named VSIX and tracked source archive only after pull-request success (2.79514ms)
+✔ required unit gate runs the Issue #90 runtime routing suite before success artifacts (3.92442ms)
+✔ required unit gate reaches the Issue #92 PR Progress context-menu contract before success artifacts (1.069819ms)
+✔ required CI gates exclude timing-sensitive suites and use deadline-free Extension Host waits (4.743997ms)
+✔ required gates keep the T606 wall-clock timeout fixture local-only (1.993744ms)
+✔ Issue #136 keeps a verified branch and clears old PR Progress when the refreshed PR list fails (5.814458ms)
+✔ pull request, branch, and workspace labels are projected consistently (0.440554ms)
+✔ branch selection identity remains stable when HEAD advances (0.475257ms)
+✔ select applies the authoritative selected snapshot (0.374234ms)
+✔ runtime coordinator refreshes dependents after selected UI is applied (0.539244ms)
+✔ selected context identity is applied to the review runtime before decorations refresh (0.388984ms)
+✔ refresh replaces a disappeared selected branch identity with the authoritative fallback before dependent refresh (0.790313ms)
+✔ production candidate selection resolves accepted Quick Pick, branch replacement, disappearance, and detached identities (0.821555ms)
+✔ T609 background recompute never opens a multi-root Quick Pick while an explicit refresh does (1.051619ms)
+✔ explicit Current Context selection prepares PR candidates before its Quick Pick without changing background refresh (0.634315ms)
+✔ a stale candidate resolution cannot clear a newer explicit selection (0.244224ms)
+✔ Current Context does not select an outer candidate when the active document owner is unresolved (0.791189ms)
+✔ repository fallback prefers the active non-Git workspace over a retained unrelated Git root (0.407292ms)
+✔ deleted owner fallback selects one independent survivor but keeps a nested outer owner unresolved (0.478092ms)
+✔ a deleted nested pull-request owner cannot be replaced by its enclosing Git repository (1.644114ms)
+✔ production Git candidate and fallback composition keep a normal file on branch or detached runtime ownership (339.299288ms)
+✔ Current Context document and workspace inspection skip only their own stat ENOENT (0.816933ms)
+✔ Git-unavailable workspace fallback keeps the production candidate Tree Status and runtime selection aligned (0.432044ms)
+✔ unexpected workspace Git inspection failures propagate instead of becoming a fallback candidate (0.255624ms)
+✔ a Quick Pick choice is not committed when its candidate inventory changes without another controller generation (0.562591ms)
+✔ a stale Quick Pick completion cannot replace the accepted explicit selection (0.96994ms)
+✔ an accepted zero-candidate refresh clears Tree Status runtime and explicit selection before recovery (0.566411ms)
+✔ production composition keeps successful Quick Pick Tree Status command and decoration runtime identity aligned (1.217448ms)
+✔ Git refresh failures are reported instead of escaping fire-and-forget activation and editor events (0.718599ms)
+✔ refresh ignores stale asynchronous snapshots (0.290725ms)
+✔ T606 never retries a Current Context Quick Pick selection after a retryable failure (0.236797ms)
+✔ multiple background saves are coalesced and persist only the newest complete snapshot (3.921923ms)
+✔ storage kinds remain isolated even when repository and context IDs are identical (0.582493ms)
+✔ a confirmation transaction flushes pending background state and commits without waiting for the debounce timer (0.518676ms)
+✔ external-file confirmation flushes the external pending state before commit (0.671065ms)
+✔ dispose flushes a pending save immediately for Extension Host deactivation (1.13953ms)
+✔ dispose waits for an immediate commit queued behind an in-flight load (2.163908ms)
+✔ dispose waits for an in-flight owner-wide Global load (8.796288ms)
+✔ owner-wide Global load serializes a different context commit (1.141986ms)
+✔ Git Global load serializes a pull-request save for the same repository (1.889008ms)
+✔ all callers observe a debounced persistence failure instead of receiving a false success (0.980915ms)
+✔ live GitHub acquisition stores metadata and a source-redacted diff with explicit timestamps (6.102072ms)
+✔ rate-limit failure uses an exact cached PR and marks expired data stale (1.473517ms)
+✔ network failure uses an unexpired exact cache and marks it fresh (0.583227ms)
+✔ patch fallback followed by network failure still uses an exact cache (1.627209ms)
+✔ non-offline API failures do not substitute cached data (0.742922ms)
+✔ mixed offline-eligible and API failures do not substitute cached data (0.956181ms)
+✔ cache entries are bound to the exact context, repository, PR, base, and head identity (1.318715ms)
+✔ filesystem cache publishes metadata and redacted diff through one generation pointer (105.608639ms)
+✔ Global Understanding model keeps repository, file, file-count, and exclusion diagnostics separate (3.128835ms)
+✔ Global Understanding model retains discovered files without content evidence as uncollected (0.367902ms)
+✔ Issue #128 Global Understanding accepts collected line progress for unopened files (0.339487ms)
+✔ Global Understanding model accepts sparse open targets for non-openable path-only rows (0.447959ms)
+✔ Status Bar co-displays Global progress, opened counts, and exclusion diagnostics (2.652885ms)
+✔ Global layer toggle persists the setting before refreshing decoration and Global UI (1.022027ms)
+✔ Global layer toggle does not refresh dependents when persistence fails (1.150318ms)
+✔ Global refresh clears stale presentation when the current recalculation fails (0.989584ms)
+✔ T505-R005 an older failed recalculation is absorbed after a newer Global snapshot is published (0.687342ms)
+✔ T505-R005 rapid document changes invalidate work, cancel the pending timer, and run one latest refresh (0.634133ms)
+✔ snapshot file-size setting is converted to an independent per-snapshot limit (0.359688ms)
+✔ manifest contributes T505 commands and the designed snapshot limit setting (13.165344ms)
+✔ Node local Git path normalization propagates stat permission errors unchanged (8.593715ms)
+✔ Node local Git path normalization retains only an exact candidate stat ENOENT (9.770843ms)
+✔ Node local Git path identity is unavailable when either realpath lookup fails (11.803769ms)
+✔ repository inspection uses argument arrays and returns normalized Git identity (66.176626ms)
+✔ remote normalization unifies common GitHub URL forms without credentials (5.559776ms)
+✔ fork remotes remain distinct repository identities (4.439764ms)
+✔ a repository without remotes receives a stable root-derived identity (7.952374ms)
+✔ Issue #57 keeps local Git context usable when a listed remote URL cannot be resolved (0.478357ms)
+✔ detached HEAD is distinguished while retaining the exact HEAD object (0.440246ms)
+✔ Git executable absence and non-repositories are separate outcomes (13.637199ms)
+✔ merge-base and object existence use bounded argument-array commands (7.013601ms)
+✔ revision arguments that could be parsed as options are rejected (1.97819ms)
+✔ registerNormalEditorReviewCommands registers the four designed command IDs (3.348944ms)
+✔ registered commands delegate only when an active normal editor exists (1.252639ms)
+✔ registered commands reject missing and diff editors without invoking state commands (0.495632ms)
+✔ registered commands report a privacy-safe handler failure through the UI host (0.604481ms)
+✔ handler failure is recorded as failed operation before the UI host reports it (2.331063ms)
+✔ Test-mode command failure is captured by operation and rejects with the original error without waiting for UI (1.265939ms)
+✔ applied production handlers await one automatic decoration refresh (0.703233ms)
+✔ Test-mode public command settles after state application without an automatic decoration refresh (0.36664ms)
+✔ T405 contributes Review Contexts activation, commands, and menus (37.724657ms)
+✔ T405 production entry delegates Review Contexts composition to the T405 runtime boundary (20.179158ms)
+✔ Issue #57 maps an existing owner-wide Global revision before publishing a new PR context (5.716489ms)
+✔ Issue #63 wires streamed Git output, operation status, and Output diagnostics (6.872338ms)
+✔ Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics (5.535095ms)
+✔ R65-005 preserves safe PR progress acquisition attempts and final cause (7.754501ms)
+✔ T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure (1.872463ms)
+✔ current PR and branch are shown with saved open/closed PR and workspace without duplicate current PR (3.144487ms)
+✔ hidden presentation identity filters current and saved contexts without deleting state (0.281711ms)
+✔ controller hides only the presentation identity and delegates T405 operations without deleting review state (0.588277ms)
+✔ reports start and success while keeping the busy status visible until completion (1.531731ms)
+✔ restores the previous operation status after a nested operation finishes (0.684811ms)
+✔ logs and reveals failures before rethrowing them (0.997803ms)
+✔ records a swallowed diagnostic failure without changing active status (0.33277ms)
+✔ formats one-line Output entries without exposing a stack trace (0.420026ms)
+✔ does not duplicate the same Error when a UI error boundary reports it again (0.366836ms)
+✔ routing separates Git and PR state from non-Git workspace state (15.551965ms)
+✔ workspace routing requires ExtensionContext.storageUri (1.422015ms)
+✔ repository save commits manifest last and reloads the same context and Global state (143.461707ms)
+✔ repository manifest preserves other contexts while atomically advancing one context (195.528087ms)
+✔ non-Git state uses workspace-state.json and never writes under globalStorageUri (69.029811ms)
+✔ a failed repository manifest replacement preserves disk and memory state (82.37098ms)
+✔ a failed workspace replacement preserves disk and memory state (34.42724ms)
+✔ schema mismatch is rejected and reported during load (18.180359ms)
+✔ save validates manifest, context, Global, target identity before any write (13.826926ms)
+✔ concurrent saves retain both context references in the repository manifest (111.232014ms)
+✔ save accepts the exact target and context kind mapping (39.576089ms)
+✔ save rejects non-matching target and context kinds (12.498203ms)
+✔ NodeAtomicTextFileStore replaces a file without leaving temporary files (4.510322ms)
+✔ storage-root containment follows the host path semantics without weakening escape rejection (0.65919ms)
+✔ NodeAtomicTextFileStore rejects an outside sibling and a symbolic link or junction (4.531135ms)
+✔ T406-IFR002 rejects non-allowlisted GitHub detection reasons before Output projection (3.742427ms)
+✔ T405-IFR-1 shared production owner rejects one stale lifecycle/mark race without losing Context, Global, manifest, or history (216.925205ms)
+▶ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation
+  ✔ R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance (149.607332ms)
+  ✔ R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection (176.766236ms)
+  ✔ R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once (147.387366ms)
+  ✔ R3 NR-006 actual explicit-selection PR publication failure closes its started stage once (513.111068ms)
+  ✔ R2 NR-006 actual T405 recompute closes Current Context and repository identity stages (54.102323ms)
+  ✔ R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages (392.898339ms)
+  ✔ R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots (1239.733797ms)
+✔ T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation (6208.958428ms)
+✔ R405-2 lifecycle adapter reports closed and merged PR state by stable PR identity (47.857781ms)
+✔ Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip (2.435382ms)
+✔ Issue #107 remote PR diff keeps the branch point when the base branch advances (3.924334ms)
+✔ Issue #107 private refresh keeps read-only PR progress available across legacy persisted base metadata (6.49656ms)
+✔ R405-1 lifecycle adapter acquires an exact immutable revision comparison for T404 mapping (0.999134ms)
+✔ R405-1 T405 revision update maps B to C, permits layer operation, and survives restart (29.053677ms)
+✔ R405-2 open PR lifecycle transition persists closed/merged saved grouping with layer OFF (2.042076ms)
+✔ lifecycle adapter classifies rate-limit and network failures without substituting another revision (1.04362ms)
+✔ T505 source keeps unopened file contents out of the line denominator while preserving path diagnostics (259.035422ms)
+✔ Issue #59 uses only previously opened files for Global line progress and reports unopened files separately (109.809833ms)
+✔ Issue #59 PR full HEAD scan is promoted to opened Global evidence (81.029061ms)
+✔ T604 refuses a live root lock without exposing owner or path diagnostics (61.219907ms)
+✔ T604 immediately recovers an unexpired lease only when its owner is confirmed dead (40.831006ms)
+✔ T604 never steals an expired descriptor from a live cooperative owner (37.089946ms)
+✔ T604 recovers a bounded stale malformed lock without taking a live valid lease (34.247786ms)
+✔ T604 bounds fresh zero, truncated, malformed, and future-invalid partial recovery before aging (74.794901ms)
+✔ T604 deduplicates pending privacy-safe diagnostics by operation scope (1.60499ms)
+✔ T604 fences a detached owner before it can publish after a successor recovery (61.732952ms)
+✔ T604 rejects a dead owner's real state publication after a successor publishes newer Context, Global, and manifest (39.131777ms)
+✔ T604 cleans an owned partial lease after write, sync, or close acquisition failure (15.157714ms)
+✔ T604 uses an owned OS child-process lease and releases it for a successor (799.901627ms)
+✔ T604 immediately recovers a killed child lease before its bounded expiry (283.816666ms)
+✔ T604 rejects a root-confined snapshot mutation through a symlink or Windows junction (21.579261ms)
+✔ T604 retains independent-window Contexts and Global publication under concurrent writes (92.985892ms)
+✔ T604 atomically appends independent-window history events (11.773808ms)
+✔ T604 cache cleanup retains the published generation and removes superseded immutable files (40.055863ms)
+✔ T604 serializes state, history, cache, snapshot cleanup, and startup migration through one explicit custom-store coordinator (40.633142ms)
+✔ T604 snapshot cleanup retains a referenced generation and removes expired unreferenced entries (21.03114ms)
+✔ T604 snapshot cleanup preserves every active pointer while bounding an unreferenced generation (45.527303ms)
+✔ T604 runs production startup recovery against real child writers and restarts from the newer coherent state (410.958853ms)
+✔ T604 keeps active snapshots above count and byte limits, publishes through cleanup failure, and converges after restart (87.796759ms)
+✔ T604 flushes a terminal startup lock failure through the production feedback composition exactly once (1.370023ms)
+✔ T605 chooses exactly the longest matching multi-root URI and preserves remote authority (5.882638ms)
+✔ T605 fails closed for URI boundaries and separates workspace storage roots (1.638165ms)
+✔ T605 root registry retains typed snapshot and Git-rewrite capabilities (0.366491ms)
+✔ T605 IFR001 rejects delayed open, load, and commit from a removed and re-added root generation (1.851479ms)
+✔ T605 IFR002 applies one URI eligibility boundary before descriptor routing (2.006779ms)
+✔ T605 keeps same-repository roots distinct for Current Context and PR acquisition (0.305085ms)
+✔ T605 concrete root composition commits snapshots through reconciliation and survives root-scoped restart (621.601835ms)
+✔ T606 classifies retryable, permanent, stale, authentication, and validation failures without raw messages (1.743275ms)
+✔ T606 retries only retryable faults with a bounded cancellable sequence (2.642683ms)
+✔ T606 never retries authentication, validation, stale, or partial-side-effect failures (0.735931ms)
+✔ T606 emits one bounded single-line redacted ERROR and always clears activity (3.365965ms)
+✔ T606 makes a handled inner failure terminal exactly once for its shared operation (1.556212ms)
+✔ T606 keeps independent concurrent production operations as separate lifecycles (0.707245ms)
+✔ T606 joins an actual storage diagnostic to its explicit owner context without a duplicate terminal (1.123383ms)
+✔ T606 Review Contexts runtime fences a superseded source publication (27.217963ms)
+✔ T606 Review Contexts provider aborts an old root load and never publishes its distinct stale item (1.492373ms)
+✔ T606 retries only an actual Review Contexts pure-read runtime operation (27.272459ms)
+✔ T606 runs Review Contexts commands through the production registration: read retries, mutations do not (28.005127ms)
+✔ T606 passes one explicit feedback context through the production Review Contexts read boundary (3.371373ms)
+✔ T606 runs Git executable-missing, nonzero, corruption, and safe.directory outcomes through the LocalGitAdapter boundary (6.290034ms)
+✔ T606 preserves the last published repository state when the production persistence adapter sees ENOSPC or EACCES during flush/replace (30.470976ms)
+✔ T606 R5 invokes the registered Current Context command through its production composition and records supersede as a typed terminal (11.747317ms)
+✔ T606 R5 invokes the registered Global open command with one generic UI error and one redacted terminal (10.371199ms)
+✔ T606 R6 Current Context production runtime cross-supersedes refresh/select with one signal owner and one typed terminal (19.625916ms)
+✔ T606 R7 absorbs a failed old-root load and preserves the fresh-root stale/unknown transition (8.267182ms)
+✔ T606 R7 cache publish mutation records a terminal failure, rethrows to its boundary, and starts no post-mutation refresh (8.707512ms)
+✔ T606 R6 cache retries acquisition only, publishes once, and never retries a publish failure (2.363521ms)
+✔ T606 IFR001 propagates an actual cache write failure instead of projecting live not-cached success (0.452788ms)
+✔ T606 IFR002 fences a pending Node cache write after abort and returns a typed cancellation (3.779846ms)
+✔ T606 IFR003 runs the production Global layer toggle through one redacted terminal lifecycle (5.414793ms)
+✔ T606 IFR001 republishes the post-cache-publish tree snapshot and fails closed when publication reports failure (0.731773ms)
+✔ T606 IFR003 Global open throws once to the shared redacted UI boundary without a raw-error callback (2.853361ms)
+✔ T606 IFR003 PR Progress carries its owner and abort signal to pending content I/O, then emits one terminal per cancelled, failed, and successful refresh (11.130506ms)
+✔ T606 IFR002 retries only transient result unions through Current Context's cache read port and keeps permanent causes single-attempt (86.717571ms)
+✔ T606 IFR002 real T305-to-T405 composition retries only transient acquisition, aborts deep cache I/O, and fences stale publication (360.978811ms)
+✔ T305 contributes the Review Range activity container, views, and commands (10.247978ms)
+✔ T305 default and focused commands execute the same behavior suites (2.346141ms)
+ℹ tests 242
+ℹ suites 0
+ℹ pass 242
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8156.663567
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-t609
+
+- UTC: 2026-10-06T18:53:48.095527+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:t609`
+- Exit: 0; counts={"tests": "92", "pass": "92", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-t609.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:t609
+> npm run compile:test && node --test test-dist/test/unit/t609-repository-resolution.test.js test-dist/test/unit/t609-review-contexts-repository.test.js test-dist/test/unit/t609-revision-mapping-encoding.test.js test-dist/test/unit/t609-normal-review-followup.test.js test-dist/test/unit/t609-review-contexts-cancellation-boundary.test.js test-dist/test/unit/t609-t405-encoding-composition.test.js test-dist/test/unit/t609-test-review-state-dependent-queue.test.js test-dist/test/unit/t609-gate-wiring.test.js test-dist/test/unit/t609-host-rename-decoration-composition.test.js test-dist/test/unit/review-diff-content-provider.test.js test-dist/test/unit/document-git-context-lifecycle.test.js test-dist/test/unit/history-rewrite-git-context-integration.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ T609 read-only document provider recovers when the actual Git inspection cwd was deleted (100.829465ms)
+✔ T609 document decoration recovery propagates noncandidate stat failures (4.322085ms)
+✔ Git provider restores each mixed target snapshot layer in one CAS (27.0023ms)
+✔ Git provider rejects an invalid present target snapshot without fallback CAS or history (3.914034ms)
+✔ Git provider rejects an unreadable present target snapshot without fallback CAS or history (3.502981ms)
+✔ Git provider does not publish mixed snapshot state or history after a CAS conflict (12.507274ms)
+✔ Git provider records an unresolved mapping event after a conservative missing-object clear (2.94864ms)
+✔ Git provider records binary mapping as unresolved instead of a successful remap (4.888241ms)
+✔ document sessions map branch commits and isolate branch and detached contexts (4.546289ms)
+✔ T609-NR-005 records a generic unresolved history reason for a failed current-revision text refresh (3.530785ms)
+✔ document routing recalculates the current Git snapshot when an opened encoding hint changes (4.700291ms)
+✔ T609 production Git document session clears a same-revision encoding transition without changing an unrelated BOM file (4.789883ms)
+✔ T609-NR-002 aggregates all reopened document hints across mapping and an encoding change (16.23713ms)
+✔ document routing follows the stable file ID after a rename (4.267672ms)
+✔ new branch initialization maps owner-wide Global state through the debounced repository (235.391758ms)
+✔ new branch initialization preserves a concurrent Global update while mapping (344.927871ms)
+✔ a poll started at B preserves foreground revision C after its mapping completes (296.977125ms)
+✔ document routing distinguishes a renamed file from a new file at its old path (9.588671ms)
+✔ document routing excludes a binary rename while routing a new text file at its old path (5.452021ms)
+✔ document routing maps an ambiguous rename and copy graph without reusing its source ID (4.406602ms)
+✔ Git revision mapper preserves SHA-only reviewed ranges through saved snapshots when the old object is gone (32.981784ms)
+✔ Git revision mapper follows one snapshot-backed rename and retains the stable file identity (17.86768ms)
+✔ Git revision mapper fails closed when multiple current paths match one saved snapshot (12.006334ms)
+✔ Git revision mapper clears a shared file when direct Context and recovered Global disagree (11.458282ms)
+✔ T609-NR-003 keeps recoverable files when an opened encoded catalog file is unreadable (9.452051ms)
+✔ review diff URI round-trips context, file, semantics, side, source, and revision (3.235026ms)
+✔ review diff URIs from different contexts never collide (1.012925ms)
+✔ review diff URI decoding rejects non-canonical or malformed inputs deterministically (1.675859ms)
+✔ review diff URI encoding rejects invalid descriptor fields (0.496844ms)
+✔ content provider restores original and modified revision content (1.170197ms)
+✔ content provider reports unavailable and invalid-encoding outcomes with stable codes (1.163301ms)
+✔ local Git adapter reads exact streamed text content at a commit (1.214729ms)
+✔ local Git adapter accepts an opened Shift-JIS hint only through the VS Code decode boundary (1.063315ms)
+✔ local Git adapter isolates unsupported opened encoding instead of accepting decoder fallback text (0.455716ms)
+✔ local Git adapter distinguishes missing commits and missing files (1.516111ms)
+✔ local Git adapter rejects moving revisions and unsafe repository paths (0.477014ms)
+✔ local Git adapter preserves unexpected Git failures (0.678749ms)
+✔ T609 gate wires every focused unit suite once and keeps the Extension Host phase separate (27.399491ms)
+✔ T609 CI gate invokes the package-owned unit and Extension Host commands once (2.053563ms)
+✔ T609 runner prepares both Git fixtures before the Host launches and the Host suite only consumes them (4.429179ms)
+✔ T609 multi-root workspace fixture preserves the single-root whitespace and EOL mapping settings exactly once (4.044117ms)
+✔ T609 Host fixture separates active-editor lifecycle, command persistence, visible refresh, and Global completion (3.33524ms)
+✔ T609 runner owns a 300-second deadline for the single-root phase (1.716144ms)
+✔ T609 phase ownership keeps mixed encoding in single-root and repository cancellation in multi-root (4.336721ms)
+✔ T609 contract fixtures compile legacy mapping and Review Context runtime shapes once through the focused gate (1.907869ms)
+✔ T609 single-root reuses its no-active Current Context selection without an active-editor refresh (1.699914ms)
+✔ T609 Host waits for the single handled startup Current Context refresh before its public no-active-editor command (4.61059ms)
+✔ T609 multi-root Current Context commands retain their public path without local settle-time wrappers (3.111599ms)
+✔ T609 multi-root Review Contexts keeps its public commands and snapshots under the owned phase deadline (3.231263ms)
+✔ T609 multi-root Current Context selection clears mapped editors before the public commands (2.003592ms)
+✔ T609 Host reaches normal-editor review through its public command (1.467504ms)
+✔ T609 runner seeds persisted mapping state before Host activation through production storage (1.916129ms)
+✔ T609 mapped Git-transition fixture keeps only per-file-operation deadlines without an overall mapping deadline (2.550768ms)
+✔ T609 production activation does not retain the obsolete Test-only mapping seed (5.194057ms)
+✔ T609 single-root uses public mixed-encoding marks after startup settlement without making background Test fakes a command gate (3.414425ms)
+✔ T609 production composition passes the shared validated mapping settings to Git revision mapping (5.475287ms)
+✔ T609 restart reobserves only its active UTF-8 BOM hint without Current Context or Global refresh (4.916088ms)
+✔ T609 Host observes actual VS Code URI safety and persisted encoding mapping without Test mutation seams (3.782493ms)
+✔ T609 mixed-encoding composition observes persisted Shift-JIS state at every public boundary (7.215205ms)
+✔ T609 persisted Git snapshot reads the Current Context owner without mutating state (9.869063ms)
+✔ T609 virtual URI boundary commands use the owned single-root deadline (2.684882ms)
+✔ T609 live encoding transition re-decodes the open document without waiting for model disposal (2.509958ms)
+{"extensionHostLaunch":{"phase":"vscode-fixture-cleanup","status":"succeeded","pid":64128,"exitCode":0,"signal":null,"termination":"not-needed","diagnosticPath":"test-output/vscode-launch-diagnostics/vscode-fixture-cleanup-1791312844596.json"}}
+✔ T609 deterministic Git fixture commits the raw EOL-only transition used by mapper regressions (230.91529ms)
+{"extensionHostLaunch":{"phase":"vscode-fixture-cleanup","status":"succeeded","pid":64293,"exitCode":0,"signal":null,"termination":"not-needed","diagnosticPath":"test-output/vscode-launch-diagnostics/vscode-fixture-cleanup-1791312845388.json"}}
+✔ T609 production rename decoration composition settles concurrent visible and explicit refreshes (789.87533ms)
+✔ T609-NR-008 maps only boolean configuration values for Git and live-edit composition (2.232192ms)
+✔ T609-NR-004 never selects the first repository when no-active-editor has multiple candidates (1.633456ms)
+✔ T609-NR-004 keeps the accepted Current Context when the ambiguous-root Quick Pick is cancelled (0.763674ms)
+✔ T609 resolves a Git workspace without an active Git editor in deterministic source order (3.32774ms)
+✔ T609 deduplicates a repository and fails closed for unsafe candidates (2.149612ms)
+✔ T609 does not accept a disjoint known-root inspection without canonical identity (0.265112ms)
+✔ T609 accepts a disjoint known-root alias only when canonical identities match (0.779705ms)
+✔ T609 keeps strict known-root matching for absolute and Windows case-varied paths (0.632985ms)
+✔ T609 skips only a candidate-specific stat ENOENT and propagates other failures (1.663073ms)
+✔ T609 propagates structured non-Error ENOENT rejection values unchanged (3.944505ms)
+✔ T609 compares Windows candidate stat paths without case or separator sensitivity (0.672796ms)
+✔ T609 rethrows non-Error rejection values unchanged (0.998053ms)
+✔ T609 does not accept a stale known-root inspection that resolves to its parent (0.974362ms)
+✔ T609 applies the deepest known boundary separately to each document (0.912006ms)
+✔ T609 rejects query, fragment, and mismatched authority before T305 or T405 can use a URI filesystem path (0.470332ms)
+✔ T609-NR-004 preserves the existing provider projection for multi-root Quick Pick cancel and stale cancellation (2.593573ms)
+✔ T609-NR-004 cancel and stale typed outcomes run one command without terminal reporting, clear, or post-cancel refresh (27.545386ms)
+✔ T609 Review Contexts resolves the sole opened Git workspace without an active editor (3.03119ms)
+✔ T609 Review Contexts fails closed when multiple roots are cancelled (1.205127ms)
+✔ T609 isolates one unsupported encoded file while Context and Global map the other file (19.115926ms)
+✔ T609-NR-005 retains a privacy-safe unresolved reason when a current-revision text refresh fails (2.87254ms)
+✔ T609 preserves a restart-unopened encoded identity only when the new immutable blob exists but cannot be decoded (6.019235ms)
+✔ T609 clears only the changed same-revision encoding intervals while preserving unrelated Context and Global state (1.883139ms)
+✔ T609 inherits an opened encoding hint only for a unique rename (6.109015ms)
+✔ T609 does not carry an opened hint from a copy or a new file back to its source (3.864426ms)
+✔ T609-NR-001 maps an opened Shift-JIS file through the actual T405 new-PR Global composition (245.942441ms)
+✔ T609 Test dependent queue names every background dependent and does not make the public command wait (2.619968ms)
+✔ T609 Test dependent queue aborts stale fakes and contains their rejection during disposal (0.792488ms)
+ℹ tests 92
+ℹ suites 0
+ℹ pass 92
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1477.657124
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-i116
+
+- UTC: 2026-10-06T18:54:05.599823+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:i116`
+- Exit: 0; counts={"tests": "29", "pass": "29", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-i116.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:i116
+> npm run compile:test && node --test test-dist/test/unit/issue-116-current-context-refresh.test.js test-dist/test/unit/t609-repository-resolution.test.js test-dist/test/unit/t305-projection-refresh.test.js test-dist/test/unit/review-contexts-runtime-wiring.test.js
+
+
+> review-range-tracker@0.0.1-pre compile:test
+> tsc -p tsconfig.test.json
+
+✔ Issue #116 shares duplicate start paths and a returned canonical root within one Current Context generation (3.591995ms)
+✔ Issue #116 does not infer an unexamined descendant from another returned root (0.299824ms)
+✔ Issue #116 shares active, opened, visible and workspace fallback inspections in one production session (0.390446ms)
+✔ Issue #116 reuses accepted Current Context PR preparation for only the immediately dependent Review Contexts refresh (345.7395ms)
+✔ Issue #116 discards a failed Current Context preparation and a later generation acquires fresh state (189.317073ms)
+✔ T405 contributes Review Contexts activation, commands, and menus (24.710328ms)
+✔ T405 production entry delegates Review Contexts composition to the T405 runtime boundary (6.319493ms)
+✔ Issue #57 maps an existing owner-wide Global revision before publishing a new PR context (5.505246ms)
+✔ Issue #63 wires streamed Git output, operation status, and Output diagnostics (17.316284ms)
+✔ Issue #63 reports fail-closed PR progress acquisition failures to Output diagnostics (11.821673ms)
+✔ R65-005 preserves safe PR progress acquisition attempts and final cause (5.21419ms)
+✔ T606 clears stale Review Contexts items and reports a privacy-safe lifecycle failure (3.690485ms)
+✔ PR68-R003 source switch never publishes the previous PR snapshot under the new PR source (7.86499ms)
+✔ PR68-R004 PR Progress failure cannot block new-owner decoration Global or Review Contexts refresh (3.324925ms)
+✔ PR68-R004 successful edit-state mutation keeps its success when only PR projection refresh fails (0.281063ms)
+✔ T610-NR-006 decoration failure cannot block open-document Global reconciliation (1.903726ms)
+✔ Issue #84 Review Contexts registers the selected PR before PR Progress starts (2.707708ms)
+✔ T609 resolves a Git workspace without an active Git editor in deterministic source order (3.642194ms)
+✔ T609 deduplicates a repository and fails closed for unsafe candidates (5.160758ms)
+✔ T609 does not accept a disjoint known-root inspection without canonical identity (1.749438ms)
+✔ T609 accepts a disjoint known-root alias only when canonical identities match (0.919267ms)
+✔ T609 keeps strict known-root matching for absolute and Windows case-varied paths (1.521791ms)
+✔ T609 skips only a candidate-specific stat ENOENT and propagates other failures (2.813677ms)
+✔ T609 propagates structured non-Error ENOENT rejection values unchanged (0.447744ms)
+✔ T609 compares Windows candidate stat paths without case or separator sensitivity (0.997546ms)
+✔ T609 rethrows non-Error rejection values unchanged (1.88626ms)
+✔ T609 does not accept a stale known-root inspection that resolves to its parent (0.905045ms)
+✔ T609 applies the deepest known boundary separately to each document (1.740927ms)
+✔ T609 rejects query, fragment, and mismatched authority before T305 or T405 can use a URI filesystem path (2.101949ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 826.909875
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-tooling
+
+- UTC: 2026-10-06T18:54:19.576766+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run test:tooling`
+- Exit: 0; counts={"tests": "31", "pass": "31", "fail": "0", "cancelled": "0", "skipped": "0", "todo": "0"}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-tooling.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre test:tooling
+> node --test test/tooling/*.test.mjs
+
+✔ CI builds the PR HEAD and fetches history before resolving the main branch point (1.63762ms)
+✔ CI uses the resolved version in the VSIX and filenames without modifying tracked manifests (0.360719ms)
+✔ new regression tests and packaging diagnostics are wired into the required gate (0.39508ms)
+✔ failure diagnostics distinguish the tested checkout from the workflow event identity (0.35285ms)
+✔ uses the main release at the branch point and exactly seven PR HEAD digits (224.338044ms)
+✔ later main releases and unrelated tags do not change the fork version (220.886589ms)
+✔ ignores unversioned tags and supports annotated release tags (164.771946ms)
+✔ without a reachable release tag reads the branch-point manifest, not PR or current main (160.247689ms)
+✔ preserves leading zeroes in a numeric seven-digit hash (2.731489ms)
+✔ does not derive identity from GITHUB_SHA or run number (142.693895ms)
+✔ rejects packaging a checkout different from the supplied PR HEAD (119.146005ms)
+✔ rejects malformed or unavailable SHA inputs without emitting a version (197.534787ms)
+✔ rejects invalid branch-point versions and disconnected history (243.803864ms)
+✔ Review Contexts refresh enters the same coordinator and orders selection before dependent PR Progress (4.031776ms)
+✔ R2 NR-001 owning cancellation reaches the actual list provider before publication (25.06309ms)
+✔ R2 NR-001 selected progress helper fences its finally publication after supersession (16.069572ms)
+✔ R2 NR-001 actual PR calculation cancels when its accepted Current Context owner is aborted (2.04674ms)
+✔ R2 NR-001 old same-snapshot calculation failure cannot clear a newer accepted runtime tree (17.74718ms)
+✔ R2 NR-001 both entry owners abort running production PR work and retain newer immutable tree (22.300497ms)
+✔ R2 NR-001 a registered BASE change after accepted identity cannot activate or publish that replacement (2.26847ms)
+✔ a superseded branch-list failure cannot clear a newer successful PR tree (0.895093ms)
+✔ R2 NR-001 suppressed old list publication must not reactivate PR progress after newer explicit selection (4.606949ms)
+✔ a superseded cancelled branch refresh cannot clear a newer explicit PR selection (1.028432ms)
+✔ early T405 augmentation failure keeps the verified branch and clears dependent PR state (1.388164ms)
+✔ a failed shared PR projection records a failed publication and one failed owner terminal (1.513337ms)
+✔ resolved selection provenance flows from the Current Context snapshot into refresh records (0.592409ms)
+✔ R2 NR-003 actual Current Context and Review Contexts entries preserve verified branch on identical PR acquisition failure (8.77829ms)
+✔ Issue #137 correlates a safe PR Progress lifecycle without serializing private input values (9.805587ms)
+✔ production modules use responsibility names, not task-number filenames (25.000813ms)
+✔ runtime composition and reusable policies are placed in their owning folders (1.35076ms)
+✔ the extension entry point targets the renamed production composition (3.930074ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1709.639892
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-architecture
+
+- UTC: 2026-10-06T18:54:21.986713+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `npm run validate:architecture`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-architecture.manifest.json.
+
+stdout (full):
+
+```text
+
+> review-range-tracker@0.0.1-pre validate:architecture
+> node tools/validate-architecture.mjs
+
+Architecture validation passed.
+```
+
+stderr (full):
+
+```text
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+```
+
+
+### NR-006 remaining-path implementation r3-code-whitespace
+
+- UTC: 2026-10-06T18:54:23.370321+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `git diff --check -- src test tasks`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-code-whitespace.manifest.json.
+
+stdout (full):
+
+```text
+```
+
+stderr (full):
+
+```text
+```
+
+
+## NR-006 remaining paths — final implementation handoff
+
+- Relevant accepted design: `doc/design/vscode-review-range-tracker-design.md` §16.2 / lines 881–883 (selection, fail-closed identity and safe lifecycle correlation), §17 / line 1067 (acquisition attempts and cause must survive failure/recovery). This is an additive diagnostic fix within that contract, not a breaking behavior change.
+- Baseline/prior reviewed HEAD `5d0320aa037624022494fe877b08e317651b2541`, Git tree `ce30a33a161f2b50ccd6e35f4c7b377750793e6d`. Final local review-target commit is `commit_pending`; its first parent will be that preserved HEAD and its resulting SHA will be returned externally. No history restoration or T405 environment initialization.
+- All final validation commands ran at that exact HEAD with the recorded implementation/test diff. Source-only fingerprint `ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441`; executable input fingerprint `b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af`; 423 inputs (all tracked/nonignored src/test files plus package/TypeScript config). Every final run recorded equal before/after fingerprints; no source/test edits after final compile/focused or broader checks. Reports/tracking and generated dist/test-dist are excluded deliberately.
+
+### Implementation and actual production coverage
+
+| Remaining NR-006 path | Actual composition | Evidence/disposition |
+| --- | --- | --- |
+| Early acquisition error lost after branch fallback and subsequent successful list acquisition | Real T405 GitHub lifecycle adapter receives one failing transport; production branch-fallback helper and real Current Context composition/controller accept the verified branch; real list/provider and production dependent-view diagnostic helper then recover under the same owner | Both entry triggers. Timed `pr-acquisition:failed`, fixed `verified-branch-preserved` reason, followed by actual successful list/publication and one successful owner terminal. Initial failure survives recovery. |
+| Rejected acquisition leaves repository-identity started | Actual T405 lifecycle/network failures exhaust real bounded retry (3 refresh attempts, 1 explicit selection acquisition), real composition/controller/coordinator reject without dependents | Both refresh entries and explicit selection. All started stages terminate once, with duration, generic failure reason and no raw exception/identity. |
+| Explicit selection publication failure leaves tree-publication started | Real resolver supplies 2 candidates and selected accepted immutable snapshot; actual PR runtime uses real registration and a failing repository read, through the same helper used by extension | Timed failed publication with accepted counts and one failed owner terminal. No synthetic metadata or emitted diagnostics. |
+| Interrupted acquisition/publication must terminate once | Deferred actual T405 lifecycle fetch and actual PR runtime repository read, external AbortSignal and new explicit/refresh owner | Six acquisition trigger × cancellation/supersession cells; three explicit-publication failure/cancellation/supersession cells. Old stages end once; newer explicit branch and empty tree retained. Privacy assertions inspect actual emitted entries. |
+
+- Source fix: fallback adds only a fixed acquisition marker to a copy of the verified branch; coordinator owns a new allowlisted acquisition span, records recovery provenance, completes pending stages on exceptions/interruption, and suppresses duplicate start/terminal records per generation. Existing immutable identity/cancellation/branch-retention guards remain in place.
+- NR-001/002/003/004/005 remain closed per the parent-supplied read-only same-reviewer chat lifecycle at 5d0320 (NR-001 closed, NR-003 retained, 002/004/005 prior R1). Focused actual owner/list/PR-runtime races, both-entry branch retention, Issue #90/#137 privacy/formatter/correlation and failed publication regressions pass. This worker does not issue a review verdict. NR-006 implementation is Green; reviewer closure is pending.
+
+### Red and Green
+
+- Valid corrected Red command: `node --test '--test-name-pattern=T406 executes' test-dist/test/unit/t405-composition-regression.test.js`: exit 1, 3/7 pass, 4 failures including the parent aggregate; all 3 new child paths failed on unchanged production source fingerprint `aec4f28a44d0fd3876024ff154320f8118d9e16d4e00adc0460a69ff4b6737ca`, executable input `d92a7ebbf129ab714d704f932f4d20802a14391066005b6e0cf3fc76d2ba9c31`. This is actual behavioral Red, unlike the disclosed fixture/compile errors.
+- Final compile: `npm run compile:test` exit 0. Final focused command `node --test test/tooling/issue-136-refresh-coordinator.test.mjs test/tooling/issue-137-pr-progress-diagnostics.test.mjs test-dist/test/unit/t405-composition-regression.test.js test-dist/test/unit/issue-116-current-context-refresh.test.js test-dist/test/unit/issue-90-diagnostics-and-cancellation.test.js`: 40/40, exit 0.
+- Broader on the same final input: lint/build exit 0; T305 71/71, T405 94/94, T406 36/36, T606 242/242, T609 92/92, I116 29/29, tooling 31/31; architecture and source/test/tracking whitespace checks exit 0. Suites overlap; counts are not additive independent-case totals.
+- Exact stdout/stderr/exit/HEAD/tree/source/input hashes for every Red/Green and unsuccessful authoring/lint attempt are retained above. First compile TS18048, initial acquisition fixture retry recovery, old fallback snapshot expectation, and prefer-const lint failure are disclosed as corrections, not valid intended Red or omitted results.
+- Raw command transcripts preserve original assertion whitespace, as required; whole-report whitespace is an archival exception inherited from this report's previous evidence policy, not a passing formatting claim. Code/test/tracking whitespace checks pass.
+
+### Persistence and next action
+
+- Changed source/test paths: operation-feedback.ts allowlists; current-context-runtime-composition.ts safe fallback marker; current-context-ui-controller.ts additive descriptor; current-context-runtime-coordinator.ts acquisition/exception lifecycle; t405-composition-regression.test.ts real production cells; tooling coordinator fixture adds marker/immutability expectation. No unrelated source, config, dependency or task changes.
+- Tracking updates confined to Issue #136/#137 task subsection and its P4 current-position line. Prior reports and all previous evidence are retained unchanged before the append.
+- After commit, compare every committed executable input against this full manifest and rerun the focused command read-only on exact HEAD. Record that future commit SHA, committed tree, replay output and clean-worktree diff externally in the implementation handoff and `/tmp/i136-r2-evidence/r3-postcommit.md`; the repository report cannot name its own future commit. That post-commit record is not claimed as already completed here.
+- No technical blocker. Next action: parent dispatches the existing same reviewer read-only for NR-006 bounded fix verification. No review verdict, new Issue/PR, push, CI, publication, merge, deployment or environment/config/auth/permission change. Extension Host, physical device/UI and full local equivalence gate remain held/unrun and are not represented by these focused/broader results.
+
+### Per-state changed source/test hashes
+
+
+r3-baseline
+
+```text
+5cf61ba54450a8f08656e29e07a95a2cf790820dd3b58c0b596857259f33532e  src/application/operation-feedback/operation-feedback.ts
+a6a1cab31adc01c493307785b48862eae1d73acd9014a9e02376050a23378026  src/ui/current-context/current-context-runtime-composition.ts
+487a5f55f5f1e2dcfddabf832a28118577f426f0e2cfc5bd616296c496b176df  src/ui/current-context/current-context-runtime-coordinator.ts
+457076a9ed14dfa3665890134bb9474392ccf8d5f007728d7ec27a8c78d0b929  src/ui/current-context/current-context-ui-controller.ts
+32a97ccff689ea0f393be8a26a263fe4f550adfea9deaace65b8fa20ea655a34  test/tooling/issue-136-refresh-coordinator.test.mjs
+363240abfbfec02f521869c2ec9948440704058ae8de3a4d4e040c5507e7dfaf  test/unit/t405-composition-regression.test.ts
+```
+
+r3-red-compile
+
+```text
+5cf61ba54450a8f08656e29e07a95a2cf790820dd3b58c0b596857259f33532e  src/application/operation-feedback/operation-feedback.ts
+a6a1cab31adc01c493307785b48862eae1d73acd9014a9e02376050a23378026  src/ui/current-context/current-context-runtime-composition.ts
+487a5f55f5f1e2dcfddabf832a28118577f426f0e2cfc5bd616296c496b176df  src/ui/current-context/current-context-runtime-coordinator.ts
+457076a9ed14dfa3665890134bb9474392ccf8d5f007728d7ec27a8c78d0b929  src/ui/current-context/current-context-ui-controller.ts
+32a97ccff689ea0f393be8a26a263fe4f550adfea9deaace65b8fa20ea655a34  test/tooling/issue-136-refresh-coordinator.test.mjs
+66b3b0afdcf81fd415295d8b8b29fa34e760a0dbabb9683bd6b8e67944bb5e4a  test/unit/t405-composition-regression.test.ts
+```
+
+r3-red-compile-corrected
+
+```text
+5cf61ba54450a8f08656e29e07a95a2cf790820dd3b58c0b596857259f33532e  src/application/operation-feedback/operation-feedback.ts
+a6a1cab31adc01c493307785b48862eae1d73acd9014a9e02376050a23378026  src/ui/current-context/current-context-runtime-composition.ts
+487a5f55f5f1e2dcfddabf832a28118577f426f0e2cfc5bd616296c496b176df  src/ui/current-context/current-context-runtime-coordinator.ts
+457076a9ed14dfa3665890134bb9474392ccf8d5f007728d7ec27a8c78d0b929  src/ui/current-context/current-context-ui-controller.ts
+32a97ccff689ea0f393be8a26a263fe4f550adfea9deaace65b8fa20ea655a34  test/tooling/issue-136-refresh-coordinator.test.mjs
+20a88b355193c036783a24fe9d4faa6b6fddc76d4f03cdf215645a0b06b446f1  test/unit/t405-composition-regression.test.ts
+```
+
+r3-red-retry-compile
+
+```text
+5cf61ba54450a8f08656e29e07a95a2cf790820dd3b58c0b596857259f33532e  src/application/operation-feedback/operation-feedback.ts
+a6a1cab31adc01c493307785b48862eae1d73acd9014a9e02376050a23378026  src/ui/current-context/current-context-runtime-composition.ts
+487a5f55f5f1e2dcfddabf832a28118577f426f0e2cfc5bd616296c496b176df  src/ui/current-context/current-context-runtime-coordinator.ts
+457076a9ed14dfa3665890134bb9474392ccf8d5f007728d7ec27a8c78d0b929  src/ui/current-context/current-context-ui-controller.ts
+32a97ccff689ea0f393be8a26a263fe4f550adfea9deaace65b8fa20ea655a34  test/tooling/issue-136-refresh-coordinator.test.mjs
+8e70c9d7493c3f8c0592909871bd254e0e584277883e9254ad06581f11776d52  test/unit/t405-composition-regression.test.ts
+```
+
+r3-green-compile
+
+```text
+87049c843b6c9b06773ef2f84f2cf521902b6ff638d7d6b0e6c93fc7c591452c  src/application/operation-feedback/operation-feedback.ts
+c38ac2be88b3238b06013d3209fd503c9507ea012881ac4605be652ef968e1b7  src/ui/current-context/current-context-runtime-composition.ts
+a58fe8331199679aac131806038588380c3c5f6e2b7bfbb99579d14b5c52063c  src/ui/current-context/current-context-runtime-coordinator.ts
+f8083000e5f24358dcf0bf216bbdd7d80805e5368a5e9c459e9500393b560f51  src/ui/current-context/current-context-ui-controller.ts
+32a97ccff689ea0f393be8a26a263fe4f550adfea9deaace65b8fa20ea655a34  test/tooling/issue-136-refresh-coordinator.test.mjs
+8e70c9d7493c3f8c0592909871bd254e0e584277883e9254ad06581f11776d52  test/unit/t405-composition-regression.test.ts
+```
+
+r3-final-compile
+
+```text
+87049c843b6c9b06773ef2f84f2cf521902b6ff638d7d6b0e6c93fc7c591452c  src/application/operation-feedback/operation-feedback.ts
+c38ac2be88b3238b06013d3209fd503c9507ea012881ac4605be652ef968e1b7  src/ui/current-context/current-context-runtime-composition.ts
+a58fe8331199679aac131806038588380c3c5f6e2b7bfbb99579d14b5c52063c  src/ui/current-context/current-context-runtime-coordinator.ts
+f8083000e5f24358dcf0bf216bbdd7d80805e5368a5e9c459e9500393b560f51  src/ui/current-context/current-context-ui-controller.ts
+725da217d92991864126e06619492240df04a265370a5a78b23553d149e88294  test/tooling/issue-136-refresh-coordinator.test.mjs
+5bb05f1f40eae8f96e534c436702f6075881a2578ed6fa6968214fdab7ccb371  test/unit/t405-composition-regression.test.ts
+```
+
+r3-final-focused-green
+
+```text
+87049c843b6c9b06773ef2f84f2cf521902b6ff638d7d6b0e6c93fc7c591452c  src/application/operation-feedback/operation-feedback.ts
+c38ac2be88b3238b06013d3209fd503c9507ea012881ac4605be652ef968e1b7  src/ui/current-context/current-context-runtime-composition.ts
+a58fe8331199679aac131806038588380c3c5f6e2b7bfbb99579d14b5c52063c  src/ui/current-context/current-context-runtime-coordinator.ts
+f8083000e5f24358dcf0bf216bbdd7d80805e5368a5e9c459e9500393b560f51  src/ui/current-context/current-context-ui-controller.ts
+725da217d92991864126e06619492240df04a265370a5a78b23553d149e88294  test/tooling/issue-136-refresh-coordinator.test.mjs
+d528b8dc5b05eadfa7e57ee594d489bb525156bf65154be20b3403ffb766d02c  test/unit/t405-composition-regression.test.ts
+```
+
+### Full final executable input manifest
+
+```json
+{
+  "package-lock.json": "3e7611244b1729f3d701b60a726b69dcc630f8e0fb1fd945018ca9e74845a3b4",
+  "package.json": "e4297bfb1912aaa40d2cc283de4caf0a9d1e30c747e0b662920261c390dbfe34",
+  "src/adapters/crypto/index.ts": "b041e3d549d8a6510b9ff6b8f4d6390c126c598e58fb2fe4ea20b511dfde7511",
+  "src/adapters/crypto/node-sha256-stable-hash.ts": "1ea48307b2d1abc5dd8761a7630fa7bce6e3ea0657e763f7fe6b79a3c22f3437",
+  "src/adapters/diff-document/index.ts": "427a1f71a75e2db4d5501f07f2684704d6b9c6e17d92b40b00bf38a8c4cd6680",
+  "src/adapters/diff-document/local-git-revision-text-content-source.ts": "f7522bf2b9c65caa815d4186586b31258416e846f70c3519d51ff18c1cbbd338",
+  "src/adapters/document-review-state/document-review-state-session-provider.ts": "ed8fc6a77df43487f5c4495d17d7239f1095832483e40c833eef42d648529904",
+  "src/adapters/document-review-state/git-context-document-review-state-session-provider.ts": "d00ae98e3b1c53cf9b27159a2de1644654d0cc7944601961faa60a7ca6dcd285",
+  "src/adapters/document-review-state/index.ts": "024b133ee6681c926ae0e95ea228fd28ae8fcfc337379689ece3586552734339",
+  "src/adapters/document-review-state/persisted-document-review-state-session-provider.ts": "769f0c585f223865f5c9819749dfeaf86b65cf3a37545543d2090d99bc380873",
+  "src/adapters/document-review-state/reconciled-document-review-state-session-provider.ts": "d6d85672c5608887067618ecbdb5816fb6bf1d20680d44c68ae109f667449439",
+  "src/adapters/file-exclusion/index.ts": "7d1460ef47ba14d9523948c2abb0629daaf89d752686dc423b8a798d3eeac7a9",
+  "src/adapters/file-exclusion/review-file-exclusion-configuration-controller.ts": "a34c8e8dbcf3e06426414a556c0ddb8d6a095ddbd42facb5ea4fff9897a232c6",
+  "src/adapters/github/fetch-github-pull-request-adapter.ts": "d7818e593f3ceb8acffe39b77d0fea88c692c70275b6023379e023e866a7971c",
+  "src/adapters/github/fetch-github-pull-request-diff-adapter.ts": "822cb378241f1bc2d8eb3aad482af7a6089a78489dbcf5ac8dfb48d08d5d5472",
+  "src/adapters/github/fetch-github-pull-request-lifecycle-adapter.ts": "a3331abe7e157fecdce3b024c8c20d38fd6cd015d996e432717c9515a7fbb9fb",
+  "src/adapters/github/fetch-github-pull-request-merge-base.ts": "03176a3711ad4b428efb77703937de5cd3f0872d86923a04870be1e8a4fa9d63",
+  "src/adapters/github/git-remote.ts": "52eac79b57ad47c4b4b54771da315256e7c22d92af447a0ba744bc244bb8f998",
+  "src/adapters/github/index.ts": "dfecbb1cc9bfed207a7261ee6fccff54857c2d3933ae89bcfa035c7a2ab2e53b",
+  "src/adapters/github/node-github-pull-request-cache-storage.ts": "37912bf3f41762e9e3301852ddcc809fffacf7b6673883717c7fc70b2c372b1d",
+  "src/adapters/github/node-github-pull-request-context-layer-store.ts": "4044be672fdda368036b8a9bd9820fd7e0996390e755478cef5dcf8f274bbe90",
+  "src/adapters/github/vscode-github-authentication-provider.ts": "ba73122eb784d39079fd41ea7085a336da0b811ddca3298cf62cd86c66fb839c",
+  "src/adapters/index.ts": "c4190e615f4cb1bb38e3960e8865e07260e1e668b817fb8125f513e9af47169e",
+  "src/adapters/local-git/contracts.ts": "49402098caddff1124905fc6cc0fa55520fd09ef17709df6adfd1a318889205f",
+  "src/adapters/local-git/git-blob-reader.ts": "7abce1a471c421cf00dc3d137e67e40b029b3f272ed5b64160278b3441edd5d2",
+  "src/adapters/local-git/git-inspection-start-path.ts": "ebb5a794cb7a9c09a474d8956fb08c28f09b46e1046ed6b2e1ee0895500a229c",
+  "src/adapters/local-git/git-remote-normalization.ts": "1a150559c8b7ab1d9fdb28d94dcd817a5dd28b83d36ebd18b74ba5bbb8160ff1",
+  "src/adapters/local-git/history-rewrite-local-git-adapter.ts": "cda77618870568c4fbdd1dd162fc53d98dcbc609b91c03698c985ebe4881d402",
+  "src/adapters/local-git/index.ts": "e589d71b94f005c232dc73b391fdb4f1184ce4852454c0fb539c20401af5fe30",
+  "src/adapters/local-git/local-git-adapter.ts": "5cadec25484fbd5e217b09e8086c5b8d892dec0acc528fcdd94fdbb70d44822a",
+  "src/adapters/local-git/local-git-pull-request-diff-adapter.ts": "57ff3a12e0971edf96909cf5f6d3faf9702c633db7f193b69fda2a27ede669c5",
+  "src/adapters/local-git/node-git-blob-reader.ts": "c0518bfda1c671907a9aaba57840a93a523059c0139082487840764ef7572f72",
+  "src/adapters/local-git/node-git-command-executor.ts": "4d7f5b0f03d538c2588e642da311f56d8bcce93100b1c6e12b09b84a8b5985ec",
+  "src/adapters/local-git/node-local-git-adapter.ts": "f8f899135909ba6d7e353aa1022c1825849e43cd8eaf841d54d6bb3ea98cf7c1",
+  "src/adapters/local-git/revision-text-content.ts": "89c8d1ac38659eba7c363e6950e5f00fa8f6c9be4c5a1ee7141f12232e528c2f",
+  "src/adapters/non-git-snapshots/index.ts": "4c3720a7b28c0682f78f4dbb7c9cd8653ae593afc7f7987b29d6e9a0cba3e2ca",
+  "src/adapters/non-git-snapshots/node-non-git-snapshot-adapters.ts": "ef1d6a6119d6779ea7864584b1f679597459598f8bb4d0cce8be7e85ea0a9892",
+  "src/adapters/persistence-startup-migration.ts": "7c1af729bbde44a52ba052ac7f1e850fcfe6afabb5e43c7398aa1195193a3952",
+  "src/adapters/repository-files/node-global-understanding-file-source.ts": "5dbc37897c43957b057d0efd7c474bc2531d552dd5ef187cbdb0ade50f3f0df6",
+  "src/adapters/repository-files/node-repository-file-enumerator.ts": "29a88700bb9c8d9f6f1b66ccd7dee40ef29786ee5309d38b093cbe13491cf0d5",
+  "src/adapters/repository-files/node-repository-file-path-enumerator.ts": "90c50aea31f631086f177253cd496615fac97818b94f014627a591ab5d545898",
+  "src/adapters/state-repository/atomic-text-file-store.ts": "c62701350ac3fdee0b591798ee4088c3a51e3486782baf2f2fb58a8b7c341419",
+  "src/adapters/state-repository/coherent-file-system-review-state-repository.ts": "5a3b637367ab058c909a9d188b6eff50cdfc97960408e0c49910b3993c878116",
+  "src/adapters/state-repository/contracts.ts": "003f87f33972e4f8ed55237091b9c009174b4eb48e0a047a6e6061c4f1aee5ae",
+  "src/adapters/state-repository/debounced-review-state-repository.ts": "4a79c2bca2efcdfa237d4d8c232945d2890ee33151a37844304002b214490e28",
+  "src/adapters/state-repository/file-system-review-state-repository.ts": "97fdee4ae79a54c97b3ce33207a897bb015b59e87256f8d8f435fa8662714286",
+  "src/adapters/state-repository/index.ts": "689069ef4b133e8673fbccfd9c92ce0a7c1c2fa5febec9110996e4e627dba335",
+  "src/adapters/state-repository/jsonl-review-history-store.ts": "bac756a67d6ea22ea4ff880976836ef97dce1634a9831204a7a73aa579bbf1b6",
+  "src/adapters/state-repository/node-folder-understanding-stopped-store.ts": "61a67b84f4bfce363dad37dcd95c7e14db520b03768a08cf18930cedf55d8f4d",
+  "src/adapters/state-repository/owner-atomic-review-state-repository.ts": "4fa64540836c4b47528fe558a8a6eba7af8095102bf089417b57d21f7c2eb325",
+  "src/adapters/state-repository/owner-aware-debounced-review-state-repository.ts": "90fd9bf854fa8fce5588d9db536043f53a16bce7e6df350410f84fd68973d0a3",
+  "src/adapters/state-repository/owner-global-state-loader.ts": "5cad59c66690442b2f2cacaa52982b43121f535443d55f85a343a1c5253a1f88",
+  "src/adapters/state-repository/owner-reconciliation-validation.ts": "747ce06572030fc6c1d8ae3d0ced1fc517d113f349aa8e4afc208f783a573f0a",
+  "src/adapters/state-repository/persistence-schema-recovery.ts": "d8f9f75f5aa42052e50f11d6d574fb224be8bea742cbc4e5284425c7b584bec0",
+  "src/adapters/state-repository/repository-context-catalog.ts": "c00b6f718efc00ba55ccfe38f9ffbc8646baa930f05d7e30100a9f62aa259efb",
+  "src/adapters/state-repository/storage-root-lock.ts": "96be85427c685308b6376cee15e2144c29396ed7b06c7198d750634c04afe6f6",
+  "src/adapters/state-repository/storage-router.ts": "a47666aea51540201e068a332b6b1f427f182ddc0aadda31111df2f61c263385",
+  "src/adapters/state-repository/validated-file-system-review-state-repository.ts": "997bb8f63343c322e68b66dcd017b5b11ee1e60431c57500b3b6276f0a4eb6e1",
+  "src/adapters/workspace-review-state/index.ts": "81c458c638ce8ec2371055d538522f13fee30ac9043ff0c5e63aaac8bd328ce5",
+  "src/adapters/workspace-review-state/snapshot-tracking-workspace-review-state-session-provider.ts": "fdc5676793da674aabee6c070f9010ae851d9b7f89101d991bd165f3f88ef0ff",
+  "src/adapters/workspace-review-state/workspace-review-state-session-provider.ts": "19367648569592082113dbd303cf7fe183004e4fd0074d96d8ed236601d0acab",
+  "src/adapters/workspace-review-state/workspace-root-runtime-registry.ts": "60d98916afa918037764bb86ff8dd9af1179c62802338760b07149e3390b5580",
+  "src/application/configuration/index.ts": "18d7872940310c4a812de5df038c05172716790473ba8e6b78fa5ea56f303305",
+  "src/application/configuration/review-range-configuration.ts": "1091413a125654cdc2d2eabcd2c4ba17fb4bdb6a9f85dd1443f9f5d3f8172b24",
+  "src/application/configuration/review-range-mapping-options.ts": "3065cb84dbaa09cfc8224482780818eedfe8b57c3835a276df86596aae314f99",
+  "src/application/diff-document/contracts.ts": "8d37434909e2a83b6111d5d6246688a2b7914336706e90c369ca7eb4c6374b5c",
+  "src/application/diff-document/index.ts": "417e34fedbb57ea26800230f305cda20a7966005f6ab721410c58f2bd28ec8a3",
+  "src/application/diff-document/review-diff-uri-codec.ts": "8ce3667b86e4a0807acb569a145e6d2e9f64441d464bab9cc120ef812f614c2b",
+  "src/application/diff-document/revision-text-content-provider.ts": "ba21c4a2523cf5bb1ea607a761f4c085b3be856b2619e6b5c2f41682ce719dc0",
+  "src/application/editor-decoration/index.ts": "28c16eb76b250c855364447289466b1904993e5d379fc448ebdd2407e769ec75",
+  "src/application/editor-decoration/normal-editor-decoration-model.ts": "d0602420f2b343176e3ea07fdf2675828f5bf8d1840c30f583d7867df1d473f6",
+  "src/application/file-exclusion/index.ts": "c0cd5c2fc3fbc719765443b901485fa6a8b6fce1cb9bdd77531c47fbb092ef98",
+  "src/application/file-exclusion/review-file-exclusion-policy-service.ts": "c149077c6a798b1d56af2a7cbdf4d412db3e0d31de9b71d0a4968eccb6af4cc0",
+  "src/application/github-pr-cache/cache-entry.ts": "94d2120648f0b5c68d8be203ee366fd37030af252b78ad7afb95dcf8e106e6f9",
+  "src/application/github-pr-cache/contracts.ts": "130d571759f0cf623fe6384da112f29689f204e0672aed70979289a88dd8f3e7",
+  "src/application/github-pr-cache/github-pull-request-cache-service.ts": "8a04b69fdb0e819759ed8a6c28078fef42678139f026c09fc7006bf05fb60c89",
+  "src/application/github-pr-cache/in-memory-github-pull-request-cache-storage.ts": "3d16097b8d7c526e0985a2726379a347c0e2b12f782b5e1f69881cb11a2fa8c5",
+  "src/application/github-pr-cache/index.ts": "7ac859458c3231dac237bdc5a31ad8a2e149fa387486ec50e3033378165f011c",
+  "src/application/github-pr-context/contracts.ts": "efdf99c7344ab370f7812deae422f3ed414720682091ba419e4b793389e732d1",
+  "src/application/github-pr-context/github-pull-request-context-layer-store.ts": "79e3344cc3fae2d4eb32e1c6a95278f24abe93afe415d4658842c3033175ecb0",
+  "src/application/github-pr-context/github-pull-request-context-resolver.ts": "b55456a8e7abcde4430d4c98d17b180b80743328f81d0dde92cf35a4db816623",
+  "src/application/github-pr-context/immutable-pull-request-revision-mapper.ts": "a156c588048d0fdf19b5f54fae519cffb23c0890ebf104a3b14e3502790f4164",
+  "src/application/github-pr-context/index.ts": "2689c19f4cdc5f18707c0ba99b35f83c5c6b4bc40c923a166c71e1f95912eafd",
+  "src/application/github-pr-diff/content-diff-builder.ts": "2cf44e5ba6b5d6508ffc8cc990625a927b564212a5f9ff2071d6b0946e232c60",
+  "src/application/github-pr-diff/contracts.ts": "115a7efc36b903ce2bd68a53a96336c8720d247a88befe38690a4f92cf4d49bb",
+  "src/application/github-pr-diff/github-patch-diff-builder.ts": "d08b0f9e1fa47854d4d0e6d82bf7f77baeddb38b59e323867bec0265482e44a1",
+  "src/application/github-pr-diff/index.ts": "d86d699507cca86cd1d27bddc5d521e3563562b57555bb321a5ffbe19752962c",
+  "src/application/github-pr-diff/local-git-diff-builder.ts": "0fbcf10fad7695bc58ef09f6ded1b2298409031274403d0c5225b79865524a6e",
+  "src/application/github-pr-diff/pull-request-diff-acquisition-service.ts": "32e6b84ec9757a04de71dfc79e519196c5f4611bfc0c54dc8bdf17332f2d10e7",
+  "src/application/github-pr-diff/pull-request-diff-builders.ts": "32194887f64e972a848e1d3f106c324a59a3e7486e1bc5b80820fce413ec5ed4",
+  "src/application/github-pr-diff/request-validation.ts": "61464c8ea5bf9b5c0022545c3e09fb3c4c9f6dfe5ae879436adf49233d2cc3e7",
+  "src/application/github-pr-diff/snapshot-builder-shared.ts": "48844ee85dd0ffcb0bd463ef45fecd75a2885db2db6b92f8eb062e5727514ce6",
+  "src/application/global-review-mapping/global-review-mapping.ts": "950bd6ff61b235ed9b2dde3f5697adf8b0c119f51ad1540d11d322d5b8d8bca9",
+  "src/application/global-review-mapping/index.ts": "ca8efc38ff237c412acc36ca22b4e0d738ff98168b460c1a06ecdb3bd9683216",
+  "src/application/global-understanding/cooperative-global-understanding-calculation.ts": "dad6c1e8767fcbee8bd0bc55904ada6603d66a2d3b64782b0d9c88212ea05e66",
+  "src/application/global-understanding/document-open-lifecycle.ts": "0d061b2749262f19ed4c8557e3394a9a4bbf0908523e6b351d13df27eebe6d29",
+  "src/application/global-understanding/folder-understanding-scope-controller.ts": "5264300291648362ff4cfdf035d214fa6936f38b7390b3bc12452a3c088e892e",
+  "src/application/global-understanding/global-understanding-background-recalculator.ts": "f40b7e3bddd31bb86827bc8995976707c39889abede23bfa387ba959611c89ab",
+  "src/application/global-understanding/index.ts": "70858ed8ba232451e76760023f37235f37dbcb983852d5b212f92616a6491166",
+  "src/application/global-understanding/pull-request-global-head-file-registry.ts": "2c29ae7efe359302121375a5c9280008f2e5f36912aa81b3118c76bfc606bd27",
+  "src/application/global-understanding/startup-document-observation.ts": "6e07353dea8db9e8937923ff720744c4965bb503634c4c4e10f92ffef5751e62",
+  "src/application/history-rewrite-recovery/adapters.ts": "3ac17ae8b5f677d9facd4bb859941a1c41d783d7888aa9329ddc78a2b65c0093",
+  "src/application/history-rewrite-recovery/git-context-recovery.ts": "e8f386715016f69265ffd1d04b8c74c26ddf538286c3622da04bce53f2966216",
+  "src/application/history-rewrite-recovery/index.ts": "793d2abe0ba56bc4f3851c98908ee91e323bc76b6b84e5f3b6b1edf2025885c0",
+  "src/application/non-git-snapshots/index.ts": "0729b0d20d09efa56731e2378e341bd5337114a4163c344ed23f254501549adc",
+  "src/application/non-git-snapshots/non-git-snapshot-settings.ts": "d5376bd48089ab32774aab4b9f928ff5a443d12b578e9a75d0f6036db2adf4cc",
+  "src/application/operation-feedback/index.ts": "7808f63fd8ee6e410c8f8d384e6a7752049b73a964b6fa9c96b73e5370ecad99",
+  "src/application/operation-feedback/issue-90-detailed-operation-feedback.ts": "3183f1512ba112459c89b13bf29cb2631a9df0a946d70693c25d5935e2106f9e",
+  "src/application/operation-feedback/operation-feedback.ts": "87049c843b6c9b06773ef2f84f2cf521902b6ff638d7d6b0e6c93fc7c591452c",
+  "src/application/operation-feedback/pr-progress-diagnostics.ts": "31e39b8beca6396884655db8849df8c885d2204a79b879ad60a30e10e4d7e6bd",
+  "src/application/operation-feedback/startup-feedback-composition.ts": "3fde3230c39f2386866da8f1e34424240f9d39515265d85a4dfba1cbb37d60bc",
+  "src/application/repository-global-state/index.ts": "676d9652b870d23e044a4bb2aaa2b38b772f58eb8b7559ca0d5fc9899059af9e",
+  "src/application/repository-global-state/repository-global-state-repository.ts": "d8a2a939cc8bdb56db48a24cbe0a31f546219864f20178e1ee2b02c62c002e70",
+  "src/application/repository-path/index.ts": "ced19a21a3be557ffeec8dccf5e7ed53796737333eef1a3686a0c3588ffdb464",
+  "src/application/repository-path/repository-relative-path.ts": "fa2f629ca5e781dbd26f9303fce056fcf99b17630ca7473a4a391002c7956f8f",
+  "src/application/repository-path/repository-root-uri.ts": "46eb3da47281ceee21f4f1189804c96af1f1676a9b5d41d63a8c0b03f8d5878f",
+  "src/application/review-commands/change-blocks.ts": "28e2b175529373ca866fc42d7bce257352f607239198795e6cc7fd93856ec712",
+  "src/application/review-commands/diff-editor-review-command-service.ts": "8181b0c8212211da66355de8bab33abf8e4cd570596e33e10e358fc4de2055da",
+  "src/application/review-commands/diff-selection-target-plan.ts": "7f57f450cd55993f83c32297db3af6f6b4bf7122692d68aaf19207c13ee7fab6",
+  "src/application/review-commands/index.ts": "d57ce7bd3971f58c93fa1b894961498e88995f8963b2740e442ae68b550c4d88",
+  "src/application/review-commands/normal-editor-review-command-service.ts": "c1461493335bd33b9771c45b90d101aa58c23f34758afe8613806bdbfb6b4951",
+  "src/application/review-commands/original-selection-review-plan.ts": "1677cbed36d4d543b43f5a4f6115f16ecb0cd2cd185598e659ed3afb32809224",
+  "src/application/review-context/contracts.ts": "20a4ab0c1ca4d8b75bfd8410869b2ad14d91b1c96c952cf5c5bbed45cbdf9fd7",
+  "src/application/review-context/git-context-revision-mapper.ts": "6d1f6df700c19afd708f89b6059afd04bae11c0e36651f0e7bfa34faaaa7aff1",
+  "src/application/review-context/git-review-context-resolver.ts": "2410dac356b7e003227b3d6d1a0ef73cdb3d2beb68d077cb5b6550e7313bf982",
+  "src/application/review-context/history-rewrite-git-context-revision-mapper.ts": "f67c346138c1dac1df7c9e766bddedb8295494cd3a79cbc63002b27d6afbdacf",
+  "src/application/review-context/index.ts": "4cfe2959c016cdb8fda6c2aabb75b536e2d144306f102ce48333e2e712416acd",
+  "src/application/review-context/polling-git-state-monitor.ts": "22d634a500881fc7b6ca672b638fddbaf17bb699b1a3550a3a04d0d749ad30af",
+  "src/application/review-context/projection-refresh.ts": "1ef0a4fb0964bebd86b74e624a95a0541274a6d6178666c4f96ca35fd5fc3d97",
+  "src/application/review-context/repository-resolution.ts": "1610410c359d1f9080f234f90f6a60b759432172d8a5b7f91e212ed49e822872",
+  "src/application/review-context/selected-review-context.ts": "073c5e45763d8591ebc1c9529c7893dac3543fb225f7fa62587be101a05f5b65",
+  "src/application/review-contexts/current-pull-request-context.ts": "52017ea511fd4273a9426cf27953bad242b344f5f0133ab4e03089f9b4d7e40f",
+  "src/application/review-contexts/index.ts": "4bd07582e55c9cd20bb0654fc7db6310ce6098be2a2f1ac0e7a218a94a7d98d3",
+  "src/application/review-contexts/pull-request-review-projection-notifier.ts": "b5353f6258cedcea8529bb047fc1306d79435af80c9bec70c1937e4e491e6e3a",
+  "src/application/review-contexts/pull-request-review-projection-sync.ts": "de854152e8673e06f5019f701ad72effc6128d65ce0ddd00152693c0117e161c",
+  "src/application/review-contexts/pull-request-revision-evidence-loader.ts": "30c3128ca719009711aa4bbb260915ed285c92c9ebb32f2c8bbda8320ee1940c",
+  "src/application/review-contexts/repository-selection-cancellation.ts": "48ce382f3da17770f38674548bc7b050a8d6e75d6c0489d2b9f0849a2e23af5c",
+  "src/application/review-contexts/repository-selection.ts": "7b0734208d78f6cfd1ce1292e7c1608240e2b6ee07cb16f8040fe7c30184129f",
+  "src/application/review-contexts/review-contexts-controller.ts": "8171367419f16d276a4d842454fbb0973806fb0ef914a0918e510af572e5c989",
+  "src/application/review-history/index.ts": "bed2e5d03ef9f733e0083f69e0d5602d6cc2ce3ffaeb546e04e5d49ee9449ba5",
+  "src/application/review-history/review-history-recorder.ts": "d7276885e1158647ccec7e16a9dc2a882cb630af7fadddda0a00048d2207fdaf",
+  "src/application/workspace-identity/index.ts": "e652f3a5bf58f83cd6f91d0002619ae1c277d58fda20d9a3f50a82f0755e82ec",
+  "src/application/workspace-identity/workspace-identity-service.ts": "f0f13882dcac9385be1a29887b60eae970556c4a6c59352da4dec43f2ca86b95",
+  "src/composition/current-context/current-context-inspection-session.ts": "54f44ab16430b523ea445ba2861a22f037381db288e39fa5b25d64b531b9a63c",
+  "src/composition/current-context/current-context-pull-request-views.ts": "5c7996ee1134de231608360ca59402db9d58840d7e66a281a9eb6c9ef3de7213",
+  "src/composition/current-context/git-context-inspection.ts": "3a220979976cd50502b61659b9ef7bb8fdfa295eb3f51a826bb5b6805e025f81",
+  "src/composition/extension.ts": "94c489cd9ab2400f8f3851071b6fa6534c6d9556f066803bdedefd07dd6a8e89",
+  "src/composition/global-understanding/global-understanding-composition.ts": "5e9671d8fb02560323db070e6a6e6ed915145e8e96dac9d06ef05ee8670ac8d8",
+  "src/composition/global-understanding/global-understanding-open-document-reader.ts": "22a5f5b34c001f57259aa06f58096baea0e655546018eb13418b936e98bf04ff",
+  "src/composition/global-understanding/global-understanding-source.ts": "2a6d889bedb036a293a1e3bab46f1952314527adfa288419cc2d21b648a3afae",
+  "src/composition/local-git/local-base-head-runtime.ts": "9d61023a34ed4816653597ed03fd1bb00fe043f21859b77c02e86c97ecc0e4a9",
+  "src/composition/pull-request/new-pull-request-global-composition.ts": "6469119080f6e69d617f8e4cb05d998e973e7d61e19e246d2a0067045f52e97e",
+  "src/composition/pull-request/owner-pull-request-synchronization.ts": "714ba4df0ba4cf1c07c353b8dea58bb6f23292575d72a5971b538a474efca9ba",
+  "src/composition/pull-request/pull-request-review-history.ts": "8f5640bd77985b9b57580c83254c2116236302873c74e6177a2de5133deacef9",
+  "src/composition/pull-request/pull-request-review-runtime-base.ts": "8545541d45d0117fa7ca4ea0777658d5632d7839e7f423b7a7caa4b28f61752f",
+  "src/composition/pull-request/pull-request-review-runtime.ts": "3198f00c09921af5fc7137cb40e3d6465b57c10abeece32c47dbba2108533629",
+  "src/composition/review-contexts/review-contexts-runtime.ts": "23a8537a3c3be30fa50b53012ff9f5b6f44be08d534f4c1223aa77209b02fa17",
+  "src/core/contracts/index.ts": "da0601b0d0a341406df4595b446089fa9bd269ac66af7e972524a3fec92ef622",
+  "src/core/contracts/review-history.ts": "8adbcc0062020fbc643e8f3c6bd3bb1729f3550a1633107432f65b49563c8f6c",
+  "src/core/contracts/review-state.ts": "e92dccc8ae998a1ffb367fa52f9705861a235f4e980cccbcc6f7762803cff870",
+  "src/core/contracts/schema-version.ts": "19b07c2a5af50ae8e39d6ccaac052f3f15ed1d6841215a1a6fcd5cf2d96e3ce0",
+  "src/core/file-exclusion/index.ts": "35dee97af6cf18fa128b4bb08863e87d7d0ddeb04524886e9466b1a8d9ebac37",
+  "src/core/file-exclusion/review-file-exclusion-policy.ts": "789ba1f0938e81c7918a8d46c0ce52262eda1f654ca794e3be261d20abe2c9b7",
+  "src/core/git-diff/git-diff-interval-mapping.ts": "b3321acadfa78d5eaafb669d015e90cd42d09256ce129fbc172c10e2f85106de",
+  "src/core/git-diff/git-file-state-transition.ts": "30360be2c721ce3941c8b811b138c7b79f80c90eb5deaf3aae2e11ae2d6ba9fd",
+  "src/core/git-diff/index.ts": "816791a526396527b5e7346151f1864648c3f05d8265df4855587a2d405ee322",
+  "src/core/git-diff/revision-interval-mapper.ts": "148c060ba55993251594ab2c7ee2334f24b46a20024d93e88ac90f09d503c039",
+  "src/core/git-diff/validated-git-file-state-transition.ts": "954891f78cdd5dca5d79a55c28cdd4bf315116984e2def7e5e4a15c537547392",
+  "src/core/global-understanding/global-understanding-progress.ts": "06cc15e8ec6cc8c9a53bf0e0febe5cbb842c4fe21807dcfdb68da48dbf173961",
+  "src/core/global-understanding/index.ts": "2652183d8d73edc89aa5e5d327239e0dceaa4c43224b584bcd76c96b37ff26df",
+  "src/core/intervals/document-line-contract.ts": "d2d0c4f0ab26941dcb251cc1913fb67047a762d4e6cf35a3abb13aab5442b83d",
+  "src/core/intervals/index.ts": "d60ee425fee1259d7023946c0b60c841beb7f60bbca541044745df7a0dc823fb",
+  "src/core/intervals/line-intervals.ts": "fdd5363e4bf953f022bf8aa190f7fbabce6efcbdc939af37b4f728f8c44e58b3",
+  "src/core/intervals/selections.ts": "ae01ec8997e04b70d6af0b28a91d5b9f08becd1978006f1f35e1f2c74265590a",
+  "src/core/line-intervals/index.ts": "30f9fd3841f8bc907dc3520ec14fd2bbce564eccaaa45556f01318d05f2a568c",
+  "src/core/pr-progress/index.ts": "7fa75398c33198bd227c687e3fbe7db53714576115642415fb7acd8a749ba1df",
+  "src/core/pr-progress/pr-diff-progress.ts": "cd0b340c596607ff817d5056631a4ed15d026d4ad42ae519d5f05afc15a4bf70",
+  "src/core/range-mapping/index.ts": "32cddc1cf7ac975ea72a4693863cfa8ba903bf0d9dfac8e0f17b7f9fbea185bb",
+  "src/core/range-mapping/range-mapping-engine.ts": "976a07bfb89e15d932e504a4015ac2365db1ae0a08aa72ade9008449abf55c7d",
+  "src/core/repository-identity/hosted-git-repository-identity.ts": "732abbc455838cdb46afb82d43c7faf6abd21fe5baec56c957ddd45cb570e48d",
+  "src/core/repository-identity/index.ts": "f59eaf125881becb2130239158ef3c2ada23847d2cf7ccb3d708f87d14d3da01",
+  "src/core/review-history/index.ts": "e9233ff5430a988b091f72fcf1bc5042ef1208490d7488e190eaa3c3b60b54f8",
+  "src/core/review-history/review-history-event-codec.ts": "91debcfceefd786ebd538d4493f5f66555288b1d6b256258321c9af0a8fc8d24",
+  "src/core/review-state/index.ts": "0f4493690d0582fb3c3b81d6b31f2137f0c0cb2f1c1fb8e48e4276bbe5aa8b39",
+  "src/core/review-state/pull-request-review-state-service.ts": "af34fd44a4ca1bed307009d1e0c804d70aec34aad2860cbf169666fd6e6c98e7",
+  "src/core/review-state/pull-request-revision-snapshot-service.ts": "974da549eea07bb39d05c2d8d1f0f8792c72948844bf871bfb2d7466bc2e18df",
+  "src/core/review-state/review-state-service.ts": "136be972ca27e0fba8b5ab605cf3a3ddd4f88ee373d3babec12f37d62d9b9a08",
+  "src/core/review-state/revision-snapshot-service.ts": "92d05e1b4270b7b0c680b34e97826f77dfeb80ad332901f3ac18b2e5642a8e54",
+  "src/document-review-edit-runtime.ts": "7038af3f2ccb100036aad4ddac4e424b5738190feff96b9b5f109396bf97a7df",
+  "src/extension.ts": "300942a9112aafb282e5f7f2801c7d16f90d7e24d635e08557d77d5453777f55",
+  "src/test-only-review-state-dependent-queue.ts": "e9a652c2524af33048e8ba00bddb0d1230002828b922278dc867d6ecc6b8b549",
+  "src/ui/current-context/current-context-candidate-selection.ts": "37a688470a4b425dc401530a9dcfc97329b03a145c9d12f83d169dc7f99788f8",
+  "src/ui/current-context/current-context-runtime-composition.ts": "c38ac2be88b3238b06013d3209fd503c9507ea012881ac4605be652ef968e1b7",
+  "src/ui/current-context/current-context-runtime-coordinator.ts": "a58fe8331199679aac131806038588380c3c5f6e2b7bfbb99579d14b5c52063c",
+  "src/ui/current-context/current-context-ui-controller.ts": "f8083000e5f24358dcf0bf216bbdd7d80805e5368a5e9c459e9500393b560f51",
+  "src/ui/current-context/index.ts": "c0810e8e91513e2d2c32a93f8aec5403dcbbe3a382b2d7e5fb2f9b785ad8d18d",
+  "src/ui/current-context/root-scoped-candidate-identity.ts": "cefd7b9dd00b6a4fd85fa169175821898226dd77102ba294b8cc77a749de2235",
+  "src/ui/current-context/vscode-current-context-runtime.ts": "0397872c7135de531e3a8ad0f1de4a46ff49d7e42345f90e1161cfc982088383",
+  "src/ui/diff-editor/index.ts": "6a8821ee238110b082f4471b41d32a7928344bcec6f9e14a14712a079aa0ca1e",
+  "src/ui/diff-editor/review-diff-editor-controller.ts": "a0b1d38db3df260a73055c76f12ad4ed4d45718f34df830e1b4151054e213c65",
+  "src/ui/diff-editor/review-diff-text-document-content-provider.ts": "e5389624476ed888f036a0c846705006d96012178486a5a6ae2ad3d3bb4f7523",
+  "src/ui/global-understanding/global-understanding-ui-model.ts": "566299a877b0821568aff1f162238d0a2f73978a1889182b03b9b84afdfc3f97",
+  "src/ui/global-understanding/index.ts": "43109c1715309a8a4b8f4fb861ce676b4eb9e2e184765b8835f0b257e4348a91",
+  "src/ui/global-understanding/issue-90-global-refresh.ts": "9b96eed2e5a66f62e3c643319ea4d2c7817a54ff1f68d2a8d6816bb5d1528271",
+  "src/ui/global-understanding/vscode-global-understanding-runtime.ts": "06298b30d849258cf8156767d5e40f27c9db982e921203069bbfcbdde89cda71",
+  "src/ui/index.ts": "68e067f334b1dcb46d3e048e3a8bddb680212ab075d05db60d5ce8fce9f940e9",
+  "src/ui/normal-editor/index.ts": "e429f2465694b2efd113416d6968f905ef6428cde5ef818d7736c2cc5badd1af",
+  "src/ui/normal-editor/normal-editor-decoration-controller.ts": "4af79996bc2badb502af5ff93963f84fd371d54483dd2d1a7fa38e4ebc75c9db",
+  "src/ui/normal-editor/review-command-registration.ts": "a1b73b207290aa3d5301703b3e820180e1588d64029f87d3b20905aba5c12168",
+  "src/ui/operation-feedback/index.ts": "23b166105e0a3db08215be31bbf56700188802a37f1e3f4be618e8197e125170",
+  "src/ui/operation-feedback/vscode-operation-feedback.ts": "fe00916c8653f4b09e2f1552258bc4f060315a646c5bac141d609a5eb17eabd4",
+  "src/ui/pr-progress/index.ts": "bae6cd97e0715a48dbb92809c23375a6deeb8e1d9107a31ae476738e31b320d1",
+  "src/ui/pr-progress/pr-progress-diff-review-context.ts": "ad37ac67c118f7f363bb86cd94c064098829b19793a56fe5b4d1bb3161e5a4d3",
+  "src/ui/pr-progress/pull-request-progress-tree-data-provider.ts": "5f4af07d8060cf2ae440c3f2988bac7ba6ca0da4059635eb0e592fe2983d4323",
+  "src/ui/pr-progress/vscode-pull-request-progress-tree.ts": "4415db5ded97203a49c5e5e7f0562c600296f4e3d723fdd579d5a84c9c0148e2",
+  "src/ui/pr-progress/working-tree-file-path.ts": "d1c8d0c54d59aa870a98551910cdbe9a955e7f4ce6e5d77acf7b97a62d214465",
+  "src/ui/pr-progress/working-tree-file-target.ts": "109124aa5170f50911b77e8260f98dfec2297f46ebb0fb0730271ed9b8cfa3d9",
+  "src/ui/review-contexts/index.ts": "2681e91ea2791364c30309839a170701328c61ae36e8ca69c55b8c437ec2f749",
+  "src/ui/review-contexts/vscode-review-contexts-runtime.ts": "2be7e01629caea1c485cfd4e0f9bc00aa1110cdf5bd6a89ac7e9132b4be00cc9",
+  "test/helpers/pr108-production-fixture.ts": "d25c00d17071fc3ca6cf309fa221190916b448939463461c417a8112d25d4435",
+  "test/integration/git-context-revision-source.integration.test.ts": "98a5a43c9f31945489ef9619bca447318daf8513a33ac5b83507c702a41e7856",
+  "test/integration/local-git-adapter.integration.test.ts": "808646ab14543635033fe2679e38f1088b78185da988c859b44070b27fa72e69",
+  "test/integration/mock-github.test.ts": "ecbd5e392cdce36858aec7ca3210f1a89d717d9c8a0103f3638f913e14da8928",
+  "test/integration/node-local-git-runtime.integration.test.ts": "b62d875ca862bc8fe8f794c7325912bfb0f1125d40adc166c8d8171ff302a704",
+  "test/integration/t207-git-history.integration.test.ts": "5bddff552ea9b45ee18d85df890e38c4792ae32445925d9d0d8dac40c58e0f2f",
+  "test/integration/t302-review-followup.integration.test.ts": "abf8ce144b4a2b5e86f8d05761c4f2374a00029a99b10355210689f8028563ff",
+  "test/integration/t402-pr-diff-acquisition.test.ts": "70a27f6dfa8e28b758ccad849264b2e0147656dabe53cdbdf9bfae7c022b3d76",
+  "test/integration/t402-pr-diff-boundary.test.ts": "d213c647d1241b95dc353a1975b8dda3fcdcd25b0f218df46d4dff0121f5adfc",
+  "test/integration/t402-review-followup.test.ts": "04fa56303ec64ff5b6d89ccaacdce9e0ac6dddc4c431e5dbffdb4a9fbf4e79a2",
+  "test/integration/t506-global-multi-context.integration.test.ts": "2522ce78de9ff720c788ca1377ece7234b25934203d8462cd7332f0bfba94e9e",
+  "test/integration/t506-live-edit-concurrency.integration.test.ts": "a2a7bb89d22c6be89201177bc28dbf682bd58c3c80b758b6208cb5db04fb0aaa",
+  "test/integration/t506-real-multi-instance-concurrency.integration.test.ts": "ae118a199d102884c08a3b1e64c8593c91eaf93c620c5e9d5144661094cb5aa1",
+  "test/integration/t506-selected-pr-live-edit.integration.test.ts": "fa2b155a7598745828249f274fd9ae8333b5678c8a7501a83ca63c117c5c8106",
+  "test/integration/temporary-git.test.ts": "8515da82b75725f043a5b5104c711d5b9093cee4224efba7464a7d2875b433a2",
+  "test/support/mock-github-server.ts": "cd22f9125fa0e75ef1bd2499c6374ac4c8321bd94083010e4d0045e945cf8010",
+  "test/support/t405-owner-product-fixture.ts": "8364b9eb4098012a9bc8a593e7755365f065f6c18a60c4c1bca04179a8623583",
+  "test/support/temporary-directory.ts": "aa2b1c83743885e34b1593c3aaa545f9e66c764200f3867de024f4e1dfa0bcb4",
+  "test/support/temporary-git-repository.ts": "10e66783509e024490c2ba6cf1ebf765247ddc0669806c9692bc7a6112eb606d",
+  "test/support/unreachable-git-blob-reader.ts": "04f86c714e29cf3c849c45e74d0191466aed0914a7f58fdfd9c1c43ade742e76",
+  "test/tooling/ci-packaging-contract.test.mjs": "65d4eb560b4a196d490bbc4efd82018a65f4b8cc832c9d7a00947d79711e3008",
+  "test/tooling/ci-vsix-version.test.mjs": "ca0478099d3eeaa56c3c5371596e5a3d8367717b05ad7361f40d2fb832045cba",
+  "test/tooling/issue-136-refresh-coordinator.test.mjs": "725da217d92991864126e06619492240df04a265370a5a78b23553d149e88294",
+  "test/tooling/issue-137-pr-progress-diagnostics.test.mjs": "03ce3189e6e3e672b48b9c78fe2389a902178f7c81ae8de038af7beb804388b6",
+  "test/tooling/source-layout.test.mjs": "46991acf520a36ea1cbdfd44e53e199d1ae79d2962d902dca17e307151282d78",
+  "test/unit/change-blocks.test.ts": "461e82871a8729af13ba5f0f075e4b103667422533c75d65d461dce86e022804",
+  "test/unit/ci-workflow-contract.test.ts": "6ea0ed141d8cd0b2339c4854cf794a3018addcc8a322eaf203d1298a4fbe3bc9",
+  "test/unit/core-contracts.test.ts": "c33e2327aa88b09e7cc996b9adfde820874062186cd2a1fccdf389e7185812eb",
+  "test/unit/current-context-ui.test.ts": "c34597d42cbecc5a0ae5938e1d8d9d23e64c843f3fc7e08a6abe74e38be50a54",
+  "test/unit/debounced-review-state-repository.test.ts": "351c87ab799b219f72824f6b6cba888fe1e4724bb1e89ec8a3c8405d89d46919",
+  "test/unit/design-document-structure.test.ts": "ad2ddc9718ea2b994c4731a8fa6259788515806d00969c649404f8fcdcc90177",
+  "test/unit/diff-block-review-state.test.ts": "4357748ceb2f12f17cd2e3b3ef6bbc35a66df64f3e4ffac2b0f6d3f45c5a978a",
+  "test/unit/diff-editor-review-command-service.test.ts": "21f78d7e3bd3de8ef3767d9521e2a0aa06d1796a69ef30c6c87a1eb8755e1feb",
+  "test/unit/diff-review-state-service.test.ts": "039b64bccd83b228e249f02ad52cb703b2d896385be5c0a6f16e37fa3c833175",
+  "test/unit/document-git-context-lifecycle.test.ts": "eeffe498a3f77136610e6bf7004a1f42f41c7642b4cba0b71ae44cfcc76eb8ce",
+  "test/unit/document-git-history-rewrite-runtime.test.ts": "51fb58ef758fe3e554e69cf277c612e8f20477f2663b2a1d8c7db525d3bd2717",
+  "test/unit/document-line-contract.test.ts": "71b3e85b855b0e288bb2364887e0ef091717dceb9afd9e22d518ba048f7962a5",
+  "test/unit/document-review-state-regressions.test.ts": "e839b634b7ecaea748964b838c69fa17528d627cb70467fd128a228cba3d9b3c",
+  "test/unit/document-review-state-session-provider.test.ts": "e06e5af5615b2b11fa82a1a28596e00cbac243cff7d2e147406b31afb6ea8972",
+  "test/unit/external-file-state-repository.test.ts": "290b600131f747476b3e4c1343635c6bd4c72a480448a36a942ef6c165408187",
+  "test/unit/git-context-revision-mapper-binary.test.ts": "b81c91ca341a4c27bdbe2ae2a66573b8c6e050e3ee911f029b5b191e3f07211c",
+  "test/unit/git-diff-interval-mapping.test.ts": "86267120163cf0dbb336c67c6ab6e09cf641ebad90d017083315a77440d31026",
+  "test/unit/git-file-state-transition-r3.test.ts": "2e689334eee920c6d8a6d2b143197a3a9f6bfc7c92b29f5b035c777bffe465b1",
+  "test/unit/git-file-state-transition.test.ts": "b6101c4f30de58669a4edbea807ca9250d884c980bfe83032edaf66dc8dadf02",
+  "test/unit/git-remote-normalization.test.ts": "f8d3ab833a158d500f861b13bd94de6ce50a9045f254460ee4c6b5e25aa53986",
+  "test/unit/git-review-context-lifecycle.test.ts": "1cfcb6ae14889f764537ffe6afd120403a97ab8313265d094e8cc0da4fc3353c",
+  "test/unit/github-pr-context-layer-store.test.ts": "ce81697b39e2c1fd619d841e5479d1239857cf317f2225c4aec8cf1d3e4727c6",
+  "test/unit/github-pull-request-cache.test.ts": "25f7c010b7e118b7eb31291113ef3fc6da809dfd9974acc0b27c111792370365",
+  "test/unit/global-review-mapping-display-priority.test.ts": "7634edc617048d342b3810ad3c08e28625f4358e67465ee0efe370656eb851ff",
+  "test/unit/global-understanding-progress.test.ts": "be4501045fc458a2121baf2e06c83e8451d2d9ae76eaca7e047460b8ad22a8c4",
+  "test/unit/global-understanding-ui.test.ts": "fc0fe526274370be5bb7edb6ec4d4269324d12390afc9845db19bd7d694706a5",
+  "test/unit/history-rewrite-git-context-integration.test.ts": "cf625cd7a2715b31a77fff88b2fedb58c5934a1e8295b9eb60d220d488d83a99",
+  "test/unit/history-rewrite-recovery-conservative.test.ts": "34c914bfe2380b6225d483d0d29edf6dfcc774c9cb8b7168e7f55be0b5a9cbc9",
+  "test/unit/history-rewrite-recovery.test.ts": "1f98d1a60532163aa5a6a49cb9fc7870ea5a30339a9982fa412fa18afe234722",
+  "test/unit/history-rewrite-review-findings.test.ts": "0ca9e592aca90e4d3c8c7553398ac6c9ceb87d1738c91d37314132ec2c8a4fc7",
+  "test/unit/history-rewrite-tree-enumeration.test.ts": "ee16dfd44cdfe15e96087085c5c0779104ebcb1252716fbcd3a6aba4fcdc5d4d",
+  "test/unit/immutable-revision-review-snapshot.test.ts": "dcd88aab971b40bbe2e8b3f5c90dcdb861681c183c8c48878b48406f5d6761cf",
+  "test/unit/issue-106-global-three-way-synchronization.test.ts": "1c27b004328ccf2e4a6780c485e310d55c5ba675566e4a0e64d7abc62ff4fd06",
+  "test/unit/issue-106-product-composition.test.ts": "b317174f7d39249d7e593b7971eb8b56ab9f8a0ad7fb5dac1c4eda7eedd366e0",
+  "test/unit/issue-106-t405-owner-synchronization.test.ts": "5cbac3f0025a4c44f238b026fd21adfff84cbce3e819b8d1d4247c4500f3bcb1",
+  "test/unit/issue-112-pr-progress-runtime.test.ts": "1745ca8fcfff7a47d73aea02cc5bd8e94ba3f723975c1b0675cab3d8e902ab99",
+  "test/unit/issue-112-pr-progress-working-tree.test.ts": "8be9f47533212a4a7753c0ab9b3987743fa60a86ce66d4ea17aeb26be766f11a",
+  "test/unit/issue-112-pr-review-projection-notifier.test.ts": "c7ab997cc666b7f10cbc863155d038d86cec7cb13e57bb2be8a1ee8b5576daf0",
+  "test/unit/issue-112-pr-review-projection-sync.test.ts": "495e4c8ab9934b578f053e4f10cb4206d09988e8ac986c5fb8926c587b6f1766",
+  "test/unit/issue-112-working-tree-path.test.ts": "8690e1e9e54be282e6ec09989dadf3d285e53f294c6e772d6cb8cb691249bca7",
+  "test/unit/issue-116-current-context-refresh.test.ts": "64f8678b1409a2ac224cfa454be627a6f0b97ebbe90d31137fd0188e1745288d",
+  "test/unit/issue-13-atomic-reconciliation-review.test.ts": "086f82618428d34bda55763c2941d810315359aa045e0a374d5cda812c4c7f29",
+  "test/unit/issue-13-baseline-metadata-review.test.ts": "35560e444d29a9deaefa19d610a22755acb144471546e69a72b9b1e3a09b24be",
+  "test/unit/issue-13-owner-reconciliation-review.test.ts": "19e9295845d1aa4ebdc1539f1bed696bbc23aa750ab6bc6dd0f71262169ae1f4",
+  "test/unit/issue-13-r5-review-followup.test.ts": "d8313faaa5e308b2e0694aad751b32d81454552f05f0edb4665db37764756a1c",
+  "test/unit/issue-13-r6-review-followup.test.ts": "a95b88fa61fe68d591734dbdc7e5d62cc78b7766ce13176d9003db754e138c0f",
+  "test/unit/issue-66-global-pr-progress.test.ts": "4ceaca8f6ce42a9dc7b67502f4c4ee94c20df46d2c854775000b61dd519dc994",
+  "test/unit/issue-66-pr68-review-findings.test.ts": "39ff01484900db514ab62acbd426a859ae6336d05ba2d31f3d504b24d033727c",
+  "test/unit/issue-84-pr85-review-closure-followup.test.ts": "dcecc40a69b0d9430333af3b8ac180e99ea7b99774da679ccfec82c525f1b9c4",
+  "test/unit/issue-84-pr85-review-followup.test.ts": "ca242be04503986c3b7ed80ed64f8deeab5f70ecf07e200af6fc955cd7122d7f",
+  "test/unit/issue-84-review-context-progress.test.ts": "e9695d7dddc47cc6a0b5a6893e10c903388cbf4bce42f64ddc4f181b5ceeb9e6",
+  "test/unit/issue-90-diagnostics-and-cancellation.test.ts": "c0bf0f97e0f290e72eb8cb6872e549f908944e16494ac6631364b76d90609ec7",
+  "test/unit/issue-90-runtime-routing.test.ts": "c6618e429e273ffc2946da3b56e95baa61cb65486a97ff4f4e3ac74473715c9c",
+  "test/unit/issue-92-pr-progress-context-menu.test.ts": "71acf17512a778ea182c7d2566af8e0185ba62eccacadb02e679c00c375707f1",
+  "test/unit/issue-92-pr-progress-selection-review.test.ts": "ad50a702115615e789b5efa01df51b7d1628941c28bef9f1e4a85e828bdc9c87",
+  "test/unit/line-intervals.test.ts": "de09ebcd852155094c76d94dbfd6f51cc4943d00b79f9080d4a8807d0ba60d1a",
+  "test/unit/local-git-adapter.test.ts": "e191c6964b0f4e71fbe07e2f6bc07d12af6f89b9d540c8e6fb0d8f0d0f1873bc",
+  "test/unit/local-git-head-classification-review.test.ts": "9ad257dc4b125650467dcceef1fe759c1603db378c6ee7d1d64b27221059b293",
+  "test/unit/local-git-ownership-classification.test.ts": "e1b835a0b7639617a62d240a789347396c4b6f806ba85ce5db4233216f1ac931",
+  "test/unit/local-git-revision-text-content-source.test.ts": "6398a18c1206043cd7b0edf7182ef189a254ba44fa68466d782a5a538ddd83b0",
+  "test/unit/local-git-tree-list.test.ts": "d8db0513ffd75469cd91d59b0222b96e0beaaabc70ec4a29d5378e3cf8179b79",
+  "test/unit/node-git-blob-reader.test.ts": "bc9b76170eec19fa2488308746c8c3256ef2788847048e643203f1b773508d3f",
+  "test/unit/node-git-command-executor.test.ts": "a3b60d8016b0cc9ad1769d5198eebc0f00189fb23d8a76df8cc02979e46dc8f5",
+  "test/unit/node-non-git-snapshot-storage.test.ts": "dfa9593b1c6a8477259f7ff1d55781010834e3d557b5378da36ce893842c565e",
+  "test/unit/non-git-snapshot-tracker.test.ts": "59f71e94e65aa71b7157d9c38f9a5f79a83f8d683af8a85ba1b1f95545ae1b9a",
+  "test/unit/normal-editor-decoration-controller.test.ts": "db4241cae1a361867bbb0eb96d8a92b83c80337a86cd59c231578029ff819937",
+  "test/unit/normal-editor-decoration-global-isolation.test.ts": "5b8966d9748bc5580d9c2960200c071cdcda790ba951447b755277362109393d",
+  "test/unit/normal-editor-decoration-model.test.ts": "baf9d46c3f1a3fe4e41496ae9c572b2c757413ca2ee432297d2d0c3d484f3e98",
+  "test/unit/normal-editor-decoration-overlap.test.ts": "35f825ab7418b1cd253e185097f23cee01723896657246bdcf8ac56e84c01374",
+  "test/unit/normal-editor-review-command-registration.test.ts": "c5c0e5e64ead139a06dfcbceded1cc6cc105070198352c2b2dbe3646fe9491f0",
+  "test/unit/normal-editor-review-command-service.test.ts": "ce72e11ab1a0d22a47e303d6359fb37f47d7fbd77cf904f19becee60b617a666",
+  "test/unit/original-diff-selection-projection.test.ts": "7c2e9db245f89bf4426b22ddb3a5b8ca7e05feb1fed321444abbd1195285dd16",
+  "test/unit/owned-extension-host-launch.test.ts": "dec2e9dc27d8f064f2cc3bd7a86a9a43d15ad281e2b72387bb941e11a292efe3",
+  "test/unit/owned-temporary-directory-cleanup.test.ts": "aed69a4c220b78da09af2bf7a33b25cf489930ed7cdb91c1070dba15a5e813dc",
+  "test/unit/polling-git-state-monitor-error.test.ts": "06b07b8b7502203a7f2727f7115c4eeac78954ad93bb59c9d7057c481b71c9e7",
+  "test/unit/pr-diff-progress.test.ts": "b65493d54baf2c26e64a403376a719a0b5ad2d3b87dc1b6fd99f58c76a0a4e84",
+  "test/unit/pr-diff-selection-acceptance.test.ts": "da7b9f2dabb4e0bea43c3f6368540a5a305b19cd1ab7df0fe6ef616095291ee5",
+  "test/unit/pr-diff-selection-configuration.test.ts": "2edd3f640993b6553c8a83ed124c94fcdc1d784add8c46ef429be12fcaad73cd",
+  "test/unit/pr-diff-selection-history.test.ts": "c488444bc49b95569b71b350ba40133a9edc8437b0e32d1b8d3df58b579f892c",
+  "test/unit/pr-progress-remote-tracking-revision.test.ts": "daa4a3634878ee01ba03c70825ae609c9184f8c7d49d38efd771e711c5461d97",
+  "test/unit/pr108-product-001-production.test.ts": "e8bcc47d12d890bf5a50858f3e9812b9f57526aff7b5244b0cc03895462e5b74",
+  "test/unit/pr108-product-002-new-pr-fail-closed.test.ts": "f891c18afe7880de75a98e85d07042920c0a06caba30d8494a86a6cec7975f94",
+  "test/unit/pr108-product-002-production.test.ts": "1cf79ea9c05ed9eaab9cba2eb8d317b3b38a7287f2280d80c536aade951a4694",
+  "test/unit/pr108-product-003-production.test.ts": "bb7fdfeaeb823a335a84277672cff66e9ac49ca561aec6945c9bfcddd93aa61b",
+  "test/unit/pr108-product-004-isolation.test.ts": "f6e35d4d3fd61722be3111e97a62a2e34d3cb6973d8e5c24fb05319573e5dbd4",
+  "test/unit/pr108-product-004-production.test.ts": "066a5392b0ff605f0e124779ed22ff3d96c655c3b119c4fe0be3045904eb0894",
+  "test/unit/pr60-review-fixes.test.ts": "4f237102d30ba64a1f132ba9224d129b1426d2bfb124b7531a1aa63c15b32ac7",
+  "test/unit/pull-request-progress-tree.test.ts": "6c7cc0056c66fa6c86876da972c3694276fae67e42a50557965906ffa09e22c9",
+  "test/unit/range-mapping-engine-review.test.ts": "2ed02744125b6941ee1247ed4b443ffa04398b8d6daed45819c067dbc5bf8861",
+  "test/unit/range-mapping-engine.test.ts": "5c4b8e4a684b9a2a6ad300d5ad56e9f4c93e6865452ac37c400e2b7c8526c9cb",
+  "test/unit/release-vsix-contract.test.ts": "e9fee5170a2c253c6214f8518cdf4ce641a6aff92406ed7fee19ab1a1085f727",
+  "test/unit/repository-file-enumerator.test.ts": "beb3a57ad5614d36bdc5f0e87eb405148a3d085e7382d04dabe1c44235f1aad0",
+  "test/unit/repository-global-state-repository.test.ts": "dbf89d822fa49f4f7d11caf6f8546b12e83b3cb82d62431aec81decaff90121f",
+  "test/unit/repository-relative-path.test.ts": "d7ef39d98d97039cd2c251185df079a30413f80a528ab036f8d98ddc9f95ba5d",
+  "test/unit/review-contexts-runtime-wiring.test.ts": "02f50add198a95798d151681b75d49169d9e7986fb33ad2eb3ba21ed8f5d3ad8",
+  "test/unit/review-contexts-storage.test.ts": "9ff3dfc330d53ae2f161d6670b6f17053cf85ccf3993a2d8b45c5064056ffbc5",
+  "test/unit/review-contexts-ui.test.ts": "b822111e268e0ad0c48bb6a49999178fb4d6734601e809f8730829bac4ae75c6",
+  "test/unit/review-diff-content-provider.test.ts": "200c941e2d96ef6628775933a117c5edf97ae34ff304f32d468e9678b6a47f4d",
+  "test/unit/review-diff-editor-controller.test.ts": "d67dd4948d897cbcee11fd4cbd9bb29865877c526572e4ff5cb082b7850aa465",
+  "test/unit/review-diff-text-document-content-provider.test.ts": "41625db2b449387ee3284c4cafe72602d7cd9ed07a24174887d23ea1e227987b",
+  "test/unit/review-diff-uri-boundaries.test.ts": "964ba9b7a5dd3d7a8ec5236fbc37b9e4de41b47cbee57e9f5bcd427ca26d6313",
+  "test/unit/review-diff-uri-unicode.test.ts": "376c9ca1dccdbfbbf1f41e0985fd319f826557aae6cc6eb123a2dc310d314971",
+  "test/unit/review-file-exclusion-configuration-controller.test.ts": "22f1c509479b6d04dbf6488c82aab43c78287567fcca2e99dfbb98acb13a3f8f",
+  "test/unit/review-file-exclusion-policy.test.ts": "8e449298640da9da656f2b30a32dc9f247770ca4f3df2f0890f7060dfcf1e162",
+  "test/unit/review-history-jsonl-store.test.ts": "9e6f6140d25b7b2c8490043a673fa51ac328928e56b05bc360a11a9801296551",
+  "test/unit/review-history-original-side.test.ts": "2ce70dff1104860f5a5d08d94bad548cd893c62e59ba5c4d8c9ec304f6317683",
+  "test/unit/review-history-recorder.test.ts": "afa9c7dd451ef262d45b4ed3f57a08ce04d8aea78c53dc6ea50eb401f50b64d7",
+  "test/unit/review-state-service.test.ts": "508758a7586e10a8cfe31ee99496a9a8c9b8b79f17c7c167a0b88e652bea98d2",
+  "test/unit/selection-targets.test.ts": "3410fe30c626ac809acf29c6df5d69c04decc3d9d1282176e84939d0250e6d5b",
+  "test/unit/state-repository-memory.test.ts": "8f8218c8921d694010232e1c4a968b2853388bf93d5e89c620ce1c55ab285ac3",
+  "test/unit/state-repository.test.ts": "be5124119d3901bbb97c74642f689e7e9941233a8daf5cab741bb308698e33bd",
+  "test/unit/t303-review-followup.test.ts": "4517b657a432d59afe61e0b9acd5d8ee504bfd6d3dbdf7f872824119ca226129",
+  "test/unit/t304-review-followup-r3.test.ts": "00ff1c46d6f19249314bff4759561cafef805887260d8244e09e7a5640a9b359",
+  "test/unit/t305-projection-refresh.test.ts": "6f46a10b75d3d3f103ccd0f99eee47e765e04d806c4233540d573b36acfb808a",
+  "test/unit/t305-repository-root-uri.test.ts": "e8de72bfc5b489fc4f5487661ef79072978d17eceaba68a7da1cdecc29048f62",
+  "test/unit/t305-validation-wiring.test.ts": "7babb87fb0ab8880ca3430063293d6deecd79e7ef2abfea118770ec49b2d475d",
+  "test/unit/t404-history-integration.test.ts": "fa10e540cdf8a33e6cfe2fe6291f8686444318347043d03f475be3e643f87dec",
+  "test/unit/t404-review-followup-r3.test.ts": "ed3c16f4f4d58ce28cad5fb730d992ee90eab34a5aed7218c83fd4f5e2bd6e9d",
+  "test/unit/t405-composition-regression.test.ts": "d528b8dc5b05eadfa7e57ee594d489bb525156bf65154be20b3403ffb766d02c",
+  "test/unit/t405-github-lifecycle.test.ts": "15ae113789068912527082ac5d1996d200f22488552fb27db6deb9d6dcf36f64",
+  "test/unit/t405-pull-request-review-runtime.test.ts": "72f3acbd5080e87181d2c1083b9a947d2465f7acd5366429f7689b74598f4a1d",
+  "test/unit/t405-review-followup.test.ts": "021e614681cdc772531709a488cbb22ae4e5cded59969a9e5a89d9ab2f27bbb0",
+  "test/unit/t405-revision-evidence.test.ts": "84ad4a9ef6a77e790a355abf94e6b07120e266b63c10b4a2803a846cdb05366d",
+  "test/unit/t405-selected-pr-session.test.ts": "710d5dd4899658e7609670fa8eaf6d57145d7169acdb73baeae9d4b60f0cf6cd",
+  "test/unit/t407-private-pr-context.test.ts": "f5075d8bc90d1b7375f72c09f200b528fe62d2d66a23da0df34cab1f6e6419f0",
+  "test/unit/t504-review-followup-r2.test.ts": "d2f2c929d8c9e9f7419a5236518c41ea2c3b4fb9340b8512291b2634707e2cbc",
+  "test/unit/t504-review-followup.test.ts": "79e6bc96843a2bd4236d5d86a26ddeb21d8fdb2adff0d6ae6103bf65198e0865",
+  "test/unit/t505-global-understanding-source.test.ts": "53518a587c0bf247f31c4da8cf465d651e573bae396b6384fc4866f4b478b0dd",
+  "test/unit/t505-refresh-invalidation.test.ts": "4e0708ce78cca1a200609bf6a91fc0a05c7d4d1136fdba2b2c6a4992e7a30414",
+  "test/unit/t505-review-findings.test.ts": "f519e0107d55e8ed6003c6c72622a5a218d7f054d2643b29df38c0463a6c1f70",
+  "test/unit/t506-live-edit-configuration.test.ts": "6af573e5156c0246c704d78148f7053507f7949ace51d3d80e0f7f2c5379792b",
+  "test/unit/t603-fix-verification-r3.test.ts": "ca7a258e6f8c2e7e716dcb40799c4ab8bde9975478bb5cca57c291b996d4b9ad",
+  "test/unit/t603-fix-verification-r5.test.ts": "533b8eba1ae922e6e7f214ca3648e397cd51c119504681f8a7ac98c88daf65a5",
+  "test/unit/t603-handoff-r016.test.ts": "7b9c40981153c1d349dd39a7f83a326e8be8843e39dc61ed07159041a9f8ddc9",
+  "test/unit/t603-history-multi-context-regression.test.ts": "ee6691cd62d2e4723fa22e59e1eb3b9a46f09b87e7e18e70c7dc241228ab3a05",
+  "test/unit/t603-history-reset-decision.test.ts": "00ea12a715a0a0fb6c1782297f176b01fa9ce2969fde4dd33839429c2afae2be",
+  "test/unit/t603-r013-startup-owner-regression.test.ts": "08c79bf05445a0bce6bbf26af3e14622bc94261b8ed22e9abacd13dfab1e45d9",
+  "test/unit/t603-review-findings.test.ts": "4bb599224e21bb5e8a6eb285c68c460ca1bd31ee2cbb1080043059e0119c9885",
+  "test/unit/t603-schema-migration-recovery.test.ts": "a0fd352ebdf4653002d19b286b4676bae5bc42aa0a98cba42fc583c586384b42",
+  "test/unit/t604-storage-lock-cleanup.test.ts": "12115976a5f74adbc57f7a80e9e4e27f55a2eac44391add752fc783e0a77debb",
+  "test/unit/t605-multi-root-remote-boundaries.test.ts": "0830537f2faa01443e92070144df2077a5fac0ae4da34d91bbde96e9aa649373",
+  "test/unit/t606-failure-policy-retry-diagnostics.test.ts": "40ed739d7c658b77fb527b23ef4231e06f208abe3a006861378f33610a5a4f41",
+  "test/unit/t606-production-failure-matrix.test.ts": "4b2b911e69ac0525ee1fedfc7d81d28e762d6c7005bd09b5339f7518fa22c543",
+  "test/unit/t606-production-timeout.timing.test.ts": "47790986b389a1702f5d521f8d373855188764277363236a98ca5ced812fb3e8",
+  "test/unit/t606-r5-production-activation.test.ts": "a9c86d5640c89f25525b9be5cbf6973519aa39ac72918487998d65766c0f3332",
+  "test/unit/t606-r6-production-matrix.test.ts": "01fd96ab3a909efbc63f40c7ea8e848f54b77be52595fe878897dba59c569ac2",
+  "test/unit/t606-r6-real-composition.test.ts": "d050daf3e6241fcbb28d371534e954a62b26538de2e4a2315a08e2f1ef2eaf58",
+  "test/unit/t607-performance-incremental-ui.test.ts": "60257d6a0ac38fdd0e28362db814665ddb06a151db68661ce355d6045c0d4136",
+  "test/unit/t609-gate-wiring.test.ts": "7d608d9a3505ec6fb58fef5931b735094033e4c43fd369a517c3d65cbf70a3b6",
+  "test/unit/t609-host-rename-decoration-composition.test.ts": "04ffe228650222e37fe11d1e59f9567c51a94a9c506a2602bc6e9d5e43678e4a",
+  "test/unit/t609-normal-review-followup.test.ts": "745758597cd3ee1c99c082e23283f45af3e1904cc7b5640ed9fecf866809afcf",
+  "test/unit/t609-repository-resolution.test.ts": "d7277640dfd3533c62b3fc5999458a958a74017bef0bae1cd76012733fc07f67",
+  "test/unit/t609-review-contexts-cancellation-boundary.test.ts": "d2285666e9eae59a120c555e54c3ba033503f5f2d62cd77f7204e1674194c080",
+  "test/unit/t609-review-contexts-repository.test.ts": "283b451896eb3aecc866fbd3dda49b8c1e24c96e143b0f5d0b3aa6370145f197",
+  "test/unit/t609-revision-mapping-encoding.test.ts": "08142fba1486f0c5de007f8ce85978016c540a4398f5de2d6c5238a994f4c321",
+  "test/unit/t609-t405-encoding-composition.test.ts": "8434efd5f73962c2bdebf4a722773a71066844220963db1ad52455b9d471aaaf",
+  "test/unit/t609-test-review-state-dependent-queue.test.ts": "9fbbde7b6a73d8ee21d0d1d8a8206d3b4baf6c50fe3ea7f8cbfe62460c6b99f1",
+  "test/unit/t610-folder-understanding.test.ts": "1b6ad257ef7638cec53da55d2ed4981fa4ef33ba06d292858fe40d58b7b00414",
+  "test/unit/t610-public-api-documentation.test.ts": "73a93224f8db90315054644b51d7219706ba9a95a770f51f82292419db4cefcf",
+  "test/unit/vscode-current-context-runtime.test.ts": "05afad5883218b2e09a66e27b79e4f2e6e828652c230ef21a34f674026c59ced",
+  "test/unit/workspace-identity.test.ts": "b1f33773343a185b2a004c7fd4513a84a1ee711a03beb02de24e3f8924add999",
+  "test/unit/workspace-non-git-snapshot-tracking.test.ts": "c0098c19208a4df4066a3b835568bb64d4487d711c7832e5a0d65a56327c370c",
+  "test/unit/workspace-review-state-session-provider.test.ts": "c235305b6cfc27ed9686daf7e575f5181e387d756ff23fd2c2410ee2efd125ea",
+  "test/vscode/owned-extension-host-launch.ts": "02992b007c70cd4ece3a30e2ca3687747431132c742b70d7ac92cba97601a775",
+  "test/vscode/owned-temporary-directory-cleanup.ts": "4c0961b8e1dcdbd31f6469ad9a3fee688af5023db19db4ab14327b532d55b9e6",
+  "test/vscode/owned-temporary-directory-root.ts": "123b28ed9f21745022c4d6f2d78cb0225fced596ed1dbf8fc41f769066ada1a5",
+  "test/vscode/pr-diff-selection-mode-suite/index.ts": "0b519712f5398406d4aa7406ae98d07b47fd7aaf9e44f3b010c2b9216fe850b2",
+  "test/vscode/run-extension-host-cleanup-worker.ts": "649bc1f31881b134e73330624b80e5823f5429ad2fde10edc261cc915a0df50e",
+  "test/vscode/run-extension-host-launch-worker.ts": "d93b6245e3772ced12562ca3e2dec56d355ab394177245ff7d11f3eef39e2798",
+  "test/vscode/run-extension-host.ts": "06054be542ec51910be9f9c23676e1d54856cfc4c30f74839f0a6450f391039b",
+  "test/vscode/suite/index.ts": "24ba0ae1b6435af387bb62aac2f7cf9c29722fc0a2e18380eb44bdf6b0caa932",
+  "test/vscode/t302-suite/index.ts": "a25178ee774d1abf94c324b89f397da9f64e0b1bd9871c133f91824cc3efc72b",
+  "test/vscode/t306-suite/index.ts": "062e2479e8259fa9411410cb3a37d7e1d4dd501384898914bcde8625a0ad5701",
+  "test/vscode/t506-suite/index.ts": "d7beff7aee07cd90f044c4ca83bc96bce1cc963e98226e271919f1640cfe7397",
+  "test/vscode/t506-workspace-suite/index.ts": "b0fe61f59eb1cd7aa623a008168886b61db1b5c2cb51aab12ad4f3fdd5a34c5e",
+  "test/vscode/t609-suite/index.ts": "baaab40ef29588369d691e77678720a5083fe4ee3dc51eebe8e6bf1c0bdeb65e",
+  "test/vscode/t610-suite/index.ts": "9068dd11714085fa16e6e939120b5ae0db23dff7bfd8d25b411c4b16402cc082",
+  "tsconfig.json": "38a475bb4a4d426af3ea93c99a8a349bf348ac169f34365b83b5a8ee3504430d",
+  "tsconfig.test.json": "6b5e2136af3446d87373130eeed512703857b856aee7464919097649408b0604"
+}
+```
+
+
+### NR-006 remaining-path implementation r3-final-tracking-whitespace
+
+- UTC: 2026-10-06T18:56:13.541317+00:00; cwd=/workspace/RevMem; shell=bash; local_execution_available; validation HEAD=5d0320aa037624022494fe877b08e317651b2541; committed tree=ce30a33a161f2b50ccd6e35f4c7b377750793e6d; source fingerprint=ff48df1838f3f0eb867de7b0a2a00895c76e2c7776ac8ab0ca2727862d67b441; executable input state fingerprint below (HEAD plus any recorded diff).
+- Command: `git diff --check -- src test tasks`
+- Exit: 0; counts={}; source before=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af; after=b387a25790daf381d7692543b3fc6fa25fe49a5b19f5c0895dd8bca8c6aad3af.
+- Fingerprint covers every tracked/untracked src/test file and package/TypeScript config above; excludes reports/task Markdown and generated test-dist/dist. Machine-local full manifest: /tmp/i136-r2-evidence/r3-final-tracking-whitespace.manifest.json.
+
+stdout (full):
+
+```text
+```
+
+stderr (full):
+
+```text
+```
