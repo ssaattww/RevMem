@@ -505,13 +505,27 @@ test("T407 public Current Context supersession cancels the old picker without ol
     supersedeDuringPicker: true,
   });
   const selectionEvents = result.operationLogs.filter((entry) => entry.label === "Current Contextを選択");
-  assert.equal(selectionEvents.filter((entry) => entry.event === "started").length, 2, "the old and latest public commands each start once");
+  const started = selectionEvents.filter((entry) => entry.event === "started");
+  assert.equal(started.length, 2, "the old and latest public commands each start once");
   const cancellation = selectionEvents.filter((entry) => entry.event === "cancelled");
   assert.equal(cancellation.length, 1, "the old public operation records one CANCEL terminal");
-  assert.equal(cancellation[0]?.errorName, "OperationCancelledError");
-  assert.equal(selectionEvents.filter((entry) => entry.event === "failed").length, 0, "typed cancellation is not an ERROR terminal");
-  assert.equal(result.revealCount, 0, "typed cancellation does not reveal Output");
+  assert.equal(cancellation[0]?.operationId, started[0]?.operationId, "the handled supersession cancels the old operation");
+  assert.equal(typeof cancellation[0]?.durationMs, "number");
+  assert.equal(cancellation[0]?.errorName, undefined, "handled supersession does not invent an exception name");
+  assert.equal(cancellation[0]?.message, undefined, "handled supersession does not publish arbitrary exception text");
+  const interruptedStages = result.operationLogs.filter((entry) =>
+    entry.operationId === cancellation[0]?.operationId
+    && entry.pullRequestRefresh?.trigger === "current-context-selection"
+    && (entry.pullRequestRefresh.status === "cancelled" || entry.pullRequestRefresh.status === "superseded"));
+  assert.equal(interruptedStages.length, 3, "all three pending selection stages record interruption once");
+  assert.deepEqual(interruptedStages.map((entry) => entry.pullRequestRefresh?.stage).sort(),
+    ["current-context", "pr-acquisition", "repository-identity"]);
+  assert.ok(interruptedStages.every((entry) => entry.pullRequestRefresh?.reasonCode === "superseded"));
+  assert.equal(selectionEvents.filter((entry) => entry.event === "failed").length, 0, "handled supersession is not an ERROR terminal");
+  assert.equal(result.revealCount, 0, "handled supersession does not reveal Output");
   assert.equal(selectionEvents.filter((entry) => entry.event === "succeeded").length, 1, "the latest public operation records one OK terminal");
+  assert.equal(selectionEvents.find((entry) => entry.event === "succeeded")?.operationId, started[1]?.operationId);
+  assert.notEqual(started[0]?.operationId, started[1]?.operationId);
   assert.equal(result.reviewStateMutationCount + result.preferenceMutationCount, result.mutationCountBeforeOldPickerCompletion, "old picker completion cannot add Review State or preference mutation after the latest owner publishes");
   assert.equal(result.candidates.filter((candidate) => candidate.context.kind === "pull-request").length, 1, "the latest public operation retains one PR candidate owner");
 });
