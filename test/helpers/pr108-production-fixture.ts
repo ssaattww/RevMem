@@ -19,6 +19,13 @@ import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewCon
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type { T405ReviewContextsRuntimeOptions } from "../../src/composition/review-contexts/review-contexts-runtime.js";
+import {
+  CurrentContextCandidateSelection,
+  CurrentContextRuntimeComposition,
+  CurrentContextRuntimeCoordinator,
+  CurrentContextUiController,
+  type CurrentContextUiSnapshot,
+} from "../../src/ui/current-context/index.js";
 
 export const PR108_REPOSITORY_ID = "github.com/ssaattww/revmem";
 export const PR108_FILE = "src/example.ts";
@@ -224,16 +231,35 @@ export async function createPr108ProductionFixture(options: {
   let subscriptions: Disposable[] = [];
   const start = async (): Promise<void> => {
     let enumerating = false;
+    const enumerateCurrentContexts = async (): Promise<readonly CurrentContextUiSnapshot[]> => enumerating ? [{ context: {
+      kind: "branch", label: "fixture", headRevision: revisions[ownerHead], selection: {
+        kind: "detached", repositoryId: PR108_REPOSITORY_ID, repositoryRoot, headRevision: revisions[ownerHead],
+      },
+    }, progress: undefined }] : [];
+    const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+      enumerateCandidates: async (signal, feedbackContext) =>
+        runtime.augmentCurrentContextCandidates(await enumerateCurrentContexts(), signal, feedbackContext),
+      resolveFallback: async (candidates) => candidates.find((candidate) => candidate.context.kind === "pull-request") ?? candidates[0],
+      requestSelection: async () => undefined,
+    });
+    const controller = new CurrentContextUiController({
+      setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {},
+    }, {
+      recompute: (signal, feedbackContext, refreshOptions) => composition.recompute(signal, feedbackContext, refreshOptions),
+      selectContext: (signal, feedbackContext) => composition.selectContext(signal, feedbackContext),
+      acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
+      acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot),
+    });
+    const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+      acceptCurrentContextPreparation: (selection) => runtime.acceptCurrentContextPreparation?.(selection),
+      refreshDependents: (refreshContext) => runtime.refreshListOnly?.(refreshContext?.feedbackContext, refreshContext?.signal),
+    });
     runtime = runtimeModule.registerT405ReviewContextsRuntime({
       context: { ...storageUris, workspaceState, subscriptions } as unknown as T405ReviewContextsRuntimeOptions["context"],
       git: localGit,
-      enumerateCurrentContexts: async () => enumerating ? [{ context: {
-        kind: "branch", label: "fixture", headRevision: revisions[ownerHead], selection: {
-          kind: "detached", repositoryId: PR108_REPOSITORY_ID, repositoryRoot, headRevision: revisions[ownerHead],
-        },
-      }, progress: undefined }] : [],
+      enumerateCurrentContexts,
       refreshDecorations: async () => undefined,
-      refreshCurrentContext: async () => undefined,
+      refreshCurrentContext: (feedbackContext) => coordinator.refreshFromReviewContexts(undefined, feedbackContext),
       registerPullRequestReviewDiff: (registration) => { registrations.push(registration.snapshot); review.register(registration); },
       openPullRequestReviewDiff: (contextId, fileId, title) => review.openReviewDiff(contextId, fileId, title),
       getPullRequestReviewProgress: (contextId) => review.getProgress(contextId),
