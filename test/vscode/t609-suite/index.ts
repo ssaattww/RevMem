@@ -417,7 +417,14 @@ export async function run(): Promise<void> {
 
   if (isSingleRoot) {
     await within("no-active-editor Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
+    const dependentRefreshesBeforeReviewContexts =
+      api.getCurrentContextCancellationSnapshotForTest().dependentRefreshCount;
     await within("no-active-editor Review Contexts", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
+    assert.equal(
+      api.getCurrentContextCancellationSnapshotForTest().dependentRefreshCount,
+      dependentRefreshesBeforeReviewContexts + 1,
+      "Issue #136 Review Contexts refresh must use the shared Current Context/PR Progress refresh path once",
+    );
     await within("visible-editor tracking revision", assertTrackingRevisionSurvivesVisibleEditor(folder, api));
     await within("close tracking regression editor", closeAllEditors());
     await assertActualUriBoundaries(folder, api);

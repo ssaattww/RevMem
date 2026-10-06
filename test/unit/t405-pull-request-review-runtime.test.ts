@@ -540,6 +540,78 @@ test("R405-5 PR runtime exposes T304 progress for Review Contexts", async () => 
   });
 });
 
+test("Issue #136 keeps the newest PR Progress refresh when an older read finishes later", async () => {
+  const repository = new MemoryRepository();
+  const oldRead = (() => {
+    let resolve!: (value: { kind: "found"; content: string }) => void;
+    const promise = new Promise<{ kind: "found"; content: string }>((complete) => { resolve = complete; });
+    return { promise, resolve };
+  })();
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const registration = {
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix" as const,
+    snapshot,
+    readTextContent: async () => oldRead.promise,
+  };
+  runtime.register(registration);
+
+  const staleRefresh = runtime.activateProgress(CONTEXT_ID);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  const newerSnapshot: PullRequestDiffSnapshot = {
+    ...snapshot,
+    headSha: C,
+    originalDiffId: `${A}..${C}`,
+  };
+  repository.current = {
+    ...repository.current,
+    contextState: {
+      ...repository.current.contextState,
+      pullRequest: { ...repository.current.contextState.pullRequest!, headSha: C },
+      files: Object.fromEntries(Object.entries(repository.current.contextState.files).map(([fileId, file]) => [
+        fileId,
+        { ...file, revisionId: C, contentHash: contentHash("newer") },
+      ])),
+    },
+    globalState: {
+      ...repository.current.globalState,
+      currentRevisionId: C,
+      files: Object.fromEntries(Object.entries(repository.current.globalState.files).map(([fileId, file]) => [
+        fileId,
+        { ...file, revisionId: C, contentHash: contentHash("newer") },
+      ])),
+    },
+  };
+  runtime.unregister(CONTEXT_ID);
+  runtime.register({
+    ...registration,
+    snapshot: newerSnapshot,
+    readTextContent: async () => ({ kind: "found", content: "newer" }),
+  });
+  await runtime.activateProgress(CONTEXT_ID);
+
+  oldRead.resolve({ kind: "found", content: "older" });
+  await assert.rejects(
+    () => staleRefresh,
+    (error: unknown) => error instanceof Error && error.name === "OperationCancelledError",
+  );
+
+  const files = runtime.progress.getChildren().flatMap((category) =>
+    category.kind === "category" ? runtime.progress.getChildren(category) : [],
+  );
+  assert.equal(files.length, 1);
+  assert.equal(files[0]?.kind, "file");
+  assert.equal(files[0]?.kind === "file" ? files[0].openTarget.headSha : undefined, C,
+    "the accepted tree belongs to the newer snapshot");
+});
+
 test("R405-3 binary PR changes are not opened as text review diffs", async () => {
   const binarySnapshot: PullRequestDiffSnapshot = {
     ...snapshot,

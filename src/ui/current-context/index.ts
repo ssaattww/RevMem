@@ -13,8 +13,10 @@ export {
 } from "./current-context-ui-controller";
 
 export {
+  CurrentContextBranchRefreshError,
   CurrentContextRuntimeCoordinator,
-  type CurrentContextDependentRefresher
+  type CurrentContextDependentRefresher,
+  type CurrentContextRefreshContext
 } from "./current-context-runtime-coordinator";
 
 export { CurrentContextCandidateSelection } from "./current-context-candidate-selection";

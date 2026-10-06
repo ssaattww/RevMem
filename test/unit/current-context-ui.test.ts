@@ -12,6 +12,7 @@ import {
 } from "../../src/composition/current-context/git-context-inspection";
 import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
 import {
+  CurrentContextBranchRefreshError,
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
@@ -38,6 +39,38 @@ const branchSnapshot = (
     }
   },
   progress: undefined
+});
+
+test("Issue #136 keeps a verified branch and clears old PR Progress when the refreshed PR list fails", async () => {
+  const events: string[] = [];
+  const branch = branchSnapshot("checked-out", "refs/heads/checked-out");
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => branch,
+    selectContext: async () => branch,
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => events.push(`selection:${selection?.kind ?? "none"}`),
+    acceptCurrentContextPreparation: (selection) => events.push(`preparation:${selection?.kind ?? "none"}`),
+    refreshDependents: async () => {
+      events.push("refresh-list");
+      throw new Error("private repository path must not be copied to the UI");
+    },
+    clearPullRequestProgress: () => { events.push("clear-old-progress"); },
+  });
+
+  await assert.rejects(
+    () => coordinator.refreshFromReviewContexts(),
+    (error: unknown) => error instanceof CurrentContextBranchRefreshError,
+  );
+
+  assert.deepEqual(events, [
+    "tree:Branch: checked-out",
+    "status:$(git-branch) checked-out",
+    "selection:branch",
+    "preparation:branch",
+    "refresh-list",
+    "clear-old-progress",
+  ]);
 });
 
 const pullRequestSnapshot: CurrentContextUiSnapshot = {

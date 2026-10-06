@@ -218,11 +218,11 @@ test("T609 Host waits for the single handled startup Current Context refresh bef
   assert.ok(activationIndex >= 0 && drainIndex > activationIndex && commandIndex > drainIndex);
   assert.match(hostSuite, /drainCurrentContextStartupForTest\(\): Promise<void>;/u);
   assert.match(runtime, /readonly startupRefresh: Promise<void>;/u);
-  assert.match(runtime, /const startupRefresh = runRefresh\(\{ allowInteraction: false \}\);/u);
-  assert.match(runtime, /REFRESH_CONTEXT_COMMAND_ID,\s*\(\) => runRefresh\(\{ allowInteraction: true \}\)/u);
-  assert.match(runtime, /onDidChangeActiveTextEditor\(\(\) => \{\s*void runRefresh\(\{ allowInteraction: false \}\);/u);
+  assert.match(runtime, /const startupRefresh = runRefresh\(\{ allowInteraction: false \}, "startup"\);/u);
+  assert.match(runtime, /REFRESH_CONTEXT_COMMAND_ID,\s*\(\) => runRefresh\(\{ allowInteraction: true \}, "current-context-refresh"\)/u);
+  assert.match(runtime, /onDidChangeActiveTextEditor\(\(\) => \{\s*void runRefresh\(\{ allowInteraction: false \}, "active-editor-change"\);/u);
   assert.equal(
-    occurrences(runtime, "void runRefresh({ allowInteraction: false });"),
+    occurrences(runtime, 'void runRefresh({ allowInteraction: false }, "active-editor-change");'),
     1,
     "only the active-editor event remains fire-and-forget and must remain non-interactive"
   );

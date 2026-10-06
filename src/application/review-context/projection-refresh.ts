@@ -1,7 +1,10 @@
+import type { OperationFeedbackContext } from "../operation-feedback/index";
+
 export interface SelectedPullRequestProgressRefreshDependencies<Source> {
   readonly contextId: string | undefined;
   readonly source: Source;
-  readonly activateProgress: (contextId: string) => Promise<void>;
+  readonly feedbackContext?: OperationFeedbackContext;
+  readonly activateProgress: (contextId: string, feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly clearProgress: () => void;
   readonly setSource: (source: Source | undefined) => void;
   readonly refreshTree: () => void;
@@ -53,7 +56,7 @@ export const refreshSelectedPullRequestProgress = async <Source>(
     return;
   }
 
-  const activation = dependencies.activateProgress(dependencies.contextId);
+  const activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
   dependencies.setSource(dependencies.source);
   dependencies.refreshTree();
   try {

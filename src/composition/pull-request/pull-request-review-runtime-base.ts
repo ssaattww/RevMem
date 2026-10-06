@@ -679,7 +679,10 @@ export class PullRequestReviewRuntime<Uri> {
   }
 
   /** Replaces the dedicated T304 tree with the currently selected persisted GitHub PR. */
-  public async activateProgress(contextId: string): Promise<void> {
+  public async activateProgress(
+    contextId: string,
+    parentFeedbackContext?: OperationFeedbackContext,
+  ): Promise<void> {
     this.progressCancellation?.abort();
     const cancellation = new AbortController();
     this.progressCancellation = cancellation;
@@ -741,6 +744,7 @@ export class PullRequestReviewRuntime<Uri> {
           }, feedbackContext);
         },
         { maxAttempts: 3, signal: cancellation.signal },
+        parentFeedbackContext,
       );
     } catch (error) {
       if (!this.isCurrentProgressGeneration(contextId, generation, registration)) {

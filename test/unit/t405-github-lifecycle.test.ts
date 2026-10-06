@@ -339,7 +339,12 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   const reconnectStart = runtimeSource.indexOf("reconnectGitHub: async", redetectStart);
   assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must remain registered before reconnect");
   const redetect = runtimeSource.slice(redetectStart, reconnectStart);
-  assert.match(redetect, /await detectPullRequest\(local, feedbackContext\);[\s\S]*await options\.refreshCurrentContext\(\);/u, "public redetection invokes shared detection before refreshing Current Context");
+  assert.match(redetect, /await detectPullRequest\(local, feedbackContext\);/u, "public redetection uses shared PR detection before the refresh boundary");
+  const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
+  const mutateStart = reviewContextsUi.indexOf("const mutate = async");
+  const requireItemStart = reviewContextsUi.indexOf("const requireItem =", mutateStart);
+  const mutationRefresh = reviewContextsUi.slice(mutateStart, requireItemStart);
+  assert.match(mutationRefresh, /await operation\(feedbackContext\);[\s\S]*await refreshFromSharedCoordinator\(feedbackContext\);/u, "successful PR list mutations refresh through the shared coordinator with the same operation context");
 
   const repository = new MemoryPullRequestRepository();
   const diff = [

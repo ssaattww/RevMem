@@ -2,6 +2,25 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issues #136/#137 PR Progress refresh coordination and safe diagnostics (2026-10-06)
+
+- Current task: I136-137-REVIEW. Branch: `issue-136-137-refresh-and-safe-diagnostics`; base/starting HEAD: `a479bf5cf2b35f342a8dab90dc886a19d8233520`.
+- Requirements: Issue #136 common refresh coordination and fail-closed PR Progress behavior; Issue #137 correlated, privacy-safe lifecycle diagnostics. Accepted design is recorded in [Issue #136](https://github.com/ssaattww/RevMem/issues/136#issuecomment-6007647587) and [Issue #137](https://github.com/ssaattww/RevMem/issues/137#issuecomment-6007653447).
+- TDD: required by `tasks/phases-status.md` behavior-change policy and the user's explicit instruction. Restore evidence: T405 passes 85/85 on the unchanged starting HEAD. The prior Issue #136 runtime race case is Green and is not itself evidence for the refresh-entry defect.
+- Privacy boundary: log only operation/generation correlation, allowlisted trigger/stage/status/reason codes, UTC, durations, and numeric counts. Do not record raw repository, branch, URL, SHA, path, source/diff, exception text, or secret values. Ephemeral aliases may correlate identities only within one operation.
+- Execution constraints: use existing dependencies; do not create Issues/PRs, add/update dependencies, change auth/permissions/environment, publish externally, merge, or deploy. Manual UI confirmation requiring the real device remains separate from local runtime evidence.
+- Latest validation: `npm run lint`, `npm run compile:test`, Issue #136/#137 tooling tests (2/2), `npm run test:t305` (71/71), `npm run test:t609` (92/92), and `npm run test:t405` (85/85) pass on the local candidate. The Extension Host runner remains blocked before host startup while resolving the VS Code version; no device UI verification is claimed. The repository has no focused Markdown lint/check entry point; Markdown received manual review and `git diff --check`.
+
+| Unit | State | Size | Scope | Dependencies | Exit condition |
+| --- | --- | --- | --- | --- | --- |
+| I136-DESIGN-001 | completed | S | Align the canonical design doc with shared refresh entry, selection/failure behavior, stale handling, and generation fencing | Issue #136/#137 comments | Design contract was made explicit before behavior implementation; no repository Markdown lint/check entry point exists, so Markdown was reviewed manually and `git diff --check` passed |
+| I136-IMPL-001 | completed | M | Shared Current Context / Review Contexts refresh coordinator, PR selection and Progress publication behavior | I136-DESIGN-001 | Shared refresh path and failure handling are covered by coordinator/Current Context tests, production T405 integration, T305 and T609 suites; Extension Host and device UI checks remain explicitly held |
+| I137-IMPL-001 | completed | M | Correlate PR Progress lifecycle diagnostics to operation/generation with allowlisted privacy-safe fields | I136-IMPL-001 | Contract tests cover operation/generation correlation, allowlisted lifecycle fields, formatted privacy boundary, and separation of refresh-stage status from operation terminal events |
+| I136-137-REVIEW | active | S | Independent normal review and required fix-verification rounds for local candidate | I136-IMPL-001, I137-IMPL-001 | Normal reviewer reaches pass or pass-with-held with all required findings closed |
+| I136-DEVICE-VERIFY | held for device | S | Reproduce checkout/list-refresh behavior and inspect real UI presentation on the existing physical-device setup | Local runtime implementation and review | Record real device/version/repository/branch evidence without exposing secrets; do not claim local Extension Host as device UI evidence |
+
+## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
+
 ## Issue #123 origin-ahead PR Progress refresh (2026-09-26)
 
 - Current task: I123-FINAL (normal fix verification passed; I123-NR-001 closed; independent final review pending).

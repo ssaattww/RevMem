@@ -590,7 +590,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
-  const refreshPullRequestProgressForSelection = async (): Promise<void> => {
+  const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext): Promise<void> => {
     const testContextId = context.extensionMode === vscode.ExtensionMode.Test
       ? testPullRequestRuntimeTarget?.contextId
       : undefined;
@@ -601,8 +601,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     await refreshSelectedPullRequestProgress({
       contextId,
       source: pullRequestReviewRuntime.progress,
-      activateProgress: (selectedContextId) =>
-        pullRequestReviewRuntime.activateProgress(selectedContextId),
+      feedbackContext,
+      activateProgress: (selectedContextId, parentFeedbackContext) =>
+        pullRequestReviewRuntime.activateProgress(selectedContextId, parentFeedbackContext),
       clearProgress: () => pullRequestReviewRuntime.clearProgress(),
       setSource: (source) => runtimePort.setPullRequestProgressSource(source),
       refreshTree: () => runtimePort.refreshPullRequestProgressTree()
@@ -803,10 +804,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       setSelectedContext: acceptSelectedContext,
       acceptCurrentContextPreparation: (selection) =>
         reviewContextsRuntimeRef.current?.acceptCurrentContextPreparation?.(selection),
-      refreshDependents: async () => {
+      clearPullRequestProgress: async () => {
+        testPullRequestRuntimeTarget = undefined;
+        await refreshPullRequestProgressForSelection();
+      },
+      refreshDependents: async (refreshContext) => {
         testCurrentContextDependentRefreshCount += 1;
         await refreshCurrentContextDependents({
-          refreshPullRequestProgress: refreshPullRequestProgressForSelection,
+          refreshPullRequestProgress: async () => {
+            refreshContext?.report("pr-progress", "started");
+            try {
+              await refreshPullRequestProgressForSelection(refreshContext?.feedbackContext);
+              const selectedPullRequest = selectedContext?.kind === "pull-request" ? selectedContext : undefined;
+              const selectedSnapshot = selectedPullRequest === undefined
+                ? undefined
+                : pullRequestReviewRuntime.snapshotForContext(selectedPullRequest.contextId);
+              const reasonCode = selectedPullRequest === undefined
+                ? "no-selected-pr"
+                : selectedSnapshot === undefined
+                  ? "snapshot-unavailable"
+                  : selectedSnapshot.files.length === 0
+                    ? "no-pr-files"
+                    : undefined;
+              refreshContext?.report("pr-selection", "succeeded", {
+                ...(reasonCode === undefined ? {} : { reasonCode }),
+              });
+              refreshContext?.report("pr-progress", "succeeded", {
+                ...(reasonCode === undefined ? {} : { reasonCode }),
+                ...(selectedSnapshot === undefined ? {} : { counts: { snapshotFiles: selectedSnapshot.files.length } }),
+              });
+            } catch (error) {
+              refreshContext?.report("pr-progress", "failed", { reasonCode: "refresh-failed" });
+              throw error;
+            }
+          },
           refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
           refreshGlobal: async () => {
             await Promise.all(vscode.workspace.textDocuments
@@ -815,7 +846,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             await refreshGlobalUnderstandingForMutation({ reason: "current-context-changed", phase: "global-refresh-trigger" });
           },
           refreshReviewContexts: async () => {
-            await reviewContextsRuntimeRef.current?.refresh();
+            refreshContext?.report("review-contexts-list", "started");
+            try {
+              await reviewContextsRuntimeRef.current?.refreshListOnly?.(refreshContext?.feedbackContext);
+              refreshContext?.report("review-contexts-list", "succeeded");
+            } catch (error) {
+              refreshContext?.report("review-contexts-list", "failed", { reasonCode: "refresh-failed" });
+              throw error;
+            }
           },
           reportPullRequestProgressError
         });
@@ -835,7 +873,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     git,
     enumerateCurrentContexts: (signal) => enumerateLocalContexts(signal),
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
-    refreshCurrentContext: () => currentContextRuntime.refresh(),
+    refreshCurrentContext: (feedbackContext) => currentContextRuntime.refreshFromReviewContexts(feedbackContext),
     registerPullRequestReviewDiff: (registration) => {
       pullRequestReviewRuntime.register(registration);
       if (selectedContext?.kind === "pull-request" && selectedContext.contextId === registration.snapshot.contextId) {

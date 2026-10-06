@@ -12,6 +12,7 @@ import { FileSystemReviewStateRepository } from "../../src/adapters/state-reposi
 import {
   OperationFeedback,
   setActiveOperationFeedback,
+  type OperationFeedbackContext,
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
@@ -313,6 +314,7 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
 
     setActiveOperationFeedback(feedback);
     const subscriptions: DisposableLike[] = [];
+    const refreshListOnly: { current?: (feedbackContext?: OperationFeedbackContext) => Promise<void> } = {};
     await workspaceState.update("reviewRange.hiddenReviewContexts.v1", [`github-pr:${REPOSITORY_ID}#53`]);
     const runtime = runtimeModule.registerT405ReviewContextsRuntime({
       context: {
@@ -324,7 +326,7 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
       git: createNodeLocalGitAdapter(),
       enumerateCurrentContexts: async () => [branchSnapshot, secondaryBranchSnapshot],
       refreshDecorations: async () => undefined,
-      refreshCurrentContext: async () => undefined,
+      refreshCurrentContext: async (feedbackContext) => { await refreshListOnly.current?.(feedbackContext); },
       registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
       openPullRequestReviewDiff: (contextId, fileId, title) => pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
       getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
@@ -335,6 +337,7 @@ test("PR85-IFR-004 production Review Contexts completion counts stay monotonic a
         recordRevisionMapping: async () => undefined,
       },
     });
+    refreshListOnly.current = runtime.refreshListOnly;
 
     entries.length = 0;
     lifecycleRequests = 0;

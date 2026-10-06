@@ -29,7 +29,7 @@ Lを超える見込みになった場合は再分解する。
 | P1 | 完了 | ローカル行範囲管理 | T101〜T109、T104-2 | P0 | 通常editorの確認・解除・装飾・永続化・restart復元・VSIX配布が動作する |
 | P2 | 完了 | 編集・Git差分追従 | T201〜T207 | P1 | edit/Git差分mapping、branch・detached context、rename・move・delete、JSONL履歴、temporary Git統合試験を実装しmainへ統合済み |
 | P3 | 保守対応中 | diff editorとPR進捗 | T300〜T306、Issue #112 | P2 | T300〜T306はmainへ統合済み。PR #113でstale decoration、mutation後projection、working-tree node、URI identity、language判定のrelease blockerを修正中 |
-| P4 | 保守対応中 | GitHub PR連携 | T401〜T406、USR90-002、Issue #123 | P3 | T401〜T406はmainへ統合済み。Issue #123でlocal HEADよりidentity remote tracking branchが先行する場合のPR Progress revision同期を保守対応中 |
+| P4 | 保守対応中 | GitHub PR連携 | T401〜T406、USR90-002、Issues #123/#136/#137 | P3 | T401〜T406はmainへ統合済み。Issue #123のtracking revision同期に加え、checkout後の共通PR Progress refresh coordinatorとprivacy-safe lifecycle diagnosticsを保守対応中 |
 | P5 | 完了 | Global確認済みと理解率 | T501〜T506 | P2、P4 | T501〜T506をmainへ統合済み。T506は独立review finding closureとexact-head CIを完了 |
 | P6 | 進行中 | Gitなし対応と堅牢化 | T601〜T610、Issue #128 | P1〜P5 | T601〜T609はmainへ統合済み。T610 / Issue #78は通常review findingsを全件closedし、独立final review待ち。Issue #128で明示folder startの未オープン本文集計・partial保持・失敗診断を保守対応中。T608は未着手 |
 
@@ -40,6 +40,7 @@ Lを超える見込みになった場合は再分解する。
 - 設計/レビューsol high、実装terra high。100人の利用で月1回以上の頻度基準で対応を絞る。
 
 - P4保守: Issue #123で、local HEADより同一identity remoteのtracking branchが先行している場合のPR Context / PR Progress revision同期を対応中。local editor ownershipはlocal HEADのまま、fetch済みtracking revisionだけをPR synchronization targetとして扱う。
+- P4保守: Issues #136/#137の共有generation-fenced refresh coordinatorと秘匿診断を実装し、T405/T305/T609のfocused suitesを通過。現在は通常review中。Extension HostのVS Code version解決と実機UI確認は、ホスト起動前/実機待ちのheld項目として分離する。
 
 ## 過去の現在位置（2026-09-06）
 

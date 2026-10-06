@@ -108,7 +108,7 @@ export interface T405ReviewContextsRuntimeOptions {
   readonly git: LocalGitAdapter & GitRevisionMappingSource;
   readonly enumerateCurrentContexts: (signal?: AbortSignal) => Promise<readonly CurrentContextUiSnapshot[]>;
   readonly refreshDecorations: () => Promise<void>;
-  readonly refreshCurrentContext: () => Promise<void>;
+  readonly refreshCurrentContext: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly registerPullRequestReviewDiff: (
     registration: PullRequestReviewRuntimeRegistration
   ) => void;
@@ -1496,7 +1496,6 @@ export function registerT405ReviewContextsRuntime(
     redetectPullRequest: async (feedbackContext) => {
       const local = await inspectActiveRepository();
       await detectPullRequest(local, feedbackContext);
-      await options.refreshCurrentContext();
     },
     reconnectGitHub: async () => {
       const local = await inspectActiveRepository();
@@ -1512,6 +1511,7 @@ export function registerT405ReviewContextsRuntime(
     source,
     controller,
     refreshDecorations: options.refreshDecorations,
+    refreshCurrentContext: options.refreshCurrentContext,
     reportError: async (error) => {
       await vscode.window.showErrorMessage(
         `Review Contexts操作に失敗しました: ${error instanceof Error ? error.message : String(error)}`,

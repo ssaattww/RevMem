@@ -33,6 +33,8 @@ export interface ReviewContextsRuntimeDependencies {
   readonly source: ReviewContextsRuntimeSource;
   readonly controller: ReviewContextsController;
   readonly refreshDecorations: () => Promise<void>;
+  /** Routes an explicit list refresh through the shared Current Context coordinator. */
+  readonly refreshCurrentContext?: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly reportError: (error: unknown) => Promise<void>;
 }
 
@@ -259,8 +261,10 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 }
 
 export interface RegisteredReviewContextsRuntime {
-  /** Recalculates the projection and propagates terminal acquisition failures to Current Context callers. */
+  /** Runs the shared Current Context, PR-list, and PR Progress refresh sequence. */
   refresh(): Promise<void>;
+  /** Internal projection refresh used by the shared coordinator; never calls the external refresh command. */
+  refreshListOnly?(feedbackContext?: OperationFeedbackContext): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
   /** Optional Test-only read-only snapshot of the accepted tree projection. */
   getProjectionSnapshotForTest?(): readonly ReviewContextListItem[];
@@ -299,9 +303,15 @@ export function registerReviewContextsRuntime(
       return "terminal";
     }
   };
+  const refreshFromSharedCoordinator = (feedbackContext: OperationFeedbackContext | undefined): Promise<void> =>
+    dependencies.refreshCurrentContext === undefined
+      ? provider.refresh(feedbackContext)
+      : dependencies.refreshCurrentContext(feedbackContext);
   const refreshWithErrorBoundary = async (): Promise<void> => {
-    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+    await runOperation("Review Contextsを更新", refreshFromSharedCoordinator, false, true);
   };
+  const refreshListAtStartup = (): Promise<"completed" | "cancelled" | "terminal"> =>
+    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   const mutate = async (
     operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
     refreshDecorations = false,
@@ -311,17 +321,16 @@ export function registerReviewContextsRuntime(
       await operation(feedbackContext);
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
+      // A typed failure may still produce an authoritative branch fallback;
+      // refresh the shared context before preserving the terminal failure.
+      await refreshFromSharedCoordinator(feedbackContext);
+      terminalFailure ||= hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
     if (outcome === "cancelled") return;
-    if (outcome === "terminal") {
+    if (outcome === "terminal" || terminalFailure) {
       provider.clear();
       return;
     }
-    if (terminalFailure) {
-      provider.clear();
-      return;
-    }
-    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
@@ -361,19 +370,22 @@ export function registerReviewContextsRuntime(
     }),
   );
 
-  void refreshWithErrorBoundary();
+  // Activation keeps its existing read-only list load. User refresh commands
+  // enter the shared Current Context coordinator above.
+  void refreshListAtStartup();
   return {
     refresh: async () => {
       const outcome = await runOperation(
         "Review Contextsを更新",
-        (feedbackContext) => provider.refresh(feedbackContext),
-        true,
+        refreshFromSharedCoordinator,
         false,
+        true,
       );
       if (outcome === "terminal") {
-        throw new Error("Review Contextsの更新に失敗しました。");
+        throw new Error("PR Progressの再計算に失敗しました。");
       }
     },
+    refreshListOnly: (feedbackContext) => provider.refresh(feedbackContext),
     refreshWithErrorBoundary,
     getProjectionSnapshotForTest: () => provider.getChildren(),
     dispose: () => provider.dispose(),

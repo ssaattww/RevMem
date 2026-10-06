@@ -246,11 +246,14 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     return progress;
   }
 
-  public override async activateProgress(contextId: string): Promise<void> {
+  public override async activateProgress(
+    contextId: string,
+    feedbackContext?: Parameters<BasePullRequestReviewRuntime<Uri>["activateProgress"]>[1],
+  ): Promise<void> {
     const snapshot = this.snapshotForContext(contextId);
     if (snapshot === undefined) {
       queueOperationStartDetails("PR進捗を計算", [{ reason: "missing-pr-snapshot", phase: "progress-input" }]);
-      await super.activateProgress(contextId);
+      await super.activateProgress(contextId, feedbackContext);
       return;
     }
     const key = snapshotKey(snapshot);
@@ -297,7 +300,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       this.suppressTreeClear = preserveAcceptedTree;
       this.activeFileProgress = { key, total: snapshot.files.length, seen: new Set<string>() };
       try {
-        await super.activateProgress(contextId);
+        await super.activateProgress(contextId, feedbackContext);
         this.acceptedProgressKey = key;
       } catch (error) {
         if (preserveAcceptedTree && this.acceptedProgressKey === key) {

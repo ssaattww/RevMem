@@ -33,6 +33,7 @@ import {
   OperationDiagnosticError,
   OperationFeedback,
   setActiveOperationFeedback,
+  type OperationFeedbackContext,
 } from "../../src/application/operation-feedback/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -581,7 +582,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     let registered: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime> | undefined;
     const selectedContexts: Array<SelectedReviewContext | undefined> = [];
 
-    const refreshCurrentContext = async (): Promise<void> => {
+    const refreshCurrentContext = async (feedbackContext?: OperationFeedbackContext): Promise<void> => {
       assert.ok(registered);
       const selection = new CurrentContextCandidateSelection();
       const composition = new CurrentContextRuntimeComposition(selection, {
@@ -606,9 +607,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       );
       const coordinator = new CurrentContextRuntimeCoordinator(controller, {
         setSelectedContext: (selected) => selectedContexts.push(selected),
-        refreshDependents: () => undefined,
+        refreshDependents: (refreshContext) =>
+          registered?.refreshListOnly?.(refreshContext?.feedbackContext),
       });
-      await coordinator.refresh();
+      await coordinator.refresh(undefined, feedbackContext, { allowInteraction: false }, "review-contexts-refresh");
     };
 
     const createExtensionContext = (): {
@@ -641,7 +643,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
         openPullRequestReviewDiff: (contextId, fileId, title) =>
           pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
-        getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
+        getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
+          pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
         reviewStateRepository: stateRepository,
         reviewHistoryRecorder: historyRecorder,
         createPullRequestDiffAcquisition: ({ local, remote }) => new PullRequestDiffAcquisitionService({
