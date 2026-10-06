@@ -6,6 +6,7 @@ import {
   OperationFeedback,
   OperationDiagnosticError,
   classifyOperationFailure,
+  formatOperationLogEntry,
   reportActiveOperationFailure,
   reportActiveStorageLockDiagnostic,
   runWithBoundedRetry,
@@ -107,6 +108,31 @@ test("T606 emits one bounded single-line redacted ERROR and always clears activi
   assert.equal(errors[0]?.message, "Operation failed (code ENOSPC); details were redacted.");
   assert.ok((errors[0]?.message?.length ?? 0) <= 160);
   assert.equal(host.clear, 1);
+});
+
+test("Issue #136 operation ERROR retains safe failure classification without arbitrary error text", async () => {
+  const rawMessage = "untrusted failure text\n/private-fixture/source.ts token=fixture-secret";
+  const failures = [
+    new Error(rawMessage),
+    Object.assign(new Error(rawMessage), { status: 401 }),
+    Object.assign(new Error(rawMessage), { code: "ECONNRESET" }),
+  ];
+  const expectedCategories = ["permanent", "authentication", "retryable"];
+  const formattedFailures: string[] = [];
+  for (const [index, failure] of failures.entries()) {
+    assert.equal(classifyOperationFailure(failure).kind, expectedCategories[index]);
+    const host = new FakeHost();
+    const feedback = new OperationFeedback(host, () => 1);
+    await assert.rejects(() => feedback.run("Review Contextsを更新", async () => { throw failure; }),
+      (error: unknown) => error === failure);
+    const errors = host.logs.filter((entry) => entry.event === "failed");
+    assert.equal(errors.length, 1);
+    const formatted = formatOperationLogEntry(errors[0]!);
+    assert.doesNotMatch(formatted, /untrusted failure text|private-fixture|source\.ts|fixture-secret/u);
+    formattedFailures.push(formatted);
+  }
+  assert.deepEqual(formattedFailures.map((line) => /category=(permanent|authentication|retryable)\b/u.exec(line)?.[1]),
+    expectedCategories, "redacted Output must retain the classifier's safe category for each failure");
 });
 
 test("T606 makes a handled inner failure terminal exactly once for its shared operation", async () => {

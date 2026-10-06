@@ -89,6 +89,8 @@ export interface OperationLogEntry {
   readonly errorName?: string;
   /** Failure message sanitized for source-content-free Output diagnostics. */
   readonly message?: string;
+  /** Safe classifier outcome for a failed operation; never includes dependency text. */
+  readonly failureCategory?: OperationFailureCategory;
   /** Numeric correlation to the owning operation, present on PR refresh detail. */
   readonly operationId?: number;
   readonly pullRequestRefresh?: PullRequestRefreshDiagnostic;
@@ -626,10 +628,17 @@ export const formatOperationFailureForUser = (error: unknown): string => {
   }
 };
 
-const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message"> =>
+const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message" | "failureCategory"> =>
   error instanceof Error
-    ? { errorName: safeErrorName(error), message: sanitizedFailureMessage(error) }
-    : { message: sanitizedFailureMessage(error) };
+    ? {
+      errorName: safeErrorName(error),
+      message: sanitizedFailureMessage(error),
+      failureCategory: classifyOperationFailure(error).kind,
+    }
+    : {
+      message: sanitizedFailureMessage(error),
+      failureCategory: classifyOperationFailure(error).kind,
+    };
 
 const errorIdentity = (error: unknown): object | undefined =>
   (typeof error === "object" && error !== null) || typeof error === "function"
@@ -883,6 +892,9 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const error = entry.event !== "failed" || entry.message === undefined
     ? ""
     : `: ${entry.errorName === undefined ? "" : `${boundedSingleLine(entry.errorName, 80)}: `}${boundedSingleLine(entry.message, 320)}`;
+  const failureCategory = entry.event === "failed" && entry.failureCategory !== undefined
+    ? ` category=${entry.failureCategory}`
+    : "";
   const refresh = entry.pullRequestRefresh;
   const refreshDetails = refresh === undefined
     ? ""
@@ -891,7 +903,10 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
       (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
       Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
       (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);
-  return boundedSingleLine(`[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${progress}${duration}${refreshDetails}${error}`);
+  return boundedSingleLine(
+    `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
+    `${progress}${duration}${refreshDetails}${error}${failureCategory}`,
+  );
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
