@@ -241,5 +241,8 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const detail = entry.detail === undefined ? ""
     : ` reason=${entry.detail.reason}${entry.detail.phase === undefined ? "" : ` phase=${entry.detail.phase}`}${entry.detail.target === undefined ? "" : ` target=${entry.detail.target}`}`;
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
-  return bounded(`[${entry.timestamp}] ${stage}${op} ${entry.label}${progress}${detail}${duration}`, 512);
+  const failureCategory = entry.event === "failed" && entry.failureCategory !== undefined
+    ? ` category=${entry.failureCategory}`
+    : "";
+  return bounded(`[${entry.timestamp}] ${stage}${op} ${entry.label}${progress}${detail}${duration}${failureCategory}`, 512);
 };

@@ -22,6 +22,8 @@ class FakeHost implements OperationFeedbackHost {
   public busy = 0;
   public clear = 0;
   public reveals = 0;
+  public detailedDiagnostics = false;
+  public isDetailedDiagnosticsEnabled(): boolean { return this.detailedDiagnostics; }
   public showBusy(): void { this.busy += 1; }
   public clearBusy(): void { this.clear += 1; }
   public appendLog(entry: OperationLogEntry): void { this.logs.push(entry); }
@@ -110,7 +112,7 @@ test("T606 emits one bounded single-line redacted ERROR and always clears activi
   assert.equal(host.clear, 1);
 });
 
-test("Issue #136 operation ERROR retains safe failure classification without arbitrary error text", async () => {
+test("Issue #136 operation ERROR retains safe failure classification with detailed diagnostics on and off", async () => {
   const rawMessage = "untrusted failure text\n/private-fixture/source.ts token=fixture-secret";
   const failures = [
     new Error(rawMessage),
@@ -121,18 +123,23 @@ test("Issue #136 operation ERROR retains safe failure classification without arb
   const formattedFailures: string[] = [];
   for (const [index, failure] of failures.entries()) {
     assert.equal(classifyOperationFailure(failure).kind, expectedCategories[index]);
-    const host = new FakeHost();
-    const feedback = new OperationFeedback(host, () => 1);
-    await assert.rejects(() => feedback.run("Review Contextsを更新", async () => { throw failure; }),
-      (error: unknown) => error === failure);
-    const errors = host.logs.filter((entry) => entry.event === "failed");
-    assert.equal(errors.length, 1);
-    const formatted = formatOperationLogEntry(errors[0]!);
-    assert.doesNotMatch(formatted, /untrusted failure text|private-fixture|source\.ts|fixture-secret/u);
-    formattedFailures.push(formatted);
+    for (const detailedDiagnostics of [false, true]) {
+      const host = new FakeHost();
+      host.detailedDiagnostics = detailedDiagnostics;
+      const feedback = new OperationFeedback(host, () => 1);
+      await assert.rejects(() => feedback.run("Review Contextsを更新", async () => { throw failure; }),
+        (error: unknown) => error === failure);
+      const errors = host.logs.filter((entry) => entry.event === "failed");
+      assert.equal(errors.length, 1);
+      const formatted = formatOperationLogEntry(errors[0]!);
+      assert.doesNotMatch(formatted, /untrusted failure text|private-fixture|source\.ts|fixture-secret/u);
+      formattedFailures.push(formatted);
+      assert.match(formatted, new RegExp(`\\bcategory=${expectedCategories[index]}\\b`, "u"),
+        `safe category must be visible with detailed diagnostics ${detailedDiagnostics ? "on" : "off"}`);
+    }
   }
   assert.deepEqual(formattedFailures.map((line) => /category=(permanent|authentication|retryable)\b/u.exec(line)?.[1]),
-    expectedCategories, "redacted Output must retain the classifier's safe category for each failure");
+    expectedCategories.flatMap((category) => [category, category]), "both formatters retain the safe category");
 });
 
 test("T606 makes a handled inner failure terminal exactly once for its shared operation", async () => {
