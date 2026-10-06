@@ -70,7 +70,7 @@ At reviewed implementation HEAD `8119aaa…`:
 
 The normal reviewer additionally verified that in-memory compilation matched 417 existing JavaScript outputs with zero mismatches and no emitted writes. The author’s final validation manifests match all 1,578 tracked inputs in the committed tree. The exact full `npm run test:unit` run occurred before the final commit against matching content; it is identified as author evidence, not as a reviewer-owned post-commit replay.
 
-Historical CI run `37525238019` was a `pull_request` run at `7923d179…`; it failed the Unit tests because tooling imports ran before test compilation. Its failure-diagnostics artifact exists (`ci-failure-diagnostics-37525238019-1`, 1,936,807 bytes; not downloaded here). The later script-order correction and test-contract corrections address the local causes. **CI for the current reviewed implementation HEAD is pending and is not claimed as passed.**
+Historical CI run `37525238019` was a `pull_request` run at `7923d179…`; it failed the Unit tests because tooling imports ran before test compilation. Its failure-diagnostics artifact exists (`ci-failure-diagnostics-37525238019-1`, 1,936,807 bytes; not downloaded here). The later script-order correction and test-contract corrections address the local causes. **At the time of the R3 report, CI for reviewed implementation HEAD `8119aaa…` was pending and was not claimed as passed.** The subsequent fixture head and final CI are recorded in the post-R3 synchronization below.
 
 ## Coverage dispositions
 
@@ -103,3 +103,40 @@ Historical CI run `37525238019` was a `pull_request` run at `7923d179…`; it fa
 - **Allowed persistence:** one administrative commit whose first parent is the reviewed implementation HEAD and whose only changed path is this report.
 - The report-attestation SHA is recorded externally after commit and is not embedded here.
 - Any later repository commit invalidates this completion identity; no merge is performed or authorized.
+
+## Post-R3 bounded closure and final CI synchronization
+
+This section records evidence received after the R3 report-attestation commit. It does not extend the R3 full-review target or claim that the later fixture change received a fresh exhaustive review.
+
+- **R3 full-review implementation HEAD:** `8119aaa3504f1809546216e79a1edc5e12980d1a` (unchanged).
+- **R3 report-attestation HEAD:** `503d12b8d35be3d60691fdde667e2419e9973efc` (unchanged).
+- **Latest implementation/PR CI HEAD:** `5386805acee3abe764692219c12045b099f9dce7`.
+- **Delta from the R3 attestation:** parent `503d12b8d35be3d60691fdde667e2419e9973efc`; only `test/helpers/pr108-production-fixture.ts` changed.
+- **Bounded independent IFR closure:** PASS for that fixture path and exact HEAD only, by the same independent reviewer `/root/issue_136_137_formal_ifr_r2`. The reviewer verified routing through `CurrentContextRuntimeComposition`, `CurrentContextUiController`, `CurrentContextRuntimeCoordinator.refreshFromReviewContexts`, T405 preparation, then `refreshListOnly`; the previously no-op refresh callback is gone, while PR108 product assertions remain unchanged. Reviewer-owned exact-HEAD `npm run compile:test` and six PR108 product test files passed 20/20; base-to-HEAD `git diff --check` passed and the worktree stayed clean. This is a bounded closure, not a renewed full review.
+- The distinct normal reviewer `/root/issue_136_137_review` also passed this exact fixture delta, with PR108 20/20, Issue #106 owner/T405 regressions 27/27, base/parent diff checks, and in-memory compilation matching 417 generated JavaScript outputs with zero mismatches. Its scope was the fixture delta, not full-PR review.
+- The fixture fix replaces an obsolete no-op in the PR108 test helper so a Review Contexts refresh traverses the shared production refresh composition. CI had exposed 11 PR108 failures at the `8119aaa…` parent; the corrected fixture passed all 20 PR108 tests. This tests production refresh composition; UI presentation remains a separate device check.
+
+### Four previously stale test assertions
+
+The four edits at `8119aaa…` changed test expectations only; production code was not changed. The affected tests and product behavior are:
+
+| Test | Assertion correction | Product behavior supporting the expected result |
+|---|---|---|
+| `Issue #84 operation feedback publishes privacy-safe stage counts without a timeout` (`test/unit/issue-84-review-context-progress.test.ts`) | Require the same operation ID on started, progress, and succeeded records; include `op=1` in formatted progress. | Operation lifecycle/progress records are correlated by operation ID and formatted with the anonymous numeric progress contract. |
+| `PR85-IFR-001 propagates a terminal public Review Contexts refresh outcome through Current Context composition` (`test/unit/issue-84-pr85-review-followup.test.ts`) | Expect the fixed safe message `PR Progressの再計算に失敗しました。` instead of matching `Review Contexts`. | The production path deliberately returns a fixed generic terminal error, preventing arbitrary detail from being surfaced. |
+| `NR90-004 real VS Code feedback host republishes tooltip detail while PullRequestReviewRuntime read remains pending` (`test/unit/issue-90-runtime-routing.test.ts`) | Assert tooltip and Output omit a private path, repository root, and repository URL. | Detailed diagnostics allow stage/status detail while redacting source paths and repository identity. |
+| `T407 public Current Context supersession cancels the old picker without old state or preference mutation` (`test/unit/t407-private-pr-context.test.ts`) | Assert the handled supersession has an owner-correlated cancelled terminal, no fabricated exception fields, three interrupted stage terminals, and only the latest operation succeeds. | Cancellation/supersession is handled as a lifecycle outcome, not an arbitrary exception; stale work cannot mutate state or preferences after the newer owner publishes. |
+
+The red evidence reproduced these four mismatches on the unchanged `a55737c…` parent. They were stale assertions against already-existing production contracts, not environment failures or product regressions. Updated contracts passed in the independent bounded closure: compilation plus those four files, 27/27. The full local `npm run test:unit` author run passed tooling 31/31 and unit 887/887.
+
+### Exact-head CI and artifact
+
+| Evidence | Target | Result |
+|---|---|---|
+| PR pull-request CI run `37529900919` | `5386805acee3abe764692219c12045b099f9dce7` | `success`; all workflow jobs passed, including Issue #106, full unit suite, and VS Code Extension Host. |
+| User validation artifact | CI run `37529900919` | `review-range-user-validation-0.1.60-pre+5386805`, available; VSIX and source bundle. Artifact was not downloaded. |
+| Physical-device UI | `5386805…` package | `held`; not performed. Follow the Issue #136 UI acceptance steps below. |
+
+The CI run head is the implementation HEAD `5386805…`. Any subsequent report-only commit changes repository HEAD but not the implementation or the CI target. Such an administrative synchronization does not expand the reviewed implementation scope, change the R3 full-review identity, or claim full review of all code at its resulting HEAD.
+
+Physical-device acceptance remains: install the named CI VSIX; checkout the affected Issue branch; refresh Review Contexts; verify Current Context selects the intended PR/branch; refresh Current Context and PR Progress; compare displayed progress with the operation start-through-terminal records; confirm no token/secret, source/diff, path, repository identity, URL, or arbitrary exception text appears in logs. Extension Host passed in CI; these user-visible device checks remain outstanding.
