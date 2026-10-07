@@ -54,10 +54,32 @@ class Emitter<T> {
   public fire(value: T): void { for (const listener of this.listeners) listener(value); }
   public dispose(): void { this.listeners.clear(); }
 }
+interface FakeCancellationToken {
+  readonly isCancellationRequested: boolean;
+  readonly onCancellationRequested: (listener: (event: void) => void) => Disposable;
+}
+class FakeCancellationTokenSource {
+  private readonly cancellation = new Emitter<void>();
+  private cancelled = false;
+  public readonly token: FakeCancellationToken;
+  public constructor() {
+    this.token = Object.defineProperties({}, {
+      isCancellationRequested: { get: () => this.cancelled, enumerable: true },
+      onCancellationRequested: { value: this.cancellation.event, enumerable: true },
+    }) as FakeCancellationToken;
+  }
+  public cancel(): void {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.cancellation.fire();
+  }
+  public dispose(): void { this.cancellation.dispose(); }
+}
 // The same VS Code object is retained by CommonJS modules between sequential
 // fixtures. Only external host ports are mocked; all T405 wiring is production.
 const vscodeHost: Record<string, unknown> = {
   EventEmitter: Emitter,
+  CancellationTokenSource: FakeCancellationTokenSource,
   TreeItem: class { public constructor(public label: string, public collapsibleState: number) {} },
   ThemeIcon: class { public constructor(public id: string) {} },
   TreeItemCollapsibleState: { None: 0 },
@@ -200,8 +222,32 @@ export async function createPr108ProductionFixture(options: {
         });
         return { dispose: () => undefined };
       },
-      showQuickPick: async (items: readonly { candidate?: { number?: number } }[], value?: { placeHolder?: string }) =>
-        value?.placeHolder === "現在HEADのPRを選択" ? items.find((item) => item.candidate?.number === control.selected) : items[0],
+      showQuickPick: (
+        items: readonly { candidate?: { number?: number } }[],
+        value?: { placeHolder?: string },
+        cancellationToken?: FakeCancellationToken,
+      ) => {
+        const selected = value?.placeHolder === "現在HEADのPRを選択"
+          ? items.find((item) => item.candidate?.number === control.selected)
+          : items[0];
+        if (cancellationToken === undefined) return Promise.resolve(selected);
+        if (cancellationToken.isCancellationRequested) return Promise.resolve(undefined);
+        return new Promise<typeof selected>((resolve) => {
+          let settled = false;
+          const cancellationSubscription = cancellationToken.onCancellationRequested(() => {
+            if (settled) return;
+            settled = true;
+            cancellationSubscription.dispose();
+            resolve(undefined);
+          });
+          queueMicrotask(() => {
+            if (settled) return;
+            settled = true;
+            cancellationSubscription.dispose();
+            resolve(selected);
+          });
+        });
+      },
       showErrorMessage: async (message: string) => { errors.push(message); return undefined; },
     },
     workspace: { getConfiguration: () => ({ get: (_key: string, fallback?: unknown) => fallback }), textDocuments: [],
