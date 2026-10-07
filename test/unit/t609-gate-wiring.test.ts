@@ -220,11 +220,11 @@ test("T609 Host waits for the single handled startup Current Context refresh bef
   assert.match(runtime, /readonly startupRefresh: Promise<void>;/u);
   assert.match(runtime, /const startupRefresh = runRefresh\(\{ allowInteraction: false \}, "startup"\);/u);
   assert.match(runtime, /REFRESH_CONTEXT_COMMAND_ID,\s*\(\) => runRefresh\(\{ allowInteraction: true \}, "current-context-refresh"\)/u);
-  assert.match(runtime, /onDidChangeActiveTextEditor\(\(\) => \{\s*void runRefresh\(\{ allowInteraction: false \}, "active-editor-change"\);/u);
+  assert.match(runtime, /onDidChangeActiveTextEditor\(\(editor\) => \{\s*const coalescingKey = editor\?\.document\.uri\.toString\(true\) \?\? "no-active-editor";\s*void runRefresh\(\{ allowInteraction: false \}, "active-editor-change", undefined, coalescingKey\);/u);
   assert.equal(
-    occurrences(runtime, 'void runRefresh({ allowInteraction: false }, "active-editor-change");'),
+    occurrences(runtime, 'void runRefresh({ allowInteraction: false }, "active-editor-change", undefined, coalescingKey);'),
     1,
-    "only the active-editor event remains fire-and-forget and must remain non-interactive"
+    "only the active-editor event remains fire-and-forget, non-interactive, and coalesced by document identity"
   );
   assert.match(runtime, /await reportRefreshError\(formatOperationFailureForUser\(error\)\);/u);
   assert.match(extension, /drainCurrentContextStartupForTest:\s*\(\)\s*=>\s*currentContextRuntime\.startupRefresh/u);
