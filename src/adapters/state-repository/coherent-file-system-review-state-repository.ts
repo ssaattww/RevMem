@@ -380,6 +380,7 @@ export class FileSystemReviewStateRepository {
         });
         const currentContext = await reader.load(target);
         const currentGlobal = await loadPersistedOwnerGlobal(this.options, target);
+        transaction.signal?.throwIfAborted();
         if (
           currentContext !== undefined ||
           !isDeepStrictEqual(currentGlobal, transaction.expected.globalState)
@@ -389,7 +390,7 @@ export class FileSystemReviewStateRepository {
 
         const next = transactionPairToCommit(transaction.next);
         requireTargetContextKind(target, next.contextState.kind);
-        await this.atomicRepository.save(target, next, lease);
+        await this.atomicRepository.save(target, next, lease, transaction.signal);
         this.recordRepositoryGlobal(target, next.globalState);
       } catch (error) {
         await this.notifyFailure("commit", target, route.statePointerPath, error);

@@ -340,6 +340,33 @@ export function registerReviewContextsRuntime(
       return;
     }
   };
+  let activeRedetectionCommand: {
+    readonly requestHint: string | undefined;
+    readonly cancellation: AbortController;
+    readonly promise: Promise<void>;
+  } | undefined;
+  const redetectPullRequest = (): Promise<void> => {
+    const document = vscode.window.activeTextEditor?.document;
+    const requestHint = document === undefined
+      ? undefined
+      : `${document.uri.fsPath}\u0000${document.version}`;
+    const active = activeRedetectionCommand;
+    if (active !== undefined && active.requestHint === requestHint) return active.promise;
+    activeRedetectionCommand?.cancellation.abort();
+    const cancellation = new AbortController();
+    const record: {
+      readonly requestHint: string | undefined;
+      readonly cancellation: AbortController;
+      promise: Promise<void>;
+    } = { requestHint, cancellation, promise: Promise.resolve() };
+    const promise = mutate((feedbackContext) =>
+      dependencies.controller.redetectPullRequest(feedbackContext, cancellation.signal));
+    record.promise = promise.finally(() => {
+      if (activeRedetectionCommand === record) activeRedetectionCommand = undefined;
+    });
+    activeRedetectionCommand = record;
+    return record.promise;
+  };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
     return item;
@@ -349,8 +376,7 @@ export function registerReviewContextsRuntime(
     tree,
     provider,
     vscode.commands.registerCommand("reviewRange.refreshReviewContexts", refreshWithErrorBoundary),
-    vscode.commands.registerCommand("reviewRange.redetectPullRequest", () =>
-      mutate((feedbackContext) => dependencies.controller.redetectPullRequest(feedbackContext))),
+    vscode.commands.registerCommand("reviewRange.redetectPullRequest", redetectPullRequest),
     vscode.commands.registerCommand("reviewRange.reconnectGitHub", () =>
       mutate((feedbackContext) => dependencies.controller.reconnectGitHub(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.refreshReviewContextCache", (raw?: ReviewContextListItem) => {

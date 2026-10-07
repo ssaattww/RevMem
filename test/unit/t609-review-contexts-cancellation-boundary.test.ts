@@ -74,6 +74,21 @@ test("T609-NR-004 preserves the existing provider projection for multi-root Quic
   assert.equal(reportCount, 0);
 });
 
+test("Issue #136 superseded redetection cancellation preserves the accepted projection without reporting a failure", async () => {
+  const acceptedProjection = ["accepted"];
+  let clearCount = 0;
+  let reportCount = 0;
+  const outcome = await settleReviewContextsRepositorySelection(new DOMException("superseded", "AbortError"), {
+    clear: () => { clearCount += 1; acceptedProjection.length = 0; },
+    reportTerminalFailure: async () => { reportCount += 1; },
+  });
+
+  assert.equal(outcome, "cancelled");
+  assert.deepEqual(acceptedProjection, ["accepted"]);
+  assert.equal(clearCount, 0);
+  assert.equal(reportCount, 0);
+});
+
 test("T609-NR-004 cancel and stale typed outcomes run one command without terminal reporting, clear, or post-cancel refresh", async () => {
   for (const selection of ["cancel", "stale"] as const) {
     const { commands, runtime } = loadReviewContextsRuntime();

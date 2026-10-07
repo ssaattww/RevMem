@@ -122,6 +122,8 @@ export interface ReviewStateCreateTransactionLike {
   readonly expected: ReviewStateCreateExpectedSnapshot;
   /** Complete context and Global snapshots published together only when `expected` matches. */
   readonly next: ReviewStateTransactionSnapshotPair;
+  /** Optional cancellation fence for callers whose create must remain tied to an active generation. */
+  readonly signal?: AbortSignal;
 }
 
 /** Immutable context document selected by a repository-style manifest. */
@@ -176,7 +178,7 @@ export interface AtomicTextFileStore {
    *
    * @throws Rejects when directory creation, temporary writing, flushing, replacement, or cleanup cannot complete.
    */
-  writeTextAtomically(filePath: string, content: string): Promise<void>;
+  writeTextAtomically(filePath: string, content: string, signal?: AbortSignal): Promise<void>;
   /** Removes a persisted path through the same injected storage boundary. */
   deleteText?(filePath: string): Promise<void>;
 }

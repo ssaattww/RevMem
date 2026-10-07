@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -13,6 +15,7 @@ import {
   type GitHubPullRequestContextRepositoryPort,
   type PullRequestReviewStateCommit,
 } from "../../src/application/github-pr-context/index.js";
+import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
 import { projectReviewContexts } from "../../src/application/review-contexts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
@@ -129,6 +132,52 @@ test("R405-2 lifecycle adapter reports closed and merged PR state by stable PR i
   const mergedResult = await adapter.fetchCurrent(identity, 52);
   assert.equal(mergedResult.kind, "available");
   if (mergedResult.kind === "available") assert.equal(mergedResult.metadata.state, "merged");
+});
+
+test("Issue #136 does not publish a superseded new Context when cancellation arrives during atomic save", async () => {
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "revmem-i136-cancel-create-"));
+  let releasePublication!: () => void;
+  let publicationStarted!: () => void;
+  const publicationGate = new Promise<void>((resolve) => { releasePublication = resolve; });
+  const publicationStartedPromise = new Promise<void>((resolve) => { publicationStarted = resolve; });
+  const repository = new FileSystemReviewStateRepository({
+    storageUris: { globalStorageUri: { fsPath: storageRoot } },
+    beforeAtomicPublication: async (filePath) => {
+      if (filePath.endsWith(`${path.sep}manifest.json`)) {
+        publicationStarted();
+        await publicationGate;
+      }
+    },
+  });
+  const service = new GitHubPullRequestContextStateService(repository, async ({ current }) => current);
+  const context = {
+    ...persistedContext(),
+    contextId: `github-pr:${REPOSITORY_ID}#54`,
+    displayName: "PR #54",
+    pullRequest: { ...persistedContext().pullRequest!, number: 54, title: "PR 54" },
+  };
+  const controller = new AbortController();
+  const create = service.create.bind(service) as (
+    commit: PullRequestReviewStateCommit,
+    expectedGlobalState: RepositoryGlobalState | undefined,
+    signal?: AbortSignal,
+  ) => Promise<void>;
+  const operation = create({ contextState: context, globalState: persistedGlobal() }, undefined, controller.signal);
+
+  try {
+    await publicationStartedPromise;
+    controller.abort();
+    releasePublication();
+    await assert.rejects(operation, (error: unknown) => error instanceof Error && error.name === "AbortError");
+    assert.equal(await repository.load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: context.contextId,
+    }), undefined, "a cancelled create must not publish its manifest entry");
+  } finally {
+    releasePublication();
+    await rm(storageRoot, { recursive: true, force: true });
+  }
 });
 
 test("Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip", async () => {

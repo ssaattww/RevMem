@@ -298,7 +298,8 @@ export class FileSystemReviewStateRepository {
   public async save(
     target: ReviewStateRepositoryTarget,
     commit: ReviewStateCommit,
-    lease?: StorageRootLease
+    lease?: StorageRootLease,
+    signal?: AbortSignal,
   ): Promise<void> {
     const validatedCommit = cloneCommit(validateReviewStateCommit(commit, target));
     const route = resolveReviewStateStorageRoute(this.options.storageUris, target);
@@ -310,13 +311,14 @@ export class FileSystemReviewStateRepository {
       route.statePointerPath,
       async () => {
         if (route.storageKind === "repository") {
-          await this.saveRepositoryCommit(target, route, validatedCommit, lease);
+          await this.saveRepositoryCommit(target, route, validatedCommit, lease, signal);
         } else {
           await lease?.assertOwned();
           await this.writeText(
             route.statePointerPath,
             serializeJson(validatedCommit),
-            lease
+            lease,
+            signal,
           );
         }
 
@@ -411,7 +413,8 @@ export class FileSystemReviewStateRepository {
     target: ReviewStateRepositoryTarget,
     route: ReviewStateStorageRoute,
     commit: ReviewStateCommit,
-    lease?: StorageRootLease
+    lease?: StorageRootLease,
+    signal?: AbortSignal,
   ): Promise<void> {
     const existingManifestText = await this.readText(route.statePointerPath);
     let existingManifest: RepositoryStateManifest | undefined;
@@ -445,9 +448,9 @@ export class FileSystemReviewStateRepository {
     const globalPath = resolveManifestFile(route.rootPath, globalRelativePath);
 
     await lease?.assertOwned();
-    await this.writeText(contextPath, contextText, lease);
+    await this.writeText(contextPath, contextText, lease, signal);
     await lease?.assertOwned();
-    await this.writeText(globalPath, globalText, lease);
+    await this.writeText(globalPath, globalText, lease, signal);
 
     const contextReference: RepositoryStateManifestContextReference = {
       contextId: target.contextId,
@@ -475,7 +478,7 @@ export class FileSystemReviewStateRepository {
     };
 
     await lease?.assertOwned();
-    await this.writeText(route.statePointerPath, serializeJson(manifest), lease);
+    await this.writeText(route.statePointerPath, serializeJson(manifest), lease, signal);
   }
 
   private resolveReferencedFile(
@@ -520,14 +523,17 @@ export class FileSystemReviewStateRepository {
     return content;
   }
 
-  private async writeText(filePath: string, content: string, lease?: StorageRootLease): Promise<void> {
+  private async writeText(filePath: string, content: string, lease?: StorageRootLease, signal?: AbortSignal): Promise<void> {
     try {
       // This final fence is deliberately adjacent to the atomic-store boundary.
       // A lease may be detached while a preceding preparation step is suspended.
       await this.options.beforeAtomicPublication?.(filePath);
+      signal?.throwIfAborted();
       await lease?.assertOwned();
-      await this.fileStore.writeTextAtomically(filePath, content);
+      signal?.throwIfAborted();
+      await this.fileStore.writeTextAtomically(filePath, content, signal);
     } catch (error) {
+      if (signal?.aborted === true) throw new DOMException("Review-state create was superseded.", "AbortError");
       if (error instanceof StorageRootLeaseLostError) throw error;
       throw asPersistencePathError(filePath, error);
     }

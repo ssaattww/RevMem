@@ -1487,6 +1487,7 @@ export function registerT405ReviewContextsRuntime(
         await timed("context-save", () => contextStateService.create(
           { contextState: state, globalState: preparedGlobal.nextGlobalState },
           preparedGlobal.expectedGlobalState,
+          signal,
         ));
       }
       assertDetectionCurrent();
@@ -1546,12 +1547,21 @@ export function registerT405ReviewContextsRuntime(
     await detectPullRequest(local, feedbackContext, signal, false);
   };
 
-  let activeRedetection: { readonly key: string; readonly cancellation: AbortController; promise: Promise<void> } | undefined;
+  let activeRedetection: {
+    readonly requestHint: string | undefined;
+    phase: "repository-inspection" | "detection";
+    readonly cancellation: AbortController;
+    promise: Promise<void>;
+  } | undefined;
   const redetectPullRequest = async (feedbackContext?: OperationFeedbackContext, externalSignal?: AbortSignal): Promise<void> => {
     if (externalSignal?.aborted === true) throw new DOMException("PR detection was superseded.", "AbortError");
-    const local = await inspectActiveRepository();
-    const key = `${local.repositoryId}\u0000${local.head ?? "no-head"}`;
-    if (activeRedetection?.key === key && !activeRedetection.cancellation.signal.aborted) {
+    const requestHint = vscode.window.activeTextEditor?.document.uri.toString(true);
+    if (
+      requestHint !== undefined &&
+      activeRedetection?.phase === "detection" &&
+      activeRedetection.requestHint === requestHint &&
+      !activeRedetection.cancellation.signal.aborted
+    ) {
       reportActivePullRequestRefresh(feedbackContext, {
         generation: pullRequestDetectionGeneration,
         trigger: "pr-redetection",
@@ -1565,12 +1575,50 @@ export function registerT405ReviewContextsRuntime(
     const cancellation = new AbortController();
     const abort = (): void => cancellation.abort();
     externalSignal?.addEventListener("abort", abort, { once: true });
-    const record = { key, cancellation, promise: Promise.resolve() };
-    record.promise = detectPullRequest(local, feedbackContext, cancellation.signal).finally(() => {
+    const record: {
+      readonly requestHint: string | undefined;
+      phase: "repository-inspection" | "detection";
+      readonly cancellation: AbortController;
+      promise: Promise<void>;
+    } = {
+      requestHint,
+      phase: "repository-inspection",
+      cancellation,
+      promise: Promise.resolve(),
+    };
+    activeRedetection = record;
+    const waitForActiveRequest = <T>(work: Promise<T>): Promise<T> => {
+      const signal = cancellation.signal;
+      if (signal.aborted) return Promise.reject(new DOMException("PR detection was superseded.", "AbortError"));
+      return new Promise<T>((resolve, reject) => {
+        const onAbort = (): void => {
+          signal.removeEventListener("abort", onAbort);
+          reject(new DOMException("PR detection was superseded.", "AbortError"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        work.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      });
+    };
+    record.promise = (async () => {
+      const local = await waitForActiveRequest(inspectActiveRepository());
+      if (activeRedetection !== record || cancellation.signal.aborted) {
+        throw new DOMException("PR detection was superseded.", "AbortError");
+      }
+      record.phase = "detection";
+      await detectPullRequest(local, feedbackContext, cancellation.signal);
+    })().finally(() => {
       externalSignal?.removeEventListener("abort", abort);
       if (activeRedetection === record) activeRedetection = undefined;
     });
-    activeRedetection = record;
     return record.promise;
   };
 

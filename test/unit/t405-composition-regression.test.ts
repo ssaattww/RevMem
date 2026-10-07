@@ -1669,6 +1669,61 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(operationLog.some((entry) => entry.event === "succeeded"), false);
     assert.doesNotMatch(JSON.stringify(operationLog), /network interrupted|repositoryRoot|targetHeadSha/u);
 
+    // Issue #136 regression: a replacement request must cancel an old request
+    // while that request is still awaiting repository inspection.
+    discoveryTransport = "live";
+    redetectChoice = 52;
+    errors.length = 0;
+    const originalInspectRepository = localGit.inspectRepository.bind(localGit);
+    let releaseBlockedInspection!: () => void;
+    let inspectionStarted!: () => void;
+    const blockedInspection = new Promise<void>((resolve) => { releaseBlockedInspection = resolve; });
+    const inspectionStartedPromise = new Promise<void>((resolve) => { inspectionStarted = resolve; });
+    let inspectionCalls = 0;
+    localGit.inspectRepository = async (startPath) => {
+      inspectionCalls += 1;
+      if (inspectionCalls === 1) {
+        inspectionStarted();
+        await blockedInspection;
+      }
+      return originalInspectRepository(startPath);
+    };
+    const redetectCommand = commands.get("reviewRange.redetectPullRequest");
+    assert.ok(redetectCommand);
+    let firstRedetectionSettled = false;
+    const firstRedetection = Promise.resolve(redetectCommand()).finally(() => {
+      firstRedetectionSettled = true;
+    });
+    await inspectionStartedPromise;
+    const previousActiveTextEditor = fakeVscode.window.activeTextEditor;
+    fakeVscode.window.activeTextEditor = {
+      document: {
+        uri: {
+          scheme: "file",
+          authority: "",
+          fsPath: repositoryRoot,
+          query: "",
+          fragment: "",
+          toString: () => repositoryRoot,
+        },
+        version: 1,
+      },
+    } as never;
+    const replacementRedetection = Promise.resolve(redetectCommand());
+    await new Promise((resolve) => setImmediate(resolve));
+    const cancelledBeforeInspectionCompleted = firstRedetectionSettled;
+    releaseBlockedInspection();
+    await Promise.allSettled([firstRedetection, replacementRedetection]);
+    localGit.inspectRepository = originalInspectRepository;
+    fakeVscode.window.activeTextEditor = previousActiveTextEditor;
+    assert.equal(
+      cancelledBeforeInspectionCompleted,
+      true,
+      "a replacement request terminates the superseded command without waiting for repository inspection",
+    );
+    assert.ok(inspectionCalls >= 2, "the replacement resolves its own current repository identity");
+    errors.length = 0;
+
     // T406-R001: the selected branch owner is the production normal-editor
     // command target after unavailable fallback; its mark/unmark cannot mutate PR #52.
     const branchTarget = {
