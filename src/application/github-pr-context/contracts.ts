@@ -32,7 +32,7 @@ export type GitHubPullRequestSearchResult =
     }
   | {
       readonly kind: "unavailable";
-      readonly reason: "rate-limit" | "network" | "api" | "authentication";
+      readonly reason: "rate-limit" | "network" | "api" | "authentication" | "timeout";
       /** Safe HTTP status evidence when the API returned a non-success response. */
       readonly httpStatus?: number;
     };
@@ -42,7 +42,8 @@ export interface GitHubPullRequestSearchPort {
   /** Searches open pull requests whose head SHA exactly matches `headSha`. */
   findOpenByHead(
     repository: GitHubRepositoryIdentity,
-    headSha: string
+    headSha: string,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestSearchResult>;
 }
 

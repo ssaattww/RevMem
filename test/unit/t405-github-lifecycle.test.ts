@@ -321,7 +321,7 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   const sharedDetection = runtimeSource.slice(detectStart, preparationStart);
   assert.match(
     sharedDetection,
-    /await synchronizeRepository\(/u,
+    /synchronizeRepository\(/u,
     "shared PR detection delegates persisted PR updates to the repository-owner boundary",
   );
   assert.doesNotMatch(
@@ -335,11 +335,11 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   assert.match(ownerSynchronizationSource, /commitRepository/u);
   assert.match(ownerSynchronizationSource, /recordPreparedUpdateHistory/u);
 
-  const redetectStart = runtimeSource.indexOf("redetectPullRequest: async");
+  const redetectStart = runtimeSource.indexOf("const redetectPullRequest = async");
   const reconnectStart = runtimeSource.indexOf("reconnectGitHub: async", redetectStart);
-  assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must remain registered before reconnect");
+  assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must use the shared cancellable detection before reconnect");
   const redetect = runtimeSource.slice(redetectStart, reconnectStart);
-  assert.match(redetect, /await detectPullRequest\(local, feedbackContext\);/u, "public redetection uses shared PR detection before the refresh boundary");
+  assert.match(redetect, /detectPullRequest\(local, feedbackContext, cancellation\.signal\)/u, "public redetection uses shared PR detection with replacement cancellation");
   const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
   const mutateStart = reviewContextsUi.indexOf("const mutate = async");
   const requireItemStart = reviewContextsUi.indexOf("const requireItem =", mutateStart);

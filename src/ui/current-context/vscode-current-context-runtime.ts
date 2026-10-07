@@ -106,18 +106,31 @@ export const registerCurrentContextRuntime = (
     ...dependentRefresher
   });
   let currentCancellation: AbortController | undefined;
+  let currentRefreshCoalescingKey: string | undefined;
   const runRefresh = async (
     options: CurrentContextRecomputeOptions | undefined,
     trigger: "current-context-refresh" | "review-contexts-refresh" | "startup" | "active-editor-change",
     parentContext?: OperationFeedbackContext,
+    coalescingKey?: string,
   ): Promise<void> => {
-    currentCancellation?.abort();
-    const cancellation = new AbortController();
-    currentCancellation = cancellation;
+    const coalesceWithCurrent = trigger === "active-editor-change" && coalescingKey !== undefined &&
+      coalescingKey === currentRefreshCoalescingKey && currentCancellation?.signal.aborted === false;
+    if (!coalesceWithCurrent) {
+      currentCancellation?.abort();
+      currentCancellation = new AbortController();
+      currentRefreshCoalescingKey = trigger === "active-editor-change" ? coalescingKey : undefined;
+    }
+    const cancellation = currentCancellation!;
     try {
       await runWithActiveOperationFeedback(
         "Current Contextを更新",
-        (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext, options, trigger),
+        (feedbackContext) => coordinator.refresh(
+          cancellation.signal,
+          feedbackContext,
+          options,
+          trigger,
+          coalescingKey === undefined ? {} : { coalescingKey },
+        ),
         undefined,
         parentContext,
       );
@@ -130,13 +143,17 @@ export const registerCurrentContextRuntime = (
         await reportRefreshError(formatOperationFailureForUser(error));
       }
     } finally {
-      if (currentCancellation === cancellation) currentCancellation = undefined;
+      if (currentCancellation === cancellation && !coalesceWithCurrent) {
+        currentCancellation = undefined;
+        currentRefreshCoalescingKey = undefined;
+      }
     }
   };
   const runSelection = async (): Promise<void> => {
     currentCancellation?.abort();
     const cancellation = new AbortController();
     currentCancellation = cancellation;
+    currentRefreshCoalescingKey = undefined;
     try {
       await runWithActiveOperationFeedback("Current Contextを選択", (feedbackContext) => coordinator.selectContext(cancellation.signal, feedbackContext));
     } catch (error) {
@@ -159,8 +176,9 @@ export const registerCurrentContextRuntime = (
       SELECT_CONTEXT_COMMAND_ID,
       runSelection
     ),
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      void runRefresh({ allowInteraction: false }, "active-editor-change");
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      const coalescingKey = editor?.document.uri.toString(true) ?? "no-active-editor";
+      void runRefresh({ allowInteraction: false }, "active-editor-change", undefined, coalescingKey);
     }),
     status,
     { dispose: () => tree.dispose() }

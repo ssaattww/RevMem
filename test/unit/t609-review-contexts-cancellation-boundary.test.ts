@@ -111,3 +111,26 @@ test("T609-NR-004 cancel and stale typed outcomes run one command without termin
     );
   }
 });
+
+test("Issue #136 coalesces concurrent PR redetection commands into one operation and refresh", async () => {
+  const { commands, runtime } = loadReviewContextsRuntime();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let redetects = 0;
+  let loads = 0;
+  runtime.registerReviewContextsRuntime({ subscriptions: [] } as never, {
+    source: { load: async () => { loads += 1; return []; } },
+    controller: { redetectPullRequest: async () => { redetects += 1; await gate; } } as never,
+    refreshDecorations: async () => undefined,
+    reportError: async () => undefined,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const command = commands.get("reviewRange.redetectPullRequest")!;
+  const first = command();
+  const second = command();
+  assert.equal(redetects, 1);
+  release();
+  await Promise.all([first, second]);
+  assert.equal(redetects, 1);
+  assert.equal(loads, 2, "startup and one post-operation refresh are the only provider reads");
+});

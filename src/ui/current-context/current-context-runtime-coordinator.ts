@@ -22,6 +22,11 @@ export interface CurrentContextDependentRefresher {
   clearPullRequestProgress?(): void | Promise<void>;
 }
 
+export interface CurrentContextRefreshRequestOptions {
+  /** Opaque, in-memory identity used only to join duplicate requests. Never logged. */
+  readonly coalescingKey?: string;
+}
+
 export interface CurrentContextRefreshContext {
   readonly generation: number;
   readonly trigger: PullRequestRefreshTrigger;
@@ -39,7 +44,12 @@ export interface CurrentContextRefreshContext {
   setPublicationCounts(counts: NonNullable<PullRequestRefreshDiagnostic["counts"]>): void;
   readonly publicationCounts: () => NonNullable<PullRequestRefreshDiagnostic["counts"]>;
   /** Closes every started stage on a rejected or interrupted owner, once per stage. */
-  finishPendingStages(status: "failed" | "cancelled" | "superseded", reasonCode: PullRequestRefreshReasonCode): void;
+  finishPendingStages(
+    status: "failed" | "cancelled" | "superseded",
+    reasonCode: PullRequestRefreshReasonCode,
+    supersededByGeneration?: number,
+    causedByOperationId?: number,
+  ): void;
   readonly report: (
     stage: PullRequestRefreshStage,
     status: PullRequestRefreshStatus,
@@ -47,6 +57,11 @@ export interface CurrentContextRefreshContext {
       readonly reasonCode?: PullRequestRefreshReasonCode;
       readonly durationMs?: number;
       readonly counts?: PullRequestRefreshDiagnostic["counts"];
+      readonly relatedOperationId?: number;
+      readonly relatedGeneration?: number;
+      readonly supersededByGeneration?: number;
+      readonly causedByOperationId?: number;
+      readonly ordinal?: number;
     }>,
   ) => void;
 }
@@ -63,19 +78,65 @@ export class CurrentContextBranchRefreshError extends Error {
 export class CurrentContextRuntimeCoordinator {
   private generation = 0;
   private refreshCancellation: AbortController | undefined;
+  private currentRefreshContext: CurrentContextRefreshContext | undefined;
+  private activeCoalescedRefresh: {
+    readonly key: string;
+    readonly context: CurrentContextRefreshContext;
+    readonly promise: Promise<void>;
+    inFlight: boolean;
+  } | undefined;
 
   public constructor(
     private readonly controller: CurrentContextUiController,
     private readonly dependentRefresher: CurrentContextDependentRefresher
   ) {}
 
-  public async refresh(
+  public refresh(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
     options?: CurrentContextRecomputeOptions,
     trigger: PullRequestRefreshTrigger = "current-context-refresh",
+    request: CurrentContextRefreshRequestOptions = {},
   ): Promise<void> {
+    const active = this.activeCoalescedRefresh;
+    if (
+      request.coalescingKey !== undefined &&
+      active?.inFlight === true &&
+      active.key === request.coalescingKey &&
+      active.context.isCurrent()
+    ) {
+      reportActivePullRequestRefresh(feedbackContext, {
+        generation: active.context.generation,
+        trigger,
+        stage: "refresh-request",
+        status: "coalesced",
+        reasonCode: "duplicate-trigger-coalesced",
+        relatedOperationId: active.context.feedbackContext?.id,
+        relatedGeneration: active.context.generation,
+      });
+      return active.promise;
+    }
     const context = this.createRefreshContext(trigger, feedbackContext, signal);
+    const promise = this.runRefresh(context, signal, feedbackContext, options);
+    if (request.coalescingKey !== undefined) {
+      const coalesced = { key: request.coalescingKey, context, promise, inFlight: true };
+      this.activeCoalescedRefresh = coalesced;
+      void promise.then(
+        () => { coalesced.inFlight = false; },
+        () => { coalesced.inFlight = false; },
+      );
+    } else {
+      this.activeCoalescedRefresh = undefined;
+    }
+    return promise;
+  }
+
+  private async runRefresh(
+    context: CurrentContextRefreshContext,
+    signal: AbortSignal | undefined,
+    feedbackContext: OperationFeedbackContext | undefined,
+    options: CurrentContextRecomputeOptions | undefined,
+  ): Promise<void> {
     context.report("current-context", "started");
     context.report("repository-identity", "started");
     context.report("pr-acquisition", "started");
@@ -212,6 +273,9 @@ export class CurrentContextRuntimeCoordinator {
   /** Clears Current Context and dependent PR state after an unprovable refresh. */
   public async failClosed(): Promise<void> {
     this.refreshCancellation?.abort();
+    this.currentRefreshContext?.finishPendingStages("cancelled", "identity-changed");
+    this.currentRefreshContext = undefined;
+    this.activeCoalescedRefresh = undefined;
     this.generation += 1;
     this.controller.failClosed();
     this.dependentRefresher.setSelectedContext?.(undefined);
@@ -247,6 +311,7 @@ export class CurrentContextRuntimeCoordinator {
     feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
   ): CurrentContextRefreshContext {
+    const replaced = this.currentRefreshContext;
     this.refreshCancellation?.abort();
     const cancellation = new AbortController();
     this.refreshCancellation = cancellation;
@@ -255,6 +320,12 @@ export class CurrentContextRuntimeCoordinator {
     cancellation.signal.addEventListener("abort", () => signal?.removeEventListener("abort", abort), { once: true });
     if (signal?.aborted) abort();
     const generation = ++this.generation;
+    replaced?.finishPendingStages(
+      "superseded",
+      "superseded-by-newer-generation",
+      generation,
+      feedbackContext?.id,
+    );
     let selectionReason: PullRequestRefreshReasonCode | undefined;
     let candidateCount: number | undefined;
     let acceptedIdentity: Readonly<{ contextId: string; baseSha?: string; headSha?: string }> | undefined;
@@ -287,9 +358,14 @@ export class CurrentContextRuntimeCoordinator {
       acceptedIdentity: () => acceptedIdentity,
       setPublicationCounts: (counts) => { publicationCounts = { ...counts }; },
       publicationCounts: () => ({ ...publicationCounts }),
-      finishPendingStages: (status, reasonCode) => {
+      finishPendingStages: (status, reasonCode, supersededByGeneration, causedByOperationId) => {
         for (const stage of [...stageStartedAt.keys()]) {
-          context.report(stage, status, { reasonCode, ...(stage === "tree-publication" ? { counts: context.publicationCounts() } : {}) });
+          context.report(stage, status, {
+            reasonCode,
+            ...(supersededByGeneration === undefined ? {} : { supersededByGeneration }),
+            ...(causedByOperationId === undefined ? {} : { causedByOperationId }),
+            ...(stage === "tree-publication" ? { counts: context.publicationCounts() } : {}),
+          });
         }
       },
       report: (stage, status, details = {}) => {
@@ -317,6 +393,7 @@ export class CurrentContextRuntimeCoordinator {
         }
       },
     };
+    this.currentRefreshContext = context;
     return context;
   }
 }

@@ -1,11 +1,13 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import { requirePullRequestCommitObjectId } from "../../application/github-pr-diff/index";
+import { GITHUB_REQUEST_TIMEOUT_MS, GitHubRequestTimeoutError, runGitHubRequestWithTimeout } from "./github-request-timeout";
 
 export type GitHubPullRequestMergeBaseUnavailableReason =
   | "rate-limit"
   | "network"
   | "api"
-  | "authentication";
+  | "authentication"
+  | "timeout";
 
 export type GitHubPullRequestMergeBaseResult =
   | { readonly kind: "available"; readonly mergeBaseSha: string }
@@ -15,6 +17,7 @@ export interface FetchGitHubPullRequestMergeBaseOptions {
   readonly apiBaseUrl: string;
   readonly token?: string;
   readonly fetch: typeof globalThis.fetch;
+  readonly requestTimeoutMs?: number;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -54,30 +57,40 @@ export const fetchGitHubPullRequestMergeBase = async (
     `${apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/compare/${base}...${head}`
   );
   let response: Response;
+  let value: unknown;
   try {
-    response = await options.fetch(url, {
-      headers: {
-        accept: "application/vnd.github+json",
-        "x-github-api-version": "2022-11-28",
-        ...(options.token === undefined || options.token.length === 0
-          ? {}
-          : { authorization: `Bearer ${options.token}` }),
-      },
+    const result = await runGitHubRequestWithTimeout(
       signal,
-    });
-  } catch {
+      options.requestTimeoutMs ?? GITHUB_REQUEST_TIMEOUT_MS,
+      async (requestSignal) => {
+        const received = await options.fetch(url, {
+          headers: {
+            accept: "application/vnd.github+json",
+            "x-github-api-version": "2022-11-28",
+            ...(options.token === undefined || options.token.length === 0
+              ? {}
+              : { authorization: `Bearer ${options.token}` }),
+          },
+          signal: requestSignal,
+        });
+        if (!received.ok) return { response: received, body: undefined };
+        try {
+          return { response: received, body: await received.json() as unknown };
+        } catch {
+          return { response: received, body: undefined };
+        }
+      },
+    );
+    response = result.response;
+    value = result.body;
+  } catch (error) {
     if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
+    if (error instanceof GitHubRequestTimeoutError) return { kind: "unavailable", reason: "timeout" };
     return { kind: "unavailable", reason: "network" };
   }
   if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
   const failure = classifyResponse(response);
   if (failure !== undefined) return { kind: "unavailable", reason: failure };
-  let value: unknown;
-  try {
-    value = await response.json();
-  } catch {
-    return { kind: "unavailable", reason: "api" };
-  }
   if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
   if (!isObject(value) || !isObject(value.merge_base_commit)) {
     return { kind: "unavailable", reason: "api" };

@@ -50,9 +50,15 @@ import {
 } from "../../application/github-pr-diff/index";
 import {
   reportActiveOperationProgress,
+  reportActivePullRequestRefresh,
   reportActiveStorageLockDiagnostic,
+  type PullRequestRefreshStage,
+  type PullRequestRefreshStatus,
+  type PullRequestRefreshReasonCode,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
+
+let pullRequestDetectionGeneration = 0;
 import {
   OperationDiagnosticError,
   reportActiveOperationFailure,
@@ -259,11 +265,12 @@ const matchesImmutablePullRequestSnapshot = (
 const createPullRequestSearch = (
   identity: GitHubRepositoryIdentity,
   token: string | undefined,
+  onDiagnostic?: ConstructorParameters<typeof FetchGitHubPullRequestAdapter>[0]["onDiagnostic"],
 ): FetchGitHubPullRequestAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl })
-    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token });
+    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }) })
+    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }) });
 };
 
 const createPullRequestRemote = (
@@ -1266,6 +1273,36 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     synchronizeBeforeSearch = true,
   ): Promise<void> => {
+    const detectionGeneration = ++pullRequestDetectionGeneration;
+    const reportDetection = (
+      stage: PullRequestRefreshStage,
+      status: PullRequestRefreshStatus,
+      details: { durationMs?: number; ordinal?: number; reasonCode?: PullRequestRefreshReasonCode } = {},
+    ): void => reportActivePullRequestRefresh(feedbackContext, {
+      generation: detectionGeneration,
+      trigger: "pr-redetection",
+      stage,
+      status,
+      ...details,
+    });
+    const timed = async <T>(stage: PullRequestRefreshStage, action: () => Promise<T>): Promise<T> => {
+      const startedAt = Date.now();
+      reportDetection(stage, "started");
+      try {
+        const value = await action();
+        reportDetection(stage, "succeeded", { durationMs: Math.max(0, Date.now() - startedAt) });
+        return value;
+      } catch (error) {
+        reportDetection(stage, signal?.aborted === true ? "cancelled" : "failed", {
+          durationMs: Math.max(0, Date.now() - startedAt),
+          reasonCode: signal?.aborted === true ? "superseded-by-newer-generation" : "refresh-failed",
+        });
+        throw error;
+      }
+    };
+    const requestStartedAt = Date.now();
+    reportDetection("refresh-request", "started");
+    try {
     const isDetectionAborted = (): boolean => signal?.aborted === true;
     const assertDetectionCurrent = (): void => {
       if (isDetectionAborted()) throw new DOMException("PR detection was superseded.", "AbortError");
@@ -1275,27 +1312,30 @@ export function registerT405ReviewContextsRuntime(
     }
     const identity = parseGitHubRemote(local.remote.rawUrl);
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
-    const pullRequestSynchronizationRevision = await options.git.resolveIdentityRemoteTrackingRevision(local, signal) ?? local.head;
+    const localHead = local.head;
+    if (localHead === undefined) throw new Error("PR再検出にはHEADが必要です。");
+    const pullRequestSynchronizationRevision = (await timed("repository-inspection", async () =>
+      await options.git.resolveIdentityRemoteTrackingRevision(local, signal))) ?? localHead;
     assertDetectionCurrent();
-    const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
+    const persistedBefore = await timed("repository-inspection", () => repository.listRepositoryContexts(local.repositoryId));
     assertDetectionCurrent();
     let synchronizationCompleted = false;
     if (synchronizeBeforeSearch) {
-      synchronizationCompleted = await synchronizeRepository({
+      synchronizationCompleted = await timed("repository-sync", () => synchronizeRepository({
         repositoryId: local.repositoryId,
         repositoryRoot: local.rootPath,
-        headRevision: local.head,
+        headRevision: localHead,
         pullRequestSynchronizationRevision,
         ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
         snapshot: {
-          context: { kind: "branch", label: "active", headRevision: local.head },
+          context: { kind: "branch", label: "active", headRevision: localHead },
           progress: undefined,
         },
-      }, persistedBefore, signal, feedbackContext);
+      }, persistedBefore, signal, feedbackContext));
       assertDetectionCurrent();
     }
 
-    const token = await auth.getAccessToken(identity.host, signal, true);
+    const token = await timed("authentication", () => auth.getAccessToken(identity.host, signal, true));
     assertDetectionCurrent();
     const resolver = new GitHubPullRequestContextResolver({
       chooseCandidate: async (candidates) => {
@@ -1304,10 +1344,46 @@ export function registerT405ReviewContextsRuntime(
           description: candidate.url,
           candidate,
         }));
-        return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
+        const cancellation = new vscode.CancellationTokenSource();
+        const abortSelection = (): void => cancellation.cancel();
+        signal?.addEventListener("abort", abortSelection, { once: true });
+        const selectionStartedAt = Date.now();
+        reportDetection("candidate-selection", "started");
+        try {
+          const selected = await vscode.window.showQuickPick(
+            items,
+            { placeHolder: "現在HEADのPRを選択" },
+            cancellation.token,
+          );
+          if (selected === undefined) {
+            reportDetection("candidate-selection", "cancelled", {
+              durationMs: Math.max(0, Date.now() - selectionStartedAt),
+              reasonCode: signal?.aborted === true ? "superseded-by-newer-generation" : "quick-pick-cancelled",
+            });
+            return undefined;
+          }
+          reportDetection("candidate-selection", "succeeded", { durationMs: Math.max(0, Date.now() - selectionStartedAt) });
+          return selected.candidate;
+        } catch (error) {
+          reportDetection("candidate-selection", signal?.aborted === true ? "cancelled" : "failed", {
+            durationMs: Math.max(0, Date.now() - selectionStartedAt),
+            reasonCode: signal?.aborted === true ? "superseded-by-newer-generation" : "refresh-failed",
+          });
+          throw error;
+        } finally {
+          signal?.removeEventListener("abort", abortSelection);
+          cancellation.dispose();
+        }
       },
     });
-    let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, pullRequestSynchronizationRevision);
+    const searchDiagnostic = (event: import("../../adapters/github/fetch-github-pull-request-adapter").GitHubPullRequestSearchPhaseDiagnostic): void => {
+      reportDetection(event.stage, event.status === "failed" ? "failed" : event.status, {
+        ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+        ordinal: event.ordinal,
+        ...(event.reasonCode === undefined ? {} : { reasonCode: event.reasonCode }),
+      });
+    };
+    let search = await createPullRequestSearch(identity, token, searchDiagnostic).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1315,10 +1391,10 @@ export function registerT405ReviewContextsRuntime(
       search.reason === "api" &&
       search.httpStatus === 404
     ) {
-      const reselectedToken = await auth.getAccessToken(identity.host, signal, true, true);
+      const reselectedToken = await timed("authentication", () => auth.getAccessToken(identity.host, signal, true, true));
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
-        search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, pullRequestSynchronizationRevision);
+        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }
     }
@@ -1326,7 +1402,7 @@ export function registerT405ReviewContextsRuntime(
     assertDetectionCurrent();
     if (resolution.kind === "pull-request") {
       const state = pullRequestState(local.repositoryId, identity, resolution.pullRequest);
-      let existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+      let existing = await timed("context-save", () => contextStateService.load(local.repositoryId, pullRequestIdentity(state)));
       assertDetectionCurrent();
       if (existing !== undefined) {
         const detectedPullRequest = state.pullRequest!;
@@ -1337,19 +1413,19 @@ export function registerT405ReviewContextsRuntime(
           persistedPullRequest.baseSha !== detectedPullRequest.baseSha ||
           persistedPullRequest.headSha !== detectedPullRequest.headSha
         ) {
-          synchronizationCompleted = await synchronizeRepository({
+          synchronizationCompleted = await timed("repository-sync", () => synchronizeRepository({
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
-            headRevision: local.head,
+            headRevision: localHead,
             pullRequestSynchronizationRevision,
             ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
-              context: { kind: "branch", label: "active", headRevision: local.head },
+              context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext);
+          }, persistedBefore, signal, feedbackContext));
           assertDetectionCurrent();
-          existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
+          existing = await timed("context-save", () => contextStateService.load(local.repositoryId, pullRequestIdentity(state)));
           assertDetectionCurrent();
         }
         const synchronizedPullRequest = existing?.contextState.pullRequest;
@@ -1367,17 +1443,17 @@ export function registerT405ReviewContextsRuntime(
         // read, or explicit selection may have skipped that read altogether.
         // Complete the whole owner boundary before publishing a new Context.
         if (!synchronizationCompleted) {
-          synchronizationCompleted = await synchronizeRepository({
+          synchronizationCompleted = await timed("repository-sync", () => synchronizeRepository({
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
-            headRevision: local.head,
+            headRevision: localHead,
             pullRequestSynchronizationRevision,
             ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
-              context: { kind: "branch", label: "active", headRevision: local.head },
+              context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext);
+          }, persistedBefore, signal, feedbackContext));
           assertDetectionCurrent();
         }
         if (!synchronizationCompleted) {
@@ -1391,7 +1467,7 @@ export function registerT405ReviewContextsRuntime(
           head: pullRequestSynchronizationRevision,
         });
         const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
-        const preparedGlobal = await currentGlobalForNewPullRequest(
+        const preparedGlobal = await timed("global-state-preparation", () => currentGlobalForNewPullRequest(
           repository,
           current,
           gitContextRevisionMapper,
@@ -1406,12 +1482,12 @@ export function registerT405ReviewContextsRuntime(
             ),
           }),
           openedEncodingHints(local.rootPath),
-        );
+        ));
         assertDetectionCurrent();
-        await contextStateService.create(
+        await timed("context-save", () => contextStateService.create(
           { contextState: state, globalState: preparedGlobal.nextGlobalState },
           preparedGlobal.expectedGlobalState,
-        );
+        ));
       }
       assertDetectionCurrent();
       await currentPullRequestSelection.select(
@@ -1429,6 +1505,14 @@ export function registerT405ReviewContextsRuntime(
           feedbackContext,
         );
       }
+    }
+    reportDetection("refresh-request", "succeeded", { durationMs: Math.max(0, Date.now() - requestStartedAt) });
+    } catch (error) {
+      reportDetection("refresh-request", signal?.aborted === true ? "cancelled" : "failed", {
+        durationMs: Math.max(0, Date.now() - requestStartedAt),
+        reasonCode: signal?.aborted === true ? "superseded-by-newer-generation" : "refresh-failed",
+      });
+      throw error;
     }
   };
 
@@ -1460,6 +1544,34 @@ export function registerT405ReviewContextsRuntime(
     );
     if (current !== undefined) return;
     await detectPullRequest(local, feedbackContext, signal, false);
+  };
+
+  let activeRedetection: { readonly key: string; readonly cancellation: AbortController; promise: Promise<void> } | undefined;
+  const redetectPullRequest = async (feedbackContext?: OperationFeedbackContext, externalSignal?: AbortSignal): Promise<void> => {
+    if (externalSignal?.aborted === true) throw new DOMException("PR detection was superseded.", "AbortError");
+    const local = await inspectActiveRepository();
+    const key = `${local.repositoryId}\u0000${local.head ?? "no-head"}`;
+    if (activeRedetection?.key === key && !activeRedetection.cancellation.signal.aborted) {
+      reportActivePullRequestRefresh(feedbackContext, {
+        generation: pullRequestDetectionGeneration,
+        trigger: "pr-redetection",
+        stage: "refresh-request",
+        status: "coalesced",
+        reasonCode: "duplicate-trigger-coalesced",
+      });
+      return activeRedetection.promise;
+    }
+    activeRedetection?.cancellation.abort();
+    const cancellation = new AbortController();
+    const abort = (): void => cancellation.abort();
+    externalSignal?.addEventListener("abort", abort, { once: true });
+    const record = { key, cancellation, promise: Promise.resolve() };
+    record.promise = detectPullRequest(local, feedbackContext, cancellation.signal).finally(() => {
+      externalSignal?.removeEventListener("abort", abort);
+      if (activeRedetection === record) activeRedetection = undefined;
+    });
+    activeRedetection = record;
+    return record.promise;
   };
 
   const controller = new ReviewContextsController({
@@ -1513,10 +1625,7 @@ export function registerT405ReviewContextsRuntime(
         `${selected.label} (PR #${pullRequest.number})`
       );
     },
-    redetectPullRequest: async (feedbackContext) => {
-      const local = await inspectActiveRepository();
-      await detectPullRequest(local, feedbackContext);
-    },
+    redetectPullRequest,
     reconnectGitHub: async () => {
       const local = await inspectActiveRepository();
       if (local.remote === undefined) throw new Error("GitHub remoteがありません。");

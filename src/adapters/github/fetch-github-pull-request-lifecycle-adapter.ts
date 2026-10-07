@@ -3,7 +3,7 @@ import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff
 import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
 import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
 
-export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication";
+export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication" | "timeout";
 
 export type GitHubPullRequestLifecycleResult =
   | { readonly kind: "available"; readonly metadata: PullRequestRemoteMetadata }
@@ -116,7 +116,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
         payload.head.sha,
         signal,
       );
-      if (mergeBase.kind === "unavailable") return mergeBase;
+      if (mergeBase.kind === "unavailable") return mergeBase.reason === "timeout" ? { kind: "unavailable", reason: "network" } : mergeBase;
       baseSha = mergeBase.mergeBaseSha;
     }
     void feedbackContext;

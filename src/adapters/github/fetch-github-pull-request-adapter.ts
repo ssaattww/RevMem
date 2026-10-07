@@ -5,6 +5,7 @@ import type {
   GitHubRepositoryIdentity
 } from "../../application/github-pr-context/index";
 import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
+import { GITHUB_REQUEST_TIMEOUT_MS, GitHubRequestTimeoutError, runGitHubRequestWithTimeout } from "./github-request-timeout";
 
 interface GitHubPullRequestResponse {
   readonly number?: unknown;
@@ -22,6 +23,21 @@ export interface FetchGitHubPullRequestAdapterOptions {
   readonly token?: string;
   /** Optional fetch implementation for deterministic tests. */
   readonly fetch?: typeof globalThis.fetch;
+  /** Per-page and per-merge-base deadline. */
+  readonly requestTimeoutMs?: number;
+  /** Emits allowlisted phase, ordinal, count, status, and duration only. */
+  readonly onDiagnostic?: (event: GitHubPullRequestSearchPhaseDiagnostic) => void;
+}
+
+const isSignalAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
+
+export interface GitHubPullRequestSearchPhaseDiagnostic {
+  readonly stage: "pr-search-page" | "merge-base";
+  readonly status: "started" | "succeeded" | "failed" | "cancelled";
+  readonly ordinal: number;
+  readonly durationMs?: number;
+  readonly candidateCount?: number;
+  readonly reasonCode?: "request-timeout" | "network-failure" | "api-failure" | "authentication-required" | "rate-limited" | "superseded-by-newer-generation";
 }
 
 const isString = (value: unknown): value is string => typeof value === "string";
@@ -119,16 +135,24 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
   private readonly apiBaseUrl: string;
   private readonly token: string | undefined;
   private readonly fetchImplementation: typeof globalThis.fetch;
+  private readonly requestTimeoutMs: number;
+  private readonly onDiagnostic: FetchGitHubPullRequestAdapterOptions["onDiagnostic"];
 
   public constructor(options: FetchGitHubPullRequestAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
     this.token = options.token;
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? GITHUB_REQUEST_TIMEOUT_MS;
+    this.onDiagnostic = options.onDiagnostic;
+    if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1) {
+      throw new RangeError("GitHub request timeout must be a positive safe integer");
+    }
   }
 
   public async findOpenByHead(
     repository: GitHubRepositoryIdentity,
-    headSha: string
+    headSha: string,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestSearchResult> {
     const collectionUrl = new URL(
       `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/pulls`
@@ -147,33 +171,63 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
 
     const candidates: GitHubPullRequestCandidate[] = [];
     const visited = new Set<string>();
+    let pageOrdinal = 0;
     while (true) {
+      if (signal?.aborted === true) throw new DOMException("GitHub PR search was superseded.", "AbortError");
+      pageOrdinal += 1;
       if (visited.has(url.toString())) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, reasonCode: "api-failure" });
         return { kind: "unavailable", reason: "api" };
       }
       visited.add(url.toString());
-      let response: Response;
+      const pageStartedAt = Date.now();
+      this.emit({ stage: "pr-search-page", status: "started", ordinal: pageOrdinal });
+      let page: { readonly response: Response; readonly payload?: unknown; readonly bodyInvalid?: boolean };
       try {
-        response = await this.fetchImplementation(url, { headers });
-      } catch {
+        page = await runGitHubRequestWithTimeout(signal, this.requestTimeoutMs, async (requestSignal) => {
+          const response = await this.fetchImplementation(url, { headers, signal: requestSignal });
+          if (!response.ok) return { response };
+          try {
+            return { response, payload: await response.json() as unknown };
+          } catch {
+            return { response, bodyInvalid: true };
+          }
+        });
+      } catch (error) {
+        const durationMs = Math.max(0, Date.now() - pageStartedAt);
+        if (isSignalAborted(signal)) {
+          this.emit({ stage: "pr-search-page", status: "cancelled", ordinal: pageOrdinal, durationMs, reasonCode: "superseded-by-newer-generation" });
+          throw new DOMException("GitHub PR search was superseded.", "AbortError");
+        }
+        if (error instanceof GitHubRequestTimeoutError) {
+          this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs, reasonCode: "request-timeout" });
+          return { kind: "unavailable", reason: "timeout" };
+        }
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs, reasonCode: "network-failure" });
         return { kind: "unavailable", reason: "network" };
       }
 
+      const { response } = page;
       if (response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0")) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "rate-limited" });
         return { kind: "unavailable", reason: "rate-limit" };
       }
-      if (response.status === 401 || response.status === 403) return { kind: "unavailable", reason: "authentication" };
+      if (response.status === 401 || response.status === 403) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "authentication-required" });
+        return { kind: "unavailable", reason: "authentication" };
+      }
       if (!response.ok) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "api-failure" });
         return { kind: "unavailable", reason: "api", httpStatus: response.status };
       }
 
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
+      if (page.bodyInvalid === true) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "api-failure" });
         return { kind: "unavailable", reason: "api" };
       }
+      const payload = page.payload;
       if (!Array.isArray(payload)) {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "api-failure" });
         return { kind: "unavailable", reason: "api" };
       }
 
@@ -181,6 +235,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       for (const value of payload) {
         const candidate = toCandidate(value, headSha);
         if (candidate === "malformed") {
+          this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "api-failure" });
           return { kind: "unavailable", reason: "api" };
         }
         if (candidate !== undefined) {
@@ -191,8 +246,16 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
 
       const next = nextPageUrl(response, url, collectionUrl);
       if (next.kind === "invalid") {
+        this.emit({ stage: "pr-search-page", status: "failed", ordinal: pageOrdinal, durationMs: Math.max(0, Date.now() - pageStartedAt), reasonCode: "api-failure" });
         return { kind: "unavailable", reason: "api" };
       }
+      this.emit({
+        stage: "pr-search-page",
+        status: "succeeded",
+        ordinal: pageOrdinal,
+        durationMs: Math.max(0, Date.now() - pageStartedAt),
+        candidateCount: pageCandidates.length,
+      });
       if (next.kind === "none") {
         break;
       }
@@ -200,20 +263,49 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     }
 
     const normalizedCandidates: GitHubPullRequestCandidate[] = [];
+    let candidateOrdinal = 0;
     for (const candidate of candidates) {
-      const mergeBase = await fetchGitHubPullRequestMergeBase(
-        {
-          apiBaseUrl: this.apiBaseUrl,
-          ...(this.token === undefined ? {} : { token: this.token }),
-          fetch: this.fetchImplementation,
-        },
-        repository,
-        candidate.baseSha,
-        candidate.headSha,
-      );
+      if (isSignalAborted(signal)) throw new DOMException("GitHub PR search was superseded.", "AbortError");
+      candidateOrdinal += 1;
+      const mergeBaseStartedAt = Date.now();
+      this.emit({ stage: "merge-base", status: "started", ordinal: candidateOrdinal });
+      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
+      try {
+        mergeBase = await fetchGitHubPullRequestMergeBase(
+          {
+            apiBaseUrl: this.apiBaseUrl,
+            ...(this.token === undefined ? {} : { token: this.token }),
+            fetch: this.fetchImplementation,
+            requestTimeoutMs: this.requestTimeoutMs,
+          },
+          repository,
+          candidate.baseSha,
+          candidate.headSha,
+          signal,
+        );
+      } catch (error) {
+        if (isSignalAborted(signal) || (error instanceof DOMException && error.name === "AbortError")) {
+          this.emit({ stage: "merge-base", status: "cancelled", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "superseded-by-newer-generation" });
+        } else {
+          this.emit({ stage: "merge-base", status: "failed", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "api-failure" });
+        }
+        throw error;
+      }
       if (mergeBase.kind === "unavailable") {
+        this.emit({
+          stage: "merge-base",
+          status: isSignalAborted(signal) ? "cancelled" : "failed",
+          ordinal: candidateOrdinal,
+          durationMs: Math.max(0, Date.now() - mergeBaseStartedAt),
+          reasonCode: isSignalAborted(signal) ? "superseded-by-newer-generation" :
+            mergeBase.reason === "timeout" ? "request-timeout" :
+              mergeBase.reason === "network" ? "network-failure" :
+                mergeBase.reason === "authentication" ? "authentication-required" :
+                  mergeBase.reason === "rate-limit" ? "rate-limited" : "api-failure",
+        });
         return { kind: "unavailable", reason: mergeBase.reason };
       }
+      this.emit({ stage: "merge-base", status: "succeeded", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt) });
       normalizedCandidates.push({
         ...candidate,
         baseSha: mergeBase.mergeBaseSha,
@@ -222,5 +314,9 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
 
     normalizedCandidates.sort((left, right) => left.number - right.number);
     return { kind: "found", candidates: normalizedCandidates };
+  }
+
+  private emit(event: GitHubPullRequestSearchPhaseDiagnostic): void {
+    this.onDiagnostic?.(event);
   }
 }

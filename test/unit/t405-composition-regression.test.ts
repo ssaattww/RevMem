@@ -477,6 +477,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     const workspaceState = new MemoryMemento();
     let redetectChoice: 52 | 53 | undefined = 53;
     const fakeVscode = {
+      CancellationTokenSource: class { public readonly token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => undefined }) }; public cancel(): void {} public dispose(): void {} },
       EventEmitter: FakeEventEmitter,
       TreeItem: FakeTreeItem,
       ThemeIcon: FakeThemeIcon,

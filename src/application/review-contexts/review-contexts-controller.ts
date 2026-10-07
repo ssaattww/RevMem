@@ -283,7 +283,7 @@ export interface ReviewContextsControllerDependencies {
   ) => Promise<void>;
   readonly refreshPullRequestCache: (context: ReviewContextState, feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly openPullRequestDiff: (context: ReviewContextState, feedbackContext?: OperationFeedbackContext) => Promise<void>;
-  readonly redetectPullRequest: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
+  readonly redetectPullRequest: (feedbackContext?: OperationFeedbackContext, signal?: AbortSignal) => Promise<void>;
   readonly reconnectGitHub: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
 }
 
@@ -320,8 +320,8 @@ export class ReviewContextsController {
     await this.dependencies.openPullRequestDiff(clone(context), feedbackContext);
   }
 
-  public redetectPullRequest(feedbackContext?: OperationFeedbackContext): Promise<void> {
-    return this.dependencies.redetectPullRequest(feedbackContext);
+  public redetectPullRequest(feedbackContext?: OperationFeedbackContext, signal?: AbortSignal): Promise<void> {
+    return this.dependencies.redetectPullRequest(feedbackContext, signal);
   }
 
   public reconnectGitHub(feedbackContext?: OperationFeedbackContext): Promise<void> {

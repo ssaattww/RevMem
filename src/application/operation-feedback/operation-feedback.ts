@@ -23,7 +23,8 @@ export type PullRequestRefreshTrigger =
   | "startup"
   | "active-editor-change"
   | "review-state-change"
-  | "retry";
+  | "retry"
+  | "pr-redetection";
 
 export type PullRequestRefreshStage =
   | "current-context"
@@ -33,9 +34,18 @@ export type PullRequestRefreshStage =
   | "diff-registration"
   | "pr-selection"
   | "pr-progress"
-  | "tree-publication";
+  | "tree-publication"
+  | "refresh-request"
+  | "repository-inspection"
+  | "repository-sync"
+  | "authentication"
+  | "pr-search-page"
+  | "merge-base"
+  | "candidate-selection"
+  | "context-save"
+  | "global-state-preparation";
 
-export type PullRequestRefreshStatus = "started" | "progress" | "succeeded" | "failed" | "cancelled" | "superseded";
+export type PullRequestRefreshStatus = "started" | "progress" | "succeeded" | "failed" | "cancelled" | "superseded" | "coalesced";
 
 export type PullRequestRefreshReasonCode =
   | "explicit-selection-kept"
@@ -48,7 +58,15 @@ export type PullRequestRefreshReasonCode =
   | "identity-changed"
   | "verified-branch-preserved"
   | "refresh-failed"
-  | "superseded";
+  | "superseded"
+  | "duplicate-trigger-coalesced"
+  | "superseded-by-newer-generation"
+  | "request-timeout"
+  | "network-failure"
+  | "api-failure"
+  | "authentication-required"
+  | "rate-limited"
+  | "quick-pick-cancelled";
 
 export interface PullRequestRefreshCounts {
   readonly repositories?: number;
@@ -71,6 +89,13 @@ export interface PullRequestRefreshDiagnostic {
   readonly durationMs?: number;
   readonly counts?: PullRequestRefreshCounts;
   readonly reasonCode?: PullRequestRefreshReasonCode;
+  /** Numeric-only causal links between refresh owners; never an identity value. */
+  readonly relatedOperationId?: number;
+  readonly relatedGeneration?: number;
+  readonly supersededByGeneration?: number;
+  readonly causedByOperationId?: number;
+  /** One-based request/page ordinal within the owning operation. */
+  readonly ordinal?: number;
 }
 
 /** One source-content-free diagnostic entry for an extension operation. */
@@ -128,7 +153,7 @@ export type OperationDiagnostic = {
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
 } | {
   readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
-  readonly reason: "rate-limit" | "network" | "api" | "authentication";
+  readonly reason: "rate-limit" | "network" | "api" | "authentication" | "timeout";
 };
 
 /** Stable disposition used by the shared retry and UI failure boundary. */
@@ -318,25 +343,29 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "diff-too-large"
 ]);
 
-const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication"]);
+const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication", "timeout"]);
 const SAFE_GLOBAL_UNDERSTANDING_STAGES = new Set<GlobalUnderstandingFailureStage>(["path-discovery", "owner-capture", "scope-processing", "content-read", "calculation"]);
 const SAFE_GLOBAL_UNDERSTANDING_SCOPES = new Set(["repository-root", "folder"]);
 const SAFE_OPERATION_FAILURE_CATEGORIES = new Set<OperationFailureCategory>(["retryable", "permanent", "stale", "authentication", "validation"]);
 const SAFE_PULL_REQUEST_REFRESH_TRIGGERS = new Set<PullRequestRefreshTrigger>([
   "current-context-refresh", "review-contexts-refresh", "current-context-selection",
-  "startup", "active-editor-change", "review-state-change", "retry",
+  "startup", "active-editor-change", "review-state-change", "retry", "pr-redetection",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_STAGES = new Set<PullRequestRefreshStage>([
   "current-context", "pr-acquisition", "repository-identity", "review-contexts-list", "diff-registration",
-  "pr-selection", "pr-progress", "tree-publication",
+  "pr-selection", "pr-progress", "tree-publication", "refresh-request", "repository-inspection",
+  "repository-sync", "authentication", "pr-search-page", "merge-base", "candidate-selection",
+  "context-save", "global-state-preparation",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_STATUSES = new Set<PullRequestRefreshStatus>([
-  "started", "progress", "succeeded", "failed", "cancelled", "superseded",
+  "started", "progress", "succeeded", "failed", "cancelled", "superseded", "coalesced",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_REASONS = new Set<PullRequestRefreshReasonCode>([
   "explicit-selection-kept", "unique-pr-match", "ambiguous-pr-match", "no-matching-pr",
   "no-selected-pr", "snapshot-unavailable", "no-pr-files", "identity-changed",
-  "verified-branch-preserved", "refresh-failed", "superseded",
+  "verified-branch-preserved", "refresh-failed", "superseded", "duplicate-trigger-coalesced",
+  "superseded-by-newer-generation", "request-timeout", "network-failure", "api-failure",
+  "authentication-required", "rate-limited", "quick-pick-cancelled",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS = new Set<keyof PullRequestRefreshCounts>([
   "repositories", "pullRequestCandidates", "registeredPullRequests", "snapshotFiles",
@@ -358,6 +387,15 @@ const validatePullRequestRefreshDiagnostic = (
   if (value.durationMs !== undefined && (!Number.isSafeInteger(value.durationMs) || value.durationMs < 0)) {
     throw new RangeError("PR Progress refresh duration must be a non-negative safe integer");
   }
+  for (const [name, number] of [
+    ["relatedOperationId", value.relatedOperationId], ["relatedGeneration", value.relatedGeneration],
+    ["supersededByGeneration", value.supersededByGeneration], ["causedByOperationId", value.causedByOperationId],
+    ["ordinal", value.ordinal],
+  ] as const) {
+    if (number !== undefined && (!Number.isSafeInteger(number) || number < 1)) {
+      throw new RangeError(`PR Progress refresh ${name} must be a positive safe integer`);
+    }
+  }
   const counts: Partial<Record<keyof PullRequestRefreshCounts, number>> = {};
   for (const [rawKey, rawValue] of Object.entries(value.counts ?? {})) {
     const key = rawKey as keyof PullRequestRefreshCounts;
@@ -372,6 +410,11 @@ const validatePullRequestRefreshDiagnostic = (
     ...(value.durationMs === undefined ? {} : { durationMs: value.durationMs }),
     ...(Object.keys(counts).length === 0 ? {} : { counts: Object.freeze(counts) }),
     ...(value.reasonCode === undefined ? {} : { reasonCode: value.reasonCode }),
+    ...(value.relatedOperationId === undefined ? {} : { relatedOperationId: value.relatedOperationId }),
+    ...(value.relatedGeneration === undefined ? {} : { relatedGeneration: value.relatedGeneration }),
+    ...(value.supersededByGeneration === undefined ? {} : { supersededByGeneration: value.supersededByGeneration }),
+    ...(value.causedByOperationId === undefined ? {} : { causedByOperationId: value.causedByOperationId }),
+    ...(value.ordinal === undefined ? {} : { ordinal: value.ordinal }),
   });
 };
 
@@ -391,11 +434,11 @@ const validatePrProgressAttempts = (
 
 const validateGitHubPullRequestDetectionReason = (
   reason: unknown
-): "rate-limit" | "network" | "api" | "authentication" => {
+): "rate-limit" | "network" | "api" | "authentication" | "timeout" => {
   if (typeof reason !== "string" || !SAFE_GITHUB_PR_DETECTION_REASONS.has(reason)) {
     throw new TypeError("GitHub PR detection diagnostic reason is not allowlisted");
   }
-  return reason as "rate-limit" | "network" | "api" | "authentication";
+  return reason as "rate-limit" | "network" | "api" | "authentication" | "timeout";
 };
 
 /**
@@ -464,7 +507,8 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
       switch (error.diagnostic.reason) {
         case "authentication": return { kind: "authentication" };
         case "rate-limit":
-        case "network": return { kind: "retryable" };
+        case "network":
+        case "timeout": return { kind: "retryable" };
         case "api": return { kind: "validation" };
       }
     }
@@ -900,6 +944,11 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     ? ""
     : ` generation=${refresh.generation}` +
       ` trigger=${refresh.trigger} stage=${refresh.stage} status=${refresh.status}` +
+      (refresh.ordinal === undefined ? "" : ` ordinal=${refresh.ordinal}`) +
+      (refresh.relatedOperationId === undefined ? "" : ` relatedOp=${refresh.relatedOperationId}`) +
+      (refresh.relatedGeneration === undefined ? "" : ` relatedGeneration=${refresh.relatedGeneration}`) +
+      (refresh.supersededByGeneration === undefined ? "" : ` supersededByGeneration=${refresh.supersededByGeneration}`) +
+      (refresh.causedByOperationId === undefined ? "" : ` causedByOp=${refresh.causedByOperationId}`) +
       (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
       Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
       (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);

@@ -240,7 +240,7 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
         metadata.headSha,
         signal,
       );
-      if (mergeBase.kind === "unavailable") return mergeBase;
+      if (mergeBase.kind === "unavailable") return mergeBase.reason === "timeout" ? { kind: "unavailable", reason: "network" } : mergeBase;
       exactMetadata = { ...metadata, baseSha: mergeBase.mergeBaseSha };
     }
     if (
