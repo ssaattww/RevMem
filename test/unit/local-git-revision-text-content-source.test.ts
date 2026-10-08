@@ -78,7 +78,7 @@ test("local Git content source resolves the encoded context before reading its r
     { exitCode: 0, stdout: `${commitObjectId}\n`, stderr: "" },
     {
       exitCode: 0,
-      stdout: `100644 blob ${blobObjectId}\tsrc/file.ts\0`,
+      stdout: `${blobObjectId}\n`,
       stderr: ""
     }
   ]);
@@ -106,12 +106,10 @@ test("local Git content source resolves the encoded context before reading its r
     {
       cwd: repositoryRoot,
       argumentsList: [
-        "ls-tree",
-        "--full-tree",
-        "-z",
-        commitObjectId,
-        "--",
-        ":(literal)src/file.ts"
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `${commitObjectId}:src/file.ts`
       ]
     }
   ]);

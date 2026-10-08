@@ -252,15 +252,8 @@ test("local Git adapter reads exact streamed text content at a commit", async ()
   );
   executor.queue(
     repositoryRoot,
-    [
-      "ls-tree",
-      "--full-tree",
-      "-z",
-      originalRevision,
-      "--",
-      ":(literal)src/file.ts"
-    ],
-    success(`100644 blob ${blobObjectId}\tsrc/file.ts\0`)
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/file.ts`],
+    success(`${blobObjectId}\n`)
   );
 
   const result = await new LocalGitAdapter(
@@ -292,8 +285,8 @@ test("local Git adapter accepts an opened Shift-JIS hint only through the VS Cod
   );
   executor.queue(
     repositoryRoot,
-    ["ls-tree", "--full-tree", "-z", originalRevision, "--", ":(literal)src/shift-jis.txt"],
-    success(`100644 blob ${blobObjectId}\tsrc/shift-jis.txt\0`)
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/shift-jis.txt`],
+    success(`${blobObjectId}\n`)
   );
   const decodes: Array<readonly [Uint8Array, string]> = [];
   const adapter = new LocalGitAdapter(executor, blobReader, async (bytes, encoding) => {
@@ -326,8 +319,8 @@ test("local Git adapter isolates unsupported opened encoding instead of acceptin
   );
   executor.queue(
     repositoryRoot,
-    ["ls-tree", "--full-tree", "-z", originalRevision, "--", ":(literal)src/unsupported.txt"],
-    success(`100644 blob ${blobObjectId}\tsrc/unsupported.txt\0`)
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/unsupported.txt`],
+    success(`${blobObjectId}\n`)
   );
   const adapter = new LocalGitAdapter(executor, blobReader, async () => "\uFFFD");
 
@@ -373,15 +366,8 @@ test("local Git adapter distinguishes missing commits and missing files", async 
   );
   missingFileExecutor.queue(
     repositoryRoot,
-    [
-      "ls-tree",
-      "--full-tree",
-      "-z",
-      originalRevision,
-      "--",
-      ":(literal)src/missing.ts"
-    ],
-    success()
+    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/missing.ts`],
+    failure(1, "")
   );
 
   assert.deepEqual(
