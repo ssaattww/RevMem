@@ -52,6 +52,7 @@ for (const scenario of [
 ].filter((candidate) => selectedScenario === undefined || candidate.name === selectedScenario)) {
   const rows = [];
   for (let iteration = 1; iteration <= runCount; iteration += 1) {
+    const fixtureStartedAt = performance.now();
     const fixture = await createPr108ProductionFixture({
       contexts: [],
       contextHead: "D",
@@ -63,6 +64,7 @@ for (const scenario of [
         changedFileCount: scenario.changedFileCount,
       },
     });
+    const fixtureSetupMs = performance.now() - fixtureStartedAt;
     try {
       const sourceDirectory = path.join(fixture.root, "repository", "src");
       const syntheticBytes = readdirSync(sourceDirectory)
@@ -99,6 +101,7 @@ for (const scenario of [
       const row = {
         scenario: scenario.name,
         iteration,
+        fixtureSetupMs,
         syntheticBytes,
         changedFiles: scenario.changedFileCount,
         additions: scenario.changedFileCount,

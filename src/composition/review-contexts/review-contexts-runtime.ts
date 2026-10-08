@@ -216,6 +216,8 @@ extends RegisteredReviewContextsRuntime {
   }>;
   /** Test-only read-only probe for the shared actual VS Code URI boundary. */
   workspaceUriToFilesystemPathForTest?(uri: vscode.Uri): string | undefined;
+  /** Test-only projection counter for refresh-path regression checks. */
+  getProjectionGenerationCountForTest?(): number;
 }
 
 interface LocalRepositoryOwner {
@@ -355,7 +357,8 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly roots = new Map<string, Set<string>>();
   private pendingCachePublishes: Array<() => Promise<void>> = [];
-  private pendingProjection: (() => Promise<readonly ReviewContextListItem[]>) | undefined;
+  private pendingProjection: readonly ReviewContextListItem[] | undefined;
+  private projectionGenerationCount = 0;
   private readonly preparedCurrentContexts = new Map<string, PreparedCurrentContext>();
   private readonly preparedLocalCandidates = new Map<string, readonly CurrentContextUiSnapshot[]>();
   private acceptedCurrentContext: PreparedCurrentContext | undefined;
@@ -455,6 +458,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextListItem[]> {
     this.pendingCachePublishes = [];
+    this.pendingProjection = undefined;
     // Preparation is consumed only by the immediately following dependent
     // refresh. An independent Tree command always performs fresh acquisition.
     const acceptedPreparation = this.acceptedCurrentContext;
@@ -570,6 +574,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
 
     const hiddenContextIds = new Set(await this.visibility.readHiddenContextIds());
     const project = async (): Promise<readonly ReviewContextListItem[]> => {
+      this.projectionGenerationCount += 1;
       assertCurrent();
       const savedValues: ReviewContextState[] = [];
       for (const context of saved.values()) { savedValues.push(context); await checkpoint("copied-saved-context"); }
@@ -584,8 +589,8 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         { item: (kind) => checkpoint(kind), isCurrent: work.isCurrent }
       );
     };
-    this.pendingProjection = project;
     const projected = await project();
+    this.pendingProjection = projected;
     if (feedbackContext !== undefined) {
       const completed = observedPullRequestContextsByOperation.get(feedbackContext)?.size ?? 0;
       reportActiveOperationProgress({
@@ -601,10 +606,29 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   public async publishLoaded(): Promise<readonly ReviewContextListItem[] | undefined> {
     const publishes = this.pendingCachePublishes;
     this.pendingCachePublishes = [];
+    if (publishes.length === 0) {
+      this.pendingProjection = undefined;
+      return undefined;
+    }
     for (const publish of publishes) await publish();
     const projection = this.pendingProjection;
     this.pendingProjection = undefined;
-    return projection?.();
+    if (projection === undefined) return undefined;
+    return projection.map((item) => {
+      if (item.context.kind !== "pull-request") return item;
+      const cache = this.cacheStatusByContextId.get(item.context.contextId);
+      if (cache === undefined) {
+        if (item.cache === undefined) return item;
+        const withoutCache = { ...item };
+        delete withoutCache.cache;
+        return withoutCache;
+      }
+      return { ...item, cache };
+    });
+  }
+
+  public projectionGenerationCountForTest(): number {
+    return this.projectionGenerationCount;
   }
 
   public deferCachePublish(publish: () => Promise<void>): void {
@@ -1769,5 +1793,6 @@ export function registerT405ReviewContextsRuntime(
       }))),
     }),
     workspaceUriToFilesystemPathForTest: (uri) => workspaceFilesystemPath(uri),
+    getProjectionGenerationCountForTest: () => source.projectionGenerationCountForTest(),
   };
 }

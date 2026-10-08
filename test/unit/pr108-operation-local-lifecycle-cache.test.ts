@@ -52,6 +52,26 @@ test("PR lifecycle cache keeps concurrent operation scopes independent and stabl
   assert.notEqual(registry.forOperation(contextA), cacheA, "operation completion must release its memo");
 });
 
+test("operation cleanup listener failures do not skip later cleanup or replace success", async () => {
+  const busy: number[] = [];
+  const feedback = new OperationFeedback({
+    showBusy: (_label, count) => busy.push(count),
+    clearBusy: () => busy.push(0),
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  });
+  const cleanup: string[] = [];
+  const result = await feedback.run("cleanup failure isolation", async (context) => {
+    feedback.onOperationFinished(context, () => { cleanup.push("throwing"); throw new Error("cleanup failure"); });
+    feedback.onOperationFinished(context, () => cleanup.push("next"));
+    return "completed";
+  });
+
+  assert.equal(result, "completed");
+  assert.deepEqual(cleanup, ["throwing", "next"]);
+  assert.deepEqual(busy, [1, 0]);
+});
+
 test("PR lifecycle synchronization and projection reuse one operation snapshot and merge-base GET", async () => {
   const contexts = Array.from({ length: 40 }, (_, index) => 200 + index);
   const fixture = await createPr108ProductionFixture({
@@ -64,9 +84,12 @@ test("PR lifecycle synchronization and projection reuse one operation snapshot a
   });
   try {
     for (const number of contexts) fixture.remote.set(number, { base: "A", head: "C", state: "open" });
+    const projectionsBefore = fixture.runtime.getProjectionGenerationCountForTest?.() ?? 0;
     const before = fixture.metrics();
     assert.deepEqual(await fixture.invoke("reviewRange.refreshReviewContexts"), []);
     const after = fixture.metrics();
+    assert.equal((fixture.runtime.getProjectionGenerationCountForTest?.() ?? 0) - projectionsBefore, 1,
+      "publishing deferred cache metadata must reuse the completed projection");
     const delta = (path: string): number =>
       (after.githubFetchRequestCountsByPath[path] ?? 0) - (before.githubFetchRequestCountsByPath[path] ?? 0);
 
@@ -84,6 +107,7 @@ test("PR lifecycle synchronization and projection reuse one operation snapshot a
     for (const number of contexts) {
       assert.equal((await fixture.state(number))?.contextState.pullRequest?.headSha, fixture.revisions.C);
       assert.equal(fixture.item(number).context.pullRequest?.headSha, fixture.revisions.C);
+      assert.ok(fixture.item(number).cache, "published cache metadata must remain visible on the projected item");
     }
   } finally {
     await fixture.dispose();

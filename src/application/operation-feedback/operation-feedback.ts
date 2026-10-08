@@ -769,7 +769,13 @@ export class OperationFeedback {
       if (index >= 0) this.active.splice(index, 1);
       const listeners = this.operationFinishedListeners.get(active.id);
       this.operationFinishedListeners.delete(active.id);
-      for (const listener of listeners ?? []) listener();
+      for (const listener of listeners ?? []) {
+        try {
+          listener();
+        } catch {
+          // Cleanup must not replace the operation's success/failure/cancellation result.
+        }
+      }
       this.publishStatus();
     }
   }

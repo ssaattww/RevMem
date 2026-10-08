@@ -45,6 +45,7 @@ for (const contextCount of contextCounts) {
   const rows = [];
   for (let iteration = 1; iteration <= iterations; iteration += 1) {
     const contexts = Array.from({ length: contextCount }, (_, index) => 52 + index);
+    const fixtureStartedAt = performance.now();
     const fixture = await createPr108ProductionFixture({
       contexts,
       contextHead: "D",
@@ -54,6 +55,7 @@ for (const contextCount of contextCounts) {
       githubResponseDelayMilliseconds: responseDelayMilliseconds,
       syntheticRepository: { fileCount: 1, linesPerFile: 1000, changedLinesPerFile: 1 },
     });
+    const fixtureSetupMs = performance.now() - fixtureStartedAt;
     try {
       const before = fixture.metrics();
       const startedAt = performance.now();
@@ -61,20 +63,38 @@ for (const contextCount of contextCounts) {
       const redetectionMs = performance.now() - startedAt;
       const after = fixture.metrics();
       const refreshStages = after.refreshDiagnostics.slice(before.refreshDiagnostics.length);
-      const stageMilliseconds = Object.fromEntries([...new Set(refreshStages.map((event) => event.stage))].map((stage) => [
-        stage,
-        refreshStages.filter((event) => event.stage === stage && event.status === "succeeded")
-          .reduce((sum, event) => sum + (event.durationMs ?? 0), 0),
-      ]));
+      const requestIntervals = after.githubFetchIntervals.slice(before.githubFetchIntervals.length);
+      const requestEvents = requestIntervals.flatMap(({ startedAt, endedAt }) => [
+        { at: startedAt, delta: 1 }, { at: endedAt, delta: -1 },
+      ]).sort((left, right) => left.at - right.at || left.delta - right.delta);
+      let activeRequests = 0;
+      let maxConcurrentGithubRequests = 0;
+      for (const event of requestEvents) {
+        activeRequests += event.delta;
+        maxConcurrentGithubRequests = Math.max(maxConcurrentGithubRequests, activeRequests);
+      }
+      const requestBoundaries = [...new Set(requestIntervals.flatMap(({ startedAt, endedAt }) => [startedAt, endedAt]))]
+        .sort((left, right) => left - right);
+      const githubRequestWallUnionMs = requestBoundaries.slice(0, -1).reduce((sum, boundary, index) => {
+        const next = requestBoundaries[index + 1];
+        return sum + (next - boundary) * (requestIntervals.some((interval) => interval.startedAt < next && interval.endedAt > boundary) ? 1 : 0);
+      }, 0);
+      const stageEvents = refreshStages.map(({ stage, status, durationMs }) => ({ stage, status, durationMs }));
       const row = {
         contextCount,
         iteration,
+        fixtureSetupMs,
         redetectionMs,
         githubRequests: after.githubFetchRequests - before.githubFetchRequests,
         githubRequestMs: after.githubFetchMilliseconds - before.githubFetchMilliseconds,
-        stageMilliseconds,
+        githubRequestWallUnionMs,
+        maxConcurrentGithubRequests,
+        stageEvents,
         gitSubprocessMs: after.gitSubprocessMilliseconds - before.gitSubprocessMilliseconds,
         stateSaveMs: after.stateSaveMilliseconds - before.stateSaveMilliseconds,
+        reviewStateReads: Object.fromEntries(Object.entries(after.stateReadCounts).map(([method, count]) => [
+          method, count - before.stateReadCounts[method],
+        ])),
         contentReadMs: after.revisionContentReadMilliseconds - before.revisionContentReadMilliseconds,
         diffAcquisitionMs: after.diffAcquisitionMilliseconds - before.diffAcquisitionMilliseconds,
         githubRequestCountsByPath: Object.fromEntries(Object.entries(after.githubFetchRequestCountsByPath).map(([endpoint, count]) => [
@@ -84,6 +104,7 @@ for (const contextCount of contextCounts) {
         diffAcquisitions: after.diffAcquisitionCount - before.diffAcquisitionCount,
         statePublications: after.ownerPublications - before.ownerPublications,
         providerTreeNotifications: after.providerTreeChangeEvents - before.providerTreeChangeEvents,
+        projectionGenerations: after.projectionGenerationCount - before.projectionGenerationCount,
         registrations: fixture.registrations.length,
         errors: fixture.errors.length,
       };
@@ -97,6 +118,7 @@ for (const contextCount of contextCounts) {
   console.log(JSON.stringify({
     contextCountSummary: contextCount,
     redetectionMs: summary(rows.map((row) => row.redetectionMs)),
+    fixtureSetupMs: summary(rows.map((row) => row.fixtureSetupMs)),
     githubRequests: summary(rows.map((row) => row.githubRequests)),
     githubRequestMs: summary(rows.map((row) => row.githubRequestMs)),
   }));

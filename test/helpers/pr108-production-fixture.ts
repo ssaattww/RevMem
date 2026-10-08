@@ -218,7 +218,20 @@ export async function createPr108ProductionFixture(options: {
   let stateSaveMilliseconds = 0;
   let stateCommitCount = 0;
   let stateCreateCount = 0;
+  const stateReadCounts = { load: 0, loadRepositorySnapshot: 0, listRepositoryContexts: 0 };
   const instrumentOwner = (): void => {
+    const load = atomic.load.bind(atomic);
+    atomic.load = async (...args) => { stateReadCounts.load += 1; return load(...args); };
+    const loadRepositorySnapshot = atomic.loadRepositorySnapshot.bind(atomic);
+    atomic.loadRepositorySnapshot = async (...args) => {
+      stateReadCounts.loadRepositorySnapshot += 1;
+      return loadRepositorySnapshot(...args);
+    };
+    const listRepositoryContexts = atomic.listRepositoryContexts.bind(atomic);
+    atomic.listRepositoryContexts = async (...args) => {
+      stateReadCounts.listRepositoryContexts += 1;
+      return listRepositoryContexts(...args);
+    };
     const commit = atomic.commitRepository.bind(atomic);
     atomic.commitRepository = async (transaction) => {
       const startedAt = performance.now();
@@ -308,11 +321,14 @@ export async function createPr108ProductionFixture(options: {
     status, headers: { "content-type": "application/json" },
   });
   const fetchRequests: string[] = [];
+  const githubFetchIntervals: Array<{ startedAt: number; endedAt: number }> = [];
   let githubFetchMilliseconds = 0;
   const githubFetchRequestCountsByPath: Record<string, number> = {};
   globalThis.fetch = options.existingRepository?.fetch ?? (async (input, init) => {
     const url = new URL(String(input));
     const fetchStartedAt = performance.now();
+    const fetchInterval = { startedAt: fetchStartedAt, endedAt: fetchStartedAt };
+    githubFetchIntervals.push(fetchInterval);
     fetchRequests.push(`${url.pathname}?${url.searchParams.get("state") ?? ""}`);
     githubFetchRequestCountsByPath[url.pathname] = (githubFetchRequestCountsByPath[url.pathname] ?? 0) + 1;
     try {
@@ -343,7 +359,8 @@ export async function createPr108ProductionFixture(options: {
       }
       throw new Error(`Unexpected request in PR108 production fixture: ${url.pathname}`);
     } finally {
-      githubFetchMilliseconds += performance.now() - fetchStartedAt;
+      fetchInterval.endedAt = performance.now();
+      githubFetchMilliseconds += fetchInterval.endedAt - fetchStartedAt;
     }
   });
   const commands = new Map<string, (...args: unknown[]) => unknown>();
@@ -538,12 +555,16 @@ export async function createPr108ProductionFixture(options: {
       stateSaveCount,
       stateCommitCount,
       stateCreateCount,
+      stateReadCounts: { ...stateReadCounts },
       stateSaveMilliseconds,
       providerTreeChangeEvents,
       githubFetchRequests: fetchRequests.length,
       githubFetchMilliseconds,
+      githubFetchIntervals: githubFetchIntervals.map((interval) => ({ ...interval })),
       githubFetchRequestCountsByPath: { ...githubFetchRequestCountsByPath },
       refreshDiagnostics: [...refreshDiagnostics],
+      projectionGenerationCount: (runtime as typeof runtime & { getProjectionGenerationCountForTest?: () => number })
+        .getProjectionGenerationCountForTest?.() ?? 0,
     }),
     async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
     ownerSynchronizationRevision(revision: FixtureRevision | undefined) { ownerSynchronizationRevision = revision; },
