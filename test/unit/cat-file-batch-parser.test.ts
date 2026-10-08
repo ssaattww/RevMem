@@ -117,6 +117,35 @@ test("cat-file batch parser is poisoned after finish detects a truncated frame",
   assert.throws(() => parser.finish(), /poisoned/u);
 });
 
+test("cat-file batch parser releases a pending blob buffer when it becomes poisoned", () => {
+  const expectedOid = oid("a");
+  const parser = new CatFileBatchResponseParser([expectedOid], 1024 * 1024);
+  const size = 1024 * 1024;
+
+  parser.push(Buffer.from(`${expectedOid} blob ${size}\n`, "ascii"));
+  parser.push(Buffer.alloc(size, 0x78));
+  const pendingBeforeError = Object.getOwnPropertyDescriptor(parser, "pendingObject")?.value as
+    { readonly bytes?: Uint8Array } | undefined;
+  assert.equal(pendingBeforeError?.bytes?.byteLength, size);
+
+  assert.throws(() => parser.push(Buffer.from("!", "ascii")), /LF terminator/u);
+
+  assert.equal(Object.getOwnPropertyDescriptor(parser, "pendingObject")?.value, undefined);
+  assert.throws(() => parser.finish(), /poisoned/u);
+});
+
+test("cat-file batch parser rejects every push and finish after successful finish", () => {
+  const expectedOid = oid("a");
+  const parser = new CatFileBatchResponseParser([expectedOid], 16);
+
+  parser.push(Buffer.from(`${expectedOid} blob 0\n\n`, "ascii"));
+  parser.finish();
+
+  assert.throws(() => parser.push(new Uint8Array(0)), /already finished/u);
+  assert.throws(() => parser.push(Buffer.from("extra", "ascii")), /already finished/u);
+  assert.throws(() => parser.finish(), /already finished/u);
+});
+
 test("cat-file batch parser rejects a response that omits requested objects", () => {
   const firstOid = oid("a");
   const secondOid = oid("b");

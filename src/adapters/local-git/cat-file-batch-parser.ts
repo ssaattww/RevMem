@@ -28,6 +28,7 @@ export class CatFileBatchResponseParser {
   private headerLength = 0;
   private nextObjectIndex = 0;
   private pendingObject: PendingObjectFrame | undefined;
+  private state: "open" | "finished" | "poisoned" = "open";
   private failure: Error | undefined;
 
   public constructor(objectIds: readonly string[], maxBlobBytes: number) {
@@ -52,8 +53,7 @@ export class CatFileBatchResponseParser {
     try {
       return this.pushChunk(chunk);
     } catch (error) {
-      this.failure = error instanceof Error ? error : new Error(String(error));
-      throw this.failure;
+      throw this.poison(error);
     }
   }
 
@@ -133,16 +133,25 @@ export class CatFileBatchResponseParser {
       if (this.nextObjectIndex !== this.objectIds.length) {
         throw new Error(`Cat-file batch response expected ${this.objectIds.length} response frames, received ${this.nextObjectIndex}`);
       }
+      this.state = "finished";
     } catch (error) {
-      this.failure = error instanceof Error ? error : new Error(String(error));
-      throw this.failure;
+      throw this.poison(error);
     }
   }
 
   private assertUsable(): void {
-    if (this.failure !== undefined) {
+    if (this.state === "poisoned") {
       throw new Error("Cat-file batch parser is poisoned after a previous protocol error", { cause: this.failure });
     }
+    if (this.state === "finished") throw new Error("Cat-file batch parser is already finished");
+  }
+
+  private poison(error: unknown): Error {
+    this.failure = error instanceof Error ? error : new Error(String(error));
+    this.pendingObject = undefined;
+    this.headerLength = 0;
+    this.state = "poisoned";
+    return this.failure;
   }
 
   private appendHeader(bytes: Uint8Array): void {
