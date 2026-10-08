@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, type ChildProcessWithoutNullStreams, type SpawnOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
@@ -466,12 +466,29 @@ export async function createPr108ProductionFixture(options: {
     ) => Promise<void>;
   };
   const readGitBlobs = batchBlobReader.readBlobs?.bind(batchBlobReader);
+  const batchTransportInternals = (batchBlobReader as unknown as {
+    batchTransport?: {
+      spawnProcess: (
+        executable: string,
+        argumentsList: string[],
+        options: SpawnOptions,
+      ) => ChildProcessWithoutNullStreams;
+    };
+  }).batchTransport;
+  if (batchTransportInternals !== undefined) {
+    const spawnBatchProcess = batchTransportInternals.spawnProcess.bind(batchTransportInternals);
+    batchTransportInternals.spawnProcess = (executable, argumentsList, options) => {
+      const child = spawnBatchProcess(executable, argumentsList, options);
+      const command = argumentsList.join(" ") || "unknown";
+      gitSubprocessCount += 1;
+      gitCommandCounts[command] = (gitCommandCounts[command] ?? 0) + 1;
+      return child;
+    };
+  }
   if (readGitBlobs !== undefined) {
     batchBlobReader.readBlobs = async (repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal) => {
       if (blobObjectIds.length === 0) return readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal);
       const startedAt = performance.now();
-      gitSubprocessCount += 1;
-      gitCommandCounts["cat-file --batch"] = (gitCommandCounts["cat-file --batch"] ?? 0) + 1;
       try { return await readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal); }
       finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
     };
