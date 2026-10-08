@@ -108,6 +108,7 @@ import {
   type GitRevisionMappingSource,
 } from "../../application/review-context/index";
 import { linkAbortSignal } from "./link-abort-signal";
+import { readReviewDiffContentsSequentially } from "./read-review-diff-contents";
 import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
@@ -1079,23 +1080,18 @@ export function registerT405ReviewContextsRuntime(
     );
     if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
     const remote = createPullRequestRemote(identity, token);
-    return Promise.all(descriptors.map(async (descriptor) => {
-      const result = local.get(descriptor.filePath) ?? { kind: "missing-file" as const };
-      if (result.kind === "found" || result.kind === "invalid-encoding") return result;
-      const fallback = await remote.readFile(
+    return readReviewDiffContentsSequentially(
+      descriptors,
+      local,
+      (descriptor, remoteSignal) => remote.readFile(
         identity,
         descriptor.revision,
         descriptor.filePath,
         feedbackContext,
-        signal,
-      );
-      if (fallback.kind === "found") return fallback;
-      if (fallback.kind === "binary") return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
-      if (fallback.reason === "missing-revision") return { kind: "missing-revision" as const };
-      return result.kind === "missing-revision"
-        ? { kind: "missing-revision" as const }
-        : { kind: "missing-file" as const };
-    }));
+        remoteSignal,
+      ),
+      signal,
+    );
   };
 
   const acquire = async (

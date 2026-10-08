@@ -34,6 +34,8 @@ import { recordPullRequestReviewHistory } from "../../src/composition/pull-reque
 import { buildSnapshotFromLocalGitDiff } from "../../src/application/github-pr-diff/pull-request-diff-builders.js";
 import { deriveDocumentLineContract } from "../../src/core/intervals/index.js";
 import { OperationFeedback, formatOperationLogEntry, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
+import { readReviewDiffContentsSequentially } from "../../src/composition/review-contexts/read-review-diff-contents.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -124,6 +126,80 @@ test("PR Progress batches immutable content reads and reuses the results during 
     totalLineCount: 2,
     progress: 0,
   });
+});
+
+test("PR remote content fallbacks run sequentially and preserve local and remote result order", async () => {
+  const descriptors = ["cached.ts", "first.ts", "second.ts", "invalid.ts"].map((filePath) => ({
+    contextId: CONTEXT_ID,
+    filePath,
+    fileSystemPathSemantics: "posix" as const,
+    side: "modified" as const,
+    revisionSource: "git-commit" as const,
+    revision: B,
+  }));
+  const local = new Map<string, RevisionTextContentReadResult>([
+    ["cached.ts", { kind: "found" as const, content: "local" }],
+    ["first.ts", { kind: "missing-file" as const }],
+    ["second.ts", { kind: "missing-revision" as const }],
+    ["invalid.ts", { kind: "invalid-encoding", encoding: "utf-8" }],
+  ]);
+  const calls: string[] = [];
+  let active = 0;
+  let maximumActive = 0;
+
+  const results = await readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
+    calls.push(descriptor.filePath);
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return descriptor.filePath === "first.ts"
+      ? { kind: "found", content: "remote" }
+      : { kind: "unavailable", reason: "missing-revision" };
+  });
+
+  assert.deepEqual(calls, ["first.ts", "second.ts"]);
+  assert.equal(maximumActive, 1);
+  assert.deepEqual(results, [
+    { kind: "found", content: "local" },
+    { kind: "found", content: "remote" },
+    { kind: "missing-revision" },
+    { kind: "invalid-encoding", encoding: "utf-8" },
+  ]);
+});
+
+test("PR remote content fallback stops before the next descriptor after cancellation", async () => {
+  const descriptors = ["first.ts", "second.ts"].map((filePath) => ({
+    contextId: CONTEXT_ID,
+    filePath,
+    fileSystemPathSemantics: "posix" as const,
+    side: "modified" as const,
+    revisionSource: "git-commit" as const,
+    revision: B,
+  }));
+  const local = new Map<string, RevisionTextContentReadResult>(descriptors.map((descriptor) => [
+    descriptor.filePath,
+    { kind: "missing-file" },
+  ]));
+  let resolveRemote!: () => void;
+  const remoteGate = new Promise<void>((resolve) => { resolveRemote = resolve; });
+  let markStarted!: () => void;
+  const remoteStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+  const controller = new AbortController();
+  const calls: string[] = [];
+
+  const read = readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
+    calls.push(descriptor.filePath);
+    markStarted();
+    await remoteGate;
+    return { kind: "found", content: "remote" };
+  }, controller.signal);
+  await remoteStarted;
+  controller.abort();
+  resolveRemote();
+
+  await assert.rejects(read, { name: "AbortError" });
+  assert.deepEqual(calls, ["first.ts"]);
 });
 
 const globalState = (): RepositoryGlobalState => ({
