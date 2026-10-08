@@ -69,6 +69,7 @@ import {
   type SelectedReviewContext,
   type GitRevisionMappingSource,
 } from "../../application/review-context/index";
+import { linkAbortSignal } from "./link-abort-signal";
 import {
   PullRequestRevisionEvidenceLoader,
   ReviewContextsController,
@@ -78,6 +79,7 @@ import {
   type ReviewContextCacheStatus,
   type ReviewContextListItem,
   type ReviewContextListProgress,
+  type PullRequestRedetectionDisposition,
 } from "../../application/review-contexts/index";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -1345,8 +1347,7 @@ export function registerT405ReviewContextsRuntime(
           candidate,
         }));
         const cancellation = new vscode.CancellationTokenSource();
-        const abortSelection = (): void => cancellation.cancel();
-        signal?.addEventListener("abort", abortSelection, { once: true });
+        const disposeAbortSelection = linkAbortSignal(signal, () => cancellation.cancel());
         const selectionStartedAt = Date.now();
         reportDetection("candidate-selection", "started");
         try {
@@ -1371,7 +1372,7 @@ export function registerT405ReviewContextsRuntime(
           });
           throw error;
         } finally {
-          signal?.removeEventListener("abort", abortSelection);
+          disposeAbortSelection();
           cancellation.dispose();
         }
       },
@@ -1549,27 +1550,53 @@ export function registerT405ReviewContextsRuntime(
 
   let activeRedetection: {
     readonly requestHint: string | undefined;
+    repositoryGeneration?: string;
     phase: "repository-inspection" | "detection";
     readonly cancellation: AbortController;
-    promise: Promise<void>;
+    promise: Promise<PullRequestRedetectionDisposition>;
   } | undefined;
-  const redetectPullRequest = async (feedbackContext?: OperationFeedbackContext, externalSignal?: AbortSignal): Promise<void> => {
+  const repositoryGeneration = (local: LocalGitRepository): string => JSON.stringify([
+    local.repositoryId,
+    local.rootPath,
+    local.head ?? null,
+    local.branch.kind === "branch" ? local.branch.fullRef : "detached",
+    local.remote?.rawUrl ?? null,
+  ]);
+  const redetectPullRequest = async (
+    feedbackContext?: OperationFeedbackContext,
+    externalSignal?: AbortSignal,
+  ): Promise<PullRequestRedetectionDisposition> => {
     if (externalSignal?.aborted === true) throw new DOMException("PR detection was superseded.", "AbortError");
     const requestHint = vscode.window.activeTextEditor?.document.uri.toString(true);
+    let preInspectedRepository: LocalGitRepository | undefined;
     if (
       requestHint !== undefined &&
       activeRedetection?.phase === "detection" &&
       activeRedetection.requestHint === requestHint &&
       !activeRedetection.cancellation.signal.aborted
     ) {
-      reportActivePullRequestRefresh(feedbackContext, {
-        generation: pullRequestDetectionGeneration,
-        trigger: "pr-redetection",
-        stage: "refresh-request",
-        status: "coalesced",
-        reasonCode: "duplicate-trigger-coalesced",
-      });
-      return activeRedetection.promise;
+      const observed = await inspectActiveRepository();
+      if (externalSignal !== undefined && externalSignal.aborted) {
+        throw new DOMException("PR detection was superseded.", "AbortError");
+      }
+      preInspectedRepository = observed;
+      const latest = activeRedetection;
+      if (
+        latest?.phase === "detection" &&
+        latest.requestHint === requestHint &&
+        !latest.cancellation.signal.aborted &&
+        latest.repositoryGeneration === repositoryGeneration(observed)
+      ) {
+        reportActivePullRequestRefresh(feedbackContext, {
+          generation: pullRequestDetectionGeneration,
+          trigger: "pr-redetection",
+          stage: "refresh-request",
+          status: "coalesced",
+          reasonCode: "duplicate-trigger-coalesced",
+        });
+        await latest.promise;
+        return "coalesced";
+      }
     }
     activeRedetection?.cancellation.abort();
     const cancellation = new AbortController();
@@ -1577,14 +1604,15 @@ export function registerT405ReviewContextsRuntime(
     externalSignal?.addEventListener("abort", abort, { once: true });
     const record: {
       readonly requestHint: string | undefined;
+      repositoryGeneration?: string;
       phase: "repository-inspection" | "detection";
       readonly cancellation: AbortController;
-      promise: Promise<void>;
+      promise: Promise<PullRequestRedetectionDisposition>;
     } = {
       requestHint,
       phase: "repository-inspection",
       cancellation,
-      promise: Promise.resolve(),
+      promise: Promise.resolve("completed"),
     };
     activeRedetection = record;
     const waitForActiveRequest = <T>(work: Promise<T>): Promise<T> => {
@@ -1608,13 +1636,17 @@ export function registerT405ReviewContextsRuntime(
         );
       });
     };
-    record.promise = (async () => {
-      const local = await waitForActiveRequest(inspectActiveRepository());
+    record.promise = (async (): Promise<PullRequestRedetectionDisposition> => {
+      const local = await waitForActiveRequest(
+        preInspectedRepository === undefined ? inspectActiveRepository() : Promise.resolve(preInspectedRepository),
+      );
       if (activeRedetection !== record || cancellation.signal.aborted) {
         throw new DOMException("PR detection was superseded.", "AbortError");
       }
+      record.repositoryGeneration = repositoryGeneration(local);
       record.phase = "detection";
       await detectPullRequest(local, feedbackContext, cancellation.signal);
+      return "completed";
     })().finally(() => {
       externalSignal?.removeEventListener("abort", abort);
       if (activeRedetection === record) activeRedetection = undefined;

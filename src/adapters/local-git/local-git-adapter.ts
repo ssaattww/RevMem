@@ -311,7 +311,8 @@ export class LocalGitAdapter {
       "repositoryRelativePath"
     );
     const commitKey = `${rootPath}\0${object}`;
-    if (!this.verifiedCommits.has(commitKey)) {
+    const commitWasCached = this.verifiedCommits.has(commitKey);
+    if (!commitWasCached) {
       const revisionInvocation: GitCommandInvocation = {
         cwd: rootPath,
         argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
@@ -346,7 +347,25 @@ export class LocalGitAdapter {
       ]
     };
     const fileResult = await this.commandExecutor.execute(fileInvocation, feedbackContext, signal);
-    if (fileResult.exitCode === 1) return { kind: "missing-file" };
+    if (fileResult.exitCode === 1) {
+      if (!commitWasCached) return { kind: "missing-file" };
+      // A cached commit may have been pruned after an earlier successful read.
+      // Recheck only on a failed path lookup so stale cache entries cannot turn
+      // a missing revision into a missing-file result.
+      this.verifiedCommits.delete(commitKey);
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      if (revisionResult.exitCode === 1) return { kind: "missing-revision" };
+      this.requireSuccess(revisionInvocation, revisionResult);
+      if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
+        return { kind: "missing-revision" };
+      }
+      this.verifiedCommits.set(commitKey, true);
+      return { kind: "missing-file" };
+    }
     this.requireSuccess(fileInvocation, fileResult);
     const blobObjectId = firstOutputLine(fileResult.stdout, "immutable file object");
     if (!FULL_OBJECT_ID_PATTERN.test(blobObjectId)) throw new Error("git rev-parse returned an invalid file object ID");
@@ -355,8 +374,16 @@ export class LocalGitAdapter {
     try {
       bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
     } catch (error) {
-      if (error instanceof GitCommandFailedError && /\bis a tree, not a blob\b|\bnot a blob object\b/iu.test(error.result.stderr)) {
-        return { kind: "missing-file" };
+      if (error instanceof GitCommandFailedError) {
+        const typeInvocation: GitCommandInvocation = {
+          cwd: rootPath,
+          argumentsList: ["cat-file", "-t", blobObjectId]
+        };
+        const typeResult = await this.commandExecutor.execute(typeInvocation, feedbackContext, signal);
+        if (typeResult.exitCode === 0) {
+          const objectType = typeResult.stdout.trim();
+          if (objectType === "tree" || objectType === "commit") return { kind: "missing-file" };
+        }
       }
       throw error;
     }

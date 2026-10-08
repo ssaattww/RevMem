@@ -131,11 +131,19 @@ test("Issue #136 coalesces concurrent PR redetection commands into one operation
   const { commands, runtime } = loadReviewContextsRuntime();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  let redetects = 0;
+  let redetectRequests = 0;
+  let redetectionOperations = 0;
   let loads = 0;
+  let activeRedetection: Promise<"completed"> | undefined;
   runtime.registerReviewContextsRuntime({ subscriptions: [] } as never, {
     source: { load: async () => { loads += 1; return []; } },
-    controller: { redetectPullRequest: async () => { redetects += 1; await gate; } } as never,
+    controller: { redetectPullRequest: () => {
+      redetectRequests += 1;
+      if (activeRedetection !== undefined) return activeRedetection.then(() => "coalesced" as const);
+      redetectionOperations += 1;
+      activeRedetection = gate.then(() => "completed" as const);
+      return activeRedetection;
+    } } as never,
     refreshDecorations: async () => undefined,
     reportError: async () => undefined,
   });
@@ -143,9 +151,10 @@ test("Issue #136 coalesces concurrent PR redetection commands into one operation
   const command = commands.get("reviewRange.redetectPullRequest")!;
   const first = command();
   const second = command();
-  assert.equal(redetects, 1);
+  assert.equal(redetectRequests, 2, "the runtime must inspect the repository generation for a repeated trigger");
+  assert.equal(redetectionOperations, 1, "same-generation requests still coalesce to one active operation");
   release();
   await Promise.all([first, second]);
-  assert.equal(redetects, 1);
+  assert.equal(redetectionOperations, 1);
   assert.equal(loads, 2, "startup and one post-operation refresh are the only provider reads");
 });

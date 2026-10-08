@@ -125,6 +125,7 @@ test("controller hides only the presentation identity and delegates T405 operati
     },
     redetectPullRequest: async () => {
       calls.push("redetect");
+      return "completed";
     },
     reconnectGitHub: async () => {
       calls.push("reconnect");

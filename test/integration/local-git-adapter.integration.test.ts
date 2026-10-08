@@ -176,6 +176,54 @@ test("real Git revision content returns exact original and modified text", async
   }
 });
 
+test("verified commit cache rechecks an object pruned after a successful read", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    assert.deepEqual(await adapter.readTextFileAtRevision(
+      repository.path, repository.headCommit, "fixture.txt", "posix"
+    ), { kind: "found", content: "base\nhead\n" });
+
+    await repository.runGit(["update-ref", "-d", "refs/heads/main"]);
+    await repository.runGit(["reflog", "expire", "--expire=now", "--all"]);
+    await repository.runGit(["gc", "--prune=now"]);
+    await assert.rejects(repository.runGit(["cat-file", "-e", `${repository.headCommit}^{commit}`]));
+
+    assert.deepEqual(await adapter.readTextFileAtRevision(
+      repository.path, repository.headCommit, "fixture.txt", "posix"
+    ), { kind: "missing-revision" });
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("revision path lookup preserves blob-only behavior for directories, gitlinks, symlinks, and colons", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await mkdir(path.join(repository.path, "nested"), { recursive: true });
+    await writeFile(path.join(repository.path, "colon:name.txt"), "colon path\n", "utf8");
+    await symlink("fixture.txt", path.join(repository.path, "fixture-link"));
+    await repository.runGit(["add", "--all"]);
+    await repository.runGit(["commit", "--message", "add path edge cases"]);
+    const commit = await repository.runGit(["rev-parse", "HEAD"]);
+
+    await mkdir(path.join(repository.path, "vendor"), { recursive: true });
+    await repository.runGit(["update-index", "--add", "--cacheinfo", `160000,${repository.baseCommit},vendor/submodule`]);
+    await repository.runGit(["commit", "--message", "add gitlink"]);
+    const gitlinkCommit = await repository.runGit(["rev-parse", "HEAD"]);
+
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "nested", "posix"), { kind: "missing-file" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, gitlinkCommit, "vendor/submodule", "posix"), { kind: "missing-file" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "fixture-link", "posix"), { kind: "found", content: "fixture.txt" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "colon:name.txt", "posix"), { kind: "found", content: "colon path\n" });
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("a missing Git executable is reported without conflating it with a plain folder", async () => {
   const adapter = createNodeLocalGitAdapter({
     executable: "review-range-git-executable-that-does-not-exist"

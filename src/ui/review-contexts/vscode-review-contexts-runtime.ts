@@ -321,17 +321,17 @@ export function registerReviewContextsRuntime(
   const refreshListAtStartup = (): Promise<"completed" | "cancelled" | "terminal"> =>
     runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   const mutate = async (
-    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void | "coalesced">,
     refreshDecorations = false,
   ): Promise<void> => {
     let terminalFailure = false;
     const outcome = await runOperation("Review Contextsを更新", async (feedbackContext) => {
-      await operation(feedbackContext);
+      const disposition = await operation(feedbackContext);
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
       // A typed failure may still produce an authoritative branch fallback;
       // refresh the shared context before preserving the terminal failure.
-      await refreshFromSharedCoordinator(feedbackContext);
+      if (disposition !== "coalesced") await refreshFromSharedCoordinator(feedbackContext);
       terminalFailure ||= hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
     if (outcome === "cancelled") return;
@@ -351,16 +351,18 @@ export function registerReviewContextsRuntime(
       ? undefined
       : `${document.uri.fsPath}\u0000${document.version}`;
     const active = activeRedetectionCommand;
-    if (active !== undefined && active.requestHint === requestHint) return active.promise;
-    activeRedetectionCommand?.cancellation.abort();
+    const sameRequest = active !== undefined && active.requestHint === requestHint;
+    if (!sameRequest) activeRedetectionCommand?.cancellation.abort();
     const cancellation = new AbortController();
     const record: {
       readonly requestHint: string | undefined;
       readonly cancellation: AbortController;
       promise: Promise<void>;
     } = { requestHint, cancellation, promise: Promise.resolve() };
-    const promise = mutate((feedbackContext) =>
-      dependencies.controller.redetectPullRequest(feedbackContext, cancellation.signal));
+    const promise = mutate(async (feedbackContext) => {
+      const disposition = await dependencies.controller.redetectPullRequest(feedbackContext, cancellation.signal);
+      return disposition === "coalesced" ? "coalesced" : undefined;
+    });
     record.promise = promise.finally(() => {
       if (activeRedetectionCommand === record) activeRedetectionCommand = undefined;
     });

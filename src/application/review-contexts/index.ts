@@ -12,6 +12,7 @@ export {
   type ReviewContextListProgress,
   type ReviewContextVisibilityStore,
   type ReviewContextsControllerDependencies,
+  type PullRequestRedetectionDisposition,
   type ReviewContextsProjectionInput,
   type ReviewContextsProjectionWork,
 } from "./review-contexts-controller";

@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
+import { linkAbortSignal } from "../../src/composition/review-contexts/link-abort-signal.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -74,6 +75,17 @@ const contextState = (): ReviewContextState => ({
   },
   createdAt: "2026-08-16T00:00:00.000Z",
   updatedAt: "2026-08-16T00:00:00.000Z",
+});
+
+test("T405 Quick Pick cancellation is applied when abort lands before its listener registration", () => {
+  const controller = new AbortController();
+  controller.abort();
+  let cancellationCount = 0;
+  const dispose = linkAbortSignal(controller.signal, () => { cancellationCount += 1; });
+
+  assert.equal(cancellationCount, 1);
+  dispose();
+  assert.equal(cancellationCount, 1);
 });
 
 const globalState = (): RepositoryGlobalState => ({

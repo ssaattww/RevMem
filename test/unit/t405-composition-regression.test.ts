@@ -390,6 +390,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     let lifecycle53: "open" | "closed" | "merged" = "open";
     let refreshTransport: "live" | "offline" = "live";
     let discoveryTransport: "live" | "network" | "zero" = "live";
+    const prSearchRequestHeads: string[] = [];
+    let nextPrSearchGate: { readonly announce: () => void; readonly wait: Promise<void> } | undefined;
     let remoteBaseSha = baseSha;
     let remoteHeadSha = targetHeadSha;
     let patchOldLine = "old";
@@ -397,8 +399,15 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
+        prSearchRequestHeads.push(remoteHeadSha);
         if (discoveryTransport === "network") throw new Error("network interrupted during PR detection");
         if (discoveryTransport === "zero") return jsonResponse([]);
+        const gate = nextPrSearchGate;
+        nextPrSearchGate = undefined;
+        if (gate !== undefined) {
+          gate.announce();
+          await gate.wait;
+        }
         return jsonResponse([52, 53].map((number) => ({
           number,
           title: `PR ${number}`,
@@ -1818,6 +1827,57 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(
       withoutUpdatedAt(pr52AfterBranchCommands?.contextState),
       withoutUpdatedAt(pr52BeforeBranchCommands?.contextState),
+    );
+
+    // Same path and document version do not identify an immutable Git owner
+    // generation. A repeated trigger must inspect HEAD before deciding to join.
+    const priorEditor = fakeVscode.window.activeTextEditor;
+    fakeVscode.window.activeTextEditor = {
+      document: {
+        uri: { scheme: "file", authority: "", fsPath: repositoryRoot, query: "", fragment: "", toString: () => repositoryRoot },
+        version: 77,
+      },
+    } as never;
+    let releaseOldSearch!: () => void;
+    let announceOldSearch!: () => void;
+    const oldSearchStarted = new Promise<void>((resolve) => { announceOldSearch = resolve; });
+    const oldSearchGate = new Promise<void>((resolve) => { releaseOldSearch = resolve; });
+    nextPrSearchGate = { announce: announceOldSearch, wait: oldSearchGate };
+    let repositoryInspections = 0;
+    const inspectRepository = localGit.inspectRepository.bind(localGit);
+    localGit.inspectRepository = async (startPath) => {
+      repositoryInspections += 1;
+      return inspectRepository(startPath);
+    };
+    const sameDocumentRedetect = commands.get("reviewRange.redetectPullRequest");
+    assert.ok(sameDocumentRedetect);
+    const firstGeneration = Promise.resolve(sameDocumentRedetect());
+    await oldSearchStarted;
+    const searchCountBeforeHeadChange = prSearchRequestHeads.length;
+    await writeFile(sourcePath, "keep\nnewer generation", "utf8");
+    await runGit(repositoryRoot, ["add", FILE_ID]);
+    await runGit(repositoryRoot, ["commit", "-m", "HEAD-only generation change"]);
+    remoteHeadSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    const inspectionsBeforeReplacement = repositoryInspections;
+    const secondGeneration = Promise.resolve(sameDocumentRedetect());
+    const replacementInspected = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        const check = (): void => {
+          if (repositoryInspections > inspectionsBeforeReplacement) resolve(true);
+          else setTimeout(check, 5);
+        };
+        check();
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+    ]);
+    releaseOldSearch();
+    await Promise.allSettled([firstGeneration, secondGeneration]);
+    localGit.inspectRepository = inspectRepository;
+    fakeVscode.window.activeTextEditor = priorEditor;
+    assert.equal(replacementInspected, true, "same document version must reach repository-generation inspection");
+    assert.ok(
+      prSearchRequestHeads.slice(searchCountBeforeHeadChange).includes(remoteHeadSha),
+      `same-document redetection must search using the new HEAD (head=${remoteHeadSha}, requests=${JSON.stringify(prSearchRequestHeads.slice(searchCountBeforeHeadChange))})`,
     );
   } finally {
     moduleLoader._load = originalModuleLoad;
