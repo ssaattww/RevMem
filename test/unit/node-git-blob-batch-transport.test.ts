@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
@@ -13,6 +14,77 @@ import {
 
 const firstOid = "a".repeat(40);
 const secondOid = "b".repeat(40);
+const WAIT_TIMEOUT_MS = 5_000;
+const TEST_BODY_TIMEOUT_MS = 30_000;
+
+interface TransportTestScope {
+  active: boolean;
+  readonly gates: Set<() => void>;
+  readonly children: Set<FakeChild>;
+  readonly reads: Set<Promise<void>>;
+}
+
+const testScopes = new AsyncLocalStorage<TransportTestScope>();
+
+const createTestScope = (): TransportTestScope => ({
+  active: true,
+  gates: new Set(),
+  children: new Set(),
+  reads: new Set(),
+});
+
+const requireActiveTestScope = (resource: string): TransportTestScope => {
+  const scope = testScopes.getStore();
+  if (scope === undefined || !scope.active) {
+    throw new Error(`Cannot register ${resource} outside an active transport test scope`);
+  }
+  return scope;
+};
+
+const waitForCondition = async (
+  condition: () => boolean,
+  description: string,
+  timeoutMs = WAIT_TIMEOUT_MS,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error(`Timed out after ${timeoutMs} ms waiting for ${description}`);
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(remainingMs, 5)));
+  }
+};
+
+const waitForEventLoopTurn = async (description: string): Promise<void> => {
+  let completed = false;
+  setImmediate(() => { completed = true; });
+  await waitForCondition(() => completed, description);
+};
+
+const createCallbackGate = (): {
+  readonly promise: Promise<void>;
+  readonly markStarted: () => void;
+  readonly hasStarted: () => boolean;
+  readonly release: () => void;
+} => {
+  const scope = requireActiveTestScope("callback gate");
+  let resolvePromise!: () => void;
+  let started = false;
+  let released = false;
+  const promise = new Promise<void>((resolve) => { resolvePromise = resolve; });
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    scope.gates.delete(release);
+    resolvePromise();
+  };
+  scope.gates.add(release);
+  return {
+    promise,
+    markStarted: () => { started = true; },
+    hasStarted: () => started,
+    release,
+  };
+};
 
 class ManualClock {
   private nextId = 0;
@@ -61,6 +133,7 @@ class FakeChild extends EventEmitter {
   public unrefCalled = false;
   private lineBuffer = "";
   private pendingWriteCallback: ((error?: Error | null) => void) | undefined;
+  private closed = false;
 
   public constructor(private readonly options: FakeChildOptions) {
     super();
@@ -142,67 +215,214 @@ class FakeChild extends EventEmitter {
   }
 
   public close(code: number | null, signal: NodeJS.Signals | null): void {
-    if (!this.stdout.readableEnded) this.stdout.end();
-    if (!this.stderr.readableEnded) this.stderr.end();
-    this.options.onClosing?.();
-    this.emit("close", code, signal);
+    if (this.closed) return;
+    this.closed = true;
+    const errors: unknown[] = [];
+    if (!this.stdout.readableEnded) {
+      try {
+        this.stdout.end();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (!this.stderr.readableEnded) {
+      try {
+        this.stderr.end();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    try {
+      this.options.onClosing?.();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      this.emit("close", code, signal);
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length > 0) throw new AggregateError(errors, "Fake child close reported failures");
+  }
+
+  public cleanup(): void {
+    const errors: unknown[] = [];
+    try {
+      this.releaseWriteCallback();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      if (!this.closed) this.close(null, null);
+    } catch (error) {
+      errors.push(error);
+    }
+    for (const stream of [this.stdin, this.stdout, this.stderr]) {
+      try {
+        stream.destroy();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) throw new AggregateError(errors, "Fake child cleanup reported failures");
   }
 }
+
+const cleanupTestScope = async (scope: TransportTestScope): Promise<unknown[]> => {
+  const errors: unknown[] = [];
+  scope.active = false;
+  for (const release of [...scope.gates]) {
+    try {
+      release();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const child of scope.children) {
+    try {
+      child.cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  try {
+    await waitForCondition(() => scope.reads.size === 0, "all scoped fake transport reads to settle");
+  } catch (error) {
+    errors.push(error);
+  }
+  return errors;
+};
+
+const runWithDeadline = async (
+  run: () => void | Promise<void>,
+  testName: string,
+  timeoutMs = TEST_BODY_TIMEOUT_MS,
+): Promise<void> => {
+  const task = Promise.resolve().then(run);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Test body "${testName}" exceeded ${timeoutMs} ms`)), timeoutMs);
+  });
+  try {
+    await Promise.race([task, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
+const runInTestScope = async (
+  testName: string,
+  run: () => void | Promise<void>,
+  timeoutMs = TEST_BODY_TIMEOUT_MS,
+): Promise<void> => {
+  const scope = createTestScope();
+  let bodyFailed = false;
+  let bodyError: unknown;
+  let cleanupErrors: unknown[];
+  try {
+    await testScopes.run(scope, () => runWithDeadline(run, testName, timeoutMs));
+  } catch (error) {
+    bodyFailed = true;
+    bodyError = error;
+  } finally {
+    cleanupErrors = await cleanupTestScope(scope);
+  }
+
+  if (bodyFailed) {
+    if (cleanupErrors.length > 0 && bodyError instanceof Error) {
+      try {
+        Object.defineProperty(bodyError, "cleanupErrors", { value: cleanupErrors, configurable: true });
+      } catch {
+        // Keep the original test failure authoritative if diagnostic attachment is not possible.
+      }
+    } else if (cleanupErrors.length > 0) {
+      throw new AggregateError([bodyError, ...cleanupErrors], `Test and cleanup failed: ${testName}`);
+    }
+    throw bodyError;
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, `Test cleanup failed: ${testName}`);
+  }
+};
+
+const testWithCleanup = (name: string, run: () => void | Promise<void>): void => {
+  test(name, () => runInTestScope(name, run));
+};
 
 const setup = (
   configure: (clock: ManualClock) => FakeChild,
   options: Omit<NodeGitBlobBatchTransportOptions, "spawnProcess" | "setTimer" | "clearTimer"> = {},
 ): { readonly transport: NodeGitBlobBatchTransport; readonly child: FakeChild; readonly clock: ManualClock } => {
+  const scope = requireActiveTestScope("fake transport setup");
   const clock = new ManualClock();
   const child = configure(clock);
+  scope.children.add(child);
   const transport = new NodeGitBlobBatchTransport({
     ...options,
     spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
     setTimer: (callback) => clock.setTimeout(callback),
     clearTimer: (handle) => clock.clearTimeout(handle),
   });
+  const readBlobs = transport.readBlobs.bind(transport);
+  transport.readBlobs = (...args: Parameters<NodeGitBlobBatchTransport["readBlobs"]>): Promise<void> => {
+    if (!scope.active) {
+      child.cleanup();
+      return Promise.reject(new Error("Cannot start a transport read after its test scope has ended"));
+    }
+    const operation = readBlobs(...args);
+    scope.reads.add(operation);
+    void operation.then(
+      () => scope.reads.delete(operation),
+      () => scope.reads.delete(operation),
+    );
+    return operation;
+  };
   return { transport, child, clock };
 };
 
-test("batch transport waits for each callback before writing the next OID", async () => {
+testWithCleanup("batch transport waits for each callback before writing the next OID", async () => {
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from(objectId === firstOid ? "one" : "two")),
     closeOnStdinEnd: true,
   }));
-  let releaseFirst: (() => void) | undefined;
+  const firstCallback = createCallbackGate();
   const callbacks: string[] = [];
   const running = transport.readBlobs("/repo", [firstOid, secondOid], async (objectId, bytes) => {
     callbacks.push(`${objectId}:${Buffer.from(bytes).toString("ascii")}`);
-    if (objectId === firstOid) await new Promise<void>((resolve) => { releaseFirst = resolve; });
+    if (objectId === firstOid) {
+      firstCallback.markStarted();
+      await firstCallback.promise;
+    }
   });
 
-  while (releaseFirst === undefined) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(firstCallback.hasStarted, "first blob callback to start");
   assert.deepEqual(child.objectIds, [firstOid]);
-  releaseFirst();
+  firstCallback.release();
   await running;
 
   assert.deepEqual(child.objectIds, [firstOid, secondOid]);
   assert.deepEqual(callbacks, [`${firstOid}:one`, `${secondOid}:two`]);
 });
 
-test("batch transport stops the request deadline while awaiting a blob callback", async () => {
+testWithCleanup("batch transport stops the request deadline while awaiting a blob callback", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnStdinEnd: true,
   }), { timeoutMs: 30_000 });
-  let release: (() => void) | undefined;
+  const callback = createCallbackGate();
   const running = transport.readBlobs("/repo", [firstOid], async () => {
-    await new Promise<void>((resolve) => { release = resolve; });
+    callback.markStarted();
+    await callback.promise;
   });
 
-  while (release === undefined) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(callback.hasStarted, "blob callback to start");
   assert.equal(clock.size, 0);
-  release();
+  callback.release();
   await running;
   assert.deepEqual(child.objectIds, [firstOid]);
 });
 
-test("batch transport reaps a callback failure with bounded TERM then KILL", async () => {
+testWithCleanup("batch transport reaps a callback failure with bounded TERM then KILL", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnKill: true,
@@ -211,14 +431,14 @@ test("batch transport reaps a callback failure with bounded TERM then KILL", asy
     throw new Error("callback failed");
   });
 
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after callback failure");
   assert.deepEqual(child.signals, ["SIGTERM"]);
   clock.fireNext();
   await assert.rejects(running, /callback failed/u);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport applies a separate deadline waiting for process close after stdout EOF", async () => {
+testWithCleanup("batch transport applies a separate deadline waiting for process close after stdout EOF", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     endStdoutOnStdinEnd: true,
@@ -226,41 +446,42 @@ test("batch transport applies a separate deadline waiting for process close afte
   }), { closeTimeoutMs: 5_000 });
   const running = transport.readBlobs("/repo", [firstOid], async () => undefined);
 
-  while (child.stdin.writableEnded !== true) await new Promise((resolve) => setImmediate(resolve));
-  while (clock.size === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.stdin.writableEnded, "stdin to end after all object requests");
+  await waitForCondition(() => clock.size > 0, "process-close deadline to be scheduled");
   clock.fireNext();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after close deadline");
   clock.fireNext();
   await assert.rejects(running, /close timed out/u);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport abort reaps once and does not invoke a delayed callback twice", async () => {
+testWithCleanup("batch transport abort reaps once and does not invoke a delayed callback twice", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnKill: true,
   }));
   const controller = new AbortController();
   let callbackCount = 0;
-  let release: (() => void) | undefined;
+  const callback = createCallbackGate();
   const running = transport.readBlobs("/repo", [firstOid, secondOid], async () => {
     callbackCount += 1;
-    await new Promise<void>((resolve) => { release = resolve; });
+    callback.markStarted();
+    await callback.promise;
   }, controller.signal);
 
-  while (release === undefined) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(callback.hasStarted, "delayed blob callback to start");
   controller.abort();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after abort");
   clock.fireNext();
   await assert.rejects(running, { name: "AbortError" });
-  release();
-  await new Promise((resolve) => setImmediate(resolve));
+  callback.release();
+  await waitForEventLoopTurn("delayed callback continuation after release");
   assert.equal(callbackCount, 1);
   assert.deepEqual(child.objectIds, [firstOid]);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport request deadline triggers bounded cleanup before any callback", async () => {
+testWithCleanup("batch transport request deadline triggers bounded cleanup before any callback", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: () => undefined,
     closeOnKill: true,
@@ -268,9 +489,9 @@ test("batch transport request deadline triggers bounded cleanup before any callb
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; });
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "first object request to be written");
   clock.fireNext();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after request timeout");
   clock.fireNext();
 
   await assert.rejects(running, /request timed out after 30000 ms/u);
@@ -278,20 +499,20 @@ test("batch transport request deadline triggers bounded cleanup before any callb
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport rejects a malformed frame and reaps the process", async () => {
+testWithCleanup("batch transport rejects a malformed frame and reaps the process", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (_objectId, fake) => fake.sendRaw(Buffer.from(`${secondOid} blob 0\n\n`, "ascii")),
     closeOnKill: true,
   }));
   const running = transport.readBlobs("/repo", [firstOid], async () => undefined);
 
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after malformed frame");
   clock.fireNext();
   await assert.rejects(running, /object ID mismatch/u);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport rejects missing, non-blob, and oversized frames", async () => {
+testWithCleanup("batch transport rejects missing, non-blob, and oversized frames", async () => {
   const cases = [
     { frame: (fake: FakeChild) => fake.sendRaw(Buffer.from(`${firstOid} missing\n`, "ascii")), expected: /is missing/u },
     { frame: (fake: FakeChild) => fake.sendRaw(Buffer.from(`${firstOid} tree 0\n\n`, "ascii")), expected: /has type tree/u },
@@ -317,20 +538,20 @@ test("batch transport rejects missing, non-blob, and oversized frames", async ()
   }
 });
 
-test("batch transport input errors reject after bounded cleanup", async () => {
+testWithCleanup("batch transport input errors reject after bounded cleanup", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (_objectId, fake) => fake.failInput(new Error("input stream failed")),
     closeOnKill: true,
   }));
   const running = transport.readBlobs("/repo", [firstOid], async () => undefined);
 
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after input error");
   clock.fireNext();
   await assert.rejects(running, /input stream failed/u);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport rejects a nonzero exit even after all response frames", async () => {
+testWithCleanup("batch transport rejects a nonzero exit even after all response frames", async () => {
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnStdinEnd: true,
@@ -347,7 +568,7 @@ test("batch transport rejects a nonzero exit even after all response frames", as
   assert.deepEqual(child.signals, []);
 });
 
-test("batch transport observes abort racing with successful process close", async () => {
+testWithCleanup("batch transport observes abort racing with successful process close", async () => {
   const controller = new AbortController();
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
@@ -364,24 +585,24 @@ test("batch transport observes abort racing with successful process close", asyn
   assert.deepEqual(child.signals, []);
 });
 
-test("batch transport has a separate bound while waiting for stdout EOF", async () => {
+testWithCleanup("batch transport has a separate bound while waiting for stdout EOF", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnKill: true,
   }), { eofTimeoutMs: 10_000 });
   const running = transport.readBlobs("/repo", [firstOid], async () => undefined);
 
-  while (child.stdin.writableEnded !== true) await new Promise((resolve) => setImmediate(resolve));
-  while (clock.size === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.stdin.writableEnded, "stdin to end before stdout EOF timeout");
+  await waitForCondition(() => clock.size > 0, "stdout EOF deadline to be scheduled");
   clock.fireNext();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after stdout EOF timeout");
   clock.fireNext();
 
   await assert.rejects(running, /waiting for stdout EOF after 10000 ms/u);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport aborts an outstanding object request and reaps the process", async () => {
+testWithCleanup("batch transport aborts an outstanding object request and reaps the process", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: () => undefined,
     closeOnKill: true,
@@ -390,19 +611,19 @@ test("batch transport aborts an outstanding object request and reaps the process
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }, controller.signal);
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "outstanding object request to be written");
   controller.abort();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after abort");
   clock.fireNext();
 
   await assert.rejects(running, { name: "AbortError" });
   child.sendBlob(firstOid, Buffer.from("late"));
-  await new Promise((resolve) => setImmediate(resolve));
+  await waitForEventLoopTurn("late blob response after abort");
   assert.equal(callbackCount, 0);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport coalesces input-error and abort races into one cleanup", async () => {
+testWithCleanup("batch transport coalesces input-error and abort races into one cleanup", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: () => undefined,
     closeOnKill: true,
@@ -411,10 +632,10 @@ test("batch transport coalesces input-error and abort races into one cleanup", a
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }, controller.signal);
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "object request before input-error race");
   child.failInput(new Error("input won the race"));
   controller.abort();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after input-error race");
   clock.fireNext();
 
   await assert.rejects(running, /input won the race/u);
@@ -422,7 +643,7 @@ test("batch transport coalesces input-error and abort races into one cleanup", a
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-test("batch transport rechecks abort after callback before sending the next OID", async () => {
+testWithCleanup("batch transport rechecks abort after callback before sending the next OID", async () => {
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnTerm: true,
@@ -438,15 +659,15 @@ test("batch transport rechecks abort after callback before sending the next OID"
   assert.deepEqual(child.signals, ["SIGTERM"]);
 });
 
-test("batch transport keeps late process and stream errors handled after bounded destroy", async () => {
+testWithCleanup("batch transport keeps late process and stream errors handled after bounded destroy", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
   }));
   const running = transport.readBlobs("/repo", [firstOid], () => { throw new Error("callback failed"); });
 
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after callback failure");
   clock.fireNext();
-  while (child.signals.length < 2) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length >= 2, "KILL signal after TERM grace period");
   clock.fireNext();
   await assert.rejects(running, /callback failed/u);
 
@@ -456,7 +677,7 @@ test("batch transport keeps late process and stream errors handled after bounded
   assert.doesNotThrow(() => child.stderr.emit("error", new Error("late stderr error")));
 });
 
-test("batch transport waits for drain when write callback fires synchronously before a false return", async () => {
+testWithCleanup("batch transport waits for drain when write callback fires synchronously before a false return", async () => {
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
     closeOnStdinEnd: true,
@@ -465,14 +686,14 @@ test("batch transport waits for drain when write callback fires synchronously be
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; });
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "object request before drain");
   assert.equal(callbackCount, 0);
   child.stdin.emit("drain");
   await running;
   assert.equal(callbackCount, 1);
 });
 
-test("batch transport does not resume after a write callback arrives after timeout cleanup", async () => {
+testWithCleanup("batch transport does not resume after a write callback arrives after timeout cleanup", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: () => undefined,
     closeOnKill: true,
@@ -481,31 +702,31 @@ test("batch transport does not resume after a write callback arrives after timeo
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid, secondOid], () => { callbackCount += 1; });
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "object request before write timeout");
   clock.fireNext();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after write timeout");
   clock.fireNext();
   await assert.rejects(running, /request timed out/u);
 
   child.releaseWriteCallback();
-  await new Promise((resolve) => setImmediate(resolve));
+  await waitForEventLoopTurn("late write callback after timeout cleanup");
   assert.deepEqual(child.objectIds, [firstOid]);
   assert.equal(callbackCount, 0);
 });
 
-test("batch transport ignores stdout that completes after abort has already won", async () => {
+testWithCleanup("batch transport ignores stdout that completes after abort has already won", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({ onObject: () => undefined }));
   const controller = new AbortController();
   let callbackCount = 0;
   const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }, controller.signal);
 
-  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.objectIds.length > 0, "object request before abort");
   controller.abort();
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after abort");
   clock.fireNext();
-  while (clock.size === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => clock.size > 0, "second termination grace timer");
   child.sendBlob(firstOid, Buffer.from("late response"));
-  await new Promise((resolve) => setImmediate(resolve));
+  await waitForEventLoopTurn("late stdout response after abort");
   clock.fireNext();
 
   await assert.rejects(running, { name: "AbortError" });
@@ -513,15 +734,15 @@ test("batch transport ignores stdout that completes after abort has already won"
   assert.deepEqual(child.objectIds, [firstOid]);
 });
 
-test("batch transport destroys streams and unreferences after bounded reap expires", async () => {
+testWithCleanup("batch transport destroys streams and unreferences after bounded reap expires", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
   }));
   const running = transport.readBlobs("/repo", [firstOid], () => { throw new Error("callback failed"); });
 
-  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length > 0, "TERM signal after callback failure");
   clock.fireNext();
-  while (child.signals.length < 2) await new Promise((resolve) => setImmediate(resolve));
+  await waitForCondition(() => child.signals.length >= 2, "KILL signal after TERM grace period");
   clock.fireNext();
 
   await assert.rejects(running, /callback failed/u);
@@ -530,4 +751,90 @@ test("batch transport destroys streams and unreferences after bounded reap expir
   assert.equal(child.stdout.destroyed, true);
   assert.equal(child.stderr.destroyed, true);
   assert.equal(child.unrefCalled, true);
+});
+
+test("transport test harness fails finitely when a wait condition never occurs", async () => {
+  const startedAt = Date.now();
+  await assert.rejects(
+    waitForCondition(() => false, "deliberately absent event", 25),
+    /Timed out after 25 ms waiting for deliberately absent event/u,
+  );
+  assert.ok(Date.now() - startedAt < 1_000, "a missing event must not leave a polling loop running");
+});
+
+test("transport test harness preserves body failure and attempts every cleanup", async () => {
+  const bodyFailure = new Error("original body failure");
+  const cleanupFailure = new Error("first fake child cleanup failure");
+  const cleanupOrder: string[] = [];
+
+  await assert.rejects(
+    runInTestScope("body failure cleanup", () => {
+      const scope = requireActiveTestScope("cleanup fixture");
+      scope.children.add({
+        cleanup: () => { cleanupOrder.push("first"); throw cleanupFailure; },
+      } as unknown as FakeChild);
+      scope.children.add({
+        cleanup: () => { cleanupOrder.push("second"); },
+      } as unknown as FakeChild);
+      throw bodyFailure;
+    }, 100),
+    (error: unknown) => {
+      assert.equal(error, bodyFailure, "cleanup must not replace the original test failure");
+      assert.deepEqual((error as Error & { cleanupErrors?: unknown[] }).cleanupErrors, [cleanupFailure]);
+      return true;
+    },
+  );
+  assert.deepEqual(cleanupOrder, ["first", "second"], "all children must get a cleanup attempt");
+});
+
+test("transport test scope isolates late work from the next test", async () => {
+  let releaseLateWork!: () => void;
+  const lateWorkGate = new Promise<void>((resolve) => { releaseLateWork = resolve; });
+  let lateGateError: unknown;
+  let lateReadError: unknown;
+  let lateSetupError: unknown;
+  let lateSetupCalls = 0;
+  const lateRun = runInTestScope("deadline late work", async () => {
+    const { transport } = setup(() => new FakeChild({ onObject: () => undefined }));
+    await lateWorkGate;
+    try {
+      createCallbackGate();
+    } catch (error) {
+      lateGateError = error;
+    }
+    try {
+      await transport.readBlobs("/repo", [firstOid], async () => undefined);
+    } catch (error) {
+      lateReadError = error;
+    }
+    try {
+      setup(() => {
+        lateSetupCalls += 1;
+        return new FakeChild({ onObject: () => undefined });
+      });
+    } catch (error) {
+      lateSetupError = error;
+    }
+  }, 25);
+
+  await assert.rejects(lateRun, /Test body "deadline late work" exceeded 25 ms/u);
+  releaseLateWork();
+  await waitForCondition(
+    () => lateGateError !== undefined && lateReadError !== undefined && lateSetupError !== undefined,
+    "late gate/read/setup registrations to be rejected",
+    1_000,
+  );
+  assert.match(String(lateGateError), /outside an active transport test scope/u);
+  assert.match(String(lateReadError), /after its test scope has ended/u);
+  assert.match(String(lateSetupError), /outside an active transport test scope/u);
+  assert.equal(lateSetupCalls, 0, "late setup must fail before creating a fake child");
+
+  let nextScopeWasIndependent = false;
+  await runInTestScope("next scope", () => {
+    const gate = createCallbackGate();
+    gate.release();
+    setup(() => new FakeChild({ onObject: () => undefined }));
+    nextScopeWasIndependent = true;
+  }, 1_000);
+  assert.equal(nextScopeWasIndependent, true);
 });
