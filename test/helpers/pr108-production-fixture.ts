@@ -14,6 +14,7 @@ import {
   JsonlReviewHistoryStore,
 } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
+import { PullRequestDiffAcquisitionService } from "../../src/application/github-pr-diff/index.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
@@ -92,29 +93,87 @@ export async function createPr108ProductionFixture(options: {
   readonly globalHead?: FixtureRevision;
   readonly ownerHead?: FixtureRevision;
   readonly preserveSourceSnapshot?: boolean;
+  readonly syntheticRepository?: Readonly<{
+    fileCount: number;
+    linesPerFile: number;
+    changedLinesPerFile: number;
+    changedFileCount?: number;
+  }>;
+  readonly existingRepository?: Readonly<{
+    root: string;
+    baseRevision: string;
+    headRevision: string;
+    owner: string;
+    repository: string;
+    accessToken: string;
+    fetch: typeof globalThis.fetch;
+  }>;
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-pr108-production-"));
-  const repositoryRoot = path.join(root, "repository");
+  const repositoryRoot = options.existingRepository?.root ?? path.join(root, "repository");
+  const repositoryId = options.existingRepository === undefined
+    ? PR108_REPOSITORY_ID
+    : `github.com/${options.existingRepository.owner.toLowerCase()}/${options.existingRepository.repository.toLowerCase()}`;
+  const primaryFilePath = options.existingRepository === undefined
+    ? PR108_FILE
+    : "performance/synthetic/fixture-0000.ts";
   const storageRoot = path.join(root, "state");
   const storageUris = { globalStorageUri: { fsPath: storageRoot } };
   const git = async (...args: string[]): Promise<string> =>
     (await execFileAsync("git", args, { cwd: repositoryRoot })).stdout.trim();
-  await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
   await mkdir(storageRoot, { recursive: true });
-  await git("init", "-b", "main");
-  await git("config", "user.email", "pr108@example.invalid");
-  await git("config", "user.name", "PR108 fixture");
-  await git("config", "core.autocrlf", "false");
   const revisions = {} as Record<FixtureRevision, string>;
   const texts = { A: "keep\nold\nstable", B: "keep\nb\nstable", C: "keep\nc\nstable", D: "keep\nd\nstable" };
-  for (const revision of ["A", "B", "C", "D"] as const) {
-    await writeFile(path.join(repositoryRoot, PR108_FILE), texts[revision]);
-    await git("add", PR108_FILE); await git("commit", "-m", revision);
-    revisions[revision] = await git("rev-parse", "HEAD");
+  if (options.existingRepository !== undefined) {
+    revisions.A = options.existingRepository.baseRevision;
+    revisions.B = options.existingRepository.headRevision;
+    revisions.C = options.existingRepository.headRevision;
+    revisions.D = options.existingRepository.headRevision;
+  } else {
+    await mkdir(path.join(repositoryRoot, "src"), { recursive: true });
+    await git("init", "-b", "main");
+    await git("config", "user.email", "pr108@example.invalid");
+    await git("config", "user.name", "PR108 fixture");
+    await git("config", "core.autocrlf", "false");
   }
-  await git("remote", "add", "origin", "https://github.com/ssaattww/revmem.git");
+  if (options.existingRepository === undefined && options.syntheticRepository === undefined) {
+    for (const revision of ["A", "B", "C", "D"] as const) {
+      await writeFile(path.join(repositoryRoot, PR108_FILE), texts[revision]);
+      await git("add", PR108_FILE); await git("commit", "-m", revision);
+      revisions[revision] = await git("rev-parse", "HEAD");
+    }
+  } else if (options.existingRepository === undefined && options.syntheticRepository !== undefined) {
+    const { fileCount, linesPerFile, changedLinesPerFile } = options.syntheticRepository;
+    const changedFileCount = options.syntheticRepository.changedFileCount ?? fileCount;
+    for (const [name, value] of Object.entries({ fileCount, linesPerFile, changedLinesPerFile, changedFileCount })) {
+      assert.ok(Number.isSafeInteger(value) && value > 0, `${name} must be a positive safe integer`);
+    }
+    assert.ok(changedLinesPerFile <= linesPerFile, "changedLinesPerFile must not exceed linesPerFile");
+    assert.ok(changedFileCount <= fileCount, "changedFileCount must not exceed fileCount");
+    const filePaths = Array.from({ length: fileCount }, (_, index) =>
+      path.join("src", `synthetic-${String(index).padStart(4, "0")}.ts`));
+    const originalLines = Array.from({ length: linesPerFile }, (_, line) => `const value${line} = ${line};`);
+    for (const relativePath of filePaths) {
+      const fullPath = path.join(repositoryRoot, relativePath);
+      await mkdir(path.dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, `${originalLines.join("\n")}\n`);
+    }
+    await git("add", "src"); await git("commit", "-m", "A: synthetic repository baseline");
+    revisions.A = await git("rev-parse", "HEAD");
+    const changedLines = originalLines.slice();
+    for (let line = 0; line < changedLinesPerFile; line += 1) changedLines[line] = `const changed${line} = ${line + 1};`;
+    const changedText = `${changedLines.join("\n")}\n`;
+    for (const relativePath of filePaths.slice(0, changedFileCount)) await writeFile(path.join(repositoryRoot, relativePath), changedText);
+    await git("add", "src"); await git("commit", "-m", "B: synthetic PR changes");
+    revisions.B = await git("rev-parse", "HEAD");
+    for (const revision of ["C", "D"] as const) {
+      await git("commit", "--allow-empty", "-m", `${revision}: synthetic fixture revision`);
+      revisions[revision] = await git("rev-parse", "HEAD");
+    }
+  }
+  if (options.existingRepository === undefined) await git("remote", "add", "origin", "https://github.com/ssaattww/revmem.git");
   const globalFor = (revision: FixtureRevision): RepositoryGlobalState => ({
-    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId: PR108_REPOSITORY_ID,
+    schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId,
     currentRevisionId: revisions[revision],
     files: { [PR108_FILE]: {
       fileId: PR108_FILE, currentPath: PR108_FILE, revisionId: revisions[revision],
@@ -134,7 +193,7 @@ export async function createPr108ProductionFixture(options: {
   for (const number of options.contexts ?? [52, 53]) {
     const contextState: ReviewContextState = {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: pr108ContextId(number), kind: "pull-request",
-      repositoryId: PR108_REPOSITORY_ID, displayName: `PR #${number}`,
+      repositoryId, displayName: `PR #${number}`,
       pullRequest: { host: "github.com", owner: "ssaattww", repository: "revmem", number,
         state: "open", title: `PR ${number}`, baseSha: revisions.A, headSha: revisions[contextHead] },
       files: { [PR108_FILE]: {
@@ -144,13 +203,44 @@ export async function createPr108ProductionFixture(options: {
         lineCount: 3, updatedAt: TIMESTAMP,
       } }, createdAt: TIMESTAMP, updatedAt: TIMESTAMP,
     };
-    await atomic.save({ kind: "pull-request", repositoryId: PR108_REPOSITORY_ID, contextId: contextState.contextId },
+    await atomic.save({ kind: "pull-request", repositoryId, contextId: contextState.contextId },
       { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState: initialGlobal });
   }
   let publications = 0;
+  let publicationMilliseconds = 0;
+  let stateSaveCount = 0;
+  let stateSaveMilliseconds = 0;
+  let stateCommitCount = 0;
+  let stateCreateCount = 0;
   const instrumentOwner = (): void => {
     const commit = atomic.commitRepository.bind(atomic);
-    atomic.commitRepository = async (transaction) => { await commit(transaction); publications += 1; };
+    atomic.commitRepository = async (transaction) => {
+      const startedAt = performance.now();
+      await commit(transaction);
+      publications += 1;
+      publicationMilliseconds += performance.now() - startedAt;
+    };
+    const save = atomic.save.bind(atomic);
+    atomic.save = async (...args) => {
+      const startedAt = performance.now();
+      await save(...args);
+      stateSaveCount += 1;
+      stateSaveMilliseconds += performance.now() - startedAt;
+    };
+    const commitState = atomic.commit.bind(atomic);
+    atomic.commit = async (...args) => {
+      const startedAt = performance.now();
+      await commitState(...args);
+      stateCommitCount += 1;
+      stateSaveMilliseconds += performance.now() - startedAt;
+    };
+    const createState = atomic.create.bind(atomic);
+    atomic.create = async (...args) => {
+      const startedAt = performance.now();
+      await createState(...args);
+      stateCreateCount += 1;
+      stateSaveMilliseconds += performance.now() - startedAt;
+    };
   };
   instrumentOwner();
   let repository = new DebouncedReviewStateRepository({ delegate: atomic, debounceMilliseconds: 0 });
@@ -170,14 +260,16 @@ export async function createPr108ProductionFixture(options: {
   const unavailable = new Set<number>();
   let ownerHead = options.ownerHead ?? contextHead;
   await git("checkout", "--detach", revisions[ownerHead]);
-  const control = { selected: 52, requireAuthentication: false, authenticated: false };
+  const control = { selected: options.existingRepository === undefined ? 52 : 2, requireAuthentication: false, authenticated: false };
   const authenticationCalls: Array<{ interactive: boolean }> = [];
   const originalFetch = globalThis.fetch;
   const response = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), {
     status, headers: { "content-type": "application/json" },
   });
-  globalThis.fetch = async (input, init) => {
+  const fetchRequests: string[] = [];
+  globalThis.fetch = options.existingRepository?.fetch ?? (async (input, init) => {
     const url = new URL(String(input));
+    fetchRequests.push(`${url.pathname}?${url.searchParams.get("state") ?? ""}`);
     if (control.requireAuthentication && new Headers(init?.headers).get("authorization") === null) {
       return response({ message: "Not Found" }, 404);
     }
@@ -201,22 +293,24 @@ export async function createPr108ProductionFixture(options: {
       return response({ merge_base_commit: { sha: compare[1] } });
     }
     throw new Error(`Unexpected request in PR108 production fixture: ${url.pathname}`);
-  };
+  });
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const errors: string[] = [];
   const opened: Array<{ original: string; modified: string }> = [];
   const registrations: Array<{ contextId: string; baseSha: string; headSha: string }> = [];
   const workspaceState = new Memento();
   let provider!: Provider;
+  let providerTreeChangeEvents = 0;
   let initialRefresh!: Promise<void>;
   Object.assign(vscodeHost, {
     commands: { registerCommand: (id: string, handler: (...args: unknown[]) => unknown) => {
       commands.set(id, handler); return { dispose: () => { commands.delete(id); } };
     } },
-    window: {
-      activeTextEditor: { document: { uri: { scheme: "file", authority: "", fsPath: path.join(repositoryRoot, PR108_FILE), query: "", fragment: "" } } },
+      window: {
+      activeTextEditor: { document: { uri: { scheme: "file", authority: "", fsPath: path.join(repositoryRoot, primaryFilePath), query: "", fragment: "" } } },
       createTreeView: (_id: string, value: { treeDataProvider: Provider }) => {
         provider = value.treeDataProvider;
+        provider.onDidChangeTreeData(() => { providerTreeChangeEvents += 1; });
         initialRefresh = new Promise<void>((resolve) => {
           const listener = provider.onDidChangeTreeData(() => { listener.dispose(); resolve(); });
         });
@@ -256,7 +350,9 @@ export async function createPr108ProductionFixture(options: {
       const interactive = Boolean(flags.createIfNone || flags.clearSessionPreference);
       authenticationCalls.push({ interactive });
       if (interactive && control.requireAuthentication) control.authenticated = true;
-      return control.authenticated ? { accessToken: "fixture-token" } : undefined;
+      return options.existingRepository !== undefined
+        ? { accessToken: options.existingRepository.accessToken }
+        : control.authenticated ? { accessToken: "fixture-token" } : undefined;
     } },
   });
   const loader = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
@@ -267,11 +363,26 @@ export async function createPr108ProductionFixture(options: {
     runtimeModule = runtimeRequire("../../src/composition/review-contexts/review-contexts-runtime.js") as typeof runtimeModule;
   } finally { loader._load = originalLoad; }
   const localGit = createNodeLocalGitAdapter();
-  const createReviewRuntime = (): PullRequestReviewRuntime<string> => new PullRequestReviewRuntime<string>({
-    repository, requestHistory: (transaction) => history.recordTransaction(transaction, "user-selection"),
-    diffHost: { parseUri: (value) => value, openDiff: async (original, modified) => { opened.push({ original, modified }); } },
-    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
-  });
+  let revisionContentReadCount = 0;
+  let revisionContentReadMilliseconds = 0;
+  const readRevisionContent = localGit.readTextFileAtRevision.bind(localGit);
+  localGit.readTextFileAtRevision = async (...args) => {
+    const startedAt = performance.now();
+    revisionContentReadCount += 1;
+    try { return await readRevisionContent(...args); }
+    finally { revisionContentReadMilliseconds += performance.now() - startedAt; }
+  };
+  let diffAcquisitionCount = 0;
+  let diffAcquisitionMilliseconds = 0;
+  let diffSnapshotFileCount = 0;
+  const createReviewRuntime = (): PullRequestReviewRuntime<string> => {
+    const created = new PullRequestReviewRuntime<string>({
+      repository, requestHistory: (transaction) => history.recordTransaction(transaction, "user-selection"),
+      diffHost: { parseUri: (value) => value, openDiff: async (original, modified) => { opened.push({ original, modified }); } },
+      getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    });
+    return created;
+  };
   let review = createReviewRuntime();
   let runtime!: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime>;
   let subscriptions: Disposable[] = [];
@@ -279,7 +390,7 @@ export async function createPr108ProductionFixture(options: {
     let enumerating = false;
     const enumerateCurrentContexts = async (): Promise<readonly CurrentContextUiSnapshot[]> => enumerating ? [{ context: {
       kind: "branch", label: "fixture", headRevision: revisions[ownerHead], selection: {
-        kind: "detached", repositoryId: PR108_REPOSITORY_ID, repositoryRoot, headRevision: revisions[ownerHead],
+        kind: "detached", repositoryId, repositoryRoot, headRevision: revisions[ownerHead],
       },
     }, progress: undefined }] : [];
     const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
@@ -310,6 +421,19 @@ export async function createPr108ProductionFixture(options: {
       openPullRequestReviewDiff: (contextId, fileId, title) => review.openReviewDiff(contextId, fileId, title),
       getPullRequestReviewProgress: (contextId) => review.getProgress(contextId),
       reviewStateRepository: repository, reviewHistoryRecorder: history,
+      createPullRequestDiffAcquisition: (adapters) => {
+        const acquisition = new PullRequestDiffAcquisitionService(adapters);
+        return {
+          acquire: async (...args) => {
+            const startedAt = performance.now();
+            diffAcquisitionCount += 1;
+            const result = await acquisition.acquire(...args);
+            diffAcquisitionMilliseconds += performance.now() - startedAt;
+            if (result.kind === "acquired") diffSnapshotFileCount += result.snapshot.files.length;
+            return result;
+          }
+        };
+      },
     });
     await initialRefresh;
     enumerating = true;
@@ -322,14 +446,29 @@ export async function createPr108ProductionFixture(options: {
     get runtime() { return runtime; }, get review() { return review; }, get provider() { return provider; },
     get repository() { return repository; }, get atomic() { return atomic; },
     ownerPublications: () => publications,
+    metrics: () => ({
+      revisionContentReadCount,
+      revisionContentReadMilliseconds,
+      diffAcquisitionCount,
+      diffAcquisitionMilliseconds,
+      diffSnapshotFileCount,
+      ownerPublications: publications,
+      publicationMilliseconds,
+      stateSaveCount,
+      stateCommitCount,
+      stateCreateCount,
+      stateSaveMilliseconds,
+      providerTreeChangeEvents,
+      githubFetchRequests: fetchRequests.length,
+    }),
     async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
     async invoke(id: string, ...args: unknown[]): Promise<readonly string[]> {
       errors.length = 0; const command = commands.get(id); assert.ok(command, `${id} must be registered`);
       await command(...args); return [...errors];
     },
     item(number: number) { const item = provider.getChildren().find((entry) => entry.context.pullRequest?.number === number); assert.ok(item, `PR ${number} must remain visible`); return item; },
-    state: (number: number) => new FileSystemReviewStateRepository({ storageUris }).load({ kind: "pull-request", repositoryId: PR108_REPOSITORY_ID, contextId: pr108ContextId(number) }),
-    snapshot: () => new FileSystemReviewStateRepository({ storageUris }).loadRepositorySnapshot(PR108_REPOSITORY_ID),
+    state: (number: number) => new FileSystemReviewStateRepository({ storageUris }).load({ kind: "pull-request", repositoryId, contextId: `github-pr:${repositoryId}#${number}` }),
+    snapshot: () => new FileSystemReviewStateRepository({ storageUris }).loadRepositorySnapshot(repositoryId),
     async durableFiles(): Promise<Record<string, string>> {
       const entries = await readdir(storageRoot, { recursive: true, withFileTypes: true });
       const result: Record<string, string> = {};

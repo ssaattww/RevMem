@@ -21,7 +21,6 @@ import { normalizeGitRemoteUrl } from "./git-remote-normalization";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
@@ -99,39 +98,6 @@ const rootRepositoryId = (rootPath: string): string => {
   return `git-root:${digest}`;
 };
 
-const parseLsTreeBlobObjectId = (
-  output: string,
-  expectedPath: string
-): string | undefined => {
-  if (output.length === 0) {
-    return undefined;
-  }
-  if (!output.endsWith("\0")) {
-    throw new Error("git ls-tree output is not NUL terminated");
-  }
-
-  const records = output.slice(0, -1).split("\0");
-  if (records.length !== 1) {
-    throw new Error("git ls-tree returned an ambiguous exact-path result");
-  }
-
-  const record = records[0]!;
-  const separator = record.indexOf("\t");
-  if (separator < 0) {
-    throw new Error("git ls-tree output is missing its path separator");
-  }
-  const metadata = record.slice(0, separator);
-  const returnedPath = record.slice(separator + 1);
-  const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
-  if (match === null || returnedPath !== expectedPath) {
-    throw new Error("git ls-tree output does not match the requested exact path");
-  }
-  if (match[2] !== "blob") {
-    return undefined;
-  }
-  return match[3]!;
-};
-
 const isMissingObjectExit = (result: GitCommandResult): boolean =>
   result.exitCode === 1 || result.exitCode === 128;
 
@@ -153,6 +119,9 @@ const isUnbornHeadResult = (result: GitCommandResult): boolean =>
  * blob bytes through the injected `GitBlobReader`.
  */
 export class LocalGitAdapter {
+  /** Recently verified immutable commits avoid repeating the same commit peel for every PR file. */
+  private readonly verifiedCommits = new Map<string, true>();
+  private static readonly VERIFIED_COMMIT_LIMIT = 128;
   /**
    * Creates the adapter with explicit metadata and blob-content boundaries.
    *
@@ -341,44 +310,56 @@ export class LocalGitAdapter {
       fileSystemPathSemantics,
       "repositoryRelativePath"
     );
-    const revisionInvocation: GitCommandInvocation = {
+    const commitKey = `${rootPath}\0${object}`;
+    if (!this.verifiedCommits.has(commitKey)) {
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      if (revisionResult.exitCode === 1) return { kind: "missing-revision" };
+      this.requireSuccess(revisionInvocation, revisionResult);
+      if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
+        return { kind: "missing-revision" };
+      }
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
+      if (this.verifiedCommits.size > LocalGitAdapter.VERIFIED_COMMIT_LIMIT) {
+        const oldest = this.verifiedCommits.keys().next().value;
+        if (oldest !== undefined) this.verifiedCommits.delete(oldest);
+      }
+    } else {
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
+    }
+
+    // Resolve the exact immutable path directly. `ls-tree` used to spawn a
+    // second metadata process for every side of every PR file even though the
+    // commit had already been validated above.
+    const fileInvocation: GitCommandInvocation = {
       cwd: rootPath,
       argumentsList: [
         "rev-parse",
         "--verify",
         "--quiet",
-        `${object}^{commit}`
-      ]
-    };
-    const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
-
-    if (revisionResult.exitCode === 1) {
-      return { kind: "missing-revision" };
-    }
-    this.requireSuccess(revisionInvocation, revisionResult);
-    if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
-      return { kind: "missing-revision" };
-    }
-
-    const fileInvocation: GitCommandInvocation = {
-      cwd: rootPath,
-      argumentsList: [
-        "ls-tree",
-        "--full-tree",
-        "-z",
-        object,
-        "--",
-        `:(literal)${filePath}`
+        `${object}:${filePath}`
       ]
     };
     const fileResult = await this.commandExecutor.execute(fileInvocation, feedbackContext, signal);
+    if (fileResult.exitCode === 1) return { kind: "missing-file" };
     this.requireSuccess(fileInvocation, fileResult);
-    const blobObjectId = parseLsTreeBlobObjectId(fileResult.stdout, filePath);
-    if (blobObjectId === undefined) {
-      return { kind: "missing-file" };
-    }
+    const blobObjectId = firstOutputLine(fileResult.stdout, "immutable file object");
+    if (!FULL_OBJECT_ID_PATTERN.test(blobObjectId)) throw new Error("git rev-parse returned an invalid file object ID");
 
-    const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
+    let bytes: Uint8Array;
+    try {
+      bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
+    } catch (error) {
+      if (error instanceof GitCommandFailedError && /\bis a tree, not a blob\b|\bnot a blob object\b/iu.test(error.result.stderr)) {
+        return { kind: "missing-file" };
+      }
+      throw error;
+    }
     if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
     try {
       return {

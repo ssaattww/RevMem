@@ -8,7 +8,8 @@ import {
   normalizeGitRemoteUrl,
   type GitCommandExecutor,
   type GitCommandInvocation,
-  type GitCommandResult
+  type GitCommandResult,
+  type GitBlobReader
 } from "../../src/adapters/local-git/index";
 import {
   normalizeInspectionStartPath,
@@ -91,6 +92,30 @@ class RecordingGitCommandExecutor implements GitCommandExecutor {
 const createMetadataAdapter = (
   executor: GitCommandExecutor
 ): LocalGitAdapter => new LocalGitAdapter(executor, unreachableGitBlobReader);
+
+test("immutable text reads verify one commit once and resolve later paths directly", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const blobReader: GitBlobReader = { readBlob: async () => new TextEncoder().encode("source\n") };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}:file.ts`], success(`${blob}\n`));
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}:missing.ts`], failure(1, ""));
+
+  assert.deepEqual(await adapter.readTextFileAtRevision(repositoryRoot, commit, "file.ts", "posix"), {
+    kind: "found", content: "source\n"
+  });
+  assert.deepEqual(await adapter.readTextFileAtRevision(repositoryRoot, commit, "missing.ts", "posix"), {
+    kind: "missing-file"
+  });
+  executor.assertExhausted();
+  assert.deepEqual(executor.invocations.map((entry) => entry.argumentsList), [
+    ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
+    ["rev-parse", "--verify", "--quiet", `${commit}:file.ts`],
+    ["rev-parse", "--verify", "--quiet", `${commit}:missing.ts`]
+  ]);
+});
 
 test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
   const startPath = path.resolve("restricted-repository");
