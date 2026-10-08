@@ -756,13 +756,20 @@ export class OperationFeedback {
       return result;
     } catch (error) {
       const finishedAt = this.now();
-      this.recordRunFailure(
-        active.label,
-        error,
-        finishedAt,
-        Math.max(0, finishedAt - active.startedAt),
-        active.id
-      );
+      const durationMs = Math.max(0, finishedAt - active.startedAt);
+      if (active.boundaryFailure !== undefined) {
+        this.recordRunFailure(active.label, active.boundaryFailure, finishedAt, durationMs, active.id);
+      } else if (active.boundaryCancelled === true && errorField(error, "name") === "AbortError") {
+        this.host.appendLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "cancelled",
+          operationId: active.id,
+          durationMs
+        });
+      } else {
+        this.recordRunFailure(active.label, error, finishedAt, durationMs, active.id);
+      }
       throw error;
     } finally {
       const index = this.active.findIndex((candidate) => candidate.id === active.id);

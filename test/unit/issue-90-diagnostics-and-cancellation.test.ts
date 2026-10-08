@@ -114,6 +114,67 @@ test("operation finish hooks clean up after success, failure, and cancellation",
   assert.deepEqual(completed, [1, 2, 3]);
 });
 
+test("reported PR refresh cancellation with AbortError records one cancelled terminal and finalizes", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_000);
+  const cancellation = new DOMException("superseded", "AbortError");
+  let finalized = 0;
+  await assert.rejects(feedback.run("PR refresh", async (context) => {
+    feedback.onOperationFinished(context, () => { finalized += 1; });
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "review-contexts-refresh", stage: "refresh-request", status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+    throw cancellation;
+  }), (error: unknown) => error === cancellation);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh", "cancelled"]);
+  assert.equal(host.reveals, 0);
+  assert.equal(finalized, 1);
+});
+
+test("reported PR refresh cancellation does not hide an ordinary operation error", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_100);
+  const failure = new Error("refresh failed after cancellation");
+  await assert.rejects(feedback.run("PR refresh", async (context) => {
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "review-contexts-refresh", stage: "refresh-request", status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+    throw failure;
+  }), (error: unknown) => error === failure);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh", "failed"]);
+  assert.equal(host.reveals, 1);
+});
+
+test("a reported boundary failure takes priority over a later AbortError", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_200);
+  const failure = new Error("boundary failure");
+  const cancellation = new DOMException("superseded", "AbortError");
+  await assert.rejects(feedback.run("PR refresh", async (context) => {
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "review-contexts-refresh", stage: "refresh-request", status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+    feedback.reportFailure("PR refresh", failure, context);
+    throw cancellation;
+  }), (error: unknown) => error === cancellation);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh", "failed"]);
+  assert.equal(host.logs.at(-1)?.failureCategory, "permanent");
+  assert.equal(host.reveals, 1);
+});
+
+test("an unreported AbortError retains the existing failed terminal behavior", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_300);
+  const cancellation = new DOMException("unreported abort", "AbortError");
+  await assert.rejects(feedback.run("PR refresh", async () => { throw cancellation; }), (error: unknown) => error === cancellation);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
+  assert.equal(host.logs.at(-1)?.failureCategory, "stale");
+  assert.equal(host.reveals, 1);
+});
+
 test("Issue #137 production formatter preserves refresh payloads and hides queued PR file paths", async () => {
   const hostileValues = [
     "private-repository-name", "secret-branch-name", "https://private.example/pr/42?token=secret",
