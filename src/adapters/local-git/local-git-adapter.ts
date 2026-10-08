@@ -23,6 +23,7 @@ import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
 const MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS = 28 * 1024;
+const MAX_LS_TREE_PATHSPEC_COUNT = 128;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 interface GitTreeEntry {
@@ -125,17 +126,30 @@ const parseLsTreeEntries = (
   return entries;
 };
 
+// spawn(shell:false) still serializes argv on Windows. Doubling UTF-16 units
+// covers escaped backslashes/quotes; four units allow surrounding quotes,
+// argument separation, and the command-line terminator. UTF-8 remains the
+// tighter bound on non-Windows hosts and for some Unicode arguments.
+const pathspecCommandLineUpperBound = (pathspec: string): number =>
+  Math.max(
+    Buffer.byteLength(pathspec, "utf8") + 1,
+    pathspec.length * 2 + 4,
+  );
+
 const chunkPathspecs = (paths: readonly string[]): readonly (readonly string[])[] => {
   const chunks: string[][] = [];
   let chunk: string[] = [];
   let usedUnits = 0;
   for (const filePath of paths) {
     const pathspec = `:(literal)${filePath}`;
-    const units = Math.max(pathspec.length, Buffer.byteLength(pathspec, "utf8")) + 1;
+    const units = pathspecCommandLineUpperBound(pathspec);
     if (units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS) {
       throw new RangeError("Git pathspec exceeds the safe argument batch limit");
     }
-    if (chunk.length > 0 && usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS) {
+    if (chunk.length > 0 && (
+      chunk.length >= MAX_LS_TREE_PATHSPEC_COUNT ||
+      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS
+    )) {
       chunks.push(chunk);
       chunk = [];
       usedUnits = 0;

@@ -210,6 +210,53 @@ test("batch immutable text reads chunk literal pathspecs below Windows command l
   assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
 });
 
+test("batch caps pathspec count and quotes POSIX-special paths within the Windows command budget", async () => {
+  const commit = "a".repeat(40);
+  const requestedPaths = Array.from({ length: 129 }, (_, index) =>
+    `dir with space/quote"back\\slash-${String(index).padStart(3, "0")}-漢字.ts`);
+  const invocations: GitCommandInvocation[] = [];
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      invocations.push(invocation);
+      return invocation.argumentsList[0] === "rev-parse"
+        ? success(`${commit}\n`)
+        : success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, requestedPaths, "posix");
+  const treeInvocations = invocations.filter((entry) => entry.argumentsList[0] === "ls-tree");
+
+  assert.equal(treeInvocations.length, 2, "the public API enforces its own 128-path command bound");
+  assert.deepEqual(treeInvocations.flatMap((entry) => {
+    const separator = entry.argumentsList.indexOf("--");
+    const pathspecs = entry.argumentsList.slice(separator + 1);
+    assert.ok(pathspecs.length <= 128);
+    const pathspecUnits = pathspecs.reduce((sum, value) => sum + Math.max(
+      Buffer.byteLength(value, "utf8") + 1,
+      value.length * 2 + 4,
+    ), 0);
+    assert.ok(pathspecUnits <= 28 * 1024);
+    const argumentUnits = entry.argumentsList.reduce((sum, value) => sum + Math.max(
+      Buffer.byteLength(value, "utf8") + 1,
+      value.length * 2 + 4,
+    ), 0);
+    assert.ok(argumentUnits + 4096 <= 32_767, "fixed command/executable arguments retain the reserved margin");
+    return pathspecs;
+  }), requestedPaths.map((filePath) => `:(literal)${filePath}`));
+  assert.equal(result.size, requestedPaths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
 test("failed later ls-tree chunk exposes no partial result and retries every chunk", async () => {
   const commit = "a".repeat(40);
   const paths = Array.from({ length: 500 }, (_, index) =>
@@ -241,9 +288,11 @@ test("failed later ls-tree chunk exposes no partial result and retries every chu
   await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, paths, "posix"), /second ls-tree chunk failed/u);
   const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
 
-  assert.equal(treePathspecBatches.length, 4, "the retry must fetch both metadata chunks again");
+  const retryChunkCount = Math.ceil(paths.length / 128);
+  assert.equal(treePathspecBatches.length, 2 + retryChunkCount, "the retry must fetch every metadata chunk again");
   assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
   assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
+  assert.deepEqual(treePathspecBatches.slice(2).flat(), paths.map((filePath) => `:(literal)${filePath}`));
   assert.equal(result.size, paths.length);
   assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
 });
@@ -287,9 +336,10 @@ test("interrupted batch path resolution is not reused by a later request", async
   const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
   assert.equal(result.size, paths.length);
   assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
-  assert.equal(treeCalls, 4, "a cancelled second chunk must cause both chunks to be fetched again");
+  assert.equal(treeCalls, 2 + Math.ceil(paths.length / 128), "a cancelled chunk must cause every metadata chunk to be fetched again");
   assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
   assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
+  assert.deepEqual(treePathspecBatches.slice(2).flat(), paths.map((filePath) => `:(literal)${filePath}`));
 });
 
 test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
